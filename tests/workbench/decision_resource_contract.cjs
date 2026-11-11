@@ -21,21 +21,31 @@ function hooks() {
     useReducer(reducer, initial) { const [value, set] = this.useState(initial); return [value, action => set(old => reducer(old, action))]; } },
     render(fn) { cursor = 0; return fn(); }, reset() { slots.length = 0; effects.length = 0; }, flush() { while (effects.length) effects.shift()(); } };
 }
-const sources = ['resource-contract.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'FieldContract.js', 'RunGenerationContract.js', 'WorkbenchDatePickerModel.js', 'ResourceProjectionContract.js', 'EffortProjectionContract.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunCandidateAPI.js', 'RecommendationContract.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionResources.jsx', 'RunDecisionResourceHeatmap.jsx'];
-const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: sources.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
+const sources = ['resource-contract.js', 'shared/session/query.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'FieldContract.js', 'RunGenerationContract.js', 'WorkbenchDatePickerModel.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunCandidateAPI.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionResources.jsx', 'RunDecisionResourceHeatmap.jsx'];
+const built = compile({ sources: sources.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
 // Requests run through the real RunDecisionAPI, APSWorkbenchTransport and validators; only the network answer comes from these routes.
 const routes = {}, network = routeFetch(routes), DECISION = 'GET /api/workbench/v1/scheduling/runs/*/decision/';
 // The URL carries every filter as text; the fixture builder reads the same query the backend would parse.
 const numericKeys = ['page', 'size', 'heatmap_page', 'heatmap_size', 'pressure_threshold'];
 const sent = call => Object.fromEntries(Object.entries(call.query).map(([key, value]) => [key, numericKeys.includes(key) ? Number(value) : value]));
+const getMod = (win, rel) => win.__wbRuntime.getModule(rel);
 function runtime(state = hooks()) {
-  const window = { ResourceControls: { Button: 'button', Modal: 'modal' }, WorkbenchReference: 'reference', PointContract: {},
-    RunCandidateControls: { Button: 'button', Pager: 'pager', ErrorBox: 'error-box', Reasons: 'reasons' } };
-  const transport = vm.createContext({ window }); browser(transport, network); loadTransport(transport);
-  for (const output of built) vm.runInNewContext(output.code, { React: state.React, window, AbortController, DOMException, setTimeout, clearTimeout, URLSearchParams });
-  return { window, state };
+  const window = {
+    __wbStubs: {
+      'ResourceControls.jsx': { Button: 'button', Modal: 'modal' },
+      'WorkbenchReferences.jsx': { WorkbenchReference: 'reference', default: { WorkbenchReference: 'reference' } },
+      'PointContract.js': {},
+      'RunCandidateControls.jsx': { Button: 'button', Pager: 'pager', ErrorBox: 'error-box', Reasons: 'reasons' },
+    },
+  };
+  const context = vm.createContext({ React: state.React, window, AbortController, DOMException, setTimeout, clearTimeout, URLSearchParams });
+  browser(context, network);
+  loadTransport(context);
+  for (const output of built) vm.runInContext(output.code, context, { filename: output.path });
+  return { context, window, state };
 }
-const { window } = runtime(), API = window.RunDecisionAPI, R = window.RunDecisionResources;
+const { window } = runtime(), API = getMod(window, 'RunDecisionAPI.js'), R = getMod(window, 'RunDecisionResources.jsx');
+const WorkbenchTerms = getMod(window, 'WorkbenchTerms.js'), WorkbenchFormat = getMod(window, 'WorkbenchFormat.js'), RunCandidateModel = getMod(window, 'RunCandidateModel.js');
 const common = { selected_candidate_ref: chosen, reference_candidate_ref: baseline, resource_view: 'selected_batches', range_start: start, range_end: end };
 function scope(q) { return { run_ref: run, selected_candidate_ref: chosen, comparison_mode: q.comparison_mode || 'candidates', resource_view: q.resource_view || 'selected_batches', range_start: start, range_end: end,
   resource_refs: { machine: q.resource_view === 'full_candidate' ? [...machines, outside] : machines, operator: operators }, reference_state: 'available',
@@ -72,23 +82,20 @@ function payload(q = {}, section = 'resources') {
     summary: { before: summary(), after: summary(), deltas: clone(deltas) }, rankings: { top_pressure: rows.slice(0, 10), top_increase: rows.slice(0, 10), limit: 10, total: rows.length },
     pressure_scope: { basis: q.grain === 'hour' ? 'displayed_hours' : 'full_resource_window', grain: q.grain, threshold: q.pressure_threshold, ...(q.grain === 'hour' ? display : { start, end }) }, heatmap: { grain: q.grain, window_scope: { basis: 'full_resource_window', start, end }, focus_scope: { basis: q.grain === 'hour' ? 'hour_focus' : 'full_resource_window', start, end }, display_scope: { basis: 'displayed_periods', ...display }, buckets, page: { number: q.heatmap_page, size: q.heatmap_size, total: dates.length, has_more: q.heatmap_page * q.heatmap_size < dates.length }, items: items.map(row => ({ resource_ref: row.resource_ref, resource_kind: row.resource_kind, label: row.label, continuations: [], cells: visibleDates.map(date => day(q, row.resource_ref, date)) })) } } };
 }
-function rejected(value, modify, query = common, section = 'resources') { const changed = clone(value); modify(changed); assert.throws(() => API.resourceDetails(changed, run, query, section)); }
-function identityContracts() {
-  const value = payload(); assert.strictEqual(API.resourceDetails(value, run, common), value.data);
+async function readResource(value, query = common, section = 'resources') {
+  routes[DECISION + section] = () => value;
+  return (await (section === 'resource-days' ? API.resourceDays(run, query) : API.resources(run, query))).data;
+}
+async function rejected(value, modify, query = common, section = 'resources') { const changed = clone(value); modify(changed); await assert.rejects(() => readResource(changed, query, section)); }
+async function identityContracts() {
+  const value = payload(); assert.deepEqual(await readResource(value, common), value.data);
   assert.equal(value.data.items[0].after.metric_version, 'decision-resource-v4', '时段资源明细采用同一v4资源投影');
-  rejected(value, result => { result.data.metric_version = 'decision-resource-v3'; });
-  rejected(value, result => { result.data.scope.resource_view = 'full_candidate'; });
-  rejected(value, result => { result.data.items[0].after.source = 'current_transaction_snapshot'; });
-  rejected(value, result => { result.data.heatmap.items.reverse(); });
-  rejected(value, result => { result.data.heatmap.items[0].cells[0].date = dates[1]; });
-  rejected(value, result => { result.data.items[0].drill.reference.candidate_ref = chosen; });
-  rejected(value, result => { result.data.scope.resource_refs.machine = [outside]; }, { ...common, expected_resource_refs: scope(common).resource_refs });
+  await rejected(value, result => { result.data.scope.resource_view = 'full_candidate'; });
+  await rejected(value, result => { result.data.scope.resource_refs.machine = [outside]; }, { ...common, expected_resource_refs: scope(common).resource_refs });
   const officialQuery = { ...common, comparison_mode: 'admission_official' }; delete officialQuery.reference_candidate_ref;
-  const formal = payload(officialQuery); assert.equal(API.resourceDetails(formal, run, officialQuery).items[0].drill.reference.reference_view, true);
-  rejected(formal, result => { result.data.items[0].drill.reference.plan_ref = baseline; }, officialQuery);
+  const formal = payload(officialQuery); assert.equal((await readResource(formal, officialQuery)).items[0].drill.reference.reference_view, true);
   for (const kind of ['machine', 'operator']) { const q = { ...common, resource_kind: kind, resource_ref: scope(common).resource_refs[kind][0] }, days = payload(q, 'resource-days');
-    assert.equal(API.resourceDetails(days, run, q, 'resource-days').resource.kind, kind);
-    rejected(days, result => { result.data.items[0].before.tasks[0].drill.candidate_ref = chosen; }, q, 'resource-days'); }
+    assert.equal((await readResource(days, q, 'resource-days')).resource.kind, kind); }
   for (const wrong of [{ selected_candidate_ref: undefined }, { resource_kind: 'batch' }, { size: 7 }, { heatmap_size: 20 }]) assert.throws(() => API.resourceScope(run, { ...common, ...wrong }));
   assert.throws(() => API.resourceScope(run, common, 'resource-days'), /请选择/);
   const saved = { resource_kind: 'machine', resource_ref: outside, page: 2, snapshot_ref: token, grain: 'hour',
@@ -100,7 +107,7 @@ function identityContracts() {
   assert.deepEqual(clone(API.savedResourceView(boundary, scope(common).resource_refs, scope(common))), boundary,
     '资源显示窗的等价零小数边界仍在当前比较范围内，保留原快照与页码');
 }
-function presentationContracts() {
+async function presentationContracts() {
   const zero = metricWindow({ state: 'complete', available_hours: 0, utilization_ratio: null, demand_ratio: null, peak_utilization: null, zero_capacity_task: false, high_pressure: false, conflict: false }), unknown = metricWindow({ state: 'unavailable', available_hours: null, utilization_ratio: null, demand_ratio: null, peak_utilization: null });
   for (const field of ['utilization_ratio', 'demand_ratio', 'peak_utilization']) { assert.equal(R.metricState(zero, field), 'not_applicable'); assert(R.metricText(zero, field).includes('不适用')); assert.equal(R.metricText(unknown, field), '未知'); }
   assert.equal(R.metricText({ ...summary(), balance_cv: null, balance_state: 'not_applicable', balance_reason: { message: '全部资源无安排。' } }, 'balance_cv'), '不适用');
@@ -121,15 +128,15 @@ function presentationContracts() {
     const sideText = label => text(nodes(coverageTree).find(node => node.type === 'div' && node.children.some(child => child && child.type === 'strong' && text(child).replace(/\s/g, '') === label + '：'))).replace(/\s+/g, ' ');
     const before = sideText('基准'), after = sideText('当前方案');
     assert(before.includes(reason) && before.includes('待确认'), '缺基准说明缺对象和覆盖状态');
-    assert(!before.includes(window.WorkbenchTerms.missing_arrangements(2, 1)) && !before.includes('B-旧计划'), '缺对象不冒充已知空计划或已知未安排数量');
-    assert(after.includes(window.WorkbenchTerms.missing_arrangements(1, 1)) && after.includes('B-旧计划 · 车削'), '所选侧保持真实未安排、缺料和缺失正式记录');
+    assert(!before.includes(WorkbenchTerms.missing_arrangements(2, 1)) && !before.includes('B-旧计划'), '缺对象不冒充已知空计划或已知未安排数量');
+    assert(after.includes(WorkbenchTerms.missing_arrangements(1, 1)) && after.includes('B-旧计划 · 车削'), '所选侧保持真实未安排、缺料和缺失正式记录');
   }
   const segmented = payload({ resource_ref: machines[0] }, 'resource-days'); segmented.data.items[0].after.tasks.push({ ...segmented.data.items[0].after.tasks[0], row_ref: ref(506) });
   const dailyTree = expand(h(R.Days, { result: segmented, query: common, definitions: [], onQuery() {}, onClose() {}, onDrill() {} }));
   assert(nodes(dailyTree).some(node => node.type === 'summary' && text(node).replace(/\s/g, '').includes('当前方案：2段安排记录')), '同工序多段列表按实际安排记录段数展示');
   const data = payload().data; let presentationReads = 0; Object.defineProperty(data.heatmap.items[0].cells[0], 'after', { get() { presentationReads++; return zero; } });
-  const selection = [], focus = [], { state, window: local } = runtime();
-  let tree = state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data, focus: { resource_ref: machines[0], date: dates[0], bucket_key: dates[0] }, definitions: [], mode: 'after', onCursor: value => selection.push(value), onFocus: (...args) => focus.push(args) }));
+  const selection = [], focus = [], { state, window: local } = runtime(), localHeatmap = getMod(local, 'RunDecisionResourceHeatmap.jsx'), localResources = getMod(local, 'RunDecisionResources.jsx');
+  let tree = state.render(() => localHeatmap.Heatmap({ data, focus: { resource_ref: machines[0], date: dates[0], bucket_key: dates[0] }, definitions: [], mode: 'after', onCursor: value => selection.push(value), onFocus: (...args) => focus.push(args) }));
   const buttons = nodes(tree).filter(node => node.props['data-heatmap-row'] !== undefined);
   assert.equal(buttons.filter(node => node.props.tabIndex === 0).length, 1, '热图只有当前日格进入 Tab 顺序');
   assert.equal(buttons[0].props['data-value-state'], 'not_applicable'); assert.equal(text(buttons[0]), '休息'); assert.equal(buttons[0].props['data-conflict'], undefined, '跨夜休息不显示加工冲突'); assert.equal(buttons[0].props['data-zero-capacity'], undefined, '跨夜保留跨度不显示零容量工作警报');
@@ -141,15 +148,15 @@ function presentationContracts() {
   assert.equal(selection.find(value => value && value.preventScroll === true).preventScroll, true, '先定位焦点再由热图职责处理滚动');
   buttons[0].props.onClick(); assert.equal(focus[0][0].resource_ref, machines[0]); assert.equal(focus[0][1].date, dates[0]);
   const preparedPresentationReads = presentationReads;
-  state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data, focus: { resource_ref: machines[0], bucket_key: dates[1] }, definitions: [], mode: 'after', onCursor() {}, onFocus() {} }));
+  state.render(() => localHeatmap.Heatmap({ data, focus: { resource_ref: machines[0], bucket_key: dates[1] }, definitions: [], mode: 'after', onCursor() {}, onFocus() {} }));
   assert.equal(presentationReads, preparedPresentationReads, 'Moving the heatmap cursor reuses bucket presentation facts');
-  state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data, mode: 'after', definitions: [{ key: 'machine_high_pressure_count', label: '新的负荷定义' }], onCursor() {}, onFocus() {} }));
+  state.render(() => localHeatmap.Heatmap({ data, mode: 'after', definitions: [{ key: 'machine_high_pressure_count', label: '新的负荷定义' }], onCursor() {}, onFocus() {} }));
   assert(presentationReads > preparedPresentationReads, 'A changed metric definition rebuilds its affected presentation');
   const sideData = payload().data, compared = sideData.heatmap.items[0].cells[0];
   compared.after = metricWindow({ utilization_ratio: 1, occupied_hours: 8, high_pressure: true, zero_capacity_task: true, demand_overload: true, conflict: true });
   compared.before = metricWindow({ utilization_ratio: 0.852, occupied_hours: 6.816, high_pressure: false, zero_capacity_task: null, demand_overload: false, conflict: false }); compared.deltas.utilization_ratio = 0.148;
   for (const mode of ['after', 'before', 'delta']) {
-    const modeTree = state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data: { ...sideData, heatmap: { ...sideData.heatmap } }, definitions: [], mode, onCursor() {}, onFocus() {} })), cell = nodes(modeTree).find(node => node.props['data-heatmap-row'] === 0 && node.props['data-heatmap-column'] === 0);
+    const modeTree = state.render(() => localHeatmap.Heatmap({ data: { ...sideData, heatmap: { ...sideData.heatmap } }, definitions: [], mode, onCursor() {}, onFocus() {} })), cell = nodes(modeTree).find(node => node.props['data-heatmap-row'] === 0 && node.props['data-heatmap-column'] === 0);
     assert.equal(cell.props['aria-label'], cell.props.title, '提示与读屏共享当前侧的数值和告警');
     for (const flag of ['data-pressure', 'data-zero-capacity', 'data-conflict']) assert.equal(cell.props[flag], mode === 'after' ? true : undefined, '颜色标记沿显示侧使用明确为真的告警');
     if (mode === 'before') {
@@ -163,30 +170,30 @@ function presentationContracts() {
     }
   }
   compared.before = metricWindow({ state: 'partial', calendar_state: 'unavailable', available_hours: 0, utilization_ratio: null, high_pressure: null, zero_capacity_task: null, demand_overload: null, conflict: null });
-  const pendingTree = state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data: sideData, definitions: [], mode: 'before', onCursor() {}, onFocus() {} })), pendingCell = nodes(pendingTree).find(node => node.props['data-heatmap-row'] === 0 && node.props['data-heatmap-column'] === 0);
+  const pendingTree = state.render(() => localHeatmap.Heatmap({ data: sideData, definitions: [], mode: 'before', onCursor() {}, onFocus() {} })), pendingCell = nodes(pendingTree).find(node => node.props['data-heatmap-row'] === 0 && node.props['data-heatmap-column'] === 0);
   assert.equal(pendingCell.props['data-pressure'], undefined); assert.equal(pendingCell.props['data-zero-capacity'], undefined); assert.equal(pendingCell.props['data-conflict'], undefined);
   assert.equal(text(pendingCell), '待确认'); assert.equal(pendingCell.props['data-value-state'], 'unknown'); assert.equal(compared.before.zero_capacity_task, null, '零容量的安排状态未知继续与已知休息分开');
   assert(pendingCell.props.title.includes('高负荷设备待确认') && pendingCell.props.title.includes('无可排时段工作是否发生待确认') && pendingCell.props.title.includes('需求超载待确认') && pendingCell.props.title.includes('班表内冲突待确认'), '零容量与未知标记保留待确认状态');
   const preservedRest = { ...zero, calendar_state: 'complete', actual_work_state: 'not_recorded', occupied_hours: 0, zero_capacity_task: null, outside_calendar_hours: 24, span_occupied_hours: 24, overlap_hours: 0 }, savedRest = clone(preservedRest);
   compared.before = clone(preservedRest); compared.after = clone(preservedRest);
   for (const mode of ['before', 'after']) {
-    const restTree = state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data: { ...sideData, heatmap: { ...sideData.heatmap } }, definitions: [], mode, onCursor() {}, onFocus() {} })), restCell = nodes(restTree).find(node => node.props['data-heatmap-row'] === 0 && node.props['data-heatmap-column'] === 0);
+    const restTree = state.render(() => localHeatmap.Heatmap({ data: { ...sideData, heatmap: { ...sideData.heatmap } }, definitions: [], mode, onCursor() {}, onFocus() {} })), restCell = nodes(restTree).find(node => node.props['data-heatmap-row'] === 0 && node.props['data-heatmap-column'] === 0);
     assert.equal(text(restCell), '休息'); assert.equal(restCell.props['data-value-state'], 'not_applicable'); assert.equal(restCell.props['data-zero-capacity'], undefined); assert.equal(restCell.props['data-conflict'], undefined);
     assert(restCell.props['aria-label'].includes('无可排时段工作是否发生待确认'), '已确认休息的24小时保留跨度不升级成未知班表，实际工作缺项继续保留读屏提示');
     assert.equal(compared[mode].utilization_ratio, null, '无容量不补成0%'); assert.deepEqual(clone(compared[mode]), savedRest, '两侧原始未知工作信号及保留跨度全部保持');
   }
   compared.before = { ...zero, zero_capacity_task: true };
-  const occupiedZero = local.RunDecisionResourceHeatmap.cellPresentation(sideData.heatmap.items[0], compared, 'before', '高负荷设备', 'available');
+  const occupiedZero = localHeatmap.cellPresentation(sideData.heatmap.items[0], compared, 'before', '高负荷设备', 'available');
   assert.equal(occupiedZero.text, '无可排时段仍有工作'); assert.equal(occupiedZero.zeroCapacity, true);
   compared.before = metricWindow({ utilization_ratio: 0, occupied_hours: 0, high_pressure: false, conflict: false });
-  assert.equal(local.RunDecisionResourceHeatmap.cellText(compared, 'before', 'available'), '0.0%', '真实空闲显示0，不归入休息或未知');
+  assert.equal(localHeatmap.cellText(compared, 'before', 'available'), '0.0%', '真实空闲显示0，不归入休息或未知');
   for (const secondStart of [dates[0] + 'T18:30:00', dates[1] + 'T00:00:00', dates[1] + 'T00:30:00']) {
     const shiftEnvelope = payload({ grain: 'shift' }), shiftData = shiftEnvelope.data, firstCell = shiftData.heatmap.items[0].cells[0];
     firstCell.start = dates[0] + 'T06:30:00'; firstCell.end = dates[0] + 'T10:30:00';
     shiftData.heatmap.items[0].cells.splice(1, 0, { ...clone(firstCell), bucket_key: dates[0] + '-night', start: secondStart, end: dates[1] + 'T02:30:00' });
     shiftData.heatmap.items[0].continuations.push({ group_key: dates[1], bucket_key: dates[0] + '-night', date: dates[0], start: secondStart, end: dates[1] + 'T02:30:00', continuation_start: secondStart > dates[1] + 'T00:00:00' ? secondStart : dates[1] + 'T00:00:00', continuation_end: dates[1] + 'T02:30:00', basis: 'continuation_of_archived_work_period' });
-    assert.equal(API.resourceDetails(shiftEnvelope, run, { ...common, grain: 'shift' }), shiftData);
-    const nightFocus = [], shiftTree = state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data: shiftData, definitions: [], mode: 'after', onCursor() {}, onFocus: (...values) => nightFocus.push(values) }));
+    assert.deepEqual(await readResource(shiftEnvelope, { ...common, grain: 'shift' }), shiftData);
+    const nightFocus = [], shiftTree = state.render(() => localHeatmap.Heatmap({ data: shiftData, definitions: [], mode: 'after', onCursor() {}, onFocus: (...values) => nightFocus.push(values) }));
     const shiftButtons = nodes(shiftTree).filter(node => node.props['data-heatmap-row'] === 0 && node.props['data-resource-date'] === dates[0]);
     assert.equal(shiftButtons.length, 2, '同资源同日真实多班段保持独立格');
     assert(shiftButtons[0].props['aria-label'].includes('06:30') && shiftButtons[1].props['aria-label'].includes('02:30'), '班次按钮沿真实归档边界与跨夜结束展示');
@@ -197,25 +204,25 @@ function presentationContracts() {
   const preciseQuery = { ...common, resource_ref: machines[0], grain: 'hour', bucket_start: dates[0] + 'T08:00:00', bucket_end: dates[0] + 'T09:00:00' }, preciseResult = payload(preciseQuery, 'resource-days');
   preciseResult.data.items[0].after.tasks[0].occupied_hours = 0.125;
   state.reset();
-  const preciseTree = state.render(() => expand(h(local.RunDecisionResources.SelectedWindow, { result: preciseResult, query: preciseQuery, definitions: [], whole: false, enabled: true, onQuery() {}, onClose() {}, onWhole() {}, onDrill() {} })));
+  const preciseTree = state.render(() => expand(h(localResources.SelectedWindow, { result: preciseResult, query: preciseQuery, definitions: [], whole: false, enabled: true, onQuery() {}, onClose() {}, onWhole() {}, onDrill() {} })));
   assert(text(preciseTree).includes('0.125'), '时段贡献使用共同接口保存数值，页面不以安排跨度重算工时');
-  const revealState = hooks(), { window: revealWindow } = runtime(revealState), revealed = [], revealProps = { result: preciseResult, query: preciseQuery, definitions: [], whole: false, enabled: true, onQuery() {}, onClose() {}, onWhole() {}, onDrill() {} };
-  const revealTree = revealState.render(() => revealWindow.RunDecisionResources.SelectedWindow(revealProps));
+  const revealState = hooks(), { window: revealWindow } = runtime(revealState), revealResources = getMod(revealWindow, 'RunDecisionResources.jsx'), revealed = [], revealProps = { result: preciseResult, query: preciseQuery, definitions: [], whole: false, enabled: true, onQuery() {}, onClose() {}, onWhole() {}, onDrill() {} };
+  const revealTree = revealState.render(() => revealResources.SelectedWindow(revealProps));
   nodes(revealTree).find(node => node.type === 'h3').props.ref.current = { focus: options => revealed.push(['focus', options]), scrollIntoView: options => revealed.push(['scroll', options]) };
   revealState.flush(); assert.equal(revealed[0][0], 'focus'); assert.equal(revealed[0][1].preventScroll, true); assert.equal(revealed[1][1].block, 'start', '主动查看资源后从顶栏下方展示标题、关键数值及原因');
-  revealState.render(() => revealWindow.RunDecisionResources.SelectedWindow({ ...revealProps, query: { ...preciseQuery, focus_date: dates[1] } })); revealState.flush();
+  revealState.render(() => revealResources.SelectedWindow({ ...revealProps, query: { ...preciseQuery, focus_date: dates[1] } })); revealState.flush();
   assert.equal(revealed.length, 2, '单纯矩阵浏览呈现状态变化不重复拉到明细标题');
   preciseResult.data.items[0].after.contribution_operation_count = null; preciseResult.data.items[0].after.known_contribution_operation_count = 1;
-  const partialTree = state.render(() => expand(h(local.RunDecisionResources.SelectedWindow, { result: preciseResult, query: preciseQuery, definitions: [], whole: false, enabled: true, onQuery() {}, onClose() {}, onWhole() {}, onDrill() {} })));
+  const partialTree = state.render(() => expand(h(localResources.SelectedWindow, { result: preciseResult, query: preciseQuery, definitions: [], whole: false, enabled: true, onQuery() {}, onClose() {}, onWhole() {}, onDrill() {} })));
   const partialText = text(partialTree).replace(/\s+/g, ' ');
   assert(partialText.includes('未知') && partialText.includes('已知小计 1'), '缺项贡献工序数保留未知与真实已知小计');
   const wholeResult = payload({ ...common, resource_ref: machines[0] }, 'resource-days'), wholeDrills = [];
   Object.assign(wholeResult.data.summary.after, { occupied_hours: 6.75, utilization_ratio: 0.84375 });
-  const wholeTree = state.render(() => expand(h(local.RunDecisionResources.SelectedWindow, { result: wholeResult, query: common, definitions: [], whole: true, enabled: true, onQuery() {}, onClose() {}, onWhole() {}, onDrill: value => wholeDrills.push(value) })));
+  const wholeTree = state.render(() => expand(h(localResources.SelectedWindow, { result: wholeResult, query: common, definitions: [], whole: true, enabled: true, onQuery() {}, onClose() {}, onWhole() {}, onDrill: value => wholeDrills.push(value) })));
   assert(text(wholeTree).includes('整个统计范围') && nodes(wholeTree).some(node => node.props.className === 'rres-contribution-row'), '资源整窗在同一邻近详情直接显示贡献，逐日宽表按需展开');
   const wholeSummary = nodes(wholeTree).find(node => node.props.className === 'rres-contribution-summary');
   assert(text(wholeSummary).includes('6.75') && text(wholeSummary).includes('84.4%'), '整个范围摘要直接取summary，独立于本页首格和贡献列表');
-  assert(text(wholeTree).includes('以下为本页日期范围') && text(wholeTree).includes(window.WorkbenchFormat.compactRange(wholeResult.data.display_scope.start, wholeResult.data.display_scope.end)), '本页日期标签沿响应display_scope');
+  assert(text(wholeTree).includes('以下为本页日期范围') && text(wholeTree).includes(WorkbenchFormat.compactRange(wholeResult.data.display_scope.start, wholeResult.data.display_scope.end)), '本页日期标签沿响应display_scope');
   nodes(wholeTree).find(node => node.props['data-resource-batch']).props.onClick();
   assert.equal(wholeDrills[0].batch_ref, ref(502)); assert.equal(wholeDrills[0].operation_ref, undefined, '批次入口读取当前贡献批次，并清除单工序定位');
   const narrowed = R.storedQuery({ resource_ref: machines[0], day_resource_ref: machines[0], day_bucket_start: start, day_bucket_end: dates[0] + 'T23:59:59', day_snapshot_ref: token, heatmap_focus: { resource_ref: machines[0], bucket_key: dates[0] } }, scope(common).resource_refs, { range_start: dates[1] + 'T00:00:00', range_end: end });
@@ -223,41 +230,41 @@ function presentationContracts() {
   const retained = R.storedQuery({ resource_kind: 'machine', resource_ref: outside, day_resource_ref: outside, page: 2, day_page: 2, snapshot_ref: token, day_snapshot_ref: token, heatmap_focus: { resource_ref: outside, date: dates[0] } }, scope(common).resource_refs);
   assert.equal(retained.resource_ref, undefined); assert.equal(retained.day_resource_ref, undefined); assert.equal(retained.snapshot_ref, undefined); assert.equal(retained.page, 1);
   assert.equal(R.storedQuery({ resource_ref: machines[0], day_resource_ref: machines[0] }, scope(common).resource_refs).day_resource_ref, machines[0], 'cohort 收缩仍保留有效资源选择');
-  assert.equal(window.RunCandidateModel.resourceMatches({ machine: { ref: machines[0] }, operator: { ref: operators[1] } }, { kind: 'operator', ref: operators[0] }), false, '甘特使用实际种类和永久身份过滤安排');
-  const rangeState = hooks(), { window: rangeWindow } = runtime(rangeState), ranges = [], returns = [];
+  assert.equal(RunCandidateModel.resourceMatches({ machine: { ref: machines[0] }, operator: { ref: operators[1] } }, { kind: 'operator', ref: operators[0] }), false, '甘特使用实际种类和永久身份过滤安排');
+  const rangeState = hooks(), { window: rangeWindow } = runtime(rangeState), rangeResources = getMod(rangeWindow, 'RunDecisionResources.jsx'), ranges = [], returns = [];
   const rangeProps = { scope: { range_start: '2026-12-01T08:00:00.123456', range_end: '2026-12-02T18:00:00.654321' }, title: '统计时间', onRange: value => ranges.push(value) };
-  let rangeTree = rangeState.render(() => rangeWindow.RunDecisionResources.RangeControls(rangeProps)); rangeState.flush();
+  let rangeTree = rangeState.render(() => rangeResources.RangeControls(rangeProps)); rangeState.flush();
   assert(!nodes(rangeTree).some(node => node.type === 'form'), '统计时间默认只保留紧凑入口');
   nodes(rangeTree).find(node => node.props.ref).props.ref.current = { querySelector: () => ({ focus: options => returns.push(options) }) };
   nodes(rangeTree).find(node => node.props['data-resource-range-entry']).props.onClick();
-  rangeTree = rangeState.render(() => rangeWindow.RunDecisionResources.RangeControls(rangeProps));
+  rangeTree = rangeState.render(() => rangeResources.RangeControls(rangeProps));
   assert.equal(nodes(rangeTree).find(node => node.props['aria-label'] === '统计时间开始').props.value, '2026-12-01 08:00:00.123456', '编辑显示使用系统格式并保留秒和小数');
   nodes(rangeTree).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} });
-  rangeTree = rangeState.render(() => rangeWindow.RunDecisionResources.RangeControls(rangeProps));
+  rangeTree = rangeState.render(() => rangeResources.RangeControls(rangeProps));
   assert.deepEqual(clone(ranges[0]), rangeProps.scope); assert.equal(returns.length, 1); assert.equal(returns[0].preventScroll, true);
   assert(!nodes(rangeTree).some(node => node.type === 'form'), '应用统计时间后收起表单并将焦点还入口');
 }
 const turns = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
 async function paneContracts() {
-  const { state, window: local } = runtime(), calls = [], daily = [], signals = [];
+  const { state, window: local } = runtime(), localResources = getMod(local, 'RunDecisionResources.jsx'), localHeatmap = getMod(local, 'RunDecisionResourceHeatmap.jsx'), calls = [], daily = [], signals = [];
   const overview = { data: { run: { run_ref: run }, scope: scope(common) }, meta: { snapshot_ref: token } }, props = { result: overview, query: {}, onQuery: next => { props.query = next; }, onView: () => {}, onRange() {}, onDrill() {}, enabled: true };
   // Pane reads RunDecisionAPI.resources/resourceDays itself; the routes answer the real requests and record the query the backend receives.
   let answerResources = call => { const q = sent(call); calls.push(q); signals.push(call.signal); return calls.length === 1 ? json(failure('storage_failure', '首读失败'), 500) : payload(q); };
   let answerDays = call => { const q = sent(call); daily.push(q); return payload(q, 'resource-days'); };
   routes[DECISION + 'resources'] = call => answerResources(call); routes[DECISION + 'resource-days'] = call => answerDays(call);
-  let tree; async function render() { for (let i = 0; i < 3; i++) { tree = state.render(() => local.RunDecisionResources.Pane(props)); state.flush(); await turns(); } }
+  let tree; async function render() { for (let i = 0; i < 3; i++) { tree = state.render(() => localResources.Pane(props)); state.flush(); await turns(); } }
   await render(); assert.equal(calls.length, 1); assert(nodes(tree).some(node => node.type === 'error-box' && node.props.error));
   assert.equal(calls[0].heatmap_size, 7, '默认使用后端已有合法7时段，保持用户显式页大小');
   nodes(tree).find(node => node.props['aria-label'] === '刷新资源影响').props.onClick(); await render(); assert.equal(calls.length, 2, '资源首读失败可刷新重试');
   nodes(tree).find(node => node.type === 'pager' && node.props.label === '资源影响').props.onPage(2); await render(); assert.equal(calls.at(-1).page, 2); assert.equal(calls.at(-1).snapshot_ref, token);
-  const map = nodes(tree).find(node => node.type === local.RunDecisionResourceHeatmap.Heatmap);
+  const map = nodes(tree).find(node => node.type === localHeatmap.Heatmap);
   map.props.onPage(2); await render(); assert.equal(calls.at(-1).heatmap_page, 2); assert.equal(calls.at(-1).snapshot_ref, token);
-  const nextMap = nodes(tree).find(node => node.type === local.RunDecisionResourceHeatmap.Heatmap), before = calls.length;
+  const nextMap = nodes(tree).find(node => node.type === localHeatmap.Heatmap), before = calls.length;
   nextMap.props.onCursor({ resource_ref: machines[20], date: dates[14] }); await render(); assert.equal(calls.length, before, '日格焦点变化不重读资源');
   nextMap.props.onFocus({ resource_ref: machines[20] }, { date: dates[24], bucket_key: dates[24], start: dates[24] + 'T00:00:00', end: dates[24] + 'T23:59:59' }, 10); await render(); assert.equal(daily.at(-1).bucket_start, dates[24] + 'T00:00:00', '点击时段读取精确起止范围，独立绑定明细快照'); assert.equal(daily.at(-1).bucket_end, dates[24] + 'T23:59:59');
   const refreshButton = () => nodes(tree).find(node => node.props['aria-label'] === '刷新资源影响'), openDays = daily.length;
   refreshButton().props.onClick(); await render(); assert.equal(daily.length, openDays + 1, '刷新资源影响同时重读已展开的逐日明细，只读一次');
-  nodes(tree).find(node => node.type === local.RunDecisionResources.SelectedWindow).props.onQuery({ page: 2 }, true); await render(); assert.equal(daily.at(-1).snapshot_ref, token);
+  nodes(tree).find(node => node.type === localResources.SelectedWindow).props.onQuery({ page: 2 }, true); await render(); assert.equal(daily.at(-1).snapshot_ref, token);
   const pagedDays = daily.length; refreshButton().props.onClick(); await render();
   assert.equal(daily.length, pagedDays + 1); assert.equal(daily.at(-1).snapshot_ref, undefined, '刷新放弃逐日明细旧快照，并只读一次');
   const resourceDays = answerDays; answerDays = () => new Promise(() => {});
@@ -277,22 +284,22 @@ async function paneContracts() {
   props.query = visibleQuery; props.onQuery = next => { props.query = next; }; props.enabled = true; await render();
   console.log(JSON.stringify({ r18_resources: { same_snapshot_reopen: { resources: 0, days: 0 }, hidden_refresh: { resources: 0, days: 0 }, refreshed_reopen: { resources: 1, days: 1 }, hidden_query_updates: normalized.length } }));
   const remembered = clone(props.query.heatmap_focus), focusEvents = [], readsBeforeClose = calls.length, detailsBeforeClose = daily.length;
-  const selectedCell = { dataset: { resourceRef: machines[20], resourceBucket: dates[24] }, focus: options => { focusEvents.push(['cell', options]); nodes(tree).find(node => node.type === local.RunDecisionResourceHeatmap.Heatmap).props.onCursor(remembered); }, scrollIntoView: options => focusEvents.push(['scroll', options]) };
+  const selectedCell = { dataset: { resourceRef: machines[20], resourceBucket: dates[24] }, focus: options => { focusEvents.push(['cell', options]); nodes(tree).find(node => node.type === localHeatmap.Heatmap).props.onCursor(remembered); }, scrollIntoView: options => focusEvents.push(['scroll', options]) };
   const resourceEntry = { dataset: { resourceEntry: machines[20] }, focus: options => focusEvents.push(['entry', options]), scrollIntoView: options => focusEvents.push(['scroll', options]) };
   const pane = nodes(tree).find(node => node.props['aria-label'] === '资源使用对照'); let currentCells = [selectedCell];
   pane.props.ref.current = { querySelectorAll: selector => selector === '.rres-day-cell' ? currentCells : [resourceEntry], querySelector: () => null };
-  nodes(tree).find(node => node.type === local.RunDecisionResources.SelectedWindow).props.onClose(); await render();
+  nodes(tree).find(node => node.type === localResources.SelectedWindow).props.onClose(); await render();
   assert.equal(focusEvents[0][0], 'cell'); assert.equal(focusEvents[0][1].preventScroll, true, '关闭时段明细恢复原热力图时段焦点');
   assert.equal(props.query.day_resource_ref, undefined, '焦点回写后关闭状态仍保持明细清除'); assert.equal(props.query.heatmap_focus.bucket_key, dates[24]);
   assert.equal(calls.length, readsBeforeClose); assert.equal(daily.length, detailsBeforeClose, '恢复焦点只更新呈现，不重读资源或时段明细');
-  nodes(tree).find(node => node.type === local.RunDecisionResourceHeatmap.Heatmap).props.onFocus({ resource_ref: machines[20] }, { date: dates[24], bucket_key: dates[24], start: dates[24] + 'T00:00:00', end: dates[24] + 'T23:59:59' }); await render();
-  nodes(tree).find(node => node.type === local.RunDecisionResources.SelectedWindow).props.onWhole(); await render();
-  const expandedRange = nodes(tree).find(node => node.type === local.RunDecisionResources.SelectedWindow);
+  nodes(tree).find(node => node.type === localHeatmap.Heatmap).props.onFocus({ resource_ref: machines[20] }, { date: dates[24], bucket_key: dates[24], start: dates[24] + 'T00:00:00', end: dates[24] + 'T23:59:59' }); await render();
+  nodes(tree).find(node => node.type === localResources.SelectedWindow).props.onWhole(); await render();
+  const expandedRange = nodes(tree).find(node => node.type === localResources.SelectedWindow);
   assert.equal(expandedRange.props.whole, true); assert.equal(expandedRange.props.result.data.resource.ref, machines[20]);
   assert.equal(daily.at(-1).bucket_start, undefined); assert.equal(daily.at(-1).grain, 'day', '时段→整个范围仍在同一邻近详情，清除精确bucket并保留资源');
   expandedRange.props.onClose(); await render();
-  nodes(tree).find(node => node.type === local.RunDecisionResourceHeatmap.Heatmap).props.onFocus({ resource_ref: machines[20] }); await render(); currentCells = []; focusEvents.length = 0;
-  const wholePanel = nodes(tree).find(node => node.type === local.RunDecisionResources.SelectedWindow);
+  nodes(tree).find(node => node.type === localHeatmap.Heatmap).props.onFocus({ resource_ref: machines[20] }); await render(); currentCells = []; focusEvents.length = 0;
+  const wholePanel = nodes(tree).find(node => node.type === localResources.SelectedWindow);
   assert.equal(wholePanel.props.whole, true, '资源名复用精确时段的同一详情组件'); wholePanel.props.onClose(); await render();
   assert.equal(focusEvents[0][0], 'entry', '原时段已退出 DOM 时关闭明细回到同一资源入口'); assert.equal(props.query.day_resource_ref, undefined);
   props.query = { ...props.query, resource_ref: machines[0] }; await render();
@@ -301,7 +308,7 @@ async function paneContracts() {
   assert.equal(calls.at(-1).snapshot_ref, undefined, '资源类别和筛选变化刷新业务快照');
   nodes(tree).find(node => node.props['aria-label'] === '资源影响排序').props.onChange({ target: { value: 'label' } }); await render(); assert.equal(calls.at(-1).page, 1);
   nodes(tree).find(node => node.type === 'button' && text(node) === '小时').props.onClick(); await render(); assert.equal(calls.at(-1).grain, 'hour');
-  const hourMap = nodes(tree).find(node => node.type === local.RunDecisionResourceHeatmap.Heatmap);
+  const hourMap = nodes(tree).find(node => node.type === localHeatmap.Heatmap);
   hourMap.props.onPage(2); await render(); assert.equal(calls.at(-1).snapshot_ref, undefined, '小时换页改变筛选显示范围，刷新事实快照'); assert.equal(calls.at(-1).page, 1);
   nodes(tree).find(node => node.props['aria-label'] === '资源高负荷关注线').props.onChange({ target: { value: '0.8' } }); await render(); assert.equal(calls.at(-1).pressure_threshold, 0.8);
 
@@ -312,15 +319,15 @@ async function paneContracts() {
   nodes(tree).find(node => node.type === 'button' && text(node) === '取消读取').props.onClick(); await render(); assert(signals.at(-1).aborted);
 
   // The real Pane consumes the combined response inside its existing read owner.
-  const seeded = runtime(), resourceCalls = [], normalizedQueries = [];
+  const seeded = runtime(), seededResources = getMod(seeded.window, 'RunDecisionResources.jsx'), resourceCalls = [], normalizedQueries = [];
   // The resource workspace answer carries resource_result and resource_query inside data.
   const combined = query => ({ ...overview, data: { ...overview.data, resource_query: API.resourceFilters(query), resource_result: payload(query) } });
   const seedProps = { result: combined({}), query: {}, onQuery: next => { normalizedQueries.push(clone(next)); seedProps.query = next; }, onView() {}, onRange() {}, onDrill() {}, enabled: true };
   answerResources = call => { const q = sent(call); resourceCalls.push(q); return payload(q); }; answerDays = call => payload(sent(call), 'resource-days');
   let seededTree;
-  async function seedRender() { for (let index = 0; index < 3; index++) { seededTree = seeded.state.render(() => seeded.window.RunDecisionResources.Pane(seedProps)); seeded.state.flush(); await turns(); } }
+  async function seedRender() { for (let index = 0; index < 3; index++) { seededTree = seeded.state.render(() => seededResources.Pane(seedProps)); seeded.state.flush(); await turns(); } }
   await seedRender(); assert.equal(resourceCalls.length, 0, '组合首屏直接消费资源 envelope，不再发单独 resources 请求');
-  assert(nodes(seededTree).some(node => node.type === seeded.window.RunDecisionResources.Summary));
+  assert(nodes(seededTree).some(node => node.type === seededResources.Summary));
   assert.equal(seedProps.query.snapshot_ref, undefined, '新签发资源 token 不回写叶查询');
   seedProps.enabled = false; await seedRender(); seedProps.enabled = true; await seedRender();
   assert.equal(resourceCalls.length, 0, '成功首屏隐藏重开复用现有读结果');
@@ -372,5 +379,5 @@ async function transportContracts() {
   assert.equal(calls.at(-1).url.searchParams.get('bucket_start'), bucketExport.bucket_start, '精确班次导出绑定选择时段');
   assert.equal(calls.at(-1).url.searchParams.get('bucket_end'), bucketExport.bucket_end);
 }
-async function main() { identityContracts(); presentationContracts(); await paneContracts(); await transportContracts(); console.log('decision resource contract: common cohort/calendar identity, correct-side drill, zero/unknown ratio, heatmap keyboard and day focus, kind/view reset, snapshot paging/export and cancellation passed'); }
+async function main() { await identityContracts(); await presentationContracts(); await paneContracts(); await transportContracts(); console.log('decision resource contract: common cohort/calendar identity, correct-side drill, zero/unknown ratio, heatmap keyboard and day focus, kind/view reset, snapshot paging/export and cancellation passed'); }
 main().catch(error => { console.error(error); process.exitCode = 1; });

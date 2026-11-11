@@ -1,114 +1,132 @@
-(function () {
-  'use strict';
-  const S = window.APSResourceSession, { Button, ErrorBox, Feedback } = window.FieldControls, api = window.FieldAPI;
-  function FieldWorkspace({ onNavigate, initialContext }) {
-    const [scope, setScope] = React.useState(() => api.initial(initialContext));
-    const [opened, setOpened] = React.useState(initialContext.task_ref || null), [editor, setEditor] = React.useState(null), [files, setFiles] = React.useState(false), [revision, setRevision] = React.useState(0);
-    const drafts = React.useRef(new Map());
-    const [, renderDrafts] = React.useReducer(value => value + 1, 0);
-    const [nextDraft, setNextDraft] = React.useState(null), [notice, setNotice] = React.useState('');
-    const command = S.useCommand(api);
-    const currentDraft = editor && drafts.current.get(editor.taskRef);
-    const guardOwner = window.WorkbenchGuards.useDirtyGuard({ dirty: !!(currentDraft && currentDraft.retained.dirty && command.phase !== 'done'), locked: command.locked,
-      message: '当前报工有未保存草稿，继续会丢弃这些内容。' });
-    window.WorkbenchGuards.useDirtyGuard({ dirty: Array.from(drafts.current.values()).some(value => value.retained.dirty && (!editor || value.editor.taskRef !== editor.taskRef)),
-      message: '其他任务有临时保留的报工草稿，离开页面会丢弃这些内容。' });
-    const retainDraft = React.useCallback(retained => {
-      if (!editor) return;
-      drafts.current.set(editor.taskRef, { editor, retained });
-      renderDrafts();
-    }, [editor]);
-    const read = S.useQuery(signal => api.readView(scope, signal), [scope, revision]);
-    const data = read.result && read.result.data, snapshot = read.result && read.result.meta.snapshot_ref;
-    const readPlan = React.useRef(scope.plan_ref);
-    if (data && !read.loading && !read.error) readPlan.current = data.scope.plan_ref;
-    const captionPlan = !read.loading && !read.error && data && data.plan;
-    const captionStatus = captionPlan && (captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official);
-    window.WorkbenchCaption.useCaption(captionStatus ? {
-      reference: captionPlan.plan_ref, label: '现场计划', name: captionPlan.display_name, status: captionStatus,
-      version: Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
-      range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
-    } : null);
-    const selectedTask = data && data.tasks.find(task => task.task_ref === opened);
-    const pageContext = data ? {
-      plan_ref: data.scope.plan_ref, scope: data.scope,
-      table: { page: data.page.number, size: data.page.size }, task_ref: opened,
-      operation_ref: selectedTask ? selectedTask.operation_ref : undefined, return_to: initialContext.return_to
-    } : null;
-    window.WorkbenchPageContext.useSnapshot(pageContext, !!data && !read.loading && !read.error && !command.locked && command.phase !== 'done' && (!opened || !!selectedTask));
-    const blocked = command.locked || !!editor || files || !!nextDraft || command.phase === 'done';
-    const rowBlocked = command.locked || files || !!nextDraft || command.phase === 'done';
-    function openTask(ref) {
-      if (rowBlocked || !command.reset()) return;
-      const next = opened === ref ? null : ref, saved = next && drafts.current.get(next);
-      setOpened(next); setEditor(saved ? saved.editor : null);
-    }
-    // The save notice describes the read that follows a save; any user-initiated read replaces it.
-    function filter(next) { if (blocked) return; setNotice(''); setScope({ ...next, task_ref: undefined, operation_ref: undefined, page: 1, size: scope.size, snapshot_ref: undefined }); setOpened(null); }
-    function refresh() {
-      if (blocked) return;
-      setNotice('');
-      setScope(current => ({ ...current, plan_ref: current.plan_ref || readPlan.current, page: opened ? undefined : current.page,
-        task_ref: opened || undefined, operation_ref: opened ? (selectedTask ? selectedTask.operation_ref : current.operation_ref) : undefined,
-        snapshot_ref: undefined }));
-      setRevision(value => value + 1);
-    }
-    async function closeEditor() {
-      if (!await window.WorkbenchGuards.confirmLeave({ owner: guardOwner }) || !command.reset()) return;
-      if (editor) drafts.current.delete(editor.taskRef);
-      setEditor(null);
-    }
-    function done(options = {}) {
-      if (command.phase !== 'done' || !command.reset()) return;
-      if (editor) drafts.current.delete(editor.taskRef);
-      setNextDraft(options.continueAfter ? options : null); setNotice('已保存，正在自动刷新最新报工。');
-      setEditor(null); setFiles(false); setScope(current => ({ ...current, plan_ref: current.plan_ref || readPlan.current,
-        page: undefined, task_ref: opened || undefined, operation_ref: selectedTask ? selectedTask.operation_ref : undefined,
-        snapshot_ref: undefined })); setRevision(value => value + 1);
-    }
-    function continueReady(task) {
-      if (!nextDraft || command.locked) return;
-      if (!task) {
-        setNextDraft(null);
-        setNotice('已保存最新报工，但核对详情失败。请刷新现场记录或详情。');
-        return;
-      }
-      const reason = window.FieldDraftModel.continuation(nextDraft.previousContext, task, nextDraft);
-      setNextDraft(null); setNotice(reason || '已核对最新报工，已打开新的报工草稿。');
-      if (!reason) setEditor({ taskRef: task.task_ref, action: 'create' });
-    }
-    React.useEffect(() => {
-      if (!nextDraft || read.loading) return;
-      if (read.error) { setNextDraft(null); return; }
-      if (data && !selectedTask) {
-        setNextDraft(null);
-        setNotice('已保存最新报工；当前筛选范围已不含该工序，已结束连续报工。');
-      }
-    }, [nextDraft, read.loading, read.error, data, selectedTask]);
-    const effectiveScope = data ? data.scope : scope;
-    const filtered = !!(scope.query || scope.state && scope.state !== 'all' || scope.plan_finish_date_from || scope.plan_finish_date_to || scope.range_start || scope.batch_ids || scope.resource_ref);
-    // 返回入口统一是 {view, context} 信封：值班台、现场实际甘特、报表 / 复盘带过来的都是这种。
-    const returnTarget = initialContext.return_to;
-    const canReturn = !!returnTarget && ['analysis', 'gantt', 'fieldgantt', 'reports', 'review', 'dashboard'].includes(returnTarget.view);
-    return <section className="plana field-workspace" data-field-workspace aria-label="现场记录">
-      <div className="field-toolbar"><h2 className="wb-page-title">现场记录</h2><span className="field-note wb-page-context">{data ? data.plan ? data.plan.display_name : '暂无正式计划' : read.loading ? '正在读取计划' : '计划未读取'}</span><span className="field-space" />
-        {canReturn && <Button icon="arrow-left" disabled={blocked} onClick={() => onNavigate(returnTarget.view, returnTarget.context)}>返回</Button>}
-        <Button icon="refresh-cw" aria-label="刷新现场记录" disabled={blocked || read.loading} onClick={refresh} />
-        <Button transfer="import" disabled={blocked || !data} onClick={() => { command.reset(); setFiles(true); }}>报工文件</Button>
-      </div>
-      {!editor && !files && <Feedback command={command} onDone={done} />}
-      {notice && <p className="field-note field-save-status" role="status">{read.error ? '报工已保存，页面刷新失败。请刷新现场记录。' : read.loading ? notice : nextDraft ? '已保存，正在核对最新数据…' : notice === '已保存，正在自动刷新最新报工。' ? '已保存并刷新最新报工。' : notice}</p>}
-      <window.FieldFilters scope={effectiveScope} onChange={filter} disabled={blocked || read.loading} summary={data && data.summary} />
-      <ErrorBox error={read.error} />
-      <window.FieldTable tasks={data ? data.tasks : []} loading={read.loading} loaded={!!data} filtered={filtered} onClear={() => filter({ plan_ref: effectiveScope.plan_ref })} error={read.error} onRetry={() => { if (!command.locked) { setScope(current => ({ ...current, snapshot_ref: undefined })); setRevision(value => value + 1); } }} opened={opened} disabled={rowBlocked || read.loading} onOpen={openTask} />
-      {data && <window.WorkbenchListControls.Pager page={data.page} sizes={[10, 20, 50, 100]} unit="道工序" label="现场" sizeLabel="现场每页数量" disabled={blocked} busy={read.loading}
-        onPage={page => { setNotice(''); setScope({ ...effectiveScope, size: scope.size, page, snapshot_ref: snapshot }); setOpened(null); }}
-        onSize={size => { setNotice(''); setScope({ ...effectiveScope, size, page: 1, snapshot_ref: snapshot }); setOpened(null); }} />}
-      {selectedTask && <window.FieldDetail key={selectedTask.task_ref} adapter={api} taskRef={selectedTask.task_ref} scope={effectiveScope} returnContext={pageContext} snapshot={snapshot} revision={revision} command={command} editor={editor}
-        retained={drafts.current.get(selectedTask.task_ref)?.retained} onDraft={retainDraft} nextDraft={nextDraft} onContinueReady={continueReady} onRefresh={refresh}
-        onEdit={value => { if (command.reset()) setEditor(value); }} onCloseEditor={closeEditor} onDone={done} onNavigate={onNavigate} />}
-      {files && <window.FieldFiles adapter={api} scope={effectiveScope} snapshot={snapshot} command={command} onClose={() => { if (command.phase === 'done') done(); else if (command.reset()) setFiles(false); }} onDone={done} />}
-    </section>;
+import React from './shared/runtime/react.js';
+import APSResourceSession from './shared/session/command-session.js';
+import { useQuery } from './shared/session/query.js';
+import FieldControls from './FieldControls.jsx';
+import FieldAPI from './FieldAPI.js';
+import WorkbenchGuards from './WorkbenchGuards.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
+import WorkbenchCaption from './WorkbenchCaption.jsx';
+import WorkbenchPageContext from './WorkbenchPageContext.jsx';
+import FieldDraftModel from './FieldDraftModel.js';
+import FieldFilters from './FieldFilters.jsx';
+import FieldTable from './FieldTable.jsx';
+import { Pager } from './ResourceControls.jsx';
+import FieldDetail from './FieldDetail.jsx';
+import FieldFiles from './FieldFiles.jsx';
+
+const S = APSResourceSession, { Button, ErrorBox, Feedback } = FieldControls, api = FieldAPI;
+function FieldWorkspace({ onNavigate, initialContext }) {
+  const [scope, setScope] = React.useState(() => api.initial(initialContext));
+  const [opened, setOpened] = React.useState(initialContext.task_ref || null), [editor, setEditor] = React.useState(null), [files, setFiles] = React.useState(false), [revision, setRevision] = React.useState(0);
+  const drafts = React.useRef(new Map());
+  const [, renderDrafts] = React.useReducer(value => value + 1, 0);
+  const [nextDraft, setNextDraft] = React.useState(null), [notice, setNotice] = React.useState('');
+  const command = S.useCommand(api);
+  const currentDraft = editor && drafts.current.get(editor.taskRef);
+  const guardOwner = WorkbenchGuards.useDirtyGuard({ dirty: !!(currentDraft && currentDraft.retained.dirty && command.phase !== 'done'), locked: command.locked,
+    message: '当前报工有未保存草稿，继续会丢弃这些内容。' });
+  WorkbenchGuards.useDirtyGuard({ dirty: Array.from(drafts.current.values()).some(value => value.retained.dirty && (!editor || value.editor.taskRef !== editor.taskRef)),
+    message: '其他任务有临时保留的报工草稿，离开页面会丢弃这些内容。' });
+  const retainDraft = React.useCallback(retained => {
+    if (!editor) return;
+    drafts.current.set(editor.taskRef, { editor, retained });
+    renderDrafts();
+  }, [editor]);
+  const read = useQuery(signal => api.readView(scope, signal), [scope, revision]);
+  const data = read.result && read.result.data, snapshot = read.result && read.result.meta.snapshot_ref;
+  const readPlan = React.useRef(scope.plan_ref), lastTaskRef = React.useRef(null);
+  if (data && !read.loading && !read.error) readPlan.current = data.scope.plan_ref;
+  const captionPlan = !read.loading && !read.error && data && data.plan;
+  const captionStatus = captionPlan && (captionPlan.is_current_official ? WorkbenchTerms.current_official : WorkbenchTerms.historical_official);
+  WorkbenchCaption.useCaption(captionStatus ? {
+    reference: captionPlan.plan_ref, label: '现场计划', name: captionPlan.display_name, status: captionStatus,
+    version: Number.isSafeInteger(captionPlan.version) ? WorkbenchTerms.plan_version(captionPlan.version) : undefined,
+    range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
+  } : null);
+  const selectedTask = data && data.tasks.find(task => task.task_ref === opened);
+  if (selectedTask) lastTaskRef.current = selectedTask;
+  else if (!opened || !read.loading || (lastTaskRef.current && lastTaskRef.current.task_ref !== opened)) lastTaskRef.current = null;
+  const displayTask = selectedTask || (read.loading && opened && lastTaskRef.current && lastTaskRef.current.task_ref === opened ? lastTaskRef.current : null);
+  const pageContext = data ? {
+    plan_ref: data.scope.plan_ref, scope: data.scope,
+    table: { page: data.page.number, size: data.page.size }, task_ref: opened,
+    ...(selectedTask && selectedTask.operation_ref !== undefined ? { operation_ref: selectedTask.operation_ref } : {}),
+    ...(initialContext.return_to !== undefined ? { return_to: initialContext.return_to } : {})
+  } : null;
+  WorkbenchPageContext.useSnapshot(pageContext, !!data && !read.loading && !read.error && !command.locked && command.phase !== 'done' && (!opened || !!selectedTask));
+  const blocked = command.locked || !!editor || files || !!nextDraft || command.phase === 'done';
+  const rowBlocked = command.locked || files || !!nextDraft || command.phase === 'done';
+  function openTask(ref) {
+    if (rowBlocked || !command.reset()) return;
+    const next = opened === ref ? null : ref, saved = next && drafts.current.get(next);
+    setOpened(next); setEditor(saved ? saved.editor : null);
   }
-  window.FieldWorkspace = FieldWorkspace;
-})();
+  // The save notice describes the read that follows a save; any user-initiated read replaces it.
+  function filter(next) { if (blocked) return; setNotice(''); setScope({ ...next, task_ref: undefined, operation_ref: undefined, page: 1, size: scope.size, snapshot_ref: undefined }); setOpened(null); }
+  function refresh() {
+    if (blocked) return;
+    setNotice('');
+    setScope(current => ({ ...current, plan_ref: current.plan_ref || readPlan.current, page: opened ? undefined : current.page,
+      task_ref: opened || undefined, operation_ref: opened ? (selectedTask ? selectedTask.operation_ref : current.operation_ref) : undefined,
+      snapshot_ref: undefined }));
+    setRevision(value => value + 1);
+  }
+  async function closeEditor() {
+    if (!await WorkbenchGuards.confirmLeave({ owner: guardOwner }) || !command.reset()) return;
+    if (editor) drafts.current.delete(editor.taskRef);
+    setEditor(null);
+  }
+  function done(options = {}) {
+    if (command.phase !== 'done' || !command.reset()) return;
+    if (editor) drafts.current.delete(editor.taskRef);
+    setNextDraft(options.continueAfter ? options : null); setNotice('已保存，正在自动刷新最新报工。');
+    setEditor(null); setFiles(false); setScope(current => ({ ...current, plan_ref: current.plan_ref || readPlan.current,
+      page: undefined, task_ref: opened || undefined, operation_ref: selectedTask ? selectedTask.operation_ref : undefined,
+      snapshot_ref: undefined })); setRevision(value => value + 1);
+  }
+  function continueReady(task) {
+    if (!nextDraft || command.locked) return;
+    if (!task) {
+      setNextDraft(null);
+      setNotice('已保存最新报工，但核对详情失败。请刷新现场记录或详情。');
+      return;
+    }
+    const reason = FieldDraftModel.continuation(nextDraft.previousContext, task, nextDraft);
+    setNextDraft(null); setNotice(reason || '已核对最新报工，已打开新的报工草稿。');
+    if (!reason) setEditor({ taskRef: task.task_ref, action: 'create' });
+  }
+  React.useEffect(() => {
+    if (!nextDraft || read.loading) return;
+    if (read.error) { setNextDraft(null); return; }
+    if (data && !selectedTask) {
+      setNextDraft(null);
+      setNotice('已保存最新报工；当前筛选范围已不含该工序，已结束连续报工。');
+    }
+  }, [nextDraft, read.loading, read.error, data, selectedTask]);
+  const effectiveScope = data ? data.scope : scope;
+  const filtered = !!(scope.query || scope.state && scope.state !== 'all' || scope.plan_finish_date_from || scope.plan_finish_date_to || scope.range_start || scope.batch_ids || scope.resource_ref);
+  // 返回入口统一是 {view, context} 信封：值班台、现场实际甘特、报表 / 复盘带过来的都是这种。
+  const returnTarget = initialContext.return_to;
+  const canReturn = !!returnTarget && ['analysis', 'gantt', 'fieldgantt', 'reports', 'review', 'dashboard'].includes(returnTarget.view);
+  return <section className="plana field-workspace" data-field-workspace aria-label="现场记录">
+    <div className="field-toolbar"><h2 className="wb-page-title">现场记录</h2><span className="field-note wb-page-context">{data ? data.plan ? data.plan.display_name : '暂无正式计划' : read.loading ? '正在读取计划' : '计划未读取'}</span><span className="field-space" />
+      {canReturn && <Button icon="arrow-left" disabled={blocked} onClick={() => onNavigate(returnTarget.view, returnTarget.context)}>返回</Button>}
+      <Button icon="refresh-cw" aria-label="刷新现场记录" disabled={blocked || read.loading} onClick={refresh} />
+      <Button transfer="import" disabled={blocked || !data} onClick={() => { command.reset(); setFiles(true); }}>报工文件</Button>
+    </div>
+    {!editor && !files && <Feedback command={command} onDone={done} />}
+    {notice && <p className="field-note field-save-status" role="status">{read.error ? '报工已保存，页面刷新失败。请刷新现场记录。' : read.loading ? notice : nextDraft ? '已保存，正在核对最新数据…' : notice === '已保存，正在自动刷新最新报工。' ? '已保存并刷新最新报工。' : notice}</p>}
+    <FieldFilters scope={effectiveScope} onChange={filter} disabled={blocked || read.loading} summary={data && data.summary} />
+    <ErrorBox error={read.error} />
+    <FieldTable tasks={data ? data.tasks : []} loading={read.loading} loaded={!!data} filtered={filtered} onClear={() => filter({ plan_ref: effectiveScope.plan_ref })} error={read.error} onRetry={() => { if (!command.locked) { setScope(current => ({ ...current, snapshot_ref: undefined })); setRevision(value => value + 1); } }} opened={opened} disabled={rowBlocked || read.loading} onOpen={openTask} />
+    <Pager page={data ? data.page : { number: scope.page || 1, size: scope.size }} sizes={[10, 20, 50, 100]} unit="道工序" label="现场" sizeLabel="现场每页数量" disabled={blocked || !data} busy={read.loading}
+      onPage={page => { setNotice(''); setScope({ ...effectiveScope, size: scope.size, page, snapshot_ref: snapshot }); setOpened(null); }}
+      onSize={size => { setNotice(''); setScope({ ...effectiveScope, size, page: 1, snapshot_ref: snapshot }); setOpened(null); }} />
+    {displayTask && <FieldDetail key={displayTask.task_ref} adapter={api} taskRef={displayTask.task_ref} scope={effectiveScope} returnContext={pageContext} snapshot={snapshot} revision={revision} command={command} editor={editor}
+      retained={drafts.current.get(displayTask.task_ref)?.retained} onDraft={retainDraft} nextDraft={nextDraft} onContinueReady={continueReady} onRefresh={refresh}
+      onEdit={value => { if (command.reset()) setEditor(value); }} onCloseEditor={closeEditor} onDone={done} onNavigate={onNavigate} />}
+    {files && <FieldFiles adapter={api} scope={effectiveScope} snapshot={snapshot} command={command} onClose={() => { if (command.phase === 'done') done(); else if (command.reset()) setFiles(false); }} onDone={done} />}
+  </section>;
+}
+export { FieldWorkspace };
+export default FieldWorkspace;

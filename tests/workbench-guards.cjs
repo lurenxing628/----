@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { compile } = require('../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '..');
 const listeners = {};
 const context = vm.createContext({
@@ -15,8 +16,12 @@ const context = vm.createContext({
   },
   React: { useId: () => ':r0:', useRef: () => ({ current: null }), useLayoutEffect: () => {} },
 });
-vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app/WorkbenchGuards.js'), 'utf8'), context);
-const G = context.window.WorkbenchGuards;
+const guardsCode = compile({
+  sources: [{ path: 'WorkbenchGuards.js', code: fs.readFileSync(path.join(root, 'frontend/workbench/app/WorkbenchGuards.js'), 'utf8') }],
+  check_combined: false,
+}).outputs[0].code;
+vm.runInContext(guardsCode, context);
+const G = context.__wbRuntime.getModule('WorkbenchGuards.js');
 const settled = promise => Promise.race([promise.then(value => ({ settled: true, value })),
   new Promise(resolve => setTimeout(() => resolve({ settled: false }), 20))]);
 

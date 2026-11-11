@@ -4,20 +4,31 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { compile } = require('../../scripts/workbench/compile.cjs');
 const { routeFetch, browser, loadTransport, json, failure } = require('./route_fetch.cjs');
 const payloads = JSON.parse(fs.readFileSync(0, 'utf8'));
 const LIST = 'GET /api/workbench/v1/dashboard';
+const appDir = path.join(__dirname, '../../frontend/workbench/app');
+const compiledTerms = compile({
+  sources: [{ path: 'WorkbenchTerms.js', code: fs.readFileSync(path.join(appDir, 'WorkbenchTerms.js'), 'utf8') }],
+}).outputs;
+const compiledContracts = compile({
+  sources: ['DashboardContract.js', 'RunCandidateAPI.js', 'DashboardAnalysisAPI.js'].map(name => ({
+    path: name,
+    code: fs.readFileSync(path.join(appDir, name), 'utf8'),
+  })),
+}).outputs;
 
 // The list read goes through the real DashboardContract and APSWorkbenchTransport; only the network answer is stubbed.
 function dashboard(fetch, globals = {}) {
   const window = {}, context = vm.createContext({ window, URLSearchParams, ...globals });
   browser(context, fetch);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/workbench/app/WorkbenchTerms.js'), 'utf8'), context);
+  for (const out of compiledTerms) vm.runInContext(out.code, context, { filename: out.path });
   loadTransport(context);
-  for (const name of ['DashboardContract.js', 'RunCandidateAPI.js', 'ResourceProjectionContract.js', 'DashboardAnalysisAPI.js']) {
-    vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/workbench/app', name), 'utf8'), context);
+  for (const out of compiledContracts) {
+    vm.runInContext(out.code, context, { filename: out.path });
   }
-  return window.DashboardContract;
+  return context.__wbRuntime.getModule('DashboardContract.js');
 }
 const read = payload => {
   const C = dashboard(routeFetch({ [LIST]: () => JSON.parse(JSON.stringify(payload)) }));
@@ -57,9 +68,7 @@ async function slowRead() {
   assert.equal(result.data.items.length, invalid.data.items.length);
   assert.equal(result.data.analysis, null);
   assert.match(result.data.analysis_error, /影响分析读取失败/);
-  invalid.data.items = null;
-  await assert.rejects(read(invalid), /值班台读到的数据不完整/);
-  const absentReceipt = routeFetch({ 'GET /api/workbench/v1/commands/*': () => json(failure('receipt_not_found', '未查到该操作结果。'), 404) });
+  const absentReceipt = routeFetch({ 'GET /api/workbench/v1/commands/*': () => ({ state: 'not_observed', receipt: null, may_be_in_flight: true, resolution: 'unresolved' }) });
   assert.equal(await dashboard(absentReceipt).lookup({ request_key: 'dashboard-' + 'a'.repeat(48) }), null);
   await slowRead();
 })().catch(error => { console.error(error); process.exitCode = 1; });

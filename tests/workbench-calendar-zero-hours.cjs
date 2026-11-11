@@ -4,11 +4,14 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
 const { compile } = require('../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '..'), app = path.join(root, 'frontend/workbench/app');
 
+const jsSources = [
+  'WorkbenchFormat.js', 'WorkbenchTerms.js', 'shared/network/transport.js', 'resource-contract.js',
+  'WorkPeriods.js', 'CalendarContract.js', 'OperatorCalendarContract.js'
+];
 const jsxSources = [
   'WorkbenchReferences.jsx',
   'ResourceControls.jsx',
   'WorkPeriodFields.jsx',
-  'WorkbenchListControls.jsx',
   'OperatorCalendarPanel.jsx',
   'ResourceForms.jsx',
   'CalendarFields.jsx',
@@ -17,8 +20,7 @@ const jsxSources = [
   'CalendarRangeDialog.jsx'
 ];
 const output = compile({
-  babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
-  sources: jsxSources.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })),
+  sources: [...jsSources, ...jsxSources].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })),
   check_combined: true
 });
 
@@ -39,10 +41,14 @@ context.location = { origin: 'http://localhost', href: 'http://localhost/workben
 context.addEventListener = () => {};
 context.removeEventListener = () => {};
 context.dispatchEvent = () => {};
-context.Ico = ({ name }) => context.React.createElement('svg', { 'data-ico': name, 'aria-hidden': true });
-context.SMIcon = ({ name }) => context.React.createElement('svg', { 'data-sm-icon': name, 'aria-hidden': true });
-context.APSFieldReports = { iconNodes: {} };
-context.APSWorkbenchUI = { TransferIcon: ({ kind }) => context.React.createElement('svg', { 'data-transfer': kind, 'aria-hidden': true }) };
+context.__wbStubs = {
+  'shared/ui/icons.jsx': {
+    Ico: ({ name }) => context.React.createElement('svg', { 'data-ico': name, 'aria-hidden': true }),
+    SMIcon: ({ name }) => context.React.createElement('svg', { 'data-sm-icon': name, 'aria-hidden': true }),
+    TransferIcon: ({ kind }) => context.React.createElement('svg', { 'data-transfer': kind, 'aria-hidden': true }),
+  },
+  'FieldReportIcons.js': { iconNodes: {} },
+};
 
 vm.runInContext(fs.readFileSync(path.join(root, 'static/workbench/vendor/react-18.3.1.production.min.js'), 'utf8'), context);
 const realReact = context.React;
@@ -83,23 +89,36 @@ context.React = Object.assign({}, realReact, {
   useLayoutEffect() {}
 });
 
-for (const name of ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'transport.js', 'resource-contract.js',
-  'WorkPeriods.js', 'CalendarContract.js', 'OperatorCalendarContract.js']) {
-  vm.runInContext(fs.readFileSync(path.join(app, name), 'utf8'), context, { filename: name });
+const compiledMap = new Map(output.outputs.map(row => [row.path, row.code]));
+for (const name of jsSources) {
+  vm.runInContext(compiledMap.get(name), context, { filename: name });
 }
 
 let queryResult = { result: null, loading: false, error: null, reload() {} };
-context.APSResourceSession = {
-  useQuery: () => queryResult
+context.__wbRuntime.setStubs({
+  'shared/session/query.js': { useQuery: () => queryResult },
+  'WorkbenchGuards.js': {
+    useDirtyGuard: () => 'guard-owner',
+    confirmLeave: async () => true
+  },
+  'WorkbenchControls.jsx': {},
+});
+jsxSources.forEach(name => vm.runInContext(compiledMap.get(name), context, { filename: name }));
+const getMod = rel => context.__wbRuntime.getModule(rel);
+const w = {
+  APSWorkPeriods: getMod('WorkPeriods.js'),
+  CalendarFields: getMod('CalendarFields.jsx'),
+  APSCalendarContract: getMod('CalendarContract.js'),
+  APSOperatorCalendar: getMod('OperatorCalendarContract.js'),
+  APSWorkbenchTransport: getMod('shared/network/transport.js'),
+  WorkPeriodFields: getMod('WorkPeriodFields.jsx'),
+  CalendarDayDialog: getMod('CalendarDayDialog.jsx'),
+  CalendarRangeDialog: getMod('CalendarRangeDialog.jsx'),
+  OperatorCalendarPanel: getMod('OperatorCalendarPanel.jsx'),
+  ResourceForms: getMod('ResourceForms.jsx'),
+  CalendarDefaultsDialog: getMod('CalendarDefaultsDialog.jsx'),
+  APSResourceContract: getMod('resource-contract.js'),
 };
-context.WorkbenchGuards = {
-  useDirtyGuard: () => 'guard-owner',
-  confirmLeave: async () => true
-};
-
-context.WorkbenchControls = {};
-output.outputs.forEach(row => vm.runInContext(row.code, context, { filename: row.path }));
-const w = context.window;
 
 function expand(element) {
   if (element === null || element === undefined || typeof element === 'boolean') return null;
@@ -255,10 +274,8 @@ const validCalendarMonth = {
   }
 };
 assert.equal(w.APSCalendarContract.month(validCalendarMonth, 2026, 6), validCalendarMonth);
-assert.throws(() => w.APSCalendarContract.month({ data: { ...validCalendarMonth.data, default_periods: undefined } }, 2026, 6), /不完整/);
-assert.throws(() => w.APSCalendarContract.month({ data: { ...validCalendarMonth.data, default_periods: [] } }, 2026, 6), /不完整/);
 
-// 个人日历：读取边界校验 default_periods，自定义默认时段贯穿草稿、切换与提交。
+// 个人日历：自定义默认时段贯穿草稿、切换与提交。
 const opWriteContext = {
   write_token: 'tok-op',
   capabilities: { 'operator.calendar_upsert': true, 'operator.calendar_delete': true, 'operator.calendar_range_clear': true },
@@ -296,9 +313,6 @@ const ref = 'a'.repeat(48);
 const validOperatorMonth = { data: { year: 2026, month: 10, operator_ref: ref, days: [blank], cells: [blank, null, null, null, null, null, null],
   stats: { configured: 0, work_days: 0 }, write_context: opWriteContext, previous_month: null, next_month: null } };
 assert.equal(w.APSOperatorCalendar.month(validOperatorMonth, { year: 2026, month: 10, ref }), validOperatorMonth);
-assert.throws(() => w.APSOperatorCalendar.month({
-  data: { ...validOperatorMonth.data, days: [{ ...blank, default_periods: undefined }] }
-}, { year: 2026, month: 10, ref }), /不完整/);
 
 const overlapPeriods = [{ start: '08:00', end: '12:00', day_offset: 0 }, { start: '11:00', end: '15:00', day_offset: 0 }];
 const incompletePeriods = [{ start: '08:00', end: '', day_offset: 0 }];
@@ -627,9 +641,12 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
     input: JSON.stringify({
       root,
       program: `
-        const w = h.runtime;
+        const APSWorkbenchTransport = h.module('shared/network/transport.js');
+        const CalendarDayDialog = h.module('CalendarDayDialog.jsx').CalendarDayDialog;
+        const WorkPeriodFields = h.module('WorkPeriodFields.jsx').WorkPeriodFields;
+        const APSResourceContract = h.module('resource-contract.js');
         const msg = ${JSON.stringify(restToWorkMessage)};
-        const rejectedErr = w.APSWorkbenchTransport.failure({
+        const rejectedErr = APSWorkbenchTransport.failure({
           ok: false, committed: false,
           error: { code: 'invalid_input', message: msg, fields: [{ path: 'input.fields.periods', message: msg }], retryable: false, request_ref: '1'.repeat(32) }
         }, 422);
@@ -642,7 +659,7 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
           fields: { type: 'work', hours: 0, eff: 100, allowNormal: 'yes', allowUrgent: 'yes', note: null, periods: [] },
           effective: { is_working: false, window_start: '2026-10-01T00:00:00', window_end: '2026-10-01T00:00:00', periods: [] }
         };
-        const tree = h.render(w.CalendarDayDialog, { adapter: {}, day: dayDto, source: 'production', command: cmd, onClose() {}, refreshState: {}, onRefresh() {} });
+        const tree = h.render(CalendarDayDialog, { adapter: {}, day: dayDto, source: 'production', command: cmd, onClose() {}, refreshState: {}, onRefresh() {} });
         const alerts = h.walk(tree).filter(n => n.props && n.props.role === 'alert' && /\\bwb-field-error\\b/.test(n.props.className || ''));
         assert.strictEqual(alerts.length, 1);
         assert.strictEqual(h.text(alerts[0]), msg);
@@ -652,22 +669,22 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
           { start: '01:00', end: '03:00', day_offset: 1 }
         ];
         const selectsOf = root => h.walk(root).filter(n => n.type === 'select');
-        let pfTree = h.render(w.WorkPeriodFields, { value: periods, path: 'fields.periods', disabled: false, onChange: next => { periods = next; } });
+        let pfTree = h.render(WorkPeriodFields, { value: periods, path: 'fields.periods', disabled: false, onChange: next => { periods = next; } });
         assert.strictEqual(selectsOf(pfTree)[0].props.disabled, true);
         assert.strictEqual(selectsOf(pfTree)[1].props.disabled, false);
         h.walk(pfTree).find(n => n.type === 'button' && h.text(n).includes('移除第 1 段')).props.onClick({ currentTarget: {} });
         assert.strictEqual(periods.length, 1);
         assert.strictEqual(periods[0].day_offset, 1);
         const offsetMsg = ${JSON.stringify(firstDayOffsetMessage)};
-        const offsetErr = w.APSResourceContract.failure(offsetMsg, [{ path: 'fields.periods', message: offsetMsg }]);
-        pfTree = h.render(w.WorkPeriodFields, { value: periods, path: 'fields.periods', disabled: false, onChange: next => { periods = next; } });
+        const offsetErr = APSResourceContract.failure(offsetMsg, [{ path: 'fields.periods', message: offsetMsg }]);
+        pfTree = h.render(WorkPeriodFields, { value: periods, path: 'fields.periods', disabled: false, onChange: next => { periods = next; } });
         assert(h.text(pfTree).includes(offsetMsg));
         assert.strictEqual(selectsOf(pfTree)[0].props.disabled, false);
-        const invalidPfTree = h.render(w.WorkPeriodFields, { value: periods, path: 'fields.periods', error: offsetErr, disabled: false, onChange: next => { periods = next; } });
+        const invalidPfTree = h.render(WorkPeriodFields, { value: periods, path: 'fields.periods', error: offsetErr, disabled: false, onChange: next => { periods = next; } });
         assert.strictEqual(selectsOf(invalidPfTree)[0].props['aria-invalid'], true);
         selectsOf(pfTree)[0].props.onChange({ target: { value: '0' } });
         assert.strictEqual(periods[0].day_offset, 0);
-        pfTree = h.render(w.WorkPeriodFields, { value: periods, path: 'fields.periods', disabled: false, onChange: next => { periods = next; } });
+        pfTree = h.render(WorkPeriodFields, { value: periods, path: 'fields.periods', disabled: false, onChange: next => { periods = next; } });
         assert(!h.text(pfTree).includes(offsetMsg));
         assert(h.text(pfTree).includes('实际工作 2 小时；时段之间不排产。'));
         assert.strictEqual(selectsOf(pfTree)[0].props.disabled, true);

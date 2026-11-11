@@ -1,12 +1,4 @@
-/* workbench/prototype/styles.css */
-/* ============================================================
-   APS 排产系统 · Design System — global entry point
-   Consumers link THIS file. Import manifest only; never add rules.
-   No @font-face: the product is Win7/offline and rides the system
-   font stack (see tokens/typography.css). Mirrors the real
-   static/css/00-tokens.css token contract.
-   ============================================================ */
-
+/* workbench/app/styles/colors.css */
 /* ============================================================
    APS 排产系统 · Color tokens  (semantic layer --ui-*)
    Single source of truth: the product's static/css/00-tokens.css.
@@ -110,6 +102,8 @@
   --danger-color: var(--ui-danger);
 }
 
+
+/* workbench/app/styles/typography.css */
 /* ============================================================
    APS 排产系统 · Typography tokens
    Win7 / offline / Chrome 109. Type rides the installed system
@@ -127,7 +121,7 @@
    on machines without it. */
 @font-face {
   font-family: "Microsoft YaHei";
-  src: local("Microsoft YaHei"), local("微软雅黑"), url("../prototype/fonts/MicrosoftYaHei-Regular.ttf") format("truetype");
+  src: local("Microsoft YaHei"), local("微软雅黑"), url("assets/MicrosoftYaHei-Regular.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -165,6 +159,8 @@
   --num-variant: tabular-nums; /* @kind other */
 }
 
+
+/* workbench/app/styles/spacing.css */
 /* ============================================================
    APS 排产系统 · Spacing, radius, shadow & motion tokens
    Tight, flat enterprise. Radii are small (4/6/8). Two subtle
@@ -209,6 +205,8 @@
   --ease-nav: 0.2s ease;    /* @kind other */
 }
 
+
+/* workbench/app/styles/dark.css */
 /* ============================================================
    APS 排产系统 · Dark theme  (护眼模式)
    Activated by html[data-theme="dark"]. Pure token reassignment —
@@ -252,8 +250,7 @@ html[data-theme="dark"] {
 }
 
 
-
-/* workbench/prototype/ui_kits/workbench/basedata.css */
+/* workbench/app/styles/basedata.css */
 /* ============================================================
    APS Workbench · 基础资料 page styles (工艺 / 物料 / 自制 / 外协 / 工作日历)
    Consumes --ui-* colors and --wb-radius-* roles. Flat, calm, light/dark via tokens.
@@ -795,7 +792,7 @@ code.bd-code { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, mon
 }
 
 
-/* workbench/prototype/ui_kits/workbench/datepicker/aps-datepicker.css */
+/* workbench/app/styles/aps-datepicker.css */
 /* ============================================================
    APS 排产系统 · 日期选择器（自定义，替代浏览器原生 type=date）
    - 纯 CSS，无第三方库；Win7 / 旧版 Chrome 安全
@@ -1013,7 +1010,7 @@ html[data-theme="dark"] .apsdp-pop {
 html[data-theme="dark"] .apsdp-month { background: var(--ui-card-bg); }
 
 
-/* workbench/prototype/ui_kits/workbench/plana.css */
+/* workbench/app/styles/plana.css */
 /* ============================================================
    APS Workbench · 基础资料（流程主线 · 方案A）native styles
    Ported from PlanAEmbed.html. Every selector is namespaced under
@@ -1947,7 +1944,7 @@ html[data-theme="dark"] .plana {
 }
 
 
-/* workbench/prototype/ui_kits/workbench/gantt-theme.css */
+/* workbench/app/styles/gantt-theme.css */
 /* Approved workbench Gantt palette. Does not replace global UI status colors. */
 :root {
   --wb-gantt-radius-control:var(--wb-radius-control);
@@ -2019,7 +2016,7 @@ html[data-theme="dark"] {
 }
 
 
-/* workbench/prototype/ui_kits/workbench/gantt-board.css */
+/* workbench/app/styles/gantt-board.css */
 /* ============================================================
    APS Workbench · 甘特看板（看结果）重设计 — 三方案共用样式
    方案 A 精密时间轴 / 方案 B 负载泳道 / 方案 C 关键链巡检
@@ -2233,7 +2230,7 @@ html[data-theme="dark"] .gb { --gb-subline: rgb(51 65 85 / .42); --gb-today-wash
 }
 
 
-/* workbench/prototype/ui_kits/workbench/field-gantt.css */
+/* workbench/app/styles/field-gantt.css */
 /* APS Workbench · 工序基线、实际已报、剩余安排使用同一时轴。 */
 .fg-scope { --gb-rescol: 348px; --fg-statecol: 100px; --gb-rowh: 80px; --fg-hourw: 78px; --fg-hours: 1; --gb-trackw: calc(var(--fg-hours) * var(--fg-hourw)); }
 .fg-context { margin: 0; color: var(--wb-gantt-muted); font-size: var(--font-size-1); line-height: 1.6; overflow-wrap: anywhere; }
@@ -2434,7 +2431,7 @@ html[data-theme="light"] .fg-chain-strip { border-bottom: 0; }
 }
 
 
-/* workbench/prototype/ui_kits/workbench/field-gantt-viewport.css */
+/* workbench/app/styles/field-gantt-viewport.css */
 .fg-viewport-axis { position: relative; min-width: 0; overflow: hidden; box-sizing: border-box; letter-spacing: 0; background: var(--ui-surface-muted); }
 .fg-viewport-tier { position: relative; height: 23px; overflow: hidden; border-bottom: 1px solid var(--ui-border); }
 .fg-viewport-tick { position: absolute; top: 0; bottom: 0; box-sizing: border-box; overflow: hidden; padding: 3px 0; box-shadow: inset -1px 0 var(--ui-border); font-size: var(--font-size-1); line-height: 17px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: 0; color: var(--wb-gantt-muted); }
@@ -2446,7 +2443,7 @@ html[data-theme="light"] .fg-chain-strip { border-bottom: 0; }
 .fg-viewport-now-label.align-end { left: auto; right: 5px; }
 
 
-/* workbench/prototype/ui_kits/workbench/dashboard-workbench.css */
+/* workbench/app/styles/dashboard-workbench.css */
 #aps-decision {
  --d-bg:var(--ui-bg); --d-panel:var(--ui-card-bg); --d-soft:var(--ui-surface-muted);
  --d-text:var(--ui-text); --d-muted:var(--ui-info-muted); --d-line:var(--ui-border);
@@ -2712,7 +2709,7 @@ html[data-theme="light"] #aps-decision .d-modal-foot {background:var(--ui-surfac
 }
 
 
-/* workbench/prototype/ui_kits/workbench/field-reporting.css */
+/* workbench/app/styles/field-reporting.css */
 #aps-reporting {--r-bg: var(--ui-bg); --r-panel: var(--ui-card-bg); --r-soft: var(--ui-surface-muted); --r-text: var(--ui-text); --r-muted: var(--ui-info-muted); --r-line: var(--ui-border); --r-blue: var(--ui-info-text); --r-blue-soft: var(--ui-info-bg); --r-green: var(--ui-success-text); --r-green-soft: var(--ui-success-bg); --r-amber: var(--ui-warning-text); --r-amber-soft: var(--ui-warning-bg); --r-red: var(--ui-danger-text); --r-red-soft: var(--ui-danger-bg); --r-space: 12px; width: 100%; min-width: 0; position: relative; color: var(--r-text); background: var(--r-bg); font: var(--font-size-2)/1.55 var(--font-family);}
 #aps-reporting {--r-plan-fill:var(--wb-gantt-plan-fill);--r-actual-fill:var(--wb-gantt-primary-fill);--r-actual-ink:var(--wb-gantt-primary-ink);}
 #aps-reporting * {box-sizing: border-box; letter-spacing: 0;}
@@ -3082,7 +3079,7 @@ html[data-theme="light"] #aps-reporting .r-editor-foot {background:var(--ui-surf
 }
 
 
-/* workbench/prototype/ui_kits/workbench/workbench-ui.css */
+/* workbench/app/styles/workbench-ui.css */
 /* Opt-in classes override legacy inline styles; charts and calendar grids opt out. */
 :root {
   --wb-radius-surface:0px;
@@ -3188,7 +3185,7 @@ table.wb-table .d-sub,.plana table.wb-table .pp.todo,.plana table.wb-table .pp.l
 }
 
 
-/* workbench/prototype/ui_kits/workbench/operations-workspaces.css */
+/* workbench/app/styles/operations-workspaces.css */
 .operations-shell .brand-word,
 .operations-shell .nav-group-title { letter-spacing: 0; }
 .operations-shell .top-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -3216,7 +3213,7 @@ table.wb-table .d-sub,.plana table.wb-table .pp.todo,.plana table.wb-table .pp.l
 }
 
 
-/* workbench/prototype/ui_kits/workbench/report-workbench.css */
+/* workbench/app/styles/report-workbench.css */
 .rw-workbench {min-width:0;color:var(--ui-text);font:var(--font-size-2)/1.55 var(--font-family);}
 .rw-workbench * {box-sizing:border-box;letter-spacing:0;}
 .rw-workbench h2 {font-size:var(--font-size-5);font-weight:600;line-height:30px;margin:0;color:var(--ui-text);}
@@ -3322,7 +3319,7 @@ table.wb-table .d-sub,.plana table.wb-table .pp.todo,.plana table.wb-table .pp.l
 }
 
 
-/* workbench/prototype/ui_kits/workbench/execution-analysis-shared.css */
+/* workbench/app/styles/execution-analysis-shared.css */
 .aw-icon {display:inline-block;width:16px;height:16px;flex:none;vertical-align:middle;}
 .aw-scope {padding:12px 0;border:0;font-family:var(--font-family);color:var(--ui-text);min-width:0;}
 .aw-scope-main {display:grid;grid-template-columns:minmax(118px,.8fr) repeat(2,minmax(142px,.9fr)) minmax(150px,1fr) minmax(190px,1.4fr) auto;gap:8px;align-items:end;}
@@ -3412,7 +3409,7 @@ html[data-theme="light"] .aw-scope {background:transparent;}
 }
 
 
-/* workbench/prototype/ui_kits/workbench/execution-review.css */
+/* workbench/app/styles/execution-review.css */
 .er-workbench {min-width:0;max-width:100%;color:var(--ui-text);font:var(--font-size-2)/1.55 var(--font-family);letter-spacing:0;}
 .er-workbench * {box-sizing:border-box;letter-spacing:0;}
 .er-workbench h2 {margin:0;font-size:var(--font-size-5);font-weight:600;line-height:30px;color:var(--ui-text);}
@@ -3533,7 +3530,7 @@ html[data-theme="light"] .aw-scope {background:transparent;}
 }
 
 
-/* workbench/prototype/ui_kits/workbench/master-data-overview.css */
+/* workbench/app/styles/master-data-overview.css */
 .md-overview {min-width:0;color:var(--ui-text);font-family:var(--font-family);font-size:var(--font-size-2);letter-spacing:0;}
 .md-overview * {box-sizing:border-box;letter-spacing:0;}
 .md-heading {display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px;}
@@ -3618,7 +3615,7 @@ html[data-theme="light"] .aw-scope {background:transparent;}
 }
 
 
-/* workbench/prototype/ui_kits/workbench/system-workbench.css */
+/* workbench/app/styles/system-workbench.css */
 .sm-workbench {--sm-workbench-ready:1;--sm-subtle:var(--ui-surface-muted);min-width:0;max-width:100%;color:var(--ui-text);font:var(--font-size-2)/1.55 var(--font-family);letter-spacing:0;}
 .sm-workbench * {box-sizing:border-box;letter-spacing:0;}
 .sm-workbench h2 {margin:0;font-size:var(--font-size-5);line-height:30px;font-weight:600;}
@@ -3783,7 +3780,7 @@ html[data-theme="light"] .aw-scope {background:transparent;}
 }
 
 
-/* workbench/prototype/ui_kits/workbench/trial-sample.css */
+/* workbench/app/styles/trial-sample.css */
 /* The sample consumes the existing workbench palette, type and radius tokens. */
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -4012,7 +4009,7 @@ html, body { margin: 0; }
 }
 
 
-/* workbench/prototype/ui_kits/workbench/plan-workbench.css */
+/* workbench/app/styles/plan-workbench.css */
 .pw-context { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 16px; margin-bottom: 20px; background: var(--ui-card-bg); font-size: var(--font-size-2); }
 .cap-preview { font-size: var(--font-size-1); padding: 2px 8px; border-radius: var(--wb-radius-control); color: var(--ui-info-text); background: var(--ui-info-bg); border: 1px solid var(--ui-info-border); }
 .pw-context label { display: flex; align-items: center; gap: 8px; }
@@ -4104,7 +4101,7 @@ html, body { margin: 0; }
 @media (max-width: 700px) { .pw-summary { flex-direction: column; } .pw-actions { margin-left: 0; } .pw-context label { flex-wrap: wrap; } }
 
 
-/* workbench/prototype/ui_kits/workbench/batch-workbench.css */
+/* workbench/app/styles/batch-workbench.css */
 .batch-workbench {
   min-width: 0;
   letter-spacing: 0;
@@ -4266,7 +4263,7 @@ html, body { margin: 0; }
 }
 
 
-/* workbench/prototype/ui_kits/workbench/index.inline.css */
+/* workbench/app/styles/index-inline.css */
 
   * { box-sizing: border-box; }
   html, body { margin: 0; }
@@ -5338,9 +5335,8 @@ body.aps-workbench .scheduling-navigation button.btn[aria-pressed="true"] { colo
 /* override: body.aps-workbench .rw-detail-pager .wb-pager button.btn; 工序详情抽屉里的记录分页行走 30px mini 档，合同钉的 32px / 5px 10px 要压掉。 */
 body.aps-workbench .rw-detail-pager .wb-pager button.btn { min-height: var(--wb-control-mini-height) !important; padding: var(--space-1) 9px !important; }
 
-/* ===== 打印（@media print）：最小打印样式。本应独立成 38-print.css，但新文件要登记 scripts/workbench/build-order.json（本包不改）；
-   放开吸附 / 限高要压过工作区文件里最高 (0,6,2) 优先级的规则，非 !important 不可，而样式合同只允许本文件保留 !important，故暂放此处。
-   登记 38-print.css 后可整段迁走（同时要放宽 tests/workbench-app-styles.cjs 里 !important 的宿主文件白名单）。 ===== */
+/* ===== 打印（@media print）：最小打印样式。放开吸附 / 限高要压过工作区文件里最高 (0,6,2) 优先级的规则，
+   非 !important 不可，而应用层样式约定只在本文件集中保留 !important，故放在此处。 ===== */
 @media print {
   @page { margin: 12mm; }
   /* 深色主题的近白文字落在透明纸面上无法阅读；打印介质统一改用系统纸面色，同时保留边框和甘特形状通道。 */
@@ -5575,6 +5571,13 @@ body.aps-workbench table.wb-table th:is(:hover,:focus-within,[aria-sort]:not([ar
 @media (hover: none) {
   body.aps-workbench table.wb-table th :is(.aps-filter-btn,.aps-sort-facetbtn,.wb-th-action) { opacity: 1; }
 }
+body.aps-workbench .aps-th { position: relative; }
+body.aps-workbench .aps-th-inner { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+body.aps-workbench .aps-th-label { overflow: hidden; text-overflow: ellipsis; }
+body.aps-workbench .aps-th-resize { position: absolute; top: 0; right: 0; height: 100%; width: 10px; cursor: col-resize; user-select: none; touch-action: none; z-index: 4; }
+body.aps-workbench .aps-th-resize::after { content: ''; position: absolute; right: 3px; top: 22%; height: 56%; width: 2px; border-radius: 2px; background: transparent; transition: background-color .12s; }
+body.aps-workbench .aps-th-resize:hover::after,
+body.aps-workbench .aps-th-resize.dragging::after { background: var(--ui-primary); }
 body.aps-workbench .wb-visually-hidden {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;

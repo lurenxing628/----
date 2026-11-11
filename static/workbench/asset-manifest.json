@@ -11,10 +11,10 @@
     "workbench/app/main.js"
   ],
   "theme_script": "workbench/app/theme.js",
-  "icon": "workbench/prototype/assets/logo-mark.svg",
+  "icon": "workbench/app/assets/logo-mark.svg",
   "notices": [
     "workbench/vendor/react.LICENSE",
     "workbench/vendor/react-dom.LICENSE",
-    "workbench/prototype/ui_kits/workbench/assets/lucide-LICENSE"
+    "workbench/app/assets/lucide-LICENSE"
   ]
 }

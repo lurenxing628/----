@@ -1,72 +1,87 @@
-(function () {
-  'use strict';
-  const fields = [['actual_start', '实际开工'], ['actual_end', '本次实际结束'], ['completed_quantity', '本次完成数量'],
-    ['effective_processing_hours', '有效加工工时（小时）'], ['remark', '备注']];
-  function Evidence({ record }) {
-    const { text, time, amount } = window.ReportTable;
-    // 工时列表头已写明单位，格子里只放整形后的数字；其余项照原值显示。
-    const cell = (key, value) => key === 'effective_processing_hours' ? amount(value) : text(value);
-    return <details className="rw-limitations rw-record-evidence"><summary>{record.record_kind_label} · {record.report_no} · {time(record.event_time, '未知')}</summary>
-      <p>登记时间：{time(record.recorded_at)}（现场记录时间）；记录人：{text(record.local_operator)}；经办人：{text(record.declared_operator)}</p>
-      <window.WorkbenchReference entries={{ '报工来源': record.source }} />
-      <h4>逐次报工更正记录（{record.correction_history.length} 次）</h4>
-      {record.correction_history.map(revision => <details key={revision.revision_ref}><summary>{window.WorkbenchTerms.report_actions[revision.action] || revision.action} · {time(revision.recorded_at)}</summary>
-        <p>原因：{revision.reason || '无'}；记录人：{text(revision.local_operator)}；经办人：{text(revision.declared_operator)}</p>
-        <window.ReportEvidence.TableFrame caption="报工更正前后的值"><window.APSWorkbenchUI.DataTable className="rw-record-detail" rowKey="field"
-          columns={[{ key: 'label', title: '项目', width: 150 }, { key: 'before', title: '更正前' }, { key: 'after', title: '更正后' }].map(column => ({ ...column, sortable: false, filterable: false }))}
-          rows={fields.map(([key, label]) => ({ field: key, label, before: revision.before === null ? '新增，无原值' : cell(key, revision.before[key]), after: cell(key, revision.after[key]) }))} /></window.ReportEvidence.TableFrame>
-        <window.WorkbenchReference entries={{ '版本编号': revision.revision_ref, '结果编号': revision.receipt_ref,
-          '原设备编号': revision.before && revision.before.actual_machine_ref, '新设备编号': revision.after.actual_machine_ref,
-          '原人员编号': revision.before && revision.before.actual_operator_ref, '新人员编号': revision.after.actual_operator_ref }} />
-      </details>)}
-    </details>;
-  }
-  function Detail({ operationRef, input, onClose, onOpenOperation, initialView, onView }) {
-    const { useRead, Button, ErrorBox } = window.ReportControls;
-    const { text, time, hoursText, Table } = window.ReportTable;
-    const identity = operationRef + JSON.stringify(input);
-    const request = useRead(signal => window.ReportAPI.detail(operationRef, input, signal), identity);
-    const detail = request.result && request.result.data.detail;
-    const [page, setPage] = React.useState(initialView ? initialView.page : 1), [size, setSize] = React.useState(initialView ? initialView.size : 10);
-    const prevRef = React.useRef({ operationRef, snapshotRef: input.snapshot_ref });
-    React.useEffect(() => {
-      const prev = prevRef.current;
-      prevRef.current = { operationRef, snapshotRef: input.snapshot_ref };
-      if (prev.operationRef !== operationRef) {
-        setPage(initialView ? initialView.page : 1);
-        setSize(initialView ? initialView.size : 10);
-      } else if (prev.snapshotRef !== input.snapshot_ref) {
-        setPage(1);
-        onView({ page: 1, size });
-      }
-    }, [operationRef, input.snapshot_ref]);
-    const row = detail && detail.operation;
-    const actions = <div className="rw-actions">
-        <Button icon="arrow-right" disabled={!row || request.busy}
-          onClick={() => onOpenOperation(operationRef, input, row, 'field')}>查看现场记录</Button>
-        <Button icon="chart-gantt" disabled={!row || request.busy}
-          onClick={() => onOpenOperation(operationRef, input, row, 'fieldgantt')}>查看现场实际甘特</Button>
-        </div>;
-    const pages = detail ? Math.max(1, Math.ceil(detail.records.length / size)) : 1, currentPage = Math.min(page, pages);
-    React.useEffect(() => {
-      if (detail && currentPage !== page) {
-        setPage(currentPage);
-        onView({ page: currentPage, size });
-      }
-    }, [detail, currentPage, page, size]);
-    const records = React.useMemo(() => detail ? detail.records.slice((currentPage - 1) * size, currentPage * size) : [], [detail, currentPage, size]);
-    return <window.WorkbenchDetailPanel className="rw-detail" detailKey={operationRef} title={row ? row.batch_label + ' · ' + row.operation_label : '工序详情'}
-      subtitle="工序报表详情" actions={actions} onClose={onClose}>
-      <ErrorBox error={request.error} />{request.busy && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取工序记录" />}
-      {row && <><dl className="rw-detail-facts"><div><dt>整道完成</dt><dd>{row.execution_label}</dd></div><div><dt>已确认完工时间</dt><dd>{time(row.confirmed_finish)}</dd></div><div><dt>已知累计数量</dt><dd>{text(row.known_completed_quantity)}；数量未知 {row.unknown_record_count} 条</dd></div><div><dt>有效加工工时</dt><dd>{hoursText(row.effective_processing_hours)}；已知小计 {hoursText(row.known_effective_processing_hours)}</dd></div></dl>
-        <p>逐次报工 {row.production_report_count} 条。剩余数量：{text(row.remaining_quantity)}。</p>
-        <p>{row.data_gaps.join(' ')}</p><Table data={{ topic: 'records', rows: records }} empty={{ title: '这道工序暂无报工记录', hint: '' }}
-          onLocate={record => onOpenOperation(operationRef, input, row, 'fieldgantt', record.report_ref)} />
-        {records.map(record => <Evidence key={record.record_kind + ':' + record.projection_index} record={record} />)}
-        <div className="rw-detail-pager"><window.ReportControls.Page page={{ number: currentPage, size, total: detail.records.length, pages }} onChange={patch => {
-          setPage(patch.page); if (patch.size) setSize(patch.size); onView({ page: patch.page, size: patch.size || size });
-        }} /></div></>}
-    </window.WorkbenchDetailPanel>;
-  }
-  window.ReportDetail = Detail;
-})();
+import React from './shared/runtime/react.js';
+import { useRead, Button, ErrorBox, Page } from './ReportControls.jsx';
+import { text, time, amount, hoursText, Table } from './ReportTable.jsx';
+import ReportAPI from './ReportAPI.js';
+import { WorkbenchReference } from './WorkbenchReferences.jsx';
+import WorkbenchTerms from './WorkbenchTerms.js';
+import { DataTable } from './shared/ui/Table.jsx';
+import WorkbenchDetailPanel from './WorkbenchDetailPanel.jsx';
+import { EmptyState } from './ResourceControls.jsx';
+
+const fields = [
+  ['actual_start', '实际开工'], ['actual_end', '本次实际结束'], ['completed_quantity', '本次完成数量'],
+  ['effective_processing_hours', '有效加工工时（小时）'], ['remark', '备注']
+];
+
+function Evidence({ record }) {
+  // 工时列表头已写明单位，格子里只放整形后的数字；其余项照原值显示。
+  const cell = (key, value) => key === 'effective_processing_hours' ? amount(value) : text(value);
+  return <details className="rw-limitations rw-record-evidence"><summary>{record.record_kind_label} · {record.report_no} · {time(record.event_time, '未知')}</summary>
+    <p>登记时间：{time(record.recorded_at)}（现场记录时间）；记录人：{text(record.local_operator)}；经办人：{text(record.declared_operator)}</p>
+    <WorkbenchReference entries={{ '报工来源': record.source }} />
+    <h4>逐次报工更正记录（{record.correction_history.length} 次）</h4>
+    {record.correction_history.map(revision => <details key={revision.revision_ref}><summary>{WorkbenchTerms.report_actions[revision.action]} · {time(revision.recorded_at)}</summary>
+      <p>原因：{revision.reason || '无'}；记录人：{text(revision.local_operator)}；经办人：{text(revision.declared_operator)}</p>
+      <div className="rw-table-scroll wb-table-frame"><DataTable className="rw-record-detail" caption="报工更正前后的值" rowKey="field"
+        columns={[{ key: 'label', title: '项目', width: 150 }, { key: 'before', title: '更正前' }, { key: 'after', title: '更正后' }]}
+        rows={fields.map(([key, label]) => ({ field: key, label, before: revision.before === null ? '新增，无原值' : cell(key, revision.before[key]), after: cell(key, revision.after[key]) }))} /></div>
+      <WorkbenchReference entries={{
+        '版本编号': revision.revision_ref, '结果编号': revision.receipt_ref,
+        '原设备编号': revision.before && revision.before.actual_machine_ref, '新设备编号': revision.after.actual_machine_ref,
+        '原人员编号': revision.before && revision.before.actual_operator_ref, '新人员编号': revision.after.actual_operator_ref
+      }} />
+    </details>)}
+  </details>;
+}
+
+function Detail({ operationRef, input, busy = false, onClose, onOpenOperation, initialView, onView }) {
+  const identity = operationRef + JSON.stringify(input);
+  const request = useRead(signal => ReportAPI.detail(operationRef, input, signal), identity);
+  const rawDetail = request.result && request.result.data.detail;
+  const lastDetailRef = React.useRef(null);
+  if (rawDetail) lastDetailRef.current = { operationRef, detail: rawDetail };
+  else if (!request.busy || (lastDetailRef.current && lastDetailRef.current.operationRef !== operationRef)) lastDetailRef.current = null;
+  const detail = rawDetail || (request.busy && lastDetailRef.current && lastDetailRef.current.operationRef === operationRef ? lastDetailRef.current.detail : null);
+  const [page, setPage] = React.useState(initialView ? initialView.page : 1), [size, setSize] = React.useState(initialView ? initialView.size : 10);
+  const prevRef = React.useRef(operationRef);
+  React.useEffect(() => {
+    const prev = prevRef.current;
+    prevRef.current = operationRef;
+    if (prev !== operationRef) {
+      setPage(initialView ? initialView.page : 1);
+      setSize(initialView ? initialView.size : 10);
+    }
+  }, [operationRef]);
+  const row = detail && detail.operation, disabled = !row || request.busy || busy;
+  const actions = <div className="rw-actions">
+    <Button icon="arrow-right" disabled={disabled}
+      onClick={() => onOpenOperation(operationRef, input, row, 'field')}>查看现场记录</Button>
+    <Button icon="chart-gantt" disabled={disabled}
+      onClick={() => onOpenOperation(operationRef, input, row, 'fieldgantt')}>查看现场实际甘特</Button>
+  </div>;
+  const pages = detail ? Math.max(1, Math.ceil(detail.records.length / size)) : 1, currentPage = Math.min(page, pages);
+  React.useEffect(() => {
+    if (detail && currentPage !== page) {
+      setPage(currentPage);
+      onView({ page: currentPage, size });
+    }
+  }, [detail, currentPage, page, size]);
+  const records = React.useMemo(() => detail ? detail.records.slice((currentPage - 1) * size, currentPage * size) : [], [detail, currentPage, size]);
+  return <WorkbenchDetailPanel className="rw-detail" detailKey={operationRef} title={row ? row.batch_label + ' · ' + row.operation_label : '工序详情'}
+    subtitle="工序报表详情" actions={actions} onClose={onClose}>
+    <ErrorBox error={request.error} />{request.busy && <EmptyState kind="loading" title="正在读取工序记录" />}
+    {row && <><dl className="rw-detail-facts"><div><dt>整道完成</dt><dd>{row.execution_label}</dd></div><div><dt>已确认完工时间</dt><dd>{time(row.confirmed_finish)}</dd></div><div><dt>已知累计数量</dt><dd>{text(row.known_completed_quantity)}；数量未知 {row.unknown_record_count} 条</dd></div><div><dt>有效加工工时</dt><dd>{hoursText(row.effective_processing_hours)}；已知小计 {hoursText(row.known_effective_processing_hours)}</dd></div></dl>
+      <p>逐次报工 {row.production_report_count} 条。剩余数量：{text(row.remaining_quantity)}。</p>
+      <p>{row.data_gaps.join(' ')}</p><Table data={{ topic: 'records', rows: records }} busy={request.busy || busy} empty={{ title: '这道工序暂无报工记录', hint: '' }}
+        onLocate={record => { if (!disabled) onOpenOperation(operationRef, input, row, 'fieldgantt', record.report_ref); }} />
+      {records.map(record => <Evidence key={record.record_kind + ':' + record.projection_index} record={record} />)}
+      <div className="rw-detail-pager"><Page page={{ number: currentPage, size, total: detail.records.length, pages }} onChange={patch => {
+        setPage(patch.page); if (patch.size) setSize(patch.size); onView({ page: patch.page, size: patch.size || size });
+      }} /></div></>}
+  </WorkbenchDetailPanel>;
+}
+
+const ReportDetail = Detail;
+
+export { ReportDetail, Detail, Evidence };
+export default ReportDetail;

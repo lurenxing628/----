@@ -158,13 +158,13 @@ def test_workbench_entry_has_few_requests_and_all_bundled_css_targets_exist():
 def test_style_bundle_preserves_cascade_and_rebases_nested_imports():
     from scripts.workbench.entry_bundle import bundle_styles
 
-    payload = {"workbench/prototype/base.css": b'@import "tokens/type.css"; .x { color:red; }',
-               "workbench/prototype/tokens/type.css": b'@font-face { src: url("../font.ttf"); }',
-               "workbench/prototype/font.ttf": b"font",
+    payload = {"workbench/app/styles/base.css": b'@import "./type.css"; .x { color:red; }',
+               "workbench/app/styles/type.css": b'@font-face { src: url("../assets/font.ttf"); }',
+               "workbench/app/assets/font.ttf": b"font",
                "workbench/app/styles/live.css": b'.x { color:blue; background:url("data:image/png;base64,AA=="); }'}
-    result = bundle_styles(payload, ["workbench/prototype/base.css", "workbench/app/styles/live.css"],
+    result = bundle_styles(payload, ["workbench/app/styles/base.css", "workbench/app/styles/live.css"],
                            "workbench/app/workbench.css").decode()
     assert '@import' not in result
-    assert 'url("../prototype/font.ttf")' in result
+    assert 'url("assets/font.ttf")' in result
     assert result.index('color:red') < result.index('color:blue')
     assert 'url("data:image/png;base64,AA==")' in result

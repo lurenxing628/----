@@ -1,139 +1,173 @@
-(function () {
-  'use strict';
-  const C = window.DashboardContract, S = window.DashboardSession, P = window.DashboardPanels, { Button, ErrorBox } = window.ResourceControls;
-  function durableScope(query) { const result = { ...query }; delete result.snapshot_ref; return result; }
-  function Content({ start, onNavigate }) {
-    const command = S.useCommand();
-    const [q, setQuery] = React.useState(start.q), [tab, setTab] = React.useState(start.tab), [selected, setSelected] = React.useState(start.selected);
-    const [historyPage, setHistoryPage] = React.useState(start.historyPage), [revision, refresh] = React.useReducer(n => n + 1, 0);
-    const [dialog, setDialog] = React.useState(false), [navError, setNavError] = React.useState(null);
-    const [navigationConfirmation, setNavigationConfirmation] = React.useState(null);
-    const [outsourcing, setOutsourcing] = React.useState(null), [registrationChanged, setRegistrationChanged] = React.useState(false);
-    const [analysisBatch, setAnalysisBatch] = React.useState(start.analysisBatch);
-    const [comparisonState, setComparisonState] = React.useState({ context: start.comparison, caption: null });
-    const onComparisonState = React.useCallback(value => setComparisonState(previous => C.equal(previous, value) ? previous : value), []);
-    const list = S.useRead(signal => C.list(q, signal), [q, revision]);
-    const result = list.result, data = result && result.data, snapshot = result && result.meta.snapshot_ref;
-    const analysisData = data && data.analysis;
-    const analysisRead = { loading: list.loading, error: data && data.analysis_error ? new Error(data.analysis_error) : null };
-    const detailQuery = React.useMemo(() => ({ ...q, snapshot_ref: snapshot }), [q, snapshot]);
-    const handlingAvailable = q.category !== 'external' || !!data;
-    const history = S.useRead(signal => C.detail(selected, detailQuery, historyPage, signal), [selected, detailQuery, historyPage], handlingAvailable && tab === 'records' && !!selected && !!snapshot);
-    const detail = S.useRead(signal => C.detail(selected, detailQuery, undefined, signal), [selected, detailQuery], handlingAvailable && tab !== 'records' && !!selected && !!snapshot && !history.result);
-    const item = history.result ? history.result.data.item : detail.result && detail.result.data.item;
-    const handlingOpen = !!(dialog && (command.saved || item));
-    function choose(ref) { setSelected(ref); setHistoryPage(1); }
-    function change(patch, paging = false) {
-      const next = { ...q, ...patch, page: paging ? patch.page : 1 }; delete next.snapshot_ref;
-      if (paging) next.snapshot_ref = snapshot;
-      setQuery(C.scope(next)); if (!paging) { choose(null); setDialog(false); } refresh();
-    }
-    function reload() { const next = { ...q, page: 1 }; delete next.snapshot_ref; setQuery(next); setHistoryPage(1); setRegistrationChanged(false); refresh(); }
-    function category(k) { change({ category: k }); setAnalysisBatch(null); setComparisonState({ context: {}, caption: null }); setTab(k === 'candidate' ? 'compare' : 'items'); }
-    function showAnalysis(k) { category(k); setTab('analysis'); }
-    function readContext() { return { scope: durableScope(q), tab,
-      ...(selected ? { item_ref: selected, history_page: historyPage } : {}), ...(analysisBatch ? { analysis_batch_ref: analysisBatch } : {}),
-      ...(Object.keys(comparisonState.context).length ? { comparison: comparisonState.context } : {}) }; }
-    function openTarget(n, current) {
-      const context = { ...n.context, return_to: { view: 'dashboard', context: current } };
-      if (n.view === 'outsourcing') { setOutsourcing(context); return; }
-      if (n.view === 'batches' && context.batch_ref) context.entity_ref = context.batch_ref;
-      onNavigate(n.view, context);
-    }
-    function navigate(n, origin) {
-      try {
-        setNavError(null);
-        const label = P.navigationTarget(n), current = readContext();
-        if (!n.enabled) {
-          C.check(origin && origin === item && origin.item_ref === selected && origin.navigation.includes(n), '这条记录的来源和详情对不上，页面没有跳转。请刷新后重试。');
-          setNavigationConfirmation({ navigation: n, item: origin, current, label });
-        } else openTarget(n, current);
-      } catch (error) { setNavError(error); }
-    }
-    function confirmNavigation() {
-      try {
-        openTarget(navigationConfirmation.navigation, navigationConfirmation.current);
-        setNavigationConfirmation(null);
-      } catch (error) { setNavError(error); }
-    }
-    async function finish() { if (await command.finish()) { setDialog(false); reload(); } }
-    const currentSummary = data && q.category !== 'all' && data.categories[q.category];
-    const external = q.category === 'external', activeTabs = external ? handlingAvailable ? { items: '处置清单', records: '处置历史' } : { items: '登记与更正历史' } : S.tabs;
-    const activeTab = Object.prototype.hasOwnProperty.call(activeTabs, tab) ? tab : 'items', tabKeys = Object.keys(activeTabs);
-    window.WorkbenchPageContext.useSnapshot(readContext(), !!data && !list.loading && !list.error && !detail.error);
-    const comparing = !external && activeTab === 'compare', showingAnalysis = !external && activeTab === 'analysis';
-    const plan = !list.loading && !list.error && !outsourcing && !comparing && (showingAnalysis ? analysisData && analysisData.plan : data && data.plan);
-    const caption = comparing ? !list.loading && !list.error && !outsourcing ? comparisonState.caption : null : plan && plan.kind === 'official' && plan.is_current_official === true ? {
-      reference: plan.plan_ref, label: '正式计划', name: plan.display_name, status: '当前正式',
-      ...(Number.isSafeInteger(plan.version) && plan.version > 0 ? { version: '正式 v' + plan.version } : {})
-    } : null;
-    window.WorkbenchCaption.useCaption(caption);
-    if (outsourcing) return <div className="plana dashboard-live" data-dashboard-outsourcing data-return-item={outsourcing.return_to.context.item_ref}>
-      <header className="dy-heading"><h2>外协物流登记</h2><Button icon="arrow-left" onClick={() => setOutsourcing(null)}>返回值班台条目</Button></header>
-      <div className="dy-note">外协物流登记概览</div><window.WorkbenchReference entries={{ '登记编号': outsourcing.outsourcing_ref }} />
-      <window.OutsourcingWorkspace outsourcingRef={outsourcing.outsourcing_ref} onUpdated={() => setRegistrationChanged(true)} />
-    </div>;
-    return <div className="plana dashboard-live" data-dashboard-workspace data-ready={!!data} data-analysis-ready={!!analysisData && !list.loading} aria-busy={list.loading}>
-      <h2 className="wb-page-title">值班台</h2><header className="dy-page-toolbar"><div className="dy-tools"><Button icon="refresh-cw" aria-label="刷新值班台" busy={list.loading} disabled={command.busy} onClick={reload}>刷新</Button>
-        {command.saved && <Button icon="history" onClick={() => setDialog(true)}>{command.saved.phase === 'confirmed' ? '查看已确认的结果' : '查询上次处置结果'}</Button>}</div>
-        {data && <span className="dy-page-updated">更新于 {window.WorkbenchFormat.dateTime(data.as_of, { seconds: true, fractions: true })}</span>}</header>
-      {data && <details className="dy-page-evidence"><summary>页面详情</summary><div className="dy-page-evidence-body"><dl className="dy-page-facts">
-        <div><dt>资料来源</dt><dd>正式计划、报工记录、资源班表、齐套记录、外协登记</dd></div>
-        {data.categories.delivery.due_evaluation_count !== undefined && <div><dt>交期统计</dt><dd>{window.WorkbenchTerms.delivery_coverage({ ...data.categories.delivery, known_due_count: data.categories.delivery.assessed_count, unknown_due_count: data.categories.delivery.unknown_count })}</dd></div>}
-        </dl>{data.plan && <window.WorkbenchReference entries={{ '正式计划编号': data.plan.plan_ref }} />}</div></details>}
+import React from './shared/runtime/react.js';
+import DashboardContract from './DashboardContract.js';
+import DashboardSession from './DashboardSession.js';
+import DashboardPanels from './DashboardPanels.jsx';
+import { Button, ErrorBox, EmptyState } from './ResourceControls.jsx';
+import WorkbenchPageContext from './WorkbenchPageContext.jsx';
+import WorkbenchCaption from './WorkbenchCaption.jsx';
+import { WorkbenchReference } from './WorkbenchReferences.jsx';
+import OutsourcingWorkspace from './OutsourcingWorkspace.jsx';
+import WorkbenchFormat from './WorkbenchFormat.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
+import DashboardAnalysisPanels from './DashboardAnalysisPanels.jsx';
+import DashboardCandidates from './DashboardCandidates.jsx';
+import DashboardHistory from './DashboardHistory.jsx';
+import DashboardHandling from './DashboardHandling.jsx';
+import DashboardCandidateComparisonAPI from './DashboardCandidateComparisonAPI.js';
 
-      {!handlingOpen && <><ErrorBox error={command.storageError} />{command.storageError && <Button icon="refresh-cw" onClick={command.sync}>刷新上次操作记录</Button>}</>}
-      {registrationChanged && <div className="dy-note warning" role="status">外协物流登记已更新。当前仍显示离开前的筛选和条目，请点「刷新值班台」更新风险与处置。</div>}
-      {!dialog && command.saved && <div className={'dy-note ' + (command.saved.phase === 'confirmed' ? 'success' : 'warning')}>{command.saved.phase === 'confirmed' ? '上次处置结果已确认，点「完成」后更新风险与处置。' : '上次处置还没确认结果，确认前不能新增处置。'}</div>}
-      <P.Overview data={data} analysis={analysisData} loading={list.loading} error={list.error}
-        analysisLoading={analysisRead.loading} analysisError={analysisRead.error} onCategory={category} onAnalysis={showAnalysis} /><ErrorBox error={analysisRead.error} />
-      <div className="dy-work"><P.Rail data={data} category={q.category} onCategory={category} /><div className="dy-main">
-        <div className="dy-section-head"><h3>{C.categories[q.category]}</h3>{currentSummary && q.category !== 'candidate' && <P.CategoryState summary={currentSummary} />}
-          <label className="dy-category-picker">异常类别<select aria-label="异常类别" value={q.category} onChange={event => category(event.target.value)}>
-            {Object.entries(C.categories).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-          </select></label></div>
-        <div className="dy-tabs" role="tablist" aria-label="问题详情视图">{Object.entries(activeTabs).map(([key, label], index) => <button type="button" key={key} id={'dy-tab-' + key} role="tab" className="dy-tab" aria-controls="dy-content" aria-selected={activeTab === key} tabIndex={activeTab === key ? 0 : -1}
-          onClick={() => setTab(key)} onKeyDown={e => { if (e.altKey || e.ctrlKey || e.metaKey) return; let next; if (e.key === 'ArrowRight') next = (index + 1) % tabKeys.length; if (e.key === 'ArrowLeft') next = (index + tabKeys.length - 1) % tabKeys.length;
-            if (e.key === 'Home') next = 0; if (e.key === 'End') next = tabKeys.length - 1; if (next !== undefined) { e.preventDefault(); setTab(tabKeys[next]); document.getElementById('dy-tab-' + tabKeys[next]).focus(); } }}>{label}</button>)}</div>
-        <div className="dy-panel" role="tabpanel" id="dy-content" aria-labelledby={'dy-tab-' + activeTab}>
-          <ErrorBox error={list.error || navError} />{list.error && <Button icon="refresh-cw" onClick={reload}>刷新当前筛选</Button>}{list.loading && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取风险、资源与候选方案列表" />}
-          {external && <P.ExternalRegistration summary={currentSummary} onUpdated={reload} />}
-          {data && <><P.Gaps categories={data.categories} selected={q.category} analysis={showingAnalysis ? analysisData : null} />
-            {external && <P.ExternalHandlingState summary={currentSummary} />}
-            {handlingAvailable && activeTab === 'items' && <div className={item ? 'wb-detail-layout dy-detail-layout' : ''}><div><P.Filters query={q} busy={list.loading} onChange={change} /><P.List data={data} selected={selected} onSelect={choose} query={q} onClear={() => change({ query: '', status: 'all' })} />
-              <P.Pager page={data.page} busy={list.loading} onPage={page => change({ page }, true)} onSize={size => change({ size })} />
-              <ErrorBox error={detail.error} />{detail.loading && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取这条记录的详情" />}
-              </div>{item && <P.Detail item={item} onClose={() => choose(null)} onHandle={() => setDialog(true)} onHistory={() => setTab('records')} navigate={navigate} />}</div>}
-            {!external && tab === 'analysis' && <>
-              {analysisRead.loading && <p role="status">正在读取同一正式计划的分析依据。</p>}
-              {analysisRead.error && <Button icon="refresh-cw" onClick={reload}>刷新分析</Button>}
-              {analysisData && <window.DashboardAnalysisPanels.Workspace key={(data.plan ? data.plan.plan_ref : 'no-plan') + q.category + revision}
-                data={data} category={q.category} selected={analysisBatch} onSelect={setAnalysisBatch} onCompare={() => setTab('compare')}
-                navigate={navigate} />}
-            </>}
-            {!external && tab === 'compare' && (['candidate', 'delivery', 'all'].includes(q.category) ? <>
-              <window.DashboardCandidates key={q.category} catalog={data.candidate_catalog} initialContext={comparisonState.context} onState={onComparisonState}
-                selectedBatch={analysisBatch} onSelectBatch={setAnalysisBatch} issueBatchRef={q.category === 'delivery' ? analysisBatch || item && item.source.batch_ref || null : null} />
-              <P.Candidates data={data} navigate={navigate} />
-            </> : <section aria-label="本问题候选状态"><h3>这个问题还没有单独的候选方案</h3>
-              <Button icon="git-compare-arrows" onClick={() => category('candidate')}>查看现有候选方案</Button></section>)}
-            {handlingAvailable && activeTab === 'records' && <window.DashboardHistory read={history} selected={selected} rows={data.items} historyPage={historyPage} onPage={setHistoryPage} onSelect={choose} onHandle={() => setDialog(true)} />}
-          </>}
-        </div></div></div>
-      {handlingOpen && <window.DashboardHandling key={command.saved ? command.saved.request_key : item.item_ref} item={item} command={command} onClose={() => setDialog(false)} onFinish={finish} />}
-      {navigationConfirmation && <P.NavigationConfirmation entry={navigationConfirmation} error={navError}
-        onClose={() => setNavigationConfirmation(null)} onConfirm={confirmNavigation} />}
-    </div>;
+const C = DashboardContract, S = DashboardSession, P = DashboardPanels;
+
+function durableScope(query) { const result = { ...query }; delete result.snapshot_ref; return result; }
+
+function Content({ start, onNavigate }) {
+  const command = S.useCommand();
+  const [q, setQuery] = React.useState(start.q), [tab, setTab] = React.useState(start.tab), [selected, setSelected] = React.useState(start.selected);
+  const [historyPage, setHistoryPage] = React.useState(start.historyPage), [revision, refresh] = React.useReducer(n => n + 1, 0);
+  const [dialog, setDialog] = React.useState(false), [navError, setNavError] = React.useState(null);
+  const [navigationConfirmation, setNavigationConfirmation] = React.useState(null);
+  const [outsourcing, setOutsourcing] = React.useState(null), [registrationChanged, setRegistrationChanged] = React.useState(false);
+  const [analysisBatch, setAnalysisBatch] = React.useState(start.analysisBatch);
+  const [comparisonState, setComparisonState] = React.useState({ context: start.comparison, caption: null });
+  const onComparisonState = React.useCallback(value => setComparisonState(previous => C.equal(previous, value) ? previous : value), []);
+  const list = S.useRead(signal => C.list(q, signal), [q, revision]);
+  const result = list.result, data = result && result.data, snapshot = result && result.meta.snapshot_ref;
+  const lastResultRef = React.useRef(null);
+  if (result) lastResultRef.current = { category: q.category, result };
+  else if (!list.loading || (lastResultRef.current && lastResultRef.current.category !== q.category)) lastResultRef.current = null;
+  const displayResult = result || (list.loading && lastResultRef.current && lastResultRef.current.category === q.category ? lastResultRef.current.result : null);
+  const displayData = displayResult && displayResult.data;
+  const analysisData = data && data.analysis;
+  const analysisRead = { loading: list.loading, error: data && data.analysis_error ? new Error(data.analysis_error) : null };
+  const detailQuery = React.useMemo(() => ({ ...q, snapshot_ref: snapshot }), [q, snapshot]);
+  const external = q.category === 'external';
+  const currentSummary = data && q.category !== 'all' && data.categories[q.category];
+  const handlingAvailable = !external || !data || !!(currentSummary && currentSummary.handling_supported);
+  const history = S.useRead(signal => C.detail(selected, detailQuery, historyPage, signal), [selected, detailQuery, historyPage], handlingAvailable && tab === 'records' && !!selected && !!snapshot);
+  const detail = S.useRead(signal => C.detail(selected, detailQuery, undefined, signal), [selected, detailQuery], handlingAvailable && tab !== 'records' && !!selected && !!snapshot && !history.result);
+  const item = history.result ? history.result.data.item : detail.result && detail.result.data.item;
+  const handlingOpen = !!(dialog && (command.saved || item));
+  function choose(ref) { setSelected(ref); setHistoryPage(1); }
+  function change(patch, paging = false) {
+    const next = { ...q, ...patch, page: paging ? patch.page : 1 }; delete next.snapshot_ref;
+    if (paging) next.snapshot_ref = snapshot;
+    setQuery(C.scope(next)); if (!paging) { choose(null); setDialog(false); } refresh();
   }
-  function WorkbenchDashboardWorkspace({ initialContext, onNavigate }) {
-    let start; try {
-      const { analysis_batch_ref, comparison, ...base } = initialContext;
-      C.check(analysis_batch_ref === undefined || C.ref(analysis_batch_ref));
-      start = { ...S.context(base), analysisBatch: analysis_batch_ref || null,
-        comparison: window.DashboardCandidateComparisonAPI.context(comparison === undefined ? {} : comparison) };
-      start.q = durableScope(start.q);
-    } catch (error) { return <div className="plana dashboard-live"><h2 className="wb-page-title">值班台</h2><ErrorBox error={error} /></div>; }
-    return <Content key={JSON.stringify(start)} start={start} onNavigate={onNavigate} />;
+  function reload() { const next = { ...q, page: 1 }; delete next.snapshot_ref; setQuery(next); setHistoryPage(1); setRegistrationChanged(false); refresh(); }
+  function category(k) { change({ category: k }); setAnalysisBatch(null); setComparisonState({ context: {}, caption: null }); setTab(k === 'candidate' ? 'compare' : 'items'); }
+  function showAnalysis(k) { category(k); setTab('analysis'); }
+  function readContext() {
+    return {
+      scope: durableScope(q), tab,
+      ...(selected ? { item_ref: selected, history_page: historyPage } : {}), ...(analysisBatch ? { analysis_batch_ref: analysisBatch } : {}),
+      ...(Object.keys(comparisonState.context).length ? { comparison: comparisonState.context } : {})
+    };
   }
-  window.WorkbenchDashboardWorkspace = WorkbenchDashboardWorkspace;
-})();
+  function openTarget(n, current) {
+    const context = { ...n.context, return_to: { view: 'dashboard', context: current } };
+    if (n.view === 'outsourcing') { setOutsourcing(context); return; }
+    if (n.view === 'batches' && context.batch_ref) context.entity_ref = context.batch_ref;
+    onNavigate(n.view, context);
+  }
+  function navigate(n, origin) {
+    try {
+      setNavError(null);
+      const label = P.navigationTarget(n), current = readContext();
+      if (!n.enabled) {
+        C.check(origin && origin === item && origin.item_ref === selected && origin.navigation.includes(n), '这条记录的来源和详情对不上，页面没有跳转。请刷新后重试。');
+        setNavigationConfirmation({ navigation: n, item: origin, current, label });
+      } else openTarget(n, current);
+    } catch (error) { setNavError(error); }
+  }
+  function confirmNavigation() {
+    try {
+      openTarget(navigationConfirmation.navigation, navigationConfirmation.current);
+      setNavigationConfirmation(null);
+    } catch (error) { setNavError(error); }
+  }
+  async function finish() { if (await command.finish()) { setDialog(false); reload(); } }
+  const activeTabs = external ? handlingAvailable ? { items: '处置清单', records: '处置历史' } : { items: '登记与更正历史' } : S.tabs;
+  const activeTab = Object.prototype.hasOwnProperty.call(activeTabs, tab) ? tab : 'items', tabKeys = Object.keys(activeTabs);
+  WorkbenchPageContext.useSnapshot(readContext(), !!data && !list.loading && !list.error && !detail.error);
+  const comparing = !external && activeTab === 'compare', showingAnalysis = !external && activeTab === 'analysis';
+  const plan = !list.loading && !list.error && !outsourcing && !comparing && (showingAnalysis ? analysisData && analysisData.plan : data && data.plan);
+  const caption = comparing ? !list.loading && !list.error && !outsourcing ? comparisonState.caption : null : plan && plan.kind === 'official' && plan.is_current_official === true ? {
+    reference: plan.plan_ref, label: '正式计划', name: plan.display_name, status: '当前正式',
+    ...(Number.isSafeInteger(plan.version) && plan.version > 0 ? { version: '正式 v' + plan.version } : {})
+  } : null;
+  WorkbenchCaption.useCaption(caption);
+  if (outsourcing) return <div className="plana dashboard-live" data-dashboard-outsourcing data-return-item={outsourcing.return_to.context.item_ref}>
+    <header className="dy-heading"><h2>外协物流登记</h2><Button icon="arrow-left" onClick={() => setOutsourcing(null)}>返回值班台条目</Button></header>
+    <div className="dy-note">外协物流登记概览</div><WorkbenchReference entries={{ '登记编号': outsourcing.outsourcing_ref }} />
+    <OutsourcingWorkspace outsourcingRef={outsourcing.outsourcing_ref} onUpdated={() => setRegistrationChanged(true)} />
+  </div>;
+  return <div className="plana dashboard-live" data-dashboard-workspace data-ready={!!data} data-analysis-ready={!!analysisData && !list.loading} aria-busy={list.loading}>
+    <h2 className="wb-page-title">值班台</h2><header className="dy-page-toolbar"><div className="dy-tools"><Button icon="refresh-cw" aria-label="刷新值班台" busy={list.loading} disabled={command.busy} onClick={reload}>刷新</Button>
+      {command.saved && <Button icon="history" onClick={() => setDialog(true)}>{command.saved.phase === 'confirmed' ? '查看已确认的结果' : '查询上次处置结果'}</Button>}</div>
+      {data && <span className="dy-page-updated">更新于 {WorkbenchFormat.dateTime(data.as_of, { seconds: true, fractions: true })}</span>}</header>
+    <details className="dy-page-evidence"><summary>页面详情</summary>{data && <div className="dy-page-evidence-body"><dl className="dy-page-facts">
+      <div><dt>资料来源</dt><dd>正式计划、报工记录、资源班表、齐套记录、外协登记</dd></div>
+      {data.categories.delivery.due_evaluation_count !== undefined && <div><dt>交期统计</dt><dd>{WorkbenchTerms.delivery_coverage({ ...data.categories.delivery, known_due_count: data.categories.delivery.assessed_count, unknown_due_count: data.categories.delivery.unknown_count })}</dd></div>}
+    </dl>{data.plan && <WorkbenchReference entries={{ '正式计划编号': data.plan.plan_ref }} />}</div>}</details>
+
+    {!handlingOpen && <><ErrorBox error={command.storageError} />{command.storageError && <Button icon="refresh-cw" onClick={command.sync}>刷新上次操作记录</Button>}</>}
+    {registrationChanged && <div className="dy-note warning" role="status">外协物流登记已更新。当前仍显示离开前的筛选和条目，请点「刷新值班台」更新风险与处置。</div>}
+    {!dialog && command.saved && <div className={'dy-note ' + (command.saved.phase === 'confirmed' ? 'success' : 'warning')}>{command.saved.phase === 'confirmed' ? '上次处置结果已确认，点「完成」后更新风险与处置。' : '上次处置还没确认结果，确认前不能新增处置。'}</div>}
+    <P.Overview data={data} analysis={analysisData} loading={list.loading} error={list.error}
+      analysisLoading={analysisRead.loading} analysisError={analysisRead.error} onCategory={category} onAnalysis={showAnalysis} /><ErrorBox error={analysisRead.error} />
+    <div className="dy-work"><P.Rail data={data} category={q.category} onCategory={category} /><div className="dy-main">
+      <div className="dy-section-head"><h3>{C.categories[q.category]}</h3>{currentSummary && q.category !== 'candidate' && <P.CategoryState summary={currentSummary} />}
+        <label className="dy-category-picker">异常类别<select aria-label="异常类别" value={q.category} onChange={event => category(event.target.value)}>
+          {Object.entries(C.categories).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+        </select></label></div>
+      <div className="dy-tabs" role="tablist" aria-label="问题详情视图">{Object.entries(activeTabs).map(([key, label], index) => <button type="button" key={key} id={'dy-tab-' + key} role="tab" className="dy-tab" aria-controls="dy-content" aria-selected={activeTab === key} tabIndex={activeTab === key ? 0 : -1}
+        onClick={() => setTab(key)} onKeyDown={e => {
+          if (e.altKey || e.ctrlKey || e.metaKey) return; let next; if (e.key === 'ArrowRight') next = (index + 1) % tabKeys.length; if (e.key === 'ArrowLeft') next = (index + tabKeys.length - 1) % tabKeys.length;
+          if (e.key === 'Home') next = 0; if (e.key === 'End') next = tabKeys.length - 1; if (next !== undefined) { e.preventDefault(); setTab(tabKeys[next]); document.getElementById('dy-tab-' + tabKeys[next]).focus(); }
+        }}>{label}</button>)}</div>
+      <div className="dy-panel" role="tabpanel" id="dy-content" aria-labelledby={'dy-tab-' + activeTab}>
+        <ErrorBox error={list.error || navError} />{list.error && <Button icon="refresh-cw" onClick={reload}>刷新当前筛选</Button>}{list.loading && <EmptyState kind="loading" title="正在读取风险、资源与候选方案列表" />}
+        {external && <P.ExternalRegistration summary={currentSummary} onUpdated={reload} />}
+        {data && <><P.Gaps categories={data.categories} selected={q.category} analysis={showingAnalysis ? analysisData : null} />
+          {external && <P.ExternalHandlingState summary={currentSummary} />}</>}
+        {activeTab === 'items' && (!data || handlingAvailable) && <div className={item ? 'wb-detail-layout dy-detail-layout' : ''}><div><P.Filters query={q} busy={list.loading} onChange={change} />{data && handlingAvailable && <P.List data={data} selected={selected} onSelect={choose} query={q} onClear={() => change({ query: '', status: 'all' })} />}
+          <P.Pager page={data ? data.page : { number: q.page, size: q.size }} busy={list.loading || !data} onPage={page => change({ page }, true)} onSize={size => change({ size })} />
+          <ErrorBox error={detail.error} />{detail.loading && <EmptyState kind="loading" title="正在读取这条记录的详情" />}
+        </div>{item && <P.Detail item={item} onClose={() => choose(null)} onHandle={() => setDialog(true)} onHistory={() => setTab('records')} navigate={navigate} />}</div>}
+        {!external && tab === 'analysis' && <>
+          {analysisRead.loading && <p role="status">正在读取同一正式计划的分析依据。</p>}
+          {analysisRead.error && <Button icon="refresh-cw" onClick={reload}>刷新分析</Button>}
+          {displayData && displayData.analysis && <DashboardAnalysisPanels.Workspace key={(displayData.plan ? displayData.plan.plan_ref : 'no-plan') + q.category}
+            data={displayData} snapshotRef={displayResult && displayResult.meta ? displayResult.meta.snapshot_ref : null} category={q.category} selected={analysisBatch} onSelect={setAnalysisBatch} onCompare={() => setTab('compare')}
+            navigate={navigate} />}
+        </>}
+        {!external && tab === 'compare' && (['candidate', 'delivery', 'all'].includes(q.category) ? <>
+          <DashboardCandidates key={q.category} catalog={displayData ? displayData.candidate_catalog : { state: 'unavailable', runs: [], issues: [] }} initialContext={comparisonState.context} onState={onComparisonState}
+            selectedBatch={analysisBatch} onSelectBatch={setAnalysisBatch} issueBatchRef={q.category === 'delivery' ? analysisBatch || item && item.source.batch_ref || null : null} />
+          {displayData && <P.Candidates data={displayData} navigate={navigate} />}
+        </> : <section aria-label="本问题候选状态"><h3>这个问题还没有单独的候选方案</h3>
+          <Button icon="git-compare-arrows" onClick={() => category('candidate')}>查看现有候选方案</Button></section>)}
+        {handlingAvailable && activeTab === 'records' && <DashboardHistory read={history} selected={selected} rows={displayData ? displayData.items : []} historyPage={historyPage} onPage={setHistoryPage} onSelect={choose} onHandle={() => setDialog(true)} />}
+      </div></div></div>
+    {handlingOpen && <DashboardHandling key={command.saved ? command.saved.request_key : item.item_ref} item={item} command={command} onClose={() => setDialog(false)} onFinish={finish} />}
+    {navigationConfirmation && <P.NavigationConfirmation entry={navigationConfirmation} error={navError}
+      onClose={() => setNavigationConfirmation(null)} onConfirm={confirmNavigation} />}
+  </div>;
+}
+
+function WorkbenchDashboardWorkspace({ initialContext, onNavigate }) {
+  let start; try {
+    const { analysis_batch_ref, comparison, ...base } = initialContext;
+    C.check(analysis_batch_ref === undefined || C.ref(analysis_batch_ref));
+    start = {
+      ...S.context(base), analysisBatch: analysis_batch_ref || null,
+      comparison: DashboardCandidateComparisonAPI.context(comparison === undefined ? {} : comparison)
+    };
+    start.q = durableScope(start.q);
+  } catch (error) { return <div className="plana dashboard-live"><h2 className="wb-page-title">值班台</h2><ErrorBox error={error} /></div>; }
+  return <Content key={JSON.stringify(start)} start={start} onNavigate={onNavigate} />;
+}
+
+const DashboardWorkspace = WorkbenchDashboardWorkspace;
+
+export { WorkbenchDashboardWorkspace, DashboardWorkspace, Content };
+export default WorkbenchDashboardWorkspace;

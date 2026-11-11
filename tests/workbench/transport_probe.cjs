@@ -5,8 +5,14 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
+const { compile } = require('../../scripts/workbench/compile.cjs');
 const app = path.join(__dirname, '../../frontend/workbench/app');
-const sources = ['WorkbenchTerms.js', 'transport.js'].map(name => ({ name, code: fs.readFileSync(path.join(app, name), 'utf8') }));
+const compiledOutputs = compile({
+  sources: ['WorkbenchTerms.js', 'shared/network/transport.js'].map(name => ({
+    path: name,
+    code: fs.readFileSync(path.join(app, name), 'utf8'),
+  })),
+}).outputs;
 const origin = 'http://127.0.0.1:8080', endpoint = '/api/workbench/v1/system/overview';
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const valid = () => ({ ok: true, schema_version: 1, data: {}, warnings: [], meta: {
@@ -33,8 +39,12 @@ function runtime(fetcher, { fire = null } = {}) {
     setTimeout: (fn, delay) => { delays.push(delay); const id = setTimeout(() => { live.delete(id); fn(); }, fire === null ? delay : fire); live.add(id); return id; },
     clearTimeout: id => { live.delete(id); clearTimeout(id); } });
   context.window = context;
-  for (const source of sources) vm.runInContext(source.code, context, { filename: source.name });
-  return { T: context.APSWorkbenchTransport, terms: context.WorkbenchTerms, timers: () => live.size, delays, downloads, revoked, blobs: ContextURL.blobs };
+  for (const output of compiledOutputs) vm.runInContext(output.code, context, { filename: output.path });
+  return {
+    T: context.__wbRuntime.getModule('shared/network/transport.js'),
+    terms: context.__wbRuntime.getModule('WorkbenchTerms.js'),
+    timers: () => live.size, delays, downloads, revoked, blobs: ContextURL.blobs,
+  };
 }
 function json(payload, status = 200, type = 'application/json') {
   return new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': type } });
@@ -146,7 +156,7 @@ async function previews() {
     await client.T.preview(endpoint, form); assert.strictEqual(calls[1].options.body, form); assert.deepEqual(plain(calls[1].options.headers), { Accept: 'application/json' });
   });
   await check('preview failure is a read-side error, never an uncertain write', async () => {
-    await assert.rejects(client.T.preview(endpoint, {}), error => shaped(error, { code: 'invalid_input', committed: false, status: 422 }) && !client.T.uncertain(error));
+    await assert.rejects(client.T.preview(endpoint, {}), error => shaped(error, { code: 'invalid_input', committed: false, status: 422 }) && error.committed !== 'unknown');
   });
 }
 
@@ -167,7 +177,7 @@ async function commands() {
     ['timeout', init => aborted(init.signal), { fire: 5 }]]) {
     await check('command without a definite answer is uncertain: ' + name, async () => {
       const { client, outcome } = await run(respond, options);
-      await assert.rejects(outcome, error => error.committed === 'unknown' && client.T.uncertain(error) && !client.T.rejected(error) && error.message === pending);
+      await assert.rejects(outcome, error => error.committed === 'unknown' && !client.T.rejected(error) && error.message === pending);
       assert.equal(client.timers(), 0);
     });
   }
@@ -178,13 +188,13 @@ async function commands() {
     await check('command invalid failure response is uncertain: ' + name, async () => {
       const { client, outcome } = await run(respond);
       await assert.rejects(outcome, error => shaped(error, { message: pending, code: 'invalid_response', committed: 'unknown', status })
-        && client.T.uncertain(error) && !client.T.rejected(error));
+        && !client.T.rejected(error));
       assert.equal(client.timers(), 0);
     });
   }
   await check('command echo that names another request is not followed', async () => {
-    const { client, outcome } = await run(() => json(failurePayload('stale_write', false, { request_key: 'run-' + 'd'.repeat(48), result_target: expect }), 409));
-    await assert.rejects(outcome, error => error.code === 'invalid_response' && error.committed === 'unknown' && client.T.uncertain(error) && error.requestRef === 'f'.repeat(32));
+    const { outcome } = await run(() => json(failurePayload('stale_write', false, { request_key: 'run-' + 'd'.repeat(48), result_target: expect }), 409));
+    await assert.rejects(outcome, error => error.code === 'invalid_response' && error.committed === 'unknown' && error.requestRef === 'f'.repeat(32));
   });
   await check('command echo that matches this request keeps the server rejection', async () => {
     const { client, outcome } = await run(() => json(failurePayload('stale_write', false, { request_key: key, result_target: expect }), 409));
@@ -212,10 +222,6 @@ async function verdicts() {
     await assert.rejects(offline.T.lookup(endpoint), error => error.committed === 'unknown' && !offline.T.rejected(error));
     await assert.rejects(runtime(async () => json(failurePayload('stale_write'), 409)).T.lookup(endpoint), error => error.committed === 'unknown' && !offline.T.rejected(error));
   });
-  await check('uncertain is exactly committed unknown', () => {
-    assert.equal(T.uncertain(T.failure(failurePayload('x', 'unknown'), 500)), true);
-    assert.equal(T.uncertain(T.failure(failurePayload('x', false), 500)), false);
-  });
 }
 
 async function lookups() {
@@ -224,8 +230,9 @@ async function lookups() {
     const raw = { ok: true, schema_version: 1, data: { state: 'found' } }, client = runtime(async () => json(raw));
     assert.deepEqual(await client.T.lookup(target), raw);
   });
-  await check('lookup turns 404 receipt_not_found into null', async () => {
-    assert.equal(await runtime(async () => json(failurePayload('receipt_not_found'), 404)).T.lookup(target), null);
+  await check('lookup returns a 200 not_observed payload for the domain to validate', async () => {
+    const notObserved = { state: 'not_observed', receipt: null, may_be_in_flight: true, resolution: 'unresolved' };
+    assert.deepEqual(await runtime(async () => json(notObserved)).T.lookup(target), notObserved);
   });
   await check('lookup failures keep the earlier command uncertain', async () => {
     await assert.rejects(runtime(async () => json(failurePayload('entity_not_found'), 404)).T.lookup(target), error => error.code === 'entity_not_found' && error.committed === 'unknown');

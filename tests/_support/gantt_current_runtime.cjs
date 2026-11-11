@@ -1,6 +1,7 @@
 /** Current shipped React/model component harness. Input: {root, program, data}. */
 'use strict';
 const fs = require('fs'), path = require('path'), vm = require('vm'), assert = require('assert');
+const { compile, normalizeRelPath } = require('../../scripts/workbench/compile.cjs');
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const root = path.resolve(input.root), loaded = [];
 const document = {body: {style: {}}, documentElement: {setAttribute() {}}, addEventListener() {}, removeEventListener() {}, elementFromPoint: () => null};
@@ -41,11 +42,40 @@ runtime.React = Object.assign({}, realReact, {
   useContext: context => contextValues.has(context) ? contextValues.get(context) : context._currentValue,
   useEffect() {}, useLayoutEffect() {},
 });
-// Exercise the shipped bundle. Invalid boot data prevents mounting the page shell;
-// the exported Gantt components below still run with the real React element model.
+// Compile and load initial workbench modules; additional modules are compiled on demand via h.module(relPath).
 document.getElementById = id => id === 'workbench-boot' ? {textContent:'{}'} : {setAttribute() {}, replaceChildren() {}};
 document.createElement = () => ({setAttribute() {}});
-load('static/workbench/app/main.js');
+const appDir = path.join(root, 'frontend/workbench/app');
+const initialSources = [
+  'shared/network/transport.js',
+  'shared/session/command-session.js',
+  'WorkbenchFormat.js',
+  'GanttGraph.js',
+  'PlanGanttModel.js',
+  'PlanGantt.jsx',
+];
+function compileIntoRuntime(relPaths) {
+  const compiled = compile({
+    sources: relPaths.map(rel => ({ path: rel, code: fs.readFileSync(path.join(appDir, rel), 'utf8') })),
+    check_combined: false,
+  });
+  for (const out of compiled.outputs) {
+    vm.runInContext(out.code, runtime, { filename: out.path });
+    loaded.push('frontend/workbench/app/' + out.path);
+  }
+}
+compileIntoRuntime(initialSources);
+function getModule(rawPath) {
+  const rel = normalizeRelPath(rawPath);
+  if (!runtime.__wbRuntime || !runtime.__wbRuntime.hasModule(rel)) compileIntoRuntime([rel]);
+  return runtime.__wbRuntime.getModule(rel);
+}
+function setStub(relPath, value) {
+  runtime.__wbRuntime.setStub(relPath, value);
+}
+function setStubs(stubsByRel) {
+  runtime.__wbRuntime.setStubs(stubsByRel);
+}
 
 function expand(element) {
   if (element === null || element === undefined || typeof element === 'boolean') return null;
@@ -119,12 +149,13 @@ function fixture(specs) {
       process_order:{state:'unavailable',basis:null,issues:[{code:'process_order_unavailable',message:'Frozen process order unavailable'}]}}};
 }
 function prepare(model, data, ...args) {
-  if (model === runtime.PlanGanttModel) {
+  const planGanttModel = getModule('PlanGanttModel.js');
+  if (model === planGanttModel || model === planGanttModel.default) {
     const taskFacts = model.prepareTasks(data);
     return model.combinePrepared(taskFacts, model.prepareBaseline(data, taskFacts, ...args), model.prepareOccupancy(data, null, null, taskFacts.labels));
   }
   const facts = model.prepare(data, ...args);
-  facts.graph = runtime.GanttGraph.create(data.gantt_graph);
+  facts.graph = getModule('GanttGraph.js').create(data.gantt_graph);
   return facts;
 }
 function gantt(data, options = {}) {
@@ -132,7 +163,8 @@ function gantt(data, options = {}) {
   const states = Object.assign({}, options.states || {});
   // The product receives meta.as_of from its workspace response. Synthetic fixtures use a fixed local clock.
   const asOf = options.asOf === undefined ? input.data && input.data.meta && input.data.meta.as_of || fixtureAsOf : options.asOf;
-  const tree = render(runtime.PlanGantt, {data,prepared:prepare(runtime.PlanGanttModel,data),graph:runtime.GanttGraph.create(data.gantt_graph),asOf,query:options.query || '',selected:options.selected || null,
+  const planGanttModel = getModule('PlanGanttModel.js');
+  const tree = render(getModule('PlanGantt.jsx').default, {data,prepared:prepare(planGanttModel,data),graph:getModule('GanttGraph.js').create(data.gantt_graph),asOf,query:options.query || '',selected:options.selected || null,
     onSelect:(task,before) => selections.push({task,before}),onQuery:value => queries.push(value)}, states);
   return {tree, nodes:walk(tree), selections, queries};
 }
@@ -146,7 +178,7 @@ function processFixture() {
     critical_task_refs:data.tasks.map(task => task.task_ref),critical_edges:edges};
   return data;
 }
-const h = {runtime,load,loaded,render,walk,text,styles,fixture,processFixture,prepare,gantt,reference,clone:value => JSON.parse(JSON.stringify(value)),
+const h = {runtime,module:getModule,getModule,setStub,setStubs,load,loaded,render,walk,text,styles,fixture,processFixture,prepare,gantt,reference,clone:value => JSON.parse(JSON.stringify(value)),
   updates:() => updates.slice(), equal:(left,right) => assert.strictEqual(JSON.stringify(left),JSON.stringify(right))};
 Promise.resolve(new Function('h','assert','sourceData',input.program)(h,assert,input.data))
   .then(result => process.stdout.write(JSON.stringify({result:result === undefined ? true : result,loaded})))

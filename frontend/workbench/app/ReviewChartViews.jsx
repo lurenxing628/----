@@ -1,28 +1,32 @@
-(function () {
-  'use strict';
-  // Axis marks label the 0 / 50% / 100% positions of the bar track with the counts they stand for.
-  const tick = value => window.WorkbenchFormat.number(value, { digits: 1, trim: true });
-  const UNIT = '道';
-  function DistributionChart({ items, label }) {
-    const id = React.useId(), maximum = Math.max(1, ...items.map(row => row.count || 0));
-    // 各档都是 0 时没有可比较的分布，不画 0 / 0.5 / 1 这种假刻度，直接说暂无数据。
-    const hasData = items.some(row => row.count > 0);
-    return <figure className="aw-chart aw-distribution" aria-labelledby={id}><figcaption className="aw-caption" id={id}>{label}</figcaption>
-      {hasData ? <>
-        <ul className="aw-bars">{items.map(row => <li key={row.id}><div className="aw-bar-row"><span className="aw-bar-label">{row.label}</span>
-          <span className="aw-bar-track" aria-hidden="true"><i data-tone={row.tone} style={{ width: row.count / maximum * 100 + '%' }} /></span><strong>{row.count} {UNIT}</strong></div></li>)}</ul>
-        <div className="aw-bar-row aw-scale" aria-hidden="true"><span /><span className="aw-scale-ticks">
-          {[0, maximum / 2, maximum].map((value, index) => <span key={value}>{tick(value)}{index === 2 ? ' ' + UNIT : ''}</span>)}</span><strong className="aw-scale-gutter">{maximum} {UNIT}</strong></div>
-      </> : <window.WorkbenchListControls.EmptyState kind="empty" title="当前范围暂无数据" />}</figure>;
-  }
-  function TrendChart({ points, label }) {
-    const id = React.useId();
-    if (!points.length) return <window.WorkbenchListControls.EmptyState kind="empty" title="当前范围无可比较趋势" />;
-    const max = Math.max(1, ...points.flatMap(row => [row.planned, row.actual || 0]));
-    const start = points[0].time, span = points[points.length - 1].time - start || 1;
-    const x = row => 10 + (row.time - start) / span * 580, y = value => 190 - value / max * 180;
-    const series = [['planned', '计划累计完工'], ['actual', '已确认整道完工']];
-    return <figure className="aw-chart aw-trend" aria-labelledby={id}><figcaption id={id} className="aw-caption">{label}</figcaption>
+import React from './shared/runtime/react.js';
+import WorkbenchFormat from './WorkbenchFormat.js';
+import { EmptyState } from './ResourceControls.jsx';
+
+// Axis marks label the 0 / 50% / 100% positions of the bar track with the counts they stand for.
+const tick = value => WorkbenchFormat.number(value, { digits: 1, trim: true });
+const UNIT = '道';
+
+function DistributionChart({ items, label, loading = false }) {
+  const id = React.useId(), maximum = Math.max(1, ...items.map(row => row.count || 0));
+  // 各档都是 0 时没有可比较的分布，不画 0 / 0.5 / 1 这种假刻度，直接说暂无数据。
+  const hasData = items.some(row => row.count > 0);
+  return <figure className="aw-chart aw-distribution" aria-labelledby={id}><figcaption className="aw-caption" id={id}>{label}</figcaption>
+    {hasData ? <>
+      <ul className="aw-bars">{items.map(row => <li key={row.id}><div className="aw-bar-row"><span className="aw-bar-label">{row.label}</span>
+        <span className="aw-bar-track" aria-hidden="true"><i data-tone={row.tone} style={{ width: row.count / maximum * 100 + '%' }} /></span><strong>{row.count} {UNIT}</strong></div></li>)}</ul>
+      <div className="aw-bar-row aw-scale" aria-hidden="true"><span /><span className="aw-scale-ticks">
+        {[0, maximum / 2, maximum].map((value, index) => <span key={value}>{tick(value)}{index === 2 ? ' ' + UNIT : ''}</span>)}</span><strong className="aw-scale-gutter">{maximum} {UNIT}</strong></div>
+    </> : <EmptyState kind={loading ? 'loading' : 'empty'} title={loading ? '正在加载...' : '当前范围暂无数据'} />}</figure>;
+}
+
+function TrendChart({ points, label, loading = false }) {
+  const id = React.useId();
+  const max = points.length ? Math.max(1, ...points.flatMap(row => [row.planned, row.actual || 0])) : 1;
+  const start = points.length ? points[0].time : 0, span = points.length ? points[points.length - 1].time - start || 1 : 1;
+  const x = row => 10 + (row.time - start) / span * 580, y = value => 190 - value / max * 180;
+  const series = [['planned', '计划累计完工'], ['actual', '已确认整道完工']];
+  return <figure className="aw-chart aw-trend" aria-labelledby={id}><figcaption id={id} className="aw-caption">{label}</figcaption>
+    {points.length ? <>
       <div className="aw-legend">{series.map(([key, title]) => <span key={key}><i className={'aw-swatch aw-' + key} />{title}</span>)}</div>
       <div className="aw-chart-body"><div className="aw-y-axis"><span style={{ top: 0 }}>{tick(max)} {UNIT}</span><span style={{ top: '50%' }}>{tick(max / 2)}</span><span style={{ bottom: 0 }}>{tick(0)}</span></div>
         <div className="aw-plot"><svg className="aw-plot-svg" viewBox="0 0 600 200" preserveAspectRatio="none" role="img" aria-label={label}>
@@ -40,11 +44,18 @@
           })}
         </svg></div></div>
       <div className="aw-x-axis"><span>{points[0].label}</span><span>{points[points.length - 1].label}</span></div>
-      <details className="aw-data"><summary>图表数据</summary><div className="aw-data-scroll wb-table-frame" tabIndex={0} role="region" aria-label="累计完工趋势数据"><table><caption className="wb-visually-hidden">{label}</caption><thead><tr><th scope="col">日期</th><th scope="col">计划累计完工（道）</th><th scope="col">已确认整道完工（道）</th></tr></thead><tbody>{points.map(row => <tr key={row.time}><th scope="row">{window.WorkbenchFormat.date(row.label)}</th><td>{row.planned}</td><td>{row.actual == null ? '未知' : row.actual}</td></tr>)}</tbody></table></div></details>
-    </figure>;
-  }
-  const resourceColumns = () => [['resource_label', '实际资源'], ['operations', '涉及工序'],
-    ['production_reports', '逐次报工数'], ['effective_processing_hours', '有效加工工时（小时）'],
-    ['known_effective_processing_hours', '已知工时小计（小时）'], ['unknown_hour_events', '工时未知记录数']].map(([key, label]) => ({ key, label }));
-  window.ReviewChartViews = { DistributionChart, TrendChart, resourceColumns };
-})();
+    </> : <EmptyState kind={loading ? 'loading' : 'empty'} title={loading ? '正在加载...' : '当前范围无可比较趋势'} />}
+    <details className="aw-data"><summary>图表数据</summary><div className="aw-data-scroll wb-table-frame" tabIndex={0} role="region" aria-label="累计完工趋势数据"><table><caption className="wb-visually-hidden">{label}</caption><thead><tr><th scope="col">日期</th><th scope="col">计划累计完工（道）</th><th scope="col">已确认整道完工（道）</th></tr></thead><tbody>{points.map(row => <tr key={row.time}><th scope="row">{WorkbenchFormat.date(row.label)}</th><td>{row.planned}</td><td>{row.actual == null ? '未知' : row.actual}</td></tr>)}</tbody></table></div></details>
+  </figure>;
+}
+
+const resourceColumns = () => [
+  ['resource_label', '实际资源'], ['operations', '涉及工序'],
+  ['production_reports', '逐次报工数'], ['effective_processing_hours', '有效加工工时（小时）'],
+  ['known_effective_processing_hours', '已知工时小计（小时）'], ['unknown_hour_events', '工时未知记录数']
+].map(([key, label]) => ({ key, label }));
+
+const ReviewChartViews = { DistributionChart, TrendChart, resourceColumns };
+
+export { ReviewChartViews, DistributionChart, TrendChart, resourceColumns };
+export default ReviewChartViews;

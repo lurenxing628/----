@@ -4,16 +4,27 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { spawnSync } = require('node:child_process');
+const { compile } = require('../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '..');
+const appDir = path.join(root, 'frontend/workbench/app');
+const compiledMap = new Map(
+  compile({
+    sources: ['WorkbenchFormat.js', 'CalendarContract.js', 'WorkbenchDatePickerModel.js'].map(name => ({
+      path: name,
+      code: fs.readFileSync(path.join(appDir, name), 'utf8'),
+    })),
+    check_combined: false,
+  }).outputs.map(out => [out.path, out.code])
+);
 const context = vm.createContext({ window: {} });
-vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app/WorkbenchFormat.js'), 'utf8'), context);
-const F = context.window.WorkbenchFormat;
+vm.runInContext(compiledMap.get('WorkbenchFormat.js'), context);
+const F = context.__wbRuntime.getModule('WorkbenchFormat.js').default;
 const invalid = action => assert.throws(action, error => error.name === 'TypeError');
 
 let formatterBuilds = 0;
 const countedContext = vm.createContext({ window: {}, Intl: { NumberFormat: class { constructor(...args) { formatterBuilds++; return new Intl.NumberFormat(...args); } } } });
-vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app/WorkbenchFormat.js'), 'utf8'), countedContext);
-const counted = countedContext.window.WorkbenchFormat;
+vm.runInContext(compiledMap.get('WorkbenchFormat.js'), countedContext);
+const counted = countedContext.__wbRuntime.getModule('WorkbenchFormat.js').default;
 counted.number(1.25, { digits: 2 }); counted.hours(1.25, { digits: 2 }); counted.number(2.5, { digits: 2 });
 assert.equal(formatterBuilds, 1, 'Number and hours with the same options share their Intl formatter');
 counted.percent(.25, { digits: 2 }); counted.percent(.5, { digits: 2 }); assert.equal(formatterBuilds, 2);
@@ -44,8 +55,8 @@ if (process.argv[2] === '--timezone') {
   invalid(() => F.dateTime('2026-09-12T08:03:09', { fractions: 1 }));
   // The shared picker and both plan range forms retain exact factory-local microseconds.
   for (const name of ['CalendarContract.js', 'WorkbenchDatePickerModel.js'])
-    vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8'), context);
-  const picker = context.window.WorkbenchDatePickerModel, precise = '2026-09-12T08:03:09.123456';
+    vm.runInContext(compiledMap.get(name), context);
+  const picker = context.__wbRuntime.getModule('WorkbenchDatePickerModel.js'), precise = '2026-09-12T08:03:09.123456';
   assert.equal(picker.factoryTime('2026-09-12 08:03'), '2026-09-12T08:03:00');
   assert.equal(picker.factoryTime('2026-09-12 08:03:09.8'), '2026-09-12T08:03:09.800000');
   assert.equal(picker.factoryTime(precise), precise);

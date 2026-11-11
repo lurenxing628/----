@@ -3,18 +3,35 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { compile } = require('../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '..');
-const babel = require(path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'));
+const appDir = path.join(root, 'frontend/workbench/app');
+const compiledMap = new Map(
+  compile({
+    sources: [
+      'WorkbenchTerms.js',
+      'WorkbenchReferences.jsx',
+      'PreflightContract.js',
+      'PreflightControls.jsx',
+      'PreflightWorkspace.jsx',
+      'BatchSplitPanel.jsx',
+      'WorkbenchFormat.js',
+      'FieldContract.js',
+      'FieldControls.jsx',
+    ].map(name => ({ path: name, code: fs.readFileSync(path.join(appDir, name), 'utf8') })),
+    check_combined: false,
+  }).outputs.map(out => [out.path, out.code])
+);
 const React = { createElement(type, props, ...children) {
   const values = { ...props, children: children.flat(Infinity) };
   return typeof type === 'function' ? type(values) : { type, props: values };
 } };
 const context = vm.createContext({ window: {}, React });
 for (const name of ['WorkbenchTerms.js', 'WorkbenchReferences.jsx']) {
-  const source = fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8');
-  vm.runInContext(name.endsWith('.jsx') ? babel.transform(source, { presets: ['react'] }).code : source, context);
+  vm.runInContext(compiledMap.get(name), context, { filename: name });
 }
-const T = context.window.WorkbenchTerms, Ref = context.window.WorkbenchReference, ErrorBox = context.window.WorkbenchError;
+const T = context.__wbRuntime.getModule('WorkbenchTerms.js').default;
+const { WorkbenchReference: Ref, WorkbenchError: ErrorBox } = context.__wbRuntime.getModule('WorkbenchReferences.jsx');
 function text(tree, omitReferences = false) {
   if (tree === null || tree === undefined || tree === false) return '';
   if (typeof tree !== 'object') return String(tree);
@@ -130,8 +147,7 @@ assert.equal(T.material_strategy('stage', null), '未记录');
 assert(Object.isFrozen(T.material_descriptions));
 
 function load(name) {
-  const source = fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8');
-  vm.runInContext(name.endsWith('.jsx') ? babel.transform(source, { presets: ['react'] }).code : source, context);
+  vm.runInContext(compiledMap.get(name), context, { filename: name });
 }
 function nodes(tree, predicate) {
   if (!tree || typeof tree !== 'object') return [];
@@ -139,23 +155,26 @@ function nodes(tree, predicate) {
 }
 let id = 0;
 React.useId = () => 'material-test-' + ++id;
-context.window.ResourceControls = { ErrorBox, Button: props => React.createElement('button', props, ...props.children),
-  Field: props => React.createElement('label', props, ...props.children) };
+context.__wbRuntime.setStub('ResourceControls.jsx', {
+  ErrorBox,
+  Button: props => React.createElement('button', props, ...props.children),
+  Field: props => React.createElement('label', props, ...props.children),
+});
 load('PreflightContract.js'); load('PreflightControls.jsx');
-const C = context.window.PreflightContract, refA = 'a'.repeat(48), refB = 'b'.repeat(48);
+const C = context.__wbRuntime.getModule('PreflightContract.js'), refA = 'a'.repeat(48), refB = 'b'.repeat(48);
 const input = { ...C.defaults(), batch_refs: [refA], start_date: '2026-10-08', end_date: '2026-10-14', material_strategy: 'stage' };
 const removed = Object.freeze({ ...input, material_strategy: 'split' });
 assert.throws(() => C.initial(removed), /请核对已选批次/, 'A split entry is rejected, never rewritten to strict');
 assert.throws(() => C.input(removed), /请核对已选批次/, 'Saved input outside strict/stage is rejected');
 const patches = [], props = { value: input, onChange: value => patches.push(JSON.parse(JSON.stringify(value))), onInspectMaterials() {}, disabled: false };
-const ruleTree = context.window.PreflightControls.Rules(props);
+const ruleTree = context.__wbRuntime.getModule('PreflightControls.jsx').Rules(props);
 const materialGroup = nodes(ruleTree, node => node.type === 'fieldset')[0];
 const materialRadios = nodes(materialGroup, node => node.type === 'input' && node.props.type === 'radio');
 assert.equal(materialRadios.length, 2, 'Quantity splitting is not a third material rule');
 materialRadios[0].props.onChange();
 assert.deepEqual(patches.pop(), { material_strategy: 'strict' }, 'Choosing a rule must not secretly enable readiness checking');
 assert.equal(nodes(ruleTree, node => node.type === 'button' && text(node) === '检查物料可做数量').length, 1);
-const uncheckedTree = context.window.PreflightControls.Rules({ ...props, value: { ...input, ready_check: false, material_strategy: 'strict' } });
+const uncheckedTree = context.__wbRuntime.getModule('PreflightControls.jsx').Rules({ ...props, value: { ...input, ready_check: false, material_strategy: 'strict' } });
 assert(nodes(uncheckedTree, node => node.type === 'fieldset')[0].props.disabled);
 assert(nodes(nodes(uncheckedTree, node => node.type === 'fieldset')[0], node => node.type === 'input').every(node => node.props.disabled));
 assert(nodes(uncheckedTree, node => node.type === 'button' && text(node) === '检查物料可做数量')[0].props.disabled);
@@ -165,12 +184,14 @@ let stateCursor = 0; const states = [], remembered = [];
 React.useState = initial => { const slot = stateCursor++; if (!(slot in states)) states[slot] = typeof initial === 'function' ? initial() : initial;
   return [states[slot], value => { states[slot] = typeof value === 'function' ? value(states[slot]) : value; }]; };
 React.useMemo = fn => fn(); React.useCallback = fn => fn; React.useRef = value => ({ current: value }); React.useEffect = () => {};
-context.window.PreflightAPI = { create: () => ({}) };
-context.window.WorkbenchPageContext = { useSnapshot: value => remembered.push(value) };
-context.window.RunPresentation = { step: () => 1 };
-context.window.BatchSplitPanel = 'SplitPanelFixture';
+context.__wbRuntime.setStubs({
+  'PreflightAPI.js': { create: () => ({}) },
+  'WorkbenchPageContext.jsx': { useSnapshot: value => remembered.push(value) },
+  'RunPresentation.js': { step: () => 1 },
+  'BatchSplitPanel.jsx': 'SplitPanelFixture',
+});
 load('PreflightWorkspace.jsx');
-const render = () => { stateCursor = 0; return context.window.PreflightWorkspace({ initialContext: input, renderRunPanel: () => null }); };
+const render = () => { stateCursor = 0; return context.__wbRuntime.getModule('PreflightWorkspace.jsx')({ initialContext: input, renderRunPanel: () => null }); };
 let workspace = render();
 nodes(workspace, node => node.type === 'button' && text(node) === '检查物料可做数量')[0].props.onClick();
 workspace = render();
@@ -186,19 +207,21 @@ assert(nodes(workspace, node => node.type === 'button' && text(node) === '收起
 assert(nodes(workspace, node => node.type === 'button' && text(node) === '开始排产检查')[0].props.disabled);
 
 let reads = 0;
-context.window.APSBatchAPI = { create: () => ({ detail() { reads++; throw new Error('Disabled panel must not read'); } }) };
-context.window.APSBatchContract = {};
-context.window.APSResourceSession = { useCommand: () => ({ locked: false }) };
-context.window.WorkbenchGuards = { useDirtyGuard: () => ({}) };
-context.window.ResourceForms = { Feedback: () => null };
+context.__wbRuntime.setStubs({
+  'BatchSplitPanel.jsx': undefined,
+  'BatchAPI.js': { create: () => ({ detail() { reads++; throw new Error('Disabled panel must not read'); } }) },
+  'BatchContract.js': {},
+  'shared/session/query.js': { useCommand: () => ({ locked: false }) },
+  'WorkbenchGuards.js': { useDirtyGuard: () => ({}) },
+  'ResourceForms.jsx': { Feedback: () => null },
+});
 load('BatchSplitPanel.jsx'); stateCursor = 0; states.length = 0;
-const disabledPanel = context.window.BatchSplitPanel({ refs: [refA], day: input.start_date, disabled: true });
+const disabledPanel = context.__wbRuntime.getModule('BatchSplitPanel.jsx')({ refs: [refA], day: input.start_date, disabled: true });
 assert(nodes(disabledPanel, node => node.type === 'input')[0].props.disabled);
 nodes(disabledPanel, node => node.type === 'button' && text(node) === '查看可做数量')[0].props.onClick();
 assert.equal(reads, 0);
 
 // Report rejections, withdrawal preview and import rows share complete, readable conflict facts.
-context.window.ResourceControls.ErrorBox = ErrorBox;
 load('WorkbenchFormat.js'); load('FieldContract.js'); load('FieldControls.jsx');
 const conflicts = [
   { code: 'downstream_requires_completion', operation_ref: 'c'.repeat(48), operation_code: 'STRESS-B-001_20',
@@ -213,7 +236,7 @@ const conflicts = [
 // The transport's unified error is flat: conflicts sit beside message and code.
 const rejected = { phase: 'idle', locked: false, error: { message: '请先处理下面列出的影响。', code: 'constraint_conflict', fields: [], conflicts,
   committed: false, status: 409, requestRef: null, requestKey: null, resultTarget: null } };
-const failureTree = context.window.FieldControls.Feedback({ command: rejected }), visibleFailure = text(failureTree, true);
+const failureTree = context.__wbRuntime.getModule('FieldControls.jsx').Feedback({ command: rejected }), visibleFailure = text(failureTree, true);
 for (const label of ['20 热处理', '30 检验', '分件 A']) assert(visibleFailure.includes(label));
 assert.equal((visibleFailure.match(/后道工序的执行或正式安排依赖本工序完工/g) || []).length, 2);
 assert.equal((visibleFailure.match(/请先处理下面列出的影响/g) || []).length, 1);
@@ -222,5 +245,5 @@ for (const conflict of conflicts) {
   assert(text(failureTree).includes(conflict.operation_ref) && text(failureTree).includes(conflict.plan.task_ref));
   assert(!visibleFailure.includes(conflict.operation_ref) && !visibleFailure.includes(conflict.code));
 }
-assert.equal(context.window.FieldControls.Conflicts({ rows: [] }), null);
+assert.equal(context.__wbRuntime.getModule('FieldControls.jsx').Conflicts({ rows: [] }), null);
 process.stdout.write('WorkbenchTerms, references and material rule contracts passed (isolated React element fixture).\n');

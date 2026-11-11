@@ -32,9 +32,36 @@ async function contract(h, assert) {
     }
     checked++;
   }
+  const ResourceForms = h.module('ResourceForms.jsx').ResourceForms;
+  const SystemMaintenanceControls = h.module('SystemMaintenanceControls.jsx').SystemMaintenanceControls;
+  const TrialAdoptionControls = h.module('TrialAdoptionControls.jsx').TrialAdoptionControls;
+  const FieldContract = h.module('FieldContract.js');
+  const FieldEditor = h.module('FieldEditor.jsx').FieldEditor;
+  const CalendarDayDialog = h.module('CalendarDayDialog.jsx').CalendarDayDialog;
+  const ProcessGroupEditor = h.module('ProcessGroupEditor.jsx').ProcessGroupEditor;
+  const SystemMaintenanceRecords = h.module('SystemMaintenanceRecords.jsx').SystemMaintenanceRecords;
+  const SystemMaintenanceAPI = h.module('SystemMaintenanceAPI.js');
+  const SystemMaintenanceWorkspace = h.module('SystemMaintenanceWorkspace.jsx').SystemMaintenanceWorkspace;
+  const APSWorkbenchTransport = h.module('shared/network/transport.js');
+  const DashboardSession = h.module('DashboardSession.js');
+  const WorkbenchDashboardWorkspace = h.module('DashboardWorkspace.jsx').WorkbenchDashboardWorkspace;
+  const WorkbenchTerms = h.module('WorkbenchTerms.js');
+  const CalibrationWorkspace = h.module('CalibrationWorkspace.jsx').CalibrationWorkspace;
+  const CalibrationDetail = h.module('CalibrationDetail.jsx').CalibrationDetail;
+  const APSResourceSession = h.module('shared/session/command-session.js');
+  const APSResourceCatalogModel = h.module('ResourceCatalogModel.js');
+  const ResourceCatalog = h.module('ResourceCatalog.jsx').ResourceCatalog;
+  const DashboardContract = h.module('DashboardContract.js');
+  const DashboardPanels = h.module('DashboardPanels.jsx').DashboardPanels;
+  const DashboardAnalysisPanels = h.module('DashboardAnalysisPanels.jsx').DashboardAnalysisPanels;
+  const DashboardHandling = h.module('DashboardHandling.jsx').DashboardHandling;
+  const OutsourcingContract = h.module('OutsourcingContract.js');
+  const OutsourcingSession = h.module('OutsourcingSession.js');
+  const OutsourcingControls = h.module('OutsourcingControls.jsx').OutsourcingControls;
+  const OutsourcingWorkspace = h.module('OutsourcingWorkspace.jsx').OutsourcingWorkspace;
   const missingContext = '还没读到可以保存的资料，请点「刷新最新资料」后重试。';
-  once(h.render(w.ResourceForms, { adapter: { command() {} }, kind: 'material', source: 'production', command: idle }), missingContext, 1);
-  once(h.render(w.SystemMaintenanceControls.Confirm, { action: 'create', reason: '当前操作不可用，请先刷新。' }), '当前操作不可用，请先刷新。', 1);
+  once(h.render(ResourceForms, { adapter: { command() {} }, kind: 'material', source: 'production', command: idle }), missingContext, 1);
+  once(h.render(SystemMaintenanceControls.Confirm, { action: 'create', reason: '当前操作不可用，请先刷新。' }), '当前操作不可用，请先刷新。', 1);
 
   const adoptionScope = { scenario_ref: h.reference(40), draft_ref: h.reference(41), task_count: 3,
     baseline: { plan_ref: h.reference(42), version: 1 } }, adoptionCalls = { inspect: 0, submit: 0, lookup: 0 };
@@ -42,7 +69,7 @@ async function contract(h, assert) {
     sourceError: '', storageError: '', error: '', notice: '', busy: false, original: adoptionScope,
     draft: { reason: '核对完整安排', declared_operator: '经办人' }, close() {}, setConsent() {}, change() {}, finish() {}, sync() {},
     inspect() { adoptionCalls.inspect++; }, submit() { adoptionCalls.submit++; }, lookup() { adoptionCalls.lookup++; } };
-  const adoptionDialog = patch => h.render(w.TrialAdoptionControls.Dialog,
+  const adoptionDialog = patch => h.render(TrialAdoptionControls.Dialog,
     { session: { ...adoptionSession, ...patch }, scenarioRef: adoptionScope.scenario_ref, name: '已保存试调' });
   const adoptionButton = (tree, label) => h.walk(tree).find(node => node.type === 'button' && visible(node) === label);
   const uncheckedAdoption = adoptionDialog({});
@@ -66,54 +93,52 @@ async function contract(h, assert) {
   adoptionButton(pendingAdoption, '查询结果').props.onClick({ currentTarget: {}, preventDefault() {} });
   assert.strictEqual(adoptionCalls.lookup, 1);
 
-  const fields = w.FieldEditorFields;
-  w.FieldEditorFields = () => null; // This regression concerns the form/footer ownership, not the field inputs.
+  h.setStub('FieldEditorFields.jsx', () => null); // This regression concerns the form/footer ownership, not the field inputs.
   const task = { task_ref: h.reference(1), plan_ref: h.reference(2), operation_ref: h.reference(3), execution: { reports: [], write_context: null } };
   const retained = { baseline: { task_ref: h.reference(4), plan_ref: task.plan_ref, report_ref: null, revision_ref: null },
-    draft: w.FieldContract.draft(null), initialDraft: w.FieldContract.draft(null), suggestions: {} };
-  once(h.render(w.FieldEditor, { task, retained, action: 'create', adapter: {}, command: idle }), '原记录或任务已变化，暂存内容未写入；请取消后重新核对。', 2);
-  w.FieldEditorFields = fields;
+    draft: FieldContract.draft(null), initialDraft: FieldContract.draft(null), suggestions: {} };
+  once(h.render(FieldEditor, { task, retained, action: 'create', adapter: {}, command: idle }), '原记录或任务已变化，暂存内容未写入；请取消后重新核对。', 2);
+  h.setStub('FieldEditorFields.jsx', undefined);
   const dayPeriods = [{ start: '08:00', end: '16:00', day_offset: 0 }];
   const day = { date: '2026-10-10', explicit: false, stored: null, default_periods: dayPeriods,
     fields: { type: 'work', hours: 8, eff: 100, allowNormal: 'yes', allowUrgent: 'yes', note: '', periods: dayPeriods },
     effective: { is_working: true, window_start: '2026-10-10T08:00:00', window_end: '2026-10-10T16:00:00', periods: dayPeriods } };
-  once(h.render(w.CalendarDayDialog, { adapter: {}, day, source: 'production', command: idle }), missingContext, 1);
+  once(h.render(CalendarDayDialog, { adapter: {}, day, source: 'production', command: idle }), missingContext, 1);
   const groupProps = { adapter: { command() {}, stagePreview() {} }, command: idle, onDirty() {},
     result: { data: { operations: [], external_groups: [], workflow: { route: { state: 'confirmed' } } }, meta: { source: 'production' } } };
-  once(h.render(w.ProcessGroupEditor, groupProps), '请先新增、修改或解除外协段。', 2);
+  once(h.render(ProcessGroupEditor, groupProps), '请先新增、修改或解除外协段。', 2);
   // A retained leave prompt follows the draft. useState slots: useDraft 0-4 (draft 1), usePage 5-7, editing 8, picker 9, discard 10.
   const groupUnsaved = '本次外协段修改尚未保存。';
-  assert(!visible(h.render(w.ProcessGroupEditor, groupProps, { ProcessGroupEditor: { 10: true } })).includes(groupUnsaved), 'A clean draft has nothing unsaved to warn about');
-  once(h.render(w.ProcessGroupEditor, groupProps, { ProcessGroupEditor: { 1: { groups: [], discard_group_refs: [h.reference(43)] }, 10: true } }), groupUnsaved);
+  assert(!visible(h.render(ProcessGroupEditor, groupProps, { ProcessGroupEditor: { 10: true } })).includes(groupUnsaved), 'A clean draft has nothing unsaved to warn about');
+  once(h.render(ProcessGroupEditor, groupProps, { ProcessGroupEditor: { 1: { groups: [], discard_group_refs: [h.reference(43)] }, 10: true } }), groupUnsaved);
 
   // A group-wide restriction is shown once; a restore-specific restriction still remains visible.
-  const readMaintenance = w.SystemMaintenanceControls.useRead;
   const file = { key: '1'.repeat(64), record_kind: 'backup_file', backup_ref: h.reference(5), filename: 'backup.db', type: 'backup', status: 'available', size_bytes: 10 };
   const sharedReason = '请先完成当前文件操作。', restoreReason = '这个备份暂时不能恢复，请核对文件。';
   const maintenance = { capabilities: { create: false, delete: false, restore: false, blocked_reason: sharedReason, restore_reason: restoreReason },
     rows: [file], sources: [], page: { number: 1, page_size: 10, total: 1, pages: 1 } };
-  w.SystemMaintenanceControls.useRead = () => ({ data: { data: maintenance, meta: { as_of: '2026-10-10T08:00:00' } }, loading: false, error: null });
-  const backupTree = h.render(w.SystemMaintenanceRecords, { kind: 'backups', pageSize: 10, revision: 0, command: idle, active: true, onReadContext() {} },
-    { Records: { 5: { key: file.key, record_kind: file.record_kind, backup_ref: file.backup_ref } } });
+  h.setStub('SystemMaintenanceControls.jsx', { useRead: () => ({ data: { data: maintenance, meta: { as_of: '2026-10-10T08:00:00' } }, loading: false, error: null }) });
+  const backupTree = h.render(SystemMaintenanceRecords, { kind: 'backups', pageSize: 10, revision: 0, command: idle, active: true, onReadContext() {} },
+    { SystemMaintenanceRecords: { 5: { key: file.key, record_kind: file.record_kind, backup_ref: file.backup_ref } } });
   once(backupTree, sharedReason, 2); once(backupTree, restoreReason, 1);
-  w.SystemMaintenanceControls.useRead = () => ({ data: { data: { rows: [], sources: [], page: { number: 1, size: 10, total: 0, pages: 1 } },
-    meta: { as_of: '2026-10-10T08:00:00' } }, loading: false, error: null });
-  assert(visible(h.render(w.SystemMaintenanceRecords, { kind: 'logs', pageSize: 10, revision: 0, command: idle, active: true, onReadContext() {} })).includes('运行日志与操作记录'),
+  h.setStub('SystemMaintenanceControls.jsx', { useRead: () => ({ data: { data: { rows: [], sources: [], page: { number: 1, size: 10, total: 0, pages: 1 } },
+    meta: { as_of: '2026-10-10T08:00:00' } }, loading: false, error: null }) });
+  assert(visible(h.render(SystemMaintenanceRecords, { kind: 'logs', pageSize: 10, revision: 0, command: idle, active: true, onReadContext() {} })).includes('运行日志与操作记录'),
     'The logs collection does not carry backup capabilities');
-  w.SystemMaintenanceControls.useRead = readMaintenance;
+  h.setStub('SystemMaintenanceControls.jsx', undefined);
 
   // A failed status read stays in system management; only a real stop or pending restore takes over the page.
   const readyHost = { state: 'ready', request_key: null, restart_required: false, automatic_resume: false,
     operations_available: true, result_source: 'external_maintenance_journal', references: 'reload_from_database_after_process_restart' };
-  // The workspace calls window.SystemMaintenanceAPI directly; each check replaces only the module methods it observes and restores them.
+  // The workspace calls SystemMaintenanceAPI directly; each check replaces only the module methods it observes and restores them.
   // Production mounts always pass revision, record contexts and the change/suspension callbacks.
   let hostReads = 0;
-  const M = w.SystemMaintenanceAPI, maintenanceOriginal = { host: M.host, lookup: M.lookup, command: M.command };
+  const M = SystemMaintenanceAPI;
   const workspaceProps = { theme: 'light', onSetTheme: () => {}, pageSize: 10, revision: 0, recordContexts: {}, onChanged() {}, onReadSuspendedChange() {}, onRecordContext() {} };
-  M.host = async () => { hostReads++; return readyHost; };
-  const maintenanceTree = (states, tab = 'overview') => h.render(w.SystemMaintenanceWorkspace,
+  h.setStub('SystemMaintenanceAPI.js', { host: async () => { hostReads++; return readyHost; } });
+  const maintenanceTree = (states, tab = 'overview') => h.render(SystemMaintenanceWorkspace,
     { ...workspaceProps, tab, children: '系统概况内容' },
-    { Workspace: { 6: readyHost, 8: false, ...states } });
+    { SystemMaintenanceWorkspace: { 6: readyHost, 8: false, ...states } });
   const restoreScreen = tree => h.walk(tree).find(node => node.props['data-restore-maintenance'] === 'warm');
   const statusFailure = new Error('维护状态接口未连接，请重新查询。');
   const failedStatus = maintenanceTree({ 6: null, 7: statusFailure });
@@ -126,13 +151,13 @@ async function contract(h, assert) {
   assert(retryStatus, 'Status-query failure retains a local recovery action');
   await retryStatus.props.onClick({ currentTarget: {} });
   assert.strictEqual(hostReads, 1);
-  const recoveredState = Object.fromEntries(h.updates().filter(update => update.name === 'Workspace').map(update => [update.index, update.value]));
+  const recoveredState = Object.fromEntries(h.updates().filter(update => update.name === 'SystemMaintenanceWorkspace').map(update => [update.index, update.value]));
   const recoveredStatus = maintenanceTree(recoveredState);
   assert(!restoreScreen(recoveredStatus) && visible(recoveredStatus).includes('系统概况内容'), 'A successful recheck reopens the ordinary system view');
 
-  w.SystemMaintenanceControls.useRead = () => ({ data: { data: { ...maintenance,
+  h.setStub('SystemMaintenanceControls.jsx', { useRead: () => ({ data: { data: { ...maintenance,
     capabilities: { create: true, delete: true, restore: true, blocked_reason: '', restore_reason: '' } },
-    meta: { as_of: '2026-10-10T08:00:00' } }, loading: false, error: null });
+    meta: { as_of: '2026-10-10T08:00:00' } }, loading: false, error: null }) });
   const busyMaintenance = maintenanceTree({ 6: { ...readyHost, operations_available: false } }, 'backups');
   assert(!restoreScreen(busyMaintenance), 'Temporary unavailability of file operations is not a restore');
   const createBackup = h.walk(busyMaintenance).find(node => node.type === 'button' && visible(node) === '新增备份');
@@ -142,10 +167,10 @@ async function contract(h, assert) {
   const retryMaintenance = h.walk(busyMaintenance).find(node => node.type === 'button' && visible(node) === '重新查询维护状态');
   assert(retryMaintenance, 'A temporary maintenance lock must offer a host recheck');
   await retryMaintenance.props.onClick({ currentTarget: {} });
-  const availableAgain = maintenanceTree(Object.fromEntries(h.updates().filter(update => update.name === 'Workspace').map(update => [update.index, update.value])), 'backups');
+  const availableAgain = maintenanceTree(Object.fromEntries(h.updates().filter(update => update.name === 'SystemMaintenanceWorkspace').map(update => [update.index, update.value])), 'backups');
   const recoveredCreate = h.walk(availableAgain).find(node => node.type === 'button' && visible(node) === '新增备份');
   assert(recoveredCreate && !recoveredCreate.props.disabled && !recoveredCreate.props['aria-disabled'], 'Rechecking a released maintenance lock enables operations');
-  w.SystemMaintenanceControls.useRead = readMaintenance;
+  h.setStub('SystemMaintenanceControls.jsx', undefined);
   const storageFailure = new Error('浏览器未允许保存维护操作编号。');
   const storageStatus = maintenanceTree({ 2: storageFailure });
   assert(!restoreScreen(storageStatus) && visible(storageStatus).includes('系统概况内容'), 'Local storage failure does not stop a ready server or read-only views');
@@ -177,8 +202,8 @@ async function contract(h, assert) {
   };
   w.addEventListener = (type, handler) => { if (type === 'online') online = handler; };
   w.removeEventListener = () => {};
-  const refreshWorkspace = revision => h.render(w.SystemMaintenanceWorkspace,
-    { ...workspaceProps, tab: 'overview', revision }, { Workspace: { 6: readyHost, 8: false } });
+  const refreshWorkspace = revision => h.render(SystemMaintenanceWorkspace,
+    { ...workspaceProps, tab: 'overview', revision }, { SystemMaintenanceWorkspace: { 6: readyHost, 8: false } });
   const beforeRefresh = hostReads;
   refreshWorkspace(0); refreshWorkspace(0); refreshWorkspace(1);
   assert.strictEqual(hostReads - beforeRefresh, 2, 'A page refresh must requery maintenance status, while an unchanged render must not');
@@ -187,14 +212,14 @@ async function contract(h, assert) {
   if (dispose) dispose();
   w.React.useEffect = originalEffect; w.addEventListener = originalAdd; w.removeEventListener = originalRemove;
 
-  const hostRequests = []; M.host = () => new Promise((resolve, reject) => hostRequests.push({ resolve, reject }));
-  const racingTree = h.render(w.SystemMaintenanceWorkspace, { ...workspaceProps, tab: 'overview' },
-    { Workspace: { 6: null, 7: statusFailure, 8: false } });
+  const hostRequests = []; h.setStub('SystemMaintenanceAPI.js', { host: () => new Promise((resolve, reject) => hostRequests.push({ resolve, reject })) });
+  const racingTree = h.render(SystemMaintenanceWorkspace, { ...workspaceProps, tab: 'overview' },
+    { SystemMaintenanceWorkspace: { 6: null, 7: statusFailure, 8: false } });
   const retryRacing = h.walk(racingTree).find(node => node.type === 'button' && visible(node) === '重新查询');
   const olderRead = retryRacing.props.onClick({ currentTarget: {} }), newerRead = retryRacing.props.onClick({ currentTarget: {} });
   hostRequests[1].resolve(readyHost); await newerRead;
   hostRequests[0].reject(statusFailure); await olderRead;
-  const latestHostState = Object.fromEntries(h.updates().filter(update => update.name === 'Workspace').map(update => [update.index, update.value]));
+  const latestHostState = Object.fromEntries(h.updates().filter(update => update.name === 'SystemMaintenanceWorkspace').map(update => [update.index, update.value]));
   assert.strictEqual(latestHostState[6], readyHost);
   assert.strictEqual(latestHostState[7], null, 'An earlier failed host query must not overwrite a later successful refresh');
   assert.strictEqual(latestHostState[8], false);
@@ -205,95 +230,95 @@ async function contract(h, assert) {
     error: { code: 'maintenance_active', message: '当前维护窗口忙，恢复没有执行。', fields: [], retryable: status >= 500 && committed !== 'unknown', request_ref: '1'.repeat(32) } }), { status, headers: { 'Content-Type': 'application/json' } }); };
   for (const [committed, status, definite] of [[false, 503, true], [false, 409, true], [false, 500, true], ['unknown', 503, false], [undefined, 503, false]]) {
     answerWith(committed, status);
-    await assert.rejects(M.command(restoreIntent, 'write-context', {}), error => w.APSWorkbenchTransport.rejected(error) === definite,
+    await assert.rejects(M.command(restoreIntent, 'write-context', {}), error => APSWorkbenchTransport.rejected(error) === definite,
       'committed ' + committed + ' with HTTP ' + status + (definite ? ' is' : ' is not') + ' a definite rejection');
   }
-  const originalStorage = w.localStorage, originalCrypto = w.crypto, originalNavigator = w.navigator, originalOutcome = w.SystemMaintenanceControls.Outcome;
+  const originalStorage = w.localStorage, originalCrypto = w.crypto, originalNavigator = w.navigator;
   const savedMaintenance = new Map(); let rejectedCommand, rejectedLookups = 0;
   w.localStorage = { getItem: key => savedMaintenance.get(key) || null, setItem: (key, value) => savedMaintenance.set(key, value), removeItem: key => savedMaintenance.delete(key) };
   w.crypto = { getRandomValues: bytes => bytes.fill(34) };
   w.navigator = { locks: { request: async (_key, _options, callback) => callback({}) } };
-  w.SystemMaintenanceControls.Outcome = ({ command }) => { rejectedCommand = command; return null; };
-  M.host = async () => readyHost; M.lookup = async () => { rejectedLookups++; return { kind: 'not_recorded', terminal: false }; }; answerWith(false);
-  h.render(w.SystemMaintenanceWorkspace, { ...workspaceProps, tab: 'overview' }, { Workspace: { 6: readyHost, 8: false } });
+  h.setStub('SystemMaintenanceControls.jsx', { Outcome: ({ command }) => { rejectedCommand = command; return null; } });
+  h.setStub('SystemMaintenanceAPI.js', { host: async () => readyHost, lookup: async () => { rejectedLookups++; return { kind: 'not_recorded', terminal: false }; } }); answerWith(false);
+  h.render(SystemMaintenanceWorkspace, { ...workspaceProps, tab: 'overview' }, { SystemMaintenanceWorkspace: { 6: readyHost, 8: false } });
   await rejectedCommand.execute('restore', 'write-context', {});
   await rejectedCommand.lookup();
   assert.strictEqual(rejectedLookups, 0, 'Reconnection must not replace a confirmed rejection with an absent journal record');
-  const deniedState = Object.fromEntries(h.updates().filter(update => update.name === 'Workspace').map(update => [update.index, update.value]));
+  const deniedState = Object.fromEntries(h.updates().filter(update => update.name === 'SystemMaintenanceWorkspace').map(update => [update.index, update.value]));
   assert.strictEqual(deniedState[3].kind, 'rejected');
   assert.strictEqual(deniedState[1], null);
-  assert.strictEqual(w.SystemMaintenanceAPI.pending.read(), null, 'Explicit rejection clears the persisted pending intent before any page reload');
-  w.SystemMaintenanceControls.Outcome = originalOutcome;
+  assert.strictEqual(SystemMaintenanceAPI.pending.read(), null, 'Explicit rejection clears the persisted pending intent before any page reload');
+  h.setStub('SystemMaintenanceControls.jsx', undefined);
   const deniedTree = maintenanceTree(deniedState);
   assert(!restoreScreen(deniedTree) && visible(deniedTree).includes('系统拒绝了这次提交，没有开始恢复。'), 'The rejection remains readable after unlocking');
   assert(!h.walk(deniedTree).some(node => node.type === 'button' && visible(node) === '确认结果'));
   assert(!restoreScreen(maintenanceTree({})), 'A full reload after a rejected restore must not recreate pending maintenance');
-  w.SystemMaintenanceControls.Outcome = ({ command }) => { rejectedCommand = command; return null; };
+  h.setStub('SystemMaintenanceControls.jsx', { Outcome: ({ command }) => { rejectedCommand = command; return null; } });
   answerWith('unknown');
-  h.render(w.SystemMaintenanceWorkspace, { ...workspaceProps, tab: 'overview' }, { Workspace: { 6: readyHost, 8: false } });
+  h.render(SystemMaintenanceWorkspace, { ...workspaceProps, tab: 'overview' }, { SystemMaintenanceWorkspace: { 6: readyHost, 8: false } });
   await rejectedCommand.execute('restore', 'write-context', {});
-  assert.strictEqual(w.SystemMaintenanceAPI.pending.read().request_key, restoreIntent.request_key, 'An unknown submission result must retain its original pending intent');
-  w.SystemMaintenanceControls.Outcome = originalOutcome;
+  assert.strictEqual(SystemMaintenanceAPI.pending.read().request_key, restoreIntent.request_key, 'An unknown submission result must retain its original pending intent');
+  h.setStub('SystemMaintenanceControls.jsx', undefined);
   assert(restoreScreen(maintenanceTree({})), 'Reload must continue protecting an unknown restore result');
   savedMaintenance.clear();
   const otherIntent = { ...restoreIntent, request_key: 'system-' + '4'.repeat(48) };
-  w.SystemMaintenanceAPI.pending.finish(restoreIntent); // Another tab already confirmed this operation.
-  savedMaintenance.set(w.SystemMaintenanceAPI.PENDING_KEY, JSON.stringify(otherIntent));
-  assert.throws(() => w.SystemMaintenanceAPI.pending.finish(restoreIntent), /上次操作记录已变化/);
-  assert.strictEqual(w.SystemMaintenanceAPI.pending.read().request_key, otherIntent.request_key, 'A different pending operation must be retained');
+  SystemMaintenanceAPI.pending.finish(restoreIntent); // Another tab already confirmed this operation.
+  savedMaintenance.set(SystemMaintenanceAPI.PENDING_KEY, JSON.stringify(otherIntent));
+  assert.throws(() => SystemMaintenanceAPI.pending.finish(restoreIntent), /上次操作记录已变化/);
+  assert.strictEqual(SystemMaintenanceAPI.pending.read().request_key, otherIntent.request_key, 'A different pending operation must be retained');
   w.localStorage = originalStorage; w.crypto = originalCrypto; w.navigator = originalNavigator;
-  Object.assign(M, maintenanceOriginal); w.fetch = () => { throw new Error('Unexpected network request'); };
+  h.setStub('SystemMaintenanceAPI.js', undefined); w.fetch = () => { throw new Error('Unexpected network request'); };
 
-  const dashboardRead = w.DashboardSession.useRead, dashboardCommand = w.DashboardSession.useCommand;
-  w.DashboardSession.useCommand = () => ({ busy: false, saved: null, storageError: null });
-  w.DashboardSession.useRead = (_load, _deps, enabled = true) => ({ result: null, loading: false, error: enabled ? new Error('值班台读取失败，请刷新重试。') : null });
-  once(h.render(w.WorkbenchDashboardWorkspace, { initialContext: {} }), '值班台读取失败，请刷新重试。');
-  w.DashboardSession.useRead = dashboardRead; w.DashboardSession.useCommand = dashboardCommand;
-  const calibrationRead = w.CalibrationControls.useRead, adoption = w.CalibrationAdoptionAction, stale = w.WorkbenchTerms.outcomes.stale;
-  w.CalibrationControls.useRead = () => ({ result: null, busy: false, error: null });
-  w.CalibrationAdoptionAction = () => null;
+  const stale = WorkbenchTerms.outcomes.stale;
+  h.setStub('DashboardSession.js', {
+    useCommand: () => ({ busy: false, saved: null, storageError: null }),
+    useRead: (_load, _deps, enabled = true) => ({ result: null, loading: false, error: enabled ? new Error('值班台读取失败，请刷新重试。') : null }),
+  });
+  once(h.render(WorkbenchDashboardWorkspace, { initialContext: {} }), '值班台读取失败，请刷新重试。');
+  h.setStub('DashboardSession.js', undefined);
+  h.setStub('CalibrationControls.jsx', { useRead: () => ({ result: null, busy: false, error: null }) });
+  h.setStub('CalibrationAdoptionAction.jsx', () => null);
   // Restored read state occupies slot 1; the selected record, error and stale flag follow it.
-  const staleTree = h.render(w.CalibrationWorkspace, { initialContext: {} }, { Workspace: { 3: h.reference(1), 7: new Error(stale), 9: true } });
+  const staleTree = h.render(CalibrationWorkspace, { initialContext: {} }, { Workspace: { 3: h.reference(1), 7: new Error(stale), 9: true } });
   once(staleTree, stale);
   assert(visible(staleTree).includes('刷新所选记录'), 'The detail must retain its recovery action');
-  once(h.render(w.CalibrationDetail, { selected: h.reference(1), error: new Error('历史报工与归档不一致，请核对来源后刷新。'), stale: true }),
+  once(h.render(CalibrationDetail, { selected: h.reference(1), error: new Error('历史报工与归档不一致，请核对来源后刷新。'), stale: true }),
     '历史报工与归档不一致，请核对来源后刷新。');
-  w.CalibrationControls.useRead = calibrationRead; w.CalibrationAdoptionAction = adoption;
+  h.setStub('CalibrationControls.jsx', undefined); h.setStub('CalibrationAdoptionAction.jsx', undefined);
 
   // These are real resource-command states: a rejected write result and a restored pending intent.
   async function resourceCommand(adapter, submit) {
     let command;
-    function CommandProbe() { command = w.APSResourceSession.useCommand(adapter); return null; }
+    function CommandProbe() { command = APSResourceSession.useCommand(adapter); return null; }
     h.render(CommandProbe, {});
     if (submit) { await submit(command); h.render(CommandProbe, {}); }
     return command;
   }
   w.crypto = { getRandomValues: values => { values.fill(1); return values; } };
   // The resource adapter throws the transport's unified error; a committed:false 409 is a definite rejection.
-  const staleResult = w.APSWorkbenchTransport.failure({ ok: false, committed: false, error: { code: 'stale_write', message: stale, fields: [], retryable: false, request_ref: '1'.repeat(32) } }, 409);
-  const staleCommand = await resourceCommand({ readPending: () => null, command: async () => { throw staleResult; }, savePending() {}, clearPending() {} },
+  const staleResult = APSWorkbenchTransport.failure({ ok: false, committed: false, error: { code: 'stale_write', message: stale, fields: [], retryable: false, request_ref: '1'.repeat(32) } }, 409);
+  const staleCommand = await resourceCommand({ pendingKey: 'aps_workbench_resource_pending_v1_calendar_probe', readPending: () => null, command: async () => { throw staleResult; }, savePending() {}, clearPending() {} },
     command => command.submit('calendar', 'upsert', day.date, { write_token: 'fixture' }, { date: day.date }));
   assert.strictEqual(staleCommand.phase, 'rejected');
-  const staleCalendar = h.render(w.CalendarDayDialog, { adapter: {}, day, source: 'production', command: staleCommand });
+  const staleCalendar = h.render(CalendarDayDialog, { adapter: {}, day, source: 'production', command: staleCommand });
   once(staleCalendar, stale, 1);
-  assert(visible(staleCalendar).includes(w.WorkbenchTerms.refresh_latest), 'A stale calendar must retain its refresh action');
+  assert(visible(staleCalendar).includes(WorkbenchTerms.refresh_latest), 'A stale calendar must retain its refresh action');
 
-  const resourceRead = w.APSResourceSession.useQuery, resourceUseCommand = w.APSResourceSession.useCommand;
-  w.APSResourceSession.useQuery = () => ({ result: null, loading: false, error: null });
-  w.APSResourceSession.useCommand = () => staleCommand;
-  const initialDraft = w.APSResourceCatalogModel.draft(null);
+  h.setStub('shared/session/query.js', { useQuery: () => ({ result: null, loading: false, error: null }) });
+  h.setStub('shared/session/command-session.js', { useCommand: () => staleCommand });
+  const initialDraft = APSResourceCatalogModel.draft(null);
   const editor = { action: 'create', base: null, ref: null, draft: initialDraft, baseline: JSON.stringify(initialDraft),
     context: { write_token: 'fixture', capabilities: { create: true } }, source: 'production' };
-  const staleCatalog = h.render(w.ResourceCatalog, { kind: 'machine_group', adapter: {} }, { ResourceCatalog: { 1: editor, 6: true } });
+  const staleCatalog = h.render(ResourceCatalog, { kind: 'machine_group', adapter: {} }, { ResourceCatalog: { 1: editor, 6: true } });
   once(staleCatalog, stale, 1);
-  assert(visible(staleCatalog).includes(w.WorkbenchTerms.refresh_latest), 'A stale catalog must retain its refresh action');
-  w.APSResourceSession.useCommand = resourceUseCommand;
-  const restored = await resourceCommand({ readPending: () => ({ kind: 'machine_group', action: 'create', request_key: 'resource-' + '1'.repeat(48), input: {} }), savePending() {}, clearPending() {} });
+  assert(visible(staleCatalog).includes(WorkbenchTerms.refresh_latest), 'A stale catalog must retain its refresh action');
+  h.setStub('shared/session/command-session.js', undefined);
+  const restored = await resourceCommand({ pendingKey: 'aps_workbench_resource_pending_v1_catalog_probe', readPending: () => ({ kind: 'machine_group', action: 'create', request_key: 'resource-' + '1'.repeat(48), input: {} }), savePending() {}, clearPending() {} });
   assert.strictEqual(restored.phase, 'pending');
   assert.strictEqual(restored.locked, true);
-  w.APSResourceSession.useCommand = () => restored;
-  once(h.render(w.ResourceCatalog, { kind: 'machine_group', adapter: {} }), '操作结果还没确认，请保留当前页面。', 2);
-  w.APSResourceSession.useQuery = resourceRead; w.APSResourceSession.useCommand = resourceUseCommand;
+  h.setStub('shared/session/command-session.js', { useCommand: () => restored });
+  once(h.render(ResourceCatalog, { kind: 'machine_group', adapter: {} }), '操作结果还没确认，请保留当前页面。', 2);
+  h.setStub('shared/session/query.js', undefined); h.setStub('shared/session/command-session.js', undefined);
 
   // Match the production DTO source relationships, then validate them through the shipped API contract.
   // An inactive batch identity makes all three plan categories unavailable; material and run/outsourcing
@@ -304,7 +329,7 @@ async function contract(h, assert) {
   const summary = (state = 'no_data', issues = []) => ({ state, risk_count: state === 'unavailable' ? null : 0,
     known_risk_count: 0, unknown_count: 0, closed_count: 0, handling_count: 0, issues, evaluation_gaps: [] });
   function dashboardFixture() {
-    const categories = Object.fromEntries(Object.keys(w.DashboardContract.categories).filter(key => key !== 'all').map(key => [key, summary()]));
+    const categories = Object.fromEntries(Object.keys(DashboardContract.categories).filter(key => key !== 'all').map(key => [key, summary()]));
     for (const key of ['delivery', 'actual', 'downtime']) categories[key] = summary('unavailable', [planIssue]);
     categories.material = summary('unavailable', [materialIssue]); categories.candidate.risk_count = null;
     Object.assign(categories.external, { kind: 'outsourcing_receipts', tracking_basis: 'manual_receipt_facts', handling_supported: true,
@@ -339,25 +364,27 @@ async function contract(h, assert) {
     return analysis;
   }
   async function dashboardResult(payload, category) {
-    const q = w.DashboardContract.scope({ category }), scope = { kind: 'dashboard', ...q }; delete scope.page;
+    const q = DashboardContract.scope({ category }), scope = { kind: 'dashboard', ...q }; delete scope.page;
     const input = JSON.parse(JSON.stringify(payload)), detailAnalysis = input.data.analysis;
     input.data.scope = scope; input.data.analysis = analysisPage(detailAnalysis, 'overview');
     // Fetch-level answer: the real DashboardContract.list, transport and analysis validator check the DTO.
     w.fetch = async () => new Response(JSON.stringify(input), { status: 200, headers: { 'Content-Type': 'application/json' } });
-    let result; try { result = await w.DashboardContract.list(q); } finally { w.fetch = () => { throw new Error('Unexpected network request'); }; }
+    let result; try { result = await DashboardContract.list(q); } finally { w.fetch = () => { throw new Error('Unexpected network request'); }; }
     assert.strictEqual(result.data.analysis_error, null, 'The representative analysis DTO must pass the actual API contract');
     result.detailAnalysis = detailAnalysis;
     return result;
   }
   function dashboardTree(result, category, command = { busy: false, saved: null, storageError: null }, states = {}, detail = null) {
     let readIndex = 0;
-    w.DashboardSession.useCommand = () => command;
-    w.DashboardSession.useRead = (_load, dependencies, enabled = true) => {
-      const query = dependencies && dependencies[1];
-      if (query && query.section) return { result: enabled ? { ...result, data: analysisPage(result.detailAnalysis, query.section, query.resource_ref) } : null, loading: false, error: null };
-      return { result: ++readIndex === 1 ? result : readIndex === 3 ? detail : null, loading: false, error: null };
-    };
-    return h.render(w.WorkbenchDashboardWorkspace, { initialContext: { scope: { category }, tab: 'analysis', ...(detail ? { item_ref: detail.data.item.item_ref } : {}) } }, states);
+    h.setStub('DashboardSession.js', {
+      useCommand: () => command,
+      useRead: (_load, dependencies, enabled = true) => {
+        const query = dependencies && dependencies[1];
+        if (query && query.section) return { result: enabled ? { ...result, data: analysisPage(result.detailAnalysis, query.section, query.resource_ref) } : null, loading: false, error: null };
+        return { result: ++readIndex === 1 ? result : readIndex === 3 ? detail : null, loading: false, error: null };
+      },
+    });
+    return h.render(WorkbenchDashboardWorkspace, { initialContext: { scope: { category }, tab: 'analysis', ...(detail ? { item_ref: detail.data.item.item_ref } : {}) } }, states);
   }
   const unavailable = dashboardFixture();
   // Saved-run consistency failures remain separate even when the formal-plan source fails.
@@ -367,7 +394,7 @@ async function contract(h, assert) {
   for (const issue of [planIssue, materialIssue, candidateIssue]) once(unavailableTree, issue.message);
   const materialUnavailableTree = dashboardTree(await dashboardResult(dashboardFixture(), 'material'), 'material');
   once(materialUnavailableTree, materialIssue.message);
-  const itemsOnly = h.render(w.DashboardPanels.Gaps, { categories: unavailable.data.categories, selected: 'delivery' });
+  const itemsOnly = h.render(DashboardPanels.Gaps, { categories: unavailable.data.categories, selected: 'delivery' });
   once(itemsOnly, planIssue.message);
 
   // With a loaded plan, an invalid downtime supplies both an analysis-specific issue and a resource issue.
@@ -464,10 +491,10 @@ async function contract(h, assert) {
   const evidence = h.walk(independentTree).find(node => node.props['data-gap-source'] === gap.source_ref);
   assert(evidence && h.text(evidence).includes(gap.subject), 'Analysis ownership must retain category evaluation-gap evidence');
   // The pressure cause is owned once by the analysis area above; the pressure panel itself no longer repeats it.
-  assert(!h.text(h.render(w.DashboardPanels.Pressure, { data: d })).includes(pressureIssue.message), 'The pressure panel does not duplicate the analysis-owned pressure cause');
+  assert(!h.text(h.render(DashboardPanels.Pressure, { data: d })).includes(pressureIssue.message), 'The pressure panel does not duplicate the analysis-owned pressure cause');
   // A loaded run catalog renders each run's open action (a removed navigation flag must not stay referenced in the row).
   const runRef = h.reference(24), runNavigations = [];
-  const candidatesTree = h.render(w.DashboardPanels.Candidates, { navigate: target => runNavigations.push(target), data: { candidate_catalog: {
+  const candidatesTree = h.render(DashboardPanels.Candidates, { navigate: target => runNavigations.push(target), data: { candidate_catalog: {
     state: 'loaded', run_count: 1, issues: [], page: { total: 1, has_more: false },
     runs: [{ run_ref: runRef, accepted_at: '2026-01-05T08:00:00', state: 'completed', candidate_count: 2, scope_summary: { batch_count: 3 } }] } } });
   const runRow = h.walk(candidatesTree).find(node => node.type === 'tr' && node.props['data-run-ref'] === runRef);
@@ -485,8 +512,8 @@ async function contract(h, assert) {
   once(materialIndependentTree, pendingIssue.message);
   assert(h.walk(materialIndependentTree).some(node => node.props['data-gap-source'] === materialGap.source_ref), 'The material evaluation gap must remain available');
   // The pending-batch panel shows rows only; the material tab above is the single owner of the pool issue.
-  assert(!visible(h.render(w.DashboardAnalysisPanels.Material, { data: a })).includes(pendingIssue.message));
-  w.DashboardSession.useRead = dashboardRead; w.DashboardSession.useCommand = dashboardCommand;
+  assert(!visible(h.render(DashboardAnalysisPanels.Material, { data: a })).includes(pendingIssue.message));
+  h.setStub('DashboardSession.js', undefined);
 
   // Drive the actual command hooks through a rejected response, using in-memory storage only.
   async function rejection(useCommand, submit) {
@@ -518,33 +545,33 @@ async function contract(h, assert) {
   // Only the network answer is stubbed: the real contracts send the command and the transport's Q2-A verdict rejects it.
   const rejectedResponse = async () => new Response(JSON.stringify({ ok: false, committed: false, error: { code: 'stale_write', message: failure, fields: [], retryable: false, request_ref: '1'.repeat(32) } }),
     { status: 409, headers: { 'Content-Type': 'application/json' } });
-  const handling = { status: 'new', ...Object.fromEntries(w.DashboardContract.fields.map(key => [key, null])) };
+  const handling = { status: 'new', ...Object.fromEntries(DashboardContract.fields.map(key => [key, null])) };
   const item = { item_ref: h.reference(6), subject: '测试风险', handling, source: {}, risk: {}, write_context: { write_token: 'fixture', capabilities: { transition: true } } };
-  const dashboardRejected = await rejection(w.DashboardSession.useCommand,
+  const dashboardRejected = await rejection(DashboardSession.useCommand,
     command => command.submit(item, 'transition', { target_status: 'following', owner: '经办人', deadline: '2026-10-11', action: '核对', remark: '说明' }));
   assert.strictEqual(dashboardRejected.saved.phase, 'rejected');
-  const dashboardOutcome = h.render(w.DashboardHandling, { command: dashboardRejected });
+  const dashboardOutcome = h.render(DashboardHandling, { command: dashboardRejected });
   once(dashboardOutcome, failure); once(dashboardOutcome, '上次处置没有生效');
   assert(visible(dashboardOutcome).includes('完成'), 'The retained rejected action must still be finishable');
-  const dashboardPending = h.render(w.DashboardHandling, { command: { ...dashboardRejected, saved: { ...dashboardRejected.saved, phase: 'pending' }, error: null } });
-  once(dashboardPending, w.WorkbenchTerms.outcomes.pending('处置'));
+  const dashboardPending = h.render(DashboardHandling, { command: { ...dashboardRejected, saved: { ...dashboardRejected.saved, phase: 'pending' }, error: null } });
+  once(dashboardPending, WorkbenchTerms.outcomes.pending('处置'));
   assert(visible(dashboardPending).includes('查询结果'));
 
   const after = { sent: '2026-10-09T08:00:00', planned: '2026-10-11T08:00:00', returned: null, confirmedState: 'in_transit' };
   const target = { kind: 'single', batch_ref: h.reference(7), supplier_ref: h.reference(8), operation_refs: [h.reference(9)], grouping_basis: 'explicit_receipt_membership',
     batch: { ref: h.reference(7), business_code: 'B1', label: '批次' }, supplier: { ref: h.reference(8), label: '供应商' }, operations: [{ operation_ref: h.reference(9), business_code: 'OP1', label: '工序' }] };
-  const input = { ...after, target: w.OutsourcingContract.target(target), declared_operator: '经办人', reason: '登记说明' };
+  const input = { ...after, target: OutsourcingContract.target(target), declared_operator: '经办人', reason: '登记说明' };
   const preview = { ok: true, schema_version: 1, warnings: [], meta: { request_ref: '1'.repeat(32), source: 'production', time_basis: 'factory_local', snapshot_ref: null, as_of: '2026-10-10T08:00:00' },
     data: { input, target, before: null, after, outsourcing_ref: null, can_confirm: true, write_context: { write_token: 'fixture', capabilities: { confirm: true } },
       execution: { automatically_reported: false, operation_refs: target.operation_refs, service: 'WorkbenchProductionReportService', reason: '回厂仍需报工' } } };
-  const outsourcingRejected = await rejection(w.OutsourcingSession.useCommand, command => command.submit(preview));
+  const outsourcingRejected = await rejection(OutsourcingSession.useCommand, command => command.submit(preview));
   assert.strictEqual(outsourcingRejected.saved, null);
-  const outsourcingOutcome = h.render(w.OutsourcingControls.Editor, { command: outsourcingRejected });
+  const outsourcingOutcome = h.render(OutsourcingControls.Editor, { command: outsourcingRejected });
   once(outsourcingOutcome, failure); once(outsourcingOutcome, '上次外协登记没有生效');
   assert(visible(outsourcingOutcome).includes('预检核对'), 'A rejected registration must return to the editable form');
-  const outsourcingPending = h.render(w.OutsourcingControls.Editor, { command: { ...outsourcingRejected, error: null, notice: '',
+  const outsourcingPending = h.render(OutsourcingControls.Editor, { command: { ...outsourcingRejected, error: null, notice: '',
     saved: { phase: 'pending', target, after, input, request_key: 'outsourcing-' + '1'.repeat(48) } } });
-  once(outsourcingPending, w.WorkbenchTerms.outcomes.pending('外协登记'));
+  once(outsourcingPending, WorkbenchTerms.outcomes.pending('外协登记'));
   assert(visible(outsourcingPending).includes('查询结果'));
 
   // Start with an actual local-storage read failure. Neither domain may send a command until it recovers.
@@ -569,7 +596,7 @@ async function contract(h, assert) {
     buttons[0].props.onClick({ currentTarget: {}, preventDefault() {} });
     assert(h.updates().some(update => update.value === null), 'Refresh must actually retry and clear the storage failure');
   }
-  const storageDashboard = storageCommand(dashboardCommand);
+  const storageDashboard = storageCommand(DashboardSession.useCommand);
   await storageDashboard.command.submit(item, 'transition', {});
   assert.strictEqual(storageDashboard.calls(), 0);
   const storageResult = await dashboardResult(dashboardFixture(), 'delivery');
@@ -581,20 +608,21 @@ async function contract(h, assert) {
   assert(blockedHandling && blockedHandling.props.disabled && blockedHandling.props['aria-describedby'], 'Storage failure must keep handling disabled with an accessible explanation');
   // A retained open flag during a refresh does not hide the error when no actual modal can be rendered.
   recovery(dashboardTree(storageResult, 'delivery', storageDashboard.command, { Content: { 4: true } }), storageDashboard.command, false);
-  w.DashboardSession.useRead = dashboardRead; w.DashboardSession.useCommand = dashboardCommand;
+  h.setStub('DashboardSession.js', undefined);
 
-  const outsourcingRead = w.OutsourcingSession.useRead, outsourcingCommand = w.OutsourcingSession.useCommand;
-  const storageOutsourcing = storageCommand(outsourcingCommand);
+  const storageOutsourcing = storageCommand(OutsourcingSession.useCommand);
   await storageOutsourcing.command.submit(preview);
   assert.strictEqual(storageOutsourcing.calls(), 0);
-  w.OutsourcingSession.useRead = () => ({ result: null, loading: false, error: null });
-  w.OutsourcingSession.useCommand = () => storageOutsourcing.command;
-  recovery(h.render(w.OutsourcingWorkspace, {}), storageOutsourcing.command, false);
-  const outsourcingStorageModal = h.render(w.OutsourcingWorkspace, {}, { Content: { 2: { item: null } } });
+  h.setStub('OutsourcingSession.js', {
+    useRead: () => ({ result: null, loading: false, error: null }),
+    useCommand: () => storageOutsourcing.command,
+  });
+  recovery(h.render(OutsourcingWorkspace, {}), storageOutsourcing.command, false);
+  const outsourcingStorageModal = h.render(OutsourcingWorkspace, {}, { Content: { 2: { item: null } } });
   recovery(outsourcingStorageModal, storageOutsourcing.command, true);
   const blockedPreview = h.walk(outsourcingStorageModal).find(node => node.type === 'button' && visible(node) === '预检核对');
   assert(blockedPreview && blockedPreview.props.disabled, 'Storage failure must keep registration precheck disabled');
-  w.OutsourcingSession.useRead = outsourcingRead; w.OutsourcingSession.useCommand = outsourcingCommand;
+  h.setStub('OutsourcingSession.js', undefined);
   return { notice_checks: checked };
 }
 

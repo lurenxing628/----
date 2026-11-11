@@ -1,163 +1,172 @@
-(function () {
-  'use strict';
-  // Load after ResourceMaterialContract.js, ResourceMaterialPreview.jsx and ResourceForms.jsx.
-  // The host supplies a stable files adapter; mounting does not submit writes.
-  const C = window.APSResourceContract, S = window.APSResourceSession;
-  const { Button, Modal, Icon, ErrorBox, Issues } = window.ResourceControls;
-  const Feedback = window.ResourceForms.Feedback, Preview = window.ResourceMaterialPreview;
-  function Format({ value, onChange, disabled }) {
-    return <div className="rm-format"><span className="seclabel">文件格式</span><div className="seg" role="group" aria-label="文件格式">
-      {['xlsx', 'csv'].map(format => <button key={format} type="button" disabled={disabled} className={value === format ? 'on' : ''} aria-pressed={value === format} onClick={() => onChange(format)}>{format === 'xlsx' ? 'Excel (.xlsx)' : 'CSV (.csv)'}</button>)}</div></div>;
+import React from './shared/runtime/react.js';
+import C from './resource-contract.js';
+import S from './shared/session/command-session.js';
+import { useQuery } from './shared/session/query.js';
+import APSResourceMaterial from './ResourceMaterialContract.js';
+import { Button, Modal, Icon, ErrorBox, Issues } from './ResourceControls.jsx';
+import { Feedback } from './ResourceForms.jsx';
+import Preview from './ResourceMaterialPreview.jsx';
+import WorkbenchGuards from './WorkbenchGuards.js';
+import WorkbenchFormat from './WorkbenchFormat.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
+import { WorkbenchReference } from './WorkbenchReferences.jsx';
+
+function Format({ value, onChange, disabled }) {
+  return <div className="rm-format"><span className="seclabel">文件格式</span><div className="seg" role="group" aria-label="文件格式">
+    {['xlsx', 'csv'].map(format => <button key={format} type="button" disabled={disabled} className={value === format ? 'on' : ''} aria-pressed={value === format} onClick={() => onChange(format)}>{format === 'xlsx' ? 'Excel (.xlsx)' : 'CSV (.csv)'}</button>)}</div></div>;
+}
+function ExportOptions({ selection, setSelection, refs, disabled, kind, scopeLabel }) {
+  return <fieldset style={{ border: 0, margin: 0, padding: 0 }} disabled={disabled}><legend className="seclabel">导出范围</legend>
+    {[['filtered', '当前筛选结果', '当前搜索与状态筛选下的全部记录，不限当前页'], ['all', '全部' + scopeLabel, '忽略搜索与状态筛选，导出全部' + scopeLabel + (kind === 'op_type' ? '，保留当前工种类别' : '')], ['selected', '已选' + scopeLabel, refs.length + ' 条，含非当前页和当前筛选外的勾选记录']].map(([key, title, detail]) =>
+      <label key={key} className={'iorow' + (selection === key ? ' on' : '')}><input type="radio" name={kind + '-export-scope'} value={key} checked={selection === key} onChange={() => setSelection(key)} />
+        <div><div className="iotitle">{title}</div><div className="iosub">{detail}</div></div></label>)}</fieldset>;
+}
+function ResourceFileActionFlow({ adapter, mode, request, onClose, onCommitted, contract: M }) {
+  // 宿主（ResourceLive 的恢复入口、ResourceWorkspace.openExternal、openCalendarFile）每次新建 request，refs 恒为数组、scope 恒为对象，无人原地改写。
+  const [original] = React.useState(request);
+  const [format, setFormat] = React.useState('xlsx'), [file, setFile] = React.useState(null);
+  // 导出范围默认是三档单选里的"还没选"；给了 ExportScope 的契约自己决定初值（日历用的是日期区间）。
+  const [selection, setSelection] = React.useState(() => M.exportScopeInitial === undefined ? '' : M.exportScopeInitial);
+  const [job, setJob] = React.useState(null), [error, setError] = React.useState(null), [acknowledged, setAcknowledged] = React.useState(false);
+  const [download, setDownload] = React.useState({ busy: false, name: null }), [now, setNow] = React.useState(Date.now());
+  const command = S.useCommand(adapter), notified = React.useRef(null), alive = React.useRef(true), downloadAbort = React.useRef(null);
+  const category = command.intent ? command.intent.category : original.scope.category;
+  const label = M.resourceLabel ? M.resourceLabel(category) : M.label;
+  const effectiveMode = command.intent && ['sending', 'pending', 'checking', 'done'].includes(command.phase)
+    ? ({ [M.kind + '_import']: 'import', [M.kind + '_bulk']: 'bulk' })[command.intent.kind] || mode : mode;
+  const isExport = effectiveMode === 'export', done = command.phase === 'done', recovery = original.recovery === true;
+  // 已选文件或已有预检结果都算未完成的填写：关闭弹窗前先过离开守卫，和工艺文件导入一致。
+  const dirty = !done && !command.locked && (effectiveMode === 'import' ? !!file || !!job : effectiveMode === 'bulk' && !!job);
+  const guardOwner = WorkbenchGuards.useDirtyGuard({ dirty, locked: command.locked, message: label + (isExport ? '导出' : effectiveMode === 'bulk' ? '删除' : '导入') + '还没有完成，离开会放弃已选文件和预检结果。' });
+  const query = useQuery(async signal => {
+    let body;
+    if (effectiveMode === 'import') {
+      await M.validateFile(job.file, job.format);
+      body = new FormData(); body.append('file', job.file); body.append('format', job.format); body.append('mode', 'upsert');
+      if (M.kind === 'op_type') body.append('category', M.category(original));
+    } else body = job.body;
+    const raw = await adapter.preview(M.paths[effectiveMode], body, signal);
+    if (isExport) {
+      const result = M.exportPreview(raw, job.selection, job.body);
+      if (M.rowsMatchSelection && job.selection === 'selected' && result.data.row_count !== M.selection(original).length)
+        throw C.failure('导出预检数量与勾选的' + label + '不一致，没有开始下载。');
+      return result;
+    }
+    return M.preview(raw, effectiveMode, effectiveMode === 'import' ? job.format : M.selection(original), original);
+  }, [adapter, job, effectiveMode, M], !!job);
+  const result = query.result, data = result && result.data;
+  const activeRead = !!job && query.loading;
+  const controlsDisabled = command.locked || done || activeRead || download.busy;
+  React.useEffect(() => () => { alive.current = false; if (downloadAbort.current) downloadAbort.current.abort(); }, []);
+  React.useEffect(() => {
+    if (!data) return undefined;
+    const remaining = Date.parse(data.expires_at) - Date.now();
+    if (remaining <= 0) { setNow(Date.now()); return undefined; }
+    const timer = setTimeout(() => setNow(Date.now()), Math.min(remaining + 1, 2147483647));
+    return () => clearTimeout(timer);
+  }, [data]);
+  React.useEffect(() => {
+    if (!done || notified.current === command.intent.request_key) return;
+    notified.current = command.intent.request_key;
+    Promise.resolve().then(() => onCommitted(command.result)).catch(failure => {
+      if (alive.current) setError(C.failure('已保存，但列表刷新失败：' + C.message(failure)));
+    });
+  }, [done, command.intent, command.result, onCommitted]);
+  async function close(detail) {
+    if (command.locked) return;
+    if (!(detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner) && !await WorkbenchGuards.confirmLeave({ owner: guardOwner })) return;
+    if (!command.reset()) return;
+    if (downloadAbort.current) downloadAbort.current.abort();
+    onClose();
   }
-  function ExportOptions({ selection, setSelection, refs, disabled, kind, scopeLabel }) {
-    return <fieldset style={{ border: 0, margin: 0, padding: 0 }} disabled={disabled}><legend className="seclabel">导出范围</legend>
-      {[['filtered', '当前筛选结果', '当前搜索与状态筛选下的全部记录，不限当前页'], ['all', '全部' + scopeLabel, '忽略搜索与状态筛选，导出全部' + scopeLabel + (kind === 'op_type' ? '，保留当前工种类别' : '')], ['selected', '已选' + scopeLabel, refs.length + ' 条，含非当前页和当前筛选外的勾选记录']].map(([key, title, detail]) =>
-        <label key={key} className={'iorow' + (selection === key ? ' on' : '')}><input type="radio" name={kind + '-export-scope'} value={key} checked={selection === key} onChange={() => setSelection(key)} />
-          <div><div className="iotitle">{title}</div><div className="iosub">{detail}</div></div></label>)}</fieldset>;
+  function invalidate() { setJob(null); setAcknowledged(false); setError(null); setDownload({ busy: false, name: null }); }
+  function chooseFormat(value) { if (!controlsDisabled) { invalidate(); setFormat(value); } }
+  function chooseFile(files) {
+    if (controlsDisabled) return;
+    invalidate(); setFile(null);
+    if (!files || files.length !== 1) { setError(C.failure('一次只能选择一个 CSV 或 XLSX 文件。')); return; }
+    setFile(files[0]);
   }
-  function Actions({ adapter, mode, request, onClose, onCommitted, contract: M }) {
-    // 宿主（ResourceLive 的恢复入口、ResourceWorkspace.openExternal、openCalendarFile）每次新建 request，refs 恒为数组、scope 恒为对象，无人原地改写。
-    const [original] = React.useState(request);
-    const [format, setFormat] = React.useState('xlsx'), [file, setFile] = React.useState(null);
-    // 导出范围默认是三档单选里的"还没选"；给了 ExportScope 的契约自己决定初值（日历用的是日期区间）。
-    const [selection, setSelection] = React.useState(() => M.exportScopeInitial === undefined ? '' : M.exportScopeInitial);
-    const [job, setJob] = React.useState(null), [error, setError] = React.useState(null), [acknowledged, setAcknowledged] = React.useState(false);
-    const [download, setDownload] = React.useState({ busy: false, name: null }), [now, setNow] = React.useState(Date.now());
-    const command = S.useCommand(adapter), notified = React.useRef(null), alive = React.useRef(true), downloadAbort = React.useRef(null);
-    const category = command.intent ? command.intent.category : original.scope.category;
-    const label = M.resourceLabel ? M.resourceLabel(category) : M.label;
-    const effectiveMode = command.intent && ['sending', 'pending', 'checking', 'done'].includes(command.phase)
-      ? ({ [M.kind + '_import']: 'import', [M.kind + '_bulk']: 'bulk' })[command.intent.kind] || mode : mode;
-    const isExport = effectiveMode === 'export', done = command.phase === 'done', recovery = original.recovery === true;
-    // 已选文件或已有预检结果都算未完成的填写：关闭弹窗前先过离开守卫，和工艺文件导入一致。
-    const dirty = !done && !command.locked && (effectiveMode === 'import' ? !!file || !!job : effectiveMode === 'bulk' && !!job);
-    const guardOwner = window.WorkbenchGuards.useDirtyGuard({ dirty, locked: command.locked, message: label + (isExport ? '导出' : effectiveMode === 'bulk' ? '删除' : '导入') + '还没有完成，离开会放弃已选文件和预检结果。' });
-    const query = S.useQuery(async signal => {
-      let body;
-      if (effectiveMode === 'import') {
-        await M.validateFile(job.file, job.format);
-        body = new FormData(); body.append('file', job.file); body.append('format', job.format); body.append('mode', 'upsert');
-        if (M.kind === 'op_type') body.append('category', M.category(original));
-      } else body = job.body;
-      const raw = await adapter.preview(M.paths[effectiveMode], body, signal);
-      if (isExport) {
-        const result = M.exportPreview(raw, job.selection, original);
-        if (M.rowsMatchSelection && job.selection === 'selected' && result.data.row_count !== M.selection(original).length)
-          throw C.failure('导出预检数量与勾选的' + label + '不一致，没有开始下载。');
-        return result;
-      }
-      return M.preview(raw, effectiveMode, effectiveMode === 'import' ? job.format : M.selection(original), original);
-    }, [adapter, job, effectiveMode, M], !!job);
-    const result = query.result, data = result && result.data;
-    const activeRead = !!job && query.loading;
-    const controlsDisabled = command.locked || done || activeRead || download.busy;
-    React.useEffect(() => () => { alive.current = false; if (downloadAbort.current) downloadAbort.current.abort(); }, []);
-    React.useEffect(() => {
-      if (!data) return undefined;
-      const remaining = Date.parse(data.expires_at) - Date.now();
-      if (remaining <= 0) { setNow(Date.now()); return undefined; }
-      const timer = window.setTimeout(() => setNow(Date.now()), Math.min(remaining + 1, 2147483647));
-      return () => window.clearTimeout(timer);
-    }, [data]);
-    React.useEffect(() => {
-      if (!done || notified.current === command.intent.request_key) return;
-      notified.current = command.intent.request_key;
-      Promise.resolve().then(() => onCommitted(command.result)).catch(failure => {
-        if (alive.current) setError(C.failure('已保存，但列表刷新失败：' + C.message(failure)));
-      });
-    }, [done, command.intent, command.result, onCommitted]);
-    async function close(detail) {
-      if (command.locked) return;
-      if (!(detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner) && !await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) return;
-      if (!command.reset()) return;
-      if (downloadAbort.current) downloadAbort.current.abort();
-      onClose();
-    }
-    function invalidate() { setJob(null); setAcknowledged(false); setError(null); setDownload({ busy: false, name: null }); }
-    function chooseFormat(value) { if (!controlsDisabled) { invalidate(); setFormat(value); } }
-    function chooseFile(files) {
-      if (controlsDisabled) return;
-      invalidate(); setFile(null);
-      if (!files || files.length !== 1) { setError(C.failure('一次只能选择一个 CSV 或 XLSX 文件。')); return; }
-      setFile(files[0]);
-    }
-    function preflight() {
-      if (controlsDisabled || recovery) return;
-      if (!command.reset()) return;
-      setError(null); setAcknowledged(false); setDownload({ busy: false, name: null });
-      if (effectiveMode === 'import' && !file) { setError(C.failure('请先选择文件。')); return; }
-      if (isExport && !selection) { setError(C.failure('请先选择导出范围。')); return; }
-      try {
-        if (M.category) M.category(original);
-        if (effectiveMode === 'bulk' && !M.selection(original).length) throw C.failure('未选中' + label + '，请选择后重试。');
-        const body = effectiveMode !== 'import' ? M.requestBody(effectiveMode, original, selection) : null;
-        setJob({ file, format, selection, body }); setNow(Date.now());
-      } catch (failure) { setJob(null); setError(failure); }
-    }
-    const needsAcknowledgement = data && !isExport && (effectiveMode === 'bulk' || data.rows.some(row => row.requires_confirmation));
-    const expired = data && now >= Date.parse(data.expires_at);
-    let reason = isExport ? '' : M.blocked(result, M.source(original));
-    if (expired) reason = '预检结果已过期，请重新预检。';
-    if (needsAcknowledgement && !acknowledged && !reason) reason = '请先核对并勾选确认项。';
-    if (command.phase === 'rejected') reason = '本次没有提交。请重新预检后再确认。';
-    function confirm() {
-      if (controlsDisabled || reason || !data) return;
-      command.submit(M.kind + (effectiveMode === 'import' ? '_import' : '_bulk'), 'confirm', data.preview_ref,
-        data.write_context, { preview_ref: data.preview_ref }, M.category ? M.category(original) : undefined);
-    }
-    async function downloadFile(template) {
-      if (controlsDisabled || !template && (!data || expired)) return;
-      if (!template && !data.formats.includes(format)) { setError(C.failure('这次导出预检不支持所选文件格式，请重新预检。')); return; }
-      const controller = new AbortController(); downloadAbort.current = controller;
-      setDownload({ busy: true, name: null }); setError(null);
-      try {
-        const scope = template ? { format } : { export_ref: data.export_ref, format };
-        if (template && M.kind === 'op_type') scope.category = M.category(original);
-        const response = await adapter.download(template ? M.paths.template : M.paths.download, scope, controller.signal);
-        if (controller.signal.aborted || !alive.current) return;
-        const name = M.saveDownload(response, format);
-        if (alive.current) setDownload({ busy: false, name });
-      } catch (failure) { if (alive.current && !controller.signal.aborted) { setDownload({ busy: false, name: null }); setError(failure); } }
-      finally { if (downloadAbort.current === controller) downloadAbort.current = null; }
-    }
-    const title = ({ import: '批量导入', export: '批量导出', bulk: '批量删除' }[effectiveMode] || '操作') + ' · ' + label;
-    return <div className={'plana rm-actions' + (data && !isExport ? ' rm-wide' : '')}>
-      <Modal title={title} icon={effectiveMode === 'bulk' ? 'trash-2' : isExport ? 'file-output' : 'file-input'} onClose={close} guardOwner={guardOwner} locked={command.locked}
-        footer={<><Button onClick={() => close()} reason={command.locked ? '结果还没确认，暂时不能关闭。' : ''}>{done || download.name ? '完成' : '取消'}</Button>
-          {!done && !command.locked && !recovery && <Button icon="check" onClick={preflight} busy={activeRead} disabled={download.busy}>{data || query.error || command.phase === 'rejected' ? '重新预检' : '开始预检'}</Button>}
-          {isExport && data && <Button transfer="export" className="btn primary wb-action wb-primary" disabled={controlsDisabled} reason={expired ? '预检结果已过期，请重新预检。' : ''} onClick={() => downloadFile(false)}>下载文件</Button>}
-          {!isExport && !done && data && <Button icon={effectiveMode === 'bulk' ? 'trash-2' : 'check'} className={'btn ' + (effectiveMode === 'bulk' ? 'danger' : 'primary wb-action wb-primary')} busy={command.locked} disabled={controlsDisabled} reason={reason} onClick={confirm}>{effectiveMode === 'bulk' ? '确认删除' : '确认导入'}</Button>}</>}>
-        <div className="modal-b scroll rm-body">
-          {!recovery && !command.intent && !M.source(original) && <p role="status">尚未读取生产资料，不能提交{label}变更。</p>}
-          {recovery && !command.intent && !command.error && <p role="status">读不到上次操作的编号，没有执行其他{label}操作。</p>}
-          {!recovery && !done && !command.locked && effectiveMode === 'import' && !data && <div className="iopane on">
-            <Format value={format} onChange={chooseFormat} disabled={controlsDisabled} />
-            <div className="tmpl-row"><span className="tmpl-ico"><Icon name="file-input" /></span><div><div className="tmpl-t">{label}导入模板.{format}</div><div className="tmpl-s">{M.templateHint || '空白表头模板，不含示例物料'}</div></div><Button className="mini" transfer="template" disabled={controlsDisabled} onClick={() => downloadFile(true)}>下载模板</Button></div>
-            <div className={'drop rm-upload' + (file ? ' has' : '')} aria-disabled={controlsDisabled} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); chooseFile(event.dataTransfer.files); }}>
-              <div className="di"><Icon name="file-input" /></div><div className="dt">{file ? file.name : '选择 CSV / XLSX 文件'}</div><div className="ds">{file ? window.WorkbenchFormat.number(file.size, { digits: 0 }) + ' 字节 · 单次导入最多 2,000 行' : '单次导入最多 2,000 行'}</div>
-              <input type="file" aria-label={'选择' + label + '导入文件'} accept=".csv,.xlsx" disabled={controlsDisabled} onChange={event => { chooseFile(event.target.files); event.target.value = ''; }} /></div>
-            <p className="iohint">{M.importHint || <>按编号增量更新：编号已有的更新，没有的新增，文件以外的物料不会删除。空白格保持原值；要清除规格、单位或备注，请在格子里填 <code>{'\\N'}</code>（大写）。</>}</p>
-          </div>}
-          {!done && !command.locked && effectiveMode === 'import' && data && <div className="tmpl-row"><span className="tmpl-ico"><Icon name="file-input" /></span>
-            <div><div className="tmpl-t">{file && file.name}</div><div className="tmpl-s">{format.toUpperCase()} · 按编号增量更新 · {data.rows.length} 行</div></div><Button icon="file-input" disabled={controlsDisabled} onClick={invalidate}>更换文件</Button></div>}
-          {!recovery && !done && !command.locked && isExport && <div className="iopane on">
-            {M.ExportScope ? <M.ExportScope value={selection} onChange={value => { invalidate(); setSelection(value); }} disabled={controlsDisabled} refs={original.refs} error={error} />
-              : <ExportOptions selection={selection} setSelection={value => { invalidate(); setSelection(value); }} refs={original.refs} disabled={controlsDisabled} scopeLabel={M.scopeLabel || label} kind={M.kind} />}
-            <Format value={format} onChange={chooseFormat} disabled={controlsDisabled} /></div>}
-          {!done && effectiveMode === 'bulk' && (!recovery || command.intent) && (recovery || command.intent && !job ? <p>正在查询上次批量删除的结果，当前列表里新勾选的还没提交。</p> :
-            <p>本次勾选了 <b>{original.refs.length}</b> 条{label}，含非当前页和当前筛选外的勾选项。</p>)}
-          {activeRead && <p role="status">正在读取完整预检结果，尚未写入数据…</p>}
-          <ErrorBox error={error} excludePaths={isExport && Array.isArray(M.exportFieldPaths) ? M.exportFieldPaths : []} /><ErrorBox error={query.error} /><Issues issues={result ? result.warnings : undefined} />
-          {data && !isExport && <><Preview data={data} mode={effectiveMode} contract={M} label={label} /><p className="iohint">本批整体确认；任意一行校验不通过，全部不写入。</p>
-            {needsAcknowledgement && !done && <label className="rm-check"><input type="checkbox" checked={acknowledged} disabled={controlsDisabled} onChange={event => setAcknowledged(event.target.checked)} /><span>{effectiveMode === 'bulk' ? '已核对完整删除范围及明细，确认删除这些' + label + '。' : M.acknowledgeHint}</span></label>}
-          </>}
-          {data && isExport && <p role="status">已核对导出范围：<b>{data.row_count}</b> 条 · {format.toUpperCase()}{expired ? ' · 预检结果已过期' : ''}</p>}
-          {download.busy && <p role="status">正在读取下载文件…</p>}{download.name && <p role="status">{window.WorkbenchTerms.download_started(download.name)}</p>}
-          {!isExport && <Feedback command={command} />}
-          {command.intent && <window.WorkbenchReference entries={{ '操作编号': command.intent.request_key }} />}
-          {done && <p role="status">{Number.isSafeInteger(command.result.data.deleted_count) ? '已删除 ' + command.result.data.deleted_count + ' 条。' : command.result.data.summary ? '导入结果已确认。' : '已查到上次操作的完成结果。'}</p>}
-        </div></Modal></div>;
+  function preflight() {
+    if (controlsDisabled || recovery) return;
+    if (!command.reset()) return;
+    setError(null); setAcknowledged(false); setDownload({ busy: false, name: null });
+    if (effectiveMode === 'import' && !file) { setError(C.failure('请先选择文件。')); return; }
+    if (isExport && !selection) { setError(C.failure('请先选择导出范围。')); return; }
+    try {
+      if (M.category) M.category(original);
+      if (effectiveMode === 'bulk' && !M.selection(original).length) throw C.failure('未选中' + label + '，请选择后重试。');
+      const body = effectiveMode !== 'import' ? M.requestBody(effectiveMode, original, selection) : null;
+      setJob({ file, format, selection, body }); setNow(Date.now());
+    } catch (failure) { setJob(null); setError(failure); }
   }
-  window.ResourceFileActionFlow = Actions;
-  window.ResourceMaterialActions = props => <Actions {...props} contract={window.APSResourceMaterial} />;
-})();
+  const needsAcknowledgement = data && !isExport && (effectiveMode === 'bulk' || data.rows.some(row => row.requires_confirmation));
+  const expired = data && now >= Date.parse(data.expires_at);
+  let reason = isExport ? '' : M.blocked(result, M.source(original));
+  if (expired) reason = '预检结果已过期，请重新预检。';
+  if (needsAcknowledgement && !acknowledged && !reason) reason = '请先核对并勾选确认项。';
+  if (command.phase === 'rejected') reason = '本次没有提交。请重新预检后再确认。';
+  function confirm() {
+    if (controlsDisabled || reason || !data) return;
+    command.submit(M.kind + (effectiveMode === 'import' ? '_import' : '_bulk'), 'confirm', data.preview_ref,
+      data.write_context, { preview_ref: data.preview_ref }, M.category ? M.category(original) : undefined);
+  }
+  async function downloadFile(template) {
+    if (controlsDisabled || !template && (!data || expired)) return;
+    if (!template && !data.formats.includes(format)) { setError(C.failure('这次导出预检不支持所选文件格式，请重新预检。')); return; }
+    const controller = new AbortController(); downloadAbort.current = controller;
+    setDownload({ busy: true, name: null }); setError(null);
+    try {
+      const scope = template ? { format } : { export_ref: data.export_ref, format };
+      if (template && M.kind === 'op_type') scope.category = M.category(original);
+      const response = await adapter.download(template ? M.paths.template : M.paths.download, scope, controller.signal);
+      if (controller.signal.aborted || !alive.current) return;
+      const name = M.saveDownload(response, format);
+      if (alive.current) setDownload({ busy: false, name });
+    } catch (failure) { if (alive.current && !controller.signal.aborted) { setDownload({ busy: false, name: null }); setError(failure); } }
+    finally { if (downloadAbort.current === controller) downloadAbort.current = null; }
+  }
+  const title = ({ import: '批量导入', export: '批量导出', bulk: '批量删除' }[effectiveMode] || '操作') + ' · ' + label;
+  return <div className={'plana rm-actions' + (data && !isExport ? ' rm-wide' : '')}>
+    <Modal title={title} icon={effectiveMode === 'bulk' ? 'trash-2' : isExport ? 'file-output' : 'file-input'} onClose={close} guardOwner={guardOwner} locked={command.locked}
+      footer={<><Button onClick={() => close()} reason={command.locked ? '结果还没确认，暂时不能关闭。' : ''}>{done || download.name ? '完成' : '取消'}</Button>
+        {!done && !command.locked && !recovery && <Button icon="check" onClick={preflight} busy={activeRead} disabled={download.busy}>{data || query.error || command.phase === 'rejected' ? '重新预检' : '开始预检'}</Button>}
+        {isExport && data && <Button transfer="export" className="btn primary wb-action wb-primary" disabled={controlsDisabled} reason={expired ? '预检结果已过期，请重新预检。' : ''} onClick={() => downloadFile(false)}>下载文件</Button>}
+        {!isExport && !done && data && <Button icon={effectiveMode === 'bulk' ? 'trash-2' : 'check'} className={'btn ' + (effectiveMode === 'bulk' ? 'danger' : 'primary wb-action wb-primary')} busy={command.locked} disabled={controlsDisabled} reason={reason} onClick={confirm}>{effectiveMode === 'bulk' ? '确认删除' : '确认导入'}</Button>}</>}>
+      <div className="modal-b scroll rm-body">
+        {!recovery && !command.intent && !M.source(original) && <p role="status">尚未读取生产资料，不能提交{label}变更。</p>}
+        {recovery && !command.intent && !command.error && <p role="status">读不到上次操作的编号，没有执行其他{label}操作。</p>}
+        {!recovery && !done && !command.locked && effectiveMode === 'import' && !data && <div className="iopane on">
+          <Format value={format} onChange={chooseFormat} disabled={controlsDisabled} />
+          <div className="tmpl-row"><span className="tmpl-ico"><Icon name="file-input" /></span><div><div className="tmpl-t">{label}导入模板.{format}</div><div className="tmpl-s">{M.templateHint || '空白表头模板，不含示例物料'}</div></div><Button className="mini" transfer="template" disabled={controlsDisabled} onClick={() => downloadFile(true)}>下载模板</Button></div>
+          <div className={'drop rm-upload' + (file ? ' has' : '')} aria-disabled={controlsDisabled} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); chooseFile(event.dataTransfer.files); }}>
+            <div className="di"><Icon name="file-input" /></div><div className="dt">{file ? file.name : '选择 CSV / XLSX 文件'}</div><div className="ds">{file ? WorkbenchFormat.number(file.size, { digits: 0 }) + ' 字节 · 单次导入最多 2,000 行' : '单次导入最多 2,000 行'}</div>
+            <input type="file" aria-label={'选择' + label + '导入文件'} accept=".csv,.xlsx" disabled={controlsDisabled} onChange={event => { chooseFile(event.target.files); event.target.value = ''; }} /></div>
+          <p className="iohint">{M.importHint || <>按编号增量更新：编号已有的更新，没有的新增，文件以外的物料不会删除。空白格保持原值；要清除规格、单位或备注，请在格子里填 <code>{'\\N'}</code>（大写）。</>}</p>
+        </div>}
+        {!done && !command.locked && effectiveMode === 'import' && data && <div className="tmpl-row"><span className="tmpl-ico"><Icon name="file-input" /></span>
+          <div><div className="tmpl-t">{file && file.name}</div><div className="tmpl-s">{format.toUpperCase()} · 按编号增量更新 · {data.rows.length} 行</div></div><Button icon="file-input" disabled={controlsDisabled} onClick={invalidate}>更换文件</Button></div>}
+        {!recovery && !done && !command.locked && isExport && <div className="iopane on">
+          {M.ExportScope ? <M.ExportScope value={selection} onChange={value => { invalidate(); setSelection(value); }} disabled={controlsDisabled} refs={original.refs} error={error} />
+            : <ExportOptions selection={selection} setSelection={value => { invalidate(); setSelection(value); }} refs={original.refs} disabled={controlsDisabled} scopeLabel={M.scopeLabel || label} kind={M.kind} />}
+          <Format value={format} onChange={chooseFormat} disabled={controlsDisabled} /></div>}
+        {!done && effectiveMode === 'bulk' && (!recovery || command.intent) && (recovery || command.intent && !job ? <p>正在查询上次批量删除的结果，当前列表里新勾选的还没提交。</p> :
+          <p>本次勾选了 <b>{original.refs.length}</b> 条{label}，含非当前页和当前筛选外的勾选项。</p>)}
+        {activeRead && <p role="status">正在读取完整预检结果，尚未写入数据…</p>}
+        <ErrorBox error={error} excludePaths={isExport && Array.isArray(M.exportFieldPaths) ? M.exportFieldPaths : []} /><ErrorBox error={query.error} /><Issues issues={result ? result.warnings : undefined} />
+        {data && !isExport && <><Preview data={data} mode={effectiveMode} contract={M} label={label} /><p className="iohint">本批整体确认；任意一行校验不通过，全部不写入。</p>
+          {needsAcknowledgement && !done && <label className="rm-check"><input type="checkbox" checked={acknowledged} disabled={controlsDisabled} onChange={event => setAcknowledged(event.target.checked)} /><span>{effectiveMode === 'bulk' ? '已核对完整删除范围及明细，确认删除这些' + label + '。' : M.acknowledgeHint}</span></label>}
+        </>}
+        {data && isExport && <p role="status">已核对导出范围：<b>{data.row_count}</b> 条 · {format.toUpperCase()}{expired ? ' · 预检结果已过期' : ''}</p>}
+        {download.busy && <p role="status">正在读取下载文件…</p>}{download.name && <p role="status">{WorkbenchTerms.download_started(download.name)}</p>}
+        {!isExport && <Feedback command={command} />}
+        {command.intent && <WorkbenchReference entries={{ '操作编号': command.intent.request_key }} />}
+        {done && <p role="status">{Number.isSafeInteger(command.result.data.deleted_count) ? '已删除 ' + command.result.data.deleted_count + ' 条。' : command.result.data.summary ? '导入结果已确认。' : '已查到上次操作的完成结果。'}</p>}
+      </div></Modal></div>;
+}
+function ResourceMaterialActions(props) {
+  return <ResourceFileActionFlow {...props} contract={APSResourceMaterial} />;
+}
+
+export { ResourceMaterialActions, ResourceFileActionFlow };
+export default ResourceMaterialActions;

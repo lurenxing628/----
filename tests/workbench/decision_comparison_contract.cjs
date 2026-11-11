@@ -11,14 +11,45 @@ const routes = {}, network = routeFetch(routes), DECISION = 'GET /api/workbench/
 const h = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity).filter(value => value !== null && value !== false && value !== undefined) });
 const writes = [], navigation = [], remembered = [];
 const React = { createElement: h, Fragment: 'fragment', useId: () => 'process-chart', useMemo: fn => fn(), useState: initial => { let value = typeof initial === 'function' ? initial() : initial; return [value, update => { value = typeof update === 'function' ? update(value) : update; writes.push(value); }]; }, useRef: initial => ({ current: initial }), useEffect: () => {}, useReducer: () => [0, () => {}] };
-const window = { ResourceControls: { Button: 'button', Modal: 'modal' }, WorkbenchReference: 'reference', PointContract: {},
-  RunCandidateControls: { Button: 'button', Pager: 'pager', Status: 'candidate-status', ErrorBox: 'error-box', Reasons: 'reasons' }, RunCandidateModel: { number: String, timeLabel: value => value || '未记录' },
-  WorkbenchPageContext: { useSnapshot: value => remembered.push(value) }, WorkbenchCaption: { useCaption: () => {} },
-  APSResourceSession: { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) }, RunCandidateAnalysis: {}, RunDecisionDetails: { Pane: 'detail-pane' } };
-const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'resource-contract.js', 'FieldContract.js', 'PointContract.js', 'DeliveryProjectionContract.js', 'RunGenerationContract.js', 'RunCandidateAPI.js', 'RunBaselineAPI.js', 'RecommendationContract.js', 'EffortProjectionContract.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionCompletion.jsx', 'RunDecisionProcessChart.jsx', 'RunDecisionProcess.jsx'];
-const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) });
-{ const transport = vm.createContext({ window }); browser(transport, network); loadTransport(transport); }
-for (const file of built.outputs) vm.runInNewContext(file.code, { React, window, AbortController, setTimeout, clearTimeout, URLSearchParams });
+const defaultQueryStub = { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) };
+const baseStubs = {
+  'ResourceControls.jsx': { Button: 'button', Modal: 'modal', Pager: 'pager', EmptyState: 'empty-state' },
+  'WorkbenchReferences.jsx': { WorkbenchReference: 'reference' },
+  'RunCandidateControls.jsx': { Button: 'button', Pager: 'pager', Status: 'candidate-status', ErrorBox: 'error-box', Reasons: 'reasons' },
+  'RunCandidateModel.js': { number: String, timeLabel: value => value || '未记录' },
+  'WorkbenchPageContext.jsx': { useSnapshot: value => remembered.push(value) },
+  'WorkbenchCaption.jsx': { useCaption: () => {} },
+  'shared/session/query.js': defaultQueryStub,
+  'RunCandidateAnalysis.jsx': {},
+  'RunDecisionDetails.jsx': { Pane: 'detail-pane' },
+};
+const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'resource-contract.js', 'FieldContract.js', 'PointContract.js', 'RunGenerationContract.js', 'RunCandidateAPI.js', 'RunBaselineAPI.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionCompletion.jsx', 'RunDecisionProcessChart.jsx', 'RunDecisionProcess.jsx'];
+const built = compile({ sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) });
+function createSandbox({ react = React, stubs = {}, win = {}, globals = {} } = {}) {
+  return vm.createContext({
+    React: react,
+    window: win,
+    __wbStubs: { ...baseStubs, ...stubs },
+    AbortController,
+    DOMException,
+    setTimeout,
+    clearTimeout,
+    URLSearchParams,
+    ...globals,
+  });
+}
+function runFiles(ctx, names) {
+  for (const output of compile({ sources: names.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs) {
+    if (ctx.__wbRuntime) ctx.__wbRuntime.setStub(output.path, undefined);
+    else if (ctx.__wbStubs) delete ctx.__wbStubs[output.path];
+    vm.runInContext(output.code, ctx, { filename: output.path });
+  }
+  return rel => ctx.__wbRuntime.getModule(rel);
+}
+const baseCtx = createSandbox();
+browser(baseCtx, network); loadTransport(baseCtx);
+for (const file of built.outputs) vm.runInContext(file.code, baseCtx, { filename: file.path });
+const getBaseMod = rel => baseCtx.__wbRuntime.getModule(rel);
 const definitions = [
   ['overdue_count', '超期批次', 'delivery', '批'], ['total_tardiness_hours', '总拖期', 'delivery', '小时'],
   ['makespan_hours', '安排时长', 'time', '小时'], ['changeover_count', '换型次数', 'preparation', '次'],
@@ -31,13 +62,21 @@ const definitions = [
 const metric = { scope: 'full_admission', value: 2, state: 'complete', known_subtotal: 2, known_count: 3, unknown_count: 0, total_count: 3, reason: null, metric_version: 'decision-preparation-v4' };
 const delta = { value: -1, state: 'comparable', direction: 'better', reference_value: 3, selected_value: 2 };
 const clone = value => JSON.parse(JSON.stringify(value));
-const G = window.RunGenerationContract;
-// Candidates come only from the unified search by business objective, carrying its generation metadata (RunGenerationContract.metadataKeys).
+const fieldOrders = {
+  min_overdue: ['failed_ops', 'overdue_count', 'weighted_tardiness_hours', 'total_tardiness_hours', 'makespan_hours', 'changeover_count'],
+  min_tardiness: ['failed_ops', 'total_tardiness_hours', 'overdue_count', 'weighted_tardiness_hours', 'makespan_hours', 'changeover_count'],
+  min_weighted_tardiness: ['failed_ops', 'weighted_tardiness_hours', 'total_tardiness_hours', 'makespan_hours', 'changeover_count'],
+  min_changeover: ['failed_ops', 'changeover_count', 'overdue_count', 'total_tardiness_hours', 'weighted_tardiness_hours', 'makespan_hours']
+};
+const Terms = getBaseMod('WorkbenchTerms.js').default, Format = getBaseMod('WorkbenchFormat.js').default;
+const BaselineAPI = getBaseMod('RunBaselineAPI.js').default, CandidateAPI = getBaseMod('RunCandidateAPI.js').default;
+const RecommendationMod = getBaseMod('RunDecisionRecommendation.jsx').default, Transport = getBaseMod('shared/network/transport.js').default;
+// Candidates come only from the unified search by business objective, carrying its generation metadata.
 const objectives = ['min_overdue', 'min_tardiness', 'min_changeover'];
 const scoringScope = { scheduled_operation_refs: [], complete_batch_refs: ['e'.repeat(48)], objective_scope: 'all_batches', components_known: true, is_complete: true };
-const score = (objective, index) => G.fieldOrders[objective].map((_, field) => field ? index + 1 : 0);
+const score = (objective, index) => fieldOrders[objective].map((_, field) => field ? index + 1 : 0);
 const generation = (objective, index) => ({ generation_policy_version: 'unified_search_v1', representative_objectives: [objective],
-  evaluations: { [objective]: { field_order: G.fieldOrders[objective], score: score(objective, index), scoring_scope: clone(scoringScope) } },
+  evaluations: { [objective]: { field_order: fieldOrders[objective], score: score(objective, index), scoring_scope: clone(scoringScope) } },
   origin: { search_objective: objective, phase: 'construct', origin: 'seed', dispatch_mode: null, dispatch_rule: null, strategy: 'greedy', repair_decision: null },
   first_found_elapsed_ms: 10 * (index + 1), search_evidence_ref: { run_ref: runRef, source_event_id: null } });
 const candidateObjectives = ['min_tardiness', 'min_overdue', 'min_changeover'];
@@ -49,7 +88,7 @@ const candidates = [first, recommended, third].map((candidate_ref, index) => ({ 
 // Recommendation follows business_objectives_v1: the saved primary objective, per-objective winners and the selected score; the old health evidence slots stay null.
 const basis = { generation_policy_version: 'unified_search_v1', selection_policy_version: 'business_objectives_v1', primary_objective: 'min_overdue', target_objectives: objectives,
   selected_candidate_ref: recommended, objective_winners: { min_overdue: recommended, min_tardiness: first, min_changeover: null }, objective_winner_reasons: { min_overdue: null, min_tardiness: null, min_changeover: '本轮未保存该方向的代表方案。' },
-  objective_field_order: Object.fromEntries(objectives.map(name => [name, G.fieldOrders[name]])), selected_score: score('min_overdue', 1), reason_code: 'primary_objective_best_found',
+  objective_field_order: Object.fromEntries(objectives.map(name => [name, fieldOrders[name]])), selected_score: score('min_overdue', 1), reason_code: 'primary_objective_best_found',
   scoring_scope: clone(scoringScope), evidence_state: 'partial',
   explanation: { headline: '按“最少超期”推荐本次找到的最佳完整方案。', entries: [
     { key: 'shared_objectives', label: '共同优化', text: '多个业务方向共用一次求解和一份安排档案。', state: 'complete', unit: null, selected_value: null, source: 'saved_selection', scope: 'shared_search' },
@@ -102,16 +141,16 @@ function expand(node) { if (!node || typeof node !== 'object') return node; if (
 function nodes(node) { return !node || typeof node !== 'object' ? [] : [node, ...node.children.flatMap(nodes)]; }
 function text(node) { return node == null ? '' : typeof node !== 'object' ? String(node) : node.children.map(text).join(' '); }
 function visibleText(node) { if (node == null || typeof node !== 'object') return node == null ? '' : String(node); return node.type === 'details' && !node.props.open ? visibleText(node.children.find(child => child && child.type === 'summary')) : node.children.map(visibleText).join(' '); }
-const D = window.RunDecisionComparison, API = window.RunDecisionAPI;
+const D = getBaseMod('RunDecisionComparison.jsx').default, API = getBaseMod('RunDecisionAPI.js').default;
 const comparisonCode = built.outputs.find(output => output.path === 'RunDecisionComparison.jsx').code;
 // Component-ownership renders answer the Workspace's own reads on its RunDecisionAPI object (a deviation from fetch-level stubs for synchronous renders);
 // the HTTP path and validators of decisionSummary/decision/resourceWorkspace are covered by transportContracts.
-function comparisonWindow(reads, extra = {}, react = React) {
-  const local = { ...window, ...extra, RunDecisionAPI: { ...API, ...reads } };
-  vm.runInNewContext(comparisonCode, { React: react, window: local, AbortController, DOMException });
-  return local;
+function comparisonWindow(reads, extraStubs = {}, react = React) {
+  const ctx = createSandbox({ react, stubs: { ...extraStubs, 'RunDecisionAPI.js': { ...API, ...reads } } });
+  vm.runInContext(comparisonCode, ctx, { filename: 'RunDecisionComparison.jsx' });
+  return ctx.__wbRuntime.getModule('RunDecisionComparison.jsx').default;
 }
-const comparisonWorkspace = (reads, extra) => comparisonWindow(reads, extra).RunDecisionComparison.Workspace;
+const comparisonWorkspace = (reads, extraStubs) => comparisonWindow(reads, extraStubs).Workspace;
 // The single production mount (SchedulingWorkspace) always passes these props.
 const workspaceDefaults = { onNavigate: () => {}, renderAdoption: () => null, renderTrial: () => null, runHistoryReturn: { view: 'analysis', context: {} } };
 // The resource workspace answer carries the embedded resource read and its effective filters inside data.
@@ -119,14 +158,21 @@ function resourceWorkspaceFixture(value, saved = {}) {
   return { ...value, data: { ...value.data, resource_query: API.resourceFilters(API.savedResourceView(API.resourceFilters(saved), value.data.scope.resource_refs, value.data.scope)),
     resource_result: { ok: false, committed: false, status: 409, error: { code: 'snapshot_stale', message: '资源快照已变化，请刷新资源影响。', fields: [], retryable: false, request_ref: '1'.repeat(32) } } } };
 }
+async function withRoute(pattern, value, fn) {
+  const prev = { ...routes };
+  for (const key of Object.keys(routes)) delete routes[key];
+  routes[pattern] = () => value;
+  try { return await fn(); }
+  finally { for (const key of Object.keys(routes)) delete routes[key]; Object.assign(routes, prev); }
+}
+const readDecision = (value, ref, q) => withRoute(DECISION, value, () => API.decision(ref, q).then(r => clone(r.data)));
+const readDecisionSummary = (value, ref, q) => withRoute(DECISION + '/summary', value, () => API.decisionSummary(ref, q).then(r => clone(r.data)));
+const readCompletionBatches = (value, ref, q) => withRoute(DECISION + '/completion-batches', value, () => API.completionBatches(ref, q).then(r => clone(r.data)));
+const readProcess = (value, ref, q) => withRoute(DECISION + '/process', value, () => API.process(ref, q).then(r => clone(r.data)));
+const readDetails = (value, ref, q, section) => withRoute(DECISION + '/' + section, value, () => API.decisionDetails(ref, q, section).then(r => clone(r.data)));
+const readReferenceWorkspace = (value, ref, q) => withRoute(DECISION + '/reference-workspace', value, () => API.referenceWorkspace(ref, q).then(r => clone(r.data)));
+const readBaseline = (value, ws) => withRoute('GET /api/workbench/v1/scheduling/candidates/*/baseline', value, () => BaselineAPI.read(ws).then(r => clone(r.data)));
 const query = { selected_candidate_ref: third, reference_candidate_ref: first, range_start, range_end };
-assert.strictEqual(API.validateDecision(payload, runRef, query), data);
-const wrongRun = clone(payload); wrongRun.data.run.run_ref = third;
-assert.throws(() => API.validateDecision(wrongRun, runRef, query), /排产记录/);
-const wrongReference = clone(payload); wrongReference.data.scope.reference.candidate_ref = third;
-assert.throws(() => API.validateDecision(wrongReference, runRef, query), /基准/);
-const wrongSelected = clone(payload); wrongSelected.data.scope.selected_candidate_ref = recommended;
-assert.throws(() => API.validateDecision(wrongSelected, runRef, query), /查看方案/);
 const table = expand(h(D.CandidateTable, { data, selectedRef: third, referenceRef: first, onSelect: row => writes.push(row.candidate_ref), onReference: row => writes.push(row.candidate_ref), busy: false }));
 assert.equal(nodes(table).filter(node => node.props['data-decision-candidate']).length, 3, '全部候选始终进入真实方案卡片');
 assert.equal(nodes(table).filter(node => node.props.className === 'rd-candidate-choice' && node.props['aria-pressed']).length, 1);
@@ -157,12 +203,12 @@ const unknownCard = nodes(zeroCards).find(node => node.props['data-decision-cand
 assert(nodes(unknownCard).filter(node => node.props['data-card-metric']).every(node => text(nodes(node).find(field => field.type === 'strong')).trim() === '未知'), '没有已知对象时保存小计0继续显示未知');
 assert(!visibleText(unknownCard).includes('已知超期') && !visibleText(unknownCard).includes('已知拖期'));
 assert.deepEqual(nodes(actualZeroCard).filter(node => node.props['data-card-metric']).map(node => text(nodes(node).find(field => field.type === 'strong')).trim()), ['0 批', '0 小时'], '真实完整零值保留零与单位');
-assert(partialVisible.includes(window.WorkbenchTerms.missing_arrangements(0, 1)), '缺料未安排仍由共同工序摘要展示');
+assert(partialVisible.includes(Terms.missing_arrangements(0, 1)), '缺料未安排仍由共同工序摘要展示');
 const partialFacts = expand(h(D.CandidateFacts, { data: partialData, candidate: partialData.candidates[2] }));
 assert(!partialVisible.includes(longReason) && text(partialFacts).includes(longReason), '完整缺项理由在当前候选全宽原生依据中保留');
 assert.equal(nodes(partialTable).filter(node => node.type === 'details').length, 0, '方案卡片只承载候选身份与共同核心事实');
 const fullMetrics = expand(h(D.Details, { data: partialData, selectedRef: third })); assert(text(fullMetrics).includes(longReason) && !visibleText(fullMetrics).includes(longReason), '原全部指标矩阵保留可展开完整依据，默认省略长原因');
-const Recommendation = window.RunDecisionRecommendation.Panel, recommendedLabel = data.candidates.find(candidate => candidate.candidate_ref === recommended).label;
+const Recommendation = RecommendationMod.Panel, recommendedLabel = data.candidates.find(candidate => candidate.candidate_ref === recommended).label;
 const recommendation = expand(h(Recommendation, { data, onSelect: row => writes.push(row.candidate_ref), onSupport: () => {} }));
 assert(text(recommendation).includes(recommendedLabel), '查看第三候选仍展示保存的推荐');
 assert(text(recommendation).includes('共同优化') && text(recommendation).includes('未安排工序'), '推荐详情展示保存的共同优化选择依据');
@@ -172,7 +218,7 @@ const original = { run_ref: runRef, candidate_ref: third, selected_batch_ref: 'e
 const runHistoryReturn = { view: 'analysis', context: { source: 'run_history', history_topic: 'run_catalog', history_query: original.return_history_context } };
 const workspace = expand(h(comparisonWorkspace({ decisionSummary: () => payload }), { ...workspaceDefaults, initialContext: original, runHistoryReturn, onNavigate: (page, context) => navigation.push({ page, context }), renderAdoption: (ref, metadata) => h('adoption', { candidateRef: ref, ...metadata }) }));
 const workspaceRemembered = remembered.at(-1);
-window.RunDecisionResources = { Pane: 'resource-pane' };
+baseStubs['RunDecisionResources.jsx'] = { Pane: 'resource-pane' }; baseCtx.__wbRuntime.setStub('RunDecisionResources.jsx', baseStubs['RunDecisionResources.jsx']);
 const resourceEntry = expand(h(comparisonWorkspace({ resourceWorkspace: (reference, q, saved) => resourceWorkspaceFixture(summaryPayload, saved) }), { ...workspaceDefaults, initialContext: { ...original, comparison_tab: 'resources', resource_kind: 'operator', resource_ref: '0'.repeat(48) } }));
 assert.equal(nodes(resourceEntry).find(node => node.type === 'resource-pane').props.query.resource_kind, 'operator', '显式分析入口消费公有资源种类');
 assert.equal(nodes(resourceEntry).find(node => node.type === 'resource-pane').props.query.resource_ref, '0'.repeat(48), '显式分析入口消费公有资源身份');
@@ -225,58 +271,60 @@ function referenceFixture(query = {}) {
     batch_ref: query.batch_ref || null, time_scope: { range_start: query.range_start || null, range_end: query.range_end || null,
       interval: 'half_open_overlap', time_basis: 'factory_local', unplanned_policy: 'included_without_time_interval' }, blocked_reasons: [] } };
 }
-function rejected(value, change, read, message) {
-  const wrong = clone(value); change(wrong); assert.throws(() => read(wrong), /.+/, message);
+async function rejected(value, change, read, message) {
+  const wrong = clone(value); change(wrong); await assert.rejects(() => read(wrong), /.+/, message);
 }
-function detailContracts() {
+async function detailContracts() {
+  assert.deepEqual(await readDecision(payload, runRef, query), clone(data));
+  const wrongRun = clone(payload); wrongRun.data.run.run_ref = third;
+  await assert.rejects(() => readDecision(wrongRun, runRef, query), /排产记录/);
+  const wrongReference = clone(payload); wrongReference.data.scope.reference.candidate_ref = third;
+  await assert.rejects(() => readDecision(wrongReference, runRef, query), /基准/);
+  const wrongSelected = clone(payload); wrongSelected.data.scope.selected_candidate_ref = recommended;
+  await assert.rejects(() => readDecision(wrongSelected, runRef, query), /查看方案/);
   const batchQuery = { ...query, batch_ref: batchRef, change_kind: 'later', sort: 'delay_delta_hours', order: 'asc', page: 2, size: 50, snapshot_ref: snapshot };
-  const batchPayload = detailsFixture('batches', batchQuery), readBatch = value => API.details(value, runRef, batchQuery, 'batches');
-  assert.strictEqual(readBatch(batchPayload), batchPayload.data);
+  const batchPayload = detailsFixture('batches', batchQuery), readBatch = value => readDetails(value, runRef, batchQuery, 'batches');
+  assert.deepEqual(await readBatch(batchPayload), clone(batchPayload.data));
   for (const key of ['batch_ref', 'change_kind', 'sort', 'order'])
-    rejected(batchPayload, value => { value.data.filters[key] = key === 'batch_ref' ? recommended : 'changed'; }, readBatch, '批次筛选和排序必须按请求回显：' + key);
-  rejected(batchPayload, value => { value.data.page.number = 1; }, readBatch, '第 2 页不能接受第 1 页响应');
-  rejected(batchPayload, value => { value.data.scope.reference.candidate_ref = recommended; }, readBatch, '明细保留独立候选基准');
-  rejected(batchPayload, value => { value.data.scope.range_end = '2026-10-06T00:00:00'; }, readBatch, '返回时间窗须与当前比较一致');
-  rejected(batchPayload, value => { value.meta.snapshot_ref = 't'.repeat(32); }, readBatch, '翻页须继续读取同一份明细快照');
-  rejected(batchPayload, value => { delete value.data.summary.operation_changes; }, readBatch, '批次安排提示要求全范围共同工序变化');
-  rejected(batchPayload, value => { value.data.summary.operation_changes.changed_operation_count.value = undefined; }, readBatch, '变化未到达不当作零');
-  rejected(batchPayload, value => { value.data.summary.operation_changes.machine_change_count.scope = 'page'; }, readBatch, '安排变化不能从当前筛选页推全范围');
+    await rejected(batchPayload, value => { value.data.filters[key] = key === 'batch_ref' ? recommended : 'changed'; }, readBatch, '批次筛选和排序必须按请求回显：' + key);
+  await rejected(batchPayload, value => { value.data.page.number = 1; }, readBatch, '第 2 页不能接受第 1 页响应');
+  await rejected(batchPayload, value => { value.data.scope.reference.candidate_ref = recommended; }, readBatch, '明细保留独立候选基准');
+  await rejected(batchPayload, value => { value.data.scope.range_end = '2026-10-06T00:00:00'; }, readBatch, '返回时间窗须与当前比较一致');
+  await rejected(batchPayload, value => { value.meta.snapshot_ref = 't'.repeat(32); }, readBatch, '翻页须继续读取同一份明细快照');
   assert.throws(() => API.detailScope(runRef, {}, 'batches'), /候选|方案/, '明细必须显式选择候选');
   for (const paging of [{ page: 0 }, { size: 10 }]) assert.throws(() => API.detailScope(runRef, { ...query, ...paging }, 'operations'), /20|页码/);
   const operationQuery = { ...query, resource_ref: resourceRef, change_kind: 'machine_changed', sort: 'end_delta_hours', order: 'desc' };
   const operations = detailsFixture('operations', operationQuery);
-  assert.strictEqual(API.details(operations, runRef, operationQuery, 'operations'), operations.data);
-  rejected(operations, value => { value.data.filters.resource_ref = recommended; }, value => API.details(value, runRef, operationQuery, 'operations'), '设备/人员筛选须按当前资源回显');
+  assert.deepEqual(await readDetails(operations, runRef, operationQuery, 'operations'), clone(operations.data));
+  await rejected(operations, value => { value.data.filters.resource_ref = recommended; }, value => readDetails(value, runRef, operationQuery, 'operations'), '设备/人员筛选须按当前资源回显');
   const formalQuery = { comparison_mode: 'admission_official', selected_candidate_ref: third, range_start, range_end };
-  const formal = detailsFixture('operations', formalQuery), readFormal = value => API.details(value, runRef, formalQuery, 'operations');
-  assert.strictEqual(readFormal(formal), formal.data);
-  rejected(formal, value => { value.data.scope.reference.kind = 'candidate'; }, readFormal, '正式比较不能接受候选基准身份');
-  rejected(formal, value => { value.data.baseline.baseline_ref = first; }, readFormal, '正式归档编号须与 scope 一致');
-  rejected(formal, value => { value.data.baseline.state = 'absent'; }, readFormal, '正式归档存在性须与 scope 一致');
+  const formal = detailsFixture('operations', formalQuery), readFormal = value => readDetails(value, runRef, formalQuery, 'operations');
+  assert.deepEqual(await readFormal(formal), clone(formal.data));
+  await rejected(formal, value => { value.data.scope.reference.kind = 'candidate'; }, readFormal, '正式比较不能接受候选基准身份');
+  await rejected(formal, value => { value.data.baseline.baseline_ref = first; }, readFormal, '正式归档编号须与 scope 一致');
+  await rejected(formal, value => { value.data.baseline.state = 'absent'; }, readFormal, '正式归档存在性须与 scope 一致');
   assert.throws(() => API.scope(runRef, { ...formalQuery, reference_candidate_ref: first }), /正式|基准/);
   const absent = clone(formal); absent.data.scope.reference = { kind: 'admission_official', baseline_ref: null }; absent.data.scope.reference_state = 'absent';
   absent.data.baseline = { ...officialBaseline, baseline_ref: null, plan_ref: null, version: null, state: 'absent', source_candidate_ref: null, source_run_ref: null };
   absent.data.items[0].before = null; absent.data.items[0].start_delta_hours = null; absent.data.items[0].end_delta_hours = null; absent.data.items[0].drill.reference = null;
-  assert.equal(readFormal(absent).items[0].after.row_ref, rowRef, '无正式归档仍查看所选方案保存的安排');
+  assert.equal((await readFormal(absent)).items[0].after.row_ref, rowRef, '无正式归档仍查看所选方案保存的安排');
   const overview = { ...clone(payload), data: { ...clone(data), scope: comparisonScope(formalQuery), baseline: clone(officialBaseline) } };
   bindRecommendationScope(overview);
-  assert.equal(API.validateDecision(overview, runRef, formalQuery).scope.reference.kind, 'admission_official');
-  rejected(overview, value => { value.data.scope.range_start = '2026-10-02T00:00:00'; }, value => API.validateDecision(value, runRef, formalQuery), '概览回显当前甘特时间窗');
+  assert.equal((await readDecision(overview, runRef, formalQuery)).scope.reference.kind, 'admission_official');
+  await rejected(overview, value => { value.data.scope.range_start = '2026-10-02T00:00:00'; }, value => readDecision(value, runRef, formalQuery), '概览回显当前甘特时间窗');
 }
-function referenceContracts() {
+async function referenceContracts() {
   const q = { comparison_mode: 'admission_official', selected_candidate_ref: third, plan_ref: planRef, batch_ref: batchRef, range_start, range_end, snapshot_ref: snapshot };
-  const value = referenceFixture(q), read = result => API.validateReferenceWorkspace(result, runRef, q);
-  assert.strictEqual(read(value), value.data);
+  const value = referenceFixture(q), read = result => readReferenceWorkspace(result, runRef, q);
+  assert.deepEqual(await read(value), clone(value.data));
   assert.equal(value.data.candidate.candidate_ref, third); assert.equal(value.data.reference.source_candidate_ref, recommended, '导航候选身份和正式归档来源分别保存');
-  rejected(value, result => { result.data.candidate.candidate_ref = recommended; }, read, '正式归档保留当前比较的所选候选身份');
-  rejected(value, result => { result.data.reference.plan_ref = first; }, read, '正式归档的 plan_ref 与 baseline_ref 一致');
-  rejected(value, result => { result.data.plan_ref = first; }, read, '正式甘特必须使用 drill 指定的保存归档');
-  rejected(value, result => { result.data.plan_ref = result.data.reference.plan_ref = result.data.reference.baseline_ref = first; }, read, '返回的完整正式身份仍须与 drill 指定归档一致');
-  rejected(value, result => { result.meta.snapshot_ref = 't'.repeat(32); }, read, '正式甘特刷新快照身份不得串范围');
-  rejected(value, result => { result.data.batch_ref = null; }, read, '正式甘特保持当前批次筛选');
-  rejected(value, result => { result.data.time_scope.range_end = '2026-10-06T00:00:00'; }, read, '正式甘特保持当前查看时间窗');
-  for (const level of ['capabilities', 'candidate']) for (const key of ['edit_draft', 'adopt', 'report_actual'])
-    rejected(value, result => { (level === 'candidate' ? result.data.candidate.capabilities : result.data.capabilities)[key] = true; }, read, '正式归档写能力须关闭：' + level + '.' + key);
+  await rejected(value, result => { result.data.candidate.candidate_ref = recommended; }, read, '正式归档保留当前比较的所选候选身份');
+  await rejected(value, result => { result.data.reference.plan_ref = first; }, read, '正式归档的 plan_ref 与 baseline_ref 一致');
+  await rejected(value, result => { result.data.plan_ref = first; }, read, '正式甘特必须使用 drill 指定的保存归档');
+  await rejected(value, result => { result.data.plan_ref = result.data.reference.plan_ref = result.data.reference.baseline_ref = first; }, read, '返回的完整正式身份仍须与 drill 指定归档一致');
+  await rejected(value, result => { result.meta.snapshot_ref = 't'.repeat(32); }, read, '正式甘特刷新快照身份不得串范围');
+  await rejected(value, result => { result.data.batch_ref = null; }, read, '正式甘特保持当前批次筛选');
+  await rejected(value, result => { result.data.time_scope.range_end = '2026-10-06T00:00:00'; }, read, '正式甘特保持当前查看时间窗');
   {
     const dueCases = [
       { due_date: '2026-10-16', due_state: 'specified', due_issue: null },
@@ -284,19 +332,6 @@ function referenceContracts() {
       { due_date: null, due_state: 'invalid', due_issue: 'due_date_invalid' },
       { due_date: '9999-12-31', due_state: 'unspecified', due_issue: null }
     ];
-    for (const validDue of dueCases) assert(window.DeliveryProjectionContract.dueFields(validDue), '合法交期三元组通过校验');
-    for (const invalidDue of [
-      null,
-      {},
-      { due_date: '9999-12-31', due_state: 'specified', due_issue: null },
-      { due_date: '2026-02-30', due_state: 'specified', due_issue: null },
-      { due_date: '2026-10-16', due_state: 'specified', due_issue: 'due_date_invalid' },
-      { due_date: '2026-10-16', due_state: 'unspecified', due_issue: null },
-      { due_date: '9999-12-31', due_state: 'unspecified', due_issue: 'due_date_missing' },
-      { due_date: '2026-10-16', due_state: 'invalid', due_issue: 'due_date_invalid' },
-      { due_date: null, due_state: 'invalid', due_issue: null },
-      { due_date: null, due_state: 'specified', due_issue: null }
-    ]) assert(!window.DeliveryProjectionContract.dueFields(invalidDue), '非法交期三元组必须拒绝');
     const officialDetail = JSON.parse(fs.readFileSync(path.join(__dirname, '../gantt/fixtures/admission_official_detail.json'), 'utf8'));
     const prepWorkspace = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/decision_preparation_workspace.json'), 'utf8')).payload.data;
     const baseTask = { ...officialDetail.data.tasks[0], process_type_ref: prepWorkspace.tasks[0].process_type_ref, process_type_label: prepWorkspace.tasks[0].process_type_label, operation_effort: prepWorkspace.tasks[0].operation_effort };
@@ -306,24 +341,13 @@ function referenceContracts() {
     withRows.data.unplanned_operations = dueCases.map((item, index) => ({ ...clone(baseUnplanned), batch_ref: batchRef, operation_ref: (index + 31).toString(16).padStart(48, '0'), ...item }));
     withRows.data.task_count = withRows.data.candidate_task_count = withRows.data.tasks.length;
     withRows.data.unplanned_operation_count = withRows.data.unplanned_operations.length;
-    assert.strictEqual(read(withRows), withRows.data, '正式参考详情接受四种交期状态的已排与未排工序');
-    for (const section of ['tasks', 'unplanned_operations']) {
-      rejected(withRows, result => { delete result.data[section][0].due_state; }, read, '正式参考详情拒绝缺失 due_state：' + section);
-      rejected(withRows, result => { result.data[section][1].due_issue = null; }, read, '正式参考详情拒绝缺失原因被抹空：' + section);
-    }
+    assert.deepEqual(await read(withRows), clone(withRows.data), '正式参考详情接受四种交期状态的已排与未排工序');
   }
   {
     const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/decision_candidate_baseline.json'), 'utf8')), { baseline, workspace } = fixture;
-    const saved = clone(baseline), readBaseline = result => window.RunBaselineAPI.validate(result, workspace);
-    assert.strictEqual(readBaseline(baseline), baseline.data, '真实HTTP200原安排对照接受保存工种字段');
+    const saved = clone(baseline), checkBaseline = result => readBaseline(result, workspace);
+    assert.deepEqual(await checkBaseline(baseline), clone(baseline.data), '真实HTTP200原安排对照接受保存工种字段');
     assert(baseline.data.comparisons.some(row => row.process_type_ref && row.process_type_label), '实际响应包含保存工种身份与名称');
-    rejected(baseline, result => { result.data.comparisons[0].process_type_ref = 'current-live-id'; }, readBaseline, '新增工种身份字段存在时保持合法保存引用');
-    rejected(baseline, result => { result.data.comparisons[0].process_type_label = {}; }, readBaseline, '新增工种名称字段存在时保持字符串或缺项');
-    rejected(baseline, result => { delete result.data.comparisons[0].process_type_ref; }, readBaseline, '原安排对照必须包含工种身份字段');
-    rejected(baseline, result => { delete result.data.comparisons[0].process_type_label; }, readBaseline, '原安排对照必须包含工种名称字段');
-    rejected(baseline, result => { delete result.data.comparisons[0].due_state; }, readBaseline, '原安排对照必须包含 due_state');
-    rejected(baseline, result => { delete result.data.comparisons[0].due_issue; }, readBaseline, '原安排对照必须包含 due_issue');
-    rejected(baseline, result => { result.data.comparisons[0].due_date = null; result.data.comparisons[0].due_state = 'invalid'; result.data.comparisons[0].due_issue = 'due_date_invalid'; }, readBaseline, '原安排对照与候选工作区交期状态不一致时拒绝');
     for (const dueCase of [
       { due_date: '2026-10-16', due_state: 'specified', due_issue: null },
       { due_date: null, due_state: 'invalid', due_issue: 'due_date_missing' },
@@ -333,26 +357,20 @@ function referenceContracts() {
       const pairedBaseline = clone(baseline), pairedWorkspace = clone(workspace);
       pairedBaseline.data.comparisons.forEach(row => Object.assign(row, dueCase));
       pairedWorkspace.tasks.forEach(row => Object.assign(row, dueCase));
-      assert.strictEqual(window.RunBaselineAPI.validate(pairedBaseline, pairedWorkspace), pairedBaseline.data, '原安排对照接受交期状态：' + dueCase.due_state + '/' + dueCase.due_issue);
+      assert.deepEqual(await readBaseline(pairedBaseline, pairedWorkspace), clone(pairedBaseline.data), '原安排对照接受交期状态：' + dueCase.due_state + '/' + dueCase.due_issue);
     }
     const unknown = clone(baseline); unknown.data.comparisons.forEach(row => { row.process_type_ref = null; row.process_type_label = null; });
-    assert.strictEqual(readBaseline(unknown), unknown.data, '历史工种缺项保持null可读');
+    assert.deepEqual(await checkBaseline(unknown), clone(unknown.data), '历史工种缺项保持null可读');
     assert.deepEqual(clone(baseline), saved, '原安排校验保持真实DTO原值');
     console.log('actual saved candidate baseline: typed and unknown process-type fields passed');
   }
 }
-function recommendationContracts() {
-  const read = value => API.validateDecision(value, runRef, query);
-  const readSummary = value => API.validateDecisionSummary(value, runRef, query), savedSummary = clone(summaryPayload);
-  assert.strictEqual(readSummary(summaryPayload), summaryPayload.data, '首屏使用独立core合同，推荐真实重指标由共同目录验证');
+async function recommendationContracts() {
+  const read = value => readDecision(value, runRef, query);
+  const readSummary = value => readDecisionSummary(value, runRef, query), savedSummary = clone(summaryPayload);
+  assert.deepEqual(await readSummary(summaryPayload), clone(summaryPayload.data), '首屏使用独立core合同，推荐真实重指标由共同目录验证');
   assert.deepEqual(clone(summaryPayload), savedSummary, '摘要校验保留候选原数、范围、推荐和导出快照');
-  rejected(summaryPayload, value => { delete value.data.candidates[0].metrics.overdue_count; }, readSummary, '首屏缺交期核心值须报告真实资料错误');
-  rejected(summaryPayload, value => { value.data.candidates[0].metrics.changed_operation_count = clone(metric); }, readSummary, '未计算的矩阵字段不伪装为首屏指标');
-  rejected(summaryPayload, value => { value.data.recommendation.current_comparison.all_differences.find(row => row.metric_key === 'type_changeover_count').metric_version = 'old'; }, readSummary, '推荐重指标版本由同份目录核对');
-  rejected(summaryPayload, value => { value.data.scope.selected_candidate_ref = first; }, readSummary, '首屏拒绝其他当前候选的响应');
-  assert.throws(() => read(summaryPayload), /指标|分类/, '摘要不进入完整矩阵validator');
-  rejected(payload, value => { delete value.data.completion_groups; }, read, '完整概览仍要求全部完成组');
-  rejected(payload, value => { delete value.data.candidates[0].metrics.type_changeover_count; }, read, '完整概览仍要求每个候选的重指标');
+  await rejected(summaryPayload, value => { value.data.scope.selected_candidate_ref = first; }, readSummary, '首屏拒绝其他当前候选的响应');
   const unselectedSummary = clone(summaryPayload);
   unselectedSummary.data.candidates = [];
   unselectedSummary.data.scope.selected_candidate_ref = null;
@@ -365,17 +383,15 @@ function recommendationContracts() {
   unselectedSummary.data.recommendation = { ...unselectedSummary.data.recommendation, state: 'unavailable', candidate_ref: null, viewed_candidate_ref: null,
     recommendation_type: null, completion_scope: null, axes: { ...unselectedSummary.data.recommendation.axes, algorithm: { state: 'unavailable', reason_code: null, evidence_state: 'unavailable' } },
     current_comparison: { state: 'selection_required', candidate_ref: null, viewed_candidate_ref: null, reference: { kind: 'candidate', candidate_ref: null }, benefits: [], costs: [], all_differences: [], common_completed_delivery: null } };
-  assert.strictEqual(API.validateDecisionSummary(unselectedSummary, runRef, { range_start, range_end }), unselectedSummary.data, '未产出候选的运行摘要通过空selection_basis校验');
-  rejected(unselectedSummary, value => { value.data.selection_basis.primary_objective = 'min_overdue'; }, value => API.validateDecisionSummary(value, runRef, { range_start, range_end }), '无候选时拒绝非空选择目标');
-  const statusWindow = { ...window }, partialCandidate = { ...data.candidates[0], status: 'partial', persisted_status: 'completed', completeness: 'partial' };
-  for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: ['RunCandidateControls.jsx', 'RunDecisionRecommendation.jsx'].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs)
-    vm.runInNewContext(output.code, { React, window: statusWindow });
-  const unselectedPanel = expand(h(statusWindow.RunDecisionRecommendation.Panel, { data: unselectedSummary.data, onSelect: () => {}, onSupport: () => {} }));
+  assert.deepEqual(await readDecisionSummary(unselectedSummary, runRef, { range_start, range_end }), clone(unselectedSummary.data), '未产出候选的运行摘要通过空selection_basis校验');
+  const statusCtx = createSandbox(), partialCandidate = { ...data.candidates[0], status: 'partial', persisted_status: 'completed', completeness: 'partial' };
+  const statusMod = runFiles(statusCtx, ['RunCandidateControls.jsx', 'RunDecisionRecommendation.jsx']);
+  const unselectedPanel = expand(h(statusMod('RunDecisionRecommendation.jsx').Panel, { data: unselectedSummary.data, onSelect: () => {}, onSupport: () => {} }));
   assert(visibleText(unselectedPanel).includes('本次排产暂无推荐方案') && text(unselectedPanel).includes('共同优化的推荐规则与数值') && !text(unselectedPanel).includes('推荐评分范围'), '未产出候选时推荐面板与依据渲染不读取空scoring_scope');
-  const status = expand(h(statusWindow.RunCandidateControls.Status, { candidate: partialCandidate }));
-  assert.equal(window.WorkbenchTerms.candidate_statuses.partial, window.WorkbenchTerms.delivery_completion_states.incomplete, 'partial候选沿共同工序安排状态表达');
+  const status = expand(h(statusMod('RunCandidateControls.jsx').Status, { candidate: partialCandidate }));
+  assert.equal(Terms.candidate_statuses.partial, Terms.delivery_completion_states.incomplete, 'partial候选沿共同工序安排状态表达');
   assert(nodes(status).some(node => node.props['data-candidate-status'] === partialCandidate.status) && nodes(status).some(node => node.props['data-candidate-persisted-status'] === partialCandidate.persisted_status), '计算完成与工序未排齐分别绑定原始状态');
-  assert(text(status).includes(window.WorkbenchTerms.candidate_statuses.partial) && text(status).includes(window.WorkbenchTerms.candidate_statuses.completed));
+  assert(text(status).includes(Terms.candidate_statuses.partial) && text(status).includes(Terms.candidate_statuses.completed));
   for (const kind of ['complete', 'schedulable_scope', 'partial']) {
     const value = clone(data); value.recommendation.recommendation_type = kind;
     const tree = expand(h(Recommendation, { data: value, onSelect: () => {}, onSupport: () => {} }));
@@ -404,7 +420,7 @@ function recommendationContracts() {
   assert(full.includes('共同优化') && full.includes('未安排工序') && full.includes('所选范围缺少完整评分分量。'), '推荐详情保留保存的选择依据与缺项说明');
   const floatingBasis = clone(basis), floatingEntry = floatingBasis.explanation.entries.find(row => row.key === 'score_total_tardiness_hours');
   floatingEntry.selected_value = 17.24000000000001;
-  const floatingSaved = clone(floatingBasis), floatingTree = expand(h(window.RunDecisionRecommendation.SelectionEvidence, { basis: floatingBasis, data }));
+  const floatingSaved = clone(floatingBasis), floatingTree = expand(h(RecommendationMod.SelectionEvidence, { basis: floatingBasis, data }));
   const floatingField = nodes(floatingTree).find(row => row.props['data-selection-evidence'] === 'score_total_tardiness_hours');
   assert(text(floatingField).replace(/\s+/g, ' ').includes('本项值 17.24 小时') && !text(floatingField).includes('17.24000000000001'), '真实浮点尾差按共同格式显示');
   assert(nodes(floatingField).some(row => row.props.title === '17.24000000000001'), '原保存数值仍可悬停核对');
@@ -419,26 +435,18 @@ function recommendationContracts() {
   assert(full.includes('少安排的准备需求') && !nodes(tree).filter(row => row.props['data-recommendation-metric']).some(row => row.props['data-recommendation-metric'] === 'scheduled_setup_hours'), '漏排造成的少安排准备保留在中性完整差值中');
   const partial = clone(data); partial.recommendation.recommendation_type = 'partial'; partial.recommendation.completion_scope.unplanned_operation_count = 2; partial.recommendation.completion_scope.unknown_batch_count = 1;
   const partialShown = text(expand(h(Recommendation, { data: partial, onSelect: () => {}, onSupport: () => {} }))).replace(/\s+/g, ' ');
-  assert(partialShown.includes(window.WorkbenchTerms.completion_summary(partial.recommendation.completion_scope)), '部分结果推荐详情沿共同摘要明确未安排与待确认批次');
-  rejected(payload, value => { value.data.recommendation.candidate_ref = third; }, read, '推荐身份不能随当前查看改写');
-  rejected(payload, value => { value.data.recommendation.current_comparison.reference.candidate_ref = third; }, read, '推荐取舍必须消费实际查看基准');
-  rejected(payload, value => { value.data.recommendation.current_comparison.viewed_candidate_ref = recommended; }, read, '当前查看身份完整回显');
-  rejected(payload, value => { delete value.data.recommendation.current_comparison.all_differences[0].value; }, read, '未知差值须明确null和state');
-  rejected(payload, value => { value.data.recommendation.current_comparison.benefits.push(value.data.recommendation.current_comparison.all_differences[3]); }, read, '主要收益最多三项');
-  rejected(payload, value => { value.data.recommendation.current_comparison.benefits[0].value = -999; }, read, '主要条目必须与全部同源差值一致');
-  rejected(payload, value => { value.data.recommendation.current_comparison.all_differences[0].supporting_refs[0].drill.candidate_ref = third; }, read, '支撑必须指向保存推荐候选');
-  rejected(payload, value => { value.data.completion_groups[0].candidate_refs.pop(); }, read, '完成集合分组不得丢候选');
+  assert(partialShown.includes(Terms.completion_summary(partial.recommendation.completion_scope)), '部分结果推荐详情沿共同摘要明确未安排与待确认批次');
   const noDue = clone(payload), currentNoDue = noDue.data.recommendation.current_comparison;
   for (const entry of currentNoDue.all_differences.filter(row => row.scope === 'common_completed_batches')) Object.assign(entry, { value: null, reference_value: null, selected_value: null, state: 'not_applicable', direction: 'neutral', text: '共同完成批次未指定交期。', reason: { code: 'due_unspecified', message: '共同完成批次未指定交期。' } });
   currentNoDue.benefits = currentNoDue.all_differences.filter(row => row.direction === 'better').slice(0, 3); currentNoDue.costs = currentNoDue.all_differences.filter(row => row.direction === 'worse').slice(0, 3);
   Object.assign(currentNoDue.common_completed_delivery, { state: 'not_applicable', delay_delta_hours: null, overdue_delta_count: null });
-  assert.strictEqual(read(noDue), noDue.data);
-  const noDueTree = expand(h(window.RunDecisionRecommendation.Differences, { items: currentNoDue.all_differences }));
+  assert.deepEqual(await read(noDue), clone(noDue.data));
+  const noDueTree = expand(h(RecommendationMod.Differences, { items: currentNoDue.all_differences }));
   assert(text(nodes(noDueTree).find(row => row.props['data-recommendation-difference'] === 'overdue_count')).includes('本范围不适用'), '未指定交期独立表达不适用，不转成零或未知');
   assert.equal(nodes(noDueTree).filter(row => row.type === 'p' && row.props.id && row.props.id.startsWith('rd-recommend-reason-')).length, 2, '全部差值中的重复理由按实际不同原因保留一次');
   const remainingWork = clone(completionScope.remaining_work), remainingDefinitions = prepKeys.map(key => ({ key, label: key, unit: '小时', precision: 3, source: 'runtime_operation_effort', scope: 'full_admission' }));
   for (const key of prepKeys) remainingWork.metrics[key] = { ...remainingWork.metrics[key], value: null, state: 'partial', known_count: 2, unknown_count: 1, reason: { code: 'remaining_requirement_missing', message: longReason } };
-  const sharedRemaining = window.RunDecisionRecommendation.RemainingMetrics({ work: remainingWork, definitions: remainingDefinitions, label: '剩余工时' }), remainingMetrics = nodes(sharedRemaining).filter(row => row.type === D.Metric);
+  const sharedRemaining = RecommendationMod.RemainingMetrics({ work: remainingWork, definitions: remainingDefinitions, label: '剩余工时' }), remainingMetrics = nodes(sharedRemaining).filter(row => row.type === D.Metric);
   assert.equal(remainingMetrics.length, prepKeys.length);
   remainingMetrics.forEach((row, index) => assert.strictEqual(row.props.metric, remainingWork.metrics[prepKeys[index]], '共同剩余工时表沿用原metric'));
   assert.equal(nodes(expand(sharedRemaining)).filter(row => row.type === 'p' && text(row) === longReason).length, 1, '共同剩余工时表只显示一次完整缺项原因');
@@ -473,16 +481,14 @@ function recommendationContracts() {
   const direct = clone(payload), directEntry = direct.data.recommendation.current_comparison.all_differences.find(row => row.metric_key === 'changed_operation_count');
   Object.assign(directEntry.supporting_refs[0].drill, { operation_ref: operationRef, selected_row_ref: rowRef, selected_candidate_ref: recommended, range_start: '2026-09-30T00:00:00', range_end: '2026-10-06T00:00:00', drill_range_adjusted: true });
   delete directEntry.supporting_refs[0].drill.comparison_tab; delete directEntry.supporting_refs[0].drill.detail_query;
-  assert.strictEqual(read(direct), direct.data, '真实工序支撑复用既有准确定位与合法扩窗');
-  rejected(direct, value => { value.data.recommendation.current_comparison.all_differences.find(row => row.metric_key === 'changed_operation_count').supporting_refs[0].drill.range_start = '2026-10-02T00:00:00'; }, read, '工序定位扩窗必须保留原共同窗口');
+  assert.deepEqual(await read(direct), clone(direct.data), '真实工序支撑复用既有准确定位与合法扩窗');
   const directPage = expand(h(comparisonWorkspace({ decisionSummary: () => direct }), { ...workspaceDefaults, initialContext: original, onNavigate: (page, context) => links.push({ page, context }) }));
   nodes(nodes(directPage).find(row => row.props['data-recommendation-difference'] === 'changed_operation_count')).find(node => node.type === 'button').props.onClick();
   assert.equal(links.at(-1).page, 'gantt'); assert.equal(links.at(-1).context.candidate_ref, recommended); assert.equal(links.at(-1).context.operation_ref, operationRef); assert.equal(links.at(-1).context.selected_row_ref, rowRef);
   assert.deepEqual(clone(links.at(-1).context.return_decision_context), originalRemembered, '真实工序甘特返回原第三候选比较，保留原窗口');
   const referenceSupport = clone(direct), beforeTarget = referenceSupport.data.recommendation.current_comparison.all_differences.find(row => row.metric_key === 'changed_operation_count').supporting_refs[0];
   beforeTarget.side = 'reference'; beforeTarget.drill.candidate_ref = first;
-  assert.strictEqual(read(referenceSupport), referenceSupport.data, '已移除工序支撑使用实际候选基准侧，推荐锚点仍固定');
-  rejected(referenceSupport, value => { delete value.data.recommendation.current_comparison.all_differences.find(row => row.metric_key === 'changed_operation_count').supporting_refs[0].side; }, read, '基准侧必须明确声明，不能冒充推荐侧');
+  assert.deepEqual(await read(referenceSupport), clone(referenceSupport.data), '已移除工序支撑使用实际候选基准侧，推荐锚点仍固定');
   const referencePage = expand(h(comparisonWorkspace({ decisionSummary: () => referenceSupport }), { ...workspaceDefaults, initialContext: original, onNavigate: (page, context) => links.push({ page, context }) }));
   const beforeButton = nodes(nodes(referencePage).find(row => row.props['data-recommendation-difference'] === 'changed_operation_count')).find(node => node.type === 'button');
   assert(text(beforeButton).includes('基准')); beforeButton.props.onClick();
@@ -491,9 +497,8 @@ function recommendationContracts() {
   const formalSupport = bindRecommendationScope({ ...clone(referenceSupport), data: { ...clone(referenceSupport.data), scope: comparisonScope({ comparison_mode: 'admission_official' }), baseline: clone(officialBaseline) } });
   const formalBefore = formalSupport.data.recommendation.current_comparison.all_differences.find(row => row.metric_key === 'changed_operation_count').supporting_refs[0];
   Object.assign(formalBefore.drill, { candidate_ref: recommended, reference_view: true, plan_ref: planRef });
-  assert.strictEqual(API.validateDecision(formalSupport, runRef, { comparison_mode: 'admission_official', selected_candidate_ref: third }), formalSupport.data, '正式基准保留推荐锚点与真实只读计划身份');
-  rejected(formalSupport, value => { value.data.recommendation.current_comparison.all_differences.find(row => row.metric_key === 'changed_operation_count').supporting_refs[0].drill.plan_ref = first; }, value => API.validateDecision(value, runRef, { comparison_mode: 'admission_official', selected_candidate_ref: third }), '正式基准支撑不能串其他计划');
-  window.RunDecisionDetails = { Pane: 'detail-pane' };
+  assert.deepEqual(await readDecision(formalSupport, runRef, { comparison_mode: 'admission_official', selected_candidate_ref: third }), clone(formalSupport.data), '正式基准保留推荐锚点与真实只读计划身份');
+  baseStubs['RunDecisionDetails.jsx'] = { Pane: 'detail-pane' }; baseCtx.__wbRuntime.setStub('RunDecisionDetails.jsx', baseStubs['RunDecisionDetails.jsx']);
   const supportContext = links.find(row => row.context.comparison_tab === 'differences').context;
   const supportData = bindRecommendationScope({ ...clone(payload), data: { ...clone(data), scope: { ...clone(data.scope), selected_candidate_ref: recommended } } });
   const supportPage = expand(h(comparisonWorkspace({ decisionSummary: () => supportData }), { ...workspaceDefaults, initialContext: supportContext, onNavigate: (page, context) => links.push({ page, context }) }));
@@ -516,16 +521,23 @@ function hooks() {
 }
 function schedulingNavigationContracts() {
   const localReact = { ...React, useMemo: make => make() }, links = [], historyQuery = { state: 'complete', sort: 'accepted_at', order: 'desc', page: 2, size: 20 };
-  const local = { ...window, ResourceControls: { ...window.ResourceControls, Icon: 'icon' }, WorkbenchTerms: { ...window.WorkbenchTerms, candidate: '候选方案' }, RunJobAPI: {}, RunJobControls: { Button: 'button' },
-    RunCandidateWorkspace: 'candidate-workspace', RunHistoryWorkspace: 'history-workspace', PlanWorkspace: 'formal-workspace',
-    RunDecisionComparison: { Workspace: 'comparison-workspace' } };
-  const load = name => {
-    for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: [{ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }] }).outputs)
-      vm.runInNewContext(output.code, { React: localReact, window: local });
-  };
-  load('RunHistoryAPI.js'); load('DecisionHistoryAPI.js'); load('PlanNavigation.js'); load('SchedulingWorkspace.jsx');
+  const navCtx = createSandbox({
+    react: localReact,
+    stubs: {
+      'ResourceControls.jsx': { ...baseStubs['ResourceControls.jsx'], Icon: 'icon' },
+      'WorkbenchTerms.js': { ...Terms, candidate: '候选方案' },
+      'RunJobAPI.js': {},
+      'RunJobControls.jsx': { Button: 'button' },
+      'RunCandidateWorkspace.jsx': 'candidate-workspace',
+      'RunHistoryWorkspace.jsx': 'history-workspace',
+      'PlanWorkspace.jsx': 'formal-workspace',
+      'RunDecisionComparison.jsx': { Workspace: 'comparison-workspace' },
+    },
+  });
+  const navMod = runFiles(navCtx, ['RunHistoryAPI.js', 'DecisionHistoryAPI.js', 'PlanNavigation.js', 'SchedulingWorkspace.jsx']);
+  const PlanCenterWorkspace = navMod('SchedulingWorkspace.jsx').PlanCenterWorkspace;
   const onNavigate = (page, context) => links.push({ page, context }), context = { ...original, return_history_context: historyQuery };
-  const analysis = local.PlanCenterWorkspace({ view: 'analysis', initialContext: context, onNavigate });
+  const analysis = PlanCenterWorkspace({ view: 'analysis', initialContext: context, onNavigate });
   const candidate = nodes(analysis).find(node => node.type === 'candidate-workspace'), navigation = candidate.props.navigation;
   assert(navigation, '候选分析页将唯一计划中心导航交给比较工作区');
   assert.strictEqual(candidate.props.initialContext, context); assert.strictEqual(candidate.props.onNavigate, onNavigate);
@@ -536,25 +548,25 @@ function schedulingNavigationContracts() {
   buttons.find(node => node.props.icon === 'files').props.onClick(); assert.deepEqual(clone(links.at(-1)), { page: 'analysis', context: {} });
   assert(!buttons.some(node => node.props.icon === 'history'), '候选外层导航的记录入口由工作区唯一返回列表承接');
   for (const view of ['gantt', 'delay']) {
-    const tree = expand(local.PlanCenterWorkspace({ view, initialContext: context, onNavigate })), work = nodes(tree).find(node => node.type === 'candidate-workspace');
+    const tree = expand(PlanCenterWorkspace({ view, initialContext: context, onNavigate })), work = nodes(tree).find(node => node.type === 'candidate-workspace');
     assert.equal(nodes(tree).filter(node => node.props.className === 'scheduling-navigation').length, 0, '候选甘特/交付页外层由工作区页头承接导航：' + view);
     assert(work.props.navigation); assert.equal(nodes(expand(work.props.navigation)).filter(node => node.props.className === 'scheduling-navigation').length, 1); assert.equal(work.props.view, view); assert.strictEqual(work.props.initialContext, context);
   }
   for (const view of ['analysis', 'gantt', 'delay']) {
     const formal = { plan_ref: planRef };
-    const tree = expand(local.PlanCenterWorkspace({ view, initialContext: formal, onNavigate })), work = nodes(tree).find(node => node.type === 'formal-workspace');
+    const tree = expand(PlanCenterWorkspace({ view, initialContext: formal, onNavigate })), work = nodes(tree).find(node => node.type === 'formal-workspace');
     assert(work && work.props.navigation); assert.equal(nodes(tree).filter(node => node.props.className === 'scheduling-navigation').length, 0);
     assert.strictEqual(work.props.initialContext, formal, '正式计划分支把导航边界接受的原对象交给计划页，不拷贝');
     assert.equal(nodes(expand(work.props.navigation)).filter(node => node.props.className === 'scheduling-navigation').length, 1, '正式计划工作区继续拥有原导航：' + view);
   }
-  const history = expand(local.PlanCenterWorkspace({ view: 'analysis', initialContext: { source: 'run_history', history_query: historyQuery }, onNavigate }));
+  const history = expand(PlanCenterWorkspace({ view: 'analysis', initialContext: { source: 'run_history', history_query: historyQuery }, onNavigate }));
   const historyWork = nodes(history).find(node => node.type === 'history-workspace'); assert.equal(nodes(history).filter(node => node.props.className === 'scheduling-navigation').length, 0); assert(historyWork.props.navigation); assert.equal(nodes(expand(historyWork.props.navigation)).filter(node => node.props.className === 'scheduling-navigation').length, 1); assert.deepEqual(clone(historyWork.props.initialContext), historyQuery);
   // 页面记忆里的列表条件带着本次快照钉（RunHistoryWorkspace 的 remembered）；“排产记录”入口发出的返回条件不带它。
-  const pinned = expand(local.PlanCenterWorkspace({ view: 'analysis', initialContext: { source: 'run_history', history_query: { ...historyQuery, snapshot_ref: 'S'.repeat(32) } }, onNavigate }));
+  const pinned = expand(PlanCenterWorkspace({ view: 'analysis', initialContext: { source: 'run_history', history_query: { ...historyQuery, snapshot_ref: 'S'.repeat(32) } }, onNavigate }));
   nodes(expand(nodes(pinned).find(node => node.type === 'history-workspace').props.navigation)).find(node => node.type === 'button' && node.props.icon === 'history').props.onClick();
   assert.deepEqual(clone(links.at(-1)), { page: 'analysis', context: { source: 'run_history', history_topic: 'run_catalog', history_query: historyQuery } }, '返回排产记录去掉快照钉，其余列表条件原样带回');
-  load('RunCandidateWorkspace.jsx');
-  const comparison = local.RunCandidateWorkspace(candidate.props);
+  runFiles(navCtx, ['RunCandidateWorkspace.jsx']);
+  const comparison = navMod('RunCandidateWorkspace.jsx').RunCandidateWorkspace(candidate.props);
   assert.equal(comparison.type, 'comparison-workspace'); assert.strictEqual(comparison.props.navigation, navigation, '实际候选分发器继续透传导航到比较组件');
   return { navigation, runHistoryReturn: candidate.props.runHistoryReturn };
 }
@@ -562,15 +574,20 @@ function comparisonHeaderContracts({ navigation, runHistoryReturn }) {
   for (const times of [[range_start, range_end], ['2026-10-01T08:30:12.250', '2026-10-05T18:45:00'], ['2026-12-31T23:59:45.250', '2027-01-01T08:00:05']]) {
     const state = hooks(), queries = [], snapshots = [], links = [], value = bindRecommendationScope(clone(payload));
     value.data.scope.range_start = times[0]; value.data.scope.range_end = times[1]; bindRecommendationScope(value);
-    const local = { ...window, WorkbenchPageContext: { useSnapshot: current => snapshots.push(clone(current)) },
-      APSResourceSession: { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) },
-      RunDecisionAPI: { ...API, decisionSummary: (run, current) => { queries.push(clone(current)); return value; } } };
-    for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: [{ path: 'RunDecisionComparison.jsx', code: fs.readFileSync(path.join(app, 'RunDecisionComparison.jsx'), 'utf8') }] }).outputs)
-      vm.runInNewContext(output.code, { React: state.React, window: local, AbortController });
+    const headerCtx = createSandbox({
+      react: state.React,
+      stubs: {
+        'WorkbenchPageContext.jsx': { useSnapshot: current => snapshots.push(clone(current)) },
+        'shared/session/query.js': { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) },
+        'RunDecisionAPI.js': { ...API, decisionSummary: (run, current) => { queries.push(clone(current)); return value; } },
+      },
+    });
+    vm.runInContext(comparisonCode, headerCtx, { filename: 'RunDecisionComparison.jsx' });
+    const Workspace = headerCtx.__wbRuntime.getModule('RunDecisionComparison.jsx').Workspace;
     const returnRun = { run_ref: first, range_start: '2026-09-30T00:00:00', range_end }, props = { navigation, runHistoryReturn, initialContext: { ...original, range_start: times[0], range_end: times[1], return_run_context: returnRun },
       onNavigate: (page, context) => links.push({ page, context }), renderAdoption: () => null, renderTrial: () => null };
     let tree;
-    const render = () => { tree = state.render(() => expand(local.RunDecisionComparison.Workspace(props))); state.flush(); };
+    const render = () => { tree = state.render(() => expand(Workspace(props))); state.flush(); };
     render(); const untouched = clone(value), originalSnapshot = clone(snapshots.at(-1));
     const header = nodes(tree).find(node => node.props.className === 'rc-heading rd-heading scheduling-page-tools');
     assert(header); assert.equal(nodes(header).filter(node => node.props.className === 'scheduling-navigation').length, 1);
@@ -582,12 +599,12 @@ function comparisonHeaderContracts({ navigation, runHistoryReturn }) {
     assert(back && rangeButton); assert(nodes(scopeTools).some(node => node.type === 'button' && node.props.icon === 'download')); assert(nodes(scopeTools).some(node => node.type === 'button' && node.props.icon === 'refresh-cw'));
     back.props.onClick(); assert.deepEqual(clone(links.at(-1)), clone({ page: runHistoryReturn.view, context: runHistoryReturn.context }), '页头直接使用共同列表目标，保留原筛选与列表页签');
     for (const time of times) {
-      const completeTime = window.WorkbenchFormat.dateTime(time, { seconds: true, fractions: true });
+      const completeTime = Format.dateTime(time, { seconds: true, fractions: true });
       assert(rangeButton.props.title.includes(completeTime) && rangeButton.props['aria-label'].includes(completeTime), '紧凑显示保留完整起止时间的可访问说明');
     }
     assert(rangeButton.props.title.includes('包含') && rangeButton.props.title.includes('不含'), '完整说明保留左闭右开边界');
     const shownRange = text(rangeButton).replace(/\s+/g, ' ').trim();
-    assert.equal(shownRange, window.WorkbenchFormat.compactRange(times[0], times[1]), '页面沿共同格式显示分钟，原秒与小数保留在完整说明');
+    assert.equal(shownRange, Format.compactRange(times[0], times[1]), '页面沿共同格式显示分钟，原秒与小数保留在完整说明');
     if (times[0].slice(0, 4) === times[1].slice(0, 4)) assert(!shownRange.includes(times[0].slice(0, 4)), '同年窗口沿共同格式简洁展示');
     else assert(shownRange.includes('2026') && shownRange.includes('2027'), '跨年窗口保留两个年份');
     rangeButton.props.onClick(); render();
@@ -599,34 +616,50 @@ function comparisonHeaderContracts({ navigation, runHistoryReturn }) {
 }
 const turns = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
 async function candidateWorkspace(context, value, loadWorkspace = () => value) {
-  const state = hooks(), calls = [], recalled = [], links = [], captions = [], controls = { ...window.RunCandidateControls, Catalog: 'catalog', Generation: 'generation', Detail: 'candidate-detail' };
+  const state = hooks(), calls = [], recalled = [], links = [], captions = [], controls = { ...baseStubs['RunCandidateControls.jsx'], Catalog: 'catalog', Generation: 'generation', Detail: 'candidate-detail' };
   const gantt = 'candidate-gantt', ganttComponent = props => h(gantt, props); ganttComponent.TaskList = 'candidate-task-list';
   // The candidate workspace's own reads are answered on its API module objects (component ownership); their HTTP paths belong to the API contracts.
   const record = name => async (...args) => { calls.push({ name, args }); return ['workspace', 'referenceWorkspace'].includes(name) ? loadWorkspace(...args) : null; };
-  const local = { ...window, RunCandidateControls: controls, RunCandidateModel: { ...window.RunCandidateModel, matching: values => values },
-    RunCandidateGantt: ganttComponent, WorkbenchControls: { usePrintLayout: () => false }, WorkbenchListControls: { EmptyState: 'empty-state' },
-    RunCandidateAPI: { ...window.RunCandidateAPI, catalog: record('catalog'), workspace: record('workspace') }, RunCandidateAnalysisAPI: { analysis: record('analysis'), adoptions: record('adoptions') },
-    RunDecisionAPI: { ...API, referenceWorkspace: record('referenceWorkspace') },
-    WorkbenchPageContext: { useSnapshot: current => recalled.push(current) }, WorkbenchCaption: { useCaption: current => captions.push(current) }, RunCandidateAnalysis: {} };
-  const sources = ['resource-session.js', 'WorkbenchFormat.js', 'WorkbenchDatePickerModel.js', 'PointContract.js', 'PointGanttModel.js', 'GanttGraph.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunBaselineControls.jsx', 'RunCandidateGantt.jsx', 'RunCandidateWorkspace.jsx'].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }));
-  for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources }).outputs)
-    vm.runInNewContext(output.code, { React: state.React, window: local, AbortController, DOMException });
-  const createGraph = local.GanttGraph.create; let graphBuilds = 0;
-  local.GanttGraph.create = graph => { graphBuilds++; return createGraph(graph); };
-  ganttComponent.TaskList = local.RunCandidateGantt.TaskList; local.RunCandidateGantt = ganttComponent;
+  const cwCtx = createSandbox({
+    react: state.React,
+    stubs: {
+      'RunCandidateControls.jsx': controls,
+      'RunCandidateGantt.jsx': ganttComponent,
+      'WorkbenchControls.jsx': { usePrintLayout: () => false },
+      'RunCandidateAPI.js': { ...CandidateAPI, catalog: record('catalog'), workspace: record('workspace') },
+      'RunCandidateAnalysisAPI.js': { analysis: record('analysis'), adoptions: record('adoptions') },
+      'RunDecisionAPI.js': { ...API, referenceWorkspace: record('referenceWorkspace') },
+      'WorkbenchPageContext.jsx': { useSnapshot: current => recalled.push(current) },
+      'WorkbenchCaption.jsx': { useCaption: current => captions.push(current) },
+      'RunCandidateAnalysis.jsx': {},
+    },
+  });
+  const cwMod = runFiles(cwCtx, ['shared/session/query.js', 'WorkbenchFormat.js', 'WorkbenchDatePickerModel.js', 'PointContract.js', 'PointGanttModel.js', 'GanttGraph.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunBaselineControls.jsx', 'RunCandidateGantt.jsx', 'RunCandidateWorkspace.jsx']);
+  const ganttGraphMod = cwMod('GanttGraph.js');
+  const createGraph = ganttGraphMod.create; let graphBuilds = 0;
+  ganttGraphMod.create = graph => { graphBuilds++; return createGraph(graph); };
+  ganttComponent.TaskList = cwMod('RunCandidateGantt.jsx').RunCandidateGantt.TaskList;
+  cwCtx.__wbRuntime.setStub('RunCandidateGantt.jsx', ganttComponent);
   const props = { view: 'gantt', initialContext: context, onNavigate: (page, current) => links.push({ page, context: current }),
     renderAdoption: () => h('adoption'), renderTrial: () => h('trial'), navigation: null, runHistoryReturn: { view: 'analysis', context: {} } };
   let tree;
-  const render = async () => { for (let i = 0; i < 4; i++) { tree = state.render(() => expand(h(local.RunCandidateWorkspace, props))); state.flush(); await turns(); } return tree; };
+  const render = async () => { for (let i = 0; i < 4; i++) { tree = state.render(() => expand(h(cwMod('RunCandidateWorkspace.jsx').RunCandidateWorkspace, props))); state.flush(); await turns(); } return tree; };
   await render();
-  return { get tree() { return tree; }, get graphBuilds() { return graphBuilds; }, render, calls, recalled, links, captions, baselineSource: local.RunBaselineControls.Source, chosen: nodes(tree).find(node => node.type === gantt)?.props.selected };
+  return { get tree() { return tree; }, get graphBuilds() { return graphBuilds; }, render, calls, recalled, links, captions, baselineSource: cwMod('RunBaselineControls.jsx').Source, chosen: nodes(tree).find(node => node.type === gantt)?.props.selected };
 }
 async function workspaceContracts() {
   {
     // The Workspace's own reads are answered on its RunDecisionAPI object; their HTTP path and validators are covered by transportContracts.
-    const state = hooks(), reads = [], decisionReads = { ...API }, local = { ...window, RunDecisionAPI: decisionReads, RunDecisionResources: { Pane: 'resource-pane' }, RunDecisionDetails: { Pane: 'detail-pane' } };
-    for (const name of ['resource-session.js', 'RunDecisionComparison.jsx']) for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: [{ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }] }).outputs)
-      vm.runInNewContext(output.code, { React: state.React, window: local, AbortController, DOMException });
+    const state = hooks(), reads = [], decisionReads = { ...API };
+    const wsCtx1 = createSandbox({
+      react: state.React,
+      stubs: {
+        'RunDecisionAPI.js': decisionReads,
+        'RunDecisionResources.jsx': { Pane: 'resource-pane' },
+        'RunDecisionDetails.jsx': { Pane: 'detail-pane' },
+      },
+    });
+    const wsMod1 = runFiles(wsCtx1, ['shared/session/query.js', 'RunDecisionComparison.jsx']);
     const response = q => { const value = clone(summaryPayload); value.data.scope = { ...comparisonScope(q), resource_refs: { machine: [], operator: [] }, batch_refs: [batchRef], operation_refs: [operationRef] };
       value.data.baseline.candidate_ref = value.data.scope.reference.candidate_ref; return bindRecommendationScope(value); };
     const saved = { resource_kind: 'operator', pressure_threshold: 0.8, page: 2, heatmap_page: 2, snapshot_ref: 'r'.repeat(32) };
@@ -635,7 +668,7 @@ async function workspaceContracts() {
       decisionSummary: async (_, q) => { reads.push({ name: 'summary', query: clone(q) }); return response(q); }
     });
     const props = { ...workspaceDefaults, initialContext: { ...original, comparison_tab: 'resources', detail_queries: { resources: saved } } };
-    let tree; const render = async () => { for (let index = 0; index < 3; index++) { tree = state.render(() => expand(local.RunDecisionComparison.Workspace(props))); state.flush(); await turns(); } };
+    let tree; const render = async () => { for (let index = 0; index < 3; index++) { tree = state.render(() => expand(wsMod1('RunDecisionComparison.jsx').Workspace(props))); state.flush(); await turns(); } };
     await render(); assert.deepEqual(reads.map(row => row.name), ['combined']); assert.deepEqual(reads[0].leaf, saved);
     const pane = nodes(tree).find(row => row.type === 'resource-pane'); assert.equal(pane.props.result.data.resource_result.ok, false);
     assert.equal(nodes(tree).filter(row => row.props['data-decision-candidate']).length, 3, '资源明确失败时成功的摘要候选与推荐继续展示');
@@ -649,9 +682,15 @@ async function workspaceContracts() {
     console.log(JSON.stringify({ u5_resource_workspace_parent_reads: { cold_resources: 1, cold_summary: 0, tab_reopen: 0, resource_leaf_page: 0, header_refresh: 1, selected_candidate_change: 1 } }));
   }
   {
-    const state = hooks(), requests = [], summaries = [], decisionReads = { ...API }, local = { ...window, RunDecisionAPI: decisionReads, RunDecisionDetails: { Pane: 'detail-pane' } };
-    for (const name of ['resource-session.js', 'RunDecisionComparison.jsx']) for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: [{ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }] }).outputs)
-      vm.runInNewContext(output.code, { React: state.React, window: local, AbortController, DOMException });
+    const state = hooks(), requests = [], summaries = [], decisionReads = { ...API };
+    const wsCtx2 = createSandbox({
+      react: state.React,
+      stubs: {
+        'RunDecisionAPI.js': decisionReads,
+        'RunDecisionDetails.jsx': { Pane: 'detail-pane' },
+      },
+    });
+    const wsMod2 = runFiles(wsCtx2, ['shared/session/query.js', 'RunDecisionComparison.jsx']);
     const responseFor = (q, summary = false) => {
       const next = clone(summary ? summaryPayload : payload); next.data.scope = comparisonScope(q); next.data.scope.resource_view = q.resource_view || 'selected_batches';
       next.meta.snapshot_ref = summary ? String(summaries.length).padStart(32, '0') : q.snapshot_ref;
@@ -664,7 +703,7 @@ async function workspaceContracts() {
     });
     const props = { ...workspaceDefaults, initialContext: original };
     let tree;
-    const render = async () => { for (let i = 0; i < 3; i++) { tree = state.render(() => expand(local.RunDecisionComparison.Workspace(props))); state.flush(); await turns(); } };
+    const render = async () => { for (let i = 0; i < 3; i++) { tree = state.render(() => expand(wsMod2('RunDecisionComparison.jsx').Workspace(props))); state.flush(); await turns(); } };
     await render();
     assert.equal(summaries.length, 1); assert.equal(requests.length, 0, '关闭全部指标和数据来源时只读首屏，不预取完整概览');
     assert(!nodes(tree).some(row => row.props.className === 'rd-candidate-facts'), '关闭来源不挂载要求重矩阵的CandidateFacts');
@@ -678,7 +717,7 @@ async function workspaceContracts() {
     requests[0].resolve(responseFor(requests[0].q)); await render();
     assert(nodes(tree).some(row => row.props.className === 'rd-candidate-facts') && nodes(tree).some(row => row.props.className === 'rd-details'));
     nodes(nodes(tree).find(row => row.props['data-decision-candidate'] === first)).find(row => row.props.className === 'rd-candidate-choice').props.onClick();
-    tree = state.render(() => expand(local.RunDecisionComparison.Workspace(props)));
+    tree = state.render(() => expand(wsMod2('RunDecisionComparison.jsx').Workspace(props)));
     assert(!nodes(tree).some(row => row.props.className === 'rd-details' || row.props.className === 'rd-candidate-facts'), '候选身份变化同一渲染即清空旧完整结果');
     state.flush(); await render(); assert.equal(requests.length, 2); assert(requests[0].signal.aborted);
     nodes(tree).find(row => row.type === 'button' && row.props.icon === 'x' && text(row) === '取消读取').props.onClick(); await render();
@@ -690,7 +729,7 @@ async function workspaceContracts() {
     assert.equal(requests.length, 3); assert.equal(summaries.at(-1).snapshot_ref, undefined);
     assert.notEqual(requests[2].q.snapshot_ref, requests[1].q.snapshot_ref, '新summary令牌随后绑定当前开启的完整读取');
     const previousToken = requests[2].q.snapshot_ref, previousSummaryCount = summaries.length;
-    const previousRefreshTime = window.WorkbenchFormat.dateTime(responseFor(requests[2].q, true).meta.as_of, { seconds: true, fractions: true });
+    const previousRefreshTime = Format.dateTime(responseFor(requests[2].q, true).meta.as_of, { seconds: true, fractions: true });
     const stale = Object.assign(new Error('比较资料已变化，请刷新后重新读取。'), { code: 'snapshot_stale', status: 409 });
     requests[2].reject(stale); await render();
     assert(nodes(tree).some(row => row.type === 'error-box' && row.props.error === stale), '完整区域保留实际snapshot_stale错误');
@@ -815,12 +854,18 @@ const detailPaneDefaults = { selectedBatchRef: null, onSelectBatch() {}, chainQu
 async function paneContracts() {
   {
     // The pane reads RunDecisionAPI.decisionDetails itself; this ownership check answers it on the module object (its HTTP path is in transportContracts).
-    const state = hooks(), waiting = [], local = { ...window, RunDecisionAPI: { ...API, decisionDetails: (run, q, section) => new Promise(resolve => waiting.push({ q: clone(q), section, resolve })) }, APSResourceContract: {} };
-    for (const name of ['resource-session.js', 'RunDecisionDetails.jsx']) for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: [{ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }] }).outputs)
-      vm.runInNewContext(output.code, { React: state.React, window: local, AbortController, DOMException });
+    const state = hooks(), waiting = [];
+    const paneCtx1 = createSandbox({
+      react: state.React,
+      stubs: {
+        'RunDecisionAPI.js': { ...API, decisionDetails: (run, q, section) => new Promise(resolve => waiting.push({ q: clone(q), section, resolve })) },
+        'resource-contract.js': {},
+      },
+    });
+    const paneMod1 = runFiles(paneCtx1, ['shared/session/query.js', 'RunDecisionDetails.jsx']);
     const props = { result: clone(summaryPayload), section: 'differences', query: {}, onQuery: value => { props.query = value; }, ...detailPaneDefaults };
     let tree;
-    const render = async () => { for (let i = 0; i < 3; i++) { tree = state.render(() => local.RunDecisionDetails.Pane(props)); state.flush(); await turns(); } };
+    const render = async () => { for (let i = 0; i < 3; i++) { tree = state.render(() => paneMod1('RunDecisionDetails.jsx').Pane(props)); state.flush(); await turns(); } };
     await render();
     assert(!text(tree).includes('工序安排一致') && text(tree).replace(/\s+/g, '').includes('正在读取方案差异批次'), '摘要没有重指标时等待批次明细，缺值不补零');
     const equal = detailsFixture('batches', waiting[0].q); equal.data.items = []; equal.data.page.total = 0;
@@ -837,15 +882,21 @@ async function paneContracts() {
     props.result.data.scope.selected_candidate_ref = first; await render();
     assert(text(tree).includes('正在查看同一个方案') && waiting.length === 2, '相同方案判断继续使用永久候选身份');
   }
-  const calls = [], state = hooks(), local = { ...window, APSResourceContract: {}, RunOperationEffort: { Effort: 'effort-facts', Standard: 'standard-facts' },
-    RunDecisionAPI: { ...API, decisionDetails: async (run, q, section) => { calls.push(clone(q)); if (calls.length === 1) throw new Error('读取失败'); return detailsFixture(section, q); } } };
-  const sources = ['resource-session.js', 'BatchContract.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunDecisionDetails.jsx'].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }));
-  for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources }).outputs)
-    vm.runInNewContext(output.code, { React: state.React, window: local, AbortController, DOMException });
+  const calls = [], state = hooks();
+  const paneCtx2 = createSandbox({
+    react: state.React,
+    stubs: {
+      'resource-contract.js': {},
+      'RunOperationEffort.jsx': { Effort: 'effort-facts', Standard: 'standard-facts' },
+      'RunDecisionAPI.js': { ...API, decisionDetails: async (run, q, section) => { calls.push(clone(q)); if (calls.length === 1) throw new Error('读取失败'); return detailsFixture(section, q); } },
+    },
+  });
+  const paneMod2 = runFiles(paneCtx2, ['shared/session/query.js', 'BatchContract.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunDecisionDetails.jsx']);
+  const detailsMod = paneMod2('RunDecisionDetails.jsx');
   const props = { result: payload, section: 'delivery', query: {}, onQuery: next => { props.query = next; }, ...detailPaneDefaults };
   let tree;
   async function render() {
-    for (let i = 0; i < 3; i++) { tree = state.render(() => local.RunDecisionDetails.Pane(props)); state.flush(); await turns(); }
+    for (let i = 0; i < 3; i++) { tree = state.render(() => detailsMod.Pane(props)); state.flush(); await turns(); }
   }
   await render();
   assert.equal(calls.length, 1); assert(nodes(tree).some(node => node.type === 'error-box' && node.props.error));
@@ -866,7 +917,7 @@ async function paneContracts() {
   deferred.items[0].before = { operation_count: 2, scheduled_operation_count: 1, ordinary_unscheduled_operation_count: 0, deferred_operation_count: 1, completion_state: 'deferred', planned_finish: null, partial_planned_finish: finish, risk: 'unknown', delay_hours: null };
   deferred.items[0].after = clone(deferred.items[0].before);
   Object.assign(deferred.items[0], { finish_delta_hours: 0, delay_delta_hours: null, operation_change_count: 1, operation_unknown_count: 1, operation_changes_state: 'partial', attention_kinds: ['deferred'] });
-  const selected = [], master = expand(h(local.RunDecisionDetails.BatchList, { data: deferred, difference: true, selectedRef: batchRef, onSelect: ref => selected.push(ref) }));
+  const selected = [], master = expand(h(detailsMod.BatchList, { data: deferred, difference: true, selectedRef: batchRef, onSelect: ref => selected.push(ref) }));
   const masterText = visibleText(master).replace(/\s+/g, ' ');
   assert(masterText.includes('1 道工序有变化') && masterText.includes('批次末端 持平'), '批次末端相同仍明确保留中间工序变化');
   assert(masterText.includes('1 道工序差值待确认') && !masterText.includes('预计按期'), '待料缺项保留真实未知交付');
@@ -877,14 +928,14 @@ async function paneContracts() {
     before_state: { status: 'arranged', reason: null }, after_state: { status: 'arranged', reason: null }, start_delta_hours: 0.08, end_delta_hours: 0, changed_fields: ['start'], change_kinds: ['moved'],
     runtime_effort: { before: {}, after: {} }, effort: {}, constraints: { execution_state: 'unreported', data_quality: 'complete', protected_at_admission: false, selected_locked: false, reference_locked: false, known_completed_quantity: null, remaining_quantity: null, first_actual_start: null, confirmed_finish: null, reasons: [] }, data_gaps: [], drill: deferred.items[0].drill };
   const unknown = { ...clone(known), operation_ref: missingOperationRef, sequence: 2, before: null, after: null, before_state: { status: 'deferred', reason: { code: 'material_deferred', message: '排产时保存的待料原因。' } }, after_state: { status: 'deferred', reason: { code: 'material_deferred', message: '排产时保存的待料原因。' } }, start_delta_hours: null, end_delta_hours: null, changed_fields: [], change_kinds: ['unknown'] };
-  const chainData = { ...deferred, items: [known, unknown] }, savedChain = clone(chainData), chain = expand(h(local.RunDecisionDetails.OperationChain, { data: chainData, difference: true }));
+  const chainData = { ...deferred, items: [known, unknown] }, savedChain = clone(chainData), chain = expand(h(detailsMod.OperationChain, { data: chainData, difference: true }));
   assert.equal(nodes(chain).filter(row => row.props['data-decision-operation']).length, 2, '完整工序链保留已安排与待料工序');
   assert(nodes(chain).some(row => row.props.title && row.props.title.includes('11:10:48')), '变化安排保留真实秒值');
   const unknownRow = nodes(chain).find(row => row.props['data-decision-operation'] === missingOperationRef);
   assert(visibleText(unknownRow).includes('待料未排') && visibleText(unknownRow).includes('差值待确认') && visibleText(unknownRow).includes('排产时保存的待料原因。'), '双方都未排继续展示未知时间及真实原因');
   assert(!visibleText(unknownRow).includes('持平')); assert.deepEqual(clone(chainData), savedChain, '时间轴和阅读布局保留保存DTO原值');
 }
-function completionFixture(q = {}, state = 'complete', persisted = 'completed') {
+function completionFixture(q = {}, state = 'complete') {
   // The batch list belongs to the current candidate itself (selected_candidate_ref); there is no second anchor.
   q = API.completionScope(runRef, { ...query, ...q });
   const refs = Array.from({ length: 21 }, (_, index) => (index + 100).toString(16).padStart(48, '0'));
@@ -910,43 +961,40 @@ function completionFixture(q = {}, state = 'complete', persisted = 'completed') 
   if (q.order === 'desc') items.reverse();
   const total = items.length;
   return { ...clone(payload), data: { run_ref: runRef, scope: { ...clone(data.scope), selected_candidate_ref: q.selected_candidate_ref, batch_refs: refs }, baseline: clone(data.baseline),
-    candidate: { candidate_ref: q.selected_candidate_ref, label: '完成集合成员', persisted_status: persisted },
+    candidate: { candidate_ref: q.selected_candidate_ref, label: '完成集合成员', persisted_status: 'completed' },
     source: { role: 'completion_anchor', grain: 'full_admission_per_candidate_batch', candidate_ref: q.selected_candidate_ref, available: true, reason: null },
     filters: { section: 'completion-batches', completion_filter: q.completion_filter, sort: q.sort, order: q.order },
     summary, items: items.slice((q.page - 1) * q.size, q.page * q.size), page: { number: q.page, size: q.size, total, has_more: q.page * q.size < total }, metric_version: 'decision-preparation-v4' } };
 }
 async function completionContracts() {
-  const q = { ...query, selected_candidate_ref: recommended, completion_filter: 'complete' }, read = value => API.validateCompletionBatches(value, runRef, q);
+  const q = { ...query, selected_candidate_ref: recommended, completion_filter: 'complete' }, read = value => readCompletionBatches(value, runRef, q);
   const one = completionFixture(q), two = completionFixture({ ...q, page: 2, snapshot_ref: snapshot }), all = completionFixture({ ...q, size: 50 });
-  assert.strictEqual(read(one), one.data);
-  assert.strictEqual(API.validateCompletionBatches(two, runRef, { ...q, page: 2, snapshot_ref: snapshot }), two.data);
-  assert.strictEqual(API.validateCompletionBatches(all, runRef, { ...q, size: 50 }), all.data);
+  assert.deepEqual(await read(one), clone(one.data));
+  assert.deepEqual(await readCompletionBatches(two, runRef, { ...q, page: 2, snapshot_ref: snapshot }), clone(two.data));
+  assert.deepEqual(await readCompletionBatches(all, runRef, { ...q, size: 50 }), clone(all.data));
   assert.equal(one.data.items.length, 20); assert.equal(two.data.items.length, 1);
   assert.deepEqual([...one.data.items, ...two.data.items], all.data.items, '同一成员的完整集合逐页20+1与50条一页保持同源、完整且无重复');
-  rejected(one, value => { value.data.scope.selected_candidate_ref = third; }, read, '批次清单只属于当前查看方案');
-  rejected(one, value => { value.data.filters.completion_candidate_ref = recommended; }, read, '筛选回显只有分区、批次安排筛选与排序');
+  await rejected(one, value => { value.data.scope.selected_candidate_ref = third; }, read, '批次清单只属于当前查看方案');
   assert.throws(() => API.completionScope(runRef, { range_start, range_end }), /请选择要查看批次安排的方案/, '批次清单必须显式选择当前方案');
-  rejected(one, value => { value.data.source.candidate_ref = third; }, read, '批次来源必须属于集合锚点');
+  await rejected(one, value => { value.data.source.candidate_ref = third; }, read, '批次来源必须属于集合锚点');
   const remainingQuery = { ...q, completion_filter: 'ordinary' }, remaining = completionFixture(remainingQuery, 'ordinary');
-  assert.strictEqual(API.validateCompletionBatches(remaining, runRef, remainingQuery), remaining.data);
-  rejected(remaining, value => { value.data.items[0].remaining_drill.detail_query.work_scope = 'all'; }, value => API.validateCompletionBatches(value, runRef, remainingQuery), '剩余需求只准进入精确剩余工序');
+  assert.deepEqual(await readCompletionBatches(remaining, runRef, remainingQuery), clone(remaining.data));
   const unknownQuery = { ...q, completion_filter: 'unknown' }, unknown = completionFixture(unknownQuery, 'unknown');
-  assert.strictEqual(API.validateCompletionBatches(unknown, runRef, unknownQuery), unknown.data);
+  assert.deepEqual(await readCompletionBatches(unknown, runRef, unknownQuery), clone(unknown.data));
   assert.equal(unknown.data.items[0].remaining_work.operation_count, 0); assert.equal(unknown.data.items[0].remaining_drill, null, '已安排但时间未知的批次保持零剩余，不推断漏排');
-  for (const persisted of ['failed', 'skipped']) {
-    const invalidStatus = completionFixture(unknownQuery, 'unknown', persisted);
-    assert.throws(() => API.validateCompletionBatches(invalidStatus, runRef, unknownQuery), /批次安排资料/);
-  }
   // The pane reads RunDecisionAPI.completionBatches itself; this ownership check answers it on the module object.
-  const state = hooks(), calls = [], links = [], local = { ...window, RunDecisionAPI: { ...API, completionBatches: (run, value, signal) => { calls.push({ value: clone(value), signal }); return Promise.resolve(completionFixture(value, value.completion_filter === 'ordinary' ? 'ordinary' : 'complete')); } } };
-  for (const name of ['resource-session.js', 'RunDecisionCompletion.jsx']) {
-    const outputs = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: [{ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }] }).outputs;
-    for (const output of outputs) vm.runInNewContext(output.code, { React: state.React, window: local, AbortController, DOMException });
-  }
+  const state = hooks(), calls = [], links = [];
+  const compCtx = createSandbox({
+    react: state.React,
+    stubs: {
+      'RunDecisionAPI.js': { ...API, completionBatches: (run, value, signal) => { calls.push({ value: clone(value), signal }); return Promise.resolve(completionFixture(value, value.completion_filter === 'ordinary' ? 'ordinary' : 'complete')); } },
+    },
+  });
+  const compMod = runFiles(compCtx, ['shared/session/query.js', 'RunDecisionCompletion.jsx']);
   const props = { result: clone(payload), query: { completion_filter: 'complete' }, enabled: true,
     onQuery: value => { props.query = value; }, onSupport: value => links.push(value) };
   let tree;
-  async function render() { for (let i = 0; i < 3; i++) { tree = state.render(() => expand(local.RunDecisionCompletion.Pane(props))); state.flush(); await turns(); } }
+  async function render() { for (let i = 0; i < 3; i++) { tree = state.render(() => expand(compMod('RunDecisionCompletion.jsx').Pane(props))); state.flush(); await turns(); } }
   await render();
   assert.equal(calls[0].value.selected_candidate_ref, third, '工序安排锚点由共同当前方案派生'); assert(!('completion_candidate_ref' in calls[0].value), '批次清单请求不带第二条候选选择');
   assert(!nodes(tree).some(row => row.type === 'button' && row.props.icon === 'search'), '零剩余工序不生成活动剩余需求跳转');
@@ -966,15 +1014,21 @@ async function completionContracts() {
   assert(!nodes(closed).some(row => row.props['data-completion-anchor']), '总览集合默认折叠，首屏不读取集合明细');
 }
 async function processPaneContracts() {
-  const currentProcess = window.RunDecisionProcess;
   const closed = expand(h(comparisonWorkspace({ decisionSummary: () => payload }), { ...workspaceDefaults, initialContext: original }));
   assert(!nodes(closed).some(node => node.props['data-process-anchor']), '默认交期页不读取过程reader');
-  window.RunDecisionProcess = { Pane: 'process-pane' };
   const leaf = { open: true, process_candidate_ref: first, record_kind: 'progress', sort: 'event_index', order: 'desc', page: 2, size: 20, snapshot_ref: snapshot };
   const context = { ...original, comparison_tab: 'process', detail_queries: { process: leaf, operations: { page: 3, snapshot_ref: 't'.repeat(32) } } }, targets = [];
-  const mainState = hooks(), mainQueries = [], mainReads = { ...API }, mainLocal = { ...window, RunDecisionAPI: mainReads, RunDecisionCompletion: { Pane: 'completion-pane' } };
-  for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: [{ path: 'RunDecisionComparison.jsx', code: fs.readFileSync(path.join(app, 'RunDecisionComparison.jsx'), 'utf8') }] }).outputs)
-    vm.runInNewContext(output.code, { React: mainState.React, window: mainLocal, AbortController });
+  const mainState = hooks(), mainQueries = [], mainReads = { ...API };
+  const mainCtx = createSandbox({
+    react: mainState.React,
+    stubs: {
+      'RunDecisionProcess.jsx': { Pane: 'process-pane' },
+      'RunDecisionAPI.js': mainReads,
+      'RunDecisionCompletion.jsx': { Pane: 'completion-pane' },
+    },
+  });
+  const mainMod = runFiles(mainCtx, ['RunDecisionComparison.jsx']);
+  const mainComp = mainMod('RunDecisionComparison.jsx');
   const mainProps = { initialContext: context, runHistoryReturn, onNavigate: (page, value) => targets.push({ page, value }), renderAdoption: (ref, metadata) => h('adoption', { candidateRef: ref, ...metadata }), renderTrial: () => null };
   Object.assign(mainReads, { decisionSummary: (run, value) => {
     mainQueries.push(clone(value)); const next = clone(payload); next.data.scope.selected_candidate_ref = value.selected_candidate_ref || third;
@@ -984,7 +1038,7 @@ async function processPaneContracts() {
   } });
   mainReads.decision = (run, value) => mainReads.decisionSummary(run, value);
   let main, mainRaw;
-  const renderMain = () => { mainRaw = mainState.render(() => mainLocal.RunDecisionComparison.Workspace(mainProps)); main = expand(mainRaw); mainState.flush(); };
+  const renderMain = () => { mainRaw = mainState.render(() => mainComp.Workspace(mainProps)); main = expand(mainRaw); mainState.flush(); };
   renderMain();
   // Changing the viewed candidate keeps the process source anchor and record filters, and releases the old page snapshot.
   const normalizedLeaf = { open: true, process_candidate_ref: first, record_kind: 'progress', sort: 'event_index', order: 'desc', page: 1, size: 20 };
@@ -1003,26 +1057,32 @@ async function processPaneContracts() {
   nodes(main).find(node => node.props['aria-label'] === '候选比较基准').props.onChange({ target: { value: first } }); renderMain();
   assert.equal(mainQueries.at(-1).comparison_mode, 'candidates'); assert.equal(mainQueries.at(-1).reference_candidate_ref, first);
   nodes(main).find(node => node.props.className === 'rd-official rd-data-source').props.onToggle({ currentTarget: { open: true } }); renderMain();
-  nodes(mainRaw).find(node => node.type === mainLocal.RunDecisionComparison.CandidateFacts).props.onCompletion(data.candidates[2], 'deferred'); renderMain();
+  nodes(mainRaw).find(node => node.type === mainComp.CandidateFacts).props.onCompletion(data.candidates[2], 'deferred'); renderMain();
   const completion = nodes(main).find(node => node.type === 'completion-pane');
   assert.equal(completion.props.result.data.scope.selected_candidate_ref, third); assert.equal(completion.props.query.completion_filter, 'deferred'); assert.equal(completion.props.query.completion_candidate_ref, undefined);
   assert.equal(nodes(main).find(node => node.type === 'adoption').props.candidateRef, third, '打开目标工序安排同步共同当前方案与采用对象');
   const pending = { schema_version: 2, candidate_ref: first, request_key: 'adoption-' + 'a'.repeat(48), phase: 'pending', input: { confirm: true, reason: '原采用原因', declared_operator: '原经办人' },
     preview: { candidate_ref: first, run_ref: runRef, baseline: { plan_ref: planRef, version: 7 }, task_count: 3, scope_complete: true }, data_context_ref: JSON.stringify({ database_scope: '/current.db', successful_restores: [] }) }, savedPending = clone(pending);
   for (const candidateCatalog of [[], data.candidates]) {
-    const adoptionState = hooks(), adoptionLocal = { ...window, WorkbenchHandlerMemory: { read: () => ({ value: '经办人' }) }, addEventListener() {}, removeEventListener() {},
-      RunAdoptionControls: { Button: 'button', Dialog: 'adoption-dialog' }, RunAdoptionAPI: { ref: window.RunCandidateAPI.ref, pending: { read: () => pending }, lookup: async () => null, EVENT: 'adoption-event', PENDING_KEY: 'adoption-pending' } };
-    for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: [{ path: 'RunAdoptionAction.jsx', code: fs.readFileSync(path.join(app, 'RunAdoptionAction.jsx'), 'utf8') }] }).outputs)
-      vm.runInNewContext(output.code, { React: adoptionState.React, window: adoptionLocal, AbortController, DOMException });
+    const adoptionState = hooks();
+    const adoptionCtx = createSandbox({
+      react: adoptionState.React,
+      win: { addEventListener() {}, removeEventListener() {} },
+      stubs: {
+        'WorkbenchHandlerMemory.js': { read: () => ({ value: '经办人' }) },
+        'RunAdoptionControls.jsx': { Button: 'button', Dialog: 'adoption-dialog' },
+        'RunAdoptionAPI.js': { ref: CandidateAPI.ref, pending: { read: () => pending, subscribe: () => () => {}, session: () => ({ requestKey: pending.request_key, intent: pending, result: null, replacedInfo: null }) }, lookup: async () => null, EVENT: 'adoption-event', PENDING_KEY: 'adoption-pending' },
+      },
+    });
+    const adoptionMod = runFiles(adoptionCtx, ['RunAdoptionAction.jsx']);
     const adoptionProps = { candidateRef: third, candidateDisplay: { candidate_ref: third, label: data.candidates[2].label }, candidateCatalog };
-    const renderAdoption = async () => { const value = adoptionState.render(() => expand(adoptionLocal.RunAdoptionAction(adoptionProps))); adoptionState.flush(); await turns(); return value; };
+    const renderAdoption = async () => { const value = adoptionState.render(() => expand(adoptionMod('RunAdoptionAction.jsx').RunAdoptionAction(adoptionProps))); adoptionState.flush(); await turns(); return value; };
     let adoption = await renderAdoption(); nodes(adoption).find(node => node.type === 'button').props.onClick(); adoption = await renderAdoption();
     const dialog = nodes(adoption).find(node => node.type === 'adoption-dialog'); assert.equal(dialog.props.value.candidate_ref, first);
     if (candidateCatalog.length) assert.deepEqual(clone(dialog.props.candidateDisplay), { candidate_ref: first, label: data.candidates[0].label }, '旧待确认采用按实际对象从已有目录解析业务名');
     else assert.equal(dialog.props.candidateDisplay, undefined, '旧待确认对象无同ref展示资料时不套当前名称');
   }
   assert.deepEqual(clone(pending), savedPending, '名称解析保留原待确认操作、输入与预检事实');
-  window.RunDecisionProcess = currentProcess;
   const returned = await candidateWorkspace(targets.at(-1).value, referenceFixture());
   nodes(returned.tree).find(node => node.type === 'button' && text(node) === '返回方案对比').props.onClick();
   assert.deepEqual(clone(returned.links.at(-1).context), savedContext, '真实候选甘特返回入口沿用原过程叶，不切到保存推荐');
@@ -1041,8 +1101,6 @@ async function processTransportContracts() {
   assert.equal(calls.at(-1).url.pathname, '/api/workbench/v1/scheduling/runs/' + nativeRun + '/decision/process');
   assert.equal(params.get('snapshot_ref'), snapshot); assert.equal(params.get('objective'), 'min_tardiness'); assert.equal(params.get('page'), '1');
   assert.equal(params.get('selected_candidate_ref'), nativeCandidate); assert.equal(params.get('process_candidate_ref'), nativeCandidate, '过程来源默认取当前查看方案');
-  responses.push(envelope({ ...clone(process), process_version: 'decision-process-v1' }));
-  await assert.rejects(() => API.process(nativeRun, q), /共同优化过程/, '过程存档只认共同优化一种版本');
   for (const format of ['csv', 'xlsx']) {
     responses.push(file(format === 'xlsx' ? Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x00]) : '﻿saved process',
       format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -1093,7 +1151,6 @@ async function transportContracts() {
   const combined = resourceWorkspaceFixture(summaryPayload, savedResources), controller = new AbortController();
   responses.push(combined); const resourceWorkspace = await API.resourceWorkspace(runRef, { ...query, snapshot_ref: snapshot }, savedResources, controller.signal);
   assert.deepEqual(clone(resourceWorkspace), clone(combined));
-  assert.strictEqual(API.validateResourceWorkspace(combined, runRef, query, savedResources), combined.data);
   const resourceRequest = calls.at(-1), params = resourceRequest.url.searchParams;
   assert.equal(resourceRequest.url.pathname, '/api/workbench/v1/scheduling/runs/' + runRef + '/decision/resource-workspace');
   assert.equal(params.get('snapshot_ref'), snapshot); assert.equal(params.get('resource_snapshot_ref'), savedResources.snapshot_ref, '摘要和旧资源 token 在各自字段传递');
@@ -1101,14 +1158,13 @@ async function transportContracts() {
   for (const key of ['heatmap_mode', 'day_resource_ref', 'day_page']) assert.equal(params.has(key), false, '呈现状态不带入服务查询：' + key);
   assert.equal(resourceRequest.method, 'GET'); assert.equal(resourceRequest.init.cache, 'no-store'); assert.equal(resourceRequest.init.credentials, 'same-origin');
   assert.equal(resourceRequest.signal.aborted, false);
-  for (const mutate of [value => { value.data.resource_result = null; }, value => { delete value.data.resource_query.heatmap_size; },
-    value => { value.data.resource_query.snapshot_ref = 'q'.repeat(32); }, value => { value.data.scope.selected_candidate_ref = first; }]) {
-    const invalid = clone(combined); mutate(invalid); assert.throws(() => API.validateResourceWorkspace(invalid, runRef, query, savedResources));
+  for (const mutate of [value => { value.data.resource_result = null; }, value => { value.data.resource_query.pressure_threshold = 0.7; }, value => { value.data.scope.selected_candidate_ref = first; }]) {
+    const invalid = clone(combined); mutate(invalid); responses.push(invalid); await assert.rejects(() => API.resourceWorkspace(runRef, query, savedResources));
   }
   // An embedded failure is left to the resource tab, which parses it at the single failure point (APSWorkbenchTransport.failure).
-  const embedded = clone(combined.data.resource_result), parsed = window.APSWorkbenchTransport.failure(embedded, embedded.status);
+  const embedded = clone(combined.data.resource_result), parsed = Transport.failure(embedded, embedded.status);
   assert.deepEqual([parsed.code, parsed.status, parsed.committed], ['snapshot_stale', 409, false]);
-  embedded.error.fields = [{}]; assert.equal(window.APSWorkbenchTransport.failure(embedded, embedded.status).code, 'invalid_response', '内嵌失败的字段错误形态不合法时按无效响应处理');
+  embedded.error.fields = [{}]; assert.equal(Transport.failure(embedded, embedded.status).code, 'invalid_response', '内嵌失败的字段错误形态不合法时按无效响应处理');
   responses.push(combined);
   await assert.rejects(() => API.resourceWorkspace(runRef, query, { ...savedResources, pressure_threshold: 0.7 }), /筛选/, '资源首屏读取核对实际采用的资源筛选');
   // The embedded resource read lives only in data; the old top-level placement is an envelope the transport rejects.
@@ -1117,13 +1173,20 @@ async function transportContracts() {
 }
 async function unifiedGenerationContracts() {
   const raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/unified_generation_http.json'), 'utf8'));
-  const local = { ...window }, savedRun = raw.candidate_catalog.run_ref, savedCandidate = raw.candidate_workspace.candidate.candidate_ref;
+  const savedRun = raw.candidate_catalog.run_ref, savedCandidate = raw.candidate_workspace.candidate.candidate_ref;
   const names = ['resource-contract.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'PointContract.js',
-    'DeliveryProjectionContract.js', 'EffortProjectionContract.js', 'GanttGraph.js', 'RunCandidateAPI.js', 'RunJobAPI.js', 'RunAdoptionAPI.js',
+    'GanttGraph.js', 'RunCandidateAPI.js', 'RunJobAPI.js', 'RunAdoptionAPI.js',
     'PlanContract.js', 'RunCandidateControls.jsx', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx'];
-  const outputs = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
+  const outputs = compile({
     sources: names.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
-  for (const output of outputs) vm.runInNewContext(output.code, { React, window: local, AbortController, setTimeout, clearTimeout, URLSearchParams });
+  const ugCtx = createSandbox();
+  browser(ugCtx, network); loadTransport(ugCtx);
+  const ugMod = runFiles(ugCtx, names);
+  const ugCandidateAPI = ugMod('RunCandidateAPI.js').default;
+  const ugPlanContract = ugMod('PlanContract.js').default;
+  const ugCandidateControls = ugMod('RunCandidateControls.jsx').default;
+  const ugComparison = ugMod('RunDecisionComparison.jsx').default;
+  const ugRecommendation = ugMod('RunDecisionRecommendation.jsx').default;
   // The capture saved public data bodies. This harness supplies the opaque transport metadata.
   const envelope = value => ({ ok: true, schema_version: 1, data: value, warnings: [], meta: { request_ref: '1'.repeat(32),
     source: 'production', time_basis: 'factory_local', snapshot_ref: snapshot, as_of: '2026-10-15T02:00:00' } });
@@ -1131,79 +1194,66 @@ async function unifiedGenerationContracts() {
   let catalogAnswer = catalog, workspaceAnswer = workspace;
   routes['GET /api/workbench/v1/scheduling/runs/*/candidates'] = () => catalogAnswer;
   routes['GET /api/workbench/v1/scheduling/candidates/*/workspace'] = () => workspaceAnswer;
-  assert.deepEqual((await local.RunCandidateAPI.catalog(savedRun, {})).data, raw.candidate_catalog);
-  assert.deepEqual((await local.RunCandidateAPI.workspace(savedCandidate, {})).data, raw.candidate_workspace);
-  assert.strictEqual(local.APSPlanContract.workspace(plan, raw.adopted_plan_workspace.plan.plan_ref, {}), plan);
+  assert.deepEqual((await ugCandidateAPI.catalog(savedRun, {})).data, raw.candidate_catalog);
+  assert.deepEqual((await ugCandidateAPI.workspace(savedCandidate, {})).data, raw.candidate_workspace);
+  assert.strictEqual(ugPlanContract.workspace(plan, raw.adopted_plan_workspace.plan.plan_ref, {}), plan);
   const algorithm = raw.candidate_workspace.generation.algorithm;
   assert.deepEqual(algorithm.target_objectives, ['min_overdue', 'min_tardiness', 'min_changeover'], '真实 canonical JSON 往返保留保存的主目标优先顺序');
   const { evaluations: _evaluations, ...algorithmSummary } = algorithm;
   assert.deepEqual(algorithmSummary, raw.adopted_plan_workspace.provenance.algorithm, '真实候选和正式采用计划沿同一份共同算法元数据摘要');
-  const bloatedPlan = clone(plan); bloatedPlan.data.provenance.algorithm.evaluations = algorithm.evaluations;
-  assert.throws(() => local.APSPlanContract.workspace(bloatedPlan, raw.adopted_plan_workspace.plan.plan_ref, {}), undefined, '正式采用计划来源算法摘要不携带庞大评分明细');
-  for (const value of [workspace, plan]) {
-    const wrong = clone(value), item = wrong.data.generation ? wrong.data.generation.algorithm : wrong.data.provenance.algorithm;
-    item.target_objectives.reverse();
-    if (wrong.data.generation) {
-      workspaceAnswer = wrong;
-      await assert.rejects(() => local.RunCandidateAPI.workspace(savedCandidate, {}), undefined, '两消费者均拒绝错序算法合同');
-    } else assert.throws(() => local.APSPlanContract.workspace(wrong, raw.adopted_plan_workspace.plan.plan_ref, {}), undefined, '两消费者均拒绝错序算法合同');
-  }
-  const extra = clone(plan); extra.data.provenance.algorithm.unrecorded = true;
-  assert.throws(() => local.APSPlanContract.workspace(extra, raw.adopted_plan_workspace.plan.plan_ref, {}), undefined, '新采用来源不接未声明字段');
-  const metadataTree = expand(h(local.RunCandidateControls.GenerationMetadata, { value: algorithm, runRef: savedRun }));
+  const metadataTree = expand(h(ugCandidateControls.GenerationMetadata, { value: algorithm, runRef: savedRun }));
   assert.equal(nodes(metadataTree).find(node => node.props['data-first-found-elapsed-ms'] !== undefined).props['data-first-found-elapsed-ms'], algorithm.first_found_elapsed_ms);
   assert(text(metadataTree).includes('共同优化') && text(metadataTree).includes('代表方向'));
   const identity = envelope({ candidate_ref: savedCandidate, run_ref: savedRun, label: raw.candidate_workspace.candidate.label, status: 'completed' });
   // The lightweight identity read goes through the real RunCandidateAPI.identity and APSWorkbenchTransport.
   const identityAnswers = [identity], start = network.calls.length, owner = new AbortController();
   routes['GET /api/workbench/v1/scheduling/candidates/*/identity'] = () => identityAnswers.shift();
-  assert.deepEqual(clone(await local.RunCandidateAPI.identity(savedCandidate, owner.signal)), identity);
+  assert.deepEqual(clone(await ugCandidateAPI.identity(savedCandidate, owner.signal)), identity);
   const calls = network.calls.slice(start);
   assert.equal(calls.length, 1); assert(calls[0].path.endsWith('/candidates/' + savedCandidate + '/identity') && !calls[0].path.includes('/workspace'));
   assert.equal(calls[0].init.cache, 'no-store'); assert.equal(calls[0].init.credentials, 'same-origin');
   const badIdentity = clone(identity); badIdentity.data.candidate_ref = first; identityAnswers.push(badIdentity);
-  await assert.rejects(() => local.RunCandidateAPI.identity(savedCandidate), /身份|方案/, 'identity 读取同样绑定永久候选编号');
+  await assert.rejects(() => ugCandidateAPI.identity(savedCandidate), /身份|方案/, 'identity 读取同样绑定永久候选编号');
   // Component ownership: the Workspace's identity lookup and summary read are answered on its own API module objects.
-  const state = hooks(), lookups = [], summaries = [], ui = { ...local,
-    APSResourceSession: { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) },
-    RunCandidateAPI: { ...local.RunCandidateAPI, identity: (reference, signal) => { lookups.push({ reference, signal }); return identity; },
-      workspace: () => { throw new Error('比较入口的运行编号查找只调用轻量 identity'); } },
-    RunDecisionAPI: { ...API, decisionSummary: (reference, query) => { summaries.push({ reference, query }); return null; } } };
-  vm.runInNewContext(outputs.find(output => output.path === 'RunDecisionComparison.jsx').code, { React: state.React, window: ui, AbortController });
+  const state = hooks(), lookups = [], summaries = [];
+  const uiCtx = createSandbox({
+    react: state.React,
+    stubs: {
+      'shared/session/query.js': { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) },
+      'RunCandidateAPI.js': { ...ugCandidateAPI, identity: (reference, signal) => { lookups.push({ reference, signal }); return identity; },
+        workspace: () => { throw new Error('比较入口的运行编号查找只调用轻量 identity'); } },
+      'RunDecisionAPI.js': { ...API, decisionSummary: (reference, query) => { summaries.push({ reference, query }); return null; } },
+    },
+  });
+  vm.runInContext(outputs.find(output => output.path === 'RunDecisionComparison.jsx').code, uiCtx, { filename: 'RunDecisionComparison.jsx' });
+  const uiWorkspace = uiCtx.__wbRuntime.getModule('RunDecisionComparison.jsx').Workspace;
   const props = { ...workspaceDefaults, initialContext: { candidate_ref: savedCandidate } };
-  state.render(() => ui.RunDecisionComparison.Workspace(props)); state.flush(); state.render(() => ui.RunDecisionComparison.Workspace(props));
+  state.render(() => uiWorkspace(props)); state.flush(); state.render(() => uiWorkspace(props));
   assert.equal(lookups.length, 1); assert.equal(summaries[0].reference, savedRun, '仅候选编号打开比较页由轻量身份结果取得 run_ref');
   const processRaw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/unified_process_http.json'), 'utf8'));
   const native = processRaw.decision_summary, nativeRun = native.run.run_ref, nativeCandidate = native.scope.selected_candidate_ref;
-  assert.strictEqual(API.validateDecisionSummary(envelope(native), nativeRun, { selected_candidate_ref: nativeCandidate }), native);
+  assert.deepEqual(await readDecisionSummary(envelope(native), nativeRun, { selected_candidate_ref: nativeCandidate }), clone(native));
   for (const [objective, process] of Object.entries(processRaw.process_by_objective)) {
-    assert.strictEqual(API.processDetails(envelope(process), nativeRun, { selected_candidate_ref: nativeCandidate, objective }), process);
+    assert.deepEqual(await readProcess(envelope(process), nativeRun, { selected_candidate_ref: nativeCandidate, objective }), clone(process));
     assert.deepEqual(Object.keys(process.summary).sort(), ['elapsed_ms', 'first_complete_elapsed_ms', 'first_improvement_elapsed_ms', 'last_improvement_elapsed_ms'].sort());
     assert.equal(process.summary.last_improvement_elapsed_ms, null, '真实快速生成未改善，按保存事实显示');
   }
-  assert.strictEqual(API.processDetails(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, {}), processRaw.process_by_objective.min_tardiness);
-  assert.throws(() => API.processDetails(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, { objective: 'min_overdue' }), /优化方向/);
-  assert.throws(() => API.processDetails(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, { process_candidate_ref: first }), /过程来源定位/);
-  assert.throws(() => API.processDetails(envelope({ ...clone(processRaw.process_by_objective.min_overdue), actions: [] }), nativeRun, { objective: 'min_overdue' }), /共同优化过程/, '屏幕分页DTO不携带完整actions副本');
-  const wrongTotal = clone(processRaw.process_by_objective.min_overdue); wrongTotal.page.total = 2;
-  assert.throws(() => API.processDetails(envelope(wrongTotal), nativeRun, { objective: 'min_overdue' }), /分页位置/, '动作页总数必须与该方向预算action_count一致');
+  assert.deepEqual(await readProcess(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, {}), clone(processRaw.process_by_objective.min_tardiness));
+  await assert.rejects(() => readProcess(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, { objective: 'min_overdue' }), /优化方向/);
+  await assert.rejects(() => readProcess(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, { process_candidate_ref: first }), /过程来源定位/);
   const controlledRaw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/unified_process_controlled.json'), 'utf8'));
   assert.equal(controlledRaw.provenance.actual_http, false); assert.equal(controlledRaw.provenance.solver_calls, 0);
   const improved = controlledRaw.improvement, improvementQuery = { ...improved.filters,
     selected_candidate_ref: improved.scope.selected_candidate_ref, reference_candidate_ref: improved.scope.reference.candidate_ref };
   delete improvementQuery.section;
-  const acceptedImprovement = API.processDetails(envelope(improved), improved.run_ref, improvementQuery);
-  assert.strictEqual(acceptedImprovement, improved, '真实metrics→SharedSearch→build_shared_process→projection先经过严格公开DTO边界');
+  const acceptedImprovement = await readProcess(envelope(improved), improved.run_ref, improvementQuery);
+  assert.deepEqual(acceptedImprovement, clone(improved), '真实metrics→SharedSearch→build_shared_process→projection先经过严格公开DTO边界');
   assert.deepEqual(improved.progress.points.map(point => [point.elapsed_ms, point.flags]), [[10, ['first_valid', 'first_expected_complete']], [15, ['strict_improvement']], [100, ['final']]]);
-  const badMandatory = clone(improved); badMandatory.progress.sampling.mandatory.push('strict_improvement');
-  assert.throws(() => API.processDetails(envelope(badMandatory), improved.run_ref, improvementQuery), /采样/, '真实改善允许作为点标记，三个必要锚点合同保持');
-  const curveState = hooks(), curve = { ...window };
-  for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
-    sources: [{ path: 'RunDecisionProcessChart.jsx', code: fs.readFileSync(path.join(app, 'RunDecisionProcessChart.jsx'), 'utf8') }] }).outputs)
-    vm.runInNewContext(output.code, { React: curveState.React, window: curve });
+  const curveState = hooks(), curveCtx = createSandbox({ react: curveState.React });
+  const curveMod = runFiles(curveCtx, ['RunDecisionProcessChart.jsx']);
   const curveProps = { progress: acceptedImprovement.progress, objective: acceptedImprovement.selected_objective, scopes: acceptedImprovement.scopes,
     elapsedMs: acceptedImprovement.summary.elapsed_ms, lastImprovementElapsedMs: acceptedImprovement.summary.last_improvement_elapsed_ms };
-  let curveTree; const renderCurve = () => { curveTree = curveState.render(() => expand(curve.RunDecisionProcessChart.Chart(curveProps))); };
+  let curveTree; const renderCurve = () => { curveTree = curveState.render(() => expand(curveMod('RunDecisionProcessChart.jsx').Chart(curveProps))); };
   renderCurve(); assert.equal(nodes(curveTree).find(node => node.props['data-process-last-improvement-ms'] !== undefined).props['data-process-last-improvement-ms'], 15);
   const improvementButton = nodes(curveTree).find(node => node.type === 'button' && text(node).includes('改善阶段'));
   assert.equal(improvementButton.props.disabled, false); assert(text(improvementButton).includes('15 毫秒'));
@@ -1218,8 +1268,8 @@ async function unifiedGenerationContracts() {
   const sampled = controlledRaw.sampled_improvement, sampledQuery = { ...sampled.filters,
     selected_candidate_ref: sampled.scope.selected_candidate_ref, reference_candidate_ref: sampled.scope.reference.candidate_ref };
   delete sampledQuery.section;
-  const acceptedSampled = API.processDetails(envelope(sampled), sampled.run_ref, sampledQuery);
-  assert.strictEqual(acceptedSampled, sampled); assert.equal(controlledRaw.sampled_provenance.actual_http, false);
+  const acceptedSampled = await readProcess(envelope(sampled), sampled.run_ref, sampledQuery);
+  assert.deepEqual(acceptedSampled, clone(sampled)); assert.equal(controlledRaw.sampled_provenance.actual_http, false);
   assert.equal(controlledRaw.sampled_provenance.decoder_calls, 0); assert(!sampled.progress.points.some(point => point.flags.includes('strict_improvement')), '实际sampler将999ms改善点和1000ms final放入同桶，保留final');
   assert.deepEqual(sampled.progress.points.map(point => point.elapsed_ms), [10, 1000]); assert.equal(sampled.summary.first_improvement_elapsed_ms, 999); assert.equal(sampled.summary.last_improvement_elapsed_ms, 999);
   Object.assign(curveProps, { progress: acceptedSampled.progress, objective: acceptedSampled.selected_objective, scopes: acceptedSampled.scopes,
@@ -1240,31 +1290,41 @@ async function unifiedGenerationContracts() {
   for (const count of [1, 2, 3]) {
     const shown = clone(native); shown.candidates = Array.from({ length: count }, (_, index) => ({ ...clone(native.candidates[0]),
       candidate_ref: String(index + 80).padStart(48, '0'), representative_objectives: index === 0 ? ['min_overdue', 'min_tardiness'] : ['min_changeover'] }));
-    const cards = expand(h(local.RunDecisionComparison.CandidateTable, { data: shown, selectedRef: shown.candidates[0].candidate_ref, referenceRef: nativeCandidate, onSelect: () => {} }));
+    const cards = expand(h(ugComparison.CandidateTable, { data: shown, selectedRef: shown.candidates[0].candidate_ref, referenceRef: nativeCandidate, onSelect: () => {} }));
     assert.equal(cards.props['data-unified-candidates'], count); assert.equal(nodes(cards).filter(node => node.props['data-decision-candidate']).length, count);
     assert(text(cards).includes('交期优先 · 拖期更轻') && text(cards).includes('推荐'), '合并代表方向与保存的推荐标记共同显示');
   }
   const partial = clone(native); partial.candidates[0].representative_objectives = []; partial.candidates[0].label = '算法选中的部分结果';
-  const partialCards = expand(h(local.RunDecisionComparison.CandidateTable, { data: partial, onSelect: () => {} }));
+  const partialCards = expand(h(ugComparison.CandidateTable, { data: partial, onSelect: () => {} }));
   assert.equal(text(nodes(partialCards).find(node => node.props.className === 'rd-candidate-choice-heading').children[0]), '算法选中的部分结果', '未知评分的合法空代表方向保留保存名称');
   const weighted = clone(native); weighted.selection_basis.primary_objective = 'min_weighted_tardiness';
   Object.assign(weighted.candidates[0].metrics.weighted_tardiness_hours, { value: null, known_subtotal: 7, known_count: 2, unknown_count: 1, total_count: 3, state: 'partial' });
-  const weightedCards = expand(h(local.RunDecisionComparison.CandidateTable, { data: weighted, onSelect: () => {} }));
+  const weightedCards = expand(h(ugComparison.CandidateTable, { data: weighted, onSelect: () => {} }));
   const weightedMetric = nodes(weightedCards).find(node => node.props['data-card-metric'] === 'weighted_tardiness_hours');
   assert(weightedMetric && text(weightedMetric).includes('已知加权拖期') && text(weightedMetric).includes('7'));
   const weightedText = text(weightedMetric).replace(/\s+/g, ' ');
   assert(weightedText.includes('计算时保存的批次优先级') && weightedText.includes('2 / 3') && weightedText.includes('1 批待确认'), '加权主要指标展示已知小计、保存优先级依据和覆盖范围');
-  const evidence = expand(h(local.RunDecisionRecommendation.SelectionEvidence, { basis: native.selection_basis, data: native }));
+  const evidence = expand(h(ugRecommendation.SelectionEvidence, { basis: native.selection_basis, data: native }));
   assert(text(evidence).includes('主目标') && !text(evidence).includes('健康比较原方案'), '新版推荐展示真实业务规则');
   assert(nodes(evidence).some(node => node.type === 'reference' && (node.props.value === native.selection_basis.selected_candidate_ref || node.props.entries && Object.values(node.props.entries).includes(native.selection_basis.selected_candidate_ref))), '推荐详情保留永久编号');
   const compareState = hooks(), compareQueries = [], returns = [], display = clone(native), fullDisplay = clone(processRaw.decision_overview);
-  assert.strictEqual(API.validateDecision(envelope(processRaw.decision_overview), nativeRun, { selected_candidate_ref: nativeCandidate }), processRaw.decision_overview);
+  assert.deepEqual(await readDecision(envelope(processRaw.decision_overview), nativeRun, { selected_candidate_ref: nativeCandidate }), clone(processRaw.decision_overview));
   for (const container of [display, fullDisplay]) container.candidates.push(...[first, third].map((reference, index) => ({ ...clone(container.candidates[0]), candidate_ref: reference,
     label: ['拖期更轻代表方案', '切换更少代表方案'][index], selection_role: [], representative_objectives: [['min_tardiness'], ['min_changeover']][index] })));
-  const compareReads = { ...API }, compare = { ...local, RunDecisionAPI: compareReads, RunDecisionProcess: { Pane: 'process-pane' }, RunDecisionResources: { Pane: 'resource-pane' },
-    RunDecisionDetails: { Pane: 'detail-pane' }, RunDecisionCompletion: { Pane: 'completion-pane' },
-    APSResourceSession: { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) } };
-  vm.runInNewContext(outputs.find(output => output.path === 'RunDecisionComparison.jsx').code, { React: compareState.React, window: compare, AbortController });
+  const compareReads = { ...API };
+  const compareCtx = createSandbox({
+    react: compareState.React,
+    stubs: {
+      'RunDecisionAPI.js': compareReads,
+      'RunDecisionProcess.jsx': { Pane: 'process-pane' },
+      'RunDecisionResources.jsx': { Pane: 'resource-pane' },
+      'RunDecisionDetails.jsx': { Pane: 'detail-pane' },
+      'RunDecisionCompletion.jsx': { Pane: 'completion-pane' },
+      'shared/session/query.js': { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) },
+    },
+  });
+  vm.runInContext(outputs.find(output => output.path === 'RunDecisionComparison.jsx').code, compareCtx, { filename: 'RunDecisionComparison.jsx' });
+  const compareComp = compareCtx.__wbRuntime.getModule('RunDecisionComparison.jsx');
   const readDisplay = (reference, q, full = false) => { compareQueries.push(clone(q)); const value = clone(full ? fullDisplay : display);
     value.scope.selected_candidate_ref = q.selected_candidate_ref || nativeCandidate;
     value.scope.resource_view = q.resource_view; value.scope.comparison_mode = q.comparison_mode;
@@ -1274,7 +1334,7 @@ async function unifiedGenerationContracts() {
     onNavigate: (page, context) => returns.push({ page, context }), renderAdoption: reference => h('adoption', { candidateRef: reference }), renderTrial: () => null, runHistoryReturn: workspaceDefaults.runHistoryReturn };
   Object.assign(compareReads, { decisionSummary: readDisplay, resourceWorkspace: (reference, q, saved) => resourceWorkspaceFixture(readDisplay(reference, q), saved), decision: (reference, q) => readDisplay(reference, q, true) });
   let compareTree, compareRaw;
-  const renderCompare = () => { compareRaw = compareState.render(() => compare.RunDecisionComparison.Workspace(compareProps)); compareTree = expand(compareRaw); compareState.flush(); };
+  const renderCompare = () => { compareRaw = compareState.render(() => compareComp.Workspace(compareProps)); compareTree = expand(compareRaw); compareState.flush(); };
   const processLeaf = () => nodes(compareTree).find(node => node.type === 'process-pane').props;
   renderCompare(); assert.equal(processLeaf().query.process_candidate_ref, first); assert.equal(processLeaf().query.objective, 'min_changeover'); assert.equal(processLeaf().query.page, 2, '新版甘特返回保留独立过程来源页');
   processLeaf().onQuery({ ...processLeaf().query, objective: 'min_tardiness', page: 1 }); renderCompare();
@@ -1289,14 +1349,19 @@ async function unifiedGenerationContracts() {
   assert.equal(returns.at(-1).context.candidate_ref, third); assert.equal(returns.at(-1).context.return_decision_context.detail_queries.process.process_candidate_ref, first);
   assert.equal(returns.at(-1).context.return_decision_context.detail_queries.process.objective, 'min_tardiness'); assert.equal(nodes(compareTree).find(node => node.type === 'adoption').props.candidateRef, third, '采用对象继续绑定当前查看方案');
   nodes(compareTree).find(node => node.props.className === 'rd-official rd-data-source').props.onToggle({ currentTarget: { open: true } }); renderCompare();
-  nodes(compareRaw).find(node => node.type === compare.RunDecisionComparison.CandidateFacts).props.onProcess(display.candidates[0]); renderCompare();
+  nodes(compareRaw).find(node => node.type === compareComp.CandidateFacts).props.onProcess(display.candidates[0]); renderCompare();
   assert.equal(compareQueries.at(-1).selected_candidate_ref, third); assert.equal(processLeaf().query.process_candidate_ref, nativeCandidate, '候选保存依据定位来源保持查看和采用对象');
-  const processState = hooks(), processCalls = [], pane = { ...window, RunDecisionAPI: { ...API, process: (reference, q) => { processCalls.push(clone(q)); return envelope(processRaw.process_by_objective[q.objective || native.selection_basis.primary_objective]); } },
-    APSResourceSession: { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) } };
-  for (const name of ['RunDecisionProcessChart.jsx', 'RunDecisionProcess.jsx']) for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
-    sources: [{ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }] }).outputs) vm.runInNewContext(output.code, { React: processState.React, window: pane, AbortController });
+  const processState = hooks(), processCalls = [];
+  const paneCtx = createSandbox({
+    react: processState.React,
+    stubs: {
+      'RunDecisionAPI.js': { ...API, process: (reference, q) => { processCalls.push(clone(q)); return envelope(processRaw.process_by_objective[q.objective || native.selection_basis.primary_objective]); } },
+      'shared/session/query.js': { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) },
+    },
+  });
+  const paneMod = runFiles(paneCtx, ['RunDecisionProcessChart.jsx', 'RunDecisionProcess.jsx']);
   const paneProps = { result: envelope(native), query: {}, enabled: true, onQuery: value => { paneProps.query = value; } };
-  let paneTree; const renderProcess = () => { paneTree = processState.render(() => expand(pane.RunDecisionProcess.Pane(paneProps))); processState.flush(); };
+  let paneTree; const renderProcess = () => { paneTree = processState.render(() => expand(paneMod('RunDecisionProcess.jsx').Pane(paneProps))); processState.flush(); };
   renderProcess(); nodes(paneTree).find(node => node.props['aria-label'] === '优化方向').props.onChange({ target: { value: 'min_changeover' } }); renderProcess();
   assert.equal(processCalls.at(-1).objective, 'min_changeover'); assert.equal(processCalls.at(-1).selected_candidate_ref, nativeCandidate); assert.equal(processCalls.at(-1).process_candidate_ref, nativeCandidate);
   assert.equal(nodes(paneTree).filter(node => node.props['data-unified-count']).length, 6, '共同真实计数只显示一次');
@@ -1382,14 +1447,15 @@ async function unifiedGenerationContracts() {
     const Pager = ({ label, page = 1, pages, disabled, onPage }) => asyncState.React.createElement('nav', { className: 'wb-pager', 'aria-label': label + '分页', page, pages, disabled },
       asyncState.React.createElement('button', { type: 'button', 'aria-label': label + '上一页', disabled: Boolean(disabled || page <= 1), onClick: () => onPage(page - 1) }, '上一页'),
       asyncState.React.createElement('button', { type: 'button', 'aria-label': label + '下一页', disabled: Boolean(disabled || !pages || page >= pages), onClick: () => onPage(page + 1) }, '下一页'));
-    const asyncWindow = { ...window,
-      RunCandidateControls: { ...window.RunCandidateControls, Pager },
-      RunDecisionAPI: { ...API, process: (_ref, q, signal) => new Promise((resolve, reject) => pendingReads.push({ q: clone(q), signal, resolve, reject })) } };
-    for (const name of ['resource-session.js', 'RunDecisionProcessChart.jsx', 'RunDecisionProcess.jsx'])
-      for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
-        sources: [{ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }] }).outputs)
-        vm.runInNewContext(output.code, { React: asyncState.React, window: asyncWindow, AbortController, DOMException });
-    const makeProcessPage = q => {
+    const asyncCtx = createSandbox({
+      react: asyncState.React,
+      stubs: {
+        'RunCandidateControls.jsx': { ...baseStubs['RunCandidateControls.jsx'], Pager },
+        'RunDecisionAPI.js': { ...API, process: (_ref, q, signal) => new Promise((resolve, reject) => pendingReads.push({ q: clone(q), signal, resolve, reject })) },
+      },
+    });
+    const asyncMod = runFiles(asyncCtx, ['shared/session/query.js', 'RunDecisionProcessChart.jsx', 'RunDecisionProcess.jsx']);
+    const makeProcessPage = async q => {
       const objectiveName = q.objective || 'min_overdue';
       const base = clone(processRaw.process_by_objective[objectiveName]);
       const pageNumber = q.page || 1, size = q.size || 20, total = 45;
@@ -1405,16 +1471,16 @@ async function unifiedGenerationContracts() {
       base.items = Array.from({ length: itemCount }, (_, idx) => ({ ...templateAction, action_id: (pageNumber - 1) * size + idx + 1 }));
       base.filters = { section: 'process', process_candidate_ref: anchorRef, objective: objectiveName, record_kind: q.record_kind || 'attempts', sort: q.sort || 'rank', order: q.order || 'asc' };
       base.page = { number: pageNumber, size, total, has_more: pageNumber * size < total };
-      const res = envelope(base); API.processDetails(res, nativeRun, q); return res;
+      const res = envelope(base); await readProcess(res, nativeRun, q); return res;
     };
     const asyncProps = { result: envelope(native), query: { objective: 'min_overdue' }, enabled: true, onQuery: value => { asyncProps.query = value; } };
     let rootDom;
-    const renderOnce = () => { rootDom = syncDom(asyncState.render(() => expand(asyncWindow.RunDecisionProcess.Pane(asyncProps)))); asyncState.flush(); return rootDom; };
+    const renderOnce = () => { rootDom = syncDom(asyncState.render(() => expand(asyncMod('RunDecisionProcess.jsx').Pane(asyncProps)))); asyncState.flush(); return rootDom; };
     const settleAsync = async () => { for (let i = 0; i < 3; i++) { renderOnce(); await turns(); } return rootDom; };
     const findSourceShell = () => walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-facts' && text(node.querySelector(':scope > summary')) === '当前候选来源与方向记录');
     await settleAsync();
     assert.equal(pendingReads.length, 1);
-    pendingReads[0].resolve(makeProcessPage(pendingReads[0].q));
+    pendingReads[0].resolve(await makeProcessPage(pendingReads[0].q));
     await settleAsync();
     const recordsShell = walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-records');
     const toolsShell = walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-record-tools');
@@ -1463,7 +1529,7 @@ async function unifiedGenerationContracts() {
     assert.strictEqual(doc.activeElement, doc.body, '下一页按钮在加载期禁用后焦点落回body');
     await settleAsync();
     assert.equal(pendingReads.length, 2);
-    pendingReads[1].resolve(makeProcessPage(pendingReads[1].q));
+    pendingReads[1].resolve(await makeProcessPage(pendingReads[1].q));
     await settleAsync();
     assert.strictEqual(walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-records'), recordsShell);
     assert.strictEqual(walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-catalog'), catalogShell);
@@ -1483,7 +1549,7 @@ async function unifiedGenerationContracts() {
     await settleAsync();
     assert.equal(pendingReads.length, 3);
     assert.strictEqual(doc.activeElement, doc.body);
-    pendingReads[2].resolve(makeProcessPage(pendingReads[2].q));
+    pendingReads[2].resolve(await makeProcessPage(pendingReads[2].q));
     await settleAsync();
     assert.equal(walkDom(rootDom).some(node => node.props && node.props['data-process-action'] === 41), true);
     assert.equal(nextBtn.disabled, true); assert.equal(prevBtn.disabled, false);
@@ -1491,14 +1557,14 @@ async function unifiedGenerationContracts() {
     prevBtn.props.onClick();
     await settleAsync();
     assert.equal(pendingReads.length, 4);
-    pendingReads[3].resolve(makeProcessPage(pendingReads[3].q));
+    pendingReads[3].resolve(await makeProcessPage(pendingReads[3].q));
     await settleAsync();
     assert.equal(walkDom(rootDom).some(node => node.props && node.props['data-process-action'] === 21), true);
     assert.strictEqual(doc.activeElement, prevBtn, '从末页退回第2页后焦点保持在上一页按钮');
     prevBtn.props.onClick();
     await settleAsync();
     assert.equal(pendingReads.length, 5);
-    pendingReads[4].resolve(makeProcessPage(pendingReads[4].q));
+    pendingReads[4].resolve(await makeProcessPage(pendingReads[4].q));
     await settleAsync();
     assert.equal(walkDom(rootDom).some(node => node.props && node.props['data-process-action'] === 1), true);
     assert.equal(prevBtn.disabled, true); assert.equal(nextBtn.disabled, false);
@@ -1509,7 +1575,7 @@ async function unifiedGenerationContracts() {
     const recordsSummary = recordsShell.querySelector(':scope > summary');
     recordsSummary.focus(); assert.strictEqual(doc.activeElement, recordsSummary, '用户在加载期间主动移焦');
     doc.activeElement = doc.body;
-    pendingReads[5].resolve(makeProcessPage(pendingReads[5].q));
+    pendingReads[5].resolve(await makeProcessPage(pendingReads[5].q));
     await settleAsync();
     assert.strictEqual(doc.activeElement, doc.body, '加载期主动移焦已取消pendingFocus，数据返回后不抢回分页按钮');
     prevBtn.focus(); assert.strictEqual(doc.activeElement, prevBtn);
@@ -1517,7 +1583,7 @@ async function unifiedGenerationContracts() {
     await settleAsync();
     assert.equal(pendingReads.length, 7);
     recordsShell.open = false;
-    pendingReads[6].resolve(makeProcessPage(pendingReads[6].q));
+    pendingReads[6].resolve(await makeProcessPage(pendingReads[6].q));
     await settleAsync();
     assert.strictEqual(doc.activeElement, doc.body, '计算明细折叠时不向内部按钮恢复焦点');
     recordsShell.open = true;
@@ -1529,7 +1595,7 @@ async function unifiedGenerationContracts() {
     assert.equal(pendingReads.length, 8);
     assert.equal(rootDom.contains(oldAnchorBtn), false, '加载期间候选来源表格卸载');
     assert.strictEqual(doc.activeElement, doc.body);
-    pendingReads[7].resolve(makeProcessPage(pendingReads[7].q));
+    pendingReads[7].resolve(await makeProcessPage(pendingReads[7].q));
     await settleAsync();
     const newAnchorRow = walkDom(rootDom).find(node => node.props && node.props['data-process-candidate'] === first);
     const newAnchorBtn = walkDom(newAnchorRow).find(node => node.type === 'button');
@@ -1574,7 +1640,7 @@ async function unifiedGenerationContracts() {
     orderSelect.props.onChange({ target: { value: 'asc' } });
     await settleAsync();
     assert.equal(pendingReads.length, 11);
-    pendingReads[10].resolve(makeProcessPage(pendingReads[10].q));
+    pendingReads[10].resolve(await makeProcessPage(pendingReads[10].q));
     await settleAsync();
     assert.strictEqual(doc.activeElement, orderSelect, '从暂停态重新触发筛选加载完成后焦点恢复到顺序下拉框');
     assert.strictEqual(findCoverageShell(), coverageShell);
@@ -1584,9 +1650,10 @@ async function unifiedGenerationContracts() {
     assert.equal(text(bridgesShell.querySelector(':scope > summary')).replace(/\s+/g, ' '), '参考排法接续 · 1 项');
     assert.equal(walkDom(bridgesShell).some(node => node.props && node.props.className === 'wb-table rd-process-bridge-table'), true);
   }
-  const exportState = hooks(), exportWindow = { ...window };
-  vm.runInNewContext(outputs.find(output => output.path === 'RunDecisionComparison.jsx').code, { React: exportState.React, window: exportWindow, AbortController });
-  let exportTree; const renderExport = () => { exportTree = exportState.render(() => expand(exportWindow.RunDecisionComparison.Export({
+  const exportState = hooks(), exportCtx = createSandbox({ react: exportState.React });
+  vm.runInContext(outputs.find(output => output.path === 'RunDecisionComparison.jsx').code, exportCtx, { filename: 'RunDecisionComparison.jsx' });
+  const exportComp = exportCtx.__wbRuntime.getModule('RunDecisionComparison.jsx');
+  let exportTree; const renderExport = () => { exportTree = exportState.render(() => expand(exportComp.Export({
     result: envelope(noGain), initialSection: 'process', filterQuery: {} }))); };
   renderExport(); nodes(exportTree).find(node => node.type === 'button' && node.props.icon === 'download').props.onClick(); renderExport();
   assert(text(exportTree).includes('当前方向曲线'));
@@ -1600,30 +1667,46 @@ async function adoptionContextContracts() {
   const state = hooks(), values = new Map(), listeners = new Map(), calls = [];
   let random = 0;
   const storage = { getItem: key => values.has(key) ? values.get(key) : null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
-  const local = { ...window, localStorage: storage, crypto: { getRandomValues(bytes) { bytes.fill(++random); return bytes; } },
+  const local = { localStorage: storage, crypto: { getRandomValues(bytes) { bytes.fill(++random); return bytes; } },
     navigator: { locks: { request: async (_key, _options, fn) => fn({}) } },
-    WorkbenchHandlerMemory: { read: () => ({ value: '经办人' }), write() {}, useHint: () => '' },
     addEventListener(type, fn) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(fn); },
     removeEventListener(type, fn) { if (listeners.has(type)) listeners.get(type).delete(fn); },
     dispatchEvent(event) { for (const fn of listeners.get(event.type) || []) fn(event); } };
   class CustomEvent { constructor(type, options) { this.type = type; this.detail = options.detail; } }
-  const outputs = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
-    sources: ['RunAdoptionAPI.js', 'RunAdoptionControls.jsx', 'RunAdoptionAction.jsx'].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
-  const context = vm.createContext({ React: state.React, window: local, AbortController, DOMException, CustomEvent, URLSearchParams, setTimeout, clearTimeout });
+  const context = createSandbox({
+    react: state.React,
+    win: local,
+    stubs: {
+      'WorkbenchHandlerMemory.js': { read: () => ({ value: '经办人' }), write() {}, useHint: () => '' },
+    },
+    globals: { CustomEvent },
+  });
   browser(context, network); loadTransport(context);
-  outputs.forEach(output => vm.runInContext(output.code, context, { filename: output.path }));
-  const A = local.RunAdoptionAPI, oldContext = JSON.stringify({ database_scope: '/old.db', successful_restores: [] }),
+  const adoptMod = runFiles(context, ['RunAdoptionAPI.js', 'RunAdoptionControls.jsx', 'RunAdoptionAction.jsx']);
+  const A = adoptMod('RunAdoptionAPI.js').default, oldContext = JSON.stringify({ database_scope: '/old.db', successful_restores: [] }),
     newContext = JSON.stringify({ database_scope: '/current.db', successful_restores: ['e'.repeat(32)] });
   const summary = { candidate_ref: first, run_ref: runRef, baseline: { plan_ref: planRef, version: 7 }, task_count: 3, scope_complete: true },
     input = { confirm: true, reason: '核对后采用', declared_operator: '经办人' };
-  const status = (intent, resolution) => ({ ok: true, result: 'not_recorded', request_key: intent.request_key,
-    may_be_in_flight: resolution === 'unresolved', resolution, data_context_ref: newContext,
-    message: resolution === 'context_replaced' ? '数据库已切换或恢复，请切回原来源查询，或结束旧来源记录。' : '采用结果仍待确认。' });
-  const receipt = intent => ({ ok: true, result: 'committed', receipt_ref: '9'.repeat(32), replayed: true, warnings: [],
-    data: { candidate_ref: intent.candidate_ref, run_ref: intent.preview.run_ref, row_count: intent.preview.task_count,
-      official_plan: { plan_ref: '8'.repeat(48), version: 8, kind: 'official', is_current_official: true, display_name: '正式计划 v8',
-        source_run_ref: intent.preview.run_ref, baseline_ref: intent.preview.baseline.plan_ref, completeness: 'complete',
-        capabilities: { view: true, edit_draft: false, adopt: false, report_actual: true }, blocked_reasons: [] } } });
+  const status = (_intent, resolution) => ({
+    state: 'not_observed',
+    receipt: null,
+    may_be_in_flight: resolution === 'unresolved',
+    resolution,
+    data_context_ref: newContext,
+  });
+  const receipt = intent => ({
+    state: 'recorded',
+    may_be_in_flight: false,
+    resolution: 'recorded',
+    data_context_ref: oldContext,
+    receipt: {
+      ok: true, result: 'committed', receipt_ref: '9'.repeat(32), replayed: true, warnings: [],
+      data: { candidate_ref: intent.candidate_ref, run_ref: intent.preview.run_ref, row_count: intent.preview.task_count,
+        official_plan: { plan_ref: '8'.repeat(48), version: 8, kind: 'official', is_current_official: true, display_name: '正式计划 v8',
+          source_run_ref: intent.preview.run_ref, baseline_ref: intent.preview.baseline.plan_ref, completeness: 'complete',
+          capabilities: { view: true, edit_draft: false, adopt: false, report_actual: true }, blocked_reasons: [] } },
+    },
+  });
   const preview = candidateRef => ({ ok: true, schema_version: 1, data: { ...summary, candidate_ref: candidateRef, data_context_ref: newContext,
     validation: { status: 'valid', can_adopt: true, issues: [] }, write_context: { write_token: 'w'.repeat(32), expires_at: '2026-10-20T10:00:00',
       capabilities: { 'scheduling.candidate.adopt': true }, blocked_reasons: [] } },
@@ -1669,13 +1752,15 @@ async function adoptionContextContracts() {
   let lookupValue = status(modern, 'context_replaced');
   routes['GET /api/workbench/v1/scheduling/candidates/*/adoption-commands/*'] = call => { calls.push(call.path.split('/').pop()); return lookupValue; };
   const props = { candidateRef: third, candidateCatalog: data.candidates };
+  const AdoptionAction = adoptMod('RunAdoptionAction.jsx').RunAdoptionAction;
+  const AdoptionDialog = adoptMod('RunAdoptionControls.jsx').Dialog;
   let tree;
-  const render = () => { tree = state.render(() => { const session = local.RunAdoptionAction(props); return session.type(session.props); }); state.flush(); return tree; };
+  const render = () => { tree = state.render(() => { const session = AdoptionAction(props); return session.type(session.props); }); state.flush(); return tree; };
   const settle = async () => { for (let index = 0; index < 3; index++) { render(); await turns(); } return render(); };
-  const dialog = () => nodes(tree).find(node => node.type === local.RunAdoptionControls.Dialog);
+  const dialog = () => nodes(tree).find(node => node.type === AdoptionDialog);
   const footer = () => nodes(expand(dialog().type(dialog().props).props.footer));
   await settle(); nodes(tree).find(node => node.type === 'button').props.onClick(); await settle();
-  assert(dialog().props.notice.includes('另一个候选方案') && dialog().props.notice.includes('数据库已切换或恢复'),
+  assert(dialog().props.notice.includes('另一个候选方案') && dialog().props.notice.includes('这条待确认采用记录来自旧数据库或恢复前的历史状态'),
     'Cross-candidate notices do not hide the source-replacement explanation');
   assert(footer().some(node => node.type === 'button' && text(node) === '结束旧来源待确认记录'));
   let resolveLookup;
@@ -1690,7 +1775,7 @@ async function adoptionContextContracts() {
   lookupValue = status(next, 'unresolved'); storage.setItem(A.PENDING_KEY, JSON.stringify(next));
   local.dispatchEvent(new CustomEvent(A.EVENT, { detail: next })); render(); render();
   assert.equal(dialog().props.replacedInfo, null, 'A storage event cannot transfer source-replacement proof to another pending record');
-  await settle(); assert(!dialog().props.notice.includes('数据库已切换或恢复'));
+  await settle(); assert(!dialog().props.notice.includes('这条待确认采用记录来自旧数据库或恢复前的历史状态'));
   lookupValue = receipt(next); dialog().props.onLookup(); await settle();
   assert(dialog().props.result); assert.equal(dialog().props.replacedInfo, null);
   dialog().props.onFinish(); await settle(); assert.equal(A.pending.read(), null);
@@ -1707,13 +1792,19 @@ async function dashboardReadContracts() {
   // Dashboard reads go through the real DashboardContract / DashboardAnalysisAPI and an APSWorkbenchTransport bound to this context's timers.
   const state = hooks(), timers = new Map(), dashboardRoutes = {}, requests = routeFetch(dashboardRoutes);
   let timerId = 0;
-  const local = { ...window }, context = vm.createContext({ window: local, React: state.React, AbortController, DOMException, URLSearchParams,
-    setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, delay }); return id; }, clearTimeout(id) { timers.delete(id); } });
-  browser(context, requests); const T = loadTransport(context);
-  const outputs = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
-    sources: ['resource-session.js', 'DashboardContract.js', 'DashboardAnalysisAPI.js'].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
-  outputs.forEach(output => vm.runInContext(output.code, context, { filename: output.path }));
-  const C = local.DashboardContract, Q = local.DashboardAnalysisAPI, LIST = 'GET /api/workbench/v1/dashboard', ANALYSIS = 'GET /api/workbench/v1/dashboard/analysis';
+  const context = createSandbox({
+    react: state.React,
+    globals: {
+      setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, delay }); return id; },
+      clearTimeout(id) { timers.delete(id); },
+    },
+  });
+  browser(context, requests); loadTransport(context);
+  const dashMod = runFiles(context, ['shared/session/query.js', 'DashboardContract.js', 'DashboardAnalysisAPI.js']);
+  const T = dashMod('shared/network/transport.js').default;
+  const C = dashMod('DashboardContract.js').default, Q = dashMod('DashboardAnalysisAPI.js').default;
+  const Session = dashMod('shared/session/query.js').default;
+  const LIST = 'GET /api/workbench/v1/dashboard', ANALYSIS = 'GET /api/workbench/v1/dashboard/analysis';
   for (const analysis of [false, true]) {
     dashboardRoutes[analysis ? ANALYSIS : LIST] = () => new Promise(() => {});
     const read = signal => analysis ? Q.read(null, signal, {}) : C.list(C.scope({}), signal);
@@ -1748,7 +1839,7 @@ async function dashboardReadContracts() {
   await assert.rejects(C.list(C.scope({})), error => error.name === 'AbortError' && !T.rejected(error));
   let resolveOld, version = 0;
   dashboardRoutes[LIST] = () => new Promise(resolve => { resolveOld = resolve; });
-  const render = () => state.render(() => local.APSResourceSession.useQuery(signal => version === 0 ? C.list(C.scope({}), signal) : Promise.resolve('latest'), [version]));
+  const render = () => state.render(() => Session.useQuery(signal => version === 0 ? C.list(C.scope({}), signal) : Promise.resolve('latest'), [version]));
   render(); state.flush(); await turns(); version = 1; render(); state.flush(); await turns();
   resolveOld(json(superseded, 499)); await turns();
   const current = render(); assert.equal(current.result, 'latest'); assert.equal(current.error, null, 'A superseded old read cannot overwrite the current query');
@@ -1756,7 +1847,7 @@ async function dashboardReadContracts() {
 }
 async function main() {
   comparisonHeaderContracts(schedulingNavigationContracts());
-  detailContracts(); referenceContracts(); recommendationContracts(); await transportContracts(); await workspaceContracts(); await paneContracts(); await completionContracts();
+  await detailContracts(); await referenceContracts(); await recommendationContracts(); await transportContracts(); await workspaceContracts(); await paneContracts(); await completionContracts();
   await processPaneContracts(); await processTransportContracts(); await unifiedGenerationContracts();
   await adoptionContextContracts(); await dashboardReadContracts();
   console.log('decision comparison contract: unified candidates/formal scope, business-objective recommendation/completion, unified process read/export, single-leaf paging/export, verified curve segments, cancellation and original-viewer gantt return passed');

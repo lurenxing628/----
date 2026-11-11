@@ -29,11 +29,11 @@ def candidate_workspace(case, candidate_ref, **scope):
 
 def plan_workspace(case, plan_ref, **scope):
     service = WorkbenchPlanQueryService(case.conn)
-    with service.read_snapshot():
+    with service.read_snapshot() as context:
         read_scope = PlanReadScope(plan_ref, **scope)
-        data, state = service.workspace(read_scope)
+        data, state = service.workspace(context, read_scope)
         summary_graph = data["gantt_graph"]
-        graph_data, graph_scope, graph_state = service.gantt_graph(read_scope)
+        graph_data, graph_scope, graph_state = service.gantt_graph(context, read_scope)
         assert graph_scope == data["scope"] and graph_state == state
         full_graph = graph_data["gantt_graph"]
         if summary_graph["state"] == "available":
@@ -187,8 +187,9 @@ def test_zero_duration_split_and_join_are_graph_nodes_after_adoption(trial_case,
     monkeypatch.setattr(CalendarFacts, "calendar", record_calendar)
     plan_workspace(case, plan_ref, range_start=plan["plan_span"]["start"], range_end=midnight_end)
     actual_service = ActualGanttService(case.conn)
-    with actual_service.read_snapshot():
+    with actual_service.read_snapshot() as gantt_scope:
         actual_service.workspace(
+            gantt_scope,
             ActualGanttScope(plan_ref, range_start=plan["plan_span"]["start"], range_end=midnight_end),
             full_workspace=True,
         )
@@ -280,8 +281,8 @@ def test_plan_and_candidate_public_dtos_isolate_in_process_caches_on_mutation(tr
     plan_ref = adopt_candidate(case, candidate_ref)["data"]["official_plan"]["plan_ref"]
 
     service_one = WorkbenchPlanQueryService(case.conn)
-    with service_one.read_snapshot():
-        graph_first, _, _ = service_one.gantt_graph(PlanReadScope(plan_ref))
+    with service_one.read_snapshot() as context:
+        graph_first, _, _ = service_one.gantt_graph(context, PlanReadScope(plan_ref))
     graph_expected = deepcopy(graph_first)
     graph_first["gantt_graph"]["nodes"][0]["process_label"] = "POLLUTED"
     graph_first["gantt_graph"]["nodes"][0]["predecessor_operation_refs"].append("d" * 48)
@@ -290,13 +291,13 @@ def test_plan_and_candidate_public_dtos_isolate_in_process_caches_on_mutation(tr
     graph_first["gantt_graph"]["nodes"].clear()
 
     service_two = WorkbenchPlanQueryService(case.conn)
-    with service_two.read_snapshot():
-        graph_second, _, _ = service_two.gantt_graph(PlanReadScope(plan_ref))
+    with service_two.read_snapshot() as context:
+        graph_second, _, _ = service_two.gantt_graph(context, PlanReadScope(plan_ref))
     assert graph_second == graph_expected
 
     actual_one = ActualGanttService(case.conn)
-    with actual_one.read_snapshot():
-        actual_first, _ = actual_one.workspace(ActualGanttScope(plan_ref), full_workspace=True)
+    with actual_one.read_snapshot() as gantt_scope:
+        actual_first, _ = actual_one.workspace(gantt_scope, ActualGanttScope(plan_ref), full_workspace=True)
     actual_expected = deepcopy(actual_first)
     actual_first["gantt_graph"]["nodes"][0]["process_label"] = "POLLUTED"
     actual_first["gantt_graph"]["nodes"][0]["predecessor_operation_refs"].append("d" * 48)
@@ -305,13 +306,13 @@ def test_plan_and_candidate_public_dtos_isolate_in_process_caches_on_mutation(tr
     actual_first["gantt_graph"]["nodes"].clear()
 
     actual_two = ActualGanttService(case.conn)
-    with actual_two.read_snapshot():
-        actual_second, _ = actual_two.workspace(ActualGanttScope(plan_ref), full_workspace=True)
+    with actual_two.read_snapshot() as gantt_scope:
+        actual_second, _ = actual_two.workspace(gantt_scope, ActualGanttScope(plan_ref), full_workspace=True)
     assert actual_second == actual_expected
 
     service_three = WorkbenchPlanQueryService(case.conn)
-    with service_three.read_snapshot():
-        graph_third, _, _ = service_three.gantt_graph(PlanReadScope(plan_ref))
+    with service_three.read_snapshot() as context:
+        graph_third, _, _ = service_three.gantt_graph(context, PlanReadScope(plan_ref))
     assert graph_third == graph_expected
 
     base_first, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateReadScope(candidate_ref), bind_snapshot=lambda scope, state: state)

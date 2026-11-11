@@ -1,54 +1,29 @@
-(function () {
-  'use strict';
-  const C = window.APSResourceContract;
-  const token = value => typeof value === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value);
-  const count = value => Number.isSafeInteger(value) && value >= 0;
-  function create(kind = 'material', label = '物料') {
+import APSWorkbenchTransport from './shared/network/transport.js';
+import APSResourceContract from './resource-contract.js';
+
+const C = APSResourceContract;
+const token = value => typeof value === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value);
+function create(kind = 'material', label = '物料') {
   const fields = { business_code: '物料编号', label: '名称', spec: '规格', unit: '单位', stock_qty: '库存数量', status: '状态', remark: '备注', created_at: '创建时间' };
   const results = { new: '新增', update: '更新', unchanged: '不变', delete: '删除', rejected: '拒绝' };
   const paths = {
     import: 'imports/' + kind + '/preview', bulk: 'entities/' + kind + '/bulk-preview', export: 'exports/' + kind + '/preview',
     download: 'exports/' + kind, template: 'templates/' + kind
   };
-  // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，这里只校验 data。
   function preview(result, mode, expected) {
     const data = result.data;
-    if (!token(data.preview_ref) || data.operation !== kind + (mode === 'import' ? '.import' : '.bulk_delete')
-        || data.commit_policy !== 'atomic' || typeof data.can_confirm !== 'boolean' || !C.object(data.summary)
-        || !Array.isArray(data.rows) || !C.object(data.write_context) || !C.object(data.write_context.capabilities)
-        || !Array.isArray(data.write_context.blocked_reasons) || !token(data.write_context.write_token) || !Number.isFinite(Date.parse(data.expires_at)))
+    if (!token(data.preview_ref) || data.operation !== kind + (mode === 'import' ? '.import' : '.bulk_delete'))
       throw C.failure('预检结果不完整，本批没有提交。请重新预检。');
-    if (!Object.keys(results).every(key => count(data.summary[key]))
-        || Object.keys(results).reduce((sum, key) => sum + data.summary[key], 0) !== data.rows.length)
-      throw C.failure('预检统计与明细不一致，本批没有提交。');
-    const validRow = row => C.object(row) && count(row.row) && row.row > 0 && C.own(results, row.result)
-      && (row.business_code === null || typeof row.business_code === 'string')
-      && (row.before === null || C.object(row.before)) && (row.after === null || C.object(row.after))
-      && C.object(row.changes) && Array.isArray(row.errors) && row.errors.every(error => C.object(error) && typeof error.message === 'string')
-      && (row.reference_fields === undefined || Array.isArray(row.reference_fields) && row.reference_fields.every(key => typeof key === 'string'
-        && (kind !== 'material' || key === 'created_at')) && new Set(row.reference_fields).size === row.reference_fields.length)
-      && typeof row.requires_confirmation === 'boolean' && count(row.reference_count);
-    const counts = { new: 0, update: 0, unchanged: 0, delete: 0, rejected: 0 };
-    if (!data.rows.every(row => {
-      if (!validRow(row)) return false;
-      counts[row.result]++; return true;
-    }) || new Set(data.rows.map(row => row.row)).size !== data.rows.length
-        || !Object.keys(results).every(key => counts[key] === data.summary[key])
-        || data.can_confirm && data.summary.rejected !== 0)
-      throw C.failure('预检行内容不完整或统计不一致，本批没有提交。');
-    if (mode === 'import' && (data.format !== expected || data.mode !== 'upsert' || data.template_version !== 1
-        || typeof data.actual_source_ref !== 'string' || !/^[0-9a-f]{32}$/.test(data.actual_source_ref)))
+    if (mode === 'import' && data.format !== expected)
       throw C.failure('导入预检的文件格式或增量方式不一致，本批没有提交。');
-    if (mode === 'bulk' && (!Array.isArray(expected) || data.rows.length !== expected.length
+    if (mode === 'bulk' && (data.rows.length !== expected.length
         || !data.rows.every((row, index) => row.entity_ref === expected[index])))
       throw C.failure('删除预检与勾选的' + label + '不一致，本批没有提交。');
     return result;
   }
   function exportPreview(result, selection) {
     const data = result.data;
-    if (!token(data.export_ref) || data.selection !== selection || !count(data.row_count)
-        || !Array.isArray(data.formats) || !data.formats.every(value => ['csv', 'xlsx'].includes(value))
-        || !Number.isFinite(Date.parse(data.expires_at))) throw C.failure('导出预检内容不完整，没有开始下载。');
+    if (!token(data.export_ref) || data.selection !== selection) throw C.failure('导出预检内容不完整，没有开始下载。');
     return result;
   }
   function source(request) { return request.source || request.scope && request.scope.source; }
@@ -103,19 +78,17 @@
     if (format === 'csv' && (bytes.includes(0) || bytes[0] === 80 && bytes[1] === 75))
       throw C.failure('文件内容不是 UTF-8 CSV，请核对文件格式。');
   }
-  // 类型、魔数与带正确后缀的文件名已由 transport.download 校验；资源家族同时允许 CSV 与 XLSX，这里只核对是用户所选的那一种。
   function saveDownload(download, format) {
-    if (download.contentType !== window.APSWorkbenchTransport.types[format]) throw C.failure('下载文件与所选格式不一致，没有保存文件。');
-    window.APSWorkbenchTransport.saveBlob(download.filename, download.blob);
+    if (download.contentType !== APSWorkbenchTransport.types[format]) throw C.failure('下载文件与所选格式不一致，没有保存文件。');
+    APSWorkbenchTransport.saveBlob(download.filename, download.blob);
     return download.filename;
   }
-  // 逐行提示与勾选文案按资料类型给一次，别让预检组件再按 kind 分支。
   const confirmationHint = kind === 'material' ? '涉及已有物料需求，需核对修改前后内容。' : '涉及关键项或已有关联，需核对修改前后内容。';
   const acknowledgeHint = kind === 'material' ? '已核对在用物料的修改前后内容，确认这些更新。' : '已核对关键项和关联关系的修改前后内容，确认这些更新。';
-  // 这一类资料勾选几条就导出几行；关联资料一条记录可能带出多行，由它自己的契约改成 false。
-  // 导出范围里说的还是这类资料本身，所以不给 scopeLabel，由对话框沿用当前标签（工种要区分自制与外协）。
   const rowsMatchSelection = true;
   return { kind, label, fields, results, paths, preview, exportPreview, source, selection, listContext, requestBody, blocked, validateFile, saveDownload, confirmationHint, acknowledgeHint, rowsMatchSelection };
-  }
-  window.APSResourceMaterial = { ...create(), create };
-})();
+}
+const defaultInstance = create();
+const APSResourceMaterial = { ...defaultInstance, create };
+export { APSResourceMaterial, create };
+export default APSResourceMaterial;

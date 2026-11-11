@@ -1,57 +1,61 @@
-(function () {
-  'use strict';
-  const C = window.FieldContract, { Button } = window.FieldControls;
-  function FieldEditorFields({ task, record, action, adapter, draft, suggestions, disabled, first, change, error }) {
-    const Field = window.ResourceControls.Field;
-    const readonly = key => disabled || action === 'supplement' && record[key] != null && record[key] !== '';
-    const original = React.useMemo(() => record ? {
-      relationships: {
-        actual_machine_ref: record.actual_machine_ref,
-        actual_machine: record.actual_machine_ref && record.actual_machine_label ? { ref: record.actual_machine_ref, label: record.actual_machine_label } : null,
-        actual_operator_ref: record.actual_operator_ref,
-        actual_operator: record.actual_operator_ref && record.actual_operator_label ? { ref: record.actual_operator_ref, label: record.actual_operator_label } : null
-      }
-    } : null, [record]);
-    const choices = (key, label, kind) => <window.ResourceControls.Choice adapter={adapter} field={{ key, label, kind }} value={draft[key]} disabled={readonly(key)} error={error}
-      original={original} onChange={value => change(key, value)} />;
-    const amount = value => value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
-    const quantity = amount(draft.completed_quantity), effectiveHours = amount(draft.effective_processing_hours);
-    const previousQuantity = record ? Number(record.completed_quantity) : 0;
-    const cumulative = quantity === null || !Number.isSafeInteger(quantity) || quantity < 0 || task.execution.known_completed_quantity === null ? null
-      : task.execution.known_completed_quantity - previousQuantity + quantity;
-    const start = draft.actual_start ? Date.parse(draft.actual_start + 'Z') : NaN, end = draft.actual_end ? Date.parse(draft.actual_end + 'Z') : NaN;
-    const span = Number.isFinite(start) && Number.isFinite(end) && end >= start ? (end - start) / 3600000 : null;
-    const difference = span !== null && effectiveHours !== null ? span - effectiveHours : null;
-    // Span and difference are checked against entered hours; keep up to three decimals instead of a one-decimal summary.
-    const hours = value => window.WorkbenchFormat.hours(value, { digits: 3, trim: true });
-    const timeHints = Object.keys(suggestions).length > 0, reasonLabel = action === 'supplement' ? '补齐原因' : '更正原因';
-    // 外协不占本厂设备和人员，不提供选择；旧记录里已填的仍显示，方便用「更正」清除（写入仍以服务端校验为准）。
-    const external = task.source === 'external', held = key => !!draft[key] || !!(record && record[key]);
-    const resourceShown = key => !external || held(key);
-    const quantityReadonly = readonly('completed_quantity');
-    return <><div className="field-entry-grid">
-      <section><h4>产出数量</h4><Field label="本次完成数量" path="completed_quantity" error={error}><input ref={first} type="number" min="0" step="1" aria-label="本次完成数量" value={draft.completed_quantity} disabled={quantityReadonly} onChange={event => change('completed_quantity', event.target.value)} /></Field>
-        <div className="field-quantity-tools"><span>件</span><Button disabled={quantityReadonly} onClick={() => change('completed_quantity', '0')}>填 0</Button>
-          {action === 'create' && <Button disabled={quantityReadonly || task.execution.remaining_quantity === null} onClick={() => change('completed_quantity', String(task.execution.remaining_quantity))}>填剩余数</Button>}</div>
-        <p className="field-note">已知累计 <output aria-label="已知累计">{cumulative === null ? '未核对' : cumulative}</output> / 执行目标 {C.quantity(task.execution.target_quantity)} 件
-          {task.execution.unknown_record_count > 0 && <small> · 原记录数量待补 {task.execution.unknown_record_count} 条</small>}</p></section>
-      <section><h4>实际起止</h4>{timeHints && <p className="field-suggestion" role="status">请核对预填时间；不确定的时间请清除。</p>}
-        <div className="field-time-grid">{[['actual_start', '实际开工'], ['actual_end', '本次实际完工']].map(([key, label]) => <div key={key}>
-          <Field label={label} path={key} error={error} hint={suggestions[key] ? '建议来源：' + suggestions[key] : undefined}><input type="datetime-local" step="1" aria-label={label} value={draft[key]} disabled={readonly(key)} onChange={event => change(key, event.target.value)} /></Field>
-          <Button disabled={readonly(key) || !draft[key]} aria-label={'清除' + label} onClick={() => change(key, '')}>清除</Button></div>)}</div></section>
-      <section><h4>工时核对</h4><Field label="有效工时（小时）" path="effective_processing_hours" error={error}><input type="number" min="0" step="any" data-wb-step="0.1" aria-label="有效工时（小时）" value={draft.effective_processing_hours} disabled={readonly('effective_processing_hours')} onChange={event => change('effective_processing_hours', event.target.value)} /></Field>
-        <p className="field-note">作业时长 <output aria-label="作业时长">{hours(span)}</output></p>
-        <p className={'field-note' + (difference !== null && difference < 0 ? ' field-hours-warning' : '')}>工时差额 <output aria-label="工时差额">{hours(difference)}</output></p></section>
-    </div>
-    <details open={action !== 'create'}><summary>{external ? '' : '实际设备 / 人员 / '}备注{record ? ' / 原因' : ''}</summary><div className="field-extra">
-      {external && <p className="field-note" role="note">{held('actual_machine_ref') || held('actual_operator_ref')
-        ? '外协工序不占用本厂设备和人员，实际设备、实际人员要留空；原记录已填的请用「更正」清除。跟进人请填在经办人里。'
-        : '外协工序不占用本厂设备和人员，不用填实际设备和人员；跟进人请填在经办人里。'}</p>}
-      {resourceShown('actual_machine_ref') && choices('actual_machine_ref', '实际设备', 'machine')}{resourceShown('actual_operator_ref') && choices('actual_operator_ref', '实际人员', 'operator')}
-      <Field label="作业备注" path="remark" error={error}><textarea aria-label="作业备注" maxLength="2000" value={draft.remark} disabled={readonly('remark')} onChange={event => change('remark', event.target.value)} /></Field>
-      {record && <Field label={reasonLabel} path="reason" error={error} required><textarea required aria-label={reasonLabel} maxLength="2000" value={draft.reason} disabled={disabled} onChange={event => change('reason', event.target.value)} /></Field>}
-      <Field label="经办人" path="declared_operator" error={error}><input aria-label="经办人" maxLength="2000" value={draft.declared_operator} disabled={disabled} onChange={event => change('declared_operator', event.target.value)} /></Field>
-    </div></details></>;
-  }
-  window.FieldEditorFields = FieldEditorFields;
-})();
+import React from './shared/runtime/react.js';
+import FieldContract from './FieldContract.js';
+import FieldControls from './FieldControls.jsx';
+import ResourceControls from './ResourceControls.jsx';
+import WorkbenchFormat from './WorkbenchFormat.js';
+
+const C = FieldContract, { Button } = FieldControls;
+function FieldEditorFields({ task, record, action, adapter, draft, suggestions, disabled, first, change, error }) {
+  const Field = ResourceControls.Field;
+  const readonly = key => disabled || action === 'supplement' && record[key] != null && record[key] !== '';
+  const original = React.useMemo(() => record ? {
+    relationships: {
+      actual_machine_ref: record.actual_machine_ref,
+      actual_machine: record.actual_machine_ref && record.actual_machine_label ? { ref: record.actual_machine_ref, label: record.actual_machine_label } : null,
+      actual_operator_ref: record.actual_operator_ref,
+      actual_operator: record.actual_operator_ref && record.actual_operator_label ? { ref: record.actual_operator_ref, label: record.actual_operator_label } : null
+    }
+  } : null, [record]);
+  const choices = (key, label, kind) => <ResourceControls.Choice adapter={adapter} field={{ key, label, kind }} value={draft[key]} disabled={readonly(key)} error={error}
+    original={original} onChange={value => change(key, value)} />;
+  const amount = value => value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
+  const quantity = amount(draft.completed_quantity), effectiveHours = amount(draft.effective_processing_hours);
+  const previousQuantity = record ? Number(record.completed_quantity) : 0;
+  const cumulative = quantity === null || !Number.isSafeInteger(quantity) || quantity < 0 || task.execution.known_completed_quantity === null ? null
+    : task.execution.known_completed_quantity - previousQuantity + quantity;
+  const start = draft.actual_start ? Date.parse(draft.actual_start + 'Z') : NaN, end = draft.actual_end ? Date.parse(draft.actual_end + 'Z') : NaN;
+  const span = Number.isFinite(start) && Number.isFinite(end) && end >= start ? (end - start) / 3600000 : null;
+  const difference = span !== null && effectiveHours !== null ? span - effectiveHours : null;
+  // Span and difference are checked against entered hours; keep up to three decimals instead of a one-decimal summary.
+  const hours = value => WorkbenchFormat.hours(value, { digits: 3, trim: true });
+  const timeHints = Object.keys(suggestions).length > 0, reasonLabel = action === 'supplement' ? '补齐原因' : '更正原因';
+  // 外协不占本厂设备和人员，不提供选择；旧记录里已填的仍显示，方便用「更正」清除（写入仍以服务端校验为准）。
+  const external = task.source === 'external', held = key => !!draft[key] || !!(record && record[key]);
+  const resourceShown = key => !external || held(key);
+  const quantityReadonly = readonly('completed_quantity');
+  return <><div className="field-entry-grid">
+    <section><h4>产出数量</h4><Field label="本次完成数量" path="completed_quantity" error={error}><input ref={first} type="number" min="0" step="1" aria-label="本次完成数量" value={draft.completed_quantity} disabled={quantityReadonly} onChange={event => change('completed_quantity', event.target.value)} /></Field>
+      <div className="field-quantity-tools"><span>件</span><Button disabled={quantityReadonly} onClick={() => change('completed_quantity', '0')}>填 0</Button>
+        {action === 'create' && <Button disabled={quantityReadonly || task.execution.remaining_quantity === null} onClick={() => change('completed_quantity', String(task.execution.remaining_quantity))}>填剩余数</Button>}</div>
+      <p className="field-note">已知累计 <output aria-label="已知累计">{cumulative === null ? '未核对' : cumulative}</output> / 执行目标 {C.quantity(task.execution.target_quantity)} 件
+        {task.execution.unknown_record_count > 0 && <small> · 原记录数量待补 {task.execution.unknown_record_count} 条</small>}</p></section>
+    <section><h4>实际起止</h4>{timeHints && <p className="field-suggestion" role="status">请核对预填时间；不确定的时间请清除。</p>}
+      <div className="field-time-grid">{[['actual_start', '实际开工'], ['actual_end', '本次实际完工']].map(([key, label]) => <div key={key}>
+        <Field label={label} path={key} error={error} hint={suggestions[key] ? '建议来源：' + suggestions[key] : undefined}><input type="datetime-local" step="1" aria-label={label} value={draft[key]} disabled={readonly(key)} onChange={event => change(key, event.target.value)} /></Field>
+        <Button disabled={readonly(key) || !draft[key]} aria-label={'清除' + label} onClick={() => change(key, '')}>清除</Button></div>)}</div></section>
+    <section><h4>工时核对</h4><Field label="有效工时（小时）" path="effective_processing_hours" error={error}><input type="number" min="0" step="any" data-wb-step="0.1" aria-label="有效工时（小时）" value={draft.effective_processing_hours} disabled={readonly('effective_processing_hours')} onChange={event => change('effective_processing_hours', event.target.value)} /></Field>
+      <p className="field-note">作业时长 <output aria-label="作业时长">{hours(span)}</output></p>
+      <p className={'field-note' + (difference !== null && difference < 0 ? ' field-hours-warning' : '')}>工时差额 <output aria-label="工时差额">{hours(difference)}</output></p></section>
+  </div>
+  <details open={action !== 'create'}><summary>{external ? '' : '实际设备 / 人员 / '}备注{record ? ' / 原因' : ''}</summary><div className="field-extra">
+    {external && <p className="field-note" role="note">{held('actual_machine_ref') || held('actual_operator_ref')
+      ? '外协工序不占用本厂设备和人员，实际设备、实际人员要留空；原记录已填的请用「更正」清除。跟进人请填在经办人里。'
+      : '外协工序不占用本厂设备和人员，不用填实际设备和人员；跟进人请填在经办人里。'}</p>}
+    {resourceShown('actual_machine_ref') && choices('actual_machine_ref', '实际设备', 'machine')}{resourceShown('actual_operator_ref') && choices('actual_operator_ref', '实际人员', 'operator')}
+    <Field label="作业备注" path="remark" error={error}><textarea aria-label="作业备注" maxLength="2000" value={draft.remark} disabled={readonly('remark')} onChange={event => change('remark', event.target.value)} /></Field>
+    {record && <Field label={reasonLabel} path="reason" error={error} required><textarea required aria-label={reasonLabel} maxLength="2000" value={draft.reason} disabled={disabled} onChange={event => change('reason', event.target.value)} /></Field>}
+    <Field label="经办人" path="declared_operator" error={error}><input aria-label="经办人" maxLength="2000" value={draft.declared_operator} disabled={disabled} onChange={event => change('declared_operator', event.target.value)} /></Field>
+  </div></details></>;
+}
+export { FieldEditorFields };
+export default FieldEditorFields;

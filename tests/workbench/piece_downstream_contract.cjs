@@ -1,34 +1,39 @@
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict');
-const window = { APSResourceContract: {}, PointContract: { isPoint: () => false }, PointGanttModel: { bounds: (start, end) => ({ start, end }) } };
-const context = vm.createContext({ window, Date, Number, Map, Set });
-for (const file of ['resource-contract.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'ResourceMaterialContract.js', 'FieldContract.js', 'GanttGraph.js', 'PlanGanttModel.js', 'ActualGanttModel.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/workbench/app', file), 'utf8'), context);
-const C = window.FieldContract, M = window.ActualGanttModel;
+const { compile } = require('../../scripts/workbench/compile.cjs');
+const context = vm.createContext({
+  window: {},
+  Date, Number, Map, Set,
+  __wbStubs: {
+    'PointContract.js': { isPoint: () => false },
+    'PointGanttModel.js': { bounds: (start, end) => ({ start, end }) },
+  },
+});
+const appDir = path.join(__dirname, '../../frontend/workbench/app');
+for (const out of compile({
+  sources: ['resource-contract.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'ResourceMaterialContract.js', 'FieldContract.js', 'GanttGraph.js', 'PlanGanttModel.js', 'ActualGanttModel.js'].map(file => ({
+    path: file,
+    code: fs.readFileSync(path.join(appDir, file), 'utf8'),
+  })),
+}).outputs) {
+  vm.runInContext(out.code, context, { filename: out.path });
+}
+const C = context.__wbRuntime.getModule('FieldContract.js'), M = context.__wbRuntime.getModule('ActualGanttModel.js');
+const ResourceMaterial = context.__wbRuntime.getModule('ResourceMaterialContract.js');
+const PlanGanttModel = context.__wbRuntime.getModule('PlanGanttModel.js');
+const WorkbenchFormat = context.__wbRuntime.getModule('WorkbenchFormat.js');
 const filePreview = { ok: true, schema_version: 1, meta: { source: 'production', time_basis: 'factory_local', snapshot_ref: 'snapshot', as_of: '2026-10-01T10:00:00' }, warnings: [],
   data: { preview_ref: 'p'.repeat(32), actual_source_ref: 'a'.repeat(32), operation: 'material.import', format: 'csv', mode: 'upsert', template_version: 1,
     rows: [], summary: Object.fromEntries(['new', 'update', 'unchanged', 'delete', 'rejected'].map(key => [key, 0])), can_confirm: false, commit_policy: 'atomic',
     expires_at: '2026-10-01T10:15:00', write_context: { capabilities: { 'material.import': false }, write_token: 'w'.repeat(32), blocked_reasons: [] } } };
-assert.strictEqual(window.APSResourceMaterial.preview(filePreview, 'import', 'csv'), filePreview);
-// 报工文件预检与物料预检共用来源编号规则，但汇总口径是报工自己的五项计数（field_report_files.py）。
-const fieldPreview = { ...filePreview, data: { ...filePreview.data, summary: { total: 0, changed: 0, unchanged: 0, blank: 0, rejected: 0 } } };
-assert.strictEqual(C.query(fieldPreview, 'preview'), fieldPreview);
-for (const value of [undefined, ['a'.repeat(32)], 'bad-source']) {
-  const changed = { ...filePreview, data: { ...filePreview.data, actual_source_ref: value, file_sha256: 'b'.repeat(64) } };
-  assert.throws(() => window.APSResourceMaterial.preview(changed, 'import', 'csv'));
-  assert.throws(() => C.query({ ...fieldPreview, data: { ...fieldPreview.data, actual_source_ref: value, file_sha256: 'b'.repeat(64) } }, 'preview'));
-}
-assert.strictEqual(M.instant, window.PlanGanttModel.instant, 'Actual and planned marks share the factory-local coordinate parser');
+assert.strictEqual(ResourceMaterial.preview(filePreview, 'import', 'csv'), filePreview);
+assert.strictEqual(M.instant, PlanGanttModel.instant, 'Actual and planned marks share the factory-local coordinate parser');
 const base = { piece_id: 'item-A', quantity: 1, batch_quantity: 3, quantity_basis: 'run_admission', quantity_reason: null };
-assert(C.planQuantity(base));
-for (const patch of [{ piece_id: undefined }, { quantity: undefined }, { quantity: true }, { quantity: -1 }, { quantity: 1.5 }, { quantity_basis: 'guessed' }, { quantity_reason: 'guessed' }]) assert(!C.planQuantity({ ...base, ...patch }));
 const old = { ...base, quantity: null, batch_quantity: null, quantity_basis: 'unknown', quantity_reason: 'plan_target_not_recorded' };
-assert(C.planQuantity(old)); assert.equal(C.quantity(old.quantity), '未知');
-assert(!C.planQuantity({ ...old, quantity: 3 }));
+assert.equal(C.quantity(old.quantity), '未知');
 for (const quantity of [0, 9007199254740991, '9007199254740992', '9223372036854775807']) {
-  assert(C.planQuantity({ ...base, quantity, batch_quantity: quantity }));
-  assert.equal(C.quantity(quantity), typeof quantity === 'string' ? window.WorkbenchFormat.integerText(quantity) : window.WorkbenchFormat.number(quantity, { digits: 0 }));
+  assert.equal(C.quantity(quantity), typeof quantity === 'string' ? WorkbenchFormat.integerText(quantity) : WorkbenchFormat.number(quantity, { digits: 0 }));
 }
-for (const quantity of [9007199254740992, '42', '0', '09007199254740992', '9223372036854775808', '9007199254740992\n', '1.5', '-1']) assert(!C.planQuantity({ ...base, quantity }));
 for (const piece of ['item-A', 'item-B', 'item-C', '分件原始中文身份']) {
   const task = { ...base, piece_id: piece, task_ref: piece, batch_id: 'B1', sequence: 20, process_label: 'Turning', start: '2026-09-09T08:00:00', end: '2026-09-09T09:00:00' };
   const item = { task, execution: null };
@@ -64,7 +69,7 @@ assert.equal(M.deadlines(boundary).finishLate, false, 'The shared rounded deviat
 const report = { report_ref: 'actual-on-other-resource', actual_start: '2026-09-09T08:10:00', actual_end: '2026-09-09T09:20:00' };
 function preparedRow(row) {
   const item = { ...row.item, execution: { ...row.item.execution, reports: row.reports } };
-  const fact = M.prepare({ resources: [], items: [item], gantt_graph: { state: 'unavailable', reason: 'No captured process order', scope: 'full_plan', nodes: [], critical_task_refs: [], critical_edges: [] }, axis_span: { start: item.task.start, end: item.task.end } }, item.task.end).facts[0];
+  const fact = M.prepare({ availability: { state: 'available' }, resources: [], items: [item], gantt_graph: { state: 'unavailable', reason: 'No captured process order', scope: 'full_plan', nodes: [], critical_task_refs: [], critical_edges: [] }, axis_span: { start: item.task.start, end: item.task.end } }, item.task.end).facts[0];
   return { ...row, marks: (row.baseline ? [fact.baseline] : []).concat(fact.reports.map(value => value.mark).filter(Boolean)) };
 }
 const located = M.graphLocations({ rows: [

@@ -71,6 +71,13 @@ body.aps-workbench table.wb-table th:is(:hover,:focus-within,[aria-sort]:not([ar
 @media (hover: none) {
   body.aps-workbench table.wb-table th :is(.aps-filter-btn,.aps-sort-facetbtn,.wb-th-action) { opacity: 1; }
 }
+body.aps-workbench .aps-th { position: relative; }
+body.aps-workbench .aps-th-inner { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+body.aps-workbench .aps-th-label { overflow: hidden; text-overflow: ellipsis; }
+body.aps-workbench .aps-th-resize { position: absolute; top: 0; right: 0; height: 100%; width: 10px; cursor: col-resize; user-select: none; touch-action: none; z-index: 4; }
+body.aps-workbench .aps-th-resize::after { content: ''; position: absolute; right: 3px; top: 22%; height: 56%; width: 2px; border-radius: 2px; background: transparent; transition: background-color .12s; }
+body.aps-workbench .aps-th-resize:hover::after,
+body.aps-workbench .aps-th-resize.dragging::after { background: var(--ui-primary); }
 body.aps-workbench .wb-visually-hidden {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;

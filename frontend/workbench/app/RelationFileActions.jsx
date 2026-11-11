@@ -1,9 +1,11 @@
-(function () {
-  'use strict';
-  // Load after RelationFileContract.js and ResourceMaterialActions.jsx.
-  function RelationFileActions({ kind, ...props }) {
-    const contract = React.useMemo(() => window.APSRelationFile.create(kind), [kind]);
-    return <window.ResourceFileActionFlow key={kind} {...props} contract={contract} />;
-  }
-  window.RelationFileActions = RelationFileActions;
-})();
+import React from './shared/runtime/react.js';
+import APSRelationFile from './RelationFileContract.js';
+import { ResourceFileActionFlow } from './ResourceMaterialActions.jsx';
+
+function RelationFileActions({ kind, ...props }) {
+  const contract = React.useMemo(() => APSRelationFile.create(kind), [kind]);
+  return <ResourceFileActionFlow key={kind} {...props} contract={contract} />;
+}
+
+export { RelationFileActions };
+export default RelationFileActions;

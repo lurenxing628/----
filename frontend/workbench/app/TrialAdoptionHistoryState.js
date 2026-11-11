@@ -1,29 +1,31 @@
-(function () {
-  'use strict';
-  const KEY = 'trialAdoptionHistory', C = window.TrialContract;
-  const defaults = () => ({ tab: 'delivery', status: 'all', page: 1, size: 20 });
-  function restore(scenarioRef) {
-    const saved = history.state && history.state[KEY];
-    if (!saved || saved.scenario_ref !== scenarioRef) return defaults();
-    C.check(['delivery', 'capacity', 'preparation', 'history', 'adoptions', 'issues', 'tasks', 'unplanned'].includes(saved.tab)
-      && window.TrialAdoptionHistoryAPI.states.includes(saved.status) && Number.isSafeInteger(saved.page) && saved.page > 0
-      && [10, 20, 50].includes(saved.size) && (!saved.snapshot_ref || /^[A-Za-z0-9_-]{32}$/.test(saved.snapshot_ref)),
-    '采用记录的查看状态恢复不了，请点「刷新采用记录」。');
-    return saved;
-  }
-  function remember(scenarioRef, patch) {
-    if (!C.ref(scenarioRef)) return;
-    let base;
-    try { base = restore(scenarioRef); } catch (_) { base = defaults(); }
-    const saved = { ...base, ...patch, scenario_ref: scenarioRef };
-    history.replaceState({ ...history.state, [KEY]: saved }, '', location.href);
-  }
-  function openPlan(scenarioRef, planRef, navigate) {
-    C.check(C.ref(scenarioRef) && C.ref(planRef));
-    const entry = history.state && history.state.workbench;
-    C.check(entry && entry.view === 'trial' && entry.context && entry.context.scenario_ref === scenarioRef,
-      '无法打开正式计划，请刷新后重试。');
-    return navigate('gantt', { plan_ref: planRef });
-  }
-  window.TrialAdoptionHistoryState = { restore, remember, openPlan };
-})();
+import TrialContract from './TrialContract.js';
+import TrialAdoptionHistoryAPI from './TrialAdoptionHistoryAPI.js';
+
+const KEY = 'trialAdoptionHistory', C = TrialContract;
+const defaults = () => ({ tab: 'delivery', status: 'all', page: 1, size: 20 });
+function restore(scenarioRef) {
+  const saved = history.state && history.state[KEY];
+  if (!saved || saved.scenario_ref !== scenarioRef) return defaults();
+  C.check(['delivery', 'capacity', 'preparation', 'history', 'adoptions', 'issues', 'tasks', 'unplanned'].includes(saved.tab)
+    && TrialAdoptionHistoryAPI.states.includes(saved.status) && Number.isSafeInteger(saved.page) && saved.page > 0
+    && [10, 20, 50].includes(saved.size) && (!saved.snapshot_ref || /^[A-Za-z0-9_-]{32}$/.test(saved.snapshot_ref)),
+  '采用记录的查看状态恢复不了，请点「刷新采用记录」。');
+  return saved;
+}
+function remember(scenarioRef, patch) {
+  if (!C.ref(scenarioRef)) return;
+  let base;
+  try { base = restore(scenarioRef); } catch (_) { base = defaults(); }
+  const saved = { ...base, ...patch, scenario_ref: scenarioRef };
+  history.replaceState({ ...history.state, [KEY]: saved }, '', location.href);
+}
+function openPlan(scenarioRef, planRef, navigate) {
+  C.check(C.ref(scenarioRef) && C.ref(planRef));
+  const entry = history.state && history.state.workbench;
+  C.check(entry && entry.view === 'trial' && entry.context && entry.context.scenario_ref === scenarioRef,
+    '无法打开正式计划，请刷新后重试。');
+  return navigate('gantt', { plan_ref: planRef });
+}
+const TrialAdoptionHistoryState = { restore, remember, openPlan };
+export { TrialAdoptionHistoryState, restore, remember, openPlan };
+export default TrialAdoptionHistoryState;

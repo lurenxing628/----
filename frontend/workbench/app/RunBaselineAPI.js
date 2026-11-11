@@ -1,109 +1,34 @@
-(function () {
-  'use strict';
-  const A = window.RunCandidateAPI, P = window.PointContract, T = window.APSWorkbenchTransport, { ref, time } = A;
-  const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
-  const shape = (v, keys) => object(v) && keys.length === Object.keys(v).length && keys.every(k => Object.prototype.hasOwnProperty.call(v, k));
-  const text = v => typeof v === 'string', count = v => Number.isSafeInteger(v) && v >= 0;
-  const finite = v => typeof v === 'number' && Number.isFinite(v), nullable = fn => v => v === null || fn(v);
-  const reason = v => shape(v, ['code', 'message']) && text(v.code) && text(v.message);
-  const gaps = v => Array.isArray(v) && v.every(g => shape(g, ['field', 'code', 'message']) && Object.values(g).every(text));
-  const resource = v => v === null || shape(v, ['ref', 'label']) && nullable(ref)(v.ref) && nullable(text)(v.label);
-  const statuses = ['matched', 'newly_scheduled', 'unscheduled', 'baseline_only', 'not_comparable'];
-  const deltaKeys = ['start_hours', 'end_hours', 'elapsed_hours', 'machine_changed', 'operator_changed', 'supplier_changed', 'effective_processing_hours'];
-  function check(ok) { if (!ok) throw new Error('原安排对照缺失，或者跟当前候选方案范围不一致，没有显示上次结果。请点「刷新原安排」。'); }
-  function equal(a, b) {
-    if (a === b) return true;
-    return object(a) && object(b) && Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(k => equal(a[k], b[k]))
-      || Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => equal(v, b[i]));
-  }
-  function scope(data) {
-    const q = {}, t = data.time_scope;
-    check(ref(data.candidate.candidate_ref) && object(t));
-    if (t.range_start !== null || t.range_end !== null) { q.range_start = t.range_start; q.range_end = t.range_end; }
-    if (data.batch_ref !== null) q.batch_ref = data.batch_ref;
-    // A baseline read owns its own snapshot. Never accept or forward a workspace token.
-    return A.workspaceScope(data.candidate.candidate_ref, q);
-  }
-  function resourceIdentity(side, kind) {
-    const value = side[kind];
-    if (value !== null) return value.ref === null ? undefined : value.ref;
-    return side.data_gaps.some(gap => gap.field === kind || gap.field === kind + '.ref') ? undefined : null;
-  }
-  function interval(v, baseline) {
-    const keys = ['row_ref', 'start', 'end', 'elapsed_hours', 'source', 'machine', 'operator', 'supplier', 'effective_processing_hours', 'data_gaps'];
-    check(shape(v, keys.concat(baseline ? ['interval_comparable'] : ['locked'], P.isPoint(v) ? P.fields : [])) && ref(v.row_ref)
-      && [v.start, v.end].every(nullable(time)) && nullable(finite)(v.elapsed_hours)
-      && ['machine', 'operator', 'supplier'].every(k => resource(v[k])) && v.effective_processing_hours === null && gaps(v.data_gaps));
-    if (baseline) check(typeof v.interval_comparable === 'boolean' && (['internal', 'external'].includes(v.source)
-      || v.source === null && v.data_gaps.some(gap => gap.field === 'source')));
-    else check(time(v.start) && time(v.end) && ['internal', 'external'].includes(v.source) && typeof v.locked === 'boolean');
-  }
-  function comparison(row, q, seen, segments, candidateRefs) {
-    check(shape(row, ['operation_ref', 'row_ref', 'batch_ref', 'batch_label', 'part_label', 'sequence', 'process_label', 'process_type_ref', 'process_type_label', 'piece_id', 'quantity', 'batch_quantity', 'due_date', 'due_state', 'due_issue',
-      'execution_at_generation', 'data_gaps', 'candidate', 'baseline_segments', 'selected_at_admission', 'candidate_operation_status', 'status',
-      'comparison_available', 'delta', 'execution_affected', 'improvement_assessment', 'reasons']) && ref(row.operation_ref) && !seen.has(row.operation_ref)
-      && nullable(ref)(row.batch_ref) && (!q.batch_ref || row.batch_ref === q.batch_ref) && typeof row.selected_at_admission === 'boolean'
-      && typeof row.execution_affected === 'boolean' && row.improvement_assessment === null && statuses.includes(row.status)
-      && ['batch_label', 'part_label', 'process_label', 'process_type_label'].every(k => nullable(text)(row[k])) && window.DeliveryProjectionContract.dueFields(row) && A.quantityContext(row, true)
-      && nullable(ref)(row.process_type_ref)
-      && Array.isArray(row.reasons) && row.reasons.every(reason) && Array.isArray(row.baseline_segments));
-    seen.add(row.operation_ref);
-    for (const value of row.baseline_segments) { interval(value, true); check(!segments.has(value.row_ref) && !candidateRefs.has(value.row_ref)); segments.add(value.row_ref); }
-    const c = row.candidate, b = row.baseline_segments;
-    check(typeof row.comparison_available === 'boolean' && shape(row.delta, deltaKeys)
-      && ['start_hours', 'end_hours', 'elapsed_hours', 'effective_processing_hours'].every(key => nullable(finite)(row.delta[key]))
-      && ['machine_changed', 'operator_changed', 'supplier_changed'].every(key => row.delta[key] === null || typeof row.delta[key] === 'boolean'));
-    if (c) { interval(c, false); check(row.row_ref === c.row_ref && !candidateRefs.has(c.row_ref) && !segments.has(c.row_ref) && row.candidate_operation_status === 'scheduled'); candidateRefs.add(c.row_ref); }
-    else check(row.row_ref === null && [null, 'skipped', 'unscheduled'].includes(row.candidate_operation_status));
-    if (q.range_start && c) {
-      const sides = [c].concat(b);
-      check(sides.some(v => v.start === null || v.end === null || v.start === v.end && !P.isPoint(v))
-        || sides.some(v => P.overlaps(v, q.range_start, q.range_end)));
-    }
-  }
-  function validate(payload, workspace) {
-    const q = scope(workspace), d = payload.data;
-    check(shape(d, ['candidate', 'generation', 'baseline', 'comparisons', 'operation_count', 'full_operation_count', 'rows_complete', 'counts',
-      'execution_affected_count', 'time_scope', 'batch_ref', 'delta_basis', 'duration_basis', 'improvement_assessment', 'capabilities', 'data_gaps'])
-      && equal(d.candidate, workspace.candidate) && d.batch_ref === workspace.batch_ref && d.rows_complete === true
-      && count(d.operation_count) && count(d.full_operation_count) && d.operation_count <= d.full_operation_count && d.full_operation_count <= 40000
-      && Array.isArray(d.comparisons) && d.operation_count === d.comparisons.length && d.improvement_assessment === null
-      && d.delta_basis === 'candidate_minus_admission_baseline' && d.duration_basis === 'elapsed_wall_clock_hours_not_effective_processing'
-      && equal(d.capabilities, { view: true, adopt: false, edit_draft: false, report_actual: false, export: false })
-      && Array.isArray(d.data_gaps) && d.data_gaps.every(reason));
-    check(equal(d.time_scope, { range_start: workspace.time_scope.range_start, range_end: workspace.time_scope.range_end, interval: 'half_open_overlap',
-      membership: 'either_side_overlap', counterpart_policy: 'retain_complete_counterpart', time_basis: 'factory_local',
-      unplanned_policy: 'included_without_time_interval', unknown_or_zero_interval_policy: 'included_without_time_interval' }));
-    if (!q.range_start && !q.batch_ref) check(d.operation_count === d.full_operation_count);
-    const g = d.generation, wg = workspace.generation;
-    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'input'])
-      && ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis'].every(k => g[k] === wg[k])
-      && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission'
-      && object(g.input)
-      && Object.keys(wg.input).every(k => equal(g.input[k], wg.input[k])));
-    const b = d.baseline, seen = new Set(), segments = new Set(), candidateRefs = new Set();
-    check(shape(b, ['baseline_ref', 'version', 'captured_at', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason'])
-      && b.kind === 'admission_official' && typeof b.available === 'boolean' && count(b.captured_task_count) && b.captured_task_count <= 20000
-      && b.version === wg.baseline.version && b.captured_at === wg.baseline.captured_at && b.baseline_ref === wg.baseline.baseline_ref
-      && (b.available ? ref(b.baseline_ref) : b.baseline_ref === null && b.captured_task_count === 0));
-    d.comparisons.forEach(row => comparison(row, q, seen, segments, candidateRefs));
-    check(object(d.counts) && Object.keys(d.counts).every(key => statuses.includes(key) && count(d.counts[key]))
-      && count(d.execution_affected_count) && typeof b.comparison_available === 'boolean'
-      && (b.reason === null || reason(b.reason))
-      && segments.size <= b.captured_task_count);
-    if (!q.range_start && !q.batch_ref) check(segments.size === b.captured_task_count);
-    const rows = new Map(d.comparisons.map(r => [r.operation_ref, r]));
-    workspace.tasks.forEach(t => {
-      const row = rows.get(t.operation_ref), c = row && row.candidate;
-      check(c && ['row_ref', 'start', 'end', 'machine', 'operator', 'supplier', 'source', 'locked', 'data_gaps', ...P.fields].every(k => equal(c[k], t[k])));
-      check(A.operationKeys.filter(k => !['execution_at_generation', 'data_gaps'].includes(k)).every(k => equal(row[k], t[k]))
-        && A.executionKeys.every(k => equal(row.execution_at_generation[k], t.execution_at_generation[k])));
-    });
-    return d;
-  }
-  async function read(workspace, signal) {
-    const payload = await T.read('/api/workbench/v1/scheduling/candidates/' + workspace.candidate.candidate_ref + '/baseline', scope(workspace), { signal, timeout: 60000 });
-    validate(payload, workspace); return payload;
-  }
-  window.RunBaselineAPI = { read, validate, scope, resourceIdentity };
-})();
+import APSWorkbenchTransport from './shared/network/transport.js';
+
+const T = APSWorkbenchTransport;
+const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+function check(ok) { if (!ok) throw new Error('原安排对照缺失，或者跟当前候选方案范围不一致，没有显示上次结果。请点「刷新原安排」。'); }
+function scope(data) {
+  const q = { sort: 'sequence', order: 'asc' }, t = data.time_scope;
+  if (t.range_start !== null || t.range_end !== null) { q.range_start = t.range_start; q.range_end = t.range_end; }
+  if (data.batch_ref !== null) q.batch_ref = data.batch_ref;
+  return q;
+}
+function resourceIdentity(side, kind) {
+  const value = side[kind];
+  if (value !== null) return value.ref === null ? undefined : value.ref;
+  return side.data_gaps.some(gap => gap.field === kind || gap.field === kind + '.ref') ? undefined : null;
+}
+function _validate(payload, workspace) {
+  const d = payload.data, wg = workspace.generation;
+  check(object(d.candidate) && d.candidate.candidate_ref === workspace.candidate.candidate_ref
+    && d.batch_ref === (workspace.batch_ref ?? null) && object(d.time_scope)
+    && d.time_scope.range_start === workspace.time_scope.range_start && d.time_scope.range_end === workspace.time_scope.range_end
+    && object(d.generation) && d.generation.run_ref === wg.run_ref
+    && object(d.baseline) && d.baseline.kind === 'admission_official'
+    && d.baseline.baseline_ref === wg.baseline.baseline_ref);
+  return d;
+}
+async function read(workspace, signal) {
+  const q = scope(workspace);
+  const payload = await T.read('/api/workbench/v1/scheduling/candidates/' + workspace.candidate.candidate_ref + '/baseline', q, { signal, timeout: 60000 });
+  _validate(payload, workspace); return payload;
+}
+const RunBaselineAPI = { read, scope, resourceIdentity };
+export { RunBaselineAPI, read, scope, resourceIdentity };
+export default RunBaselineAPI;

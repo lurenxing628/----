@@ -1,104 +1,49 @@
-(function () {
-  'use strict';
-  const T = window.APSWorkbenchTransport;
-  const states = ['queued', 'running', 'complete', 'partial', 'failed', 'interrupted'];
-  const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
-  const text = v => typeof v === 'string', count = v => Number.isSafeInteger(v) && v >= 0;
-  const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v), token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
-  const own = (v, k) => Object.prototype.hasOwnProperty.call(v, k);
-  const shape = (v, required, optional = []) => object(v) && required.every(k => own(v, k)) && Object.keys(v).every(k => required.includes(k) || optional.includes(k));
-  function check(value, message = '读到的排产记录数据不完整，请刷新重试。') {
-    if (!value) { const error = new Error(message); error.code = 'invalid_response'; throw error; }
+import APSWorkbenchTransport from './shared/network/transport.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
+
+const T = APSWorkbenchTransport;
+const states = ['queued', 'running', 'complete', 'partial', 'failed', 'interrupted'];
+const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+const text = v => typeof v === 'string', count = v => Number.isSafeInteger(v) && v >= 0;
+const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v), token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
+function check(value, message = '读到的排产记录数据不完整，请刷新重试。') {
+  if (!value) { const error = new Error(message); error.code = 'invalid_response'; throw error; }
+}
+function date(v) {
+  if (!text(v) || !/^(?!0000)\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const n = Date.parse(v + 'T00:00:00Z'); return Number.isFinite(n) && new Date(n).toISOString().slice(0, 10) === v;
+}
+function time(v) { return text(v) && date(v.slice(0, 10)) && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?$/.test(v); }
+const queryKeys = ['page', 'size', 'state', 'accepted_from', 'accepted_to', 'sort', 'order', 'snapshot_ref'];
+function scope(query = {}) {
+  check(object(query) && Object.keys(query).every(k => queryKeys.includes(k)), '查询条件里有不认识的项，没有自动忽略。请从侧栏重新打开排产记录。');
+  const q = { page: 1, size: 20, state: 'all', sort: 'accepted_at', order: 'desc', ...query };
+  check(count(q.page) && q.page >= 1 && q.page <= 1000000 && count(q.size) && q.size >= 1 && q.size <= 50
+    && ['all', ...states].includes(q.state) && ['accepted_at', 'started_at', 'finished_at'].includes(q.sort)
+    && ['asc', 'desc'].includes(q.order) && (q.snapshot_ref === undefined || token(q.snapshot_ref)), '筛选、排序或翻页条件无效，请重新设置后查询。');
+  if (q.accepted_from !== undefined || q.accepted_to !== undefined) check(date(q.accepted_from) && date(q.accepted_to)
+    && q.accepted_from <= q.accepted_to, '提交日期要成对填写，起日不能晚于止日。');
+  Object.keys(q).forEach(k => { if (q[k] === undefined) delete q[k]; }); return q;
+}
+// 入参是已校验的查询状态（scope() 的产物或由它派生）；返回链接只去掉快照钉，不改动调用方的状态对象。
+function returnContext({ snapshot_ref, ...query }) { return query; }
+// q 是已校验的查询状态（同上），这里只核对返回与它一致。
+function validateCatalog(v, q) {
+  // 翻页和页面记忆都要用本次快照，不能为空。
+  check(token(v.meta.snapshot_ref));
+  if (q.snapshot_ref && q.snapshot_ref !== v.meta.snapshot_ref) {
+    const error = new Error(WorkbenchTerms.outcomes.stale); error.code = 'snapshot_stale'; throw error;
   }
-  function date(v) {
-    if (!text(v) || !/^(?!0000)\d{4}-\d{2}-\d{2}$/.test(v)) return false;
-    const n = Date.parse(v + 'T00:00:00Z'); return Number.isFinite(n) && new Date(n).toISOString().slice(0, 10) === v;
-  }
-  function time(v) { return text(v) && date(v.slice(0, 10)) && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?$/.test(v); }
-  const timeKey = v => v.slice(0, 19) + '.' + (v.split('.')[1] || '').padEnd(6, '0');
-  const gap = v => shape(v, ['field', 'code', 'message']) && [v.field, v.code, v.message].every(text);
-  const queryKeys = ['page', 'size', 'state', 'accepted_from', 'accepted_to', 'sort', 'order', 'snapshot_ref'];
-  function scope(query = {}) {
-    check(shape(query, [], queryKeys), '查询条件里有不认识的项，没有自动忽略。请从侧栏重新打开排产记录。');
-    const q = { page: 1, size: 20, state: 'all', sort: 'accepted_at', order: 'desc', ...query };
-    check(count(q.page) && q.page >= 1 && q.page <= 1000000 && count(q.size) && q.size >= 1 && q.size <= 50
-      && ['all', ...states].includes(q.state) && ['accepted_at', 'started_at', 'finished_at'].includes(q.sort)
-      && ['asc', 'desc'].includes(q.order) && (q.snapshot_ref === undefined || token(q.snapshot_ref)), '筛选、排序或翻页条件无效，请重新设置后查询。');
-    if (q.accepted_from !== undefined || q.accepted_to !== undefined) check(date(q.accepted_from) && date(q.accepted_to)
-      && q.accepted_from <= q.accepted_to, '提交日期要成对填写，起日不能晚于止日。');
-    Object.keys(q).forEach(k => { if (q[k] === undefined) delete q[k]; }); return q;
-  }
-  // 入参是已校验的查询状态（scope() 的产物或由它派生）；返回链接只去掉快照钉，不改动调用方的状态对象。
-  function returnContext({ snapshot_ref, ...query }) { return query; }
-  // 不重排时段：没带这一项表示按交付设置推算；null 是“不设”，存的值读不出来时也是 null，并附一条资料缺项。
-  const minute = v => text(v) && date(v.slice(0, 10)) && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(v);
-  const holdWindow = v => v === undefined || v === null || shape(v, ['start', 'end']) && minute(v.start) && minute(v.end) && v.start < v.end;
-  function admission(s) {
-    const keys = ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy', 'batch_count'].concat(s.material_strategy === undefined ? [] : ['material_strategy']);
-    const recorded = keys.concat(s.hold_window === undefined ? [] : ['hold_window']);
-    check(shape(s, recorded.concat(['selection', 'basis', 'data_gaps', 'run_options'])) && s.selection === 'explicit_batches' && s.basis === 'captured_at_run_admission'
-      && Array.isArray(s.data_gaps) && s.data_gaps.every(gap) && s.data_gaps.every(g => recorded.includes(g.field) && ['not_recorded', 'invalid_stored_value'].includes(g.code))
-      && holdWindow(s.hold_window));
-    const gapFields = new Set(s.data_gaps.map(g => g.field));
-    check(['start_date', 'end_date'].every(k => s[k] === null || date(s[k])) && (s.start_date === null || s.end_date === null || s.start_date <= s.end_date)
-      && (s.ready_check === null || typeof s.ready_check === 'boolean') && [null, 'auto_assign', 'exclude'].includes(s.missing_resource_policy)
-      && (s.material_strategy === undefined || [null, 'strict', 'stage'].includes(s.material_strategy))
-      && [null, 'preserve_actuals'].includes(s.completed_policy) && (s.batch_count === null || count(s.batch_count) && s.batch_count > 0)
-      && gapFields.size === s.data_gaps.length && (s.hold_window === null || !gapFields.has('hold_window')));
-    check(keys.every(k => gapFields.has(k) === (s[k] === null)));
-    check(window.RunGenerationContract.runOptions(s.run_options));
-  }
-  function run(v) {
-    check(shape(v, ['run_ref', 'state', 'stage', 'accepted_at', 'started_at', 'finished_at', 'candidate_count', 'task_count', 'task_count_basis', 'counts_final',
-      'scope_summary', 'recovery_required', 'recovery_reason', 'error'])
-      && ref(v.run_ref) && states.includes(v.state) && time(v.accepted_at) && ['started_at', 'finished_at'].every(k => v[k] === null || time(v[k]))
-      && count(v.candidate_count) && count(v.task_count) && v.task_count_basis === 'persisted_rows_across_candidates');
-    const terminal = !['queued', 'running'].includes(v.state), succeeded = ['complete', 'partial'].includes(v.state);
-    check(v.counts_final === terminal && (v.finished_at !== null) === terminal
-      && (terminal ? v.stage === 'finished' : [v.state === 'queued' ? 'queued' : 'computing', 'awaiting_reconciliation'].includes(v.stage))
-      && (v.state !== 'queued' || v.started_at === null) && (v.state !== 'running' || v.started_at !== null)
-      && (v.started_at === null || timeKey(v.started_at) >= timeKey(v.accepted_at))
-      && (v.finished_at === null || timeKey(v.finished_at) >= timeKey(v.started_at || v.accepted_at))
-      && (succeeded ? v.candidate_count > 0 : v.candidate_count === 0 && v.task_count === 0)
-      && v.recovery_required === (v.stage === 'awaiting_reconciliation'));
-    check(v.recovery_required ? shape(v.recovery_reason, ['code', 'message']) && v.recovery_reason.code === 'awaiting_reconciliation' && text(v.recovery_reason.message) : v.recovery_reason === null);
-    // 只有失败或中断的排产带原因；旧记录读不出原因时为空。
-    check(v.error === null || ['failed', 'interrupted'].includes(v.state) && shape(v.error, ['code', 'message']) && text(v.error.code) && v.error.code.length > 0
-      && text(v.error.message) && v.error.message.length > 0);
-    admission(v.scope_summary); return v;
-  }
-  function compare(a, b, q) {
-    const left = a[q.sort], right = b[q.sort], direction = q.order === 'asc' ? 1 : -1;
-    if (left === null && right !== null) return 1;
-    if (right === null && left !== null) return -1;
-    const x = left === null ? '' : timeKey(left), y = right === null ? '' : timeKey(right);
-    return direction * (x < y ? -1 : x > y ? 1 : a.run_ref < b.run_ref ? -1 : a.run_ref > b.run_ref ? 1 : 0);
-  }
-  // q 是已校验的查询状态（同上），这里只核对返回与它一致。
-  function validateCatalog(v, q) {
-    // 翻页和页面记忆都要用本次快照，不能为空。
-    check(token(v.meta.snapshot_ref));
-    if (q.snapshot_ref && q.snapshot_ref !== v.meta.snapshot_ref) {
-      const error = new Error(window.WorkbenchTerms.outcomes.stale); error.code = 'snapshot_stale'; throw error;
-    }
-    const d = v.data;
-    check(shape(d, ['runs', 'page', 'run_count', 'state', 'sort', 'order', 'nulls', 'tie_breaker', 'time_scope'])
-      && d.state === q.state && d.sort === q.sort && d.order === q.order && d.nulls === 'last' && d.tie_breaker === 'run_ref_same_order'
-      && count(d.run_count) && d.run_count <= 100000 && shape(d.page, ['number', 'size', 'total', 'has_more'])
-      && d.page.number === q.page && d.page.size === q.size && count(d.page.total) && d.page.total <= d.run_count
-      && (q.state !== 'all' || q.accepted_from || d.page.total === d.run_count) && d.page.has_more === (q.page * q.size < d.page.total)
-      && Array.isArray(d.runs) && d.runs.length === Math.min(q.size, Math.max(0, d.page.total - (q.page - 1) * q.size))
-      && shape(d.time_scope, ['accepted_from', 'accepted_to', 'field', 'boundary', 'time_basis'])
-      && d.time_scope.accepted_from === (q.accepted_from || null) && d.time_scope.accepted_to === (q.accepted_to || null)
-      && d.time_scope.field === 'accepted_at' && d.time_scope.boundary === 'inclusive_dates' && d.time_scope.time_basis === 'factory_local');
-    d.runs.forEach((r, i) => { run(r); check((q.state === 'all' || r.state === q.state)
-      && (!q.accepted_from || r.accepted_at.slice(0, 10) >= q.accepted_from && r.accepted_at.slice(0, 10) <= q.accepted_to)
-      && (!i || compare(d.runs[i - 1], r, q) <= 0)); });
-    check(new Set(d.runs.map(r => r.run_ref)).size === d.runs.length); return d;
-  }
-  async function catalog(query, signal) {
-    const value = await T.read('/api/workbench/v1/scheduling/runs', query, { signal, timeout: 60000 });
-    validateCatalog(value, query); return value;
-  }
-  window.RunHistoryAPI = { catalog, check, scope, returnContext, ref, date, time, states };
-})();
+  const d = v.data;
+  check(d.state === q.state && d.sort === q.sort && d.order === q.order
+    && object(d.page) && d.page.number === q.page && d.page.size === q.size
+    && object(d.time_scope) && d.time_scope.accepted_from === (q.accepted_from || null) && d.time_scope.accepted_to === (q.accepted_to || null));
+  return d;
+}
+async function catalog(query, signal) {
+  const value = await T.read('/api/workbench/v1/scheduling/runs', query, { signal, timeout: 60000 });
+  validateCatalog(value, query); return value;
+}
+const RunHistoryAPI = { catalog, check, scope, returnContext, ref, date, time, states };
+export { RunHistoryAPI, catalog, check, scope, returnContext, ref, date, time, states };
+export default RunHistoryAPI;

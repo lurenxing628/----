@@ -1,66 +1,74 @@
-(function () {
-  'use strict';
-  const { Button, Modal, ErrorBox, Field } = window.ResourceControls;
-  const B = window.APSBatchContract;
-  // 物料数量按批次详情的口径显示全部小数、去掉末尾 0。按件数比例分出的需求量和页面上相加的到料会带二进制尾差
-  // （0.3 + 0.6、7 件拆出 1/3），先收到 15 位有效数字再显示，不出现 0.8999999999999999 这类数，也不会把非零小数显示成 0。
-  const amount = value => window.WorkbenchFormat.number(Number(value.toPrecision(15)), { digits: 20, trim: true });
-  const arrived = (initial, arrivals) => amount(arrivals.reduce((n, a) => n + a.quantity, initial));
-  function BatchSplitPanel({ refs, day, onCommitted, disabled, onActivityChange }) {
-    const adapter = React.useMemo(() => window.APSBatchAPI.create(), []);
-    const command = window.APSResourceSession.useCommand(adapter);
-    const [preview, setPreview] = React.useState(null), [error, setError] = React.useState(null), [busy, setBusy] = React.useState(false);
-    const [quantity, setQuantity] = React.useState(''), seen = React.useRef(null), serial = React.useRef(0);
-    const owner = window.WorkbenchGuards.useDirtyGuard({ dirty: false, locked: command.locked, message: '拆分正在确认，请先核对保存结果。' });
-    React.useEffect(() => {
-      serial.current++;
-      setPreview(null);
-      setQuantity('');
-      setError(null);
-      setBusy(false);
-      if (!command.locked) command.reset();
-    }, [JSON.stringify(refs), day]);
-    React.useEffect(() => () => { serial.current++; }, []);
-    React.useEffect(() => { if (onActivityChange) onActivityChange(busy || command.locked); }, [busy, command.locked, onActivityChange]);
-    React.useEffect(() => () => { if (onActivityChange) onActivityChange(false); }, [onActivityChange]);
-    React.useEffect(() => {
-      if (command.phase !== 'done' || seen.current === command.result.receipt_ref || command.intent.action !== 'split_confirm') return;
-      seen.current = command.result.receipt_ref; setPreview(null); setQuantity(''); onCommitted(command.result.data.child_ref, command.intent.ref);
-    }, [command.phase, command.result]);
-    async function inspect() {
-      if (disabled || refs.length !== 1 || command.locked || busy) return;
-      const id = ++serial.current; setBusy(true); setError(null);
-      try {
-        command.reset();
-        const count = quantity.trim() ? Number(quantity) : null;
-        if (count !== null && (!Number.isSafeInteger(count) || count <= 0)) throw window.APSResourceContract.failure('请填写正整数数量，留空则按当前物料可做数量预检。');
-        const detail = await adapter.detail('batch', refs[0]), input = { as_of_date: day, quantity: count };
-        B.detail(detail, refs[0]);
-        const response = await adapter.preview('split', refs[0], input, null, detail.meta.snapshot_ref);
-        const data = B.preview(response, 'split', refs[0], input);
-        if (id === serial.current) setPreview(data);
-      } catch (e) { if (id === serial.current) setError(e); }
-      finally { if (id === serial.current) setBusy(false); }
-    }
-    return <section id="pf-material-split" className="pf-split-panel" aria-label="检查物料可做数量">
-      <h3>检查物料可做数量</h3>
-      <div className="toolbar"><Field label="本次先做数量（可留空）"><input inputMode="numeric" aria-label="本次先做数量" value={quantity} disabled={disabled || busy || command.locked}
-        onChange={e => { setQuantity(e.target.value); setPreview(null); setError(null); command.clearRejection({ includeStale: true }); }} /></Field>
-        <Button busy={busy} disabled={disabled || command.locked || refs.length !== 1} onClick={inspect}>查看可做数量</Button></div>
-      <p>按排产开始日期 {day} 前的到料计算；数量留空时，查看物料最多够做多少件。查看数量不会修改批次。</p>
-      {refs.length !== 1 && <p>请先选择一个要拆分的待排批次。</p>}
-      <ErrorBox error={error} /><window.ResourceForms.Feedback command={command} />
-      {preview && ReactDOM.createPortal(<div className="plana"><Modal title="确认拆成两批" icon="box" guardOwner={owner} locked={command.locked} onClose={() => { if (!command.locked) { setPreview(null); command.clearRejection({ includeStale: true }); } }}
-        footer={<><Button disabled={command.locked} onClick={() => { setPreview(null); command.clearRejection({ includeStale: true }); }}>取消</Button><Button className="btn primary" disabled={disabled || command.locked}
-          onClick={() => command.submit('batch', 'split_confirm', preview.entity_ref, preview.write_context, { preview_ref: preview.preview_ref })}>确认拆批并选择子批</Button></>}>
-        <div className="modal-b"><p>{preview.source_code} 原有 {preview.original_quantity} 件：{preview.child_code} 先做 {preview.quantity} 件，原批保留 {preview.remaining_quantity} 件。</p>
-          <div className="wb-table-frame"><table className="tbl wb-table" aria-label="拆分物料分配"><thead><tr><th>物料</th><th>子批需求</th><th>剩余需求</th><th>子批到料</th><th>剩余到料</th></tr></thead><tbody>
-            {preview.materials.map((row, i) => <tr key={i}><td>{row.business_code} · {row.label}</td><td>{amount(row.child_required)}</td><td>{amount(row.source_required)}</td><td>{arrived(row.child_available, row.child_arrivals)}</td><td>{arrived(row.source_available, row.source_arrivals)}</td></tr>)}</tbody></table></div>
-          <p>物料需求按件数比例分配；整批固定耗料请先核对。两批分别计算设备换型和外协周期。</p>
-          <p>到料分配包含后续到料，按各自日期可用。取消不会改动批次；确认后仍需检查并开始计算。</p><window.ResourceForms.Feedback command={command} />
-        </div></Modal></div>, document.body)}
-    </section>;
+import React, { createPortal } from './shared/runtime/react.js';
+import ResourceControls from './ResourceControls.jsx';
+import APSBatchContract from './BatchContract.js';
+import WorkbenchFormat from './WorkbenchFormat.js';
+import APSBatchAPI from './BatchAPI.js';
+import APSResourceSession from './shared/session/command-session.js';
+import WorkbenchGuards from './WorkbenchGuards.js';
+import APSResourceContract from './resource-contract.js';
+import ResourceForms from './ResourceForms.jsx';
+
+const { Button, Modal, ErrorBox, Field } = ResourceControls;
+const B = APSBatchContract;
+// 物料数量按批次详情的口径显示全部小数、去掉末尾 0。按件数比例分出的需求量和页面上相加的到料会带二进制尾差
+// （0.3 + 0.6、7 件拆出 1/3），先收到 15 位有效数字再显示，不出现 0.8999999999999999 这类数，也不会把非零小数显示成 0。
+const amount = value => WorkbenchFormat.number(Number(value.toPrecision(15)), { digits: 20, trim: true });
+const arrived = (initial, arrivals) => amount(arrivals.reduce((n, a) => n + a.quantity, initial));
+function BatchSplitPanel({ refs, day, onCommitted, disabled, onActivityChange }) {
+  const adapter = React.useMemo(() => APSBatchAPI.create(), []);
+  const command = APSResourceSession.useCommand(adapter);
+  const [preview, setPreview] = React.useState(null), [error, setError] = React.useState(null), [busy, setBusy] = React.useState(false);
+  const [quantity, setQuantity] = React.useState(''), seen = React.useRef(null), serial = React.useRef(0);
+  const owner = WorkbenchGuards.useDirtyGuard({ dirty: false, locked: command.locked, message: '拆分正在确认，请先核对保存结果。' });
+  React.useEffect(() => {
+    serial.current++;
+    setPreview(null);
+    setQuantity('');
+    setError(null);
+    setBusy(false);
+    if (!command.locked) command.reset();
+  }, [JSON.stringify(refs), day]);
+  React.useEffect(() => () => { serial.current++; }, []);
+  React.useEffect(() => { if (onActivityChange) onActivityChange(busy || command.locked); }, [busy, command.locked, onActivityChange]);
+  React.useEffect(() => () => { if (onActivityChange) onActivityChange(false); }, [onActivityChange]);
+  React.useEffect(() => {
+    if (command.phase !== 'done' || seen.current === command.result.receipt_ref || command.intent.action !== 'split_confirm') return;
+    seen.current = command.result.receipt_ref; setPreview(null); setQuantity(''); onCommitted(command.result.data.child_ref, command.intent.ref);
+  }, [command.phase, command.result]);
+  async function inspect() {
+    if (disabled || refs.length !== 1 || command.locked || busy) return;
+    const id = ++serial.current; setBusy(true); setError(null);
+    try {
+      command.reset();
+      const count = quantity.trim() ? Number(quantity) : null;
+      if (count !== null && (!Number.isSafeInteger(count) || count <= 0)) throw APSResourceContract.failure('请填写正整数数量，留空则按当前物料可做数量预检。');
+      const detail = await adapter.detail('batch', refs[0]), input = { as_of_date: day, quantity: count };
+      B.detail(detail, refs[0]);
+      const response = await adapter.preview('split', refs[0], input, null, detail.meta.snapshot_ref);
+      const data = B.preview(response, 'split', refs[0], input);
+      if (id === serial.current) setPreview(data);
+    } catch (e) { if (id === serial.current) setError(e); }
+    finally { if (id === serial.current) setBusy(false); }
   }
-  window.BatchSplitPanel = BatchSplitPanel;
-  BatchSplitPanel.amount = amount;
-})();
+  return <section id="pf-material-split" className="pf-split-panel" aria-label="检查物料可做数量">
+    <h3>检查物料可做数量</h3>
+    <div className="toolbar"><Field label="本次先做数量（可留空）"><input inputMode="numeric" aria-label="本次先做数量" value={quantity} disabled={disabled || busy || command.locked}
+      onChange={e => { setQuantity(e.target.value); setPreview(null); setError(null); command.clearRejection({ includeStale: true }); }} /></Field>
+      <Button busy={busy} disabled={disabled || command.locked || refs.length !== 1} onClick={inspect}>查看可做数量</Button></div>
+    <p>按排产开始日期 {day} 前的到料计算；数量留空时，查看物料最多够做多少件。查看数量不会修改批次。</p>
+    {refs.length !== 1 && <p>请先选择一个要拆分的待排批次。</p>}
+    <ErrorBox error={error} /><ResourceForms.Feedback command={command} />
+    {preview && createPortal(<div className="plana"><Modal title="确认拆成两批" icon="box" guardOwner={owner} locked={command.locked} onClose={() => { if (!command.locked) { setPreview(null); command.clearRejection({ includeStale: true }); } }}
+      footer={<><Button disabled={command.locked} onClick={() => { setPreview(null); command.clearRejection({ includeStale: true }); }}>取消</Button><Button className="btn primary" disabled={disabled || command.locked}
+        onClick={() => command.submit('batch', 'split_confirm', preview.entity_ref, preview.write_context, { preview_ref: preview.preview_ref })}>确认拆批并选择子批</Button></>}>
+      <div className="modal-b"><p>{preview.source_code} 原有 {preview.original_quantity} 件：{preview.child_code} 先做 {preview.quantity} 件，原批保留 {preview.remaining_quantity} 件。</p>
+        <div className="wb-table-frame"><table className="tbl wb-table" aria-label="拆分物料分配"><thead><tr><th>物料</th><th>子批需求</th><th>剩余需求</th><th>子批到料</th><th>剩余到料</th></tr></thead><tbody>
+          {preview.materials.map((row, i) => <tr key={i}><td>{row.business_code} · {row.label}</td><td>{amount(row.child_required)}</td><td>{amount(row.source_required)}</td><td>{arrived(row.child_available, row.child_arrivals)}</td><td>{arrived(row.source_available, row.source_arrivals)}</td></tr>)}</tbody></table></div>
+        <p>物料需求按件数比例分配；整批固定耗料请先核对。两批分别计算设备换型和外协周期。</p>
+        <p>到料分配包含后续到料，按各自日期可用。取消不会改动批次；确认后仍需检查并开始计算。</p><ResourceForms.Feedback command={command} />
+      </div></Modal></div>, document.body)}
+  </section>;
+}
+BatchSplitPanel.amount = amount;
+export { BatchSplitPanel, amount };
+export default BatchSplitPanel;

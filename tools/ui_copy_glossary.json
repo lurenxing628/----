@@ -2,12 +2,7 @@
   "decision": ".codestable/compound/2026-09-13-decision-ui-copy-glossary.md",
   "scan": {
     "frontend": [
-      "frontend/workbench/app",
-      "frontend/workbench/prototype/ui_kits/workbench/AppShell.jsx",
-      "frontend/workbench/prototype/ui_kits/workbench/SystemManagementScreen.jsx",
-      "frontend/workbench/prototype/ui_kits/workbench/workbench-ui.js",
-      "frontend/workbench/prototype/ui_kits/workbench/system-workbench-model.js",
-      "frontend/workbench/prototype/ui_kits/workbench/assets/field-report-icons.js"
+      "frontend/workbench/app"
     ],
     "templates": [
       "templates/workbench",

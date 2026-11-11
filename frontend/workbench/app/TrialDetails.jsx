@@ -1,107 +1,119 @@
-(function () {
-  'use strict';
-  const U = window.TrialControls, C = window.TrialContract;
-  const hoursBasis = value => ({ effective_processing_hours: '有效加工工时', calendar_days: '日历天', unknown: '工时依据不明' }[value] || '工时依据未识别');
-  function References({ task }) {
-    return <details className="tt-refs wb-ref"><summary>编号与原始依据</summary><dl>{[['任务', task.task_ref], ['行', task.row_ref], ['原任务', task.source_task_ref], ['原行', task.source_row_ref],
-      ['工序', task.operation_ref], ['批次', task.batch_ref]].map(([label, ref]) => <React.Fragment key={label}><dt>{label}</dt><dd>{ref || '无（候选来源没有正式任务编号）'}</dd></React.Fragment>)}</dl>
-      <div>前序工序编号：{task.predecessor_operation_refs.join('、') || '无'}</div><div>原工时依据：<code>{task.hours.basis || '未记录'}</code></div>
-      <div>当前预计开工：{window.WorkbenchFormat.dateTime(task.start, { seconds: true, fractions: true })}</div><div>当前预计完工：{window.WorkbenchFormat.dateTime(task.end, { seconds: true, fractions: true })}</div>
-      <div>原预计开工：{window.WorkbenchFormat.dateTime(task.original.start, { seconds: true, fractions: true })}</div><div>原预计完工：{window.WorkbenchFormat.dateTime(task.original.end, { seconds: true, fractions: true })}</div></details>;
+import React from './shared/runtime/react.js';
+import TrialControls from './TrialControls.jsx';
+import TrialContract from './TrialContract.js';
+import WorkbenchFormat from './WorkbenchFormat.js';
+import RunCandidateModel from './RunCandidateModel.js';
+import FieldContract from './FieldContract.js';
+import WorkbenchGuards from './WorkbenchGuards.js';
+import WorkbenchDatePickerModel from './WorkbenchDatePickerModel.js';
+import TrialGantt from './TrialGantt.jsx';
+import WorkbenchTerms from './WorkbenchTerms.js';
+import PointContract from './PointContract.js';
+import RunOperationEffort from './RunOperationEffort.jsx';
+
+const U = TrialControls, C = TrialContract;
+const hoursBasis = value => ({ effective_processing_hours: '有效加工工时', calendar_days: '日历天', unknown: '工时依据不明' }[value] || '工时依据未识别');
+function References({ task }) {
+  return <details className="tt-refs wb-ref"><summary>编号与原始依据</summary><dl>{[['任务', task.task_ref], ['行', task.row_ref], ['原任务', task.source_task_ref], ['原行', task.source_row_ref],
+    ['工序', task.operation_ref], ['批次', task.batch_ref]].map(([label, ref]) => <React.Fragment key={label}><dt>{label}</dt><dd>{ref || '无（候选来源没有正式任务编号）'}</dd></React.Fragment>)}</dl>
+    <div>前序工序编号：{task.predecessor_operation_refs.join('、') || '无'}</div><div>原工时依据：<code>{task.hours.basis || '未记录'}</code></div>
+    <div>当前预计开工：{WorkbenchFormat.dateTime(task.start, { seconds: true, fractions: true })}</div><div>当前预计完工：{WorkbenchFormat.dateTime(task.end, { seconds: true, fractions: true })}</div>
+    <div>原预计开工：{WorkbenchFormat.dateTime(task.original.start, { seconds: true, fractions: true })}</div><div>原预计完工：{WorkbenchFormat.dateTime(task.original.end, { seconds: true, fractions: true })}</div></details>;
+}
+function Execution({ title, value }) {
+  if (!value) return <div>{title}：未记录</div>;
+  // 状态与说明用报工记录和候选页同一套叫法；不把内部取值原样上屏。
+  const R = RunCandidateModel, F = FieldContract;
+  const rows = [['target_quantity', U.number(value.target_quantity)], ['known_completed_quantity', U.number(value.known_completed_quantity)],
+    ['remaining_quantity', U.number(value.remaining_quantity)], ['execution_state', F.states[value.execution_state] || R.executionValue(value.execution_state)],
+    ['data_quality', R.executionValue(value.data_quality, 'data_quality')], ['target_basis', R.executionValue(value.target_basis, 'target_basis')]];
+  return <div><h4>{title}</h4><dl className="tt-facts">{rows.map(([key, v]) =>
+      <React.Fragment key={key}><dt>{R.executionLabels[key]}</dt><dd>{v}</dd></React.Fragment>)}</dl></div>;
+}
+function Editor({ data, task, commands, onEditing, onRecheck, guardOwner, editorRevision }) {
+  const [editing, setEditing] = React.useState(false), [form, setForm] = React.useState(null), [error, setError] = React.useState(null), [reviewed, setReviewed] = React.useState(false);
+  const external = task.source === 'external';
+  const initial = React.useRef(null);
+  const dirty = editing && (form.machine_ref !== initial.current.machine_ref || form.operator_ref !== initial.current.operator_ref || form.start !== initial.current.start);
+  WorkbenchGuards.useDirtyGuard({ owner: guardOwner, dirty, message: '试调工序的设备、人员或开工调整尚未保存。' });
+  function close() { setEditing(false); onEditing(false); setError(null); }
+  async function cancel() { if (!commands.busy && !commands.key && await WorkbenchGuards.confirmLeave({ owner: guardOwner })) { commands.clearError(); close(); } }
+  function open() { const value = { machine_ref: external ? null : task.machine_ref, operator_ref: external ? null : task.operator_ref, start: task.start }; initial.current = value; setForm(value); setEditing(true); onEditing(true); setReviewed(true); }
+  React.useEffect(() => { if (editing) setReviewed(false); }, [data]);
+  React.useEffect(() => () => onEditing(false), []);
+  React.useEffect(() => { close(); }, [editorRevision]);
+  const editable = data.status === 'editing' && task.edit_context.can_change && data.write_context.capabilities['trial.change'] === true;
+  async function submit(e) {
+    e.preventDefault(); setError(null);
+    try {
+      const value = { ...form, start: WorkbenchDatePickerModel.factoryTime(form.start) };
+      C.check(C.time(value.start), '请选择有效的开工日期和时间。');
+      C.check(external ? value.machine_ref === null && value.operator_ref === null : C.ref(value.machine_ref) && C.ref(value.operator_ref), '请选择设备和人员。');
+      const ok = await commands.execute({ action: 'change', draft_ref: data.draft_ref, input: { task_ref: task.task_ref, ...value } }, data.write_context.write_token);
+      if (ok) close(); else setReviewed(false);
+    } catch (error) { setError(error); }
   }
-  function Execution({ title, value }) {
-    if (!value) return <div>{title}：未记录</div>;
-    // 状态与说明用报工记录和候选页同一套叫法；不把内部取值原样上屏。
-    const R = window.RunCandidateModel, F = window.FieldContract;
-    const rows = [['target_quantity', U.number(value.target_quantity)], ['known_completed_quantity', U.number(value.known_completed_quantity)],
-      ['remaining_quantity', U.number(value.remaining_quantity)], ['execution_state', F.states[value.execution_state] || R.executionValue(value.execution_state)],
-      ['data_quality', R.executionValue(value.data_quality, 'data_quality')], ['target_basis', R.executionValue(value.target_basis, 'target_basis')]];
-    return <div><h4>{title}</h4><dl className="tt-facts">{rows.map(([key, v]) =>
-        <React.Fragment key={key}><dt>{R.executionLabels[key]}</dt><dd>{v}</dd></React.Fragment>)}</dl></div>;
-  }
-  function Editor({ data, task, commands, onEditing, onRecheck, guardOwner, editorRevision }) {
-    const [editing, setEditing] = React.useState(false), [form, setForm] = React.useState(null), [error, setError] = React.useState(null), [reviewed, setReviewed] = React.useState(false);
-    const external = task.source === 'external';
-    const initial = React.useRef(null);
-    const dirty = editing && (form.machine_ref !== initial.current.machine_ref || form.operator_ref !== initial.current.operator_ref || form.start !== initial.current.start);
-    window.WorkbenchGuards.useDirtyGuard({ owner: guardOwner, dirty, message: '试调工序的设备、人员或开工调整尚未保存。' });
-    function close() { setEditing(false); onEditing(false); setError(null); }
-    async function cancel() { if (!commands.busy && !commands.key && await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) { commands.clearError(); close(); } }
-    function open() { const value = { machine_ref: external ? null : task.machine_ref, operator_ref: external ? null : task.operator_ref, start: task.start }; initial.current = value; setForm(value); setEditing(true); onEditing(true); setReviewed(true); }
-    React.useEffect(() => { if (editing) setReviewed(false); }, [data]);
-    React.useEffect(() => () => onEditing(false), []);
-    React.useEffect(() => { close(); }, [editorRevision]);
-    const editable = data.status === 'editing' && task.edit_context.can_change && data.write_context.capabilities['trial.change'] === true;
-    async function submit(e) {
-      e.preventDefault(); setError(null);
-      try {
-        const value = { ...form, start: window.WorkbenchDatePickerModel.factoryTime(form.start) };
-        C.check(C.time(value.start), '请选择有效的开工日期和时间。');
-        C.check(external ? value.machine_ref === null && value.operator_ref === null : C.ref(value.machine_ref) && C.ref(value.operator_ref), '请选择设备和人员。');
-        const ok = await commands.execute({ action: 'change', draft_ref: data.draft_ref, input: { task_ref: task.task_ref, ...value } }, data.write_context.write_token);
-        if (ok) close(); else setReviewed(false);
-      } catch (error) { setError(error); }
-    }
-    return <><U.Issues rows={task.edit_context.blocked_reasons} />{!editing ? <U.Button icon="square-pen" disabled={!editable || commands.blocked} onClick={open}>调整此工序</U.Button> :
-      <form onSubmit={submit} className="tt-editor"><h4>调整工序</h4>{[['machine', 'machines'], ['operator', 'operators']].map(([kind, listKey], i) => <label key={kind}>{i ? '调整人员' : '调整设备'}
-        <select aria-label={i ? '调整人员' : '调整设备'} value={form[kind + '_ref'] || ''} disabled={commands.busy || external} required={!external}
-          onChange={e => setForm({ ...form, [kind + '_ref']: e.target.value || null })}>
-          <option value="">{external ? '外协，无内部资源' : '请选择'}</option>{form[kind + '_ref'] && !data.resources[listKey].some(r => r.ref === form[kind + '_ref']) && <option value={form[kind + '_ref']}>原资源（已不可读）</option>}
-          {data.resources[listKey].map(r => <option key={r.ref} value={r.ref} disabled={r.status !== 'active'}>{r.business_code} · {r.label || '名称未填写'}{r.status !== 'active' ? '（不可用）' : ''}</option>)}</select></label>)}
-        <label>调整开工<input type="text" data-picker-type="factory-local" aria-label="调整开工" placeholder="选择日期和时间" spellCheck={false} required value={form.start} disabled={commands.busy} onChange={e => setForm({ ...form, start: e.target.value })} /></label>
-        <div className="tt-muted">按班表计算预计完工时间，逐道保存调整。</div>
-        {!external && form.machine_ref && form.operator_ref && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && <p className="tt-notice">所选人员尚未取得该设备的操作授权。</p>}
-        <U.ErrorBox error={error} /><U.ErrorBox error={commands.error} />
-        <label className="tt-check"><input type="checkbox" checked={reviewed} onChange={e => setReviewed(e.target.checked)} />已核对当前工序与保留输入</label>
-        <div className="tt-tools"><U.Button icon="check" className="btn primary" type="submit" disabled={!editable || !reviewed || commands.blocked}>保存调整</U.Button>
-          <U.Button icon="x" disabled={commands.busy || !!commands.key} onClick={cancel}>取消编辑</U.Button><U.Button icon="refresh-cw" disabled={commands.busy || !!commands.key} onClick={onRecheck}>刷新工序</U.Button></div>
-      </form>}</>;
-  }
-  function Detail({ data, selected, commands, onSelect, onEditing, onRecheck, guardOwner, editorRevision, inspectFocus, onCollapse }) {
-    const tasksByRef = React.useMemo(() => new Map(data.tasks.map(t => [t.task_ref, t])), [data.tasks]);
-    const name = React.useMemo(() => window.TrialGantt.resourceNames(data), [data.resources]);
-    const task = tasksByRef.get(selected);
-    const panel = React.useRef(null), heading = React.useRef(null);
-    React.useEffect(() => {
-      const focus = () => { heading.current.focus({ preventScroll: true }); panel.current.scrollIntoView({ block: 'nearest' }); };
-      inspectFocus.current = focus; if (task) focus();
-      return () => { inspectFocus.current = null; };
-    }, []);
-    return <aside ref={panel} className="tt-detail wb-gantt-detail-panel" id="trial-gantt-detail" aria-label="工序详情">
-      <header className="wb-gantt-detail-header"><h3 ref={heading} tabIndex={-1}>工序详情</h3><U.Button icon="panel-right-close" onClick={onCollapse}>收起详情</U.Button></header>
-      <div className="wb-gantt-detail-body" data-wb-scroll-key="trial-gantt-detail">
-      {!task ? <div className="tt-empty">尚未选择工序</div> : <>
-      <h4>{task.batch_id} · {task.process_label}</h4><p>{task.part_no} · {task.part_name || '零件名称未填写'}</p>
-      <Editor key={task.task_ref} {...{ data, task, commands, onEditing, onRecheck, guardOwner, editorRevision }} />
-      {task.execution_anchor && <p className="tt-notice">{task.execution_anchor.message}</p>}
-      <dl className="tt-facts">{[['分件', task.piece_id || window.WorkbenchTerms.shared_operation], ['原目标量', U.number(task.quantity)], ['批次数量', U.number(task.batch_quantity)],
-        ...(window.PointContract.isPoint(task) ? [['安排类型', '零工时工序'], ['本工序占用', '0 小时 · 不占设备人员']] : []),
-        ['优先级', { normal: '普通', urgent: '急件', critical: '特急' }[task.priority] || '未知'], ['交期', window.WorkbenchTerms.due_date(task.due_date, task.due_state, task.due_issue)],
-        ['来源', task.source === 'internal' ? '自制' : '外协'], ['当前设备', name(task.machine_ref)], ['当前人员', name(task.operator_ref)],
-        ['预计开工', U.timeLabel(task.start)], ['预计完工', U.timeLabel(task.end)]].map(([label, value]) =>
-          <React.Fragment key={label}><dt>{label}</dt><dd>{value}</dd></React.Fragment>)}</dl>
-      <div className="tt-tools">{task.predecessor_refs.map(ref => {
-        const t = tasksByRef.get(ref);
-        const piece = typeof t.piece_id === 'string' && t.piece_id.trim() ? '分件 ' + t.piece_id :
-          t.piece_id === null && !t.data_gaps.some(g => g.field === 'piece_id') ? '共同工序' : '分件未记录';
-        const label = '前序 ' + piece + ' · ' + t.process_label + ' ' + t.sequence;
-        return <U.Button key={ref} icon="chevron-left" title={label} aria-label={label} onClick={() => onSelect(ref)} className="btn tt-relation-button">
-          <span className="tt-relation-label">{label}</span></U.Button>;
-      })}</div>
-      {(task.issues.length > 0 || task.data_gaps.length > 0) && <section><h4>工序约束</h4><U.Issues rows={task.issues} onSelect={onSelect} /><U.Issues rows={task.data_gaps} /></section>}
-      <details className="wb-gantt-detail-section"><summary>准备与加工需求</summary><div className="wb-gantt-detail-section-body">
-        <h4>原安排需求</h4><window.RunOperationEffort.Effort value={task.operation_effort && task.operation_effort.before} />
-        <h4>当前试调需求</h4><window.RunOperationEffort.Effort value={task.operation_effort && task.operation_effort.after} />
-      </div></details>
-      <details className="wb-gantt-detail-section"><summary>原安排与保存时的工时</summary><div className="wb-gantt-detail-section-body"><dl className="tt-facts">{[
-        ['原设备', name(task.original.machine_ref)], ['原人员', name(task.original.operator_ref)],
-        ['原预计开工', U.timeLabel(task.original.start)], ['原预计完工', U.timeLabel(task.original.end)], ['标准准备工时', U.hours(task.hours.setup_hours)],
-        ['单件标准工时', U.hours(task.hours.unit_hours)], ['标准总工时', U.hours(task.hours.total_hours)], ['标准工时依据', hoursBasis(task.hours.basis)],
-        ...(task.source === 'external' ? [['原周期（天）', U.number(task.hours.days)]] : [])].map(([label, value]) =>
-          <React.Fragment key={label}><dt>{label}</dt><dd>{value}</dd></React.Fragment>)}</dl></div></details>
-      <details className="wb-gantt-detail-section"><summary>执行依据</summary><div className="wb-gantt-detail-section-body"><Execution title="建草稿时的报工记录" value={task.execution_at_creation} /><Execution title="本次读取的报工记录" value={task.execution} /></div></details>
-      <References task={task} />
-      </>}</div></aside>;
-  }
-  window.TrialDetails = Detail;
-})();
+  return <><U.Issues rows={task.edit_context.blocked_reasons} />{!editing ? <U.Button icon="square-pen" disabled={!editable || commands.blocked} onClick={open}>调整此工序</U.Button> :
+    <form onSubmit={submit} className="tt-editor"><h4>调整工序</h4>{[['machine', 'machines'], ['operator', 'operators']].map(([kind, listKey], i) => <label key={kind}>{i ? '调整人员' : '调整设备'}
+      <select aria-label={i ? '调整人员' : '调整设备'} value={form[kind + '_ref'] || ''} disabled={commands.busy || external} required={!external}
+        onChange={e => setForm({ ...form, [kind + '_ref']: e.target.value || null })}>
+        <option value="">{external ? '外协，无内部资源' : '请选择'}</option>{form[kind + '_ref'] && !data.resources[listKey].some(r => r.ref === form[kind + '_ref']) && <option value={form[kind + '_ref']}>原资源（已不可读）</option>}
+        {data.resources[listKey].map(r => <option key={r.ref} value={r.ref} disabled={r.status !== 'active'}>{r.business_code} · {r.label || '名称未填写'}{r.status !== 'active' ? '（不可用）' : ''}</option>)}</select></label>)}
+      <label>调整开工<input type="text" data-picker-type="factory-local" aria-label="调整开工" placeholder="选择日期和时间" spellCheck={false} required value={form.start} disabled={commands.busy} onChange={e => setForm({ ...form, start: e.target.value })} /></label>
+      <div className="tt-muted">按班表计算预计完工时间，逐道保存调整。</div>
+      {!external && form.machine_ref && form.operator_ref && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && <p className="tt-notice">所选人员尚未取得该设备的操作授权。</p>}
+      <U.ErrorBox error={error} /><U.ErrorBox error={commands.error} />
+      <label className="tt-check"><input type="checkbox" checked={reviewed} onChange={e => setReviewed(e.target.checked)} />已核对当前工序与保留输入</label>
+      <div className="tt-tools"><U.Button icon="check" className="btn primary" type="submit" disabled={!editable || !reviewed || commands.blocked}>保存调整</U.Button>
+        <U.Button icon="x" disabled={commands.busy || !!commands.key} onClick={cancel}>取消编辑</U.Button><U.Button icon="refresh-cw" disabled={commands.busy || !!commands.key} onClick={onRecheck}>刷新工序</U.Button></div>
+    </form>}</>;
+}
+function Detail({ data, selected, commands, onSelect, onEditing, onRecheck, guardOwner, editorRevision, inspectFocus, onCollapse }) {
+  const tasksByRef = React.useMemo(() => new Map(data.tasks.map(t => [t.task_ref, t])), [data.tasks]);
+  const name = React.useMemo(() => TrialGantt.resourceNames(data), [data.resources]);
+  const task = tasksByRef.get(selected);
+  const panel = React.useRef(null), heading = React.useRef(null);
+  React.useEffect(() => {
+    const focus = () => { heading.current.focus({ preventScroll: true }); panel.current.scrollIntoView({ block: 'nearest' }); };
+    inspectFocus.current = focus; if (task) focus();
+    return () => { inspectFocus.current = null; };
+  }, []);
+  return <aside ref={panel} className="tt-detail wb-gantt-detail-panel" id="trial-gantt-detail" aria-label="工序详情">
+    <header className="wb-gantt-detail-header"><h3 ref={heading} tabIndex={-1}>工序详情</h3><U.Button icon="panel-right-close" onClick={onCollapse}>收起详情</U.Button></header>
+    <div className="wb-gantt-detail-body" data-wb-scroll-key="trial-gantt-detail">
+    {!task ? <div className="tt-empty">尚未选择工序</div> : <>
+    <h4>{task.batch_id} · {task.process_label}</h4><p>{task.part_no} · {task.part_name || '零件名称未填写'}</p>
+    <Editor key={task.task_ref} {...{ data, task, commands, onEditing, onRecheck, guardOwner, editorRevision }} />
+    {task.execution_anchor && <p className="tt-notice">{task.execution_anchor.message}</p>}
+    <dl className="tt-facts">{[['分件', task.piece_id || WorkbenchTerms.shared_operation], ['原目标量', U.number(task.quantity)], ['批次数量', U.number(task.batch_quantity)],
+      ...(PointContract.isPoint(task) ? [['安排类型', '零工时工序'], ['本工序占用', '0 小时 · 不占设备人员']] : []),
+      ['优先级', { normal: '普通', urgent: '急件', critical: '特急' }[task.priority] || '未知'], ['交期', WorkbenchTerms.due_date(task.due_date, task.due_state, task.due_issue)],
+      ['来源', task.source === 'internal' ? '自制' : '外协'], ['当前设备', name(task.machine_ref)], ['当前人员', name(task.operator_ref)],
+      ['预计开工', U.timeLabel(task.start)], ['预计完工', U.timeLabel(task.end)]].map(([label, value]) =>
+        <React.Fragment key={label}><dt>{label}</dt><dd>{value}</dd></React.Fragment>)}</dl>
+    <div className="tt-tools">{task.predecessor_refs.map(ref => {
+      const t = tasksByRef.get(ref);
+      const piece = typeof t.piece_id === 'string' && t.piece_id.trim() ? '分件 ' + t.piece_id :
+        t.piece_id === null && !t.data_gaps.some(g => g.field === 'piece_id') ? '共同工序' : '分件未记录';
+      const label = '前序 ' + piece + ' · ' + t.process_label + ' ' + t.sequence;
+      return <U.Button key={ref} icon="chevron-left" title={label} aria-label={label} onClick={() => onSelect(ref)} className="btn tt-relation-button">
+        <span className="tt-relation-label">{label}</span></U.Button>;
+    })}</div>
+    {(task.issues.length > 0 || task.data_gaps.length > 0) && <section><h4>工序约束</h4><U.Issues rows={task.issues} onSelect={onSelect} /><U.Issues rows={task.data_gaps} /></section>}
+    <details className="wb-gantt-detail-section"><summary>准备与加工需求</summary><div className="wb-gantt-detail-section-body">
+      <h4>原安排需求</h4><RunOperationEffort.Effort value={task.operation_effort && task.operation_effort.before} />
+      <h4>当前试调需求</h4><RunOperationEffort.Effort value={task.operation_effort && task.operation_effort.after} />
+    </div></details>
+    <details className="wb-gantt-detail-section"><summary>原安排与保存时的工时</summary><div className="wb-gantt-detail-section-body"><dl className="tt-facts">{[
+      ['原设备', name(task.original.machine_ref)], ['原人员', name(task.original.operator_ref)],
+      ['原预计开工', U.timeLabel(task.original.start)], ['原预计完工', U.timeLabel(task.original.end)], ['标准准备工时', U.hours(task.hours.setup_hours)],
+      ['单件标准工时', U.hours(task.hours.unit_hours)], ['标准总工时', U.hours(task.hours.total_hours)], ['标准工时依据', hoursBasis(task.hours.basis)],
+      ...(task.source === 'external' ? [['原周期（天）', U.number(task.hours.days)]] : [])].map(([label, value]) =>
+        <React.Fragment key={label}><dt>{label}</dt><dd>{value}</dd></React.Fragment>)}</dl></div></details>
+    <details className="wb-gantt-detail-section"><summary>执行依据</summary><div className="wb-gantt-detail-section-body"><Execution title="建草稿时的报工记录" value={task.execution_at_creation} /><Execution title="本次读取的报工记录" value={task.execution} /></div></details>
+    <References task={task} />
+    </>}</div></aside>;
+}
+const TrialDetails = Detail;
+export { TrialDetails };
+export default TrialDetails;

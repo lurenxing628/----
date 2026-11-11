@@ -1,53 +1,57 @@
-(function () {
-  'use strict';
-  const { Button, Modal } = window.ResourceControls;
-  function Scope({ value, saved, candidateDisplay }) {
-    return <><dl className="ra-scope"><div><dt>{saved ? '上次提交时核对的正式计划' : '当前正式计划（本次预检）'}</dt><dd>{value.baseline.version === null ? '尚无正式计划' : 'v' + value.baseline.version}</dd></div>
-      <div><dt>目标候选方案</dt><dd>{candidateDisplay ? candidateDisplay.label : saved ? '上次待确认采用' : '候选名称未记录'}</dd></div>{candidateDisplay && candidateDisplay.batch_count !== undefined && candidateDisplay.operation_count !== undefined && <div><dt>本次排产批次与工序</dt><dd>{candidateDisplay.batch_count} 批 / {candidateDisplay.operation_count} 道工序</dd></div>}<div><dt>采用工序</dt><dd>{value.task_count} 道</dd></div>
-      <div><dt>采用范围</dt><dd>本次可排工序及全部当前正式安排</dd></div></dl>
-      <p className="ra-note">将核对通过的安排采用为新一版正式计划，保留历史版本。分阶段放行时，缺料工序仍待排，不会标为完成。恢复旧安排需重新排产并采用。</p></>;
-  }
-  function Records({ value, intent, result }) {
-    return <details className="ra-records wb-ref"><summary>编号</summary>
-      <div>候选方案编号：{value.candidate_ref}</div>{value.run_ref && <div>排产编号：{value.run_ref}</div>}
-      {value.baseline && value.baseline.plan_ref && <div>原正式计划编号：{value.baseline.plan_ref}</div>}
-      {intent && <div>操作编号：{intent.request_key}</div>}{result && <><div>结果编号：{result.receipt_ref}</div><div>新正式计划编号：{result.data.official_plan.plan_ref}</div></>}
-    </details>;
-  }
-  function Fields({ draft, onChange, consent, onConsent, readOnly, busy }) {
-    const id = React.useId(), memoryHint = window.WorkbenchHandlerMemory.useHint(draft.declared_operator);
-    return <div className="ra-fields"><div className="field"><label htmlFor={id + '-reason'}>采用原因</label>
-      <textarea id={id + '-reason'} rows={3} maxLength={1000} value={draft.reason} readOnly={readOnly} disabled={busy}
-        onChange={e => onChange({ ...draft, reason: e.target.value })} /></div>
-      <div className="field"><label htmlFor={id + '-operator'}>{window.WorkbenchTerms.handler}</label><input id={id + '-operator'} maxLength={100} value={draft.declared_operator}
-        readOnly={readOnly} disabled={busy} onChange={e => onChange({ ...draft, declared_operator: e.target.value })} />
-        {!readOnly && memoryHint && <small>{memoryHint}</small>}</div>
-      {!readOnly && <label className="ra-consent"><input type="checkbox" checked={consent} disabled={busy} onChange={e => onConsent(e.target.checked)} />
-        <span>确认将完整候选方案正式采用。</span></label>}</div>;
-  }
-  function Dialog({ value, intent, result, preview, candidateDisplay, draft, consent, busy, error, storageError, notice, replacedInfo, onReadStorage, onChange, onConsent, onClose, onPreview, onConfirm, onLookup, onFinish, onCancelRejected, onDismissReplaced, onNavigate }) {
-    const pending = intent && intent.phase === 'pending' && !result, valid = preview && preview.validation.can_adopt === true;
-    const canConfirm = valid && consent && draft.reason.trim() && draft.declared_operator.trim() && !pending && !storageError;
-    return <Modal title={result ? '正式采用结果' : pending ? '查询上次采用结果' : '确认正式采用'} icon="check" onClose={onClose}
-      footer={<><Button onClick={onClose}>{pending ? '关闭并保留上次操作' : result ? '关闭' : '取消'}</Button>
-        {intent && intent.phase === 'rejected' && <Button disabled={busy} onClick={onCancelRejected}>结束本次未采用</Button>}
-        {pending && replacedInfo && <Button disabled={busy} onClick={onDismissReplaced}>结束旧来源待确认记录</Button>}
-        {result ? <><Button icon="check" onClick={onFinish}>完成</Button><Button icon="arrow-right" className="btn primary"
-          onClick={() => onNavigate('analysis', { plan_ref: result.data.official_plan.plan_ref })}>进入正式计划</Button></>
-          : pending ? <Button icon="refresh-cw" busy={busy} onClick={onLookup}>{window.WorkbenchTerms.actions.query_result}</Button>
-            : <><Button icon="refresh-cw" busy={busy} disabled={!!storageError} onClick={onPreview}>重新预检</Button><Button icon="check" className="btn primary" busy={busy}
-              disabled={!canConfirm} onClick={onConfirm}>确认正式采用</Button></>}</>}>
-      <div className="modal-body ra-body">
-        {error && <div className="ra-notice" role="alert">{error}</div>}{notice && <div className="ra-notice" role="status">{notice}</div>}
-        {storageError && <Button icon="refresh-cw" disabled={busy} onClick={onReadStorage}>刷新上次操作记录</Button>}
-        {result && <div className="ra-result" role="status">已确认：本次生成第 {result.data.official_plan.version} 版正式计划，共 {result.data.row_count} 道工序。
-          <p>当前正式计划可在计划列表查看。</p></div>}
-        {value.baseline ? <Scope value={value} saved={!!intent && !valid} candidateDisplay={candidateDisplay} /> : candidateDisplay && <div className="ra-target"><strong>目标方案：{candidateDisplay.label}</strong>{candidateDisplay.batch_count !== undefined && candidateDisplay.operation_count !== undefined && <p>本次排产 {candidateDisplay.batch_count} 批 / {candidateDisplay.operation_count} 道工序</p>}</div>}
-        {preview && !valid && <div className="ra-notice" role="status">{preview.validation.issues.map((item, index) => <div key={index}>{item.message}</div>)}</div>}
-        {!result && <Fields draft={draft} onChange={onChange} consent={consent} onConsent={onConsent} readOnly={!!pending} busy={busy} />}
-        {result && <dl className="ra-scope"><div><dt>采用原因</dt><dd>{draft.reason}</dd></div><div><dt>{window.WorkbenchTerms.handler}</dt><dd>{draft.declared_operator}</dd></div></dl>}
-        <Records value={value} intent={intent} result={result} />
-      </div></Modal>;
-  }
-  window.RunAdoptionControls = { Button, Dialog };
-})();
+import React from './shared/runtime/react.js';
+import ResourceControls from './ResourceControls.jsx';
+import WorkbenchHandlerMemory from './WorkbenchHandlerMemory.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
+
+const { Button, Modal } = ResourceControls;
+function Scope({ value, saved, candidateDisplay }) {
+  return <><dl className="ra-scope"><div><dt>{saved ? '上次提交时核对的正式计划' : '当前正式计划（本次预检）'}</dt><dd>{value.baseline.version === null ? '尚无正式计划' : 'v' + value.baseline.version}</dd></div>
+    <div><dt>目标候选方案</dt><dd>{candidateDisplay ? candidateDisplay.label : saved ? '上次待确认采用' : '候选名称未记录'}</dd></div>{candidateDisplay && candidateDisplay.batch_count !== undefined && candidateDisplay.operation_count !== undefined && <div><dt>本次排产批次与工序</dt><dd>{candidateDisplay.batch_count} 批 / {candidateDisplay.operation_count} 道工序</dd></div>}<div><dt>采用工序</dt><dd>{value.task_count} 道</dd></div>
+    <div><dt>采用范围</dt><dd>本次可排工序及全部当前正式安排</dd></div></dl>
+    <p className="ra-note">将核对通过的安排采用为新一版正式计划，保留历史版本。分阶段放行时，缺料工序仍待排，不会标为完成。恢复旧安排需重新排产并采用。</p></>;
+}
+function Records({ value, intent, result }) {
+  return <details className="ra-records wb-ref"><summary>编号</summary>
+    <div>候选方案编号：{value.candidate_ref}</div>{value.run_ref && <div>排产编号：{value.run_ref}</div>}
+    {value.baseline && value.baseline.plan_ref && <div>原正式计划编号：{value.baseline.plan_ref}</div>}
+    {intent && <div>操作编号：{intent.request_key}</div>}{result && <><div>结果编号：{result.receipt_ref}</div><div>新正式计划编号：{result.data.official_plan.plan_ref}</div></>}
+  </details>;
+}
+function Fields({ draft, onChange, consent, onConsent, readOnly, busy }) {
+  const id = React.useId(), memoryHint = WorkbenchHandlerMemory.useHint(draft.declared_operator);
+  return <div className="ra-fields"><div className="field"><label htmlFor={id + '-reason'}>采用原因</label>
+    <textarea id={id + '-reason'} rows={3} maxLength={1000} value={draft.reason} readOnly={readOnly} disabled={busy}
+      onChange={e => onChange({ ...draft, reason: e.target.value })} /></div>
+    <div className="field"><label htmlFor={id + '-operator'}>{WorkbenchTerms.handler}</label><input id={id + '-operator'} maxLength={100} value={draft.declared_operator}
+      readOnly={readOnly} disabled={busy} onChange={e => onChange({ ...draft, declared_operator: e.target.value })} />
+      {!readOnly && memoryHint && <small>{memoryHint}</small>}</div>
+    {!readOnly && <label className="ra-consent"><input type="checkbox" checked={consent} disabled={busy} onChange={e => onConsent(e.target.checked)} />
+      <span>确认将完整候选方案正式采用。</span></label>}</div>;
+}
+function Dialog({ value, intent, result, preview, candidateDisplay, draft, consent, busy, error, storageError, notice, replacedInfo, onReadStorage, onChange, onConsent, onClose, onPreview, onConfirm, onLookup, onFinish, onCancelRejected, onDismissReplaced, onNavigate }) {
+  const pending = intent && intent.phase === 'pending' && !result, valid = preview && preview.validation.can_adopt === true;
+  const canConfirm = valid && consent && draft.reason.trim() && draft.declared_operator.trim() && !pending && !storageError;
+  return <Modal title={result ? '正式采用结果' : pending ? '查询上次采用结果' : '确认正式采用'} icon="check" onClose={onClose}
+    footer={<><Button onClick={onClose}>{pending ? '关闭并保留上次操作' : result ? '关闭' : '取消'}</Button>
+      {intent && intent.phase === 'rejected' && <Button disabled={busy} onClick={onCancelRejected}>结束本次未采用</Button>}
+      {pending && replacedInfo && <Button disabled={busy} onClick={onDismissReplaced}>结束旧来源待确认记录</Button>}
+      {result ? <><Button icon="check" onClick={onFinish}>完成</Button><Button icon="arrow-right" className="btn primary"
+        onClick={() => onNavigate('analysis', { plan_ref: result.data.official_plan.plan_ref })}>进入正式计划</Button></>
+        : pending ? <Button icon="refresh-cw" busy={busy} onClick={onLookup}>{WorkbenchTerms.actions.query_result}</Button>
+          : <><Button icon="refresh-cw" busy={busy} disabled={!!storageError} onClick={onPreview}>重新预检</Button><Button icon="check" className="btn primary" busy={busy}
+            disabled={!canConfirm} onClick={onConfirm}>确认正式采用</Button></>}</>}>
+    <div className="modal-body ra-body">
+      {error && <div className="ra-notice" role="alert">{error}</div>}{notice && <div className="ra-notice" role="status">{notice}</div>}
+      {storageError && <Button icon="refresh-cw" disabled={busy} onClick={onReadStorage}>刷新上次操作记录</Button>}
+      {result && <div className="ra-result" role="status">已确认：本次生成第 {result.data.official_plan.version} 版正式计划，共 {result.data.row_count} 道工序。
+        <p>当前正式计划可在计划列表查看。</p></div>}
+      {value.baseline ? <Scope value={value} saved={!!intent && !valid} candidateDisplay={candidateDisplay} /> : candidateDisplay && <div className="ra-target"><strong>目标方案：{candidateDisplay.label}</strong>{candidateDisplay.batch_count !== undefined && candidateDisplay.operation_count !== undefined && <p>本次排产 {candidateDisplay.batch_count} 批 / {candidateDisplay.operation_count} 道工序</p>}</div>}
+      {preview && !valid && <div className="ra-notice" role="status">{preview.validation.issues.map((item, index) => <div key={index}>{item.message}</div>)}</div>}
+      {!result && <Fields draft={draft} onChange={onChange} consent={consent} onConsent={onConsent} readOnly={!!pending} busy={busy} />}
+      {result && <dl className="ra-scope"><div><dt>采用原因</dt><dd>{draft.reason}</dd></div><div><dt>{WorkbenchTerms.handler}</dt><dd>{draft.declared_operator}</dd></div></dl>}
+      <Records value={value} intent={intent} result={result} />
+    </div></Modal>;
+}
+const RunAdoptionControls = { Button, Dialog };
+export { RunAdoptionControls, Button, Dialog };
+export default RunAdoptionControls;

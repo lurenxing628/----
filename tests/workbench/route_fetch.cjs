@@ -2,9 +2,11 @@
 // Shared fetch-level stub for workbench Node contracts. Requests still pass through the real
 // API module, APSWorkbenchTransport and validators; only the network answer is replaced.
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+const { compile } = require('../../scripts/workbench/compile.cjs');
 
 const app = path.resolve(__dirname, '../../frontend/workbench/app');
 const ORIGIN = 'http://127.0.0.1:8080';
+let cachedTransportCode = null;
 
 function meta(overrides = {}) {
   return { source: 'production', time_basis: 'factory_local', snapshot_ref: 's'.repeat(32), request_ref: '1'.repeat(32),
@@ -103,8 +105,13 @@ function browser(context, fetch, { origin = ORIGIN } = {}) {
   return { downloads };
 }
 function loadTransport(context) {
-  vm.runInContext(fs.readFileSync(path.join(app, 'transport.js'), 'utf8'), context, { filename: 'transport.js' });
-  return (context.window || context).APSWorkbenchTransport;
+  if (!cachedTransportCode) {
+    const relPath = 'shared/network/transport.js';
+    const code = fs.readFileSync(path.join(app, relPath), 'utf8');
+    cachedTransportCode = compile({ sources: [{ path: relPath, code }], check_combined: false }).outputs[0].code;
+  }
+  vm.runInContext(cachedTransportCode, context, { filename: 'shared/network/transport.js' });
+  return context.__wbRuntime.getModule('shared/network/transport.js');
 }
 
 // A synchronous render fixture for APSResourceSession.useQuery: the first render starts each read,

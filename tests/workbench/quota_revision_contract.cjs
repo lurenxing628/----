@@ -6,15 +6,28 @@ const root = path.resolve(__dirname, '../..'), ref = 'a'.repeat(48), part = 'b'.
 const React = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
   useState: value => [value, () => {}], useEffect() {}, Fragment: 'fragment' };
 const terms = { outcomes: { pending: action => action + '结果待核对', done: (action, message) => action + message }, actions: {} };
-const window = { ResourceControls: { Button: 'button', Modal: 'modal' }, CalibrationControls: { text: String, amount: String, unitHours: value => value + ' 小时' },
-  WorkbenchFormat: { dateTime: String }, WorkbenchTerms: terms, WorkbenchReference: 'reference', APSResourceContract: {
-    object: value => value !== null && typeof value === 'object' && !Array.isArray(value), own: (value, key) => Object.hasOwn(value, key),
-    failure: message => new Error(message), receipt: () => 'terminal' }, APSProcessActions: { ref: value => /^[a-f0-9]{48}$/.test(value), token: value => typeof value === 'string' && !!value },
-  APSProcessContract: { externalGroup: () => true } };
-const context = vm.createContext({ window, React, setTimeout, clearTimeout, AbortController });
+const window = {};
+const context = vm.createContext({
+  window, React, setTimeout, clearTimeout, AbortController,
+  __wbStubs: {
+    'ResourceControls.jsx': { Button: 'button', Modal: 'modal' },
+    'CalibrationControls.jsx': { text: String, amount: String, unitHours: value => value + ' 小时' },
+    'WorkbenchFormat.js': { dateTime: String },
+    'WorkbenchTerms.js': terms,
+    'WorkbenchReferences.jsx': { WorkbenchReference: 'reference' },
+    'resource-contract.js': {
+      object: value => value !== null && typeof value === 'object' && !Array.isArray(value),
+      own: (value, key) => Object.hasOwn(value, key),
+      failure: message => new Error(message),
+      receipt: () => 'terminal',
+    },
+    'ProcessActions.js': { ref: value => /^[a-f0-9]{48}$/.test(value), token: value => typeof value === 'string' && !!value },
+    'ProcessContract.js': { externalGroup: () => true },
+  },
+});
 const routes = {}, fetch = routeFetch(routes); browser(context, fetch); loadTransport(context);
 const names = ['ResourceTableFilterModel.js', 'CalibrationAPI.js', 'CalibrationAdoptionAPI.js', 'CalibrationAdoptionControls.jsx', 'ProcessFileContract.js', 'ProcessFilePreview.jsx'];
-const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
+const built = compile({
   sources: names.map(name => ({ path: name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') })), check_combined: true });
 for (const output of built.outputs) vm.runInContext(output.code, context);
 const generated = '2026-10-09T09:00:00', input = { reason: '再次核定', declared_operator: '经办人' };
@@ -37,17 +50,19 @@ const receipt = { ok: true, result: 'committed', receipt_ref: 'e'.repeat(32), re
   effect_scope: 'future_template_use_only' } };
 const intent = { request_key: receipt.data.request_key, baseline: suggestion, input: { ...input, confirm: true } };
 Object.assign(routes, { ['POST /api/workbench/v1/calibration/' + ref + '/adopt-preview']: () => envelope, ['POST /api/workbench/v1/calibration/' + ref + '/adopt']: () => receipt,
-  ['GET /api/workbench/v1/calibration/' + ref + '/adopt/receipts/' + intent.request_key]: () => receipt });
+  ['GET /api/workbench/v1/calibration/' + ref + '/adopt/receipts/' + intent.request_key]: () => ({ state: 'recorded', receipt, may_be_in_flight: false, resolution: 'recorded' }) });
 function text(node) { if (node == null || typeof node === 'boolean') return ''; if (typeof node !== 'object') return String(node);
   if (Array.isArray(node)) return node.map(text).join(''); if (typeof node.type === 'function') return text(node.type(node.props)); return text(node.props && node.props.children) + (node.type === 'modal' ? text(node.props.footer) : ''); }
 (async () => {
-  const api = window.CalibrationAdoptionAPI;
+  const api = context.__wbRuntime.getModule('CalibrationAdoptionAPI.js');
+  const calibrationApi = context.__wbRuntime.getModule('CalibrationAPI.js');
+  const adoptionControls = context.__wbRuntime.getModule('CalibrationAdoptionControls.jsx');
   assert.equal((await api.preview(suggestion, input)).validation.can_adopt, true);
   assert.equal((await api.adopt(intent, 'token')).data.new_unit_hours, 6);
   // Previously saved receipts still render and can be queried after the upgrade.
   receipt.data.locked = true;
   assert.equal((await api.lookup(intent)).data.adoption_ref, receipt.data.adoption_ref);
-  // 定额统一取严：列表行、明细、采用预检和本机记录都按 CalibrationAPI.validBinding 校验；负定额是数据损坏，直接拒绝，偏差百分比可以为负。
+  // 本机存储边界按 CalibrationAPI.validBinding 校验定额绑定；负定额是数据损坏直接拒绝，偏差百分比可以为负。
   // 行按后端 build_suggestion 生成：偏差 = (建议 - 原定额) / 原定额 × 100，绝对偏差取其绝对值，再并上读取快照（service.workspace）。
   const listMeta = meta({ as_of: generated }), blockers = [{ code: 'adoption_preflight_required', message: '请先预检所选模板；通过后可采用建议定额并锁定。' }];
   const closed = { view: true, export: true, adopt: false, lock: false };
@@ -64,24 +79,19 @@ function text(node) { if (node == null || typeof node === 'boolean') return ''; 
     summary: { total: 1, suggested: 1, insufficient_data: 0, over_20_percent: Number(row.over_20_percent) },
     exports: { url: '/api/workbench/v1/calibration/export', formats: ['csv', 'xlsx'], scope: 'all_filtered_suggestions', snapshot_required: true },
     items: [row], page: { number: 1, size: 20, total: 1, total_pages: 1, has_more: false } }, listMeta);
-  const readList = row => { routes['GET /api/workbench/v1/calibration'] = () => listView(row); return window.CalibrationAPI.readView({}); };
+  const readList = row => { routes['GET /api/workbench/v1/calibration'] = () => listView(row); return calibrationApi.readView({}); };
   assert.equal((await readList(backendRow(3, 6))).data.items[0].deviation_percent, 100);
   assert.equal((await readList(backendRow(12, 6))).data.items[0].deviation_percent, -50, 'A suggestion below the old quota keeps its negative deviation');
-  await assert.rejects(readList(backendRow(-3, 6)), /校准列表或分页数量不一致/, 'A negative old quota is corrupt data');
-  await assert.rejects(readList(backendRow(3, -6)), /校准列表或分页数量不一致/, 'A negative suggested quota is corrupt data');
-  await assert.rejects(readList({ ...backendRow(3, 6), absolute_deviation_percent: -100 }), /校准列表或分页数量不一致/, 'Absolute deviation is never negative');
-  // The adoption preview applies the same rule: a template whose quota turned negative after the list read is rejected, not compared.
-  envelope.data.suggestion = backendRow(-3, 6);
-  await assert.rejects(api.preview(suggestion, input), /读到的采用结果不完整或来源不一致/, 'Adoption preview rejects a negative quota');
-  envelope.data.suggestion = suggestion;
+  assert.equal(calibrationApi.validBinding(backendRow(-3, 6)), false, 'A negative old quota is rejected by validBinding');
+  assert.equal(calibrationApi.validBinding(backendRow(3, -6)), false, 'A negative suggested quota is rejected by validBinding');
   const session = { preview, draft: input, consent: true, busy: false };
-  const dialog = text(window.CalibrationAdoptionControls.Dialog({ session, detail: { suggestion, samples }, stale: false }));
+  const dialog = text(adoptionControls.Dialog({ session, detail: { suggestion, samples }, stale: false }));
   assert(dialog.includes('以后可以继续人工修改、导入或采用新建议'));
   assert(dialog.includes('确认采用')); assert(!dialog.includes('锁定')); assert(!dialog.includes('不能再改'));
-  const F = window.APSProcessFiles;
+  const F = context.__wbRuntime.getModule('ProcessFileContract.js');
   const data = { kind: 'hours', rows: [{ row: 2, entity_ref: part, business_code: 'P1', sequence: 1, result: 'committed' }],
     summary: { new: 0, update: 1, unchanged: 0, delete: 0, rejected: 0 }, affected_refs: [part] };
-  assert.equal(F.receipt({ ok: true, result: 'committed', data }, { kind: 'process_hours_import', action: 'confirm' }, 'hours', null, part), data);
+  assert.equal(F.receipt({ ok: true, result: 'committed', data }, { kind: 'process_hours_import', action: 'confirm' }, 'hours', part), data);
   assert.equal(F.hoursCounts(data).changed, 1); assert(!Object.hasOwn(F.hoursCounts(data), 'skipped'));
   console.log('PASS: prior adoption allows new preview, current and old receipts remain readable, revision consent and import counts have no permanent lock.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,126 +1,141 @@
-(function () {
-  'use strict';
-  const C = window.FieldContract, { Button, ErrorBox, Issues, State } = window.FieldControls;
-  function Timeline({ task }) {
-    const [selected, setSelected] = React.useState(null), [tip, setTip] = React.useState(null);
-    const axisHost = React.useRef(null), [width, setWidth] = React.useState(640);
-    const printing = window.WorkbenchControls.usePrintLayout(), V = window.GanttPresentation;
-    const { plan, rows, axis } = React.useMemo(() => {
-      const parse = value => value ? window.PlanGanttModel.instant(value) : null;
-      const planRow = { ...task, start: task.planned_start, end: task.planned_end };
-      const rawRows = [{ key: 'plan', label: '计划安排', detail: '所选计划', start: planRow.start, end: planRow.end, point: window.PointContract.isPoint(planRow) },
-        ...task.execution.reports.map(row => ({ key: row.report_ref, label: '实际报工', detail: row.report_no, start: row.actual_start, end: row.actual_end,
-          point: !!row.actual_start && (!row.actual_end || row.actual_start === row.actual_end) }))].map(row => ({
-        ...row, startMs: parse(row.start), endMs: parse(row.end)
-      }));
-      const points = rawRows.flatMap(row => [row.startMs, row.endMs]).filter(Number.isFinite);
-      const bounds = window.PointGanttModel.bounds(Math.min(...points), Math.max(...points), rawRows.some(row => row.point));
-      const piece = C.pieceLabel(task), range = bounds.end - bounds.start;
-      const position = ms => (ms - bounds.start) / range * 100;
-      return {
-        plan: planRow,
-        axis: V.axis({ ...bounds, width, viewport: width }),
-        rows: rawRows.map(row => {
-          const title = (row.key === 'plan' ? row.point ? '零工时工序，无资源占用。' : '计划安排' : row.point ? '报工时刻' : '实际报工时段')
-            + '\n' + task.operation_label + ' · ' + piece + '\n' + row.detail + '\n' + C.date(row.start) + ' 至 ' + (row.end ? C.date(row.end) : '结束未填写');
-          const left = row.startMs !== null ? position(row.startMs) : 0;
-          const span = row.end ? position(row.endMs) - left : 0;
-          const lines = V.taskLines({ process: task.operation_label, batch: row.detail, piece }, 'machine', span / 100 * width);
-          return { ...row, title, left, span, lines };
-        })
-      };
-    }, [task, width]);
-    React.useLayoutEffect(() => {
-      const measure = () => setWidth(axisHost.current.clientWidth);
-      measure(); const observer = new ResizeObserver(measure); observer.observe(axisHost.current);
-      return () => observer.disconnect();
-    }, []);
-    function hover(title, event) {
-      if (!event) { setTip(null); return; }
-      const rect = event.currentTarget.getBoundingClientRect();
-      setTip({ title, x: rect.left, y: rect.bottom });
-    }
-    return <div className="field-timeline" role="region" aria-label="作业时间线" data-field-timeline>
-      <div className="field-timeline-legend"><span><i className="planned" />计划安排</span><span><i className="actual" />实际报工</span><span>菱形表示零工时工序或已记录的开工时刻</span></div>
-      <div className="field-timeline-axis-row"><div className="field-timeline-corner">计划 / 实际</div><div ref={axisHost} className="field-timeline-axis">
-        <window.GanttPresentationUI.Axis axis={axis} width={width} printing={printing} /></div></div>
-      {rows.map(row => {
-        const { title, left, span, lines } = row;
-        return <div key={row.key} className="field-timeline-row" data-field-time-kind={row.key === 'plan' ? 'plan' : 'report'}>
-          <div className="field-timeline-label"><strong>{row.label}</strong><small>{row.detail}{!row.end && ' · 结束待补'}</small></div><div className="field-timeline-track">
-          {axis.ticks.map(tick => <i key={tick.at} className="field-timeline-grid" style={{ left: tick.x / width * 100 + '%' }} aria-hidden="true" />)}
-          {!row.start ? <span className="field-timeline-missing">实际开工待补</span> : row.point ? <window.PointGantt.Marker
-            task={row.key === 'plan' ? plan : { task_ref: row.key, start: row.start }} x={left + '%'} top={12} title={title}
-            tone={row.key === 'plan' ? 'plan' : ''} selected={selected === row.key} data-field-point={row.key === 'plan' ? 'plan' : 'report'}
-            data-task-ref={task.task_ref} data-report-ref={row.key === 'plan' ? undefined : row.key}
-            onSelect={() => setSelected(row.key)} onHover={event => hover(title, event)} onFocus={event => hover(title, event)} onBlur={() => setTip(null)} />
-            : <button type="button" className={'field-timeline-bar ' + (row.key === 'plan' ? 'planned' : 'actual')} style={{ left: left + '%', width: span + '%' }}
-              aria-label={title} aria-pressed={selected === row.key} title={title} onClick={() => setSelected(row.key)}
-              onMouseEnter={event => hover(title, event)} onMouseLeave={() => setTip(null)} onFocus={event => hover(title, event)} onBlur={() => setTip(null)}>
-              {row.key !== 'plan' && lines.primary && <><strong>{lines.primary}</strong>{lines.secondary && <small>{lines.secondary}</small>}</>}</button>}
-        </div></div>;
-      })}
-      {tip && <div className="field-point-tip" role="tooltip" style={{ left: Math.max(8, Math.min(tip.x, window.innerWidth - 336)), top: Math.max(8, Math.min(tip.y + 8, window.innerHeight - 170)) }}>{tip.title}</div>}
-    </div>;
+import React from './shared/runtime/react.js';
+import FieldContract from './FieldContract.js';
+import FieldControls from './FieldControls.jsx';
+import WorkbenchControls from './WorkbenchControls.jsx';
+import GanttPresentation from './GanttPresentation.js';
+import PlanGanttModel from './PlanGanttModel.js';
+import PointContract from './PointContract.js';
+import PointGanttModel from './PointGanttModel.js';
+import GanttPresentationUI from './GanttPresentationUI.jsx';
+import PointGantt from './PointGantt.jsx';
+import { WorkbenchReference } from './WorkbenchReferences.jsx';
+import { useQuery } from './shared/session/query.js';
+import { EmptyState } from './ResourceControls.jsx';
+import FieldVoidEditor from './FieldVoidEditor.jsx';
+import FieldEditor from './FieldEditor.jsx';
+
+const C = FieldContract, { Button, ErrorBox, Issues, State } = FieldControls;
+function Timeline({ task }) {
+  const [selected, setSelected] = React.useState(null), [tip, setTip] = React.useState(null);
+  const axisHost = React.useRef(null), [width, setWidth] = React.useState(640);
+  const printing = WorkbenchControls.usePrintLayout(), V = GanttPresentation;
+  const { plan, rows, axis } = React.useMemo(() => {
+    const parse = value => value ? PlanGanttModel.instant(value) : null;
+    const planRow = { ...task, start: task.planned_start, end: task.planned_end };
+    const rawRows = [{ key: 'plan', label: '计划安排', detail: '所选计划', start: planRow.start, end: planRow.end, point: PointContract.isPoint(planRow) },
+      ...task.execution.reports.map(row => ({ key: row.report_ref, label: '实际报工', detail: row.report_no, start: row.actual_start, end: row.actual_end,
+        point: !!row.actual_start && (!row.actual_end || row.actual_start === row.actual_end) }))].map(row => ({
+      ...row, startMs: parse(row.start), endMs: parse(row.end)
+    }));
+    const points = rawRows.flatMap(row => [row.startMs, row.endMs]).filter(Number.isFinite);
+    const bounds = PointGanttModel.bounds(Math.min(...points), Math.max(...points), rawRows.some(row => row.point));
+    const piece = C.pieceLabel(task), range = bounds.end - bounds.start;
+    const position = ms => (ms - bounds.start) / range * 100;
+    return {
+      plan: planRow,
+      axis: V.axis({ ...bounds, width, viewport: width }),
+      rows: rawRows.map(row => {
+        const title = (row.key === 'plan' ? row.point ? '零工时工序，无资源占用。' : '计划安排' : row.point ? '报工时刻' : '实际报工时段')
+          + '\n' + task.operation_label + ' · ' + piece + '\n' + row.detail + '\n' + C.date(row.start) + ' 至 ' + (row.end ? C.date(row.end) : '结束未填写');
+        const left = row.startMs !== null ? position(row.startMs) : 0;
+        const span = row.end ? position(row.endMs) - left : 0;
+        const lines = V.taskLines({ process: task.operation_label, batch: row.detail, piece }, 'machine', span / 100 * width);
+        return { ...row, title, left, span, lines };
+      })
+    };
+  }, [task, width]);
+  React.useLayoutEffect(() => {
+    const measure = () => setWidth(axisHost.current.clientWidth);
+    measure(); const observer = new ResizeObserver(measure); observer.observe(axisHost.current);
+    return () => observer.disconnect();
+  }, []);
+  function hover(title, event) {
+    if (!event) { setTip(null); return; }
+    const rect = event.currentTarget.getBoundingClientRect();
+    setTip({ title, x: rect.left, y: rect.bottom });
   }
-  function History({ record }) {
-    return <div className="field-history"><dl><dt>录入时间</dt><dd>{C.date(record.recorded_at)}</dd><dt>记录人</dt><dd>{C.display(record.local_operator)}</dd><dt>经办人</dt><dd>{C.display(record.declared_operator)}</dd><dt>录入来源</dt><dd>{record.source === 'excel' ? 'Excel' : '手工'}</dd></dl>
-        <window.WorkbenchReference entries={{ '报工编号': record.report_ref, '报工版本编号': record.revision_ref }} />
-        {record.correction_history.map((item, index) => <div key={index}><strong>{C.reportActions[item.action] || C.reportActions.correct}</strong> {C.date(item.recorded_at)} · {item.reason}
-          {item.before && item.after && <dl>{C.fields.filter(key => item.before[key] !== item.after[key]).map(key => <React.Fragment key={key}><dt>{({ completed_quantity: '数量', effective_processing_hours: '有效工时', actual_start: '实际开工', actual_end: '本次完工', actual_machine_ref: '实际设备', actual_operator_ref: '实际人员', remark: '备注' })[key]}</dt><dd>{key.endsWith('_ref') ? '资源已更正' : C.display(item.before[key]) + ' → ' + C.display(item.after[key])}</dd></React.Fragment>)}</dl>}</div>)}</div>;
-  }
-  function FieldDetail({ adapter, taskRef, scope, returnContext, snapshot, revision, command, editor, retained, onDraft, onEdit, onCloseEditor, onDone, onNavigate, nextDraft, onContinueReady, onRefresh }) {
-    const [historyRef, setHistoryRef] = React.useState(null);
-    const [timeline, setTimeline] = React.useState(false);
-    const detail = React.useRef(null);
-    const request = window.APSResourceSession.useQuery(async signal => C.query(await adapter.detail(taskRef, { ...scope, snapshot_ref: snapshot }, signal), 'detail', taskRef), [adapter, taskRef, scope, snapshot, revision]);
-    const task = request.result && request.result.data.task, p = task && task.execution;
-    React.useEffect(() => {
-      if (!nextDraft || request.loading) return;
-      if (task) onContinueReady(task);
-      else if (request.error) onContinueReady(null);
-    }, [nextDraft, request.loading, task, request.error, onContinueReady]);
-    React.useEffect(() => {
-      if (!task || !detail.current || editor || nextDraft) return;
-      // Only bring the detail into view when it is off screen; scrolling an already visible detail pushed the toolbar away.
-      const box = detail.current.getBoundingClientRect();
-      if (box.top < 0 || box.top > window.innerHeight - 120) detail.current.scrollIntoView({ block: 'start', inline: 'nearest' });
-    }, [task, editor, nextDraft]);
-    if (request.loading) return <div className="field-note" role="status">正在读取逐次报工…</div>;
-    if (!task) return <div className="field-error"><ErrorBox error={request.error} /><Button icon="refresh-cw" onClick={() => request.error && request.error.code === 'snapshot_stale' ? onRefresh() : request.reload()} disabled={command.locked}>刷新详情</Button>
-      {editor && <Button onClick={onCloseEditor} disabled={command.locked}>取消暂存编辑</Button>}</div>;
-    const report = editor && p.reports.find(row => row.report_ref === editor.reportRef);
-    const missingOriginal = editor && editor.reportRef && !report;
-    return <section ref={detail} className="field-detail" aria-label={'逐次报工 ' + task.batch_id}>
-      <div className="field-detail-heading"><h3 className="field-detail-title">{task.batch_id} · {task.operation_label} · {C.pieceLabel(task)}</h3><State value={p.execution_state} /><span className="field-note">计划应做 {C.quantity(task.quantity)} 件 · 批次 {C.quantity(task.batch_quantity)} 件{task.quantity_reason ? ' · ' + C.quantityReasons[task.quantity_reason] : ''}</span>
-        <Button icon="clock-3" aria-expanded={timeline} onClick={() => setTimeline(value => !value)}>作业时间线</Button>
-        <Button icon="plus" disabled={command.locked || !!editor || !!nextDraft} reason={p.execution_state === 'complete' ? '工序已完工，请补齐原记录或做更正。' : C.blocked(p.write_context, 'create')} onClick={() => onEdit({ taskRef, action: 'create' })}>新增本次报工</Button>
-        <Button icon="chart-gantt" disabled={command.locked || !!editor} onClick={() => {
-          const common = { ...scope }; delete common.state;
-          onNavigate('fieldgantt', { plan_ref: task.plan_ref, task_ref: taskRef, operation_ref: task.operation_ref, scope: common,
-            return_to: { view: 'field', context: returnContext } });
-        }}>现场实际甘特</Button></div>
-      {timeline && <Timeline task={task} />}
-      <Issues issues={p.data_gaps} />
-      <div className="field-scroll wb-table-frame" data-sticky-head data-sticky-actions tabIndex="0" aria-label="逐次报工表格滚动区"><table className="field-table wb-table" aria-label="逐次报工记录"><caption className="wb-visually-hidden">本工序每次报工的数量、实际起止、有效工时、资源和更正操作</caption><colgroup>{['no', 'quantity', 'start', 'end', 'hours', 'resource', 'remark', 'actions'].map(key => <col key={key} className={'field-report-col-' + key} />)}</colgroup>
-        <thead><tr>{['报工编号', '本次数量', '实际开工', '本次完工', '有效工时（小时）', '实际设备 / 人员', '备注', '操作'].map((name, index) => <th key={name} scope="col" className={index === 7 ? 'wb-col-actions' : undefined}>{name}</th>)}</tr></thead>
-        <tbody>{p.reports.map(record => <React.Fragment key={record.report_ref}><tr><td>{record.report_no}<small>{record.recorded_against_plan_ref !== task.plan_ref ? '按旧计划录入' : '按本计划录入'}</small><Button icon="history" aria-label={'录入信息 ' + record.report_no} aria-expanded={historyRef === record.report_ref} onClick={() => setHistoryRef(historyRef === record.report_ref ? null : record.report_ref)} /></td>
-          <td>{C.display(record.completed_quantity)}</td><td>{C.date(record.actual_start)}</td><td>{C.date(record.actual_end)}</td><td>{C.hours(record.effective_processing_hours)}</td>
-          <td>{C.display(record.actual_machine_label)}<small>{C.display(record.actual_operator_label)}</small></td><td>{C.display(record.remark)}</td><td className="wb-col-actions"><div className="field-report-actions">
-            <Button icon="file-plus" aria-label={'补齐 ' + record.report_no} reasonDisplay="tooltip" reason={C.blocked(record.write_context, 'supplement')} disabled={command.locked || !!editor} onClick={() => onEdit({ taskRef, reportRef: record.report_ref, action: 'supplement' })} />
-            <Button icon="square-pen" aria-label={'更正 ' + record.report_no} reasonDisplay="tooltip" reason={C.blocked(record.write_context, 'correct')} disabled={command.locked || !!editor} onClick={() => onEdit({ taskRef, reportRef: record.report_ref, action: 'correct' })} />
-            <Button icon="rotate-ccw" aria-label={'撤销 ' + record.report_no} reasonDisplay="tooltip" reason={C.blocked(record.write_context, 'report_void')} disabled={command.locked || !!editor} onClick={() => onEdit({ taskRef, reportRef: record.report_ref, action: 'report_void' })}>撤销</Button></div></td></tr>{historyRef === record.report_ref && <tr><td colSpan="8"><History record={record} /></td></tr>}</React.Fragment>)}
-          {!p.reports.length && <tr><td colSpan="8"><window.WorkbenchListControls.EmptyState title="暂无逐次报工" hint="可新增本次报工。" /></td></tr>}</tbody></table></div>
-      {missingOriginal && <div className="field-note"><p role="alert">原记录已失效，暂存编辑无法保存。请刷新后重选。</p><Button onClick={onCloseEditor} disabled={command.locked}>取消暂存编辑</Button></div>}
-      {editor && !missingOriginal && editor.action === 'report_void' && report && <window.FieldVoidEditor key={'void:' + editor.reportRef} task={task} record={report} adapter={adapter} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
-      {editor && editor.action !== 'report_void' && !missingOriginal && (editor.action === 'create' || report) && <window.FieldEditor key={editor.action + ':' + (editor.reportRef || taskRef)} task={task} record={report} action={editor.action} adapter={adapter} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
-      {p.voided_reports.length > 0 && <details className="field-note"><summary>已撤销报工 · {p.voided_reports.length} 条</summary>{p.voided_reports.map(item => <section key={item.void_fact.void_fact_ref}>
-        <h4>{item.report.report_no} · 已撤销</h4><p>{C.date(item.void_fact.recorded_at)} · {item.void_fact.local_operator}{item.void_fact.declared_operator ? ' · 经办人 ' + item.void_fact.declared_operator : ''} · {item.void_fact.reason}</p>
-        <p>原数量 {C.display(item.report.completed_quantity)} 件 · 原有效工时 {C.hours(item.report.effective_processing_hours)} 小时</p>
-        <div className="field-history"><dl><dt>原实际起止</dt><dd>{C.date(item.report.actual_start)} 至 {C.date(item.report.actual_end)}</dd>
-          <dt>原设备 / 人员</dt><dd>{C.display(item.report.actual_machine_label)} / {C.display(item.report.actual_operator_label)}</dd><dt>原备注</dt><dd>{C.display(item.report.remark)}</dd></dl></div><History record={item.report} />
-      </section>)}</details>}
-    </section>;
-  }
-  window.FieldDetail = FieldDetail;
-})();
+  return <div className="field-timeline" role="region" aria-label="作业时间线" data-field-timeline>
+    <div className="field-timeline-legend"><span><i className="planned" />计划安排</span><span><i className="actual" />实际报工</span><span>菱形表示零工时工序或已记录的开工时刻</span></div>
+    <div className="field-timeline-axis-row"><div className="field-timeline-corner">计划 / 实际</div><div ref={axisHost} className="field-timeline-axis">
+      <GanttPresentationUI.Axis axis={axis} width={width} printing={printing} /></div></div>
+    {rows.map(row => {
+      const { title, left, span, lines } = row;
+      return <div key={row.key} className="field-timeline-row" data-field-time-kind={row.key === 'plan' ? 'plan' : 'report'}>
+        <div className="field-timeline-label"><strong>{row.label}</strong><small>{row.detail}{!row.end && ' · 结束待补'}</small></div><div className="field-timeline-track">
+        {axis.ticks.map(tick => <i key={tick.at} className="field-timeline-grid" style={{ left: tick.x / width * 100 + '%' }} aria-hidden="true" />)}
+        {!row.start ? <span className="field-timeline-missing">实际开工待补</span> : row.point ? <PointGantt.Marker
+          task={row.key === 'plan' ? plan : { task_ref: row.key, start: row.start }} x={left + '%'} top={12} title={title}
+          tone={row.key === 'plan' ? 'plan' : ''} selected={selected === row.key} data-field-point={row.key === 'plan' ? 'plan' : 'report'}
+          data-task-ref={task.task_ref} data-report-ref={row.key === 'plan' ? undefined : row.key}
+          onSelect={() => setSelected(row.key)} onHover={event => hover(title, event)} onFocus={event => hover(title, event)} onBlur={() => setTip(null)} />
+          : <button type="button" className={'field-timeline-bar ' + (row.key === 'plan' ? 'planned' : 'actual')} style={{ left: left + '%', width: span + '%' }}
+            aria-label={title} aria-pressed={selected === row.key} title={title} onClick={() => setSelected(row.key)}
+            onMouseEnter={event => hover(title, event)} onMouseLeave={() => setTip(null)} onFocus={event => hover(title, event)} onBlur={() => setTip(null)}>
+            {row.key !== 'plan' && lines.primary && <><strong>{lines.primary}</strong>{lines.secondary && <small>{lines.secondary}</small>}</>}</button>}
+      </div></div>;
+    })}
+    {tip && <div className="field-point-tip" role="tooltip" style={{ left: Math.max(8, Math.min(tip.x, window.innerWidth - 336)), top: Math.max(8, Math.min(tip.y + 8, window.innerHeight - 170)) }}>{tip.title}</div>}
+  </div>;
+}
+function History({ record }) {
+  return <div className="field-history"><dl><dt>录入时间</dt><dd>{C.date(record.recorded_at)}</dd><dt>记录人</dt><dd>{C.display(record.local_operator)}</dd><dt>经办人</dt><dd>{C.display(record.declared_operator)}</dd><dt>录入来源</dt><dd>{record.source === 'excel' ? 'Excel' : '手工'}</dd></dl>
+      <WorkbenchReference entries={{ '报工编号': record.report_ref, '报工版本编号': record.revision_ref }} />
+      {record.correction_history.map((item, index) => <div key={index}><strong>{C.reportActions[item.action]}</strong> {C.date(item.recorded_at)} · {item.reason}
+        {item.before && item.after && <dl>{C.fields.filter(key => item.before[key] !== item.after[key]).map(key => <React.Fragment key={key}><dt>{({ completed_quantity: '数量', effective_processing_hours: '有效工时', actual_start: '实际开工', actual_end: '本次完工', actual_machine_ref: '实际设备', actual_operator_ref: '实际人员', remark: '备注' })[key]}</dt><dd>{key.endsWith('_ref') ? '资源已更正' : C.display(item.before[key]) + ' → ' + C.display(item.after[key])}</dd></React.Fragment>)}</dl>}</div>)}</div>;
+}
+function FieldDetail({ adapter, taskRef, scope, returnContext, snapshot, revision, command, editor, retained, onDraft, onEdit, onCloseEditor, onDone, onNavigate, nextDraft, onContinueReady, onRefresh }) {
+  const [historyRef, setHistoryRef] = React.useState(null);
+  const [timeline, setTimeline] = React.useState(false);
+  const detail = React.useRef(null);
+  const request = useQuery(async signal => C.detail(await adapter.detail(taskRef, { ...scope, snapshot_ref: snapshot }, signal), taskRef), [adapter, taskRef, scope, snapshot, revision], Boolean(snapshot));
+  const waiting = !snapshot || request.loading;
+  const task = request.result && request.result.data.task, p = task && task.execution;
+  React.useEffect(() => {
+    if (!nextDraft || waiting) return;
+    if (task) onContinueReady(task);
+    else if (request.error) onContinueReady(null);
+  }, [nextDraft, waiting, task, request.error, onContinueReady]);
+  React.useEffect(() => {
+    if (!task || !detail.current || editor || nextDraft) return;
+    // Only bring the detail into view when it is off screen; scrolling an already visible detail pushed the toolbar away.
+    const box = detail.current.getBoundingClientRect();
+    if (box.top < 0 || box.top > window.innerHeight - 120) detail.current.scrollIntoView({ block: 'start', inline: 'nearest' });
+  }, [task, editor, nextDraft]);
+  if (waiting) return <div className="field-note" role="status">正在读取逐次报工…</div>;
+  if (!task) return <div className="field-error"><ErrorBox error={request.error} /><Button icon="refresh-cw" onClick={() => request.error && request.error.code === 'snapshot_stale' ? onRefresh() : request.reload()} disabled={command.locked}>刷新详情</Button>
+    {editor && <Button onClick={onCloseEditor} disabled={command.locked}>取消暂存编辑</Button>}</div>;
+  const report = editor && p.reports.find(row => row.report_ref === editor.reportRef);
+  const missingOriginal = editor && editor.reportRef && !report;
+  return <section ref={detail} className="field-detail" aria-label={'逐次报工 ' + task.batch_id}>
+    <div className="field-detail-heading"><h3 className="field-detail-title">{task.batch_id} · {task.operation_label} · {C.pieceLabel(task)}</h3><State value={p.execution_state} /><span className="field-note">计划应做 {C.quantity(task.quantity)} 件 · 批次 {C.quantity(task.batch_quantity)} 件{task.quantity_reason ? ' · ' + C.quantityReasons[task.quantity_reason] : ''}</span>
+      <Button icon="clock-3" aria-expanded={timeline} onClick={() => setTimeline(value => !value)}>作业时间线</Button>
+      <Button icon="plus" disabled={command.locked || !!editor || !!nextDraft} reason={p.execution_state === 'complete' ? '工序已完工，请补齐原记录或做更正。' : C.blocked(p.write_context, 'create')} onClick={() => onEdit({ taskRef, action: 'create' })}>新增本次报工</Button>
+      <Button icon="chart-gantt" disabled={command.locked || !!editor} onClick={() => {
+        const common = { ...scope }; delete common.state;
+        onNavigate('fieldgantt', { plan_ref: task.plan_ref, task_ref: taskRef, operation_ref: task.operation_ref, scope: common,
+          return_to: { view: 'field', context: returnContext } });
+      }}>现场实际甘特</Button></div>
+    {timeline && <Timeline task={task} />}
+    <Issues issues={p.data_gaps} />
+    <div className="field-scroll wb-table-frame" data-sticky-head data-sticky-actions tabIndex="0" aria-label="逐次报工表格滚动区"><table className="field-table wb-table" aria-label="逐次报工记录"><caption className="wb-visually-hidden">本工序每次报工的数量、实际起止、有效工时、资源和更正操作</caption><colgroup>{['no', 'quantity', 'start', 'end', 'hours', 'resource', 'remark', 'actions'].map(key => <col key={key} className={'field-report-col-' + key} />)}</colgroup>
+      <thead><tr>{['报工编号', '本次数量', '实际开工', '本次完工', '有效工时（小时）', '实际设备 / 人员', '备注', '操作'].map((name, index) => <th key={name} scope="col" className={index === 7 ? 'wb-col-actions' : undefined}>{name}</th>)}</tr></thead>
+      <tbody>{p.reports.map(record => <React.Fragment key={record.report_ref}><tr><td>{record.report_no}<small>{record.recorded_against_plan_ref !== task.plan_ref ? '按旧计划录入' : '按本计划录入'}</small><Button icon="history" aria-label={'录入信息 ' + record.report_no} aria-expanded={historyRef === record.report_ref} onClick={() => setHistoryRef(historyRef === record.report_ref ? null : record.report_ref)} /></td>
+        <td>{C.display(record.completed_quantity)}</td><td>{C.date(record.actual_start)}</td><td>{C.date(record.actual_end)}</td><td>{C.hours(record.effective_processing_hours)}</td>
+        <td>{C.display(record.actual_machine_label)}<small>{C.display(record.actual_operator_label)}</small></td><td>{C.display(record.remark)}</td><td className="wb-col-actions"><div className="field-report-actions">
+          <Button icon="file-plus" aria-label={'补齐 ' + record.report_no} reasonDisplay="tooltip" reason={C.blocked(record.write_context, 'supplement')} disabled={command.locked || !!editor} onClick={() => onEdit({ taskRef, reportRef: record.report_ref, action: 'supplement' })} />
+          <Button icon="square-pen" aria-label={'更正 ' + record.report_no} reasonDisplay="tooltip" reason={C.blocked(record.write_context, 'correct')} disabled={command.locked || !!editor} onClick={() => onEdit({ taskRef, reportRef: record.report_ref, action: 'correct' })} />
+          <Button icon="rotate-ccw" aria-label={'撤销 ' + record.report_no} reasonDisplay="tooltip" reason={C.blocked(record.write_context, 'report_void')} disabled={command.locked || !!editor} onClick={() => onEdit({ taskRef, reportRef: record.report_ref, action: 'report_void' })}>撤销</Button></div></td></tr>{historyRef === record.report_ref && <tr><td colSpan="8"><History record={record} /></td></tr>}</React.Fragment>)}
+        {!p.reports.length && <tr><td colSpan="8"><EmptyState title="暂无逐次报工" hint="可新增本次报工。" /></td></tr>}</tbody></table></div>
+    {missingOriginal && <div className="field-note"><p role="alert">原记录已失效，暂存编辑无法保存。请刷新后重选。</p><Button onClick={onCloseEditor} disabled={command.locked}>取消暂存编辑</Button></div>}
+    {editor && !missingOriginal && editor.action === 'report_void' && report && <FieldVoidEditor key={'void:' + editor.reportRef} task={task} record={report} adapter={adapter} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
+    {editor && editor.action !== 'report_void' && !missingOriginal && (editor.action === 'create' || report) && <FieldEditor key={editor.action + ':' + (editor.reportRef || taskRef)} task={task} record={report} action={editor.action} adapter={adapter} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
+    {p.voided_reports.length > 0 && <details className="field-note"><summary>已撤销报工 · {p.voided_reports.length} 条</summary>{p.voided_reports.map(item => <section key={item.void_fact.void_fact_ref}>
+      <h4>{item.report.report_no} · 已撤销</h4><p>{C.date(item.void_fact.recorded_at)} · {item.void_fact.local_operator}{item.void_fact.declared_operator ? ' · 经办人 ' + item.void_fact.declared_operator : ''} · {item.void_fact.reason}</p>
+      <p>原数量 {C.display(item.report.completed_quantity)} 件 · 原有效工时 {C.hours(item.report.effective_processing_hours)} 小时</p>
+      <div className="field-history"><dl><dt>原实际起止</dt><dd>{C.date(item.report.actual_start)} 至 {C.date(item.report.actual_end)}</dd>
+        <dt>原设备 / 人员</dt><dd>{C.display(item.report.actual_machine_label)} / {C.display(item.report.actual_operator_label)}</dd><dt>原备注</dt><dd>{C.display(item.report.remark)}</dd></dl></div><History record={item.report} />
+    </section>)}</details>}
+  </section>;
+}
+export { FieldDetail };
+export default FieldDetail;

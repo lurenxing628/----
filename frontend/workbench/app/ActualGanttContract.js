@@ -1,105 +1,53 @@
-(function () {
-  'use strict';
-  const C = window.APSResourceContract;
-  const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
-  const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-  const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
-  const fail = text => { throw window.APSResourceContract.failure(text); };
-  function local(value) {
-    if (typeof value !== 'string' || !/^(?!0000)\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(value)) return false;
-    const base = value.slice(0, 19), at = Date.parse(base + 'Z');
-    return Number.isFinite(at) && new Date(at).toISOString().slice(0, 19) === base;
+import APSResourceContract from './resource-contract.js';
+import ActualGanttModel from './ActualGanttModel.js';
+
+const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
+const fail = text => { throw APSResourceContract.failure(text); };
+function local(value) {
+  if (typeof value !== 'string' || !/^(?!0000)\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(value)) return false;
+  const base = value.slice(0, 19), at = Date.parse(base + 'Z');
+  return Number.isFinite(at) && new Date(at).toISOString().slice(0, 19) === base;
+}
+const scalarKeys = ['range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref'];
+const cohortKeys = ['plan_ref', 'source', ...scalarKeys, 'batch_ids'];
+function scope(input, exporting = false) {
+  const allowed = cohortKeys.concat(['snapshot_ref'], exporting ? ['format', 'local_query', 'late_filter', 'selected_task_ref'] : []);
+  if (!object(input) || Reflect.ownKeys(input).some(key => !allowed.includes(key))) fail('现场实际甘特的查询范围里有不认识的项，没有忽略来源条件。');
+  const value = { ...input };
+  if (!ref(value.plan_ref) || own(value, 'source') && value.source !== 'production') fail('请选择有效的生产计划。');
+  for (const [start, end, dateOnly] of [['range_start', 'range_end', false], ['plan_finish_date_from', 'plan_finish_date_to', true]]) {
+    const hasStart = own(value, start), hasEnd = own(value, end);
+    if (hasStart !== hasEnd || hasStart && (!local(value[start] + (dateOnly ? 'T00:00:00' : '')) || !local(value[end] + (dateOnly ? 'T00:00:00' : '')) || (dateOnly ? value[start] > value[end] : value[start] >= value[end]))) fail('起止范围不完整或时间无效。');
   }
-  const nullableTime = value => value === null || local(value);
-  const nullableRef = value => value === null || ref(value);
-  const quantity = value => value === null || Number.isSafeInteger(value) && value >= 0;
-  const finite = value => value === null || typeof value === 'number' && Number.isFinite(value);
-  function deviation(value, asOf) {
-    return object(value) && ['available', 'partial', 'unavailable'].includes(value.state) && value.as_of === asOf
-      && ['finish_deviation_minutes', 'elapsed_since_planned_minutes', 'forecast_deviation_minutes'].every(key => finite(value[key]))
-      && ['due', 'complete', 'unclosed', 'late_open', 'finish_late', 'forecast_late'].every(key => typeof value[key] === 'boolean');
-  }
-  function executionSummary(value) {
-    return object(value) && value.scope === 'full_response_cohort'
-      && ['complete', 'reported', 'pending', 'known_finish_count'].every(key => quantity(value[key]))
-      && finite(value.average_finish_deviation_minutes);
-  }
-  function planQuantity(t) {
-    if (!(t.piece_id === null || typeof t.piece_id === 'string' && t.piece_id.trim() && !t.piece_id.includes('\0'))
-      || ![t.quantity, t.batch_quantity].every(value => value === null || C.nonnegativeInt64(value))) return false;
-    if (t.quantity_basis === 'unknown') return t.quantity === null && t.batch_quantity === null
-      && ['plan_target_not_recorded', 'plan_target_unavailable'].includes(t.quantity_reason);
-    return ['run_admission', 'trial_creation'].includes(t.quantity_basis)
-      && (t.quantity_reason === null ? t.quantity !== null && t.batch_quantity !== null : t.quantity_reason === 'plan_target_invalid');
-  }
-  const interval = value => object(value) && local(value.start) && local(value.end) && value.start < value.end;
-  const arrangement = value => object(value) && local(value.start) && local(value.end) && window.PointContract.arrangement(value);
-  const span = value => object(value) && local(value.start) && local(value.end) && value.start <= value.end;
-  const cohortKeys = ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids'];
-  function scope(input, exporting = false) {
-    const allowed = cohortKeys.concat(['snapshot_ref'], exporting ? ['format', 'local_query', 'late_filter', 'selected_task_ref'] : []);
-    if (!object(input) || Reflect.ownKeys(input).some(key => !allowed.includes(key))) fail('现场实际甘特的查询范围里有不认识的项，没有忽略来源条件。');
-    const value = { ...input };
-    if (!ref(value.plan_ref) || own(value, 'source') && value.source !== 'production') fail('请选择有效的生产计划。');
-    for (const [start, end, dateOnly] of [['range_start', 'range_end', false], ['plan_finish_date_from', 'plan_finish_date_to', true]]) {
-      const hasStart = own(value, start), hasEnd = own(value, end);
-      if (hasStart !== hasEnd || hasStart && (!local(value[start] + (dateOnly ? 'T00:00:00' : '')) || !local(value[end] + (dateOnly ? 'T00:00:00' : '')) || (dateOnly ? value[start] > value[end] : value[start] >= value[end]))) fail('起止范围不完整或时间无效。');
-    }
-    if (own(value, 'resource_type') !== own(value, 'resource_ref') || own(value, 'resource_ref') && (!['machine', 'operator'].includes(value.resource_type) || !ref(value.resource_ref))) fail('资源范围不完整。');
-    if (own(value, 'batch_ids') && (!Array.isArray(value.batch_ids) || value.batch_ids.length > 10000 || value.batch_ids.some(v => typeof v !== 'string' || !v.trim()) || new Set(value.batch_ids).size !== value.batch_ids.length)) fail('批次范围无效。');
-    if (own(value, 'snapshot_ref') && (typeof value.snapshot_ref !== 'string' || !value.snapshot_ref)) fail('数据版本无效。');
-    if (exporting && (value.format !== 'csv' || !value.snapshot_ref || own(value, 'local_query') && (typeof value.local_query !== 'string' || value.local_query.length > 200) || own(value, 'late_filter') && !Object.keys(window.ActualGanttModel.lateLabels).includes(value.late_filter) || own(value, 'selected_task_ref') && !ref(value.selected_task_ref))) fail('导出格式、数据版本或本地筛选无效。');
-    return value;
-  }
-  function report(row, operationRef) {
-    return object(row) && ref(row.report_ref) && ref(row.revision_ref) && row.operation_ref === operationRef && ref(row.recorded_against_task_ref) && ref(row.recorded_against_plan_ref)
-      && typeof row.report_no === 'string' && row.report_no && nullableTime(row.actual_start) && nullableTime(row.actual_end)
-      && (!row.actual_end || !row.actual_start || row.actual_end >= row.actual_start) && quantity(row.completed_quantity)
-      && (row.effective_processing_hours === null || typeof row.effective_processing_hours === 'number' && Number.isFinite(row.effective_processing_hours) && row.effective_processing_hours >= 0)
-      && nullableRef(row.actual_machine_ref) && nullableRef(row.actual_operator_ref) && typeof row.remark === 'string' && local(row.recorded_at) && Array.isArray(row.correction_history);
-  }
-  function execution(e, task) {
-    return object(e) && e.operation_ref === task.operation_ref && e.comparison_task_ref === task.task_ref && nullableRef(e.current_task_ref)
-      && quantity(e.target_quantity) && quantity(e.remaining_quantity) && quantity(e.known_completed_quantity) && e.known_completed_quantity !== null
-      && Number.isSafeInteger(e.unknown_record_count) && e.unknown_record_count >= 0 && typeof e.quantity_complete === 'boolean' && typeof e.records_complete === 'boolean'
-      && ['batch', 'piece'].includes(e.target_basis) && own(window.ActualGanttModel.states, e.execution_state)
-      && [null, 'complete_reports'].includes(e.completion_basis) && ['complete', 'incomplete', 'invalid'].includes(e.data_quality)
-      && nullableTime(e.first_actual_start) && nullableTime(e.confirmed_finish) && (e.remaining_plan === null || interval(e.remaining_plan))
-      && Array.isArray(e.reports) && e.reports.every(r => report(r, task.operation_ref)) && new Set(e.reports.map(r => r.report_ref)).size === e.reports.length
-      && Array.isArray(e.data_gaps);
-  }
-  function scopeMatches(value, query) {
-    return object(value) && cohortKeys.every(key => {
-      const expected = key === 'source' ? query.source || 'production' : key === 'batch_ids' ? (own(query, key) ? query[key].slice().sort() : []) : query[key] == null ? null : query[key];
-      return JSON.stringify(value[key]) === JSON.stringify(expected);
-    });
-  }
-  function workspace(result, query) {
-    // 成功信封（meta 五键、warnings、as_of）已由 transport.read 校验；导出与刷新要钉住同一份快照。
-    const d = result.data, meta = result.meta;
-    if (meta.snapshot_ref === null || query.snapshot_ref && query.snapshot_ref !== meta.snapshot_ref) fail('读到的现场实际甘特数据不完整，或者数据已更新。请刷新后重试。');
-    if (!d.plan || d.plan.plan_ref !== query.plan_ref || !d.plan.capabilities.view || !span(d.plan_span) || !interval(d.axis_span)
-      || !d.scope || d.scope.kind !== 'actual_gantt' || d.scope.source !== 'production' || !object(d.availability) || !['available', 'unavailable'].includes(d.availability.state)
-      || !Array.isArray(d.items) || d.items.length !== d.task_count || d.task_count > 10000 || d.items_complete !== true || !executionSummary(d.execution_summary) || !Array.isArray(d.resources)
-      || !d.resources.every(r => object(r) && ref(r.ref) && ['machine', 'operator', 'supplier'].includes(r.kind) && typeof r.business_code === 'string' && (r.label === null || typeof r.label === 'string'))) fail('读到的现场实际甘特范围不完整，请刷新重试。');
-    if (!scopeMatches(d.scope, query)) fail('返回的范围与上次查询不同，没有自动扩大范围。');
-    const resourceRefs = new Set(d.resources.map(row => row.ref)), taskRefs = new Set(); let count = 0;
-    d.items.forEach(item => {
-      const t = item.task, e = item.execution;
-      if (!t || !ref(t.task_ref) || taskRefs.has(t.task_ref) || !ref(t.operation_ref) || t.plan_ref !== query.plan_ref || !arrangement(t) || !planQuantity(t) || typeof t.batch_id !== 'string' || typeof t.process_label !== 'string') fail('计划任务的编号、应做数量或时间无效。');
-      if (t.start < d.plan_span.start || t.end > d.plan_span.end || t.start < d.axis_span.start || t.end > d.axis_span.end) fail('计划任务超出原计划或显示范围。');
-      taskRefs.add(t.task_ref);
-      if (d.availability.state === 'available' ? !execution(e, t) : e !== null) fail('报工记录缺失或与计划任务不匹配。');
-      if (!deviation(item.deviation, meta.as_of)) fail('执行偏差资料缺失或与原数据时刻不一致，请刷新重试。');
-      const used = [t.machine_ref, t.operator_ref];
-      if (e) { count += e.reports.length; e.reports.forEach(r => used.push(r.actual_machine_ref, r.actual_operator_ref)); if (e.remaining_plan) used.push(e.remaining_plan.machine_ref, e.remaining_plan.operator_ref); }
-      if (used.some(r => r != null && (!ref(r) || !resourceRefs.has(r)))) fail('实际或计划资源清单不完整。');
-    });
-    if (!window.GanttGraph.validate(d.gantt_graph, { scope: 'full_plan', tasks: d.items.map(item => item.task), taskRef: 'task_ref', time: local,
-      sequence: C.positiveInt64, processLabel: value => typeof value === 'string' && !!value.trim() })) fail('现场甘特的工序关联与所选计划不一致，请刷新重试。');
-    if (d.availability.state === 'available' ? d.report_count !== count || count > 50000 : d.report_count !== null || !d.availability.reason) fail('报工数量或不可用原因不完整。');
-    return result;
-  }
-  function transport(value) { const result = { ...value }; if (result.batch_ids) result.batch_ids = JSON.stringify(result.batch_ids); return result; }
-  window.ActualGanttContract = { scope, workspace, transport, local, ref };
-})();
+  if (own(value, 'resource_type') !== own(value, 'resource_ref') || own(value, 'resource_ref') && (!['machine', 'operator'].includes(value.resource_type) || !ref(value.resource_ref))) fail('资源范围不完整。');
+  if (own(value, 'batch_ids') && (!Array.isArray(value.batch_ids) || value.batch_ids.length > 10000 || value.batch_ids.some(v => typeof v !== 'string' || !v.trim()) || new Set(value.batch_ids).size !== value.batch_ids.length)) fail('批次范围无效。');
+  if (own(value, 'snapshot_ref') && (typeof value.snapshot_ref !== 'string' || !value.snapshot_ref)) fail('数据版本无效。');
+  if (exporting && (value.format !== 'csv' || !value.snapshot_ref || own(value, 'local_query') && (typeof value.local_query !== 'string' || value.local_query.length > 200) || own(value, 'late_filter') && !Object.keys(ActualGanttModel.lateLabels).includes(value.late_filter) || own(value, 'selected_task_ref') && !ref(value.selected_task_ref))) fail('导出格式、数据版本或本地筛选无效。');
+  return value;
+}
+function scopeMatches(s, query) {
+  if (!object(s) || s.kind !== 'actual_gantt' || s.source !== 'production'
+    || own(query, 'source') && query.source !== 'production' || s.plan_ref !== query.plan_ref
+    || scalarKeys.some(key => s[key] !== (own(query, key) ? query[key] : null))
+    || !Array.isArray(s.batch_ids)) return false;
+  const batches = own(query, 'batch_ids') ? query.batch_ids : [];
+  if (!Array.isArray(batches) || s.batch_ids.length !== batches.length) return false;
+  const expected = new Set(batches);
+  return expected.size === batches.length && new Set(s.batch_ids).size === batches.length
+    && s.batch_ids.every(id => expected.has(id));
+}
+function workspace(result, query) {
+  // 成功信封（meta 五键、warnings、as_of）已由 transport.read 校验；导出与刷新要钉住同一份快照。
+  const d = result.data, meta = result.meta;
+  if (meta.snapshot_ref === null || query.snapshot_ref && query.snapshot_ref !== meta.snapshot_ref) fail('读到的现场实际甘特数据不完整，或者数据已更新。请刷新后重试。');
+  if (!d.plan || d.plan.plan_ref !== query.plan_ref || !d.plan.capabilities.view
+    || !scopeMatches(d.scope, query)
+    || !Array.isArray(d.items) || d.items_complete !== true) fail('读到的现场实际甘特范围不完整，请刷新重试。');
+  return result;
+}
+function transport(value) { const result = { ...value }; if (result.batch_ids) result.batch_ids = JSON.stringify(result.batch_ids); return result; }
+const ActualGanttContract = { scope, workspace, transport, local, ref };
+export { ActualGanttContract, scope, workspace, transport, local, ref };
+export default ActualGanttContract;

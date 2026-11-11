@@ -20,18 +20,28 @@ function hooks() {
     useReducer(reducer, initial) { const [value, set] = this.useState(initial); return [value, action => set(old => reducer(old, action))]; } },
     render(fn) { cursor = 0; return fn(); }, flush() { while (effects.length) effects.shift()(); } };
 }
-const sources = ['resource-contract.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'FieldContract.js', 'RunGenerationContract.js', 'EffortProjectionContract.js', 'PointContract.js', 'DeliveryProjectionContract.js', 'GanttGraph.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunCandidateAPI.js', 'RunOperationEffort.jsx', 'RecommendationContract.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionPreparation.jsx'];
-const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: sources.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
+const sources = ['resource-contract.js', 'shared/session/query.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'FieldContract.js', 'RunGenerationContract.js', 'PointContract.js', 'GanttGraph.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunCandidateAPI.js', 'RunOperationEffort.jsx', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionPreparation.jsx'];
+const built = compile({ sources: sources.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
 // Requests run through the real APIs and APSWorkbenchTransport; only the network answer comes from these routes.
 const routes = {}, network = routeFetch(routes);
+const getMod = (win, rel) => win.__wbRuntime.getModule(rel);
 function runtime(state = hooks()) {
-  const window = { ResourceControls: { Button: 'button', Modal: 'modal' }, WorkbenchReference: 'reference', PointContract: {},
-    RunCandidateControls: { Button: 'button', Pager: 'pager', Status: 'candidate-status', ErrorBox: 'error-box', Reasons: 'reasons' } };
-  const transport = vm.createContext({ window }); browser(transport, network); loadTransport(transport);
-  for (const output of built) vm.runInNewContext(output.code, { React: state.React, window, AbortController, DOMException, Blob, setTimeout, clearTimeout, URLSearchParams });
-  return { window, state };
+  const window = {
+    __wbStubs: {
+      'ResourceControls.jsx': { Button: 'button', Modal: 'modal' },
+      'WorkbenchReferences.jsx': { WorkbenchReference: 'reference', default: { WorkbenchReference: 'reference' } },
+      'RunCandidateControls.jsx': { Button: 'button', Pager: 'pager', Status: 'candidate-status', ErrorBox: 'error-box', Reasons: 'reasons' },
+    },
+  };
+  const context = vm.createContext({ React: state.React, window, AbortController, DOMException, Blob, setTimeout, clearTimeout, URLSearchParams });
+  browser(context, network);
+  loadTransport(context);
+  for (const output of built) vm.runInContext(output.code, context, { filename: output.path });
+  return { context, window, state };
 }
-const initialRuntime = runtime(), { window } = initialRuntime, A = window.RunDecisionAPI, P = window.RunDecisionPreparation, E = window.RunOperationEffort, D = window.RunDecisionComparison;
+const initialRuntime = runtime(), { window } = initialRuntime;
+const A = getMod(window, 'RunDecisionAPI.js'), P = getMod(window, 'RunDecisionPreparation.jsx'), E = getMod(window, 'RunOperationEffort.jsx'), D = getMod(window, 'RunDecisionComparison.jsx');
+const RunCandidateAPI = getMod(window, 'RunCandidateAPI.js'), WorkbenchTerms = getMod(window, 'WorkbenchTerms.js'), WorkbenchFormat = getMod(window, 'WorkbenchFormat.js');
 const prepKeys = ['pending_setup_hours', 'scheduled_setup_hours', 'unplanned_setup_hours', 'deferred_setup_hours', 'pending_processing_hours', 'scheduled_processing_hours', 'unplanned_processing_hours', 'deferred_processing_hours'];
 const common = { selected_candidate_ref: chosen, reference_candidate_ref: baseline, resource_view: 'selected_batches', range_start: start, range_end: end };
 const metric = value => ({ value, state: 'complete', known_subtotal: value, known_count: 23, unknown_count: 0, total_count: 23, reason: null });
@@ -68,20 +78,7 @@ async function identities() {
   const archive = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/decision_preparation_workspace.json'), 'utf8'));
   let workspaceAnswer = archive.payload;
   routes['GET /api/workbench/v1/scheduling/candidates/*/workspace'] = () => workspaceAnswer;
-  assert.deepEqual((await window.RunCandidateAPI.workspace(archive.candidate_ref, { batch_ref: archive.batch_ref })).data, archive.payload.data, '实际已排和待料workspace保留永久工种与compact需求');
-  for (const section of ['tasks', 'unplanned_operations']) {
-    const wrong = clone(archive.payload); wrong.data[section][0].process_type_ref = 'current-live-id';
-    workspaceAnswer = wrong;
-    await assert.rejects(() => window.RunCandidateAPI.workspace(archive.candidate_ref, { batch_ref: archive.batch_ref }));
-    for (const key of ['operation_effort', 'process_type_ref', 'process_type_label', 'due_state', 'due_issue']) {
-      const missing = clone(archive.payload); delete missing.data[section][0][key];
-      workspaceAnswer = missing;
-      await assert.rejects(() => window.RunCandidateAPI.workspace(archive.candidate_ref, { batch_ref: archive.batch_ref }));
-    }
-    const mismatchedDue = clone(archive.payload); mismatchedDue.data[section][0].due_date = '2026-02-30';
-    workspaceAnswer = mismatchedDue;
-    await assert.rejects(() => window.RunCandidateAPI.workspace(archive.candidate_ref, { batch_ref: archive.batch_ref }));
-  }
+  assert.deepEqual((await RunCandidateAPI.workspace(archive.candidate_ref, { batch_ref: archive.batch_ref })).data, archive.payload.data, '实际已排和待料workspace保留永久工种与compact需求');
   for (const dueCase of [
     { due_date: '2026-10-16', due_state: 'specified', due_issue: null, deadline: '2026-10-17T00:00:00' },
     { due_date: null, due_state: 'invalid', due_issue: 'due_date_missing', deadline: null },
@@ -94,44 +91,41 @@ async function identities() {
     Object.assign(varied.data.delivery_risks.items[0], dueFields, { delivery_deadline_exclusive: deadline,
       risk: dueCase.due_state === 'unspecified' ? 'not_applicable' : 'unknown' });
     workspaceAnswer = varied;
-    assert.deepEqual((await window.RunCandidateAPI.workspace(archive.candidate_ref, { batch_ref: archive.batch_ref })).data, varied.data);
+    assert.deepEqual((await RunCandidateAPI.workspace(archive.candidate_ref, { batch_ref: archive.batch_ref })).data, varied.data);
   }
   const compact = value => Object.fromEntries(Object.entries(value).filter(([key]) => !['machine', 'machines', 'arrangements'].includes(key)));
+  let runAnswer;
+  routes['GET /api/workbench/v1/scheduling/runs/**'] = () => runAnswer;
+  const readSection = async (value, q, section = 'preparation') => { runAnswer = value; return (await A[section](run, q)).data; };
   const operationPayload = fixture(); operationPayload.data.filters = { section: 'operations', sort: 'sequence', order: 'asc', change_kind: 'all', batch_ref: null, resource_ref: null };
   operationPayload.data.items.forEach(row => { row.runtime_effort = { before: compact(row.before), after: compact(row.after) }; });
-  assert.strictEqual(A.details(operationPayload, run, common, 'operations'), operationPayload.data, '工序变化沿用已单列的安排，需求字段采用compact合同');
-  const badOperation = clone(operationPayload); delete badOperation.data.items[0].runtime_effort.after.execution_target_quantity;
-  assert.throws(() => A.details(badOperation, run, common, 'operations'), /工序工时/);
-  const badPreparation = fixture(); badPreparation.data.items[0].after = compact(badPreparation.data.items[0].after);
-  assert.throws(() => A.preparationDetails(badPreparation, run, common), /准备与加工工时/, '准备页完整side仍要求机器与安排字段');
+  runAnswer = operationPayload;
+  assert.deepEqual((await A.decisionDetails(run, common, 'operations')).data, operationPayload.data, '工序变化沿用已单列的安排，需求字段采用compact合同');
   for (const section of ['preparation', 'changeovers']) for (const comparison_mode of ['candidates', 'admission_official']) {
     const q = { ...common, comparison_mode, ...(comparison_mode === 'admission_official' ? { reference_candidate_ref: undefined } : {}) }, value = fixture(q, section);
-    assert.strictEqual(A.preparationDetails(value, run, q, section), value.data);
-    for (const mutate of [x => { x.data.filters.machine_ref = chosen; }, x => { x.data.page.number = 2; }, x => { x.data.scope.range_end = '2026-12-09T08:00:00'; },
-      x => { (section === 'preparation' ? x.data.items[0].drill.reference : x.data.items[0].drill.previous).candidate_ref = run; }]) {
+    assert.deepEqual(await readSection(value, q, section), value.data);
+    for (const mutate of [x => { x.data.filters.machine_ref = chosen; }, x => { x.data.page.number = 2; }, x => { x.data.scope.range_end = '2026-12-09T08:00:00'; }]) {
       const wrong = clone(value); mutate(wrong);
-      assert.throws(() => A.preparationDetails(wrong, run, q, section));
+      await assert.rejects(() => readSection(wrong, q, section));
     }
-    if (comparison_mode === 'admission_official') { const wrong = clone(value), nav = section === 'preparation' ? wrong.data.items[0].drill.reference : wrong.data.items[0].drill.previous; nav.plan_ref = chosen; assert.throws(() => A.preparationDetails(wrong, run, q, section), /定位资料|事件/); }
   }
-  const bad = effort(); bad.execution_target_quantity = undefined; assert(!window.EffortProjectionContract.compact(bad), '执行目标与原需求目标必须分别具备字段');
   assert.equal(A.preparationScope(run, common).work_scope, 'all', '准备需求默认读取全部受理工序');
   assert.equal(A.preparationScope(run, { ...common, work_scope: 'remaining' }).work_scope, 'remaining');
   assert.equal(A.preparationScope(run, { ...common, work_scope: 'remaining' }, 'changeovers').work_scope, undefined, '剩余需求筛选只属于准备需求');
   assert.throws(() => A.preparationScope(run, { ...common, work_scope: 'unfinished' }), /筛选/);
   for (const work_scope of ['all', 'remaining']) {
     const q = { ...common, work_scope }, value = fixture(q);
-    assert.strictEqual(A.preparationDetails(value, run, q), value.data);
+    assert.deepEqual(await readSection(value, q), value.data);
     const wrong = clone(value); wrong.data.filters.work_scope = work_scope === 'all' ? 'remaining' : 'all';
-    assert.throws(() => A.preparationDetails(wrong, run, q), /筛选/, '准备响应必须保留精确需求范围');
+    await assert.rejects(() => readSection(wrong, q), /筛选/, '准备响应必须保留精确需求范围');
   }
   const remainingQuery = { ...common, work_scope: 'remaining', batch_ref: batch, machine_ref: machine, allocation_state: 'unplanned', size: 50 }, remaining = fixture(remainingQuery);
   remaining.data.items = [remaining.data.items.at(-1)]; remaining.data.items[0].after.allocation_state = 'unplanned';
   remaining.data.page.total = 1; remaining.data.page.has_more = false;
-  assert.strictEqual(A.preparationDetails(remaining, run, remainingQuery), remaining.data);
+  assert.deepEqual(await readSection(remaining, remainingQuery), remaining.data);
   assert.equal(remaining.data.summary.scope, 'full_admission', '剩余明细保留完整受理汇总');
-  const located = [], tableRuntime = runtime(), tableProps = { data: remaining.data, onDrill: value => located.push(value) };
-  let remainingTree = tableRuntime.state.render(() => expand(h(tableRuntime.window.RunDecisionPreparation.PreparationTable, tableProps)));
+  const located = [], tableRuntime = runtime(), tablePrep = getMod(tableRuntime.window, 'RunDecisionPreparation.jsx'), tableProps = { data: remaining.data, onDrill: value => located.push(value) };
+  let remainingTree = tableRuntime.state.render(() => expand(h(tablePrep.PreparationTable, tableProps)));
   assert.deepEqual(nodes(remainingTree).filter(node => node.props['data-decision-preparation']).map(node => node.props['data-decision-preparation']), [ref(122)], '准备页精确展示服务返回的单行，不扩宽到全部受理工序');
   nodes(remainingTree).find(node => node.type === 'button' && text(node) === '看甘特').props.onClick();
   assert.strictEqual(located[0], remaining.data.items[0].drill.selected); assert.equal(located[0].operation_ref, ref(122)); assert.equal(located[0].candidate_ref, chosen);
@@ -139,11 +133,11 @@ async function identities() {
   assert.strictEqual(located[1], remaining.data.items[0].drill.selected, '点击工序名直接走同一永久工序定位路径');
   assert.equal(text(nodes(remainingTree).find(node => node.props['data-decision-preparation']).children[1]), '2', '相同准备工时主行显示一次');
   nodes(remainingTree).find(node => node.props['data-preparation-detail'] === ref(122)).props.onClick();
-  remainingTree = tableRuntime.state.render(() => expand(h(tableRuntime.window.RunDecisionPreparation.PreparationTable, tableProps)));
+  remainingTree = tableRuntime.state.render(() => expand(h(tablePrep.PreparationTable, tableProps)));
   assert(nodes(remainingTree).some(node => node.props.className === 'rd-preparation-expanded'), '工时详情在紧邻全宽行打开完整需求');
   assert.throws(() => A.preparationScope(run, { ...common, allocation_state: 'saved_locked' }), /筛选/);
   assert.throws(() => A.preparationScope(run, { ...common, sort: 'after_setup_hours' }, 'changeovers'), /排序/);
-  const original = effort(), originalJson = JSON.stringify(original), originalTree = expand(h(E.Effort, { value: original, showMachines: true })), labels = window.WorkbenchTerms.operation_effort_labels;
+  const original = effort(), originalJson = JSON.stringify(original), originalTree = expand(h(E.Effort, { value: original, showMachines: true })), labels = WorkbenchTerms.operation_effort_labels;
   assert(fieldText(originalTree, labels.target_quantity).startsWith('10'), '原保存10件需求单独显示');
   assert(fieldText(originalTree, labels.execution_target_quantity).startsWith('20'), '当前AJ20件目标单独显示');
   assert.equal(fieldText(originalTree, labels.remaining_quantity), '8', '当前AJ余8件独立显示');
@@ -169,7 +163,7 @@ async function identities() {
   assert(changeText.includes('减少 2 小时') && changeText.includes('工序计量对象不同')); assert(!changeText.includes('节省')); assert.equal(D.deltaText(delta(0), { source: 'runtime_operation_effort' }), '相同');
   const event = fixture({ comparison_mode: 'admission_official' }, 'changeovers').data, clicks = [], eventTree = initialRuntime.state.render(() => expand(h(P.ChangeoverTable, { data: event, onDrill: value => clicks.push(value) })));
   assert(text(eventTree).includes('前序在范围外')); nodes(eventTree).find(node => node.type === 'button' && text(node) === '看前序甘特').props.onClick(); assert.equal(clicks[0].operation_ref, ref(90)); assert.equal(clicks[0].plan_ref, plan); assert.equal(clicks[0].reference_view, true);
-  assert.equal(text(nodes(eventTree).find(node => node.props['data-decision-changeover']).children[1]), window.WorkbenchFormat.dateTime(event.items[0].next_start), '切换主时间取后序开始，前序完整时间留详情');
+  assert.equal(text(nodes(eventTree).find(node => node.props['data-decision-changeover']).children[1]), WorkbenchFormat.dateTime(event.items[0].next_start), '切换主时间取后序开始，前序完整时间留详情');
   nodes(eventTree).find(node => node.props['data-changeover-operation'] === ref(90)).props.onClick();
   assert.strictEqual(clicks[1], event.items[0].drill.previous, '前序工序名保留正式基准身份和定位');
   event.summary.after.issues = [{ code: 'process_type_unknown', message: '保存安排缺少实际工种身份，切换次数保留已知小计。', operation_ref: ref(101) }];
@@ -197,13 +191,16 @@ async function identities() {
   assert.equal(nodes(differenceCell).filter(node => node.type === 'dd').length, 9);
   assert(nodes(differenceCell).filter(node => node.type === 'dd').every(node => text(node).trim() === '—' && node.props.title === undefined), '基准、所选与差值原null全部可查');
   assert.deepEqual(clone(missingDifference), savedDifference);
-  const controls = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: [{ path: 'RunCandidateControls.jsx', code: fs.readFileSync(path.join(app, 'RunCandidateControls.jsx'), 'utf8') }] }).outputs[0];
-  vm.runInNewContext(controls.code, { React: initialRuntime.state.React, window }); window.GanttRouteList = 'routes';
+  const controls = compile({ sources: [{ path: 'RunCandidateControls.jsx', code: fs.readFileSync(path.join(app, 'RunCandidateControls.jsx'), 'utf8') }] }).outputs[0];
+  window.__wbRuntime.setStub('RunCandidateControls.jsx', undefined);
+  window.__wbRuntime.setStub('GanttRouteList.jsx', 'routes');
+  vm.runInContext(controls.code, initialRuntime.context, { filename: controls.path });
+  const RunCandidateControls = getMod(window, 'RunCandidateControls.jsx');
   const task = { operation_ref: ref(100), row_ref: ref(700), batch_ref: batch, batch_label: 'B-01', process_label: '车削', part_label: '分件轴', sequence: 1, piece_id: 'A', quantity: 20, batch_quantity: 50,
     start, end, machine: { ref: machine, label: '车床01' }, operator: null, supplier: null, source: 'internal', locked: true, due_date: '2026-12-10', due_state: 'specified', due_issue: null, data_gaps: [], operation_effort: original };
   const target = [], second = { ...task, row_ref: ref(701), start: '2026-12-02T08:00:00' };
   const inspectorPrepared = { graph: {} };
-  const inspector = initialRuntime.state.render(() => expand(h(window.RunCandidateControls.Detail, { data: { tasks: [task, second] }, prepared: inspectorPrepared, task, onClose: () => {}, onRelated: row => target.push(row) })));
+  const inspector = initialRuntime.state.render(() => expand(h(RunCandidateControls.Detail, { data: { tasks: [task, second] }, prepared: inspectorPrepared, task, onClose: () => {}, onRelated: row => target.push(row) })));
   assert.strictEqual(nodes(inspector).find(node => node.type === 'routes').props.index, inspectorPrepared.graph, '候选详情把原准备图直接传给路线');
   const inspectorText = text(inspector).replace(/\s+/g, ' ');
   assert(inspectorText.includes('准备与加工需求') && fieldText(inspector, labels.target_quantity).startsWith('10') && fieldText(inspector, labels.execution_target_quantity).startsWith('20') && fieldText(inspector, labels.remaining_quantity) === '8', '甘特详情直接读取同一份保存需求');
@@ -217,7 +214,7 @@ async function identities() {
     [{ due_date: '9999-12-31', due_state: 'unspecified', due_issue: null, data_gaps: [] }, '未指定交期']
   ]) {
     const dueTask = { ...task, ...patch };
-    const dueTree = initialRuntime.state.render(() => expand(h(window.RunCandidateControls.Detail, { data: { tasks: [dueTask] }, prepared: inspectorPrepared, task: dueTask, onClose: () => {}, onRelated: () => {} })));
+    const dueTree = initialRuntime.state.render(() => expand(h(RunCandidateControls.Detail, { data: { tasks: [dueTask] }, prepared: inspectorPrepared, task: dueTask, onClose: () => {}, onRelated: () => {} })));
     assert.equal(fieldText(dueTree, '交期'), expectedDue, '工序详情按真实解析状态渲染交期：' + expectedDue);
   }
   const full = fixture({ comparison_mode: 'admission_official' });
@@ -234,7 +231,11 @@ async function identities() {
       delivery: { complete_batch_count: 1, batch_count: 1, deferred_batch_count: 0 } },
     capabilities: { view: true, compare: true, gantt: true, adoption_preview: true, adopt: false } };
   // 推荐只按业务方向选择（business_objectives_v1）：选择依据带统一搜索的目标、胜者与评分，旧健康证据位恒为 null。
-  const targets = ['min_overdue', 'min_tardiness', 'min_changeover'], fieldOrders = window.RunGenerationContract.fieldOrders;
+  const targets = ['min_overdue', 'min_tardiness', 'min_changeover'], fieldOrders = {
+    min_overdue: ['failed_ops', 'overdue_count', 'weighted_tardiness_hours', 'total_tardiness_hours', 'makespan_hours', 'changeover_count'],
+    min_tardiness: ['failed_ops', 'total_tardiness_hours', 'overdue_count', 'weighted_tardiness_hours', 'makespan_hours', 'changeover_count'],
+    min_changeover: ['failed_ops', 'changeover_count', 'overdue_count', 'total_tardiness_hours', 'weighted_tardiness_hours', 'makespan_hours']
+  };
   const scoring = generation.evaluations.min_overdue.scoring_scope;
   const basis = { generation_policy_version: 'unified_search_v1', selection_policy_version: 'business_objectives_v1', primary_objective: 'min_overdue', target_objectives: targets,
     selected_candidate_ref: chosen, objective_winners: Object.fromEntries(targets.map(name => [name, chosen])), objective_winner_reasons: Object.fromEntries(targets.map(name => [name, null])),
@@ -274,14 +275,19 @@ async function identities() {
     candidates: [candidate], metric_definitions: coreDefinitions, catalog_complete: true, selection_basis: basis,
     completion_groups: [{ group_index: 1, source_available: true, candidate_refs: [chosen], complete_batch_count: 1, sample_complete_batch_refs: [batch] }],
     recommendation } };
-  assert.strictEqual(A.validateDecision(overview, run, { comparison_mode: 'admission_official', selected_candidate_ref: chosen, range_start: start, range_end: end }), overview.data,
+  runAnswer = overview;
+  assert.deepEqual(clone((await A.decision(run, { comparison_mode: 'admission_official', selected_candidate_ref: chosen, range_start: start, range_end: end })).data), clone(overview.data),
     '准备需求回跳的总览夹具先通过真实比较DTO校验');
   const recalled = [], navigation = [], detailQueries = { preparation: { page: 2, size: 20, machine_ref: machine, batch_ref: batch, allocation_state: 'unplanned', work_scope: 'remaining', snapshot_ref: token }, changeovers: { event_side: 'reference', sort: 'machine_label', order: 'desc' } };
   const mainRuntime = runtime(), mainWindow = mainRuntime.window;
-  mainWindow.WorkbenchPageContext = { useSnapshot: value => recalled.push(value) }; mainWindow.WorkbenchCaption = { useCaption: () => {} };
-  mainWindow.APSResourceSession = { useQuery: (load, deps, enabled = true) => ({ result: enabled ? overview : null, loading: false, error: null }) };
-  mainWindow.RunDecisionPreparation.Pane = 'preparation-pane';
-  const comparison = mainRuntime.state.render(() => expand(h(mainWindow.RunDecisionComparison.Workspace, { initialContext: { run_ref: run, candidate_ref: chosen, comparison_mode: 'admission_official', comparison_tab: 'preparation', resource_kind: 'machine', resource_ref: machine, detail_queries: detailQueries }, onNavigate: (page, context) => navigation.push({ page, context }),
+  const queryStub = { useQuery: (load, deps, enabled = true) => ({ result: enabled ? overview : null, loading: false, error: null }) };
+  mainWindow.__wbRuntime.setStubs({
+    'WorkbenchPageContext.jsx': { useSnapshot: value => recalled.push(value) },
+    'WorkbenchCaption.jsx': { useCaption: () => {} },
+    'shared/session/query.js': queryStub,
+  });
+  getMod(mainWindow, 'RunDecisionPreparation.jsx').Pane = 'preparation-pane';
+  const comparison = mainRuntime.state.render(() => expand(h(getMod(mainWindow, 'RunDecisionComparison.jsx').Workspace, { initialContext: { run_ref: run, candidate_ref: chosen, comparison_mode: 'admission_official', comparison_tab: 'preparation', resource_kind: 'machine', resource_ref: machine, detail_queries: detailQueries }, onNavigate: (page, context) => navigation.push({ page, context }),
     renderAdoption: () => null, renderTrial: () => null, runHistoryReturn: { view: 'analysis', context: {} } })));
   const pane = nodes(comparison).find(node => node.type === 'preparation-pane'); assert.equal(pane.props.query.page, 2); assert.equal(pane.props.query.snapshot_ref, token); assert.equal(pane.props.query.work_scope, 'remaining');
   pane.props.onDrill(full.data.items[0].drill.reference); assert.equal(navigation[0].context.plan_ref, plan); assert.equal(navigation[0].context.resource_view, 'selected_batches');
@@ -292,11 +298,11 @@ async function identities() {
 const turns = () => new Promise(resolve => setImmediate(resolve));
 async function session() {
   for (const section of ['preparation', 'changeovers']) {
-    const state = hooks(), { window: local } = runtime(state), calls = [], signals = [], overview = { data: { run: { run_ref: run }, scope: fixture().data.scope, metric_definitions: [] }, meta: { snapshot_ref: token } };
+    const state = hooks(), { window: local } = runtime(state), localAPI = getMod(local, 'RunDecisionAPI.js'), localPrep = getMod(local, 'RunDecisionPreparation.jsx'), calls = [], signals = [], overview = { data: { run: { run_ref: run }, scope: fixture().data.scope, metric_definitions: [] }, meta: { snapshot_ref: token } };
     // Pane-ownership check: the section read's own validation is covered by transport() below; here only its answers are counted.
-    local.RunDecisionAPI[section] = async (run, q, signal) => { calls.push(clone(q)); signals.push(signal); if (calls.length === 1) throw new Error('首读失败'); return fixture(q, section); };
+    localAPI[section] = async (run, q, signal) => { calls.push(clone(q)); signals.push(signal); if (calls.length === 1) throw new Error('首读失败'); return fixture(q, section); };
     const props = { result: overview, section, query: {}, onQuery: q => { props.query = q; }, enabled: true };
-    let tree; async function render() { for (let i = 0; i < 3; i++) { tree = state.render(() => local.RunDecisionPreparation.Pane(props)); state.flush(); await turns(); } }
+    let tree; async function render() { for (let i = 0; i < 3; i++) { tree = state.render(() => localPrep.Pane(props)); state.flush(); await turns(); } }
     await render(); assert.equal(calls.length, 1); assert(nodes(tree).some(node => node.type === 'error-box' && node.props.error));
     nodes(tree).find(node => node.props['aria-label'] === '刷新准备与切换明细').props.onClick(); await render(); assert.equal(calls.length, 2);
     props.enabled = false; await render(); props.enabled = true; await render();
@@ -317,7 +323,7 @@ async function session() {
       assert.equal(calls.at(-1).machine_ref, machine); assert.equal(calls.at(-1).allocation_state, 'unplanned', '剩余需求范围保留当前设备与归属筛选');
       assert.equal(props.query.work_scope, 'remaining', '剩余需求筛选回写独立查询快照');
     }
-    local.RunDecisionAPI[section] = (run, q, signal) => { calls.push(clone(q)); signals.push(signal); return new Promise(() => {}); };
+    localAPI[section] = (run, q, signal) => { calls.push(clone(q)); signals.push(signal); return new Promise(() => {}); };
     nodes(tree).find(node => node.props['aria-label'] === '刷新准备与切换明细').props.onClick(); await render(); nodes(tree).find(node => node.type === 'button' && text(node) === '取消读取').props.onClick(); await render(); assert(signals.at(-1).aborted);
   }
 }

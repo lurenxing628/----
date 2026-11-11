@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "version": "0.25.12",
+  "package": {
+    "name": "esbuild",
+    "version": "0.25.12",
+    "license": "MIT",
+    "install_dir": "vendor/node_modules/esbuild",
+    "package_json": "vendor/node_modules/esbuild/package.json",
+    "main": "vendor/node_modules/esbuild/lib/main.js",
+    "bin": "vendor/node_modules/esbuild/bin/esbuild",
+    "metadata_url": "https://registry.npmjs.org/esbuild/0.25.12",
+    "tarball": "https://registry.npmjs.org/esbuild/-/esbuild-0.25.12.tgz",
+    "files": {
+      "package.json": {
+        "path": "vendor/node_modules/esbuild/package.json",
+        "size": 1490
+      },
+      "lib/main.js": {
+        "path": "vendor/node_modules/esbuild/lib/main.js",
+        "size": 88706
+      },
+      "bin/esbuild": {
+        "path": "vendor/node_modules/esbuild/bin/esbuild",
+        "size": 9351
+      }
+    }
+  },
+  "platforms": {
+    "darwin-arm64": {
+      "name": "@esbuild/darwin-arm64",
+      "version": "0.25.12",
+      "os": "darwin",
+      "cpu": "arm64",
+      "install_dir": "vendor/node_modules/@esbuild/darwin-arm64",
+      "package_json": "vendor/node_modules/@esbuild/darwin-arm64/package.json",
+      "binary": "vendor/node_modules/@esbuild/darwin-arm64/bin/esbuild",
+      "bin_subpath": "bin/esbuild",
+      "metadata_url": "https://registry.npmjs.org/@esbuild/darwin-arm64/0.25.12",
+      "tarball": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.25.12.tgz",
+      "package_json_size": 383,
+      "binary_size": 9934834
+    },
+    "darwin-x64": {
+      "name": "@esbuild/darwin-x64",
+      "version": "0.25.12",
+      "os": "darwin",
+      "cpu": "x64",
+      "install_dir": "vendor/node_modules/@esbuild/darwin-x64",
+      "package_json": "vendor/node_modules/@esbuild/darwin-x64/package.json",
+      "binary": "vendor/node_modules/@esbuild/darwin-x64/bin/esbuild",
+      "bin_subpath": "bin/esbuild",
+      "metadata_url": "https://registry.npmjs.org/@esbuild/darwin-x64/0.25.12",
+      "tarball": "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.25.12.tgz"
+    },
+    "win32-x64": {
+      "name": "@esbuild/win32-x64",
+      "version": "0.25.12",
+      "os": "win32",
+      "cpu": "x64",
+      "install_dir": "vendor/node_modules/@esbuild/win32-x64",
+      "package_json": "vendor/node_modules/@esbuild/win32-x64/package.json",
+      "binary": "vendor/node_modules/@esbuild/win32-x64/esbuild.exe",
+      "bin_subpath": "esbuild.exe",
+      "metadata_url": "https://registry.npmjs.org/@esbuild/win32-x64/0.25.12",
+      "tarball": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.12.tgz"
+    },
+    "linux-x64": {
+      "name": "@esbuild/linux-x64",
+      "version": "0.25.12",
+      "os": "linux",
+      "cpu": "x64",
+      "install_dir": "vendor/node_modules/@esbuild/linux-x64",
+      "package_json": "vendor/node_modules/@esbuild/linux-x64/package.json",
+      "binary": "vendor/node_modules/@esbuild/linux-x64/bin/esbuild",
+      "bin_subpath": "bin/esbuild",
+      "metadata_url": "https://registry.npmjs.org/@esbuild/linux-x64/0.25.12",
+      "tarball": "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.25.12.tgz"
+    }
+  }
+}

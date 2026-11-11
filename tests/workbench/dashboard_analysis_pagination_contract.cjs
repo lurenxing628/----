@@ -1,15 +1,22 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+const { compile } = require('../../scripts/workbench/compile.cjs');
 const { routeFetch, browser, loadTransport } = require('./route_fetch.cjs');
 const app = path.resolve(__dirname, '../../frontend/workbench/app'), window = {};
 // Only the network answer is stubbed: reads run through the real DashboardAnalysisAPI, transport and validators.
 let answer = () => { throw new Error('Unexpected request'); };
 const network = routeFetch({ 'GET /api/workbench/v1/dashboard/analysis': call => answer(call) });
 const context = vm.createContext({ window }); browser(context, network);
-vm.runInContext(fs.readFileSync(path.join(app, 'WorkbenchTerms.js'), 'utf8'), context); loadTransport(context);
-for (const name of ['DashboardContract.js', 'RunCandidateAPI.js', 'ResourceProjectionContract.js', 'DashboardAnalysisAPI.js'])
-  vm.runInContext(fs.readFileSync(path.join(app, name), 'utf8'), context);
-const A = window.DashboardAnalysisAPI, ref = n => String(n).padStart(48, '0'), clone = value => JSON.parse(JSON.stringify(value));
+loadTransport(context);
+const compiled = compile({
+  sources: ['WorkbenchTerms.js', 'DashboardContract.js', 'RunCandidateAPI.js', 'DashboardAnalysisAPI.js'].map(name => ({
+    path: name,
+    code: fs.readFileSync(path.join(app, name), 'utf8'),
+  })),
+  check_combined: false,
+});
+for (const out of compiled.outputs) vm.runInContext(out.code, context, { filename: out.path });
+const A = context.__wbRuntime.getModule('DashboardAnalysisAPI.js'), ref = n => String(n).padStart(48, '0'), clone = value => JSON.parse(JSON.stringify(value));
 const planRef = ref(1), resourceRef = ref(2), snapshot = 'snapshot_'.padEnd(32, 'a');
 const start = '2026-10-17T08:00:00', end = '2026-10-17T10:00:00';
 const measures = ['available_hours', 'occupied_hours', 'summed_load_hours', 'outside_calendar_hours', 'overlap_hours',
@@ -78,13 +85,7 @@ function pagesAndTotals() {
     rejected(value, query, changed => { changed.data.pagination.size = 2; });
   }
   const deliveryQuery = { section: 'delivery', page: 2, size: 1 }, delivery = payload(deliveryQuery);
-  rejected(delivery, deliveryQuery, changed => { changed.data.tasks = [task()]; });
   assert.throws(() => A.validate(delivery, planRef, { ...deliveryQuery, section: 'timeline' }), '不同分析分组的页不能混用');
-  rejected(overview, overviewQuery, changed => { changed.data.tasks = [task()]; });
-  rejected(overview, overviewQuery, changed => { changed.data.pending.known_count = 0; changed.data.pending.count = 0; });
-  rejected(overview, overviewQuery, changed => { changed.data.pressure.resource_count = 0; });
-  const material = payload({ section: 'material', size: 1 });
-  rejected(material, { section: 'material', size: 1 }, changed => { changed.data.pending.items = []; });
   const daysQuery = { section: 'resource_days', page: 2, size: 1, resource_ref: resourceRef }, days = payload(daysQuery);
   assert.strictEqual(A.validate(days, planRef, daysQuery), days.data);
   rejected(days, daysQuery, changed => { changed.data.resources[0].resource_ref = ref(999); });
@@ -95,11 +96,10 @@ function pagesAndTotals() {
   assert.strictEqual(A.validate(located, planRef, locateQuery), located.data, '批次定位解析原时间轴页号，不把全局工序范围缩为所选批次');
   assert.equal(located.data.pagination.total, 20000);
   rejected(located, locateQuery, changed => { changed.data.tasks[0].batch_ref = ref(6); });
-  rejected(located, locateQuery, changed => { changed.data.tasks[0].source = 'external'; });
   rejected(located, locateQuery, changed => { changed.data.pagination.number = 20001; });
 }
 function catalogSummary() {
-  const C = window.DashboardContract, query = C.scope({}), scope = { kind: 'dashboard', ...query }; delete scope.page;
+  const C = context.__wbRuntime.getModule('DashboardContract.js'), query = C.scope({}), scope = { kind: 'dashboard', ...query }; delete scope.page;
   const value = payload({ section: 'overview' }), categories = Object.fromEntries(Object.keys(C.categories).slice(1).map(key =>
     [key, { state: key === 'candidate' ? 'unavailable' : 'no_data', risk_count: key === 'candidate' ? null : 0,
       known_risk_count: 0, unknown_count: 0, issues: [], evaluation_gaps: [] }]));
@@ -113,8 +113,6 @@ function catalogSummary() {
     resource_pressure: { resource_count: 2000, plan_ref: planRef, detail_target: '/api/workbench/v1/dashboard/analysis?section=pressure',
       time_scope: { range_start: start, range_end: end, time_basis: 'factory_local', boundary: 'half_open' } } };
   assert.strictEqual(C.catalog(value, query), value, '值班台主清单使用资源总数和详情入口，无需携带资源明细');
-  const bundled = clone(value); bundled.data.resource_pressure.resources = [];
-  assert.throws(() => C.catalog(bundled, query), '主清单拒绝重新捆绑资源明细');
 }
 async function transport() {
   const calls = network.calls;

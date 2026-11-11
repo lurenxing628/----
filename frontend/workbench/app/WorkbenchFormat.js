@@ -1,113 +1,127 @@
-(function () {
-  'use strict';
-  const unknown = '未知';
-  const empty = value => value === null || value === undefined || value === '';
-  const pad = value => String(value).padStart(2, '0');
-  const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
-  const HOURS_UNIT = ' 小时';
-  function invalid(kind) { throw new TypeError('无法显示：' + kind + '格式不正确。'); }
-  function parts(value, dateOnly) {
-    if (typeof value !== 'string') return invalid('日期时间');
-    const match = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?$/.exec(value);
-    if (!match || match[0] !== value || !dateOnly && match[4] === undefined) return invalid('日期时间');
-    const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
-    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-    const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1] ||
-        Number(match[4] || 0) > 23 || Number(match[5] || 0) > 59 || Number(match[6] || 0) > 59) return invalid('日期时间');
-    return match;
+const unknown = '未知';
+const empty = value => value === null || value === undefined || value === '';
+const pad = value => String(value).padStart(2, '0');
+const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
+const HOURS_UNIT = ' 小时';
+
+function invalid(kind) { throw new TypeError('无法显示：' + kind + '格式不正确。'); }
+
+function parts(value, dateOnly) {
+  if (typeof value !== 'string') return invalid('日期时间');
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?$/.exec(value);
+  if (!match || match[0] !== value || !dateOnly && match[4] === undefined) return invalid('日期时间');
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1] ||
+      Number(match[4] || 0) > 23 || Number(match[5] || 0) > 59 || Number(match[6] || 0) > 59) return invalid('日期时间');
+  return match;
+}
+
+function dateTime(value, { seconds = false, fractions = false } = {}) {
+  if (empty(value)) return unknown;
+  if (typeof seconds !== 'boolean' || typeof fractions !== 'boolean') return invalid('日期时间选项');
+  const p = parts(value, false);
+  const fraction = fractions && p[7] && /[1-9]/.test(p[7]) ? '.' + p[7] : '';
+  return p[1] + '-' + p[2] + '-' + p[3] + ' ' + p[4] + ':' + p[5]
+    + (seconds || fraction ? ':' + (p[6] || '00') + fraction : '');
+}
+
+// Compact labels only change display. Query values retain their seconds and fractions.
+function compactDateTime(value, { year = true } = {}) {
+  if (typeof year !== 'boolean') return invalid('日期时间选项');
+  const text = dateTime(value);
+  return empty(value) || year ? text : text.slice(5);
+}
+
+function compactRange(start, end) {
+  const first = dateTime(start), last = dateTime(end);
+  if (empty(start) || empty(end)) return first + ' 至 ' + last;
+  const sameYear = first.slice(0, 4) === last.slice(0, 4);
+  const sameDate = first.slice(0, 10) === last.slice(0, 10);
+  return (sameYear ? first.slice(5) : first) + ' 至 ' +
+    (sameDate ? last.slice(11) : sameYear ? last.slice(5) : last);
+}
+
+function date(value) {
+  if (empty(value)) return unknown;
+  const p = parts(value, true);
+  return p[1] + '-' + p[2] + '-' + p[3];
+}
+
+function instant(value, { seconds = false } = {}) {
+  if (empty(value)) return unknown;
+  if (typeof value !== 'string' || typeof seconds !== 'boolean') return invalid('时刻');
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match) return invalid('时刻');
+  parts(match[1] + 'T' + match[2] + (match[3] || ''), false);
+  if (match[4] !== 'Z' && (Number(match[4].slice(1, 3)) > 23 || Number(match[4].slice(4)) > 59)) return invalid('时刻');
+  const point = new Date(value);
+  if (!Number.isFinite(point.getTime())) return invalid('时刻');
+  // 时刻一律按北京时间（UTC+8）显示，不跟随浏览器时区：同一条记录在任何机器上读到的都是同一个时间。
+  const beijing = new Date(point.getTime() + BEIJING_OFFSET_MS);
+  const year = beijing.getUTCFullYear();
+  if (year < 1 || year > 9999) return invalid('时刻');
+  return String(year).padStart(4, '0') + '-' + pad(beijing.getUTCMonth() + 1) + '-' + pad(beijing.getUTCDate()) + ' ' +
+    pad(beijing.getUTCHours()) + ':' + pad(beijing.getUTCMinutes()) + (seconds ? ':' + pad(beijing.getUTCSeconds()) : '');
+}
+
+// digits: fixed decimals (default 1). trim: drop trailing zeros so "up to `digits` decimals" is possible for
+// values whose stored precision matters (entered hours, cumulative totals, candidate comparisons).
+function numberOptions(options, kind) {
+  const source = options === undefined ? {} : typeof options === 'number' ? { digits: options } : options;
+  if (source === null || typeof source !== 'object') return invalid(kind);
+  const { digits = 1, trim = false, exact = false } = source;
+  if (!Number.isInteger(digits) || digits < 0 || digits > 20 || typeof trim !== 'boolean' || typeof exact !== 'boolean') return invalid(kind);
+  return { digits, trim, exact };
+}
+
+function signedZero(value, digits) {
+  // A value that rounds to zero must not read as "-0.0": nothing was reduced.
+  return Number(value.toFixed(digits)) === 0 ? 0 : value;
+}
+
+const formatters = new Map();
+function formatNumber(value, { digits, trim, exact }, percent = false) {
+  if (exact && !percent) return String(value === 0 ? 0 : value);
+  const key = (percent ? 'percent:' : 'number:') + digits + ':' + trim;
+  let formatter = formatters.get(key);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat('zh-CN', { ...(percent ? { style: 'percent' } : {}), minimumFractionDigits: trim ? 0 : digits, maximumFractionDigits: digits });
+    formatters.set(key, formatter);
   }
-  function dateTime(value, { seconds = false, fractions = false } = {}) {
-    if (empty(value)) return unknown;
-    if (typeof seconds !== 'boolean' || typeof fractions !== 'boolean') return invalid('日期时间选项');
-    const p = parts(value, false);
-    const fraction = fractions && p[7] && /[1-9]/.test(p[7]) ? '.' + p[7] : '';
-    return p[1] + '-' + p[2] + '-' + p[3] + ' ' + p[4] + ':' + p[5]
-      + (seconds || fraction ? ':' + (p[6] || '00') + fraction : '');
-  }
-  // Compact labels only change display. Query values retain their seconds and fractions.
-  function compactDateTime(value, { year = true } = {}) {
-    if (typeof year !== 'boolean') return invalid('日期时间选项');
-    const text = dateTime(value);
-    return empty(value) || year ? text : text.slice(5);
-  }
-  function compactRange(start, end) {
-    const first = dateTime(start), last = dateTime(end);
-    if (empty(start) || empty(end)) return first + ' 至 ' + last;
-    const sameYear = first.slice(0, 4) === last.slice(0, 4);
-    const sameDate = first.slice(0, 10) === last.slice(0, 10);
-    return (sameYear ? first.slice(5) : first) + ' 至 ' +
-      (sameDate ? last.slice(11) : sameYear ? last.slice(5) : last);
-  }
-  function date(value) {
-    if (empty(value)) return unknown;
-    const p = parts(value, true);
-    return p[1] + '-' + p[2] + '-' + p[3];
-  }
-  function instant(value, { seconds = false } = {}) {
-    if (empty(value)) return unknown;
-    if (typeof value !== 'string' || typeof seconds !== 'boolean') return invalid('时刻');
-    const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/.exec(value);
-    if (!match) return invalid('时刻');
-    parts(match[1] + 'T' + match[2] + (match[3] || ''), false);
-    if (match[4] !== 'Z' && (Number(match[4].slice(1, 3)) > 23 || Number(match[4].slice(4)) > 59)) return invalid('时刻');
-    const point = new Date(value);
-    if (!Number.isFinite(point.getTime())) return invalid('时刻');
-    // 时刻一律按北京时间（UTC+8）显示，不跟随浏览器时区：同一条记录在任何机器上读到的都是同一个时间。
-    const beijing = new Date(point.getTime() + BEIJING_OFFSET_MS);
-    const year = beijing.getUTCFullYear();
-    if (year < 1 || year > 9999) return invalid('时刻');
-    return String(year).padStart(4, '0') + '-' + pad(beijing.getUTCMonth() + 1) + '-' + pad(beijing.getUTCDate()) + ' ' +
-      pad(beijing.getUTCHours()) + ':' + pad(beijing.getUTCMinutes()) + (seconds ? ':' + pad(beijing.getUTCSeconds()) : '');
-  }
-  // digits: fixed decimals (default 1). trim: drop trailing zeros so "up to `digits` decimals" is possible for
-  // values whose stored precision matters (entered hours, cumulative totals, candidate comparisons).
-  function numberOptions(options, kind) {
-    const source = options === undefined ? {} : typeof options === 'number' ? { digits: options } : options;
-    if (source === null || typeof source !== 'object') return invalid(kind);
-    const { digits = 1, trim = false, exact = false } = source;
-    if (!Number.isInteger(digits) || digits < 0 || digits > 20 || typeof trim !== 'boolean' || typeof exact !== 'boolean') return invalid(kind);
-    return { digits, trim, exact };
-  }
-  function signedZero(value, digits) {
-    // A value that rounds to zero must not read as "-0.0": nothing was reduced.
-    return Number(value.toFixed(digits)) === 0 ? 0 : value;
-  }
-  const formatters = new Map();
-  function formatNumber(value, { digits, trim, exact }, percent = false) {
-    if (exact && !percent) return String(value === 0 ? 0 : value);
-    const key = (percent ? 'percent:' : 'number:') + digits + ':' + trim;
-    let formatter = formatters.get(key);
-    if (!formatter) {
-      formatter = new Intl.NumberFormat('zh-CN', { ...(percent ? { style: 'percent' } : {}), minimumFractionDigits: trim ? 0 : digits, maximumFractionDigits: digits });
-      formatters.set(key, formatter);
-    }
-    return formatter.format(signedZero(value, digits + (percent ? 2 : 0)));
-  }
-  function number(value, options) {
-    if (empty(value)) return unknown;
-    const parsed = numberOptions(options, '数值');
-    if (typeof value !== 'number' || !Number.isFinite(value)) return invalid('数值');
-    return formatNumber(value, parsed);
-  }
-  function integerText(value) {
-    if (empty(value)) return unknown;
-    if (typeof value !== 'string' || !/^(?:0|[1-9]\d*)$/.test(value)) return invalid('整数字符串');
-    const first = value.length % 3 || 3, groups = [value.slice(0, first)];
-    for (let index = first; index < value.length; index += 3) groups.push(value.slice(index, index + 3));
-    return groups.join(',');
-  }
-  function percent(ratio, options) {
-    if (empty(ratio)) return unknown;
-    const parsed = numberOptions(options, '百分比');
-    if (typeof ratio !== 'number' || !Number.isFinite(ratio)) return invalid('百分比');
-    return formatNumber(ratio, parsed, true);
-  }
-  function hours(value, options) {
-    if (empty(value)) return unknown;
-    const parsed = numberOptions(options, '工时');
-    if (typeof value !== 'number' || !Number.isFinite(value)) return invalid('工时');
-    return formatNumber(value, parsed) + HOURS_UNIT;
-  }
-  window.WorkbenchFormat = Object.freeze({ dateTime, compactDateTime, compactRange, date, instant, number, integerText, percent, hours });
-})();
+  return formatter.format(signedZero(value, digits + (percent ? 2 : 0)));
+}
+
+function number(value, options) {
+  if (empty(value)) return unknown;
+  const parsed = numberOptions(options, '数值');
+  if (typeof value !== 'number' || !Number.isFinite(value)) return invalid('数值');
+  return formatNumber(value, parsed);
+}
+
+function integerText(value) {
+  if (empty(value)) return unknown;
+  if (typeof value !== 'string' || !/^(?:0|[1-9]\d*)$/.test(value)) return invalid('整数字符串');
+  const first = value.length % 3 || 3, groups = [value.slice(0, first)];
+  for (let index = first; index < value.length; index += 3) groups.push(value.slice(index, index + 3));
+  return groups.join(',');
+}
+
+function percent(ratio, options) {
+  if (empty(ratio)) return unknown;
+  const parsed = numberOptions(options, '百分比');
+  if (typeof ratio !== 'number' || !Number.isFinite(ratio)) return invalid('百分比');
+  return formatNumber(ratio, parsed, true);
+}
+
+function hours(value, options) {
+  if (empty(value)) return unknown;
+  const parsed = numberOptions(options, '工时');
+  if (typeof value !== 'number' || !Number.isFinite(value)) return invalid('工时');
+  return formatNumber(value, parsed) + HOURS_UNIT;
+}
+
+const WorkbenchFormat = Object.freeze({ dateTime, compactDateTime, compactRange, date, instant, number, integerText, percent, hours });
+export { dateTime, compactDateTime, compactRange, date, instant, number, integerText, percent, hours, WorkbenchFormat };
+export default WorkbenchFormat;

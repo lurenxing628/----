@@ -1,0 +1,262 @@
+import React, { createRoot, hasVendorRuntime } from '../shared/runtime/react.js';
+import APSWorkbenchTheme from '../shared/runtime/theme.js';
+import { Ico } from '../shared/ui/icons.jsx';
+import WorkbenchNavigation from '../WorkbenchNavigation.js';
+import WorkbenchScrollShadows from '../WorkbenchScrollShadows.js';
+import ResourceControls from '../ResourceControls.jsx';
+import WorkbenchCaption from '../WorkbenchCaption.jsx';
+import APSBatchAPI from '../BatchAPI.js';
+import WorkbenchDensity from '../WorkbenchDensity.js';
+import WorkbenchGuards from '../WorkbenchGuards.js';
+import TrialContract from '../TrialContract.js';
+import WorkbenchControlStyles from '../WorkbenchControlStyles.jsx';
+import WorkbenchControls from '../WorkbenchControls.jsx';
+import WorkbenchNumberControls from '../WorkbenchNumberControls.jsx';
+import WorkbenchGuardHost from '../WorkbenchGuardHost.jsx';
+import WorkbenchPageContext from '../WorkbenchPageContext.jsx';
+import WorkbenchBoundary from '../WorkbenchBoundary.jsx';
+import WorkbenchDashboardWorkspace from '../DashboardWorkspace.jsx';
+import SystemLive from '../SystemLive.jsx';
+import ResourceLive from '../ResourceLive.jsx';
+import BatchWorkspace from '../BatchWorkspace.jsx';
+import { PlanCenterWorkspace, RunWorkspace } from '../SchedulingWorkspace.jsx';
+import ReportWorkspace from '../ReportWorkspace.jsx';
+import ReviewWorkspace from '../ReviewWorkspace.jsx';
+import CalibrationWorkspace from '../CalibrationWorkspace.jsx';
+import MasterOverviewWorkspace from '../MasterOverviewWorkspace.jsx';
+import FieldWorkspace from '../FieldWorkspace.jsx';
+import ActualGanttWorkspace from '../ActualGanttWorkspace.jsx';
+import WorkbenchTrialWorkspace from '../TrialWorkspace.jsx';
+import TrialAdoptionAction from '../TrialAdoptionAction.jsx';
+import WorkbenchTerms from '../WorkbenchTerms.js';
+
+const root = typeof document !== 'undefined' && typeof document.getElementById === 'function' ? document.getElementById('root') : null;
+let boot;
+function href(view) {
+  return WorkbenchNavigation.href(boot, view);
+}
+function WorkbenchShell({ page, theme, density, navigate, switchTab, openHelp, messages, dismissMessage, navigationError, children }) {
+  const view = page.view, active = boot.view_aliases[view] || view;
+  // The plan-center tab strip only describes the plan views; inside 排产历史 it would contradict the header and content.
+  const planTabs = ['analysis', 'gantt', 'delay'], showPlanTabs = planTabs.includes(view) && !WorkbenchNavigation.historyView(page);
+  const content = React.useRef(null);
+  React.useEffect(() => WorkbenchScrollShadows.attach(content.current), []);
+  return <div className="app-container operations-shell">
+    <a className="wb-skip-link" href="#wb-view-panel" onClick={event => {
+      // A fragment jump would push a history entry without workbench state and replay the page; focus the panel directly.
+      event.preventDefault(); const panel = document.getElementById('wb-view-panel'); if (panel) panel.focus();
+    }}>跳到主内容</a>
+    <aside className="sidebar"><div className="sidebar-header">
+      <span className="brand-tile" aria-label="APS 智能排产"><svg viewBox="0 0 24 24" width="18" height="18" fill="var(--ui-text-inverse)" aria-hidden="true">
+        <rect x="4" y="6" width="10" height="3.2" rx="1.6" /><rect x="7" y="10.4" width="12" height="3.2" rx="1.6" fillOpacity="0.92" /><rect x="4" y="14.8" width="8" height="3.2" rx="1.6" fillOpacity="0.78" />
+      </svg></span><span className="brand-word">APS 智能排产</span>
+    </div><nav className="sidebar-nav">{boot.nav_groups.map(group => <div className="nav-group" key={group.title}>
+      <div className="nav-group-title">{group.title}</div>{group.items.map(item => <a key={item.id}
+        href={href(item.id)} title={item.label} className={'nav-item' + (active === item.id ? ' active' : '')}
+        aria-current={active === item.id ? 'page' : undefined} onClick={event => {
+          if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          event.preventDefault(); navigate(item.id);
+        }}><ResourceControls.Icon name={item.icon} className="nav-ico" /><span className="nav-label">{item.label}</span></a>)}
+    </div>)}</nav></aside>
+    <div className="main-content" ref={content}><header className="top-header"><h2 className="top-title">{WorkbenchNavigation.title(boot, page)}</h2>
+      <WorkbenchCaption.Caption /><div className="header-controls">
+        <span className="wb-instance-label" title={boot.instance_label}>{boot.instance_label}</span>
+        <a className="hdr-pill wb-help-link" href={WorkbenchNavigation.helpUrl(boot, page)} onClick={event => {
+          if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          event.preventDefault(); openHelp();
+        }}>帮助</a>
+        <button type="button" className="hdr-pill" onClick={() => APSWorkbenchTheme.set(theme === 'dark' ? 'light' : 'dark')}>
+          <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>切换{theme === 'dark' ? '浅色' : '深色'}</button>
+        <button type="button" className="hdr-pill" aria-pressed={density === 'compact'}
+          onClick={() => WorkbenchDensity.set(density === 'compact' ? 'comfortable' : 'compact')}>紧凑表格</button></div>
+    </header><main className="page-content" data-wb-scroll-key="page-content">
+      {messages.length > 0 && <section className="wb-server-messages" aria-label="操作结果">{messages.map((value, index) =>
+        <div className="wb-server-message" data-kind={value.category} key={index} role={['error', 'danger', 'warning'].includes(value.category) ? 'alert' : 'status'}>
+          <span className="wb-server-badge">{{error: '失败', danger: '失败', warning: '注意', success: '成功'}[value.category] || '提示'}</span>
+          <p>{value.message}</p><button type="button" aria-label="关闭消息" title="关闭消息" onClick={() => dismissMessage(index)}><Ico name="x" /></button>
+        </div>)}</section>}
+      {navigationError && <p className="wb-navigation-error" role="alert">{navigationError}</p>}
+      {showPlanTabs && <div className="wb-view-tabs wb-surface plan-view-tabs" role="tablist" aria-label="计划中心视图" onKeyDown={event => {
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
+        const tabs = Array.from(event.currentTarget.querySelectorAll('[role="tab"]')), index = tabs.indexOf(document.activeElement);
+        const target = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+          : event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : -1;
+        if (target >= 0) { event.preventDefault(); tabs[target].focus(); }
+      }}>{planTabs.map(id => <button type="button" key={id} role="tab" id={'wb-view-tab-' + id}
+        aria-controls="wb-view-panel" aria-selected={id === view} tabIndex={id === view ? 0 : -1}
+        onClick={() => switchTab(id)}>{boot.titles[id]}</button>)}</div>}
+      <div id="wb-view-panel" className="wb-surface wb-surface-body" tabIndex={-1} role={showPlanTabs ? 'tabpanel' : undefined}
+        aria-labelledby={showPlanTabs ? 'wb-view-tab-' + view : undefined}>{children}</div></main></div>
+  </div>;
+}
+  function App() {
+    function currentPage() {
+      try { return WorkbenchNavigation.read(boot); }
+      catch (error) { return { view: boot.view, context: {}, key: 0, error: error.message }; }
+    }
+    const [page, setPage] = React.useState(currentPage);
+    const [messages, setMessages] = React.useState(boot.messages);
+    const [navigationError, setNavigationError] = React.useState('');
+    const activePage = React.useRef(page), restoring = React.useRef(true), historyGuard = React.useRef(null), scrollMemory = React.useRef(null);
+    // History cannot replace the entry that the browser just left. Keep the newest page snapshot by history key so an
+    // immediate Back/Forward inside the 200 ms throttle window can apply it when that exact entry becomes current again.
+    const pageSnapshots = React.useRef(new Map());
+    activePage.current = page;
+    const { view, context } = page;
+    const batchAdapter = React.useMemo(() => APSBatchAPI.create(), []);
+    const [preference, setPreference] = React.useState(() => APSWorkbenchTheme.get());
+    const [density, setDensity] = React.useState(() => WorkbenchDensity.get());
+    React.useEffect(() => {
+      root.setAttribute('data-workbench-boot', 'ready');
+      window.dispatchEvent(new Event('aps-workbench-ready'));
+    }, []);
+    React.useEffect(() => APSWorkbenchTheme.subscribe(setPreference), []);
+    React.useEffect(() => WorkbenchDensity.subscribe(setDensity), []);
+    React.useEffect(() => {
+      const previous = history.scrollRestoration; history.scrollRestoration = 'manual';
+      const save = () => {
+        if (activePage.current.error || historyGuard.current && historyGuard.current.busy()) return;
+        const captured = pageSnapshots.current.get(activePage.current.key) || {};
+        try {
+          if (restoring.current) {
+            // Persist selections even when pagehide interrupts viewport restoration.
+            // Its in-progress scroll must not replace the entry's saved position.
+            if (captured.context === undefined) return;
+            WorkbenchNavigation.replaceContext(boot, activePage.current, captured.context);
+          } else WorkbenchNavigation.remember(boot, activePage.current, captured.scroll, captured.context);
+          if (historyGuard.current) historyGuard.current.sync();
+        }
+        catch (error) { setNavigationError(error.message); }
+      };
+      const memory = WorkbenchNavigation.scrollMemory(save); scrollMemory.current = memory;
+      const scroll = () => {
+        if (restoring.current || activePage.current.error || historyGuard.current && historyGuard.current.busy()) return;
+        const key = activePage.current.key;
+        pageSnapshots.current.set(key, { ...pageSnapshots.current.get(key), scroll: WorkbenchNavigation.captureScroll() }); memory.schedule();
+      };
+      const restore = () => { restoring.current = true; memory.cancel(); setMessages([]); setNavigationError('');
+        let next = currentPage();
+        const captured = !next.error && pageSnapshots.current.get(next.key);
+        if (captured) {
+          try { WorkbenchNavigation.remember(boot, next, captured.scroll, captured.context); next = history.state.workbench; }
+          catch (error) { setNavigationError(error.message); }
+        }
+        activePage.current = next; setPage(next); };
+      if (!activePage.current.error) historyGuard.current = WorkbenchNavigation.guardHistory(boot, {
+        hasDirty: () => WorkbenchGuards.hasDirty(), confirmLeave: () => WorkbenchGuards.confirmLeave(),
+        onRestore: restore, onError: error => setNavigationError(error.message),
+      });
+      window.addEventListener('pagehide', memory.flush);
+      document.addEventListener('scroll', scroll, true);
+      return () => {
+        memory.cancel(); scrollMemory.current = null; history.scrollRestoration = previous;
+        if (historyGuard.current) historyGuard.current.dispose(); historyGuard.current = null;
+        window.removeEventListener('pagehide', memory.flush);
+        document.removeEventListener('scroll', scroll, true);
+      };
+    }, []);
+    React.useEffect(() => {
+      restoring.current = true;
+      if (page.error) { restoring.current = false; return undefined; }
+      return WorkbenchNavigation.restore(page, () => {
+        restoring.current = false;
+        if (scrollMemory.current && pageSnapshots.current.has(page.key)) scrollMemory.current.schedule();
+      });
+    }, [page.view, page.key, page.error]);
+    React.useEffect(() => { document.title = WorkbenchNavigation.title(boot, page) + ' · APS 智能排产'; }, [view, page.key]);
+    const navigate = async (target, nextContext, preferSaved = false) => {
+      if (target === view && nextContext === undefined && !page.error) return;
+      if (historyGuard.current && historyGuard.current.busy()) return;
+      const origin = activePage.current;
+      try {
+        if (page.error) { await WorkbenchGuards.leaveExternal(() => { if (activePage.current === origin) location.assign(href(target)); }); return; }
+        if (!await WorkbenchGuards.confirmLeave() || activePage.current !== origin) return;
+        // navigate() remembers the current page itself; a pending throttled write would only repeat it.
+        if (scrollMemory.current) scrollMemory.current.cancel();
+        const next = WorkbenchNavigation.navigate(boot, page, target, nextContext, preferSaved, pageSnapshots.current.get(page.key));
+        // pushState truncates the Forward branch. Drop snapshots whose numeric keys can now be reused by the new branch.
+        for (const key of pageSnapshots.current.keys()) if (key >= next.key) pageSnapshots.current.delete(key);
+        if (historyGuard.current) historyGuard.current.sync();
+        restoring.current = true; activePage.current = next; setMessages([]); setNavigationError(''); setPage(next);
+      } catch (error) { setNavigationError(error.message); }
+    };
+    const switchTab = target => {
+      if (target === view) return;
+      try { navigate(target, (pageSnapshots.current.get(page.key) || {}).context || context); }
+      catch (error) { setNavigationError(error.message); }
+    };
+    const openHelp = async () => {
+      const origin = activePage.current;
+      try { await WorkbenchGuards.leaveExternal(() => { if (activePage.current === origin) location.assign(WorkbenchNavigation.helpUrl(boot, origin)); }); }
+      catch (error) { setNavigationError(error.message); }
+    };
+    const rememberTrialTarget = nextContext => {
+      TrialContract.target(nextContext);
+      const entry = currentPage();
+      if (entry.view !== 'trial' || entry.key !== page.key) throw new Error('当前页面已变化，没有保存这次选择。请刷新后重新选择。');
+      const captured = pageSnapshots.current.get(entry.key) || {};
+      pageSnapshots.current.set(entry.key, { ...captured, context: nextContext });
+      if (scrollMemory.current) scrollMemory.current.cancel();
+      if (restoring.current) WorkbenchNavigation.replaceContext(boot, entry, nextContext);
+      else WorkbenchNavigation.remember(boot, entry, captured.scroll, nextContext);
+      if (historyGuard.current) historyGuard.current.sync();
+    };
+    const rememberPage = React.useCallback(nextContext => {
+      if (activePage.current.view !== view || activePage.current.key !== page.key) return;
+      if (historyGuard.current && historyGuard.current.busy()) return;
+      try {
+        const key = activePage.current.key;
+        pageSnapshots.current.set(key, { ...pageSnapshots.current.get(key), context: nextContext });
+        if (scrollMemory.current) scrollMemory.current.schedule();
+      }
+      catch (error) { setNavigationError(error.message); }
+    }, [view, page.key]);
+    return <><WorkbenchControlStyles /><WorkbenchControls /><WorkbenchNumberControls /><WorkbenchGuardHost />
+    <WorkbenchPageContext.Provider key={view + ':' + page.key} remember={rememberPage} navigate={navigate}>
+    <WorkbenchCaption.Provider key={view + ':' + page.key}>
+    <WorkbenchShell page={page} theme={preference.theme} density={density.density} navigate={navigate} switchTab={switchTab} openHelp={openHelp} messages={messages} navigationError={navigationError}
+      dismissMessage={index => setMessages(items => items.filter((_value, current) => current !== index))}>
+      {preference.error && <p role="alert" className="sm-error">{preference.error}</p>}
+      {density.error && <p role="alert" className="sm-error">{density.error}</p>}
+      <WorkbenchBoundary key={view + ':' + page.key}>
+      {page.error ? <p role="alert" className="sm-error">{page.error}</p>
+      : view === 'dashboard' ? <WorkbenchDashboardWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
+      : view === 'system' ? <SystemLive boot={boot} theme={preference.theme} initialContext={context} /> : view === 'process' ? <ResourceLive key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
+      : view === 'batches' ? <BatchWorkspace key={view + ':' + page.key} adapter={batchAdapter} onNav={navigate} initialContext={context} />
+      : view === 'analysis' || view === 'gantt' || view === 'delay' ? <PlanCenterWorkspace key={view + ':' + page.key} view={view} onNavigate={navigate} initialContext={context} />
+      : view === 'reports' ? <ReportWorkspace key={view + ':' + page.key} onNav={navigate} initialContext={context} />
+      : view === 'review' ? <ReviewWorkspace key={view + ':' + page.key} onNav={navigate} initialContext={context} />
+      : view === 'calib' ? <CalibrationWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
+      : view === 'basedata' ? <MasterOverviewWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
+      : view === 'field' ? <FieldWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
+      : view === 'fieldgantt' ? <ActualGanttWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
+      : view === 'run' ? <RunWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
+      : view === 'trial' ? <WorkbenchTrialWorkspace key={view + ':' + page.key} onNavigate={navigate} initialTarget={context} onTargetChange={rememberTrialTarget}
+        renderAdoption={props => <TrialAdoptionAction {...props} />} />
+      : <section className="wb-page-panel" aria-label={boot.titles[view] || '工作区不存在'}>
+        <h2>{boot.titles[view] || '工作区不存在'}</h2><p role="status">{WorkbenchTerms.outcomes.unavailable}</p>
+      </section>}
+      </WorkbenchBoundary>
+    </WorkbenchShell></WorkbenchCaption.Provider></WorkbenchPageContext.Provider></>;
+  }
+  function mountWorkbench() {
+    if (!root) return;
+    const fail = message => {
+      root.setAttribute('data-workbench-boot', 'failed');
+      const alert = document.createElement('p'); alert.setAttribute('role', 'alert'); alert.textContent = message;
+      const retry = document.createElement('a'); retry.href = location.href; retry.textContent = '重新加载'; root.replaceChildren(alert, retry);
+    };
+    try {
+      boot = JSON.parse(document.getElementById('workbench-boot').textContent);
+      if (!boot || typeof boot !== 'object' || Array.isArray(boot)) throw new Error('Invalid boot object');
+    }
+    catch (_) { fail('工作台启动信息无法读取，请重新打开本机应用。'); return; }
+    if (boot.schema_version !== 1 || !hasVendorRuntime) {
+      fail('工作台资源未完整加载，请检查本机安装文件。'); return;
+    }
+    createRoot(root).render(<App />);
+  }
+  mountWorkbench();
+
+export { App, WorkbenchShell };
+export default App;

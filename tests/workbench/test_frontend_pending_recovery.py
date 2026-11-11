@@ -56,14 +56,12 @@ def test_pending_store_cas_and_storage_failure_serialization():
 
         const root = process.cwd();
         const appDir = path.join(root, 'frontend/workbench/app');
-        const babelPath = path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js');
         const files = [
-          'WorkbenchTerms.js', 'transport.js', 'resource-contract.js', 'resource-api.js',
+          'WorkbenchTerms.js', 'shared/session/pending-store.js', 'shared/network/transport.js', 'resource-contract.js', 'resource-api.js',
           'RunAdoptionAPI.js', 'RunJobAPI.js', 'TrialContract.js', 'TrialAPI.js',
           'SystemRestoreStatus.js', 'SystemMaintenanceAPI.js'
         ];
         const compiled = compile({
-          babel_path: babelPath,
           sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(appDir, name), 'utf8') })),
           check_combined: false,
         });
@@ -98,7 +96,9 @@ def test_pending_store_cas_and_storage_failure_serialization():
         w.window = w;
         for (const out of compiled.outputs) vm.runInContext(out.code, w, { filename: out.path });
 
-        const T = w.APSWorkbenchTransport;
+        const T = w.__wbRuntime.getModule('shared/session/pending-store.js');
+        const APSResourceAPI = w.__wbRuntime.getModule('resource-api.js');
+        const RunJobAPI = w.__wbRuntime.getModule('RunJobAPI.js');
         const ref = n => n.toString(16).padStart(48, '0');
         const dataContext = JSON.stringify({ database_scope: 'db', successful_restores: [] });
 
@@ -135,7 +135,7 @@ def test_pending_store_cas_and_storage_failure_serialization():
         // 2. APSResourceAPI savePending / clearPending CAS serialization.
         {
           w.sessionStorage = createStorage();
-          const resApi = w.APSResourceAPI.create('batches');
+          const resApi = APSResourceAPI.create('batches');
           const intent1 = { kind: 'batch', action: 'create', ref: null, request_key: 'resource-' + '1'.repeat(48), input: { business_code: 'B1' } };
           const intent2 = { kind: 'batch', action: 'create', ref: null, request_key: 'resource-' + '2'.repeat(48), input: { business_code: 'B2' } };
           resApi.savePending(intent1);
@@ -153,7 +153,7 @@ def test_pending_store_cas_and_storage_failure_serialization():
         {
           const runStore = createStorage();
           w.localStorage = runStore;
-          const p = w.RunJobAPI.pending;
+          const p = RunJobAPI.pending;
           const inputRef = 'i'.repeat(32);
           const i1 = p.begin(inputRef, dataContext);
           assert.throws(() => p.begin(inputRef, dataContext), /上次排产还没确认结果/);
@@ -168,10 +168,10 @@ def test_pending_store_cas_and_storage_failure_serialization():
           const ib = p.attach(p.begin(inputRef, dataContext), ref(12));
           p.finish(ib, 'found');
           assert.equal(p.recent().intent.request_key, ib.request_key);
-          const recentWrites = runStore.data.get(w.RunJobAPI.RECENT_KEY);
+          const recentWrites = runStore.data.get(RunJobAPI.RECENT_KEY);
           p.finish(attached, 'found');
           p.finish(ib, 'context_replaced');
-          assert.equal(runStore.data.get(w.RunJobAPI.RECENT_KEY), recentWrites, 'Repeated or late finish must not rewrite RECENT');
+          assert.equal(runStore.data.get(RunJobAPI.RECENT_KEY), recentWrites, 'Repeated or late finish must not rewrite RECENT');
           assert.equal(p.recent().intent.request_key, ib.request_key, 'Stale finish(a) must not overwrite recent().intent (b)');
           assert.equal(p.recent().intent.run_ref, ref(12));
           assert.equal(p.recent().resolution, 'found');
@@ -184,19 +184,19 @@ def test_pending_store_cas_and_storage_failure_serialization():
           assert.ok(attachErr && attachErr.saved && attachErr.saved.run_ref === ref(20), 'F03: attach failure must attach error.saved with run_ref');
           runStore.failSet = null;
           assert.throws(() => p.read(), err => err.saved && err.saved.run_ref === ref(20), 'F03: read() never writes; the unflushed attach stays reported');
-          const recoveredAttach = (await T.exclusive(w.RunJobAPI.PENDING_KEY, { wait: true }, () => p.flush())).value;
+          const recoveredAttach = (await T.exclusive(RunJobAPI.PENDING_KEY, { wait: true }, () => p.flush())).value;
           assert.equal(recoveredAttach.request_key, i2.request_key);
           assert.equal(recoveredAttach.run_ref, ref(20), 'F03: a locked flush() after storage recovery writes and returns attached run_ref');
-          assert.equal(JSON.parse(runStore.data.get(w.RunJobAPI.PENDING_KEY)).run_ref, ref(20));
+          assert.equal(JSON.parse(runStore.data.get(RunJobAPI.PENDING_KEY)).run_ref, ref(20));
 
           // F04: reject(intent) when removeItem fails records authoritative null and never resurrects after storage recovery.
           runStore.failRemove = new Error('removeItem blocked');
           assert.throws(() => p.reject(recoveredAttach), /本机无法更新上次操作记录/);
           assert.throws(() => p.read(), /本机无法更新上次操作记录/);
           runStore.failRemove = null;
-          await T.exclusive(w.RunJobAPI.PENDING_KEY, { wait: true }, () => p.flush());
+          await T.exclusive(RunJobAPI.PENDING_KEY, { wait: true }, () => p.flush());
           assert.equal(p.read(), null, 'F04: rejected RunJobAPI intent must never resurrect on read() after storage recovery');
-          assert.equal(runStore.data.has(w.RunJobAPI.PENDING_KEY), false);
+          assert.equal(runStore.data.has(RunJobAPI.PENDING_KEY), false);
         }
 
         console.log(JSON.stringify({ ok: true }));
@@ -217,10 +217,12 @@ def test_trial_session_terminal_state_survives_remount_and_unmount():
 
         const root = process.cwd();
         const appDir = path.join(root, 'frontend/workbench/app');
-        const babelPath = path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js');
-        const files = ['WorkbenchTerms.js', 'transport.js', 'TrialContract.js', 'TrialAPI.js', 'TrialSession.js'];
+        const files = [
+          'WorkbenchTerms.js', 'shared/session/pending-store.js', 'shared/network/transport.js',
+          'resource-contract.js', 'shared/session/command-session.js',
+          'TrialContract.js', 'TrialAPI.js', 'TrialSession.js'
+        ];
         const compiled = compile({
-          babel_path: babelPath,
           sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(appDir, name), 'utf8') })),
           check_combined: false,
         });
@@ -266,26 +268,37 @@ def test_trial_session_terminal_state_survives_remount_and_unmount():
           };
         }
 
-        let seq = 1;
+        let seq = 1, lookups = 0, cmdHandler = null;
+        let lookupHandler = async () => ({ state: 'not_observed', receipt: null, may_be_in_flight: true, resolution: 'unresolved' });
+        const listeners = new Map();
         const w = vm.createContext({
           console, URL, URLSearchParams, AbortController, Set, Map, WeakMap, WeakSet, Error, TypeError, DOMException,
           Math, Number, String, Boolean, Array, Object, JSON, RegExp, Promise, Date, FormData: class {},
+          CustomEvent: class CustomEvent { constructor(type, init) { this.type = type; this.detail = init && init.detail; } },
           setTimeout, clearTimeout,
           crypto: { getRandomValues: b => { b.fill(seq++); return b; } },
           location: new URL('http://127.0.0.1:8080/workbench/trial'),
           localStorage: createStorage(),
           navigator: { locks: createLockManager() },
-          addEventListener() {}, removeEventListener() {},
-          APSResourceSession: { useQuery: () => ({ loading: false }) },
+          addEventListener(type, fn) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(fn); },
+          removeEventListener(type, fn) { if (listeners.has(type)) listeners.get(type).delete(fn); },
+          dispatchEvent(event) { for (const fn of listeners.get(event.type) || []) fn(event); return true; },
+          __wbStubs: {
+            'shared/session/query.js': { useQuery: () => ({ loading: false }) },
+            'TrialAPI.js': {
+              command: async (intent, token, key) => cmdHandler(intent, token, key),
+              lookup: async key => { lookups++; return lookupHandler(key); },
+            },
+          },
         });
         w.window = w;
         for (const out of compiled.outputs) vm.runInContext(out.code, w, { filename: out.path });
 
-        let lookups = 0, cmdHandler = null;
-        w.TrialAPI.command = async (intent, token, key) => cmdHandler(intent, token, key);
-        w.TrialAPI.lookup = async () => { lookups++; return { state: 'not_observed', receipt: null }; };
+        const T = w.__wbRuntime.getModule('shared/network/transport.js');
+        const TrialAPI = w.__wbRuntime.getModule('TrialAPI.js');
+        const TrialSession = w.__wbRuntime.getModule('TrialSession.js');
 
-        const rejectedErr = w.APSWorkbenchTransport.failure({
+        const rejectedErr = T.failure({
           ok: false,
           committed: false,
           error: { code: 'stale_write', message: '草稿已变化', fields: [], retryable: false, request_ref: '1'.repeat(32) },
@@ -299,20 +312,20 @@ def test_trial_session_terminal_state_survives_remount_and_unmount():
         cmdHandler = async () => { throw rejectedErr; };
 
         const host1 = createHost(w);
-        const render1 = () => host1.render(() => w.TrialSession.useCommands(() => {}));
+        const render1 = () => host1.render(() => TrialSession.useCommands(() => {}));
         render1(); host1.flush(); await tick();
         assert.equal(await render1().execute({ action: 'save' }, 'tok'), false);
         const state1 = render1();
         assert.ok(state1.key);
         assert.equal(state1.error.message, cleared);
         assert.equal(state1.note, '这次没有写入，但本机操作记录还没清掉。请点「查询结果」重试清理。');
-        assert.throws(() => w.TrialAPI.pending(), err => err.saved === null && err.message === cleared);
-        assert.equal(w.localStorage.getItem(w.TrialAPI.PENDING_KEY), state1.key, 'The disk keeps the key until the clearance is written');
+        assert.throws(() => TrialAPI.pending(), err => err.saved === null && err.message === cleared);
+        assert.equal(w.localStorage.getItem(TrialAPI.PENDING_KEY), state1.key, 'The disk keeps the key until the clearance is written');
         host1.unmount();
 
         // Remount while failRemove is still active: restore retries the registered clearance under the lock, it still fails, 0 lookups.
         const host2 = createHost(w);
-        const render2 = () => host2.render(() => w.TrialSession.useCommands(() => {}));
+        const render2 = () => host2.render(() => TrialSession.useCommands(() => {}));
         render2(); host2.flush(); await tick();
         let state2 = render2();
         assert.equal(state2.key, null, 'A settled key is not shown as an unconfirmed submission');
@@ -328,7 +341,7 @@ def test_trial_session_terminal_state_survives_remount_and_unmount():
         state2 = render2();
         assert.equal(state2.key, null);
         assert.equal(state2.error, null);
-        assert.equal(w.localStorage.getItem(w.TrialAPI.PENDING_KEY), null);
+        assert.equal(w.localStorage.getItem(TrialAPI.PENDING_KEY), null);
         assert.equal(lookups, 0);
         host2.unmount();
 
@@ -337,15 +350,15 @@ def test_trial_session_terminal_state_survives_remount_and_unmount():
         let resolveCmd;
         cmdHandler = () => new Promise(res => { resolveCmd = res; });
         const host3 = createHost(w);
-        const render3 = () => host3.render(() => w.TrialSession.useCommands(() => {}));
+        const render3 = () => host3.render(() => TrialSession.useCommands(() => {}));
         render3(); host3.flush();
         const execPromise = render3().execute({ action: 'save' }, 'tok');
         await tick();
-        assert.ok(w.localStorage.getItem(w.TrialAPI.PENDING_KEY), 'Key reserved while in flight');
+        assert.ok(w.localStorage.getItem(TrialAPI.PENDING_KEY), 'Key reserved while in flight');
         host3.unmount();
         resolveCmd({ data: { scenario_ref: 's'.repeat(48) } });
         await execPromise;
-        assert.equal(w.localStorage.getItem(w.TrialAPI.PENDING_KEY), null, 'Confirmed command must clear pending key even if component unmounted');
+        assert.equal(w.localStorage.getItem(TrialAPI.PENDING_KEY), null, 'Confirmed command must clear pending key even if component unmounted');
 
         // 3. The cross-page lock is held across the command: while `a` is in flight another session reserves nothing.
         //    `a`'s late receipt clears only its own key; then `b` submits, and `b`'s failed clear survives a remount.
@@ -354,41 +367,41 @@ def test_trial_session_terminal_state_survives_remount_and_unmount():
         let resolveCmdA;
         cmdHandler = () => new Promise(res => { resolveCmdA = res; });
         const host4 = createHost(w);
-        const render4 = () => host4.render(() => w.TrialSession.useCommands(() => {}));
+        const render4 = () => host4.render(() => TrialSession.useCommands(() => {}));
         render4(); host4.flush();
         const execPromiseA = render4().execute({ action: 'save' }, 'tok');
         await tick();
-        const keyA = w.localStorage.getItem(w.TrialAPI.PENDING_KEY);
+        const keyA = w.localStorage.getItem(TrialAPI.PENDING_KEY);
         assert.ok(keyA, 'Old request `a` reserved');
         host4.unmount();
 
         const receiptB = { data: { scenario_ref: 'b'.repeat(48) } };
         cmdHandler = async () => receiptB;
         const host5 = createHost(w);
-        const render5 = () => host5.render(() => w.TrialSession.useCommands(() => {}));
+        const render5 = () => host5.render(() => TrialSession.useCommands(() => {}));
         render5(); host5.flush();
         assert.equal(await render5().execute({ action: 'save' }, 'tok'), false, '`b` is refused while `a` holds the lock');
         assert.equal(render5().error.message, '另一个页面正在提交试调，请稍后重试。');
-        assert.equal(w.localStorage.getItem(w.TrialAPI.PENDING_KEY), keyA, 'The refused submission reserved nothing');
+        assert.equal(w.localStorage.getItem(TrialAPI.PENDING_KEY), keyA, 'The refused submission reserved nothing');
 
         resolveCmdA({ data: { scenario_ref: 'a'.repeat(48) } });
         await execPromiseA;
-        assert.equal(w.localStorage.getItem(w.TrialAPI.PENDING_KEY), null, "`a`'s late receipt clears its own key");
+        assert.equal(w.localStorage.getItem(TrialAPI.PENDING_KEY), null, "`a`'s late receipt clears its own key");
 
         w.localStorage.failRemove = new Error('removeItem blocked for b');
         render5().clearError();
         assert.equal(await render5().execute({ action: 'save' }, 'tok'), true);
         const keyB = render5().key;
         assert.ok(keyB && keyB !== keyA);
-        assert.throws(() => w.TrialAPI.pending(), err => err.saved === null && err.message === cleared,
+        assert.throws(() => TrialAPI.pending(), err => err.saved === null && err.message === cleared,
           'The shared store keeps only the registered clearance of `b`');
-        assert.equal(w.localStorage.getItem(w.TrialAPI.PENDING_KEY), keyB);
+        assert.equal(w.localStorage.getItem(TrialAPI.PENDING_KEY), keyB);
         host5.unmount();
 
         // Remount: `b`'s clearance stays registered; recovering storage and calling lookup() writes it back with 0 network lookups.
         lookups = 0;
         const host6 = createHost(w);
-        const render6 = () => host6.render(() => w.TrialSession.useCommands(() => {}));
+        const render6 = () => host6.render(() => TrialSession.useCommands(() => {}));
         render6(); host6.flush(); await tick();
         let state6 = render6();
         assert.equal(state6.key, null);
@@ -399,9 +412,104 @@ def test_trial_session_terminal_state_survives_remount_and_unmount():
         state6 = render6();
         assert.equal(state6.key, null);
         assert.equal(state6.error, null);
-        assert.equal(w.localStorage.getItem(w.TrialAPI.PENDING_KEY), null);
+        assert.equal(w.localStorage.getItem(TrialAPI.PENDING_KEY), null);
         assert.equal(lookups, 0);
         host6.unmount();
+
+        // 4. Unmounting and remounting while execute() is in flight preserves busy/key/blocked, delivers onReceipt to the
+        //    replacement instance without leaving blocked: true, and delivers pendingReceipt once if settled while unmounted.
+        {
+          w.localStorage.data.clear();
+          let resolveInFlight;
+          const received = [];
+          cmdHandler = () => new Promise(res => { resolveInFlight = res; });
+          const host7 = createHost(w);
+          const render7 = () => host7.render(() => TrialSession.useCommands(r => received.push(['h7', r])));
+          render7(); host7.flush(); await tick();
+          const inFlightPromise = render7().execute({ action: 'save' }, 'tok');
+          await tick();
+          const inFlightKey = render7().key;
+          assert.ok(inFlightKey);
+          assert.equal(render7().busy, true);
+          assert.equal(render7().blocked, true);
+          host7.unmount();
+
+          const host8 = createHost(w);
+          const render8 = () => host8.render(() => TrialSession.useCommands(r => received.push(['h8', r])));
+          let state8 = render8(); host8.flush(); state8 = render8();
+          assert.equal(state8.busy, true, 'Remounted TrialSession keeps busy: true while request is in flight');
+          assert.equal(state8.key, inFlightKey, 'Remounted TrialSession keeps the in-flight key');
+          assert.equal(state8.blocked, true);
+
+          const receipt7 = { data: { scenario_ref: '7'.repeat(48) } };
+          resolveInFlight(receipt7);
+          assert.equal(await inFlightPromise, true);
+          state8 = render8();
+          assert.deepEqual(received, [['h8', receipt7]], 'Replacement instance receives onReceipt without dropping it');
+          assert.equal(state8.busy, false);
+          assert.equal(state8.key, null);
+          assert.equal(state8.error, null);
+          assert.equal(state8.blocked, false, 'Must not deadlock in blocked: true after in-flight remount settles');
+          host8.unmount();
+
+          // Settled while 0 instances are mounted: next mounted instance consumes pendingReceipt exactly once.
+          let resolveWhileUnmounted;
+          cmdHandler = () => new Promise(res => { resolveWhileUnmounted = res; });
+          const host9 = createHost(w);
+          const render9 = () => host9.render(() => TrialSession.useCommands(r => received.push(['h9', r])));
+          render9(); host9.flush(); await tick();
+          const unmountedPromise = render9().execute({ action: 'save' }, 'tok');
+          await tick();
+          host9.unmount();
+          const receipt9 = { data: { scenario_ref: '9'.repeat(48) } };
+          resolveWhileUnmounted(receipt9);
+          assert.equal(await unmountedPromise, true);
+          assert.equal(received.length, 1);
+
+          const host10 = createHost(w);
+          const render10 = () => host10.render(() => TrialSession.useCommands(r => received.push(['h10', r])));
+          render10(); host10.flush(); await tick();
+          assert.deepEqual(received, [['h8', receipt7], ['h10', receipt9]], 'Next mounted instance consumes pendingReceipt once');
+          assert.equal(render10().blocked, false);
+          host10.unmount();
+
+          const host11 = createHost(w);
+          host11.render(() => TrialSession.useCommands(r => received.push(['h11', r])));
+          host11.flush(); await tick();
+          assert.equal(received.length, 2, 'One-shot pendingReceipt is not replayed on subsequent remounts');
+          host11.unmount();
+        }
+
+        // 5. Cross-page clearance while lookup() is in flight: a late not_observed response must read current A.pending()
+        //    under the lock instead of writing the expired key back and locking the page.
+        {
+          w.localStorage.data.clear();
+          const staleKey = TrialAPI.reserve();
+          let resolveLookup;
+          lookupHandler = () => new Promise(res => { resolveLookup = res; });
+          const host12 = createHost(w);
+          const render12 = () => host12.render(() => TrialSession.useCommands(() => {}));
+          render12(); host12.flush(); await tick();
+          assert.equal(render12().key, staleKey);
+          assert.equal(render12().blocked, true);
+
+          const lookupPromise = render12().lookup();
+          await tick();
+          assert.equal(render12().busy, true);
+
+          w.localStorage.removeItem(TrialAPI.PENDING_KEY);
+          w.dispatchEvent({ type: 'storage', key: TrialAPI.PENDING_KEY, newValue: null });
+          await tick();
+
+          resolveLookup({ state: 'not_observed', receipt: null, may_be_in_flight: true, resolution: 'unresolved' });
+          await lookupPromise;
+          const s = render12();
+          assert.equal(w.localStorage.getItem(TrialAPI.PENDING_KEY), null);
+          assert.equal(s.key, null);
+          assert.equal(s.busy, false);
+          assert.equal(s.blocked, false);
+          host12.unmount();
+        }
 
         console.log(JSON.stringify({ ok: true }));
         """
@@ -421,13 +529,11 @@ def test_system_maintenance_terminal_state_and_session_origin_across_remounts():
 
         const root = process.cwd();
         const appDir = path.join(root, 'frontend/workbench/app');
-        const babelPath = path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js');
         const files = [
-          'WorkbenchTerms.js', 'transport.js', 'SystemRestoreStatus.js',
+          'WorkbenchTerms.js', 'shared/session/pending-store.js', 'shared/network/transport.js', 'SystemRestoreStatus.js',
           'SystemMaintenanceAPI.js', 'SystemMaintenanceControls.jsx', 'SystemMaintenanceWorkspace.jsx'
         ];
         const compiled = compile({
-          babel_path: babelPath,
           sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(appDir, name), 'utf8') })),
           check_combined: false,
         });
@@ -503,26 +609,6 @@ def test_system_maintenance_terminal_state_and_session_origin_across_remounts():
           };
         }
 
-        let seq = 1;
-        const w = vm.createContext({
-          console, URL, URLSearchParams, AbortController, Set, Map, WeakMap, WeakSet, Error, TypeError, DOMException,
-          Math, Number, String, Boolean, Array, Object, JSON, RegExp, Promise, Date, FormData: class {},
-          setTimeout, clearTimeout,
-          crypto: { getRandomValues: b => { b.fill(seq++); return b; } },
-          location: new URL('http://127.0.0.1:8080/workbench?view=system'),
-          localStorage: createStorage(),
-          navigator: { locks: createLockManager() },
-          addEventListener() {}, removeEventListener() {},
-          SystemRestorePanel: ({ command }) => { capturedCommand = command; return null; },
-          SystemMaintenanceRecords: () => null,
-          SystemMaintenanceConfig: () => null,
-          WorkbenchReference: 'reference',
-          WorkbenchError: 'error-box',
-          ResourceControls: { Button: p => w.React.createElement('button', p, p.children), Modal: 'modal' },
-        });
-        w.window = w;
-        for (const out of compiled.outputs) vm.runInContext(out.code, w, { filename: out.path });
-
         const readyHost = {
           state: 'ready',
           restart_required: false,
@@ -532,22 +618,51 @@ def test_system_maintenance_terminal_state_and_session_origin_across_remounts():
           references: 'none',
           request_key: null,
         };
-        let lookups = 0, changedCalls = 0, currentHost = readyHost, cmdImpl = null, lookupImpl = null;
-        w.SystemMaintenanceAPI.host = async () => currentHost;
-        w.SystemMaintenanceAPI.command = async (intent, token, input) => cmdImpl(intent, token, input);
-        w.SystemMaintenanceAPI.lookup = async intent => { lookups++; return lookupImpl(intent); };
+        let seq = 1, lookups = 0, changedCalls = 0, currentHost = readyHost, cmdImpl = null, lookupImpl = null, capturedCommand = null;
+        const listeners = new Map();
+        const w = vm.createContext({
+          console, URL, URLSearchParams, AbortController, Set, Map, WeakMap, WeakSet, Error, TypeError, DOMException,
+          Math, Number, String, Boolean, Array, Object, JSON, RegExp, Promise, Date, FormData: class {},
+          CustomEvent: class CustomEvent { constructor(type, init) { this.type = type; this.detail = init && init.detail; } },
+          setTimeout, clearTimeout,
+          crypto: { getRandomValues: b => { b.fill(seq++); return b; } },
+          location: new URL('http://127.0.0.1:8080/workbench?view=system'),
+          localStorage: createStorage(),
+          navigator: { locks: createLockManager() },
+          addEventListener(type, fn) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(fn); },
+          removeEventListener(type, fn) { if (listeners.has(type)) listeners.get(type).delete(fn); },
+          dispatchEvent(event) { for (const fn of listeners.get(event.type) || []) fn(event); return true; },
+          __wbStubs: {
+            'SystemRestorePanel.jsx': ({ command }) => { capturedCommand = command; return null; },
+            'SystemMaintenanceRecords.jsx': () => null,
+            'SystemMaintenanceConfig.jsx': () => null,
+            'WorkbenchReferences.jsx': { WorkbenchReference: 'reference', WorkbenchError: 'error-box' },
+            'ResourceControls.jsx': { Button: p => w.React.createElement('button', p, p.children), Modal: 'modal' },
+            'SystemMaintenanceAPI.js': {
+              host: async () => currentHost,
+              command: async (intent, token, input) => cmdImpl(intent, token, input),
+              lookup: async intent => { lookups++; return lookupImpl(intent); },
+            },
+            'SystemMaintenanceControls.jsx': {
+              Outcome: ({ command }) => { capturedCommand = command; return null; },
+            },
+          },
+        });
+        w.window = w;
+        for (const out of compiled.outputs) vm.runInContext(out.code, w, { filename: out.path });
 
-        let capturedCommand = null;
-        w.SystemMaintenanceControls.Outcome = ({ command }) => { capturedCommand = command; return null; };
+        const T = w.__wbRuntime.getModule('shared/network/transport.js');
+        const SystemMaintenanceAPI = w.__wbRuntime.getModule('SystemMaintenanceAPI.js');
+        const SystemMaintenanceWorkspace = w.__wbRuntime.getModule('SystemMaintenanceWorkspace.jsx').SystemMaintenanceWorkspace;
 
-        const rejectedProblem = w.APSWorkbenchTransport.failure({
+        const rejectedProblem = T.failure({
           ok: false,
           committed: false,
           error: { code: 'maintenance_active', message: '恢复被拒绝', fields: [], retryable: false, request_ref: '1'.repeat(32) },
         }, 409);
 
         function mountWorkspace(host) {
-          return host.render(() => w.SystemMaintenanceWorkspace({
+          return host.render(() => SystemMaintenanceWorkspace({
             tab: 'overview', theme: 'light', onSetTheme() {}, pageSize: 10, onPageSize() {}, compact: false, onCompact() {},
             revision: 0, onChanged: () => { changedCalls++; }, onReadSuspendedChange() {}, recordContexts: {}, onRecordContext() {},
             children: 'overview-body',
@@ -594,7 +709,7 @@ def test_system_maintenance_terminal_state_and_session_origin_across_remounts():
         // 2. Persisted reload of a completed restore from a prior session has startedHere=false, so restorePending is false when host is ready.
         w.localStorage.data.clear();
         const persistedRestore = { request_key: 'system-' + '9'.repeat(48), action: 'restore', summary: '恢复所选备份' };
-        w.localStorage.setItem(w.SystemMaintenanceAPI.PENDING_KEY, JSON.stringify(persistedRestore));
+        w.localStorage.setItem(SystemMaintenanceAPI.PENDING_KEY, JSON.stringify(persistedRestore));
         lookupImpl = async intent => ({
           kind: 'file_operation',
           terminal: true,
@@ -619,6 +734,7 @@ def test_system_maintenance_terminal_state_and_session_origin_across_remounts():
         await new Promise(r => setTimeout(r, 10));
         mountWorkspace(host3);
         assert.equal(lookups, 1);
+        assert.equal(capturedCommand.storageError, null);
         assert.equal(capturedCommand.result.terminal, true);
         assert.equal(capturedCommand.maintenanceRequired, false, 'Persisted restore completed in a prior session must not lock maintenanceRequired when host is ready');
 
@@ -674,6 +790,7 @@ def test_system_maintenance_terminal_state_and_session_origin_across_remounts():
         await new Promise(r => setTimeout(r, 10));
         mountWorkspace(host5);
         assert.equal(capturedCommand.intent.request_key, intentA.request_key, 'The remounted page shows the in-flight `a`');
+        assert.equal(capturedCommand.storageError, null);
         assert.equal(lookups, lookupsBeforeA + 1, 'The remounted page looks `a` up');
         assert.equal(capturedCommand.result, null, "`a`'s lookup result waits for the lock held by `a`'s command");
 
@@ -704,11 +821,12 @@ def test_system_maintenance_terminal_state_and_session_origin_across_remounts():
         mountWorkspace(host6);
         await new Promise(r => setTimeout(r, 10));
         mountWorkspace(host6);
-        const inspectedB = w.SystemMaintenanceAPI.inspectPending();
+        const inspectedB = SystemMaintenanceAPI.inspectPending();
         assert.equal(inspectedB.intent.request_key, intentB.request_key);
         assert.equal(inspectedB.startedHere, true, '`b` keeps startedHere === true across the remount');
         assert.deepEqual(inspectedB.selection, selB, '`b` keeps its selection across the remount');
         assert.equal(capturedCommand.intent.request_key, intentB.request_key);
+        assert.equal(capturedCommand.storageError, null);
         assert.equal(capturedCommand.maintenanceRequired, true, '`b` keeps maintenanceRequired === true');
         assert.deepEqual(capturedCommand.selection, selB);
         resolveCmdB(terminalOperation(intentB, 'rolled_back', 'e', '恢复已还原'));
@@ -724,7 +842,7 @@ def test_system_maintenance_terminal_state_and_session_origin_across_remounts():
         {
           const isolatedStore = createStorage();
           w.localStorage = isolatedStore;
-          const p = w.SystemMaintenanceAPI.pending;
+          const p = SystemMaintenanceAPI.pending;
           const intentC = p.begin('create', { key: 'bk-c', record_kind: 'backup_file' });
           const terminalResult = {
             kind: 'file_operation',
@@ -746,24 +864,75 @@ def test_system_maintenance_terminal_state_and_session_origin_across_remounts():
             },
           };
           assert.ok(p.settle(intentC, terminalResult));
-          assert.strictEqual(w.SystemMaintenanceAPI.inspectPending().result, terminalResult);
+          assert.strictEqual(SystemMaintenanceAPI.inspectPending().result, terminalResult);
 
           // R4-01: Late non-terminal lookup or non-terminal error for the same request_key must be rejected (return null) and keep terminalResult.
           assert.equal(p.settle(intentC, { kind: 'not_recorded', message: '尚未记录', terminal: false }), null);
-          assert.strictEqual(w.SystemMaintenanceAPI.inspectPending().result, terminalResult, 'R4-01: Late not_recorded lookup must not overwrite terminal result');
+          assert.strictEqual(SystemMaintenanceAPI.inspectPending().result, terminalResult, 'R4-01: Late not_recorded lookup must not overwrite terminal result');
           assert.equal(p.settle(intentC, { terminal: false }, new Error('late lookup failed')), null);
           assert.equal(p.settle(intentC, null, new Error('late command failed')), null);
-          assert.strictEqual(w.SystemMaintenanceAPI.inspectPending().result, terminalResult, 'R4-01: Late non-terminal error must not overwrite terminal result');
-          assert.equal(w.SystemMaintenanceAPI.inspectPending().error, null, 'R4-01: Late non-terminal error must not attach error after terminal result');
+          assert.strictEqual(SystemMaintenanceAPI.inspectPending().result, terminalResult, 'R4-01: Late non-terminal error must not overwrite terminal result');
+          assert.equal(SystemMaintenanceAPI.inspectPending().error, null, 'R4-01: Late non-terminal error must not attach error after terminal result');
 
           // Finish intentC so holder.session.intent is null, then break getItem and fire a late settle(intentC, ...).
           p.finish(intentC, true);
-          assert.equal(w.SystemMaintenanceAPI.inspectPending().intent, null);
+          assert.equal(SystemMaintenanceAPI.inspectPending().intent, null);
           isolatedStore.failGet = new Error('getItem unavailable');
           assert.equal(p.settle(intentC, terminalResult), null, 'R4-02: Late settle when current.intent is null and getItem throws must return null');
           assert.equal(p.settle(intentC, { kind: 'not_recorded', message: '迟到', terminal: false }, new Error('late')), null);
-          assert.equal(w.SystemMaintenanceAPI.inspectPending().intent, null, 'R4-02: Cleared intent must not resurrect into holder.session when getItem throws');
-          assert.equal(w.SystemMaintenanceAPI.inspectPending().result, null);
+          assert.equal(SystemMaintenanceAPI.inspectPending().intent, null, 'R4-02: Cleared intent must not resurrect into holder.session when getItem throws');
+          assert.equal(SystemMaintenanceAPI.inspectPending().result, null);
+        }
+
+        // 5. P2-4: When acknowledge() fails to removeItem (dismissPending: true), recovering storage and calling rereadStorage()
+        //    flushes under the cross-page lock, clears storageError/intent/result, and triggers onChanged for non-rejected commands.
+        {
+          currentHost = readyHost;
+          const recoverStore = createStorage();
+          w.localStorage = recoverStore;
+          const beforeChanges = changedCalls;
+          cmdImpl = async intent => terminalOperation(intent, 'succeeded', 'f', '备份创建成功');
+          const host7 = createHost(w);
+          mountWorkspace(host7);
+          await tick();
+          mountWorkspace(host7);
+          await capturedCommand.execute('create', 'tok', {});
+          mountWorkspace(host7);
+          assert.equal(capturedCommand.result.terminal, true);
+          assert.equal(changedCalls, beforeChanges);
+
+          recoverStore.failRemove = new Error('removeItem blocked during acknowledge');
+          await capturedCommand.acknowledge();
+          mountWorkspace(host7);
+          assert.ok(capturedCommand.storageError, 'Failed acknowledge records storageError');
+          assert.equal(SystemMaintenanceAPI.inspectPending().dismissPending, true);
+          assert.equal(changedCalls, beforeChanges, 'onChanged waits until dismissal is flushed');
+
+          recoverStore.failRemove = null;
+          await capturedCommand.rereadStorage();
+          mountWorkspace(host7);
+          assert.equal(capturedCommand.storageError, null);
+          assert.equal(capturedCommand.intent, null);
+          assert.equal(capturedCommand.result, null);
+          assert.equal(recoverStore.getItem(SystemMaintenanceAPI.PENDING_KEY), null);
+          assert.equal(changedCalls, beforeChanges + 1, 'rereadStorage completing pending dismissal fires onChanged');
+
+          // Rejected command whose finish() failed: rereadStorage() flushes removal, clears storageError, keeps rejected result, 0 onChanged.
+          recoverStore.failRemove = new Error('removeItem blocked after rejection');
+          cmdImpl = async () => { throw rejectedProblem; };
+          await capturedCommand.execute('config', 'tok', {});
+          mountWorkspace(host7);
+          assert.ok(capturedCommand.storageError);
+          assert.equal(capturedCommand.result.kind, 'rejected');
+
+          recoverStore.failRemove = null;
+          await capturedCommand.rereadStorage();
+          mountWorkspace(host7);
+          assert.equal(capturedCommand.storageError, null);
+          assert.equal(capturedCommand.intent, null);
+          assert.equal(capturedCommand.result.kind, 'rejected', 'Flushing rejected cleanup keeps rejected outcome visible');
+          assert.equal(changedCalls, beforeChanges + 1, 'Rejected cleanup must not fire onChanged');
+          host7.unmount();
         }
 
         console.log(JSON.stringify({ ok: true }));
@@ -785,10 +954,8 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
 
         const root = process.cwd();
         const appDir = path.join(root, 'frontend/workbench/app');
-        const babelPath = path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js');
-        const files = ['WorkbenchTerms.js', 'transport.js', 'RunAdoptionAPI.js', 'RunJobAPI.js', 'TrialContract.js', 'TrialAPI.js'];
+        const files = ['WorkbenchTerms.js', 'shared/session/pending-store.js', 'shared/network/transport.js', 'RunAdoptionAPI.js', 'RunJobAPI.js', 'TrialContract.js', 'TrialAPI.js'];
         const compiled = compile({
-          babel_path: babelPath,
           sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(appDir, name), 'utf8') })),
           check_combined: false,
         });
@@ -856,19 +1023,20 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
         // Codex probe: A's poll finishes X while B, in one locked section, finishes X and begins Y. Whatever access of A launches B,
         // B runs after A: PENDING ends as Y and RECENT keeps A's conclusion for X.
         {
-          const probe = createOrigin(), seed = makePage(probe);
-          const KEY = seed.RunJobAPI.PENDING_KEY, RECENT = seed.RunJobAPI.RECENT_KEY;
+          const probe = createOrigin(), seed = makePage(probe), seedRun = seed.__wbRuntime.getModule('RunJobAPI.js');
+          const KEY = seedRun.PENDING_KEY, RECENT = seedRun.RECENT_KEY;
           const points = [{ op: 'getItem', key: KEY }, { op: 'removeItem', key: KEY }, { op: 'setItem', key: RECENT }]
             .flatMap(point => ['before', 'after'].map(phase => ({ ...point, phase })));
           for (const point of points) {
             const origin = createOrigin(), pageA = makePage(origin), pageB = makePage(origin);
-            const TA = pageA.APSWorkbenchTransport, TB = pageB.APSWorkbenchTransport;
-            const x = pageA.RunJobAPI.pending.attach(pageA.RunJobAPI.pending.begin(inputA, ctxRef), ref(1));
+            const TA = pageA.__wbRuntime.getModule('shared/session/pending-store.js'), TB = pageB.__wbRuntime.getModule('shared/session/pending-store.js');
+            const runA = pageA.__wbRuntime.getModule('RunJobAPI.js'), runB = pageB.__wbRuntime.getModule('RunJobAPI.js');
+            const x = runA.pending.attach(runA.pending.begin(inputA, ctxRef), ref(1));
             const { a, b } = await interleave(origin, point,
-              () => TA.exclusive(KEY, { wait: true }, () => pageA.RunJobAPI.pending.finish(x, 'found')),
+              () => TA.exclusive(KEY, { wait: true }, () => runA.pending.finish(x, 'found')),
               () => TB.exclusive(KEY, { wait: true }, () => {
-                pageB.RunJobAPI.pending.finish(x, 'found');
-                return pageB.RunJobAPI.pending.begin(inputB, ctxRef);
+                runB.pending.finish(x, 'found');
+                return runB.pending.begin(inputB, ctxRef);
               }));
             const label = `${point.op}/${point.key === KEY ? 'PENDING' : 'RECENT'}/${point.phase}`;
             assert.ok(!a.error && !b.error, `Both pages complete (${label})`);
@@ -877,7 +1045,7 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
             assert.equal(JSON.parse(origin.disk.get(KEY)).request_key, y.request_key, `B's new pending intent survives (${label})`);
             const recent = JSON.parse(origin.disk.get(RECENT));
             assert.equal(recent.intent.request_key, x.request_key, `RECENT keeps the conclusion for X (${label})`);
-            assert.equal(pageA.RunJobAPI.pending.read().request_key, y.request_key, `Page A reads B's intent (${label})`);
+            assert.equal(runA.pending.read().request_key, y.request_key, `Page A reads B's intent (${label})`);
             cases.push('probe:' + label);
           }
         }
@@ -887,10 +1055,12 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
         for (const wait of [false, true]) {
           for (const point of accesses('aps_workbench_trial_pending_v1')) {
             const origin = createOrigin(), pageA = makePage(origin), pageB = makePage(origin);
-            const KEY = pageA.TrialAPI.PENDING_KEY;
+            const TA = pageA.__wbRuntime.getModule('shared/session/pending-store.js'), TB = pageB.__wbRuntime.getModule('shared/session/pending-store.js');
+            const trialA = pageA.__wbRuntime.getModule('TrialAPI.js'), trialB = pageB.__wbRuntime.getModule('TrialAPI.js');
+            const KEY = trialA.PENDING_KEY;
             const { a, b } = await interleave(origin, point,
-              () => pageA.APSWorkbenchTransport.exclusive(KEY, {}, () => pageA.TrialAPI.reserve()),
-              () => pageB.APSWorkbenchTransport.exclusive(KEY, { wait }, () => pageB.TrialAPI.reserve()));
+              () => TA.exclusive(KEY, {}, () => trialA.reserve()),
+              () => TB.exclusive(KEY, { wait }, () => trialB.reserve()));
             const label = `${wait ? 'wait' : 'ifAvailable'} ${point.op}/${point.phase}`;
             assert.equal(a.value.acquired, true);
             if (wait) assert.match(b.error.message, /试调提交/, `A waiting reserve meets the conflict (${label})`);
@@ -903,10 +1073,12 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
         // RunJob begin | begin: exactly one submission is admitted.
         for (const point of accesses('aps_workbench_run_pending_v1')) {
           const origin = createOrigin(), pageA = makePage(origin), pageB = makePage(origin);
-          const KEY = pageA.RunJobAPI.PENDING_KEY;
+          const TA = pageA.__wbRuntime.getModule('shared/session/pending-store.js'), TB = pageB.__wbRuntime.getModule('shared/session/pending-store.js');
+          const runA = pageA.__wbRuntime.getModule('RunJobAPI.js'), runB = pageB.__wbRuntime.getModule('RunJobAPI.js');
+          const KEY = runA.PENDING_KEY;
           const { a, b } = await interleave(origin, point,
-            () => pageA.APSWorkbenchTransport.exclusive(KEY, {}, () => pageA.RunJobAPI.pending.begin(inputA, ctxRef)),
-            () => pageB.APSWorkbenchTransport.exclusive(KEY, { wait: true }, () => pageB.RunJobAPI.pending.begin(inputB, ctxRef)));
+            () => TA.exclusive(KEY, {}, () => runA.pending.begin(inputA, ctxRef)),
+            () => TB.exclusive(KEY, { wait: true }, () => runB.pending.begin(inputB, ctxRef)));
           assert.equal(a.value.acquired, true);
           assert.match(b.error.message, /上次排产还没确认结果/, `The second begin is refused (${point.op}/${point.phase})`);
           assert.equal(JSON.parse(origin.disk.get(KEY)).request_key, a.value.value.request_key);
@@ -917,13 +1089,15 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
         // B runs after A, so its stale reject conflicts and B begins nothing; A's attach is not lost.
         for (const point of accesses('aps_workbench_run_pending_v1')) {
           const origin = createOrigin(), pageA = makePage(origin), pageB = makePage(origin);
-          const KEY = pageA.RunJobAPI.PENDING_KEY;
-          const x = pageA.RunJobAPI.pending.begin(inputA, ctxRef);
+          const TA = pageA.__wbRuntime.getModule('shared/session/pending-store.js'), TB = pageB.__wbRuntime.getModule('shared/session/pending-store.js');
+          const runA = pageA.__wbRuntime.getModule('RunJobAPI.js'), runB = pageB.__wbRuntime.getModule('RunJobAPI.js');
+          const KEY = runA.PENDING_KEY;
+          const x = runA.pending.begin(inputA, ctxRef);
           const { a, b } = await interleave(origin, point,
-            () => pageA.APSWorkbenchTransport.exclusive(KEY, { wait: true }, () => pageA.RunJobAPI.pending.attach(x, ref(2))),
-            () => pageB.APSWorkbenchTransport.exclusive(KEY, { wait: true }, () => {
-              pageB.RunJobAPI.pending.reject(x);
-              return pageB.RunJobAPI.pending.begin(inputB, ctxRef);
+            () => TA.exclusive(KEY, { wait: true }, () => runA.pending.attach(x, ref(2))),
+            () => TB.exclusive(KEY, { wait: true }, () => {
+              runB.pending.reject(x);
+              return runB.pending.begin(inputB, ctxRef);
             }));
           assert.equal(a.value.value.run_ref, ref(2));
           assert.equal(b.error.conflict, true, `B's stale reject conflicts (${point.op}/${point.phase})`);
@@ -937,8 +1111,10 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
         // that keeps RECENT's first conclusion.
         {
           const origin = createOrigin(), pageA = makePage(origin), pageB = makePage(origin);
-          const TA = pageA.APSWorkbenchTransport, TB = pageB.APSWorkbenchTransport, KEY = pageA.RunJobAPI.PENDING_KEY, RECENT = pageA.RunJobAPI.RECENT_KEY;
-          const pA = pageA.RunJobAPI.pending, pB = pageB.RunJobAPI.pending;
+          const TA = pageA.__wbRuntime.getModule('shared/session/pending-store.js'), TB = pageB.__wbRuntime.getModule('shared/session/pending-store.js');
+          const runA = pageA.__wbRuntime.getModule('RunJobAPI.js'), runB = pageB.__wbRuntime.getModule('RunJobAPI.js');
+          const KEY = runA.PENDING_KEY, RECENT = runA.RECENT_KEY;
+          const pA = runA.pending, pB = runB.pending;
           const { value: x } = await TA.exclusive(KEY, {}, () => pA.begin(inputA, ctxRef));
           const { value: xa } = await TA.exclusive(KEY, { wait: true }, () => { const attached = pA.attach(x, ref(3)); pA.finish(attached, 'found'); return attached; });
           const { value: y } = await TB.exclusive(KEY, {}, () => pB.begin(inputB, ctxRef));
@@ -960,27 +1136,29 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
         // 5f. Pages of two origins have separate storage and separate locks; interleaving writes to the same key never mixes them.
         {
           const origin1 = createOrigin(), origin2 = createOrigin(), page1 = makePage(origin1), page2 = makePage(origin2);
+          const run1 = page1.__wbRuntime.getModule('RunJobAPI.js'), run2 = page2.__wbRuntime.getModule('RunJobAPI.js');
           let intent2 = null;
           origin1.setHook((op, key, phase) => {
-            if (!intent2 && op === 'setItem' && key === page1.RunJobAPI.PENDING_KEY && phase === 'before') intent2 = page2.RunJobAPI.pending.begin(inputB, ctxRef);
+            if (!intent2 && op === 'setItem' && key === run1.PENDING_KEY && phase === 'before') intent2 = run2.pending.begin(inputB, ctxRef);
           });
-          const intent1 = page1.RunJobAPI.pending.begin(inputA, ctxRef);
+          const intent1 = run1.pending.begin(inputA, ctxRef);
           origin1.setHook(null);
           assert.ok(intent1 && intent2, '5f: Nested begin on distinct origins both succeed');
-          assert.equal(page1.RunJobAPI.pending.read().request_key, intent1.request_key);
-          assert.equal(page2.RunJobAPI.pending.read().request_key, intent2.request_key);
+          assert.equal(run1.pending.read().request_key, intent1.request_key);
+          assert.equal(run2.pending.read().request_key, intent2.request_key);
         }
 
         // 5i. When store A's storage() getter throws, its settling save is kept for store A alone and flushed to A's own storage
         // once the getter recovers; store B on another storage object with the same key is untouched.
         {
           const page = makePage(createOrigin());
+          const TP = page.__wbRuntime.getModule('shared/session/pending-store.js');
           const storageA = createOrigin(), storageB = createOrigin();
           let throwA = false;
           const options = { key: 'rf2_shared_key', validate: v => v.phase === 'pending' && Number.isInteger(v.id),
             readError: 'read err', conflictError: 'conflict err', writeError: 'write err' };
-          const sa = page.APSWorkbenchTransport.pendingStore({ ...options, storage: () => { if (throwA) throw new Error('storage A unavailable'); return storageA; } });
-          const sb = page.APSWorkbenchTransport.pendingStore({ ...options, storage: () => storageB });
+          const sa = TP.pendingStore({ ...options, storage: () => { if (throwA) throw new Error('storage A unavailable'); return storageA; } });
+          const sb = TP.pendingStore({ ...options, storage: () => storageB });
           const intent = { phase: 'pending', id: 1 };
           sa.save(intent, null);
           sb.save(intent, null);
@@ -998,7 +1176,7 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
         // 5u. Polling and the accept receipt may both attach the same run_ref from the original intent (run_ref null): the repeat is a no-op.
         // Another run_ref is a conflict, also when storage reads fail; the same target with unreadable storage only reports the read failure.
         {
-          const origin = createOrigin(), p = makePage(origin).RunJobAPI.pending;
+          const origin = createOrigin(), p = makePage(origin).__wbRuntime.getModule('RunJobAPI.js').pending;
           const original = p.begin(inputA, ctxRef), runRef = 'e'.repeat(48), otherRef = 'f'.repeat(48);
           p.attach(original, runRef);
           const repeated = p.attach(original, runRef);
@@ -1017,8 +1195,9 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
         // lock, finishes X and begins Y. A's read() only reports its record and never writes, so Y survives; A's locked flush then reads Y.
         {
           const origin = createOrigin(), pageA = makePage(origin), pageB = makePage(origin);
-          const TA = pageA.APSWorkbenchTransport, TB = pageB.APSWorkbenchTransport;
-          const KEY = pageA.RunJobAPI.PENDING_KEY, pA = pageA.RunJobAPI.pending, pB = pageB.RunJobAPI.pending;
+          const TA = pageA.__wbRuntime.getModule('shared/session/pending-store.js'), TB = pageB.__wbRuntime.getModule('shared/session/pending-store.js');
+          const runA = pageA.__wbRuntime.getModule('RunJobAPI.js'), runB = pageB.__wbRuntime.getModule('RunJobAPI.js');
+          const KEY = runA.PENDING_KEY, pA = runA.pending, pB = runB.pending;
           const { value: x } = await TA.exclusive(KEY, {}, () => pA.attach(pA.begin(inputA, ctxRef), ref(30)));
           origin.failRemove = new Error('removeItem blocked');
           await assert.rejects(TA.exclusive(KEY, { wait: true }, () => pA.finish(x, 'found')), err => err.saved === null && /无法更新/.test(err.message));
@@ -1060,8 +1239,9 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
         // RF13-02: a finish whose getItem failed keeps its RECENT write with the unflushed removal. Each consumer of that record (locked flush,
         // the issuer's repeated finish, a new begin on the same page) writes RECENT first; a successful RECENT write is not repeated.
         for (const consumer of ['flush', 'retry', 'begin']) {
-          const origin = createOrigin(), page = makePage(origin), TP = page.APSWorkbenchTransport, p = page.RunJobAPI.pending;
-          const KEY = page.RunJobAPI.PENDING_KEY, RECENT = page.RunJobAPI.RECENT_KEY;
+          const origin = createOrigin(), page = makePage(origin);
+          const TP = page.__wbRuntime.getModule('shared/session/pending-store.js'), runMod = page.__wbRuntime.getModule('RunJobAPI.js'), p = runMod.pending;
+          const KEY = runMod.PENDING_KEY, RECENT = runMod.RECENT_KEY;
           const { value: x } = await TP.exclusive(KEY, {}, () => p.attach(p.begin(inputA, ctxRef), ref(31)));
           origin.failGet = new Error('getItem blocked');
           await assert.rejects(TP.exclusive(KEY, { wait: true }, () => p.finish(x, 'found')), err => err.saved === null && /读不到上次排产的操作记录/.test(err.message));

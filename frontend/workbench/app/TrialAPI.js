@@ -1,50 +1,57 @@
-(function () {
-  'use strict';
-  const T = window.APSWorkbenchTransport, C = window.TrialContract, ROOT = '/api/workbench/v1', BASE = ROOT + '/trial';
-  const PENDING_KEY = 'aps_workbench_trial_pending_v1';
-  const validKey = v => typeof v === 'string' && /^trial-[a-f0-9]{48}$/.test(v);
-  // 待确认试调提交的 key。服务端结论已定、本机删不掉时，共享存储登记这次清除：read() 带 saved: null 报出，持锁 flush() 写回。
-  const store = T.pendingStore({
-    key: PENDING_KEY, raw: true, validate: validKey,
-    readError: '读不到上次操作记录，暂时不能提交。请重新打开页面。',
-    invalidError: '上次操作记录已损坏，没有删除也没有覆盖。请重新打开页面。',
-    conflictError: '上次操作记录已变化，没有清除其他操作记录。',
-    writeError: '存不下上次操作记录，这次没有提交。请重新打开页面。',
-    removeError: '上次提交的结果已确认，但上次操作记录没清掉。请点「刷新」后重新查询。'
-  });
-  function reserve() {
-    try { return store.save(T.requestKey('trial'), null); }
-    catch (error) {
-      if (error.conflict === true) throw new Error(window.WorkbenchTerms.outcomes.pending('试调提交'));
-      throw error;
-    }
+import APSWorkbenchTransport from './shared/network/transport.js';
+import { pendingStore, equal } from './shared/session/pending-store.js';
+import TrialContract from './TrialContract.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
+
+const T = APSWorkbenchTransport, C = TrialContract, ROOT = '/api/workbench/v1', BASE = ROOT + '/trial';
+const PENDING_KEY = 'aps_workbench_trial_pending_v1', EVENT = 'aps-workbench-trial-pending-changed';
+const validKey = v => typeof v === 'string' && /^trial-[a-f0-9]{48}$/.test(v);
+// 待确认试调提交的 key。服务端结论已定、本机删不掉时，共享存储登记这次清除：read() 带 saved: null 报出，持锁 flush() 写回。
+const store = pendingStore({
+  key: PENDING_KEY, event: EVENT, raw: true, validate: validKey,
+  readError: '读不到上次操作记录，暂时不能提交。请重新打开页面。',
+  invalidError: '上次操作记录已损坏，没有删除也没有覆盖。请重新打开页面。',
+  conflictError: '上次操作记录已变化，没有清除其他操作记录。',
+  writeError: '存不下上次操作记录，这次没有提交。请重新打开页面。',
+  removeError: '上次提交的结果已确认，但上次操作记录没清掉。请点「刷新」后重新查询。'
+});
+function reserve() {
+  try { return store.save(T.requestKey('trial'), null); }
+  catch (error) {
+    if (error.conflict === true) throw new Error(WorkbenchTerms.outcomes.pending('试调提交'));
+    throw error;
   }
-  const clear = key => store.save(null, key);
-  async function read(path, q, signal, validate) {
-    const value = await T.read(ROOT + path, q, { signal, timeout: 60000 });
-    if (validate) return validate(value);
-    C.envelope(value, q); return value;
-  }
-  async function preview(input, signal) {
-    C.base(input.base); C.scope(input.scope || {});
-    const v = await T.preview(BASE + '/drafts/preview', input, { signal, timeout: 60000 }), d = C.envelope(v);
-    C.check(JSON.stringify(d.base) === JSON.stringify(input.base) && d.tasks_complete === true && C.count(d.task_count)
-      && C.object(d.base_identity) && (input.base.candidate_ref ? d.base_identity.candidate_ref === input.base.candidate_ref : d.base_identity.plan_ref === input.base.plan_ref)
-      && d.write_context && d.write_context.capabilities['trial.create'] === true && typeof d.write_context.write_token === 'string');
-    C.validation(d.validation); return v;
-  }
-  // key 是 reserve 刚写入的记录，token 已由预检核过。
-  async function command(intent, token, key) {
-    const suffix = intent.action === 'create' ? '/drafts' : '/drafts/' + intent.draft_ref + '/' + intent.action;
-    return C.receipt(await T.command(BASE + suffix, { request_key: key, write_token: token, input: intent.input },
-      { timeout: 60000, expect: BASE + '/commands/' + key }), intent);
-  }
-  // key 是本存储读到并校验过的记录。
-  async function lookup(key) {
-    const v = await read('/trial/commands/' + key), d = v.data;
-    C.check(['committed', 'not_observed'].includes(d.state) && d.can_retry_automatically === false);
-    if (d.state === 'committed') C.receipt(d.receipt); else C.check(d.receipt === null);
-    return d;
-  }
-  window.TrialAPI = { read, preview, command, lookup, pending: store.read, flush: store.flush, reserve, clear, PENDING_KEY };
-})();
+}
+const clear = key => store.save(null, key);
+async function read(path, q, signal, validate) {
+  const value = await T.read(ROOT + path, q, { signal, timeout: 60000 });
+  if (validate) return validate(value);
+  C.envelope(value, q); return value;
+}
+async function preview(input, signal) {
+  C.base(input.base); C.scope(input.scope || {});
+  const v = await T.preview(BASE + '/drafts/preview', input, { signal, timeout: 60000 }), d = C.envelope(v);
+  C.check(equal(d.base, input.base)
+    && C.object(d.base_identity) && (input.base.candidate_ref ? d.base_identity.candidate_ref === input.base.candidate_ref : d.base_identity.plan_ref === input.base.plan_ref)
+    && d.write_context.capabilities['trial.create'] === true);
+  return v;
+}
+// key 是 reserve 刚写入的记录，token 已由预检核过。
+async function command(intent, token, key) {
+  const suffix = intent.action === 'create' ? '/drafts' : '/drafts/' + intent.draft_ref + '/' + intent.action;
+  return C.receipt(await T.command(BASE + suffix, { request_key: key, write_token: token, input: intent.input },
+    { timeout: 60000, expect: BASE + '/commands/' + key }), intent);
+}
+// key 是本存储读到并校验过的记录。
+async function lookup(key) {
+  const d = await T.lookup(BASE + '/commands/' + key, {}, { timeout: 30000 });
+  C.check(C.object(d) && ['recorded', 'not_observed'].includes(d.state));
+  if (d.state === 'recorded') C.receipt(d.receipt);
+  return d;
+}
+const pending = store.read;
+const flush = store.flush;
+const subscribe = store.subscribe;
+const TrialAPI = { read, preview, command, lookup, pending, flush, subscribe, reserve, clear, PENDING_KEY, EVENT };
+export { TrialAPI, read, preview, command, lookup, pending, flush, subscribe, reserve, clear, PENDING_KEY, EVENT };
+export default TrialAPI;

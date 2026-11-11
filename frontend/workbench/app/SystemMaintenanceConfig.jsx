@@ -1,63 +1,67 @@
-(function () {
-  'use strict';
-  const A = window.SystemMaintenanceAPI, C = window.SystemMaintenanceControls;
-  function Config({ revision, command, active, tab, ...preferences }) {
-    const [refresh, reload] = React.useReducer(value => value + 1, 0), [draft, setDraft] = React.useState(null), [validated, setValidated] = React.useState(false);
-    const [base, setBase] = React.useState(null), [replace, setReplace] = React.useState(false);
-    const request = C.useRead('config', {}, revision + ':' + refresh, active), incoming = request.data && request.data.data;
-    const validation = A.normalize(draft || {}), changed = base && draft && A.fields.some(field => String(draft[field.key]) !== String(base.values[field.key]));
-    const onConfigTab = tab === 'config';
-    window.WorkbenchGuards.useDirtyGuard({
-      dirty: Boolean(changed),
-      locked: Boolean(active && command.locked),
-      message: '系统自动维护配置存在未保存修改，确定离开当前页面吗？'
-    });
-    React.useEffect(() => {
-      if (!onConfigTab && base) {
-        setDraft({ ...base.values }); setValidated(false); setReplace(false);
-      }
-    }, [onConfigTab, base]);
-    React.useEffect(() => {
-      // A receipt or revision alone cannot settle a draft; all eight read-back values must match.
-      const matchesDraft = incoming && draft && A.fields.every(field => String(draft[field.key]) === String(incoming.values[field.key]));
-      if (incoming && (!changed || matchesDraft)) { setBase(incoming); setDraft({ ...incoming.values }); setValidated(false); }
-    }, [incoming]);
-    const ready = incoming && base === incoming;
-    const reason = command.locked ? command.lockedReason : !ready ? '请先点「刷新配置」读取正式配置。' : '';
-    function refreshNow() { setReplace(false); setBase(null); setDraft(null); reload(); }
-    return <div className="sm-configuration sm-configuration-full">
-      <C.Preferences {...preferences} />
-      <section className="sm-section sm-maintenance-config"><div className="sm-section-head"><h3>本机自动维护配置</h3><C.Button icon="refresh-cw" aria-label="刷新配置" busy={request.loading}
-        onClick={() => changed ? setReplace(true) : refreshNow()} /></div>
-        <C.ErrorBox error={request.error} />{request.loading && <p className="sm-note" role="status">正在读取八项维护配置…</p>}
-        {incoming && base && incoming !== base && changed && <div className="sm-notice" role="status">已读到新的配置数据，你填的内容没有被覆盖。请核对变化后再保存。
-          <details><summary>最新已存配置</summary>{A.fields.map(field => <p key={field.key}>{field.label}：{String(incoming.values[field.key])}</p>)}</details>
-          <C.Button icon="check" disabled={command.locked} onClick={() => setBase(incoming)}>核对后沿用草稿</C.Button></div>}
-        {draft && base && <form className="sm-config-form" noValidate onSubmit={event => { event.preventDefault(); setValidated(true);
-          if (validation.valid && !reason) command.execute('config', base.write_context.write_token, validation.values);
-        }}><div className="sm-config-groups">{[['backup', '备份规则'], ['logs', '操作日志规则']].map(([group, label]) => <fieldset className="sm-config-group" key={group}><legend>{label}</legend>
-          {A.fields.filter(field => field.group === group).map(field => <div className="sm-config-row sm-config-row-wide" key={field.key}>
-            <label htmlFor={'sm-maintenance-' + field.key}>{field.label}</label><div>
-              {field.switch ? <label className="sm-draft-checkbox"><input id={'sm-maintenance-' + field.key} type="checkbox" checked={draft[field.key] === 'yes'} disabled={!!reason}
-                onChange={event => setDraft({ ...draft, [field.key]: event.target.checked ? 'yes' : 'no' })} /><span>开启</span><span className="sm-switch-state">{draft[field.key] === 'yes' ? '当前：已开启' : '当前：已关闭'}</span></label> : <div className="sm-number">
-                <input id={'sm-maintenance-' + field.key} type="number" min={1} max={field.max} step={1} value={draft[field.key]} disabled={!!reason} aria-invalid={validated && !!validation.errors[field.key]}
-                  aria-describedby={'sm-maintenance-help-' + field.key} onChange={event => setDraft({ ...draft, [field.key]: event.target.value })} /><span>{field.unit}</span></div>}
-              <small id={'sm-maintenance-help-' + field.key} className={validated && validation.errors[field.key] ? 'sm-error' : 'sm-meta'}>{validated && validation.errors[field.key] || (field.switch ? '正式配置' : '1 至 ' + field.max + ' ' + field.unit)}</small>
-              {base.defaulted_fields.includes(field.key) ? <small className="sm-meta">默认值，尚未保存</small> : <small className="sm-meta">已存值：{field.switch ? base.values[field.key] === 'yes' ? '已开启' : '已关闭' : base.values[field.key]}</small>}
-            </div>
-          </div>)}
-        </fieldset>)}</div>
-          <div className="sm-form-footer"><span className="sm-meta">{changed ? '有未保存修改' : base.defaulted_fields.length ? '含默认项，还需核对后保存' : '当前值已读取'}</span><div className="sm-actions">
-            <C.Button icon="rotate-ccw" disabled={!!reason || !changed} onClick={() => setReplace(true)}>放弃草稿</C.Button><C.Button icon="save" type="submit" className="btn primary" reason={reason}>保存维护配置</C.Button>
-          </div></div>{validated && !validation.valid && <p className="sm-error" role="alert">有几项填得不对，配置没有保存。请修正标红的项。</p>}
-        </form>}
-        <details className="sm-rules sm-config-help"><summary>生效范围与自动维护规则</summary>
-          <p>软件正常运行时，打开工作台页面或操作数据会按间隔检查备份和清理；静态文件和健康检查不会触发维护。没有后台定时任务，不保证在指定时刻执行；正常退出时的备份另行执行，也受自动备份开关控制。</p>
-          <p>日志清理只清操作记录，不清除运行文件日志。备份失败时会跳过本轮备份清理，保底规则不会删掉全部近期副本。</p></details>
-      </section>
-      {replace && <window.ResourceControls.Modal title="放弃当前草稿并刷新？" icon="history" onClose={() => setReplace(false)}
-        footer={<><C.Button onClick={() => setReplace(false)}>保留草稿</C.Button><C.Button icon="refresh-cw" onClick={refreshNow}>放弃并刷新</C.Button></>}><div className="modal-b form"><p>未保存修改将被丢弃。</p></div></window.ResourceControls.Modal>}
-    </div>;
-  }
-  window.SystemMaintenanceConfig = Config;
-})();
+import React from './shared/runtime/react.js';
+import A from './SystemMaintenanceAPI.js';
+import C from './SystemMaintenanceControls.jsx';
+import WorkbenchGuards from './WorkbenchGuards.js';
+import { Modal } from './ResourceControls.jsx';
+
+function SystemMaintenanceConfig({ revision, command, active, tab, ...preferences }) {
+  const [refresh, reload] = React.useReducer(value => value + 1, 0), [draft, setDraft] = React.useState(null), [validated, setValidated] = React.useState(false);
+  const [base, setBase] = React.useState(null), [replace, setReplace] = React.useState(false);
+  const request = C.useRead('config', {}, revision + ':' + refresh, active), incoming = request.data && request.data.data;
+  const validation = A.normalize(draft || {}), changed = base && draft && A.fields.some(field => String(draft[field.key]) !== String(base.values[field.key]));
+  const onConfigTab = tab === 'config';
+  WorkbenchGuards.useDirtyGuard({
+    dirty: Boolean(changed),
+    locked: Boolean(active && command.locked),
+    message: '系统自动维护配置存在未保存修改，确定离开当前页面吗？'
+  });
+  React.useEffect(() => {
+    if (!onConfigTab && base) {
+      setDraft({ ...base.values }); setValidated(false); setReplace(false);
+    }
+  }, [onConfigTab, base]);
+  React.useEffect(() => {
+    // A receipt or revision alone cannot settle a draft; all eight read-back values must match.
+    const matchesDraft = incoming && draft && A.fields.every(field => String(draft[field.key]) === String(incoming.values[field.key]));
+    if (incoming && (!changed || matchesDraft)) { setBase(incoming); setDraft({ ...incoming.values }); setValidated(false); }
+  }, [incoming]);
+  const ready = incoming && base === incoming;
+  const reason = command.locked ? command.lockedReason : !ready ? '请先点「刷新配置」读取正式配置。' : '';
+  function refreshNow() { setReplace(false); setBase(null); setDraft(null); reload(); }
+  return <div className="sm-configuration sm-configuration-full">
+    <C.Preferences {...preferences} />
+    <section className="sm-section sm-maintenance-config"><div className="sm-section-head"><h3>本机自动维护配置</h3><C.Button icon="refresh-cw" aria-label="刷新配置" busy={request.loading}
+      onClick={() => changed ? setReplace(true) : refreshNow()} /></div>
+      <C.ErrorBox error={request.error} />{request.loading && <p className="sm-note" role="status">正在读取八项维护配置…</p>}
+      {incoming && base && incoming !== base && changed && <div className="sm-notice" role="status">已读到新的配置数据，你填的内容没有被覆盖。请核对变化后再保存。
+        <details><summary>最新已存配置</summary>{A.fields.map(field => <p key={field.key}>{field.label}：{String(incoming.values[field.key])}</p>)}</details>
+        <C.Button icon="check" disabled={command.locked} onClick={() => setBase(incoming)}>核对后沿用草稿</C.Button></div>}
+      {draft && base && <form className="sm-config-form" noValidate onSubmit={event => { event.preventDefault(); setValidated(true);
+        if (validation.valid && !reason) command.execute('config', base.write_context.write_token, validation.values);
+      }}><div className="sm-config-groups">{[['backup', '备份规则'], ['logs', '操作日志规则']].map(([group, label]) => <fieldset className="sm-config-group" key={group}><legend>{label}</legend>
+        {A.fields.filter(field => field.group === group).map(field => <div className="sm-config-row sm-config-row-wide" key={field.key}>
+          <label htmlFor={'sm-maintenance-' + field.key}>{field.label}</label><div>
+            {field.switch ? <label className="sm-draft-checkbox"><input id={'sm-maintenance-' + field.key} type="checkbox" checked={draft[field.key] === 'yes'} disabled={!!reason}
+              onChange={event => setDraft({ ...draft, [field.key]: event.target.checked ? 'yes' : 'no' })} /><span>开启</span><span className="sm-switch-state">{draft[field.key] === 'yes' ? '当前：已开启' : '当前：已关闭'}</span></label> : <div className="sm-number">
+              <input id={'sm-maintenance-' + field.key} type="number" min={1} max={field.max} step={1} value={draft[field.key]} disabled={!!reason} aria-invalid={validated && !!validation.errors[field.key]}
+                aria-describedby={'sm-maintenance-help-' + field.key} onChange={event => setDraft({ ...draft, [field.key]: event.target.value })} /><span>{field.unit}</span></div>}
+            <small id={'sm-maintenance-help-' + field.key} className={validated && validation.errors[field.key] ? 'sm-error' : 'sm-meta'}>{validated && validation.errors[field.key] || (field.switch ? '正式配置' : '1 至 ' + field.max + ' ' + field.unit)}</small>
+            {base.defaulted_fields.includes(field.key) ? <small className="sm-meta">默认值，尚未保存</small> : <small className="sm-meta">已存值：{field.switch ? base.values[field.key] === 'yes' ? '已开启' : '已关闭' : base.values[field.key]}</small>}
+          </div>
+        </div>)}
+      </fieldset>)}</div>
+        <div className="sm-form-footer"><span className="sm-meta">{changed ? '有未保存修改' : base.defaulted_fields.length ? '含默认项，还需核对后保存' : '当前值已读取'}</span><div className="sm-actions">
+          <C.Button icon="rotate-ccw" disabled={!!reason || !changed} onClick={() => setReplace(true)}>放弃草稿</C.Button><C.Button icon="save" type="submit" className="btn primary" reason={reason}>保存维护配置</C.Button>
+        </div></div>{validated && !validation.valid && <p className="sm-error" role="alert">有几项填得不对，配置没有保存。请修正标红的项。</p>}
+      </form>}
+      <details className="sm-rules sm-config-help"><summary>生效范围与自动维护规则</summary>
+        <p>软件正常运行时，打开工作台页面或操作数据会按间隔检查备份和清理；静态文件和健康检查不会触发维护。没有后台定时任务，不保证在指定时刻执行；正常退出时的备份另行执行，也受自动备份开关控制。</p>
+        <p>日志清理只清操作记录，不清除运行文件日志。备份失败时会跳过本轮备份清理，保底规则不会删掉全部近期副本。</p></details>
+    </section>
+    {replace && <Modal title="放弃当前草稿并刷新？" icon="history" onClose={() => setReplace(false)}
+      footer={<><C.Button onClick={() => setReplace(false)}>保留草稿</C.Button><C.Button icon="refresh-cw" onClick={refreshNow}>放弃并刷新</C.Button></>}><div className="modal-b form"><p>未保存修改将被丢弃。</p></div></Modal>}
+  </div>;
+}
+
+export { SystemMaintenanceConfig };
+export default SystemMaintenanceConfig;

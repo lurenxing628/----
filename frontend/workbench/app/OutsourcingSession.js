@@ -1,141 +1,189 @@
-(function () {
-  'use strict';
-  const C = window.OutsourcingContract, T = window.APSWorkbenchTransport, KEY = 'aps_outsourcing_pending_v1', EVENT = KEY + '_changed';
-  // 磁盘记录的唯一校验点：回厂事实与目标先按契约核过，提交内容再对照它们；写入的记录由已校验的预检构造，写前不再重验。
-  function originalInput(v) {
-    const p = v.input, creating = Object.prototype.hasOwnProperty.call(p, 'target');
-    const allowed = ['declared_operator', 'reason', creating ? 'target' : 'outsourcing_ref', ...C.fields];
-    return Object.keys(p).every(k => allowed.includes(k)) && ['declared_operator', 'reason'].every(k => C.text(p[k]) && p[k] === p[k].trim() && !p[k].includes('\0'))
-      && p.declared_operator.length <= 200 && p.reason.length <= 2000 && C.fields.every(k => creating || Object.prototype.hasOwnProperty.call(p, k) ? p[k] === v.after[k] : true)
-      && (creating ? C.equal(p.target, C.targetValues(v.target)) : C.ref(p.outsourcing_ref));
-  }
-  function valid(v) {
-    try { return v && v.version === 1 && /^outsourcing-[a-f0-9]{48}$/.test(v.request_key) && ['pending', 'confirmed', 'rejected'].includes(v.phase)
-      && C.object(v.input) && !!C.facts(v.after) && !!C.publicTarget(v.target) && originalInput(v) && !Object.prototype.hasOwnProperty.call(v, 'write_token')
-      && (v.phase !== 'confirmed' || !!C.receipt(v.receipt, v)); } catch (_) { return false; }
-  }
-  const { read, flush, save } = T.pendingStore({
-    key: KEY, event: EVENT, validate: valid,
-    readError: '上次操作记录读不出来，不能开始新的登记。请重新打开页面。',
-    corruptError: '上次操作记录已损坏，不能开始新的登记。请不要再操作，联系维护人员。',
-    invalidError: '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。',
-    conflictError: '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。',
-    writeError: '上次操作记录保存不了，不能开始登记。请重新打开页面。'
-  });
-  function useCommand() {
-    const [initial] = React.useState(() => { try { return { saved: read() }; } catch (error) { return { saved: error.saved || null, error }; } });
-    const [saved, setSaved] = React.useState(initial.saved), [storageError, setStorageError] = React.useState(initial.error || null);
-    const [error, setError] = React.useState(null), [notice, setNotice] = React.useState(''), [busy, setBusy] = React.useState(false);
-    const active = React.useRef(saved), running = React.useRef(false), mounted = React.useRef(false); active.current = saved;
-    function sync(event, load = read) {
-      try {
-        const v = event && event.type === EVENT ? event.detail : load();
-        if (!C.equal(v, active.current)) { active.current = v; setSaved(v); setError(null); setNotice(''); }
-        setStorageError(null);
-      } catch (e) {
-        if (e.saved !== undefined && !C.equal(e.saved, active.current)) { active.current = e.saved; setSaved(e.saved); setError(null); setNotice(''); }
-        setStorageError(e);
-      }
+import React from './shared/runtime/react.js';
+import OutsourcingContract from './OutsourcingContract.js';
+import APSWorkbenchTransport from './shared/network/transport.js';
+import { pendingStore, exclusive } from './shared/session/pending-store.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
+import { useQuery } from './shared/session/query.js';
+
+const C = OutsourcingContract, T = APSWorkbenchTransport, KEY = 'aps_outsourcing_pending_v1', EVENT = KEY + '_changed';
+
+// 磁盘记录的唯一校验点：回厂事实与目标先按契约核过，提交内容再对照它们；写入的记录由已校验的预检构造，写前不再重验。
+function originalInput(v) {
+  const p = v.input, creating = Object.prototype.hasOwnProperty.call(p, 'target');
+  const allowed = ['declared_operator', 'reason', creating ? 'target' : 'outsourcing_ref', ...C.fields];
+  return Object.keys(p).every(k => allowed.includes(k)) && ['declared_operator', 'reason'].every(k => C.text(p[k]) && p[k] === p[k].trim() && !p[k].includes('\0'))
+    && p.declared_operator.length <= 200 && p.reason.length <= 2000 && C.fields.every(k => creating || Object.prototype.hasOwnProperty.call(p, k) ? p[k] === v.after[k] : true)
+    && (creating ? C.equal(p.target, C.targetValues(v.target)) : C.ref(p.outsourcing_ref));
+}
+
+function entityLabel(entity, expected) {
+  return entity === null || C.object(entity) && entity.ref === expected && C.ref(expected)
+    && ['business_code', 'label'].every(k => entity[k] === null || C.text(entity[k]) && entity[k].trim().length > 0);
+}
+
+function resolution(v) {
+  return C.object(v) && ['birth_record', 'current_relation', 'registration_confirmation'].includes(v.basis)
+    && (v.basis === 'registration_confirmation' ? C.ref(v.confirmation_ref) : v.confirmation_ref === null);
+}
+
+function validStoredTarget(t) {
+  const { operation_refs } = C.target(t);
+  return t.grouping_basis === 'explicit_receipt_membership' && C.object(t.batch) && t.batch.ref === t.batch_ref
+    && C.object(t.supplier) && t.supplier.ref === t.supplier_ref && Array.isArray(t.operations) && t.operations.length === operation_refs.length
+    && C.equal(t.operations.map(o => o && o.operation_ref).sort(), operation_refs)
+    && (t.part === undefined || C.object(t.part) && C.ref(t.part.ref) && entityLabel(t.part, t.part.ref))
+    && (t.source_resolution === undefined || resolution(t.source_resolution));
+}
+
+function validStoredReceipt(r, v) {
+  C.receipt(r, v);
+  if (typeof r.receipt_ref !== 'string' || !/^[a-f0-9]{32}$/.test(r.receipt_ref) || typeof r.replayed !== 'boolean' || !Array.isArray(r.warnings)) return false;
+  const d = r.data, e = d.execution;
+  return C.ref(d.outsourcing_ref) && C.ref(d.fact_ref) && C.equal(d.target, v.target) && C.text(d.local_operator) && C.time(d.confirmed_at)
+    && d.refresh_required === true && C.object(e) && e.automatically_reported === false && Array.isArray(e.operation_refs)
+    && C.equal(e.operation_refs.slice().sort(), C.targetValues(d.target).operation_refs)
+    && e.service === 'WorkbenchProductionReportService' && C.text(e.reason);
+}
+
+function valid(v) {
+  try {
+    return v && v.version === 1 && /^outsourcing-[a-f0-9]{48}$/.test(v.request_key) && ['pending', 'confirmed', 'rejected'].includes(v.phase)
+      && C.object(v.input) && C.facts(v.after) && validStoredTarget(v.target) && originalInput(v) && !Object.prototype.hasOwnProperty.call(v, 'write_token')
+      && (v.phase !== 'confirmed' || validStoredReceipt(v.receipt, v));
+  } catch (_) { return false; }
+}
+
+const { read, flush, save, subscribe } = pendingStore({
+  key: KEY, event: EVENT, validate: valid,
+  readError: '上次操作记录读不出来，不能开始新的登记。请重新打开页面。',
+  corruptError: '上次操作记录已损坏，不能开始新的登记。请不要再操作，联系维护人员。',
+  invalidError: '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。',
+  conflictError: '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。',
+  writeError: '上次操作记录保存不了，不能开始登记。请重新打开页面。'
+});
+
+function useCommand() {
+  const [initial] = React.useState(() => { try { return { saved: read() }; } catch (error) { return { saved: error.saved || null, error }; } });
+  const [saved, setSaved] = React.useState(initial.saved), [storageError, setStorageError] = React.useState(initial.error || null);
+  const [error, setError] = React.useState(null), [notice, setNotice] = React.useState(''), [busy, setBusy] = React.useState(false);
+  const active = React.useRef(saved), running = React.useRef(false), mounted = React.useRef(false); active.current = saved;
+  function sync(event, load = read) {
+    try {
+      const v = event && event.type === EVENT ? event.detail : load();
+      if (!C.equal(v, active.current)) { active.current = v; setSaved(v); setError(null); setNotice(''); }
+      setStorageError(null);
+    } catch (e) {
+      if (e.saved !== undefined && !C.equal(e.saved, active.current)) { active.current = e.saved; setSaved(e.saved); setError(null); setNotice(''); }
+      setStorageError(e);
     }
-    React.useEffect(() => {
-      mounted.current = true; const changed = e => { if (!e.key || e.key === KEY) sync(e); };
-      window.addEventListener('storage', changed); window.addEventListener(EVENT, changed);
-      return () => { mounted.current = false; window.removeEventListener('storage', changed); window.removeEventListener(EVENT, changed); };
-    }, []);
-    // C.command/C.lookup already checked the receipt; a failed local write belongs to storageError. Callers hold the cross-page lock.
-    function accept(v, original) {
-      if (!C.equal(active.current, original)) { if (mounted.current) sync(); return; }
-      const confirmed = { ...original, phase: 'confirmed', receipt: v };
-      try { save(confirmed, original); active.current = confirmed; }
-      catch (e) {
+  }
+  React.useEffect(() => {
+    mounted.current = true;
+    const unsubscribe = subscribe(sync);
+    return () => { mounted.current = false; unsubscribe(); };
+  }, []);
+  // C.command/C.lookup already checked the receipt; a failed local write belongs to storageError. Callers hold the cross-page lock.
+  function accept(v, original) {
+    if (!C.equal(active.current, original)) { if (mounted.current) sync(); return; }
+    const confirmed = { ...original, phase: 'confirmed', receipt: v };
+    try { save(confirmed, original); active.current = confirmed; }
+    catch (e) {
+      if (!mounted.current) return;
+      if (!C.equal(active.current, confirmed)) sync();
+      setStorageError(e);
+    }
+    if (mounted.current && C.equal(active.current, confirmed)) { setError(null); setNotice('请点「完成」查看最新登记。'); }
+  }
+  async function lookup(preserveError = false) {
+    if (running.current || !active.current || active.current.phase !== 'pending') return;
+    const original = active.current; running.current = true; setBusy(true); if (!preserveError) setError(null);
+    try {
+      const v = await C.lookup(original);
+      if (v) await exclusive(KEY, { wait: true }, () => accept(v, original));
+      else if (mounted.current && C.equal(active.current, original)) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。');
+    }
+    catch (e) { if (mounted.current && C.equal(active.current, original)) setError(e); }
+    finally { running.current = false; if (mounted.current) setBusy(false); }
+  }
+  React.useEffect(() => { if (initial.saved && initial.saved.phase === 'pending') lookup(); }, []);
+  async function submit(preview) {
+    if (running.current || storageError || active.current) return;
+    running.current = true; setBusy(true); setError(null); setNotice(''); let original, needLookup = false;
+    try {
+      // 新登记的本机记录、提交和结果写回在跨页互斥里串行，持锁跨过提交命令。
+      const { acquired } = await exclusive(KEY, {}, async () => {
         if (!mounted.current) return;
-        if (!C.equal(active.current, confirmed)) sync();
-        setStorageError(e);
-      }
-      if (mounted.current && C.equal(active.current, confirmed)) { setError(null); setNotice('请点「完成」查看最新登记。'); }
-    }
-    async function lookup(preserveError = false) {
-      if (running.current || !active.current || active.current.phase !== 'pending') return;
-      const original = active.current; running.current = true; setBusy(true); if (!preserveError) setError(null);
-      try {
-        const v = await C.lookup(original);
-        if (v) await T.exclusive(KEY, { wait: true }, () => accept(v, original));
-        else if (mounted.current && C.equal(active.current, original)) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。');
-      }
-      catch (e) { if (mounted.current && C.equal(active.current, original)) setError(e); }
-      finally { running.current = false; if (mounted.current) setBusy(false); }
-    }
-    React.useEffect(() => { if (initial.saved && initial.saved.phase === 'pending') lookup(); }, []);
-    async function submit(preview) {
-      if (running.current || storageError || active.current) return;
-      running.current = true; setBusy(true); setError(null); setNotice(''); let original, needLookup = false;
-      try {
-        // 新登记的本机记录、提交和结果写回在跨页互斥里串行，持锁跨过提交命令。
-        const { acquired } = await T.exclusive(KEY, {}, async () => {
-          if (!mounted.current) return;
-          // C.preview 已校验过这份预检结果。
-          const d = preview.data;
-          original = { version: 1, phase: 'pending', request_key: T.requestKey('outsourcing'),
-            input: d.input, after: d.after, target: d.target };
-          try { save(original, null); } catch (e) { setStorageError(e); return; }
-          active.current = original;
-          try { accept(await C.command(original, d.write_context.write_token), original); }
-          catch (e) {
-            if (!C.equal(active.current, original)) { if (mounted.current) sync(); return; }
-            // 明确被拒的登记什么都没写入：直接放弃这条待确认记录，表单回到可编辑状态，改好后重新预检提交。
-            const rejected = T.rejected(e);
-            if (rejected) {
-              try { save(null, original); active.current = null; }
-              catch (storageErr) {
-                if (!mounted.current) return;
-                if (active.current !== null) { sync(); setStorageError(storageErr); return; }
-                setStorageError(storageErr);
-              }
-              if (mounted.current && active.current === null) { setError(e); setNotice(window.WorkbenchTerms.outcomes.rejected('外协登记')); }
-            } else {
-              needLookup = true;
-              if (mounted.current) { setError(e); setNotice(''); }
+        // C.preview 已校验过这份预检结果。
+        const d = preview.data;
+        original = {
+          version: 1, phase: 'pending', request_key: T.requestKey('outsourcing'),
+          input: d.input, after: d.after, target: d.target
+        };
+        try { save(original, null); } catch (e) { setStorageError(e); return; }
+        active.current = original;
+        try { accept(await C.command(original, d.write_context.write_token), original); }
+        catch (e) {
+          if (!C.equal(active.current, original)) { if (mounted.current) sync(); return; }
+          // 明确被拒的登记什么都没写入：直接放弃这条待确认记录，表单回到可编辑状态，改好后重新预检提交。
+          const rejected = T.rejected(e);
+          if (rejected) {
+            try { save(null, original); active.current = null; }
+            catch (storageErr) {
+              if (!mounted.current) return;
+              if (active.current !== null) { sync(); setStorageError(storageErr); return; }
+              setStorageError(storageErr);
             }
+            if (mounted.current && active.current === null) { setError(e); setNotice(WorkbenchTerms.outcomes.rejected('外协登记')); }
+          } else {
+            needLookup = true;
+            if (mounted.current) { setError(e); setNotice(''); }
           }
-        });
-        if (!acquired && mounted.current) setError(new Error('另一个页面有还没确认的外协登记，请先在那里点「查询结果」。'));
-      } catch (e) { if (mounted.current) setError(e); }
-      finally { running.current = false; if (mounted.current) setBusy(false); }
-      if (mounted.current && needLookup && active.current && active.current.request_key === original.request_key && active.current.phase === 'pending') await lookup(true);
-    }
-    // 丢弃用户眼前这条已有结论的本机记录，写入在跨页互斥里做；返回是否已清掉。
-    async function finish() {
-      if (running.current) return false;
-      try {
-        const v = active.current && active.current.phase !== 'pending' ? active.current : read();
-        C.check(v && v.phase !== 'pending', '上次外协登记的结果还没有确认，不能丢弃这条记录。请先点「查询结果」。');
-        await T.exclusive(KEY, { wait: true }, () => save(null, v));
-        setError(null); setNotice(''); return true;
-      } catch (e) { setStorageError(e); return false; }
-    }
-    // 「刷新上次操作记录」在跨页互斥里把本页没写进去的记录写回再读。
-    const reload = () => T.exclusive(KEY, { wait: true }, () => sync(undefined, flush)).catch(setStorageError);
-    return { saved, storageError, error, notice, busy, sync: reload, submit, lookup: () => lookup(), finish };
+        }
+      });
+      if (!acquired && mounted.current) setError(new Error('另一个页面有还没确认的外协登记，请先在那里点「查询结果」。'));
+    } catch (e) { if (mounted.current) setError(e); }
+    finally { running.current = false; if (mounted.current) setBusy(false); }
+    if (mounted.current && needLookup && active.current && active.current.request_key === original.request_key && active.current.phase === 'pending') await lookup(true);
   }
-  function useRead(load, deps) { return window.APSResourceSession.useQuery(load, deps); }
-  function memberConflict(first, row) {
-    if (!first) return '';
-    if (first.batch_ref !== row.batch_ref) return '不同批次';
-    if (first.supplier_ref !== row.supplier_ref) return '不同供应商';
-    if (first.piece !== row.piece) return '不同分件';
-    return '';
+  // 丢弃用户眼前这条已有结论的本机记录，写入在跨页互斥里做；返回是否已清掉。
+  async function finish() {
+    if (running.current) return false;
+    try {
+      const v = active.current && active.current.phase !== 'pending' ? active.current : read();
+      C.check(v && v.phase !== 'pending', '上次外协登记的结果还没有确认，不能丢弃这条记录。请先点「查询结果」。');
+      await exclusive(KEY, { wait: true }, () => save(null, v));
+      setError(null); setNotice(''); return true;
+    } catch (e) { setStorageError(e); return false; }
   }
-  function input(draft, selected, item, now) {
-    const values = { sent: C.stamp(draft.sent), planned: C.stamp(draft.planned), returned: draft.returned ? C.stamp(draft.returned) : null, confirmedState: draft.confirmedState };
-    C.facts(values, now);
-    const p = { declared_operator: draft.declared_operator.trim(), reason: draft.reason.trim() };
-    C.check(p.declared_operator && p.declared_operator.length <= 200 && !p.declared_operator.includes('\0') && p.reason && p.reason.length <= 2000 && !p.reason.includes('\0'), '请填写经办人和本次核实 / 更正原因。');
-    if (item) { p.outsourcing_ref = item.outsourcing_ref; C.fields.forEach(k => { if (values[k] !== item[k]) p[k] = values[k]; }); }
-    else {
-      C.check(selected.length > 0 && selected.every(r => r.can_register && !memberConflict(selected[0], r)), '请选择同一批次、同一分件、同一供应商的真实可登记工序。');
-      p.target = C.target({ kind: draft.kind, batch_ref: selected[0].batch_ref, supplier_ref: selected[0].supplier_ref, operation_refs: selected.map(r => r.operation_ref) }); Object.assign(p, values);
-    }
-    return p;
+  // 「刷新上次操作记录」在跨页互斥里把本页没写进去的记录写回再读。
+  const reload = () => exclusive(KEY, { wait: true }, () => sync(undefined, flush)).catch(setStorageError);
+  return { saved, storageError, error, notice, busy, sync: reload, submit, lookup: () => lookup(), finish };
+}
+
+function useRead(load, deps) { return useQuery(load, deps); }
+
+function memberConflict(first, row) {
+  if (!first) return '';
+  if (first.batch_ref !== row.batch_ref) return '不同批次';
+  if (first.supplier_ref !== row.supplier_ref) return '不同供应商';
+  if (first.piece !== row.piece) return '不同分件';
+  return '';
+}
+
+function input(draft, selected, item) {
+  const values = { sent: C.stamp(draft.sent), planned: C.stamp(draft.planned), returned: draft.returned ? C.stamp(draft.returned) : null, confirmedState: draft.confirmedState };
+  C.facts(values);
+  const p = { declared_operator: draft.declared_operator.trim(), reason: draft.reason.trim() };
+  C.check(p.declared_operator && p.declared_operator.length <= 200 && !p.declared_operator.includes('\0') && p.reason && p.reason.length <= 2000 && !p.reason.includes('\0'), '请填写经办人和本次核实 / 更正原因。');
+  if (item) { p.outsourcing_ref = item.outsourcing_ref; C.fields.forEach(k => { if (values[k] !== item[k]) p[k] = values[k]; }); }
+  else {
+    C.check(selected.length > 0 && selected.every(r => r.can_register && !memberConflict(selected[0], r)), '请选择同一批次、同一分件、同一供应商的真实可登记工序。');
+    p.target = C.target({ kind: draft.kind, batch_ref: selected[0].batch_ref, supplier_ref: selected[0].supplier_ref, operation_refs: selected.map(r => r.operation_ref) }); Object.assign(p, values);
   }
-  window.OutsourcingSession = { KEY, read, save, useCommand, useRead, input, memberConflict };
-})();
+  return p;
+}
+
+const OutsourcingSession = { KEY, read, save, useCommand, useRead, input, memberConflict };
+
+export { OutsourcingSession, KEY, read, save, useCommand, useRead, input, memberConflict };
+export default OutsourcingSession;

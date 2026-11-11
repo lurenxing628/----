@@ -69,9 +69,9 @@ def test_calibration_restores_page_once_and_keeps_scope_source_and_expiry(lineag
     client, path, calls = app.test_client(), "/api/workbench/v1/calibration", []
     original = WorkbenchCalibrationService.read
 
-    def captured(reader, query, **kwargs):
+    def captured(reader, ledger_scope, query, **kwargs):
         calls.append(query.number)
-        return original(reader, query, **kwargs)
+        return original(reader, ledger_scope, query, **kwargs)
 
     query = {"page": 2, "size": 1}
     before = case.conn.total_changes
@@ -382,8 +382,9 @@ def test_calibration_routes_use_read_budget_and_avoid_duplicate_instance_or_unse
         lambda value, **kw: (rev_calls.append(value), orig_content(value, **kw))[1],
     )
 
-    service = WorkbenchCalibrationService(case.conn, as_of=NOW)
-    facts = service.read(CalibrationQuery())
+    service = WorkbenchCalibrationService(case.conn)
+    with service.read_snapshot() as ledger_scope:
+        facts = service.read(ledger_scope, CalibrationQuery(), as_of=NOW)
     assert op_calls == [] and tpl_calls == [] and inst_calls == []
     assert len(task_calls) == 1 and cohort_calls == []
     assert rev_calls == []

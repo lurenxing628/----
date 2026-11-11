@@ -551,9 +551,8 @@ body.aps-workbench .scheduling-navigation button.btn[aria-pressed="true"] { colo
 /* override: body.aps-workbench .rw-detail-pager .wb-pager button.btn; 工序详情抽屉里的记录分页行走 30px mini 档，合同钉的 32px / 5px 10px 要压掉。 */
 body.aps-workbench .rw-detail-pager .wb-pager button.btn { min-height: var(--wb-control-mini-height) !important; padding: var(--space-1) 9px !important; }
 
-/* ===== 打印（@media print）：最小打印样式。本应独立成 38-print.css，但新文件要登记 scripts/workbench/build-order.json（本包不改）；
-   放开吸附 / 限高要压过工作区文件里最高 (0,6,2) 优先级的规则，非 !important 不可，而样式合同只允许本文件保留 !important，故暂放此处。
-   登记 38-print.css 后可整段迁走（同时要放宽 tests/workbench-app-styles.cjs 里 !important 的宿主文件白名单）。 ===== */
+/* ===== 打印（@media print）：最小打印样式。放开吸附 / 限高要压过工作区文件里最高 (0,6,2) 优先级的规则，
+   非 !important 不可，而应用层样式约定只在本文件集中保留 !important，故放在此处。 ===== */
 @media print {
   @page { margin: 12mm; }
   /* 深色主题的近白文字落在透明纸面上无法阅读；打印介质统一改用系统纸面色，同时保留边框和甘特形状通道。 */

@@ -1,218 +1,87 @@
-(function () {
-  'use strict';
-  const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
-  const ref = v => typeof v === 'string' && /^[a-f0-9]{48}$/.test(v);
-  const count = v => Number.isSafeInteger(v) && v >= 0;
-  const measure = v => v === null || typeof v === 'number' && Number.isFinite(v);
-  const fields = (v, keys) => object(v) && keys.every(k => Object.prototype.hasOwnProperty.call(v, k));
-  function check(value, message = '试调数据不完整或不一致，请刷新后重试。') { if (!value) throw new Error(message); }
-  const DAYS = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  function time(v) {
-    // Keep the wire value intact: calendar fields are validated directly without Date allocation or timezone serialization.
-    if (typeof v !== 'string' || !/^(?!0000)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(v)) return false;
-    const y = (v.charCodeAt(0) - 48) * 1000 + (v.charCodeAt(1) - 48) * 100 + (v.charCodeAt(2) - 48) * 10 + (v.charCodeAt(3) - 48);
-    const m = (v.charCodeAt(5) - 48) * 10 + (v.charCodeAt(6) - 48), d = (v.charCodeAt(8) - 48) * 10 + (v.charCodeAt(9) - 48);
-    return m >= 1 && m <= 12 && d >= 1 && d <= (m === 2 && y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : DAYS[m]);
+import DecisionHistoryAPI from './DecisionHistoryAPI.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
+
+const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+const ref = v => typeof v === 'string' && /^[a-f0-9]{48}$/.test(v);
+const fields = (v, keys) => object(v) && keys.every(k => Object.prototype.hasOwnProperty.call(v, k));
+function check(value, message = '试调数据不完整或不一致，请刷新后重试。') { if (!value) throw new Error(message); }
+const DAYS = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+function time(v) {
+  // Keep the wire value intact: calendar fields are validated directly without Date allocation or timezone serialization.
+  if (typeof v !== 'string' || !/^(?!0000)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(v)) return false;
+  const y = (v.charCodeAt(0) - 48) * 1000 + (v.charCodeAt(1) - 48) * 100 + (v.charCodeAt(2) - 48) * 10 + (v.charCodeAt(3) - 48);
+  const m = (v.charCodeAt(5) - 48) * 10 + (v.charCodeAt(6) - 48), d = (v.charCodeAt(8) - 48) * 10 + (v.charCodeAt(9) - 48);
+  return m >= 1 && m <= 12 && d >= 1 && d <= (m === 2 && y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : DAYS[m]);
+}
+function base(v) { check(object(v) && Object.keys(v).length === 1 && ['plan_ref', 'candidate_ref'].some(k => ref(v[k]))); return v; }
+function scope(v = {}) {
+  check(object(v) && Object.keys(v).every(k => ['range_start', 'range_end', 'batch_refs', 'resource_type', 'resource_ref', 'query'].includes(k)), '试调显示范围含未知条件。');
+  if (v.range_start !== undefined || v.range_end !== undefined) check(time(v.range_start) && time(v.range_end) && v.range_start < v.range_end, '显示起止时间须成对填写，开始早于结束。');
+  if (v.batch_refs !== undefined) check(Array.isArray(v.batch_refs) && v.batch_refs.every(ref));
+  if (v.resource_type !== undefined) check(['machine', 'operator', 'batch'].includes(v.resource_type));
+  if (v.resource_ref !== undefined) check(ref(v.resource_ref) && v.resource_type !== undefined);
+  if (v.query !== undefined) check(typeof v.query === 'string' && v.query.length <= 200);
+  return v;
+}
+// A navigation target is an identity, never an instruction to pick the latest record.
+function target(v = {}) {
+  check(object(v) && Object.keys(v).every(k => ['kind', 'draft_ref', 'scenario_ref', 'base', 'scope', 'task_origin', 'return_decision_history_context'].includes(k)), '试调入口参数无效。');
+  if (v.return_decision_history_context !== undefined) DecisionHistoryAPI.context(v.return_decision_history_context);
+  const keys = ['draft_ref', 'scenario_ref', 'base'].filter(k => v[k] !== undefined);
+  check(keys.length <= 1, '只能指定一份试调草稿、试调方案或原来源。');
+  if (v.kind !== undefined) check(v.kind === (v.draft_ref ? 'draft' : v.scenario_ref ? 'scenario' : 'base'));
+  keys.forEach(k => k === 'base' ? base(v[k]) : check(ref(v[k])));
+  if (v.scope !== undefined) { check(keys[0] === 'base', '已有草稿不能重新指定基础范围。'); scope(v.scope); }
+  if (Object.prototype.hasOwnProperty.call(v, 'task_origin')) {
+    origin(v.task_origin);
+    check(keys.length === 1 && keys[0] !== 'scenario_ref', '原任务定位只能指向原正式计划或指定草稿。');
+    if (v.base) check(v.base.plan_ref === v.task_origin.plan_ref, '原任务与试调原计划不一致。');
   }
-  function base(v) { check(object(v) && Object.keys(v).length === 1 && ['plan_ref', 'candidate_ref'].some(k => ref(v[k]))); return v; }
-  function scope(v = {}) {
-    check(object(v) && Object.keys(v).every(k => ['range_start', 'range_end', 'batch_refs', 'resource_type', 'resource_ref', 'query'].includes(k)), '试调显示范围含未知条件。');
-    if (v.range_start !== undefined || v.range_end !== undefined) check(time(v.range_start) && time(v.range_end) && v.range_start < v.range_end, '显示起止时间须成对填写，开始早于结束。');
-    if (v.batch_refs !== undefined) check(Array.isArray(v.batch_refs) && v.batch_refs.every(ref));
-    if (v.resource_type !== undefined) check(['machine', 'operator', 'batch'].includes(v.resource_type));
-    if (v.resource_ref !== undefined) check(ref(v.resource_ref) && v.resource_type !== undefined);
-    if (v.query !== undefined) check(typeof v.query === 'string' && v.query.length <= 200);
-    return v;
+  return v;
+}
+function origin(value) {
+  check(fields(value, ['plan_ref', 'operation_ref', 'task_ref']) && Object.keys(value).length === 3
+    && ['plan_ref', 'operation_ref', 'task_ref'].every(key => ref(value[key])), '原任务定位必须包含完整的原计划、工序和任务编号。');
+  return value;
+}
+function originTask(data, value) {
+  origin(value);
+  check(!data.scenario_ref && data.base && data.base.plan_ref === value.plan_ref, '当前草稿与原任务来源不一致，无法调整。');
+  const tasks = data.tasks.filter(task => task.source_task_ref === value.task_ref && task.operation_ref === value.operation_ref);
+  check(tasks.length === 1, tasks.length ? '原任务对应多份草稿安排，无法定位。' : '当前草稿中未找到原任务。');
+  return tasks[0];
+}
+// 信封已由 transport 校验；试调列表翻页和采用记录都钉在这次读取的数据版本上，所以数据版本不能为空。
+function envelope(v, q = {}) {
+  check(v.meta.snapshot_ref !== null); if (q.snapshot_ref) check(v.meta.snapshot_ref === q.snapshot_ref, WorkbenchTerms.outcomes.stale);
+  return v.data;
+}
+function workspace(d, expected = {}) {
+  check(object(d) && ref(d.draft_ref) && (!expected.draft_ref || expected.draft_ref === d.draft_ref)
+    && (!expected.scenario_ref || expected.scenario_ref === d.scenario_ref));
+  return d;
+}
+function catalog(v, collection, q) {
+  const d = envelope(v, q), p = d.page, s = d.scope;
+  check(object(s) && s.collection === collection
+    && s.status === (q.status ?? null) && s.base_kind === (q.base_kind ?? null) && s.base_ref === (q.base_ref ?? null) && s.size === q.size
+    && object(p) && p.number === q.page && p.size === q.size);
+  return d;
+}
+function receipt(v, intent) {
+  check(v && v.ok === true && ['committed', 'unchanged'].includes(v.result) && /^[a-f0-9]{32}$/.test(v.receipt_ref));
+  const d = v.data;
+  if (d && d.status === 'discarded' && d.history_retained === true) check(ref(d.draft_ref));
+  else workspace(d);
+  if (intent) {
+    if (intent.draft_ref) check(d.draft_ref === intent.draft_ref);
+    if (intent.action === 'create') check(JSON.stringify(d.base) === JSON.stringify(intent.input.base) && d.status === 'editing');
+    if (intent.action === 'save') check(ref(d.scenario_ref) && d.name === intent.input.name.trim());
+    if (intent.action === 'discard') check(d.status === 'discarded' && d.history_retained === true);
+    if (intent.action === 'change') { const t = d.tasks.find(t => t.task_ref === intent.input.task_ref); check(t && ['machine_ref', 'operator_ref', 'start'].every(k => t[k] === intent.input[k])); }
   }
-  // A navigation target is an identity, never an instruction to pick the latest record.
-  function target(v = {}) {
-    check(object(v) && Object.keys(v).every(k => ['kind', 'draft_ref', 'scenario_ref', 'base', 'scope', 'task_origin', 'return_decision_history_context'].includes(k)), '试调入口参数无效。');
-    if (v.return_decision_history_context !== undefined) window.DecisionHistoryAPI.context(v.return_decision_history_context);
-    const keys = ['draft_ref', 'scenario_ref', 'base'].filter(k => v[k] !== undefined);
-    check(keys.length <= 1, '只能指定一份试调草稿、试调方案或原来源。');
-    if (v.kind !== undefined) check(v.kind === (v.draft_ref ? 'draft' : v.scenario_ref ? 'scenario' : 'base'));
-    keys.forEach(k => k === 'base' ? base(v[k]) : check(ref(v[k])));
-    if (v.scope !== undefined) { check(keys[0] === 'base', '已有草稿不能重新指定基础范围。'); scope(v.scope); }
-    if (Object.prototype.hasOwnProperty.call(v, 'task_origin')) {
-      origin(v.task_origin);
-      check(keys.length === 1 && keys[0] !== 'scenario_ref', '原任务定位只能指向原正式计划或指定草稿。');
-      if (v.base) check(v.base.plan_ref === v.task_origin.plan_ref, '原任务与试调原计划不一致。');
-    }
-    return v;
-  }
-  function origin(value) {
-    check(fields(value, ['plan_ref', 'operation_ref', 'task_ref']) && Object.keys(value).length === 3
-      && ['plan_ref', 'operation_ref', 'task_ref'].every(key => ref(value[key])), '原任务定位必须包含完整的原计划、工序和任务编号。');
-    return value;
-  }
-  function originTask(data, value) {
-    origin(value);
-    check(!data.scenario_ref && data.base && data.base.plan_ref === value.plan_ref, '当前草稿与原任务来源不一致，无法调整。');
-    const tasks = data.tasks.filter(task => task.source_task_ref === value.task_ref && task.operation_ref === value.operation_ref);
-    check(tasks.length === 1, tasks.length ? '原任务对应多份草稿安排，无法定位。' : '当前草稿中未找到原任务。');
-    return tasks[0];
-  }
-  function issues(v) { check(Array.isArray(v) && v.every(r => fields(r, ['code', 'message']) && typeof r.message === 'string')); }
-  function validation(v) {
-    check(fields(v, ['status', 'constraints_status', 'can_adopt', 'issues', 'adoption'])
-      && ['blocked', 'warning', 'valid'].includes(v.constraints_status) && ['blocked', 'warning', 'valid'].includes(v.status) && typeof v.can_adopt === 'boolean');
-    issues(v.issues); check(object(v.adoption) && typeof v.adoption.available === 'boolean'); issues(v.adoption.blocked_reasons);
-  }
-  // 信封已由 transport 校验；试调列表翻页和采用记录都钉在这次读取的数据版本上，所以数据版本不能为空。
-  function envelope(v, q = {}) {
-    check(v.meta.snapshot_ref !== null); if (q.snapshot_ref) check(v.meta.snapshot_ref === q.snapshot_ref, window.WorkbenchTerms.outcomes.stale);
-    return v.data;
-  }
-  function arrangement(v, owner) { check(fields(v, ['machine_ref', 'operator_ref', 'start', 'end']) && time(v.start) && time(v.end) && window.PointContract.arrangement(v, owner)
-    && ['machine_ref', 'operator_ref'].every(k => v[k] === null || ref(v[k]))); }
-  function deliverySummary(value, batchCount) {
-    check(window.DeliveryProjectionContract.summary(value) && value.batch_count === batchCount);
-  }
-  function deliveryRow(row, batchRef) {
-    check(window.DeliveryProjectionContract.row(row) && row.batch_ref === batchRef);
-  }
-  function effortPair(value) {
-    check(fields(value, ['before', 'after']) && ['before', 'after'].every(side => window.EffortProjectionContract.compact(value[side])),
-      '试调准备需求保存资料不完整，请刷新。');
-  }
-  function preparation(value) {
-    const E = window.EffortProjectionContract, keys = ['pending_setup_hours', 'scheduled_setup_hours', 'unplanned_setup_hours', 'deferred_setup_hours',
-      'pending_processing_hours', 'scheduled_processing_hours', 'unplanned_processing_hours', 'deferred_processing_hours'];
-    check(fields(value, ['metric_version', 'scope', 'before', 'after', 'deltas', 'role_totals', 'coverage'])
-      && value.metric_version === 'decision-preparation-v4' && value.scope === 'full_admission'
-      && keys.every(key => E.metric(value.before[key]) && E.metric(value.after[key]) && E.delta(value.deltas[key])));
-    ['before', 'after'].forEach(side => {
-      check(object(value.role_totals[side]) && object(value.coverage[side]));
-      ['retained', 'execution', 'completed'].forEach(role => {
-        const item = value.role_totals[side][role];
-        check(object(item) && count(item.count) && ['setup_standard_hours', 'processing_standard_hours', 'required_standard_hours'].every(key => E.metric(item[key])));
-      });
-      Object.values(value.coverage[side]).forEach(refs => check(Array.isArray(refs) && refs.every(ref)));
-    });
-  }
-  function changeovers(value) {
-    check(fields(value, ['scope', 'metric_version', 'before', 'after']) && value.scope === 'complete_trial' && value.metric_version === 'type_changeover_v1');
-    ['before', 'after'].forEach(side => {
-      const item = value[side];
-      check(object(item) && item.metric_version === 'type_changeover_v1' && item.source === 'saved_arrangement_sequence'
-        && ['complete', 'partial', 'unavailable'].includes(item.state)
-        && ['count', 'known_count', 'changed_machine_count', 'known_changed_machine_count', 'conflict_count'].every(key => item[key] === null || count(item[key]))
-        && count(item.unknown_count) && [true, false, null].includes(item.conflict) && Array.isArray(item.events));
-      issues(item.issues);
-      item.events.forEach(event => check(['machine_ref', 'previous_operation_ref', 'next_operation_ref', 'previous_row_ref', 'next_row_ref',
-        'previous_type_ref', 'next_type_ref'].every(key => ref(event[key])) && ['previous_start', 'previous_end', 'next_start', 'next_end'].every(key => time(event[key]))
-        && typeof event.overlap === 'boolean' && typeof event.conflict === 'boolean' && ['complete', 'partial'].includes(event.state)));
-    });
-  }
-  function workspace(d, expected = {}) {
-    check(fields(d, ['draft_ref', 'status', 'base', 'base_identity', 'scope', 'baseline', 'tasks', 'task_count', 'tasks_complete',
-      'unplanned_operations', 'scope_complete', 'validation', 'resources', 'comparison', 'capacity', 'change_history', 'time_scope']));
-    check(ref(d.draft_ref) && (!expected.draft_ref || expected.draft_ref === d.draft_ref)
-      && (!expected.scenario_ref || expected.scenario_ref === d.scenario_ref) && ['editing', 'saved', 'discarded'].includes(d.status));
-    if (d.scenario_ref !== undefined) check(ref(d.scenario_ref) && d.status === 'saved' && !d.write_context && typeof d.name === 'string');
-    base(d.base); scope(d.scope); validation(d.validation);
-    check(object(d.base_identity) && (d.base.plan_ref ? d.base_identity.plan_ref === d.base.plan_ref : d.base_identity.candidate_ref === d.base.candidate_ref));
-    check(d.tasks_complete === true && count(d.task_count) && d.task_count > 0 && d.task_count <= 10000 && Array.isArray(d.tasks) && d.tasks.length === d.task_count);
-    check(Array.isArray(d.unplanned_operations) && typeof d.scope_complete === 'boolean' && d.scope_complete === (d.unplanned_operations.length === 0));
-    d.unplanned_operations.forEach(r => { check(ref(r.operation_ref) && fields(r, ['reason', 'status', 'sequence', 'piece_id'])); issues([r.reason]);
-      if (r.operation_effort !== undefined) effortPair(r.operation_effort); });
-    const seen = new Set(), rows = new Set(), historyOwners = new Map();
-    d.tasks.forEach(t => {
-      check(fields(t, ['task_ref', 'row_ref', 'operation_ref', 'source_row_ref', 'source_task_ref', 'batch_ref', 'batch_id', 'part_no', 'part_name',
-        'process_label', 'sequence', 'piece_id', 'source', 'quantity', 'batch_quantity', 'priority', 'due_date', 'due_state', 'due_issue', 'original', 'hours', 'execution',
-        'execution_at_creation', 'predecessor_refs', 'predecessor_operation_refs', 'edit_context', 'issues', 'data_gaps', 'changed']));
-      check(ref(t.task_ref) && ref(t.row_ref) && ref(t.operation_ref) && ref(t.source_row_ref) && (t.source_task_ref === null || ref(t.source_task_ref))
-        && !seen.has(t.task_ref) && !rows.has(t.row_ref) && t.draft_ref === d.draft_ref);
-      seen.add(t.task_ref); rows.add(t.row_ref); arrangement(t); arrangement(t.original, t);
-      if (t.execution_anchor !== undefined) {
-        arrangement(t.execution_anchor, t);
-        check(['completed_actuals', 'merged_external_actuals'].includes(t.execution_anchor.basis)
-          && (t.execution_anchor.basis !== 'merged_external_actuals' || t.source === 'external')
-          && typeof t.execution_anchor.message === 'string' && t.execution_anchor.message.length > 0
-          && ['machine_ref', 'operator_ref', 'start', 'end'].every(k => t.execution_anchor[k] === t[k])
-          && t.edit_context.can_change === false, '实际执行固定安排不完整，请刷新试调。');
-      }
-      if (d.base.candidate_ref && !d.scenario_ref) check(t.source_task_ref === null);
-      // 交期与候选、基线和正式参考同一精确合同：明确日期、9999-12-31 未指定、缺失或无效各有确定组合。
-      check(window.DeliveryProjectionContract.dueFields(t), '试调工序的交期资料不完整，请刷新试调。');
-      check(['internal', 'external'].includes(t.source) && object(t.hours) && typeof t.changed === 'boolean'
-        && Array.isArray(t.predecessor_refs) && Array.isArray(t.predecessor_operation_refs)
-        && object(t.edit_context) && typeof t.edit_context.can_change === 'boolean');
-      if (d.status !== 'editing') check(t.edit_context.can_change === false);
-      issues(t.issues); issues(t.data_gaps); issues(t.edit_context.blocked_reasons);
-      if (t.operation_effort !== undefined) effortPair(t.operation_effort);
-      [t.task_ref, ...(d.scenario_ref && t.source_task_ref ? [t.source_task_ref] : [])].forEach(key => {
-        if (!historyOwners.has(key)) historyOwners.set(key, t);
-      });
-    });
-    check(object(d.resources) && ['machines', 'operators', 'authorizations'].every(k => Array.isArray(d.resources[k])));
-    ['machines', 'operators'].forEach(k => check(d.resources[k].every(r => ref(r.ref) && typeof r.business_code === 'string')));
-    check(d.comparison.basis === 'draft_original' && Array.isArray(d.comparison.batches) && d.capacity.basis === 'selected_trial_only'
-      && Array.isArray(d.capacity.resources) && Array.isArray(d.change_history) && d.time_scope.time_basis === 'factory_local');
-    check(['late_count', 'total_delay_hours', 'changeovers'].every(k => measure(d.comparison[k]))
-      && ['changed_operations', 'moved_operations'].every(k => count(d.comparison[k]) && d.comparison[k] <= d.task_count));
-    if (d.comparison.preparation_common !== undefined) preparation(d.comparison.preparation_common);
-    if (d.comparison.changeover_common !== undefined) changeovers(d.comparison.changeover_common);
-    const batches = d.comparison.batches, batchRefs = new Set(batches.map(r => r.batch_ref));
-    deliverySummary(d.comparison.delivery_summary, batches.length);
-    deliverySummary(d.comparison.before_delivery_summary, batches.length);
-    check(batchRefs.size === batches.length);
-    batches.forEach(r => {
-      check(ref(r.batch_ref) && [r.baseline_finish, r.finish, r.partial_baseline_finish, r.partial_finish].every(v => v === null || time(v))
-        && ['on_time', 'overdue', 'unknown', 'not_applicable'].includes(r.risk) && window.DeliveryProjectionContract.dueFields(r)
-        && ['complete', 'deferred', 'incomplete', 'unknown'].includes(r.completion_state)
-        && [r.late_hours, r.improvement_hours, r.finish_delta_hours, r.delay_delta_hours].every(measure)
-        && typeof r.changed === 'boolean' && typeof r.moved === 'boolean' && Array.isArray(r.change_kinds)
-        && r.change_kinds.every(v => typeof v === 'string'));
-      deliveryRow(r.before, r.batch_ref); deliveryRow(r.after, r.batch_ref);
-    });
-    check(['available', 'partial', 'unavailable'].includes(d.capacity.state)
-      && d.capacity.source === 'archived_resource_calendar' && (d.capacity.resource_common === null
-        ? d.capacity.state === 'unavailable' && !d.capacity.resources.length
-        : window.ResourceProjectionContract.common(d.capacity.resource_common, 'archived_resource_calendar')));
-    d.capacity.resources.forEach(r => {
-      check(ref(r.resource_ref) && ['machine', 'operator'].includes(r.resource_type) && Array.isArray(r.segments)
-        && ['arranged_hours', 'occupied_hours', 'overlap_hours', 'available_hours', 'available_occupied_hours', 'outside_available_hours', 'utilization'].every(k => measure(r[k]))
-        && window.ResourceProjectionContract.window(r.window_metrics));
-      r.segments.forEach(s => check(time(s.start) && time(s.end) && s.start < s.end && count(s.concurrent_operations) && s.concurrent_operations > 0));
-      check(object(r.calendar) && (r.calendar.windows === null || Array.isArray(r.calendar.windows))); issues(r.calendar.issues);
-    });
-    check(time(d.time_scope.start) && time(d.time_scope.end) && d.time_scope.selection === 'complete_base'
-      && d.tasks.every(t => t.predecessor_refs.every(r => seen.has(r)) && batchRefs.has(t.batch_ref)
-        && t.start >= d.time_scope.start && t.end <= d.time_scope.end));
-    d.change_history.forEach(r => {
-      const owner = historyOwners.get(r.task_ref);
-      check(ref(r.change_ref) && ref(r.task_ref) && !!owner);
-      arrangement(r.before, owner); arrangement(r.after, owner); validation(r.validation);
-    });
-    if (d.status === 'editing') check(d.write_context && typeof d.write_context.write_token === 'string' && object(d.write_context.capabilities));
-    return d;
-  }
-  function catalog(v, collection, q) {
-    const d = envelope(v, q), p = d.page;
-    check(Array.isArray(d.items) && d.selection === null && d.validation_state === 'not_evaluated' && p && p.number === q.page && p.size === q.size
-      && count(p.total) && p.total <= 100000 && p.pages === Math.ceil(p.total / p.size)
-      && d.items.length === Math.min(p.size, Math.max(0, p.total - (p.number - 1) * p.size)));
-    const key = collection === 'drafts' ? 'draft_ref' : 'scenario_ref';
-    const seen = new Set();
-    d.items.forEach(r => { check(ref(r[key]) && !seen.has(r[key]) && typeof r.display_name === 'string' && count(r.task_count)
-      && r.open_target && r.open_target[key] === r[key] && r.validation_state === 'not_evaluated'); base(r.base); seen.add(r[key]);
-      check(q.status === 'all' || r.status === q.status); if (q.base_kind) check(r.base[q.base_kind] === q.base_ref); });
-    return d;
-  }
-  function receipt(v, intent) {
-    check(v && v.ok === true && ['committed', 'unchanged'].includes(v.result) && /^[a-f0-9]{32}$/.test(v.receipt_ref) && typeof v.replayed === 'boolean');
-    issues(v.warnings); const d = v.data;
-    if (d && d.status === 'discarded' && d.history_retained === true) { check(ref(d.draft_ref)); validation(d.validation); }
-    else workspace(d);
-    if (intent) {
-      if (intent.draft_ref) check(d.draft_ref === intent.draft_ref);
-      if (intent.action === 'create') check(JSON.stringify(d.base) === JSON.stringify(intent.input.base) && d.status === 'editing');
-      if (intent.action === 'save') check(ref(d.scenario_ref) && d.name === intent.input.name.trim());
-      if (intent.action === 'discard') check(d.status === 'discarded' && d.history_retained === true);
-      if (intent.action === 'change') { const t = d.tasks.find(t => t.task_ref === intent.input.task_ref); check(t && ['machine_ref', 'operator_ref', 'start'].every(k => t[k] === intent.input[k])); }
-    }
-    return v;
-  }
-  window.TrialContract = { object, ref, count, check, time, base, scope, target, originTask, issues, validation, envelope, workspace, catalog, receipt };
-})();
+  return v;
+}
+const TrialContract = { object, ref, check, time, base, scope, target, origin, originTask, envelope, workspace, catalog, receipt };
+export { TrialContract, object, ref, check, time, base, scope, target, origin, originTask, envelope, workspace, catalog, receipt };
+export default TrialContract;

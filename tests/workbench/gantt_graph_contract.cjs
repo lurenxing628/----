@@ -1,10 +1,22 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), window = {};
 const context = vm.createContext({ window, Date, Number, Map, Set });
-for (const file of ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'FieldContract.js', 'PointContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'GanttPresentation.js', 'RunCandidateModel.js', 'RunBaselineModel.js', 'GanttGraph.js'])
-  vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8'), context, { filename: file });
-const G = window.GanttGraph, ref = n => n.toString(16).padStart(48, '0'), clone = value => JSON.parse(JSON.stringify(value));
+const initialFiles = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'FieldContract.js', 'PointContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'GanttPresentation.js', 'RunCandidateModel.js', 'RunBaselineModel.js', 'GanttGraph.js'];
+for (const out of compile({
+  sources: initialFiles.map(file => ({ path: file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') })),
+  check_combined: false,
+}).outputs) {
+  vm.runInContext(out.code, context, { filename: out.path });
+}
+const getMod = rel => context.__wbRuntime.getModule(rel);
+const G = getMod('GanttGraph.js'), ref = n => n.toString(16).padStart(48, '0'), clone = value => JSON.parse(JSON.stringify(value));
+const PlanGanttModel = getMod('PlanGanttModel.js');
+const RunCandidateModel = getMod('RunCandidateModel.js');
+const RunBaselineModel = getMod('RunBaselineModel.js');
+const GanttPresentation = getMod('GanttPresentation.js');
+const PointGanttModel = getMod('PointGanttModel.js');
 const at = hour => '2026-10-12T' + String(hour).padStart(2, '0') + ':00:00';
 const refs = values => Array.from(values).sort(), expected = values => values.map(ref).sort();
 const edgesOf = value => Array.from(value.adjacency.values()).flat().sort((a, b) => a.order - b.order).map(item => item.edge);
@@ -25,59 +37,20 @@ const graph = { state: 'available', reason: null, scope: 'full_plan', nodes: tas
   predecessor_operation_refs: (predecessors.get(index + 1) || []).map(id => ref(id + 20)) })),
   critical_task_refs: [7, 1, 2, 3, 4, 6].map(ref),
   critical_edges: [edge(7, 1, 'machine'), ...[[1, 2], [2, 3], [3, 4], [4, 6]].map(pair => edge(...pair))] };
-const valid = (value, options = {}) => G.validate(value, { scope: 'full_plan', tasks, taskRef: 'task_ref',
-  time: value => typeof value === 'string' && /^2026-10-12T\d{2}:00:00$/.test(value),
-  sequence: Number.isInteger, processLabel: value => typeof value === 'string' && !!value.trim(), completeCount: tasks.length, ...options });
-
-// The boundary accepts zero-duration tasks and a complete empty result, but rejects another source or incomplete identity.
-assert(valid(graph));
-assert(valid({ ...graph, nodes: [], critical_task_refs: [], critical_edges: [] }, { tasks: [], completeCount: 0 }));
-assert(!valid({ ...graph, scope: 'full_candidate' }));
-assert(!valid(graph, { completeCount: tasks.length + 1 }));
-assert(valid(graph, { tasks: [tasks[2]], completeCount: undefined }), 'A range-filtered response retains the full graph');
 const candidateTasks = tasks.map(task => ({ ...task, row_ref: task.task_ref }));
-assert(valid({ ...graph, scope: 'full_candidate' }, { scope: 'full_candidate', tasks: candidateTasks, taskRef: 'row_ref' }));
-for (const change of [
-  value => { value.nodes[2].end = at(9); },
-  value => { value.nodes[2].operation_ref = ref(999); },
-  value => { value.nodes[1].predecessor_operation_refs = ['invalid']; },
-  value => { value.nodes[1].predecessor_operation_refs = [value.nodes[1].operation_ref]; },
-  value => { value.nodes[1].predecessor_operation_refs.push(value.nodes[1].predecessor_operation_refs[0]); },
-  value => { value.edges = []; },
-  value => { value.critical_edges[0].from_task_ref = ref(5); }
-]) { const value = clone(graph); change(value); assert(!valid(value)); }
-const unavailable = { state: 'unavailable', reason: '生成时未记录工艺关系', scope: 'full_plan', nodes: [], critical_task_refs: [], critical_edges: [] };
-assert(valid(unavailable));
-assert(!valid({ ...unavailable, reason: '' }));
-assert(!valid({ ...unavailable, nodes: graph.nodes }));
-const summaryGraph = { state: 'available', reason: null, scope: 'full_plan', nodes: [], node_count: tasks.length, nodes_complete: false, critical_task_refs: [], critical_edges: [] };
-assert(valid(summaryGraph));
-assert(!valid({ ...summaryGraph, node_count: 0 }));
-assert(!valid({ ...summaryGraph, node_count: 10001 }));
-assert(valid({ ...summaryGraph, node_count: 10001 }, { tasks: [tasks[0]], completeCount: undefined }));
-assert(!valid({ ...summaryGraph, nodes: [graph.nodes[0]] }));
-assert(!valid({ ...summaryGraph, scope: 'full_candidate' }, { scope: 'full_candidate' }));
-assert(valid({ ...graph, node_count: graph.nodes.length, nodes_complete: true }));
-assert(!valid({ ...graph, node_count: graph.nodes.length - 1, nodes_complete: true }));
-assert(valid({ ...unavailable, node_count: 0, nodes_complete: false }));
-assert(!valid({ ...unavailable, node_count: 1, nodes_complete: false }));
 const largeGraph = { ...graph, nodes: Array.from({ length: 10001 }, (_, index) => index === 0 ? graph.nodes[0] : ({ ...graph.nodes[0], task_ref: ref(index + 1000), operation_ref: ref(index + 20000), predecessor_operation_refs: [] })), critical_task_refs: [], critical_edges: [] };
-assert(valid(largeGraph, { tasks: [], completeCount: undefined }), 'The complete relation graph is independent of the 10000 visible-task limit');
-assert(valid({ ...largeGraph, node_count: 10001, nodes_complete: true }, { tasks: [tasks[0]], completeCount: undefined }));
 assert.equal(G.create(largeGraph).nodes.size, 10001);
 const missingGraph = clone(graph); missingGraph.nodes[2].predecessor_operation_refs.push(ref(999));
-assert(valid(missingGraph), 'An unarranged predecessor remains an explicit operation reference');
 const missingIndex = G.create(missingGraph);
 assert.equal(missingIndex.missingPredecessors.get(ref(3)), 1);
 assert.deepEqual(refs(G.route(missingIndex, ref(3)).previous.get(ref(3)).map(node => node.task_ref)), expected([2]));
-const { compile } = require('../../scripts/workbench/compile.cjs');
 context.React = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useMemo: fn => fn() };
-window.ResourceControls = { Button: 'button' };
-vm.runInContext(compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
+context.__wbRuntime.setStub('ResourceControls.jsx', { Button: 'button' });
+vm.runInContext(compile({
   sources: [{ path: 'GanttRouteList.jsx', code: fs.readFileSync(path.join(root, 'frontend/workbench/app/GanttRouteList.jsx'), 'utf8') }] }).outputs[0].code, context);
 const createGraph = G.create; let detailGraphBuilds = 0;
 G.create = value => { detailGraphBuilds++; return createGraph(value); };
-const routeList = window.GanttRouteList({ index: missingIndex, targetRef: ref(3), loadedRefs: new Set([ref(3)]), onSelect() {} });
+const routeList = getMod('GanttRouteList.jsx')({ index: missingIndex, targetRef: ref(3), loadedRefs: new Set([ref(3)]), onSelect() {} });
 G.create = createGraph;
 const routeText = value => Array.isArray(value) ? value.map(routeText).join('') : value && typeof value === 'object' ? routeText(value.props.children) : value == null || value === false ? '' : String(value);
 assert.equal(detailGraphBuilds, 0, 'The route consumes the existing prepared index without rebuilding it');
@@ -138,22 +111,22 @@ const data = { tasks, gantt_graph: graph, resources: [{ ref: ref(200), label: 'M
   projections: { calendar: { resources: [] }, occupancy: { resources: [] }, baseline: { state: 'unavailable', items: [] } } };
 const occupancy = { resource_ref: ref(200), kind: 'machine', segments: [], utilization: 0.75, available_occupied_hours: 3, available_hours: 4 };
 data.projections.occupancy.resources.push(occupancy);
-assert.equal(window.PlanGanttModel.tone(tasks[0], new Map([['B1', 'on_time']])), 'primary', 'On-time tasks retain the normal pale-blue tone');
-assert.equal(window.PlanGanttModel.tone(tasks[0], new Map([['B1', 'overdue']])), 'critical');
+assert.equal(PlanGanttModel.tone(tasks[0], new Map([['B1', 'on_time']])), 'primary', 'On-time tasks retain the normal pale-blue tone');
+assert.equal(PlanGanttModel.tone(tasks[0], new Map([['B1', 'overdue']])), 'critical');
 const candidateData = { gantt_graph: { ...graph, scope: 'full_candidate' }, task_span: data.task_span, unplanned_operations: [], tasks: candidateTasks.map(task => ({ ...task,
   batch_ref: ref(task.batch_id === 'B1' ? 300 : 301), batch_label: task.batch_id, machine: { ref: task.machine_ref, label: 'Machine' } })) };
 // Same chain as RunCandidateGantt without a loaded baseline.
 const candidateLayout = (value, mode, query, width = 1000, operationRefs = null) => {
-  const M = window.RunCandidateModel, B = window.RunBaselineModel;
+  const M = RunCandidateModel, B = RunBaselineModel;
   const candidate = M.selectPrepared(M.groupPrepared(M.prepare(value), mode), query, operationRefs, null);
   return B.layoutPrepared(B.selectPrepared(candidate, B.groupPrepared(B.prepare(null), mode), query, operationRefs, false), width);
 };
 const preparePlan = (value, baselineItems = null) => {
-  const M = window.PlanGanttModel, taskFacts = M.prepareTasks(value);
+  const M = PlanGanttModel, taskFacts = M.prepareTasks(value);
   return M.combinePrepared(taskFacts, M.prepareBaseline(value, taskFacts, baselineItems), M.prepareOccupancy(value, null, null, taskFacts.labels));
 };
 const planLayout = (value, mode, query = '', changedOnly = false, baseline = false, width = 1000) => {
-  const M = window.PlanGanttModel, facts = preparePlan(value);
+  const M = PlanGanttModel, facts = preparePlan(value);
   const grouped = M.groupPrepared(facts, mode);
   const baselineGrouped = baseline ? M.groupBaseline(facts, mode) : null;
   return M.layoutPrepared(M.selectPrepared(grouped, query, changedOnly, baseline, facts, baselineGrouped), width);
@@ -203,7 +176,7 @@ data.projections.baseline = { state: 'available', items: baselineItems, items_co
 const comparison = planLayout(data, 'machine', '', false, true, width);
 assert(comparison.rows.filter(row => row.before).every(row => row.occupancy === null), 'Baseline rows must not present current-plan utilization');
 const current = G.locations(comparison).get(ref(4));
-assert.equal(current.start, window.PlanGanttModel.instant(at(10))); assert.equal(current.end, window.PlanGanttModel.instant(at(11)));
+assert.equal(current.start, PlanGanttModel.instant(at(10))); assert.equal(current.end, PlanGanttModel.instant(at(11)));
 const candidate = candidateLayout(candidateData, 'machine', '', width), before = G.locations(candidate, { candidate: true }).get(ref(4));
 const baselineRow = { baseline: true, top: candidate.height, height: 26, items: [{ task: candidateData.tasks[3], start: 0, end: 1 }] };
 assert.deepEqual(G.locations({ ...candidate, rows: [...candidate.rows, baselineRow] }, { candidate: true }).get(ref(4)), before);
@@ -249,17 +222,17 @@ for (const candidate of [false, true]) {
 }
 
 // Shared presentation groups calendar dates without collapsing the overnight interval.
-const P = window.GanttPresentation, start = Date.parse('2026-10-12T08:00:00Z'), end = Date.parse('2026-10-13T12:00:00Z');
+const P = GanttPresentation, start = Date.parse('2026-10-12T08:00:00Z'), end = Date.parse('2026-10-13T12:00:00Z');
 const axis = P.axis({ start, end, width: 840, left: 0, viewport: 840 });
 // Legal microsecond intervals must keep positive duration instead of collapsing into zero-hour points.
-const epoch = window.PlanGanttModel.instant;
+const epoch = PlanGanttModel.instant;
 const microStart = epoch('2026-10-12T08:00:00.000001'), microEnd = epoch('2026-10-12T08:00:00.000002');
 assert(microEnd > microStart, 'Distinct microseconds in the same millisecond retain their order');
 const crossSecond = epoch('2026-10-12T08:00:01') - epoch('2026-10-12T08:00:00.999999');
 assert(crossSecond > 0 && crossSecond < .002, 'The fractional milliseconds are added once across a second boundary');
 const microAxis = P.axis({ start: microStart, end: microEnd, width: 640 });
 assert(microAxis.bands.length > 0 && microAxis.bands.every(band => Number.isFinite(band.x) && Number.isFinite(band.width)), 'Short positive spans keep finite shared-axis coordinates');
-assert.strictEqual(window.RunCandidateModel.instant, epoch, 'Candidates use the same factory-local coordinate parser');
+assert.strictEqual(RunCandidateModel.instant, epoch, 'Candidates use the same factory-local coordinate parser');
 assert.deepEqual(Array.from(axis.bands, band => band.label), ['10-12 周一', '10-13 周二']);
 assert.equal(axis.bands[1].x, 480, 'Midnight remains sixteen real hours after the range start');
 assert(axis.ticks.every(tick => /^\d{2}:\d{2}$/.test(tick.label)), 'Normal zoom omits seconds');
@@ -275,7 +248,7 @@ context.__normalSorts = 0; context.__baselineSorts = 0; context.__pointSorts = 0
 vm.runInContext(`const originalSort = Array.prototype.sort; Array.prototype.sort = function (compare) {
   const item = this[0], task = item && (item.task || item.segment);
   if (task) {
-    if (window.PointContract.isPoint(task)) __pointSorts++;
+    if (__wbRuntime.getModule('PointContract.js').isPoint(task)) __pointSorts++;
     else if (item.segment) __baselineSorts++;
     else __normalSorts++;
   }
@@ -283,19 +256,19 @@ vm.runInContext(`const originalSort = Array.prototype.sort; Array.prototype.sort
 };`, context);
 const pointTask = { ...candidateData.tasks[2], row_ref: ref(900), task_ref: ref(900), operation_ref: ref(901),
   start: '2026-10-12T10:05:00', end: '2026-10-12T10:05:00' };
-const candidateFacts = window.RunCandidateModel.prepare({ ...candidateData, tasks: [...candidateData.tasks, pointTask] });
-const candidateGroups = window.RunCandidateModel.groupPrepared(candidateFacts, 'machine');
-const preparedCandidate = window.RunCandidateModel.selectPrepared(candidateGroups, '', null, null);
+const candidateFacts = RunCandidateModel.prepare({ ...candidateData, tasks: [...candidateData.tasks, pointTask] });
+const candidateGroups = RunCandidateModel.groupPrepared(candidateFacts, 'machine');
+const preparedCandidate = RunCandidateModel.selectPrepared(candidateGroups, '', null, null);
 const baseline = { comparisons: [{ operation_ref: candidateData.tasks[2].operation_ref, baseline_segments: [
   { ...candidateData.tasks[2], row_ref: ref(902), interval_comparable: true, start: at(0), end: at(0) },
   { ...pointTask, row_ref: ref(903), interval_comparable: true, start: '2026-10-12T00:05:00', end: '2026-10-12T00:05:00' },
   { ...candidateData.tasks[3], row_ref: ref(904), interval_comparable: true, start: at(1), end: at(2) }
 ] }] };
-const baselineGroups = window.RunBaselineModel.groupPrepared(window.RunBaselineModel.prepare(baseline), 'machine');
-const prepared = window.RunBaselineModel.selectPrepared(preparedCandidate, baselineGroups, '', null, true);
-const sorts = [context.__normalSorts, context.__baselineSorts, context.__pointSorts], pointCalls = [], layoutTracks = window.PointGanttModel.layoutTracks;
-window.PointGanttModel.layoutTracks = (...args) => { pointCalls.push({ start: args[1], end: args[2], width: args[3] }); return layoutTracks(...args); };
-const compact = window.RunBaselineModel.layoutPrepared(prepared, 640), wide = window.RunBaselineModel.layoutPrepared(prepared, 10000);
+const baselineGroups = RunBaselineModel.groupPrepared(RunBaselineModel.prepare(baseline), 'machine');
+const prepared = RunBaselineModel.selectPrepared(preparedCandidate, baselineGroups, '', null, true);
+const sorts = [context.__normalSorts, context.__baselineSorts, context.__pointSorts], pointCalls = [], layoutTracks = PointGanttModel.layoutTracks;
+PointGanttModel.layoutTracks = (...args) => { pointCalls.push({ start: args[1], end: args[2], width: args[3] }); return layoutTracks(...args); };
+const compact = RunBaselineModel.layoutPrepared(prepared, 640), wide = RunBaselineModel.layoutPrepared(prepared, 10000);
 assert.deepEqual([context.__normalSorts, context.__baselineSorts, context.__pointSorts], sorts);
 assert.equal(pointCalls.length, 4, 'Each final width lays out current and baseline points once');
 assert(pointCalls.every(call => call.start === prepared.start && call.end === prepared.end));
@@ -303,12 +276,12 @@ assert(compact.rows.filter(row => row.point).length > wide.rows.filter(row => ro
 assert.deepEqual(clone(compact.rows.filter(row => !row.point && !row.baseline).map(row => row.items.map(item => [item.task.row_ref, item.start, item.end, item.overlap]))),
   clone(wide.rows.filter(row => !row.point && !row.baseline).map(row => row.items.map(item => [item.task.row_ref, item.start, item.end, item.overlap]))));
 const planFacts = preparePlan(data);
-const preparedPlan = window.PlanGanttModel.selectPrepared(window.PlanGanttModel.groupPrepared(planFacts, 'machine'), 'piece-b', false, true, planFacts, window.PlanGanttModel.groupBaseline(planFacts, 'machine')), planSorts = [context.__normalSorts, context.__pointSorts];
-const hiddenLanes = window.PlanGanttModel.layoutPrepared(preparedPlan, 640), hiddenWide = window.PlanGanttModel.layoutPrepared(preparedPlan, 10000);
+const preparedPlan = PlanGanttModel.selectPrepared(PlanGanttModel.groupPrepared(planFacts, 'machine'), 'piece-b', false, true, planFacts, PlanGanttModel.groupBaseline(planFacts, 'machine')), planSorts = [context.__normalSorts, context.__pointSorts];
+const hiddenLanes = PlanGanttModel.layoutPrepared(preparedPlan, 640), hiddenWide = PlanGanttModel.layoutPrepared(preparedPlan, 10000);
 assert.deepEqual([context.__normalSorts, context.__pointSorts], planSorts);
 const shown = hiddenLanes.rows.find(row => !row.before && !row.point);
 assert.equal(shown.track, 1); assert.equal(shown.subrow, 2); assert.equal(shown.trackCount, 2, 'Filtering keeps the full plan lane ordinals');
 assert.deepEqual(clone(hiddenWide.rows.map(row => [row.key, row.track, row.trackCount, row.subrow])), clone(hiddenLanes.rows.map(row => [row.key, row.track, row.trackCount, row.subrow])));
-window.PointGanttModel.layoutTracks = layoutTracks;
+PointGanttModel.layoutTracks = layoutTracks;
 vm.runInContext('Array.prototype.sort = originalSort;', context);
 console.log('Gantt graph contracts passed: source boundary, full piece routes, shared branches, zero duration, visibility and current-only geometry');

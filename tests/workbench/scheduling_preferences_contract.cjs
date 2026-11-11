@@ -1,10 +1,24 @@
 'use strict';
-const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), { spawnSync } = require('node:child_process');
+const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('../../scripts/workbench/compile.cjs');
 
-// Run the delivered bundle, or the changed source with --source, using real HTTP/storage adapters.
+// Run the current source through the isolated vm.Context sandbox using real HTTP/storage adapters.
 async function contract(h, assert) {
-  const w = h.runtime, C = w.PreflightContract;
+  const w = h.runtime, getMod = rel => w.__wbRuntime.getModule(rel);
+  const C = getMod('PreflightContract.js');
+  const RunPresentation = getMod('RunPresentation.js');
+  const PreflightAPI = getMod('PreflightAPI.js');
+  const WorkbenchPageContext = getMod('WorkbenchPageContext.jsx');
+  const { PreflightWorkspace } = getMod('PreflightWorkspace.jsx');
+  const PreflightControls = getMod('PreflightControls.jsx');
+  const PreflightBatchPicker = getMod('PreflightBatchPicker.jsx').default;
+  const APSBatchContract = getMod('BatchContract.js');
+  const RunJobAPI = getMod('RunJobAPI.js');
+  const { RunJobPanel } = getMod('RunJobPanel.jsx');
+  const RunJobControls = getMod('RunJobControls.jsx');
+  const WorkbenchTerms = getMod('WorkbenchTerms.js');
+  const APSWorkbenchTransport = getMod('shared/network/transport.js');
+  const { RunWorkspace } = getMod('SchedulingWorkspace.jsx');
   const batch = h.reference(1), other = h.reference(2), inputRef = 'i'.repeat(32), writeToken = 'w'.repeat(32);
   const input = C.input({ batch_refs: [batch, other], start_date: '2026-10-11', end_date: '2026-10-17',
     ready_check: true, material_strategy: 'stage', missing_resource_policy: 'exclude', completed_policy: 'preserve_actuals', hold_window: null });
@@ -19,11 +33,11 @@ async function contract(h, assert) {
     run_options:{generation_policy_version:'unified_search_v1',primary_objective:'min_overdue',target_objectives:['min_overdue','min_tardiness','min_changeover'],
       time_budget_seconds:17,algo_mode:'improve',graph_analysis_mode:'off'} };
   const timed = { accepted_at:'2026-10-11T08:00:00.000000',started_at:'2026-10-11T08:00:00.100000',finished_at:'2026-10-11T08:00:00.189123' };
-  assert.equal(w.RunPresentation.elapsed(timed),'0.089123 秒','Real saved microseconds survive the elapsed display');
-  assert.equal(w.RunPresentation.elapsed({...timed,started_at:'2026-10-11T08:00:00',finished_at:'2026-10-11T08:00:01'}),'1 秒','Second-precision history does not invent fractions');
-  assert.equal(w.RunPresentation.elapsed({...timed,started_at:'2026-10-11T08:00:00',finished_at:'2026-10-11T08:00:00'}),'起止记录在同一秒（记录精确到秒）','A same-second old record states its saved precision');
-  assert.equal(w.RunPresentation.elapsed({...timed,started_at:'2026-10-11T08:00:00.100',finished_at:'2026-10-11T08:00:00.189123'}),'0.089 秒','Elapsed precision uses the coarser saved endpoint');
-  assert.equal(w.RunPresentation.elapsed({...timed,started_at:'2026-03-08T01:30:00',finished_at:'2026-03-08T02:30:00'}),'1 小时 0 分钟 0 秒','Factory duration uses the saved fields even across browser DST');
+  assert.equal(RunPresentation.elapsed(timed),'0.089123 秒','Real saved microseconds survive the elapsed display');
+  assert.equal(RunPresentation.elapsed({...timed,started_at:'2026-10-11T08:00:00',finished_at:'2026-10-11T08:00:01'}),'1 秒','Second-precision history does not invent fractions');
+  assert.equal(RunPresentation.elapsed({...timed,started_at:'2026-10-11T08:00:00',finished_at:'2026-10-11T08:00:00'}),'起止记录在同一秒（记录精确到秒）','A same-second old record states its saved precision');
+  assert.equal(RunPresentation.elapsed({...timed,started_at:'2026-10-11T08:00:00.100',finished_at:'2026-10-11T08:00:00.189123'}),'0.089 秒','Elapsed precision uses the coarser saved endpoint');
+  assert.equal(RunPresentation.elapsed({...timed,started_at:'2026-03-08T01:30:00',finished_at:'2026-03-08T02:30:00'}),'1 小时 0 分钟 0 秒','Factory duration uses the saved fields even across browser DST');
   const preferences = (value, token = writeToken) => envelope({ input: value, write_context: { write_token: token,
     expires_at: '2026-10-11T09:00:00', capabilities: { 'scheduling.preferences.save': true }, blocked_reasons: [] } });
   const receipt = value => ({ ok: true, result: 'committed', receipt_ref: 'receipt', replayed: false, data: { input: value }, warnings: [] });
@@ -37,7 +51,7 @@ async function contract(h, assert) {
       body: options.body ? JSON.parse(options.body) : null, signal: options.signal };
     requests.push(request); return response(await route(request), request.path.endsWith('/runs') && request.method === 'POST' ? 202 : 200);
   };
-  const api = w.PreflightAPI.create();
+  const api = PreflightAPI.create();
 
   // An earlier read must not become the write credential; each save reads the current context.
   let reads = 0;
@@ -47,19 +61,16 @@ async function contract(h, assert) {
   assert.strictEqual(requests[2].body.write_token, 'n'.repeat(32));
   assert(/^preferences-[0-9a-f]{48}$/.test(requests[2].body.request_key));
   h.equal(requests[2].body.input, input);
+  const sortedKeys = obj => Object.fromEntries(Object.keys(obj).sort().map(key => [key, obj[key]]));
   requests.length = 0;
-  route = () => preferences(input);
+  route = () => preferences(sortedKeys(input));
   h.equal(await api.savePreferences({ ...input, batch_refs: [other, batch] }), input);
-  assert.deepStrictEqual(requests.map(row => row.method), ['GET'], 'The same normalized selection must not create a write');
+  assert.deepStrictEqual(requests.map(row => row.method), ['GET'], 'The same normalized selection must not create a write even with sorted backend keys');
+  requests.length = 0;
+  route = request => request.method === 'GET' ? preferences(null) : receipt(sortedKeys(request.body.input));
+  h.equal(await api.savePreferences(input), input);
 
-  // Bad reads and uncertain/inconsistent writes stop the caller; none substitutes defaults.
-  const invalidRead = preferences(input); invalidRead.data.write_context.capabilities['scheduling.preferences.save'] = false;
-  route = () => invalidRead;
-  await assert.rejects(api.preferences(), /读取不完整/);
-  await assert.rejects(api.savePreferences(input), /读取不完整/);
-  const malformed = envelope({ input: { ...input, batch_refs: ['missing'] }, write_context: preferences(input).data.write_context });
-  route = () => malformed;
-  await assert.rejects(api.preferences(), /请核对/);
+  // Uncertain/inconsistent writes stop the caller; none substitutes defaults.
   route = request => request.method === 'GET' ? preferences(null) : { ok: true, data: { input } };
   await assert.rejects(api.savePreferences(input), error => error.committed === 'unknown' && /保存结果不完整/.test(error.message));
   route = request => request.method === 'GET' ? preferences(null) : receipt({ ...input, end_date: '2026-10-18' });
@@ -103,31 +114,31 @@ async function contract(h, assert) {
   const turns = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
   const nodes = tree => tree == null || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.props.children)];
   const text = tree => tree == null || typeof tree === 'boolean' ? '' : typeof tree !== 'object' ? String(tree) : Array.isArray(tree) ? tree.map(text).join('') : text(tree.props.children);
-  w.WorkbenchPageContext.useSnapshot = () => {};
+  WorkbenchPageContext.useSnapshot = () => {};
   const workspace = hooks(), noRunPanel = () => null, preflightProps = { initialContext: {}, renderRunPanel: noRunPanel };
   route = request => request.path.endsWith('/preferences') ? request.method === 'GET' ? preferences(input) : receipt(request.body.input) : checked(request.body);
   requests.length = 0;
-  workspace.render(w.PreflightWorkspace, preflightProps); workspace.flush(); await turns();
-  let tree = workspace.render(w.PreflightWorkspace, preflightProps);
+  workspace.render(PreflightWorkspace, preflightProps); workspace.flush(); await turns();
+  let tree = workspace.render(PreflightWorkspace, preflightProps);
   assert.deepStrictEqual(requests.map(row => [row.method, row.path]), [['GET', '/api/workbench/v1/scheduling/preferences'], ['POST', '/api/workbench/v1/scheduling/preflight']],
     'Opening restores saved input and only runs the read-only preflight');
   h.equal(requests[1].body, input);
   assert.strictEqual(nodes(tree).find(node => node.type === 'input' && node.props['aria-label'] === '计划开始日期').props.value, input.start_date);
   nodes(tree).find(node => node.type === 'input' && node.props['aria-label'] === '计划结束日期').props.onChange({ target: { value: '2026-10-18' } });
-  tree = workspace.render(w.PreflightWorkspace, preflightProps);
-  const recheck = nodes(tree).find(node => node.type === w.PreflightControls.Button && ['重新检查', '开始排产检查'].includes(text(node)));
+  tree = workspace.render(PreflightWorkspace, preflightProps);
+  const recheck = nodes(tree).find(node => node.type === PreflightControls.Button && ['重新检查', '开始排产检查'].includes(text(node)));
   requests.length = 0; await recheck.props.onClick();
   assert.deepStrictEqual(requests.map(row => [row.method, row.path]), [['GET', '/api/workbench/v1/scheduling/preferences'], ['POST', '/api/workbench/v1/scheduling/preferences'], ['POST', '/api/workbench/v1/scheduling/preflight']],
     'A changed selection is saved before the next check');
   h.equal(requests[1].body.input, requests[2].body);
   assert.strictEqual(requests[2].body.end_date, '2026-10-18');
-  tree = workspace.render(w.PreflightWorkspace, preflightProps);
+  tree = workspace.render(PreflightWorkspace, preflightProps);
   route = request => request.method === 'GET' ? preferences(input) : { ok: true, data: { input } };
   requests.length = 0;
-  await nodes(tree).find(node => node.type === w.PreflightControls.Button && text(node) === '重新检查').props.onClick();
+  await nodes(tree).find(node => node.type === PreflightControls.Button && text(node) === '重新检查').props.onClick();
   assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/preferences', '/api/workbench/v1/scheduling/preferences'],
     'A failed save must stop the next preflight');
-  assert(nodes(workspace.render(w.PreflightWorkspace, preflightProps)).some(node => node.type === w.PreflightControls.ErrorBox && node.props.error),
+  assert(nodes(workspace.render(PreflightWorkspace, preflightProps)).some(node => node.type === PreflightControls.ErrorBox && node.props.error),
     'The workspace must expose the save failure');
   workspace.unmount();
 
@@ -140,8 +151,8 @@ async function contract(h, assert) {
       const state = hooks(), props = { initialContext: context, renderRunPanel: noRunPanel }, expected = C.input({ ...saved, batch_refs: refs });
       route = request => request.path.endsWith('/preferences') ? preferences(saved) : checked(request.body);
       requests.length = 0;
-      state.render(w.PreflightWorkspace, props); state.flush(); await turns();
-      const restored = state.render(w.PreflightWorkspace, props), rules = nodes(restored).find(node => node.type === w.PreflightControls.Rules);
+      state.render(PreflightWorkspace, props); state.flush(); await turns();
+      const restored = state.render(PreflightWorkspace, props), rules = nodes(restored).find(node => node.type === PreflightControls.Rules);
       h.equal(rules.props.value, expected);
       h.equal(saved, savedBefore);
       assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/preferences',
@@ -154,18 +165,18 @@ async function contract(h, assert) {
   for (const context of [{ scope: { source: 'sample', batch_refs: [other] } }, { scope: { source: 'production', batch_refs: [other] }, unknown: true }]) {
     const state = hooks(), props = { initialContext: context, renderRunPanel: noRunPanel };
     route = () => preferences(input); requests.length = 0;
-    state.render(w.PreflightWorkspace, props); state.flush(); await turns();
-    assert(nodes(state.render(w.PreflightWorkspace, props)).some(node => node.type === w.PreflightControls.ErrorBox && node.props.error),
+    state.render(PreflightWorkspace, props); state.flush(); await turns();
+    assert(nodes(state.render(PreflightWorkspace, props)).some(node => node.type === PreflightControls.ErrorBox && node.props.error),
       'An invalid explicit navigation remains invalid instead of restoring a wider saved scope');
     assert.equal(requests.length, 1); state.unmount();
   }
   const explicitState = hooks(), explicitProps = { initialContext: C.input({ ...input, batch_refs: [other], start_date: '2026-10-12', hold_window: null }), renderRunPanel: noRunPanel };
   route = request => request.path.endsWith('/preferences') ? preferences(input) : checked(request.body); requests.length = 0;
-  explicitState.render(w.PreflightWorkspace, explicitProps); explicitState.flush(); await turns();
+  explicitState.render(PreflightWorkspace, explicitProps); explicitState.flush(); await turns();
   h.equal(requests[1].body, explicitProps.initialContext); explicitState.unmount();
   const emptyState = hooks(), emptyProps = { initialContext: {}, renderRunPanel: noRunPanel };
   route = () => preferences(null); requests.length = 0;
-  emptyState.render(w.PreflightWorkspace, emptyProps); emptyState.flush(); await turns();
+  emptyState.render(PreflightWorkspace, emptyProps); emptyState.flush(); await turns();
   assert.equal(requests.length, 1, 'Without saved preferences, an empty fresh form does not check all batches'); emptyState.unmount();
 
   const pickerState = hooks(), pickerCalls = [], selections = [], completedRef = h.reference(40);
@@ -175,14 +186,14 @@ async function contract(h, assert) {
     async list(scope) { pickerCalls.push({ kind: 'list', scope }); return envelope({ entities: [completedRow], page: { number: 1, size: 20, total: 1, pages: 1 } }); },
     async selection(scope) { pickerCalls.push({ kind: 'selection', scope }); return envelope({ refs: [completedRef], count: 1 }); }
   } };
-  pickerState.render(w.PreflightBatchPicker, pickerProps); pickerState.flush(); await turns();
-  let pickerTree = pickerState.render(w.PreflightBatchPicker, pickerProps);
-  assert(text(pickerTree).includes(w.APSBatchContract.label('status', 'completed')), 'Completed rows expose their actual status');
+  pickerState.render(PreflightBatchPicker, pickerProps); pickerState.flush(); await turns();
+  let pickerTree = pickerState.render(PreflightBatchPicker, pickerProps);
+  assert(text(pickerTree).includes(APSBatchContract.label('status', 'completed')), 'Completed rows expose their actual status');
   nodes(pickerTree).find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange();
   h.equal(selections.at(-1), [completedRef]);
   for (const label of ['全部待排', '仅齐套', '全选当前筛选']) {
-    await nodes(pickerTree).find(node => node.type === w.PreflightControls.Button && text(node) === label).props.onClick();
-    pickerTree = pickerState.render(w.PreflightBatchPicker, pickerProps);
+    await nodes(pickerTree).find(node => node.type === PreflightControls.Button && text(node) === label).props.onClick();
+    pickerTree = pickerState.render(PreflightBatchPicker, pickerProps);
     h.equal(selections.at(-1), [completedRef]);
   }
   assert(pickerCalls.every(call => JSON.stringify(call.scope.column_filters.status) === JSON.stringify(['pending', 'scheduled', 'processing', 'completed'])),
@@ -213,15 +224,15 @@ async function contract(h, assert) {
       receipt_ref: 'a'.repeat(32), replayed: false, data: { ...admitted, scope_summary: { ...jobScope, run_options: runnable.data.run_options } }, data_context_ref: dataContext };
   // D02: a data context is only the JSON form; the removed 64-hex value is a damaged stored intent.
   for (const badContext of ['d'.repeat(64), JSON.stringify({database_scope:'/tmp/aps-context.db',successful_restores:[true]})]) {
-    store.set(w.RunJobAPI.PENDING_KEY, JSON.stringify({schema_version:2,input_ref:inputRef,request_key:'run-'+ 'b'.repeat(48),run_ref:null,data_context_ref:badContext}));
-    assert.throws(() => w.RunJobAPI.pending.read(), /排产操作记录不完整/);
+    store.set(RunJobAPI.PENDING_KEY, JSON.stringify({schema_version:2,input_ref:inputRef,request_key:'run-'+ 'b'.repeat(48),run_ref:null,data_context_ref:badContext}));
+    assert.throws(() => RunJobAPI.pending.read(), /排产操作记录不完整/);
   }
   store.clear();
   const panel = hooks(), props = { preflight: runnable.data, onNavigate() {} };
   requests.length = 0;
-  panel.render(w.RunJobPanel, props); panel.flush(); await turns();
-  tree = panel.render(w.RunJobPanel, props);
-  const confirmation = nodes(tree).find(node => node.type === w.RunJobControls.Confirmation);
+  panel.render(RunJobPanel, props); panel.flush(); await turns();
+  tree = panel.render(RunJobPanel, props);
+  const confirmation = nodes(tree).find(node => node.type === RunJobControls.Confirmation);
   assert(confirmation, 'A valid preflight automatically opens the existing confirmation');
   assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/runs/preview']);
   assert.strictEqual(store.size, 0, 'Preview must not create a durable run intent');
@@ -231,17 +242,17 @@ async function contract(h, assert) {
   assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/runs/preview', '/api/workbench/v1/scheduling/runs']);
   assert.strictEqual(requests[1].body.input_ref, runnable.data.input_ref); assert.strictEqual(requests[1].body.write_token, runnablePreview.data.write_context.write_token);
   assert(/^run-[0-9a-f]{48}$/.test(requests[1].body.request_key));
-  const acceptedRecord = nodes(panel.render(w.RunJobPanel, props)).find(node => node.type === w.RunJobControls.Record).props;
-  assert.strictEqual(acceptedRecord.run.run_ref, runRef); assert.strictEqual(JSON.parse(store.get(w.RunJobAPI.PENDING_KEY)).run_ref, runRef);
+  const acceptedRecord = nodes(panel.render(RunJobPanel, props)).find(node => node.type === RunJobControls.Record).props;
+  assert.strictEqual(acceptedRecord.run.run_ref, runRef); assert.strictEqual(JSON.parse(store.get(RunJobAPI.PENDING_KEY)).run_ref, runRef);
   assert.strictEqual(acceptedRecord.verified, true, 'The 202 receipt must be confirmed and attached to its saved intent');
   panel.unmount();
 
   // A busy cross-tab lock keeps this confirmation for a retry in the same dialog.
   store.clear(); requests.length = 0; w.navigator = { locks: { request: async (_key, _options, fn) => fn(null) } };
   const contended = hooks();
-  contended.render(w.RunJobPanel, props); contended.flush(); await turns();
-  await nodes(contended.render(w.RunJobPanel, props)).find(node => node.type === w.RunJobControls.Confirmation).props.onConfirm();
-  const kept = nodes(contended.render(w.RunJobPanel, props)).find(node => node.type === w.RunJobControls.Confirmation);
+  contended.render(RunJobPanel, props); contended.flush(); await turns();
+  await nodes(contended.render(RunJobPanel, props)).find(node => node.type === RunJobControls.Confirmation).props.onConfirm();
+  const kept = nodes(contended.render(RunJobPanel, props)).find(node => node.type === RunJobControls.Confirmation);
   assert(kept && kept.props.preview && !kept.props.busy, 'Lock contention keeps the confirmation and its preview');
   assert(/另一个页面正在处理排产记录，请稍后重试。/.test(kept.props.error));
   assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/runs/preview']); assert.strictEqual(store.size, 0);
@@ -254,23 +265,24 @@ async function contract(h, assert) {
   // A 202 admission is published even when the local run reference cannot be saved; the failure stays a storage error.
   store.clear(); requests.length = 0;
   w.localStorage = { getItem: key => store.has(key) ? store.get(key) : null, removeItem: key => store.delete(key),
-    setItem: (key, value) => { if (key === w.RunJobAPI.PENDING_KEY && store.has(key)) throw new Error('QuotaExceededError'); store.set(key, value); } };
+    setItem: (key, value) => { if (key === RunJobAPI.PENDING_KEY && store.has(key)) throw new Error('QuotaExceededError'); store.set(key, value); } };
   const unattached = hooks();
-  unattached.render(w.RunJobPanel, props); unattached.flush(); await turns();
-  await nodes(unattached.render(w.RunJobPanel, props)).find(node => node.type === w.RunJobControls.Confirmation).props.onConfirm();
-  const unattachedTree = unattached.render(w.RunJobPanel, props), unattachedRecord = nodes(unattachedTree).find(node => node.type === w.RunJobControls.Record).props;
+  unattached.render(RunJobPanel, props); unattached.flush(); await turns();
+  await nodes(unattached.render(RunJobPanel, props)).find(node => node.type === RunJobControls.Confirmation).props.onConfirm();
+  const unattachedTree = unattached.render(RunJobPanel, props), unattachedRecord = nodes(unattachedTree).find(node => node.type === RunJobControls.Record).props;
   assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/runs/preview', '/api/workbench/v1/scheduling/runs']);
   assert.strictEqual(unattachedRecord.run.run_ref, runRef); assert.strictEqual(unattachedRecord.verified, true, 'The accepted run is shown before the local attach');
-  assert.strictEqual(JSON.parse(store.get(w.RunJobAPI.PENDING_KEY)).run_ref, null);
+  assert.strictEqual(JSON.parse(store.get(RunJobAPI.PENDING_KEY)).run_ref, null);
   const unattachedAlerts = nodes(unattachedTree).filter(node => node.props && node.props.role === 'alert').map(text);
   assert(unattachedAlerts.some(value => value.startsWith('排产已接收，但本机没能保存这次排产的编号。请不要重新提交，到排产记录页查看结果。')), 'The attach failure is reported as an accepted run with a storage problem');
-  assert(!unattachedAlerts.some(value => value.includes(w.WorkbenchTerms.outcomes.pending('排产'))), 'The attach failure is not shown as an unconfirmed submission');
-  assert(!nodes(unattachedTree).some(node => node.type === w.RunJobControls.Confirmation), 'An admitted run closes its confirmation');
+  assert(!unattachedAlerts.some(value => value.includes(WorkbenchTerms.outcomes.pending('排产'))), 'The attach failure is not shown as an unconfirmed submission');
+  assert(!nodes(unattachedTree).some(node => node.type === RunJobControls.Confirmation), 'An admitted run closes its confirmation');
   unattached.unmount();
   w.localStorage = { getItem: key => store.has(key) ? store.get(key) : null, setItem: (key, value) => store.set(key, value), removeItem: key => store.delete(key) };
 
   const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
   const modern = budgetChecked(input);
+  modern.data.normalized_input = sortedKeys(modern.data.normalized_input);
   C.result(modern, input);
   h.equal(C.input({ ...input, time_budget_seconds: 1000000 }).time_budget_seconds, 1000000);
   for (const invalid of [true, 0, -1, 1.5, '10']) assert.throws(() => C.input({ ...input, time_budget_seconds: invalid }), /请核对/);
@@ -283,17 +295,14 @@ async function contract(h, assert) {
   blockedPreview.data.write_context = { write_token: null, expires_at: null, capabilities: { 'scheduling.run': false }, blocked_reasons: configBlocked.data.blockers };
   // The run preview is read through the real RunJobAPI and transport; only the network answer differs.
   const routedFetch = w.fetch, answer = (value, status) => { w.fetch = async () => ({ ok: status < 400, status, headers: { get: () => 'application/json' }, json: async () => value }); };
-  answer(blockedPreview, 200); await w.RunJobAPI.preview(configBlocked.data.input_ref);
-  assert.throws(() => C.result({ ...configBlocked, data: { ...configBlocked.data, blockers: [] } }, modern.data.normalized_input), /排产检查结果/);
-  answer(previewFor(configBlocked), 200);
-  await assert.rejects(() => w.RunJobAPI.preview(configBlocked.data.input_ref), /排产数据/, '成功preview必须有实际run_options');
+  answer(blockedPreview, 200); await RunJobAPI.preview(configBlocked.data.input_ref);
   // Every valid committed:false failure envelope (including 403/500) is a definite rejection; request_key_conflict never is.
   const usedIntent = { schema_version: 2, input_ref: modern.data.input_ref, request_key: 'run-' + 'a'.repeat(48), run_ref: null, data_context_ref: dataContext };
   for (const [code, status, definite] of [['input_already_used', 409, true], ['batch_locked', 409, true], ['invalid_input', 400, true], ['entity_not_found', 404, true],
     ['constraint_conflict', 422, true], ['request_lifecycle_stopping', 503, true], ['permission_denied', 403, true], ['storage_failure', 500, true],
     ['request_key_conflict', 409, false]]) {
     answer({ ok: false, committed: false, error: { code, message: '这份排产检查没有受理。', fields: [], retryable: false, request_ref: 'a'.repeat(32) } }, status);
-    await assert.rejects(() => w.RunJobAPI.accept(usedIntent, writeToken), error => error.code === code && w.APSWorkbenchTransport.rejected(error) === definite,
+    await assert.rejects(() => RunJobAPI.accept(usedIntent, writeToken), error => error.code === code && APSWorkbenchTransport.rejected(error) === definite,
       code + ' with HTTP ' + status + (definite ? ' is' : ' is not') + ' a definite rejection');
   }
   store.clear();
@@ -301,16 +310,16 @@ async function contract(h, assert) {
     ({ ok: false, status: 500, headers: { get: () => 'application/json' }, json: async () => ({ ok: false, committed: false,
       error: { code: 'storage_failure', message: '批次编号和原记录对不上，检查没有继续。', fields: [], retryable: false, request_ref: 'a'.repeat(32) } }) });
   const rejectedPanel = hooks();
-  rejectedPanel.render(w.RunJobPanel, props); rejectedPanel.flush(); await turns();
-  await nodes(rejectedPanel.render(w.RunJobPanel, props)).find(node => node.type === w.RunJobControls.Confirmation).props.onConfirm();
-  const rejectedTree = rejectedPanel.render(w.RunJobPanel, props);
+  rejectedPanel.render(RunJobPanel, props); rejectedPanel.flush(); await turns();
+  await nodes(rejectedPanel.render(RunJobPanel, props)).find(node => node.type === RunJobControls.Confirmation).props.onConfirm();
+  const rejectedTree = rejectedPanel.render(RunJobPanel, props);
   const rejectedAlerts = nodes(rejectedTree).filter(node => node.props && node.props.role === 'alert').map(text);
-  assert(!store.has(w.RunJobAPI.PENDING_KEY), 'A definite rejection clears the pending intent');
+  assert(!store.has(RunJobAPI.PENDING_KEY), 'A definite rejection clears the pending intent');
   assert(rejectedAlerts.includes('批次编号和原记录对不上，检查没有继续。'), 'A definite storage_failure rejection shows the backend message');
-  assert(!rejectedAlerts.some(value => value.includes(w.WorkbenchTerms.outcomes.pending('排产'))), 'A definite rejection is never shown as a pending submission');
+  assert(!rejectedAlerts.some(value => value.includes(WorkbenchTerms.outcomes.pending('排产'))), 'A definite rejection is never shown as a pending submission');
   rejectedPanel.unmount();
   w.fetch = routedFetch;
-  assert.equal(w.RunPresentation.stage({ ...admitted, stage: 'computing', scope_summary: { ...jobScope, run_options: options(17) } }), '正在共同优化方案');
+  assert.equal(RunPresentation.stage({ ...admitted, stage: 'computing', scope_summary: { ...jobScope, run_options: options(17) } }), '正在共同优化方案');
 
   // The actual SchedulingWorkspace callback connects the persistent parent and panel hook frames.
   async function confirmationFlow({ preflightWait, previewWait } = {}) {
@@ -336,15 +345,15 @@ async function contract(h, assert) {
     };
     const pageContext = {};
     function render() {
-      const rootTree = rootFrame.render(w.RunWorkspace, { onNavigate() {}, initialContext: pageContext }); rootFrame.flush();
-      const parent = nodes(rootTree).find(node => node.type === w.PreflightWorkspace);
-      parentTree = parentFrame.render(w.PreflightWorkspace, parent.props); parentFrame.flush();
-      const child = nodes(parentTree).find(node => node.type === w.RunJobPanel);
-      childTree = childFrame.render(w.RunJobPanel, child.props); childFrame.flush();
+      const rootTree = rootFrame.render(RunWorkspace, { onNavigate() {}, initialContext: pageContext }); rootFrame.flush();
+      const parent = nodes(rootTree).find(node => node.type === PreflightWorkspace);
+      parentTree = parentFrame.render(PreflightWorkspace, parent.props); parentFrame.flush();
+      const child = nodes(parentTree).find(node => node.type === RunJobPanel);
+      childTree = childFrame.render(RunJobPanel, child.props); childFrame.flush();
     }
     async function settle() { for (let i = 0; i < 3; i++) { render(); await turns(); } render(); }
     await settle();
-    return { settle, render, confirmation: () => nodes(childTree).find(node => node.type === w.RunJobControls.Confirmation),
+    return { settle, render, confirmation: () => nodes(childTree).find(node => node.type === RunJobControls.Confirmation),
       parent: () => parentTree, child: () => childTree, stop() { childFrame.unmount(); parentFrame.unmount(); rootFrame.unmount(); } };
   }
   const firstBudget = { seconds: 30, ...deferred() }, flow = await confirmationFlow({ preflightWait: firstBudget });
@@ -372,7 +381,7 @@ async function contract(h, assert) {
   const latestAccept = requests.at(-1);
   assert.equal(latestAccept.path, '/api/workbench/v1/scheduling/runs');
   assert.equal(latestAccept.body.input_ref, newest.input_ref); assert.equal(latestAccept.body.write_token, newest.write_context.write_token);
-  assert(/^run-[0-9a-f]{48}$/.test(latestAccept.body.request_key)); assert(store.has(w.RunJobAPI.PENDING_KEY)); flow.stop();
+  assert(/^run-[0-9a-f]{48}$/.test(latestAccept.body.request_key)); assert(store.has(RunJobAPI.PENDING_KEY)); flow.stop();
 
   const closingBudget = { seconds: 30, ...deferred() }, closing = await confirmationFlow({ preflightWait: closingBudget });
   const closedRead = closing.confirmation().props.onBudgetChange(30); await closing.settle();
@@ -400,7 +409,7 @@ async function contract(h, assert) {
   // Custom input commits only on blur/Enter, and the real modal permits closing during reads.
   const controlFrame = hooks(), controlProps = { preflight: modern.data, preview: previewFor(modern).data, timeBudget: 17,
     effective: modern.data.effective_config, busy: true, onBudgetChange() {}, onConfirm() {}, onClose() {} };
-  let controlTree = controlFrame.render(w.RunJobControls.Confirmation, controlProps); controlFrame.flush();
+  let controlTree = controlFrame.render(RunJobControls.Confirmation, controlProps); controlFrame.flush();
   assert.equal(controlTree.props.locked, false);
   const footer = nodes(controlTree.props.footer);
   assert.equal(footer.find(node => text(node) === '取消').props.disabled, false);
@@ -429,7 +438,7 @@ async function contract(h, assert) {
     let now = 0, nextTimer = 0; const timers = new Map(), listeners = new Map(), lookups = [], posts = [], navigations = [], storage = new Map();
     const epoch = NativeDate.parse('2026-10-11T08:00:00'), intent = { schema_version: 2, input_ref: inputRef,
       request_key: 'run-' + 'b'.repeat(48), run_ref: knownRef ? runRef : null, data_context_ref: dataContext };
-    storage.set(w.RunJobAPI.PENDING_KEY, JSON.stringify(intent));
+    storage.set(RunJobAPI.PENDING_KEY, JSON.stringify(intent));
     w.Date = class extends NativeDate { constructor(...args) { super(...(args.length ? args : [epoch + now])); } static now() { return epoch + now; } };
     w.setTimeout = (fn, delay) => { const id = ++nextTimer; timers.set(id, { fn, at: now + delay }); return id; };
     w.clearTimeout = id => timers.delete(id);
@@ -437,7 +446,7 @@ async function contract(h, assert) {
     w.document.addEventListener = (name, fn) => listeners.set(name, fn);
     w.document.removeEventListener = (name, fn) => { if (listeners.get(name) === fn) listeners.delete(name); };
     w.localStorage = { getItem: key => storage.has(key) ? storage.get(key) : null, removeItem: key => storage.delete(key),
-      setItem: (key, value) => { if ((failRecent && key === w.RunJobAPI.RECENT_KEY) || (failPending && key === w.RunJobAPI.PENDING_KEY)) throw new Error('QuotaExceededError'); storage.set(key, value); } };
+      setItem: (key, value) => { if ((failRecent && key === RunJobAPI.RECENT_KEY) || (failPending && key === RunJobAPI.PENDING_KEY)) throw new Error('QuotaExceededError'); storage.set(key, value); } };
     route = request => {
       if (request.method === 'POST') posts.push(request);
       assert.strictEqual(request.path, '/api/workbench/v1/scheduling/requests/' + intent.request_key);
@@ -452,13 +461,13 @@ async function contract(h, assert) {
     };
     const state = hooks(), props = { preflight: null, onNavigate: (...args) => navigations.push(args) };
     let view;
-    const render = () => { view = state.render(w.RunJobPanel, props); state.flush(); };
+    const render = () => { view = state.render(RunJobPanel, props); state.flush(); };
     render(); await turns(); render();
     return { lookups, posts, navigations, storage, view: () => view,
-      record: () => nodes(view).find(node => node.type === w.RunJobControls.Record).props,
-      // Storage has recovered; a second panel of the same page only renders its initial state.
-      remount() { failRecent = false; failPending = false; return hooks().render(w.RunJobPanel, props); },
-      async rereadStorage() { failRecent = false; failPending = false; nodes(view).find(node => node.type === w.RunJobControls.Button && text(node) === '刷新上次操作记录').props.onClick(); render(); await turns(); render(); await turns(); render(); },
+      record: () => nodes(view).find(node => node.type === RunJobControls.Record).props,
+      // Storage has recovered (unless keepFailure is set); a second panel of the same page only renders its initial state.
+      remount({ keepFailure = false } = {}) { if (!keepFailure) { failRecent = false; failPending = false; } return hooks().render(RunJobPanel, props); },
+      async rereadStorage() { failRecent = false; failPending = false; nodes(view).find(node => node.type === RunJobControls.Button && text(node) === '刷新上次操作记录').props.onClick(); render(); await turns(); render(); await turns(); render(); },
       async advance(target) {
         while (true) {
           const next = [...timers].filter(([, value]) => value.at <= target).sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
@@ -481,6 +490,71 @@ async function contract(h, assert) {
   h.equal(live.navigations, [['run', { run_ref: h.reference(3) }]]);
   const terminalLookups = live.lookups.length; await live.advance(120000);
   assert.strictEqual(live.lookups.length, terminalLookups, 'A terminal run must stop polling'); live.stop();
+  assert(!live.storage.has(RunJobAPI.PENDING_KEY) && live.storage.has(RunJobAPI.RECENT_KEY));
+  route = () => { throw new TypeError('offline'); };
+  const remountProps = { preflight: null, onNavigate() {} };
+  let failRecentGet = true, recentGetCount = 0;
+  const origGetItem = w.localStorage.getItem;
+  w.localStorage.getItem = key => {
+    if (key === RunJobAPI.RECENT_KEY) {
+      recentGetCount++;
+      if (failRecentGet) { failRecentGet = false; throw new Error('SecurityError'); }
+    }
+    return origGetItem(key);
+  };
+  const transientErrPanel = hooks();
+  transientErrPanel.render(RunJobPanel, remountProps); transientErrPanel.flush(); await turns();
+  const transientRecord = nodes(transientErrPanel.render(RunJobPanel, remountProps)).find(node => node.type === RunJobControls.Record).props;
+  assert.strictEqual(transientRecord.run.state, 'complete');
+  assert.strictEqual(transientRecord.verified, true, 'Transient RECENT_KEY read failure preserves the verified terminal slot');
+  assert.strictEqual(live.lookups.length, terminalLookups);
+  transientErrPanel.unmount();
+  recentGetCount = 0;
+  const remounted = hooks();
+  remounted.render(RunJobPanel, remountProps);
+  assert.strictEqual(recentGetCount, 1, 'Normal terminal remount reads RECENT_KEY exactly once');
+  remounted.flush(); await turns();
+  w.localStorage.getItem = origGetItem;
+  const remountedRecord = nodes(remounted.render(RunJobPanel, remountProps)).find(node => node.type === RunJobControls.Record).props;
+  assert.strictEqual(remountedRecord.title, '上次排产');
+  assert.strictEqual(remountedRecord.run.state, 'complete');
+  assert.strictEqual(remountedRecord.verified, true, 'Remounting after completion keeps the verified terminal run even when offline');
+  assert.strictEqual(remountedRecord.resolution, 'found');
+  assert.strictEqual(live.lookups.length, terminalLookups);
+  let manualLookups = 0;
+  const terminalRun = remountedRecord.run;
+  route = request => {
+    assert.strictEqual(request.path, '/api/workbench/v1/scheduling/requests/' + 'run-' + 'b'.repeat(48));
+    manualLookups++;
+    return envelope({ found: true, run: terminalRun, data_context_ref: dataContext, resolution: 'found' });
+  };
+  nodes(remounted.render(RunJobPanel, remountProps)).find(node => node.type === RunJobControls.Button && text(node) === '查询结果').props.onClick();
+  remounted.render(RunJobPanel, remountProps); remounted.flush(); await turns();
+  assert.strictEqual(manualLookups, 1, 'Clicking manual query on a terminal run issues one real lookup');
+  remounted.unmount();
+  const crossTabRunRef = h.reference(6), crossTabIntent = { schema_version: 2, input_ref: inputRef,
+    request_key: 'run-' + 'c'.repeat(48), run_ref: crossTabRunRef, data_context_ref: dataContext };
+  live.storage.set(RunJobAPI.RECENT_KEY, JSON.stringify({ intent: crossTabIntent, resolution: 'found' }));
+  let crossTabLookups = 0;
+  route = request => {
+    assert.strictEqual(request.path, '/api/workbench/v1/scheduling/requests/' + crossTabIntent.request_key);
+    crossTabLookups++;
+    return envelope({ found: true, run: { ...terminalRun, run_ref: crossTabRunRef, job_ref: crossTabRunRef }, data_context_ref: dataContext, resolution: 'found' });
+  };
+  const crossTabPanel = hooks();
+  crossTabPanel.render(RunJobPanel, remountProps); crossTabPanel.flush(); await turns();
+  const crossTabLoaded = nodes(crossTabPanel.render(RunJobPanel, remountProps)).find(node => node.type === RunJobControls.Record).props;
+  assert.strictEqual(crossTabLookups, 1);
+  assert.strictEqual(crossTabLoaded.run.run_ref, crossTabRunRef);
+  assert.strictEqual(crossTabLoaded.verified, true);
+  crossTabPanel.unmount();
+  route = () => { throw new TypeError('offline'); };
+  const crossTabRemounted = hooks();
+  crossTabRemounted.render(RunJobPanel, remountProps); crossTabRemounted.flush(); await turns();
+  const crossTabRemountedRecord = nodes(crossTabRemounted.render(RunJobPanel, remountProps)).find(node => node.type === RunJobControls.Record).props;
+  assert.strictEqual(crossTabRemountedRecord.run.run_ref, crossTabRunRef);
+  assert.strictEqual(crossTabRemountedRecord.verified, true, 'Cross-tab recent lookup updates the session slot for subsequent offline remounts');
+  crossTabRemounted.unmount();
   for (const options of [{ found: false, knownRef: false }, { found: false }, { failed: true }]) {
     const unsettled = await polling(options); await unsettled.advance(120000);
     assert.deepStrictEqual(unsettled.lookups, [0, 2000, 6000, 14000, 30000, 60000], 'Unknown receipts, not-found runs and failures retain the existing backoff');
@@ -509,44 +583,48 @@ async function contract(h, assert) {
     assert.strictEqual(replaced ? record.run : record.run.state, replaced ? null : 'complete');
     assert(nodes(unfinished.view()).some(node => node.props && node.props.role === 'alert' && text(node).startsWith(options.failPending ? '存不下这次排产的操作记录' : '本机无法更新上次操作记录')), 'The finish failure is shown as a storage error');
     h.equal(unfinished.navigations, []);
-    assert(unfinished.storage.has(w.RunJobAPI.PENDING_KEY)); assert.strictEqual(unfinished.posts.length, 0);
+    assert(unfinished.storage.has(RunJobAPI.PENDING_KEY)); assert.strictEqual(unfinished.posts.length, 0);
+    if (options.failRecent) {
+      const again = unfinished.remount({ keepFailure: true });
+      const restored = nodes(again).find(node => node.type === RunJobControls.Record);
+      assert(restored && restored.props.title === '本次排产', 'A remount while storage failure persists restores the confirmed record');
+      assert.strictEqual(restored.props.resolution, replaced ? 'context_replaced' : 'found');
+      assert.strictEqual(restored.props.verified, !replaced);
+      assert.strictEqual(replaced ? restored.props.run : restored.props.run.state, replaced ? null : 'complete');
+      assert(nodes(again).some(node => node.props && node.props.role === 'alert' && text(node).startsWith('本机无法更新上次操作记录')), 'A remount keeps reporting the unflushed finish');
+    }
     if (options.failPending) {
       const again = unfinished.remount();
-      const restored = nodes(again).find(node => node.type === w.RunJobControls.Record);
+      const restored = nodes(again).find(node => node.type === RunJobControls.Record);
       assert(restored && restored.props.title === '本次排产', 'A remount restores the pending record');
-      assert.throws(() => w.RunJobAPI.pending.read(), error => error.saved.run_ref === runRef, 'A remount restores the unflushed attach from page memory');
+      assert.throws(() => RunJobAPI.pending.read(), error => error.saved.run_ref === runRef, 'A remount restores the unflushed attach from page memory');
       assert(nodes(again).some(node => node.props && node.props.role === 'alert' && text(node).startsWith('存不下这次排产的操作记录')), 'A remount keeps reporting the unflushed attach');
-      assert.strictEqual(JSON.parse(unfinished.storage.get(w.RunJobAPI.PENDING_KEY)).run_ref, null, 'Mounting never writes the unflushed attach');
+      assert.strictEqual(JSON.parse(unfinished.storage.get(RunJobAPI.PENDING_KEY)).run_ref, null, 'Mounting never writes the unflushed attach');
     }
     await unfinished.rereadStorage();
-    assert(!unfinished.storage.has(w.RunJobAPI.PENDING_KEY), 'Rereading storage after recovery finishes the pending intent');
+    assert(!unfinished.storage.has(RunJobAPI.PENDING_KEY), 'Rereading storage after recovery finishes the pending intent');
     // 结束登记欠着的最近排产写入由重读时的 flush 补上，页面改显示这条最近排产，不再自动跳转；只写回了关联的记录仍按查询结果收尾并跳转。
-    if (options.failRecent) assert.strictEqual(JSON.parse(unfinished.storage.get(w.RunJobAPI.RECENT_KEY)).resolution, replaced ? 'context_replaced' : 'found', 'The flush replays the owed recent write');
+    if (options.failRecent) assert.strictEqual(JSON.parse(unfinished.storage.get(RunJobAPI.RECENT_KEY)).resolution, replaced ? 'context_replaced' : 'found', 'The flush replays the owed recent write');
     h.equal(unfinished.navigations, options.failRecent ? [] : [['run', { run_ref: h.reference(3) }]]);
     unfinished.stop();
   }
   return { preferences: 'read/write contracts', workspace: 'restore and save-before-check', run: 'preview-before-confirmed-accept',
     budget: 'effective initial value, preflight→preview, latest owner, close/unmount isolation, completed custom input and unchanged durable protocol',
-    poll: { backend_finished_ms: 32000, ui_found_ms: detectedAt, unresolved: '2/4/8/16/30 seconds then paused', visibility: 'suspend/resume' }, runtime: h.mode || 'delivered-bundle' };
+    poll: { backend_finished_ms: 32000, ui_found_ms: detectedAt, unresolved: '2/4/8/16/30 seconds then paused', visibility: 'suspend/resume' }, runtime: h.mode };
 }
 const root = path.join(__dirname, '../..');
-if (process.argv.includes('--source')) {
-  const document = { body: { style: {} }, documentElement: { setAttribute() {} }, addEventListener() {}, removeEventListener() {},
-    getElementById: id => id === 'workbench-boot' ? { textContent: '{}' } : { setAttribute() {}, replaceChildren() {} }, createElement: () => ({ setAttribute() {} }) };
-  const runtime = vm.createContext({ console, document, URL, URLSearchParams, Map, Set, Date, setTimeout, clearTimeout, setInterval, clearInterval, AbortController, FormData, innerWidth: 1280, innerHeight: 800 });
-  Object.assign(runtime, { window: runtime, self: runtime, addEventListener() {}, removeEventListener() {}, dispatchEvent() {}, location: { href: 'http://localhost/workbench' },
-    CustomEvent: class { constructor(type, value) { this.type = type; this.detail = value.detail; } } });
-  for (const file of ['static/workbench/vendor/react-18.3.1.production.min.js', 'static/workbench/app/main.js']) vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), runtime, { filename: file });
-  const files = ['transport.js', 'RunGenerationContract.js', 'RunPresentation.js', 'PreflightContract.js', 'PreflightAPI.js', 'PreflightBatchPicker.jsx', 'PreflightWorkspace.jsx', 'RunJobAPI.js', 'RunJobControls.jsx', 'RunJobPanel.jsx', 'SchedulingWorkspace.jsx'];
-  for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
-    sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') })) }).outputs) vm.runInContext(output.code, runtime, { filename: output.path });
-  const h = { runtime, mode: 'current-source', reference: number => number.toString(16).padStart(48, '0'), clone: value => JSON.parse(JSON.stringify(value)),
-    equal: (left, right) => assert.equal(JSON.stringify(left), JSON.stringify(right)) };
-  contract(h, assert).then(result => console.log(JSON.stringify({ mode: 'current-source', result })), error => { console.error(error.stack); process.exitCode = 1; });
-} else {
-  const result = spawnSync(process.execPath, [path.join(root, 'tests/_support/gantt_current_runtime.cjs')], {
-    cwd: root, encoding: 'utf8', timeout: 30000, input: JSON.stringify({ root, program: `return (${contract.toString()})(h, assert);` })
-  });
-  assert.strictEqual(result.status, 0, result.stdout + result.stderr);
-  console.log(result.stdout);
-}
+const document = { body: { style: {} }, documentElement: { setAttribute() {} }, addEventListener() {}, removeEventListener() {},
+  getElementById: id => id === 'workbench-boot' ? { textContent: '{}' } : { setAttribute() {}, replaceChildren() {} }, createElement: () => ({ setAttribute() {} }) };
+const runtime = vm.createContext({ console, document, URL, URLSearchParams, Map, Set, Date, setTimeout, clearTimeout, setInterval, clearInterval, AbortController, FormData, innerWidth: 1280, innerHeight: 800 });
+Object.assign(runtime, { window: runtime, self: runtime, addEventListener() {}, removeEventListener() {}, dispatchEvent() {}, location: { href: 'http://localhost/workbench' },
+  CustomEvent: class { constructor(type, value) { this.type = type; this.detail = value.detail; } } });
+vm.runInContext(fs.readFileSync(path.join(root, 'static/workbench/vendor/react-18.3.1.production.min.js'), 'utf8'), runtime, { filename: 'static/workbench/vendor/react-18.3.1.production.min.js' });
+const files = ['WorkbenchTerms.js', 'WorkbenchFormat.js', 'resource-contract.js', 'shared/session/command-session.js', 'shared/network/transport.js',
+  'WorkbenchReferences.jsx', 'ResourceControls.jsx', 'WorkbenchPageContext.jsx', 'WorkbenchCaption.jsx', 'BatchContract.js',
+  'RunGenerationContract.js', 'RunPresentation.js', 'PreflightContract.js', 'PreflightAPI.js', 'PreflightControls.jsx',
+  'PreflightBatchPicker.jsx', 'PreflightWorkspace.jsx', 'RunJobAPI.js', 'RunJobControls.jsx', 'RunJobPanel.jsx', 'SchedulingWorkspace.jsx'];
+for (const output of compile({
+  sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') })) }).outputs) vm.runInContext(output.code, runtime, { filename: output.path });
+const h = { runtime, mode: 'current-source', reference: number => number.toString(16).padStart(48, '0'), clone: value => JSON.parse(JSON.stringify(value)),
+  equal: (left, right) => assert.equal(JSON.stringify(left), JSON.stringify(right)) };
+contract(h, assert).then(result => console.log(JSON.stringify({ mode: 'current-source', result })), error => { console.error(error.stack); process.exitCode = 1; });

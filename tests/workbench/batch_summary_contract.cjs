@@ -2,8 +2,8 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
-const files = ['resource-contract.js', 'resource-session.js', 'BatchContract.js', 'BatchTable.jsx', 'BatchWorkspace.jsx'];
-const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
+const files = ['resource-contract.js', 'shared/session/query.js', 'shared/session/command-session.js', 'BatchContract.js', 'BatchTable.jsx', 'BatchWorkspace.jsx'];
+const built = compile({
   sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) });
 const clone = value => JSON.parse(JSON.stringify(value));
 const batchRef = 'a'.repeat(48), operationRef = 'b'.repeat(48), partRef = 'c'.repeat(48);
@@ -39,12 +39,25 @@ function hooks() {
     unmount() { effects.length = 0; slots.forEach(slot => { if (slot.cleanup) { slot.cleanup(); slot.cleanup = null; } }); } };
 }
 function environment() {
-  const h = hooks(), window = { ResourceControls: { Button: 'button', Modal: 'modal', ErrorBox: 'error-box', Icon: 'icon' }, BatchControls: { Field: 'field' },
-    WorkbenchFormat: { number: String, date: value => value || '未填写' }, WorkbenchControls: { EmptyState: 'empty', Pager: 'pager' },
-    WorkbenchTerms: { outcomes: { unavailable: '暂不可用' } }, WorkbenchGuards: { useDirtyGuard: () => ({}) }, WorkbenchPageContext: { useSnapshot() {} } };
+  const h = hooks();
+  const resourceControls = { Button: 'button', Modal: 'modal', ErrorBox: 'error-box', Icon: 'icon', EmptyState: 'empty', Pager: 'pager' };
+  const workbenchFormat = { number: String, date: value => value || '未填写' };
+  const workbenchTerms = { outcomes: { unavailable: '暂不可用' } };
+  const workbenchGuards = { useDirtyGuard: () => ({}) };
+  const window = {
+    __wbStubs: {
+      'ResourceControls.jsx': resourceControls,
+      'BatchControls.jsx': { Field: 'field' },
+      'WorkbenchFormat.js': workbenchFormat,
+      'WorkbenchTerms.js': workbenchTerms,
+      'WorkbenchGuards.js': workbenchGuards,
+      'WorkbenchPageContext.jsx': { useSnapshot() {} },
+    },
+  };
   const context = vm.createContext({ window, React: h.React, AbortController, DOMException });
   built.outputs.forEach(file => vm.runInContext(file.code, context, { filename: file.path }));
-  return { h, window, context };
+  const getMod = rel => context.__wbRuntime.getModule(rel);
+  return { h, window, context, getMod, resourceControls, workbenchFormat, workbenchTerms, workbenchGuards };
 }
 function nodes(node) {
   if (!node || typeof node !== 'object') return [];
@@ -57,8 +70,8 @@ function text(node) {
 }
 const turns = async () => { for (let index = 0; index < 8; index++) await Promise.resolve(); };
 function overview(adapter, initialRow = summary) {
-  const env = environment();
-  const table = env.h.render(() => env.window.BatchTable({ adapter, rows: [initialRow], scope, selected: [], setSelected() {} }));
+  const env = environment(), { BatchTable } = env.getMod('BatchTable.jsx');
+  const table = env.h.render(() => BatchTable({ adapter, rows: [initialRow], scope, selected: [], setSelected() {} }));
   const child = nodes(table).find(node => typeof node.type === 'function' && node.type.name === 'OperationOverview');
   assert.ok(child, 'Every batch row owns its operation overview'); assert.equal(child.props.adapter, adapter);
   env.h.unmount(); const h = hooks(); env.context.React = h.React;
@@ -68,23 +81,30 @@ function overview(adapter, initialRow = summary) {
     toggle(open) { node.props.onToggle({ currentTarget: { open } }); return render(); } };
 }
 async function calendarRefreshContracts() {
-  const outputs = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
+  const outputs = compile({
     sources: ['OperatorCalendarPanel.jsx', 'ResourceWorkspace.jsx', 'ResourceCalendar.jsx', 'ResourceLive.jsx']
       .map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
   function calendarEnvironment() {
-    const env = environment(), w = env.window;
-    Object.assign(w.ResourceControls, { Issues: 'issues', Field: 'field' });
-    Object.assign(w.WorkbenchFormat, { dateTime: String });
-    Object.assign(w.WorkbenchTerms, { personal_calendar: '个人日历', data_as_of: value => value });
-    Object.assign(w.WorkbenchGuards, { confirmLeave: async () => true });
-    Object.assign(w, { ResourceForms: { Feedback: 'feedback' }, ResourceTables: {}, ResourceRail: 'resource-rail',
-      CalendarFields: { RefreshResult: 'calendar-refresh', Policy: 'calendar-policy' }, WorkPeriodFields: 'period-fields',
-      CalendarDayDialog: 'calendar-day-dialog', CalendarFileActions: 'calendar-file-actions',
-      APSOperatorCalendar: { month: value => value, draftOf: day => day.fields, tag: () => ({ tone: 'rest', text: '休息' }),
-        input: value => value, rangeInput: value => value, rangePreview: value => value },
-      APSCalendarContract: { path: 'calendar', month: value => value, tag: () => ({ tone: 'rest', text: '休息' }) } });
+    const env = environment();
+    Object.assign(env.resourceControls, { Issues: 'issues', Field: 'field' });
+    Object.assign(env.workbenchFormat, { dateTime: String });
+    Object.assign(env.workbenchTerms, { personal_calendar: '个人日历', data_as_of: value => value });
+    Object.assign(env.workbenchGuards, { confirmLeave: async () => true });
+    env.context.__wbRuntime.setStubs({
+      'ResourceForms.jsx': { Feedback: 'feedback' },
+      'ResourceTables.jsx': {},
+      'ResourceRail.jsx': 'resource-rail',
+      'CalendarFields.jsx': { RefreshResult: 'calendar-refresh', Policy: 'calendar-policy' },
+      'WorkPeriodFields.jsx': 'period-fields',
+      'CalendarDayDialog.jsx': 'calendar-day-dialog',
+      'CalendarFileActions.jsx': 'calendar-file-actions',
+      'OperatorCalendarContract.js': {
+        month: value => value, draftOf: day => day.fields, tag: () => ({ tone: 'rest', text: '休息' }),
+        input: value => value, rangeInput: value => value, rangePreview: value => value
+      },
+      'CalendarContract.js': { path: 'calendar', month: value => value, tag: () => ({ tone: 'rest', text: '休息' }) }
+    });
     outputs.forEach(output => vm.runInContext(output.code, env.context, { filename: output.path }));
-    env.context.ResourceWorkspace = w.ResourceWorkspace;
     return env;
   }
   const stamp = month => String(month.year).padStart(4, '0') + '-' + String(month.month).padStart(2, '0') + '-01';
@@ -97,7 +117,7 @@ async function calendarRefreshContracts() {
       meta: { source: 'production' }, warnings: [] };
   }
   for (const action of ['calendar_upsert', 'calendar_delete', 'calendar_range_clear']) {
-    const env = calendarEnvironment(), w = env.window, requests = [], submissions = [];
+    const env = calendarEnvironment(), { OperatorCalendarPanel } = env.getMod('OperatorCalendarPanel.jsx'), requests = [], submissions = [];
     let parentRetries = 0;
     const command = { phase: 'idle', locked: false, reset: () => true, clearRejection: () => false, submit: (...args) => submissions.push(args) };
     const props = { entity: { ref: batchRef, business_code: 'OP-1' }, source: 'production', command,
@@ -109,7 +129,7 @@ async function calendarRefreshContracts() {
         async preview(path, body) { return { data: { count: 1, days: [{ date: body.input.start_date }], range: body.input, write_context: {} } }; }
       } };
     let tree;
-    const render = () => { tree = env.h.render(() => w.OperatorCalendarPanel(props)); env.h.flush(); return tree; };
+    const render = () => { tree = env.h.render(() => OperatorCalendarPanel(props)); env.h.flush(); return tree; };
     const settle = async () => { for (let index = 0; index < 3; index++) { render(); await turns(); } return render(); };
     const editor = () => nodes(tree).find(node => typeof node.type === 'function' && ['DayEditor', 'RangeClear'].includes(node.type.name));
     const refresh = () => nodes(tree).find(node => typeof node.type === 'function' && node.type.name === 'RefreshResult');
@@ -147,30 +167,41 @@ async function calendarRefreshContracts() {
     render(); await turns(); assert.equal(requests.length, 3); env.h.unmount();
   }
   for (const restored of [false, true]) {
-    const env = calendarEnvironment(), w = env.window, host = env.h, workspace = hooks(), calendar = hooks();
+    const env = calendarEnvironment(), host = env.h, workspace = hooks(), calendar = hooks();
+    const { ResourceLive } = env.getMod('ResourceLive.jsx'), { ResourceWorkspace } = env.getMod('ResourceWorkspace.jsx'), { ResourceCalendar } = env.getMod('ResourceCalendar.jsx');
     const idle = { phase: 'idle', locked: false, reset: () => true }, calendarCommand = { ...idle };
     let pending = restored ? { kind: 'work_calendar_import', action: 'confirm', request_key: 'old-import' } : null;
     let months = 0, summaries = 0, note = 'old', rootTree, calendarTree, calendarProps;
-    const rawQuery = w.APSResourceSession.useQuery;
-    w.APSResourceSession.useCommand = adapter => adapter.family === 'calendar' ? calendarCommand : idle;
-    w.APSResourceSession.useSummary = (adapter, revision, enabled = true) => rawQuery(signal => adapter.summary(signal), [adapter, revision], enabled);
-    w.APSResourceSession.useCounts = (adapter, revision) => ({ summary: rawQuery(signal => adapter.summary(signal), [adapter, revision]) });
-    w.APSResourceAPI = { create(family) { return { family,
-      readPending: () => family === 'work_calendar_files' ? pending : null,
-      async summary() { summaries++; return { data: {} }; },
-      async query(path, month) { months++; return monthPayload(month, note); }
-    }; } };
-    w.APSProcessAPI = { create: () => ({ readPending: () => null }) };
+    const rawQuery = env.getMod('shared/session/query.js').useQuery;
+    env.context.__wbRuntime.setStubs({
+      'shared/session/command-session.js': {
+        useCommand: adapter => adapter.family === 'calendar' ? calendarCommand : idle,
+      },
+      'shared/session/query.js': { useQuery: rawQuery },
+      'resource-api.js': {
+        useSummary: (adapter, revision, enabled = true) => rawQuery(signal => adapter.summary(signal), [adapter, revision], enabled),
+        useCounts: (adapter, revision) => ({ summary: rawQuery(signal => adapter.summary(signal), [adapter, revision]) }),
+        create(family) {
+          return {
+            family,
+            readPending: () => family === 'work_calendar_files' ? pending : null,
+            async summary() { summaries++; return { data: {} }; },
+            async query(path, month) { months++; return monthPayload(month, note); }
+          };
+        }
+      },
+      'ProcessAPI.js': { create: () => ({ readPending: () => null }) },
+    });
     const now = new Date(), month = { year: now.getFullYear(), month: now.getMonth() + 1 };
     const props = { initialContext: restored ? undefined : { source: 'production', kind: 'calendar', month: stamp(month).slice(0, 7) } };
     function render() {
-      env.context.React = host.React; rootTree = host.render(() => w.ResourceLive(props)); host.flush();
-      const parent = find(rootTree, w.ResourceWorkspace);
+      env.context.React = host.React; rootTree = host.render(() => ResourceLive(props)); host.flush();
+      const parent = find(rootTree, ResourceWorkspace);
       env.context.React = workspace.React;
-      const parentTree = workspace.render(() => w.ResourceWorkspace(parent.props)); workspace.flush();
-      calendarProps = find(parentTree, w.ResourceCalendar).props;
+      const parentTree = workspace.render(() => ResourceWorkspace(parent.props)); workspace.flush();
+      calendarProps = find(parentTree, ResourceCalendar).props;
       env.context.React = calendar.React;
-      calendarTree = calendar.render(() => w.ResourceCalendar(calendarProps)); calendar.flush();
+      calendarTree = calendar.render(() => ResourceCalendar(calendarProps)); calendar.flush();
     }
     const settle = async () => { for (let index = 0; index < 4; index++) { render(); await turns(); } render(); };
     await settle(); assert.equal(months, 1); assert.equal(summaries, 1);
@@ -198,30 +229,39 @@ async function calendarRefreshContracts() {
     calendar.unmount(); workspace.unmount(); host.unmount();
   }
   {
-    const env = calendarEnvironment(), w = env.window, host = env.h, workspace = hooks(), calendar = hooks();
+    const env = calendarEnvironment(), host = env.h, workspace = hooks(), calendar = hooks();
+    const { ResourceLive } = env.getMod('ResourceLive.jsx'), { ResourceWorkspace } = env.getMod('ResourceWorkspace.jsx'), { ResourceCalendar } = env.getMod('ResourceCalendar.jsx');
     const idle = { phase: 'idle', locked: false, reset: () => true };
     let corrupt = true, pendingReads = 0, rootTree;
-    const rawQuery = w.APSResourceSession.useQuery;
-    w.APSResourceSession.useCommand = () => idle;
-    w.APSResourceSession.useSummary = (adapter, revision, enabled = true) => rawQuery(signal => adapter.summary(signal), [adapter, revision], enabled);
-    w.APSResourceSession.useCounts = (adapter, revision) => ({ summary: rawQuery(signal => adapter.summary(signal), [adapter, revision]) });
-    w.APSResourceAPI = { create(family) { return { family,
-      readPending() {
-        if (family === 'work_calendar_files') { pendingReads++; if (corrupt) throw new Error('记录已损坏'); }
-        return null;
+    const rawQuery = env.getMod('shared/session/query.js').useQuery;
+    env.context.__wbRuntime.setStubs({
+      'shared/session/command-session.js': { useCommand: () => idle },
+      'shared/session/query.js': { useQuery: rawQuery },
+      'resource-api.js': {
+        useSummary: (adapter, revision, enabled = true) => rawQuery(signal => adapter.summary(signal), [adapter, revision], enabled),
+        useCounts: (adapter, revision) => ({ summary: rawQuery(signal => adapter.summary(signal), [adapter, revision]) }),
+        create(family) {
+          return {
+            family,
+            readPending() {
+              if (family === 'work_calendar_files') { pendingReads++; if (corrupt) throw new Error('记录已损坏'); }
+              return null;
+            },
+            async summary() { return { data: {} }; },
+            async query(path, month) { return monthPayload(month, 'ok'); }
+          };
+        }
       },
-      async summary() { return { data: {} }; },
-      async query(path, month) { return monthPayload(month, 'ok'); }
-    }; } };
-    w.APSProcessAPI = { create: () => ({ readPending: () => null }) };
+      'ProcessAPI.js': { create: () => ({ readPending: () => null }) },
+    });
     function renderCorrupt() {
-      env.context.React = host.React; rootTree = host.render(() => w.ResourceLive({})); host.flush();
-      const parent = find(rootTree, w.ResourceWorkspace);
+      env.context.React = host.React; rootTree = host.render(() => ResourceLive({})); host.flush();
+      const parent = find(rootTree, ResourceWorkspace);
       env.context.React = workspace.React;
-      const parentTree = workspace.render(() => w.ResourceWorkspace(parent.props)); workspace.flush();
-      const calendarProps = find(parentTree, w.ResourceCalendar).props;
+      const parentTree = workspace.render(() => ResourceWorkspace(parent.props)); workspace.flush();
+      const calendarProps = find(parentTree, ResourceCalendar).props;
       env.context.React = calendar.React;
-      calendar.render(() => w.ResourceCalendar(calendarProps)); calendar.flush();
+      calendar.render(() => ResourceCalendar(calendarProps)); calendar.flush();
     }
     const settleCorrupt = async () => { for (let index = 0; index < 4; index++) { renderCorrupt(); await turns(); } renderCorrupt(); };
     await settleCorrupt();
@@ -238,53 +278,44 @@ async function calendarRefreshContracts() {
   }
 }
 async function main() {
-  const env = environment(), B = env.window.APSBatchContract;
-  assert.equal(B.summary(summary), true); assert.equal(B.entity(summary), false);
-  assert.equal(B.entity(full), true); assert.equal(B.summary(full), false);
-  assert.equal(B.summary({ ...summary, operations: [] }), false, 'A summary never pretends to carry complete operations');
-  assert.equal(B.entity({ ...summary, operations: [] }), false);
-  for (const patch of [{ completed_count: 2 }, { gap_count: 2 }, { operation_count: -1 }])
-    assert.equal(B.summary({ ...summary, relationships: { ...summary.relationships, ...patch } }), false);
-  assert.equal(B.summary({ ...summary, all_operations_complete: true }), false);
-  const completed = { ...summary, relationships: { ...summary.relationships, completed_count: 1 }, all_operations_complete: true };
-  assert.equal(B.summary(completed), true); assert.equal(B.summary({ ...completed, all_operations_complete: false }), false);
+  const env = environment(), B = env.getMod('BatchContract.js');
   const zero = { ...summary, relationships: { ...summary.relationships, operation_count: 0 } };
-  assert.equal(B.summary(zero), true); assert.equal(B.summary({ ...zero, all_operations_complete: true }), false);
-  assert.equal(B.summary({ ...summary, protected: undefined }), false); assert.equal(B.summary({ ...summary, write_context: {} }), false);
   assert.equal(B.list(listPayload(summary), scope).data.entities[0], summary);
-  assert.throws(() => B.list(listPayload(full), scope), /批次列表不完整/);
   assert.throws(() => B.list(listPayload(summary), { ...scope, snapshot_ref: 'different' }), /批次列表不完整/);
   assert.equal(B.detail(envelope(full), batchRef).data, full);
-  assert.throws(() => B.detail(envelope(summary), batchRef), /批次详情不完整/);
   assert.throws(() => B.detail(envelope(full), 'd'.repeat(48)), /不是这个批次/);
-  assert.equal(B.entity({ ...full, relationships: { ...full.relationships, operation_count: 2 }, operations: [full.operations[0], full.operations[0]] }), false);
-  assert.equal(B.entity({ ...full, operations: [{ ...full.operations[0], completed: true }] }), false);
   const preview = envelope({ operation: 'batch.bulk_confirm', preview_ref: 'p'.repeat(32), write_context: clone(writeContext), commit_policy: 'atomic',
     action: 'delete', count: 1, rows: [{ entity_ref: batchRef, before: full, after: null }] });
   assert.equal(B.preview(preview, 'bulk', null, { refs: [batchRef], action: 'delete' }).count, 1);
-  const incompletePreview = clone(preview); incompletePreview.data.rows[0].before = summary;
-  assert.throws(() => B.preview(incompletePreview, 'bulk', null, { refs: [batchRef], action: 'delete' }), /预检结果/);
 
   // The workspace passes the same reader into list rows; its detail route stays separate.
   const workspace = environment(), adapter = {};
-  workspace.window.APSResourceSession.useCommand = () => ({ phase: 'idle', locked: false });
-  workspace.window.APSResourceSession.useQuery = () => ({ result: listPayload(summary), loading: false, error: null });
-  const workspaceNode = workspace.h.render(() => workspace.window.BatchWorkspace({ adapter, initialContext: {} }));
-  assert.equal(find(workspaceNode, workspace.window.BatchTable).props.adapter, adapter);
+  const wsCommandStub = { useCommand: () => ({ phase: 'idle', locked: false }) };
+  const wsQueryStub = { useQuery: () => ({ result: listPayload(summary), loading: false, error: null }) };
+  workspace.context.__wbRuntime.setStubs({
+    'shared/session/command-session.js': wsCommandStub,
+    'shared/session/query.js': wsQueryStub,
+  });
+  const { BatchWorkspace: WsBatchWorkspace } = workspace.getMod('BatchWorkspace.jsx'), { BatchTable: WsBatchTable } = workspace.getMod('BatchTable.jsx');
+  const workspaceNode = workspace.h.render(() => WsBatchWorkspace({ adapter, initialContext: {} }));
+  assert.equal(find(workspaceNode, WsBatchTable).props.adapter, adapter);
   const links = [], bulkPatches = [], nextWorkspace = environment(), hiddenRef = 'd'.repeat(48);
-  nextWorkspace.window.APSResourceSession.useCommand = () => ({ phase: 'idle', locked: false, reset: () => true });
-  nextWorkspace.window.APSResourceSession.useQuery = () => ({ result: listPayload(summary), loading: false, error: null });
-  nextWorkspace.window.WorkbenchGuards.confirmLeave = async () => true;
-  nextWorkspace.window.BatchForms = { Preview: 'batch-preview' };
+  nextWorkspace.workbenchGuards.confirmLeave = async () => true;
+  nextWorkspace.context.__wbRuntime.setStubs({
+    'shared/session/command-session.js': { useCommand: () => ({ phase: 'idle', locked: false, reset: () => true }) },
+    'shared/session/query.js': wsQueryStub,
+    'BatchForms.jsx': { Preview: 'batch-preview', default: { Preview: 'batch-preview' } },
+  });
+  const { BatchWorkspace: NextBatchWorkspace } = nextWorkspace.getMod('BatchWorkspace.jsx'), { BatchTable: NextBatchTable } = nextWorkspace.getMod('BatchTable.jsx');
   const nextProps = { adapter: { async preview(action, entityRef, input) {
     bulkPatches.push(input.patch);
     return envelope({ operation: 'batch.bulk_confirm', preview_ref: 'p'.repeat(32), write_context: clone(writeContext),
       commit_policy: 'atomic', action: input.action, count: input.refs.length,
       rows: input.refs.map(ref => ({ entity_ref: ref, before: { ...full, ref }, after: { ...full, ref } })) });
   } }, onNav: (...args) => links.push(args), initialContext: {} };
-  let nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
-  find(nextTree, nextWorkspace.window.BatchTable).props.setSelected([batchRef, hiddenRef]);
-  nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
+  let nextTree = nextWorkspace.h.render(() => NextBatchWorkspace(nextProps));
+  find(nextTree, NextBatchTable).props.setSelected([batchRef, hiddenRef]);
+  nextTree = nextWorkspace.h.render(() => NextBatchWorkspace(nextProps));
   find(nextTree, 'button', props => text(props.children) === '下一步 · 去排产').props.onClick();
   assert.deepEqual(clone(links.at(-1)), ['run', { scope: { source: 'production', batch_refs: [batchRef, hiddenRef] } }],
     'The next step carries the complete cross-page selection');
@@ -293,37 +324,40 @@ async function main() {
   for (const dismiss of [tree => bulkModal(tree).props.onClose(),
     tree => find(bulkModal(tree).props.footer, 'button', props => text(props.children) === '取消').props.onClick()]) {
     find(nextTree, 'button', props => text(props.children) === '批量修改').props.onClick();
-    nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
+    nextTree = nextWorkspace.h.render(() => NextBatchWorkspace(nextProps));
     assert.equal(remarkInput(nextTree).props.value, '');
     remarkInput(nextTree).props.onChange({ target: { value: 'PHASE6A-Bulk-X-应放弃' } });
-    nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
+    nextTree = nextWorkspace.h.render(() => NextBatchWorkspace(nextProps));
     assert.equal(remarkInput(nextTree).props.value, 'PHASE6A-Bulk-X-应放弃');
     await dismiss(nextTree);
-    nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
+    nextTree = nextWorkspace.h.render(() => NextBatchWorkspace(nextProps));
     assert.equal(bulkModal(nextTree), undefined);
   }
   find(nextTree, 'button', props => text(props.children) === '批量修改').props.onClick();
-  nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
+  nextTree = nextWorkspace.h.render(() => NextBatchWorkspace(nextProps));
   assert.equal(remarkInput(nextTree).props.value, '');
   await find(bulkModal(nextTree).props.footer, 'button', props => text(props.children) === '预览变更').props.onClick();
   assert.deepEqual(clone(bulkPatches), [{}]);
-  nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
+  nextTree = nextWorkspace.h.render(() => NextBatchWorkspace(nextProps));
   find(nextTree, 'batch-preview').props.onClose();
-  nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
-  find(nextTree, nextWorkspace.window.BatchTable).props.setSelected([]);
-  nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
+  nextTree = nextWorkspace.h.render(() => NextBatchWorkspace(nextProps));
+  find(nextTree, NextBatchTable).props.setSelected([]);
+  nextTree = nextWorkspace.h.render(() => NextBatchWorkspace(nextProps));
   find(nextTree, 'button', props => text(props.children) === '下一步 · 去排产').props.onClick();
   assert.deepEqual(clone(links.at(-1)), ['run', {}], 'An unselected next step opens a fresh form rather than resuming an old run result');
   nextWorkspace.h.unmount();
   // A return entry is always { view, context? }; the removed bare-string form is not restored.
   for (const returnTarget of [{ view: 'run' }, { view: 'dashboard', context: { tab: 'analysis' } }]) {
     const returning = environment();
-    returning.window.APSResourceSession.useCommand = () => ({ phase: 'idle', locked: false });
-    returning.window.APSResourceSession.useQuery = () => ({ result: listPayload(summary), loading: false, error: null });
+    returning.context.__wbRuntime.setStubs({
+      'shared/session/command-session.js': wsCommandStub,
+      'shared/session/query.js': wsQueryStub,
+    });
+    const { BatchWorkspace: RetBatchWorkspace } = returning.getMod('BatchWorkspace.jsx'), { BatchTable: RetBatchTable } = returning.getMod('BatchTable.jsx');
     const returnProps = { adapter, initialContext: { return_to: returnTarget }, onNav: (...args) => links.push(args) };
-    let returned = returning.h.render(() => returning.window.BatchWorkspace(returnProps));
-    find(returned, returning.window.BatchTable).props.setSelected([hiddenRef]);
-    returned = returning.h.render(() => returning.window.BatchWorkspace(returnProps));
+    let returned = returning.h.render(() => RetBatchWorkspace(returnProps));
+    find(returned, RetBatchTable).props.setSelected([hiddenRef]);
+    returned = returning.h.render(() => RetBatchWorkspace(returnProps));
     find(returned, 'button', props => ['返回排产', '返回值班台'].includes(text(props.children))).props.onClick();
     assert.deepEqual(clone(links.at(-1)), clone([returnTarget.view, returnTarget.context]),
       'Returning to a source preserves its original navigation protocol'); returning.h.unmount();

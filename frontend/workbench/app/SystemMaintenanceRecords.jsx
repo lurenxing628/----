@@ -1,143 +1,150 @@
-(function () {
-  'use strict';
-  const A = window.SystemMaintenanceAPI, C = window.SystemMaintenanceControls;
-  const emptyFilters = { query: '', type: '', status: '', level: '', file: '', start: '', end: '' };
-  const types = { manual: '手动备份', auto: '自动备份', before_restore: '恢复前保护副本', unknown: '类型未知', restore: '恢复', cleanup: '清理', runtime: '运行日志', operation: '操作记录' };
-  // 恢复各阶段的叫法只在 SystemRestoreStatus.labels 维护一份；这里只补备份文件与清理记录自己的状态。
-  const states = { unverified: '未校验', partial: '部分异常', skipped: '已跳过', unknown: '结果不确定', ...window.SystemRestoreStatus.labels };
-  const levels = { INFO: '信息', WARNING: '警告', ERROR: '错误', DEBUG: '调试', CRITICAL: '严重', UNKNOWN: '未知' };
-  const sources = { 'aps.log': '主日志（aps.log）', 'aps_error.log': '错误日志（aps_error.log）', 'launcher.log': '启动日志（launcher.log）', OperationLogs: '操作记录' };
-  const levelText = value => levels[value] || value;
-  const sourceText = value => sources[value] || value;
-  function Filters({ kind, value, onChange, onSubmit, onReset, loading }) {
-    const select = (key, label, choices) => <label className="sm-field" key={key}><span>{label}</span><select aria-label={label} value={value[key]} onChange={event => onChange({ ...value, [key]: event.target.value })}>
-      <option value="">全部</option>{choices.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>;
-    return <form className="sm-filters" onSubmit={event => { event.preventDefault(); onSubmit(); }}>
-      <label className="sm-field sm-search"><span>搜索</span><span className="sm-search-input"><SMIcon name="search" /><input type="search" aria-label="搜索维护记录" maxLength={200} value={value.query}
-        onChange={event => onChange({ ...value, query: event.target.value })} placeholder={kind === 'logs' ? '摘要、已读取详情、来源' : '备份文件名'} /></span></label>
-      {select('type', '记录类型', Object.entries(types).filter(([key]) => kind === 'logs' ? ['runtime', 'operation'].includes(key) : !['runtime', 'operation'].includes(key)))}
-      {select('status', '记录状态', kind === 'logs' ? [['recorded', '已记录']] : Object.entries(states))}
-      {kind === 'logs' && <>{select('file', '日志来源', Object.keys(sources).map(key => [key, sourceText(key)]))}
-        {select('level', '日志级别', Object.keys(levels).map(key => [key, levelText(key)]))}</>}
-      {['start', 'end'].map(key => <label className="sm-field" key={key}><span>{key === 'start' ? '开始日期' : '结束日期'}</span><input type="date" aria-label={key === 'start' ? '开始日期' : '结束日期'}
-        value={value[key]} onChange={event => onChange({ ...value, [key]: event.target.value })} /></label>)}
-      <div className="sm-actions sm-filter-actions">
-        <C.Button icon="x" aria-label="清除筛选" onClick={onReset} /><C.Button icon="search" type="submit" busy={loading}>查询</C.Button>
-      </div>
-    </form>;
+import React from './shared/runtime/react.js';
+import A from './SystemMaintenanceAPI.js';
+import C from './SystemMaintenanceControls.jsx';
+import SystemRestoreStatus from './SystemRestoreStatus.js';
+import { SMIcon } from './shared/ui/icons.jsx';
+import { WorkbenchReference } from './WorkbenchReferences.jsx';
+import WorkbenchFormat from './WorkbenchFormat.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
+import { EmptyState, Pager } from './ResourceControls.jsx';
+
+const emptyFilters = { query: '', type: '', status: '', level: '', file: '', start: '', end: '' };
+const types = { manual: '手动备份', auto: '自动备份', before_restore: '恢复前保护副本', unknown: '类型未知', restore: '恢复', cleanup: '清理', runtime: '运行日志', operation: '操作记录' };
+// 恢复各阶段的叫法只在 SystemRestoreStatus.labels 维护一份；这里只补备份文件与清理记录自己的状态。
+const states = { unverified: '未校验', partial: '部分异常', skipped: '已跳过', unknown: '结果不确定', ...SystemRestoreStatus.labels };
+const levels = { INFO: '信息', WARNING: '警告', ERROR: '错误', DEBUG: '调试', CRITICAL: '严重', UNKNOWN: '未知' };
+const sources = { 'aps.log': '主日志（aps.log）', 'aps_error.log': '错误日志（aps_error.log）', 'launcher.log': '启动日志（launcher.log）', OperationLogs: '操作记录' };
+const levelText = value => levels[value] || value;
+const sourceText = value => sources[value] || value;
+function Filters({ kind, value, onChange, onSubmit, onReset, loading }) {
+  const select = (key, label, choices) => <label className="sm-field" key={key}><span>{label}</span><select aria-label={label} value={value[key]} onChange={event => onChange({ ...value, [key]: event.target.value })}>
+    <option value="">全部</option>{choices.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>;
+  return <form className="sm-filters" onSubmit={event => { event.preventDefault(); onSubmit(); }}>
+    <label className="sm-field sm-search"><span>搜索</span><span className="sm-search-input"><SMIcon name="search" /><input type="search" aria-label="搜索维护记录" maxLength={200} value={value.query}
+      onChange={event => onChange({ ...value, query: event.target.value })} placeholder={kind === 'logs' ? '摘要、已读取详情、来源' : '备份文件名'} /></span></label>
+    {select('type', '记录类型', Object.entries(types).filter(([key]) => kind === 'logs' ? ['runtime', 'operation'].includes(key) : !['runtime', 'operation'].includes(key)))}
+    {select('status', '记录状态', kind === 'logs' ? [['recorded', '已记录']] : Object.entries(states))}
+    {kind === 'logs' && <>{select('file', '日志来源', Object.keys(sources).map(key => [key, sourceText(key)]))}
+      {select('level', '日志级别', Object.keys(levels).map(key => [key, levelText(key)]))}</>}
+    {['start', 'end'].map(key => <label className="sm-field" key={key}><span>{key === 'start' ? '开始日期' : '结束日期'}</span><input type="date" aria-label={key === 'start' ? '开始日期' : '结束日期'}
+      value={value[key]} onChange={event => onChange({ ...value, [key]: event.target.value })} /></label>)}
+    <div className="sm-actions sm-filter-actions">
+      <C.Button icon="x" aria-label="清除筛选" onClick={onReset} /><C.Button icon="search" type="submit" busy={loading}>查询</C.Button>
+    </div>
+  </form>;
+}
+function Sources({ data, kind }) {
+  if (kind === 'backups') return data.sources.map((item, index) => <div key={index}><p className="sm-note">{item.message}</p>{item.code && <WorkbenchReference label="校验码" value={item.code} />}</div>);
+  const labels = { available: '可读取', empty: '这段范围内暂无记录', missing: '来源不存在', error: '来源读取失败' };
+  return <div className="sm-log-sources" aria-label="日志读取范围">
+    <p className="sm-note">按条件筛选最近读取的日志。</p>
+    <div className="sm-source-list">{data.sources.map(item => <div key={item.source} className="sm-source-item">
+      <strong>{sourceText(item.source)}</strong><span className={['error', 'missing'].includes(item.state) ? 'sm-tone-warning' : 'sm-meta'}> · {labels[item.state]}</span>
+      <div>最近 {item.window} 条 · {item.count === null ? '数量未知' : '读取 ' + item.count + ' 条'}{item.truncated ? ' · 已截断' : ' · 没有截断'}</div>
+      {item.boundary_unknown && <div className="sm-tone-warning">读到的起止位置没能完整确认</div>}{item.message && <div className="sm-tone-warning">{item.message}</div>}
+    </div>)}</div>
+  </div>;
+}
+function Detail({ row, kind, data, reason, sharedReason, onAction, onDownload, downloadBusy, onClose }) {
+  const ref = React.useRef(null);
+  const file = kind === 'backups' && row.record_kind === 'backup_file', event = kind === 'backups' && !file;
+  const restoreReason = file ? reason || A.blocked(data, 'restore') : '', deleteReason = file ? reason || A.blocked(data, 'delete') : '';
+  React.useEffect(() => { const previous = document.activeElement; ref.current.focus(); return () => { if (previous && previous.isConnected) previous.focus(); }; }, []);
+  return <section className="sm-detail" role="region" aria-label={kind === 'logs' ? '日志详情' : file ? '备份详情' : '维护事件详情'} tabIndex={-1} ref={ref} onKeyDown={event => { if (event.key === 'Escape') onClose(); }}>
+    <div className="sm-section-head"><h3 className="sm-detail-title">{kind === 'logs' ? '日志详情' : file ? row.filename : row.summary}</h3><C.Button icon="x" aria-label="关闭详情" onClick={onClose} /></div>
+    <div className="sm-detail-meta"><time>{row.time ? WorkbenchFormat.dateTime(row.time) : '时间未识别'}</time><span>{types[row.type]}</span><span>{kind === 'logs' ? sourceText(row.file) + ' · ' + levelText(row.level) + ' · 已记录' : file ? '未校验 · ' + row.size_bytes + ' 字节' : states[row.status]}</span></div>
+    {event && <><p className="sm-note">{{ external_maintenance_journal: '维护记录', operation_audit: '操作记录', latest_job_state_only: '仅最近一次维护状态' }[row.event_source]}</p><WorkbenchReference label="维护事件编号" value={row.event_ref} /></>}
+    <p className="sm-detail-summary">{row.summary}</p><pre className="sm-detail-body">{row.body}</pre>
+    {row.content_truncated && <p className="sm-tone-warning">本条详情已截断，不是完整原始内容。</p>}
+    {file && <><p className="sm-note">校验状态：未校验。</p><div className="sm-actions">
+      <C.Button transfer="export" disabled={!!reason} busy={downloadBusy} onClick={() => onDownload(row)}>下载备份</C.Button>
+      <C.Button icon="rotate-ccw" reason={restoreReason} reasonDisplay={restoreReason === sharedReason ? 'tooltip' : 'inline'} onClick={() => onAction('restore', row)}>恢复备份</C.Button>
+      <C.Button icon="trash-2" reason={deleteReason} reasonDisplay={deleteReason === sharedReason ? 'tooltip' : 'inline'} onClick={() => onAction('delete', row)}>删除备份</C.Button>
+    </div></>}
+  </section>;
+}
+function SystemMaintenanceRecords({ kind, pageSize, onPageSize, revision, command, active, initialContext, onReadContext }) {
+  const [start] = React.useState(() => A.recordContext(initialContext, kind));
+  const [draft, setDraft] = React.useState(start.filters), [filters, setFilters] = React.useState(start.filters);
+  const [page, setPage] = React.useState(start.page), [snapshot, setSnapshot] = React.useState(''), [refresh, reload] = React.useReducer(value => value + 1, 0);
+  const [selection, setSelection] = React.useState(start.selection), [confirm, setConfirm] = React.useState(null), [downloadBusy, setDownloadBusy] = React.useState(false);
+  const [error, setError] = React.useState(null), [notice, setNotice] = React.useState('');
+  const request = C.useRead(kind, { ...filters, page, page_size: pageSize, snapshot_ref: snapshot }, revision + ':' + refresh, active);
+  const payload = request.data, data = payload && payload.data;
+  const matches = selection && data ? data.rows.filter(row => row.key === selection.key && (kind !== 'backups'
+    || row.record_kind === selection.record_kind && (row.record_kind !== 'backup_file' || !selection.backup_ref || row.backup_ref === selection.backup_ref))) : [];
+  const selected = matches.length === 1 ? matches[0] : null;
+  function setSelected(row) { setSelection(row ? { key: row.key, ...(kind === 'backups' ? { record_kind: row.record_kind,
+    ...(row.record_kind === 'backup_file' ? { backup_ref: row.backup_ref } : {}) } : {}) } : null); }
+  React.useEffect(() => {
+    if (selected && kind === 'backups' && selected.record_kind === 'backup_file' && !selection.backup_ref) setSelected(selected);
+  }, [selected, selection, kind]);
+  const previousVersion = React.useRef(revision + ':' + pageSize);
+  React.useEffect(() => {
+    const next = revision + ':' + pageSize; if (previousVersion.current === next) return;
+    previousVersion.current = next; setPage(1); setSnapshot(''); setSelected(null); setConfirm(null);
+  }, [revision, pageSize]);
+  const savedSelection = selection ? { key: selection.key, ...(selection.record_kind ? { record_kind: selection.record_kind } : {}) } : null;
+  const savedScope = JSON.stringify({ filters, page, selection: savedSelection });
+  React.useLayoutEffect(() => {
+    if (active && data) onReadContext(kind, { filters: { ...filters }, page, selection: savedSelection });
+  }, [onReadContext, kind, active, !!data, savedScope]);
+  React.useEffect(() => { if (!active || command.locked) setConfirm(null); }, [active, command.locked]);
+  function apply(value) {
+    if (value.start && value.end && value.start > value.end) { setError(new Error('开始日期不能晚于结束日期。')); return; }
+    setError(null); setNotice(''); setFilters({ ...value }); setPage(1); setSnapshot(''); setSelected(null); reload();
   }
-  function Sources({ data, kind }) {
-    if (kind === 'backups') return data.sources.map((item, index) => <div key={index}><p className="sm-note">{item.message}</p>{item.code && <window.WorkbenchReference label="校验码" value={item.code} />}</div>);
-    const labels = { available: '可读取', empty: '这段范围内暂无记录', missing: '来源不存在', error: '来源读取失败' };
-    return <div className="sm-log-sources" aria-label="日志读取范围">
-      <p className="sm-note">按条件筛选最近读取的日志。</p>
-      <div className="sm-source-list">{data.sources.map(item => <div key={item.source} className="sm-source-item">
-        <strong>{sourceText(item.source)}</strong><span className={['error', 'missing'].includes(item.state) ? 'sm-tone-warning' : 'sm-meta'}> · {labels[item.state]}</span>
-        <div>最近 {item.window} 条 · {item.count === null ? '数量未知' : '读取 ' + item.count + ' 条'}{item.truncated ? ' · 已截断' : ' · 没有截断'}</div>
-        {item.boundary_unknown && <div className="sm-tone-warning">读到的起止位置没能完整确认</div>}{item.message && <div className="sm-tone-warning">{item.message}</div>}
-      </div>)}</div>
-    </div>;
+  function changePage(next) { setPage(next); setSnapshot(payload.meta.snapshot_ref); setSelected(null); setError(null); setNotice(''); }
+  async function download(format) {
+    setError(null); setNotice(''); setDownloadBusy(true);
+    try { const file = await A.download(format, { ...filters, page: 1, page_size: pageSize, snapshot_ref: payload.meta.snapshot_ref }); setNotice('已生成并交给浏览器下载：' + file.filename + '（' + file.bytes + ' 字节）。'); }
+    catch (problem) { setError(problem); } finally { setDownloadBusy(false); }
   }
-  function Detail({ row, kind, data, reason, sharedReason, onAction, onDownload, downloadBusy, onClose }) {
-    const ref = React.useRef(null);
-    const file = kind === 'backups' && row.record_kind === 'backup_file', event = kind === 'backups' && !file;
-    const restoreReason = file ? reason || A.blocked(data, 'restore') : '', deleteReason = file ? reason || A.blocked(data, 'delete') : '';
-    React.useEffect(() => { const previous = document.activeElement; ref.current.focus(); return () => { if (previous && previous.isConnected) previous.focus(); }; }, []);
-    return <section className="sm-detail" role="region" aria-label={kind === 'logs' ? '日志详情' : file ? '备份详情' : '维护事件详情'} tabIndex={-1} ref={ref} onKeyDown={event => { if (event.key === 'Escape') onClose(); }}>
-      <div className="sm-section-head"><h3 className="sm-detail-title">{kind === 'logs' ? '日志详情' : file ? row.filename : row.summary}</h3><C.Button icon="x" aria-label="关闭详情" onClick={onClose} /></div>
-      <div className="sm-detail-meta"><time>{row.time ? window.WorkbenchFormat.dateTime(row.time) : '时间未识别'}</time><span>{types[row.type]}</span><span>{kind === 'logs' ? sourceText(row.file) + ' · ' + levelText(row.level) + ' · 已记录' : file ? '未校验 · ' + row.size_bytes + ' 字节' : states[row.status]}</span></div>
-      {event && <><p className="sm-note">{{ external_maintenance_journal: '维护记录', operation_audit: '操作记录', latest_job_state_only: '仅最近一次维护状态' }[row.event_source]}</p><window.WorkbenchReference label="维护事件编号" value={row.event_ref} /></>}
-      <p className="sm-detail-summary">{row.summary}</p><pre className="sm-detail-body">{row.body}</pre>
-      {row.content_truncated && <p className="sm-tone-warning">本条详情已截断，不是完整原始内容。</p>}
-      {file && <><p className="sm-note">校验状态：未校验。</p><div className="sm-actions">
-        <C.Button transfer="export" disabled={!!reason} busy={downloadBusy} onClick={() => onDownload(row)}>下载备份</C.Button>
-        <C.Button icon="rotate-ccw" reason={restoreReason} reasonDisplay={restoreReason === sharedReason ? 'tooltip' : 'inline'} onClick={() => onAction('restore', row)}>恢复备份</C.Button>
-        <C.Button icon="trash-2" reason={deleteReason} reasonDisplay={deleteReason === sharedReason ? 'tooltip' : 'inline'} onClick={() => onAction('delete', row)}>删除备份</C.Button>
-      </div></>}
-    </section>;
+  async function downloadBackup(row) {
+    setError(null); setNotice(''); setDownloadBusy(true);
+    try {
+      const file = await A.downloadBackup(row, { ...filters, page: 1, page_size: pageSize, snapshot_ref: payload.meta.snapshot_ref });
+      setNotice('已生成并交给浏览器下载：' + file.filename + '（' + file.bytes + ' 字节）。');
+    } catch (problem) { setError(problem); } finally { setDownloadBusy(false); }
   }
-  function Records({ kind, pageSize, onPageSize, revision, command, active, initialContext, onReadContext }) {
-    const [start] = React.useState(() => A.recordContext(initialContext, kind));
-    const [draft, setDraft] = React.useState(start.filters), [filters, setFilters] = React.useState(start.filters);
-    const [page, setPage] = React.useState(start.page), [snapshot, setSnapshot] = React.useState(''), [refresh, reload] = React.useReducer(value => value + 1, 0);
-    const [selection, setSelection] = React.useState(start.selection), [confirm, setConfirm] = React.useState(null), [downloadBusy, setDownloadBusy] = React.useState(false);
-    const [error, setError] = React.useState(null), [notice, setNotice] = React.useState('');
-    const request = C.useRead(kind, { ...filters, page, page_size: pageSize, snapshot_ref: snapshot }, revision + ':' + refresh, active);
-    const payload = request.data, data = payload && payload.data;
-    const matches = selection && data ? data.rows.filter(row => row.key === selection.key && (kind !== 'backups'
-      || row.record_kind === selection.record_kind && (row.record_kind !== 'backup_file' || !selection.backup_ref || row.backup_ref === selection.backup_ref))) : [];
-    const selected = matches.length === 1 ? matches[0] : null;
-    function setSelected(row) { setSelection(row ? { key: row.key, ...(kind === 'backups' ? { record_kind: row.record_kind,
-      ...(row.record_kind === 'backup_file' ? { backup_ref: row.backup_ref } : {}) } : {}) } : null); }
-    React.useEffect(() => {
-      if (selected && kind === 'backups' && selected.record_kind === 'backup_file' && !selection.backup_ref) setSelected(selected);
-    }, [selected, selection, kind]);
-    const previousVersion = React.useRef(revision + ':' + pageSize);
-    React.useEffect(() => {
-      const next = revision + ':' + pageSize; if (previousVersion.current === next) return;
-      previousVersion.current = next; setPage(1); setSnapshot(''); setSelected(null); setConfirm(null);
-    }, [revision, pageSize]);
-    const savedSelection = selection ? { key: selection.key, ...(selection.record_kind ? { record_kind: selection.record_kind } : {}) } : null;
-    const savedScope = JSON.stringify({ filters, page, selection: savedSelection });
-    React.useLayoutEffect(() => {
-      if (active && data) onReadContext(kind, { filters: { ...filters }, page, selection: savedSelection });
-    }, [onReadContext, kind, active, !!data, savedScope]);
-    React.useEffect(() => { if (!active || command.locked) setConfirm(null); }, [active, command.locked]);
-    function apply(value) {
-      if (value.start && value.end && value.start > value.end) { setError(new Error('开始日期不能晚于结束日期。')); return; }
-      setError(null); setNotice(''); setFilters({ ...value }); setPage(1); setSnapshot(''); setSelected(null); reload();
-    }
-    function changePage(next) { setPage(next); setSnapshot(payload.meta.snapshot_ref); setSelected(null); setError(null); setNotice(''); }
-    async function download(format) {
-      setError(null); setNotice(''); setDownloadBusy(true);
-      try { const file = await A.download(format, { ...filters, page: 1, page_size: pageSize, snapshot_ref: payload.meta.snapshot_ref }); setNotice('已生成并交给浏览器下载：' + file.filename + '（' + file.bytes + ' 字节）。'); }
-      catch (problem) { setError(problem); } finally { setDownloadBusy(false); }
-    }
-    async function downloadBackup(row) {
-      setError(null); setNotice(''); setDownloadBusy(true);
-      try {
-        const file = await A.downloadBackup(row, { ...filters, page: 1, page_size: pageSize, snapshot_ref: payload.meta.snapshot_ref });
-        setNotice('已生成并交给浏览器下载：' + file.filename + '（' + file.bytes + ' 字节）。');
-      } catch (problem) { setError(problem); } finally { setDownloadBusy(false); }
-    }
-    const writeReason = command.locked ? command.lockedReason : request.loading || !data ? '请先读取有效的备份清单。' : '';
-    const sharedReason = kind === 'backups' ? writeReason || data && data.capabilities.blocked_reason || '' : '';
-    const ask = (action, row) => {
-      if (action !== 'create' && (!row || row.record_kind !== 'backup_file')) { setError(new Error('维护事件不是可操作的备份文件。')); return; }
-      setConfirm({ action, row });
-    };
-    const hasFilter = Object.values(filters).some(Boolean);
-    return <section className="sm-section" aria-label={kind === 'logs' ? '运行日志与操作记录' : '备份与维护记录'}>
-      <div className="sm-section-head"><h3>{kind === 'logs' ? '运行日志与操作记录' : '备份与维护记录'}</h3><C.Button icon="refresh-cw" aria-label="刷新清单" busy={request.loading} onClick={() => { setPage(1); setSnapshot(''); setSelected(null); reload(); }} /></div>
-      <div className="sm-toolbar"><Filters kind={kind} value={draft} onChange={setDraft} onSubmit={() => apply(draft)} loading={request.loading} onReset={() => { setDraft({ ...emptyFilters }); apply(emptyFilters); }} />
-        <div className="sm-actions sm-record-actions">{kind === 'backups' ? <C.Button icon="plus" reason={sharedReason || A.blocked(data, 'create')} reasonDisplay={sharedReason ? 'tooltip' : 'inline'} onClick={() => ask('create', null)}>新增备份</C.Button> : <>
-          <C.Button transfer="export" disabled={!data} busy={downloadBusy} onClick={() => download('csv')}>导出这段日志 CSV</C.Button>
-          <C.Button transfer="export" disabled={!data} busy={downloadBusy} onClick={() => download('zip')}>导出诊断包</C.Button></>}</div>
-      </div>
-      <C.ErrorBox error={request.error || error} />{notice && <p className="sm-notice" role="status">{notice}</p>}
-      {selection && data && !selected && <p className="sm-notice" role="status">这一页里找不到原先选中的记录，没有自动换成别的记录。请重新选择。<C.Button icon="x" onClick={() => setSelected(null)}>清除原选择</C.Button></p>}
-      {kind === 'backups' && sharedReason && !command.storageError && <p className="sm-note" role="status">{sharedReason}</p>}
-      {request.loading && <p className="sm-note" role="status">正在读取{kind === 'logs' ? '日志' : '备份清单'}…</p>}
-      {data && <><Sources data={data} kind={kind} /><div className="sm-meta">{window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(payload.meta.as_of))}</div>
-        {data.rows.length ? <div className="wb-table-shell wb-table-frame" data-sticky-head="true" data-sticky-actions="true"><table className={'wb-table sm-table sm-record-table sm-' + kind + '-table'}>
-          <caption className="wb-visually-hidden">{kind === 'logs' ? '已读取的运行日志与操作记录' : '备份文件及恢复、清理事件'}</caption>
-          <thead><tr><th scope="col" className="wb-col-key">时间</th><th scope="col">类型</th><th scope="col">状态</th>{kind === 'logs' && <th scope="col">级别</th>}<th scope="col">{kind === 'logs' ? '摘要 / 来源' : '文件'}</th>{kind === 'backups' && <th scope="col">大小</th>}<th scope="col" className="wb-col-actions">详情</th></tr></thead>
-          {/* 键盘停靠点只留行尾的「详情」按钮；整行仍可用鼠标点开。 */}
-          <tbody>{data.rows.map(row => <tr key={row.key} className="sm-record-row" data-record-kind={row.record_kind} onClick={() => setSelected(row)}>
-            <td className="wb-col-key"><time className="sm-time">{row.time ? window.WorkbenchFormat.dateTime(row.time) : '时间未识别'}</time></td><td>{types[row.type]}</td>
-            <td><span className="sm-status sm-tone-neutral">{kind === 'logs' ? '已记录' : states[row.status]}</span></td>{kind === 'logs' && <td><span className={'sm-level sm-level-' + row.level}>{levelText(row.level)}</span></td>}
-            <td><div className="sm-summary"><strong className="sm-summary-title">{row.summary}</strong>{kind === 'logs' && <small>{sourceText(row.file)}{row.content_truncated ? ' · 详情已截断' : ''}</small>}</div></td>
-            {kind === 'backups' && <td className="sm-col-size">{row.record_kind === 'backup_file' ? window.WorkbenchFormat.number(row.size_bytes / 1024, { digits: 1 }) + ' KB' : '事件记录'}</td>}
-            <td className="wb-col-actions"><C.Button icon="chevron-right" className="mini" aria-label={'查看详情 ' + row.summary} aria-expanded={!!selected && selected.key === row.key} onClick={event => { event.stopPropagation(); setSelected(row); }} /></td>
-          </tr>)}</tbody></table></div> : <window.WorkbenchListControls.EmptyState kind={hasFilter ? 'filtered' : 'empty'} title="当前筛选下暂无记录" hint={kind === 'logs' ? '只看已读取的那段日志；来源缺失和读取失败另行列出。' : '只看已读取的备份文件、恢复事件和清理记录。'} action={hasFilter ? <C.Button onClick={() => { setDraft({ ...emptyFilters }); apply(emptyFilters); }}>清除筛选</C.Button> : undefined} />}
-        <div className="sm-pager"><window.WorkbenchListControls.Pager page={data.page} sizes={[10, 25, 50]} unit="条" onSize={onPageSize} onPage={changePage} busy={request.loading} label="" sizeLabel="每页数量" /></div>
-        {selected && <Detail key={selected.key} row={selected} kind={kind} data={data} reason={writeReason} sharedReason={sharedReason} onAction={ask} onDownload={downloadBackup} downloadBusy={downloadBusy} onClose={() => setSelected(null)} />}
-      </>}
-      {confirm && <C.Confirm {...confirm} reason={writeReason || A.blocked(data, confirm.action)} onClose={() => setConfirm(null)} onConfirm={() => {
-        const { action, row } = confirm, reason = writeReason || A.blocked(data, action); if (reason) { setError(new Error(reason)); return; }
-        setConfirm(null); command.execute(action, row ? row.write_context.write_token : data.create_context.write_token, row ? { backup_ref: row.backup_ref } : {}, row ? { filename: row.filename } : null);
-      }} />}
-    </section>;
-  }
-  window.SystemMaintenanceRecords = Records;
-})();
+  const writeReason = command.locked ? command.lockedReason : request.loading || !data ? '请先读取有效的备份清单。' : '';
+  const sharedReason = kind === 'backups' ? writeReason || data && data.capabilities.blocked_reason || '' : '';
+  const ask = (action, row) => {
+    if (action !== 'create' && (!row || row.record_kind !== 'backup_file')) { setError(new Error('维护事件不是可操作的备份文件。')); return; }
+    setConfirm({ action, row });
+  };
+  const hasFilter = Object.values(filters).some(Boolean);
+  return <section className="sm-section" aria-label={kind === 'logs' ? '运行日志与操作记录' : '备份与维护记录'}>
+    <div className="sm-section-head"><h3>{kind === 'logs' ? '运行日志与操作记录' : '备份与维护记录'}</h3><C.Button icon="refresh-cw" aria-label="刷新清单" busy={request.loading} onClick={() => { setPage(1); setSnapshot(''); setSelected(null); reload(); }} /></div>
+    <div className="sm-toolbar"><Filters kind={kind} value={draft} onChange={setDraft} onSubmit={() => apply(draft)} loading={request.loading} onReset={() => { setDraft({ ...emptyFilters }); apply(emptyFilters); }} />
+      <div className="sm-actions sm-record-actions">{kind === 'backups' ? <C.Button icon="plus" reason={sharedReason || A.blocked(data, 'create')} reasonDisplay={sharedReason ? 'tooltip' : 'inline'} onClick={() => ask('create', null)}>新增备份</C.Button> : <>
+        <C.Button transfer="export" disabled={!data} busy={downloadBusy} onClick={() => download('csv')}>导出这段日志 CSV</C.Button>
+        <C.Button transfer="export" disabled={!data} busy={downloadBusy} onClick={() => download('zip')}>导出诊断包</C.Button></>}</div>
+    </div>
+    <C.ErrorBox error={request.error || error} />{notice && <p className="sm-notice" role="status">{notice}</p>}
+    {selection && data && !selected && <p className="sm-notice" role="status">这一页里找不到原先选中的记录，没有自动换成别的记录。请重新选择。<C.Button icon="x" onClick={() => setSelected(null)}>清除原选择</C.Button></p>}
+    {kind === 'backups' && sharedReason && !command.storageError && <p className="sm-note" role="status">{sharedReason}</p>}
+    {request.loading && <p className="sm-note" role="status">正在读取{kind === 'logs' ? '日志' : '备份清单'}…</p>}
+    {data && <><Sources data={data} kind={kind} /><div className="sm-meta">{WorkbenchTerms.data_as_of(WorkbenchFormat.dateTime(payload.meta.as_of))}</div>
+      {data.rows.length ? <div className="wb-table-shell wb-table-frame" data-sticky-head="true" data-sticky-actions="true"><table className={'wb-table sm-table sm-record-table sm-' + kind + '-table'}>
+        <caption className="wb-visually-hidden">{kind === 'logs' ? '已读取的运行日志与操作记录' : '备份文件及恢复、清理事件'}</caption>
+        <thead><tr><th scope="col" className="wb-col-key">时间</th><th scope="col">类型</th><th scope="col">状态</th>{kind === 'logs' && <th scope="col">级别</th>}<th scope="col">{kind === 'logs' ? '摘要 / 来源' : '文件'}</th>{kind === 'backups' && <th scope="col">大小</th>}<th scope="col" className="wb-col-actions">详情</th></tr></thead>
+        {/* 键盘停靠点只留行尾的「详情」按钮；整行仍可用鼠标点开。 */}
+        <tbody>{data.rows.map(row => <tr key={row.key} className="sm-record-row" data-record-kind={row.record_kind} onClick={() => setSelected(row)}>
+          <td className="wb-col-key"><time className="sm-time">{row.time ? WorkbenchFormat.dateTime(row.time) : '时间未识别'}</time></td><td>{types[row.type]}</td>
+          <td><span className="sm-status sm-tone-neutral">{kind === 'logs' ? '已记录' : states[row.status]}</span></td>{kind === 'logs' && <td><span className={'sm-level sm-level-' + row.level}>{levelText(row.level)}</span></td>}
+          <td><div className="sm-summary"><strong className="sm-summary-title">{row.summary}</strong>{kind === 'logs' && <small>{sourceText(row.file)}{row.content_truncated ? ' · 详情已截断' : ''}</small>}</div></td>
+          {kind === 'backups' && <td className="sm-col-size">{row.record_kind === 'backup_file' ? WorkbenchFormat.number(row.size_bytes / 1024, { digits: 1 }) + ' KB' : '事件记录'}</td>}
+          <td className="wb-col-actions"><C.Button icon="chevron-right" className="mini" aria-label={'查看详情 ' + row.summary} aria-expanded={!!selected && selected.key === row.key} onClick={event => { event.stopPropagation(); setSelected(row); }} /></td>
+        </tr>)}</tbody></table></div> : <EmptyState kind={hasFilter ? 'filtered' : 'empty'} title="当前筛选下暂无记录" hint={kind === 'logs' ? '只看已读取的那段日志；来源缺失和读取失败另行列出。' : '只看已读取的备份文件、恢复事件和清理记录。'} action={hasFilter ? <C.Button onClick={() => { setDraft({ ...emptyFilters }); apply(emptyFilters); }}>清除筛选</C.Button> : undefined} />}</>}
+    <div className="sm-pager"><Pager page={data ? data.page : { number: page, size: pageSize }} sizes={[10, 25, 50]} unit="条" onSize={onPageSize} onPage={changePage} disabled={!data} busy={request.loading} label="" sizeLabel="每页数量" /></div>
+    {selected && <Detail key={selected.key} row={selected} kind={kind} data={data} reason={writeReason} sharedReason={sharedReason} onAction={ask} onDownload={downloadBackup} downloadBusy={downloadBusy} onClose={() => setSelected(null)} />}
+    {confirm && <C.Confirm {...confirm} reason={writeReason || A.blocked(data, confirm.action)} onClose={() => setConfirm(null)} onConfirm={() => {
+      const { action, row } = confirm, reason = writeReason || A.blocked(data, action); if (reason) { setError(new Error(reason)); return; }
+      setConfirm(null); command.execute(action, row ? row.write_context.write_token : data.create_context.write_token, row ? { backup_ref: row.backup_ref } : {}, row ? { filename: row.filename } : null);
+    }} />}
+  </section>;
+}
+
+export { SystemMaintenanceRecords };
+export default SystemMaintenanceRecords;

@@ -5,23 +5,58 @@ const { routeFetch, file, browser, loadTransport } = require('./route_fetch.cjs'
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
 const h = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity).filter(x => x !== null && x !== false && x !== undefined) });
 const react = { createElement: h, Fragment: 'fragment', createContext: () => ({}) };
-const window = { ResourceControls: { Button: 'button', Issues: 'issues' }, WorkbenchFormat: { dateTime: v => v == null ? '未知' : v.replace('T', ' '), date: v => v == null ? '未知' : v.slice(0, 10), number: v => v == null ? '未知' : String(v), hours: v => v == null ? '未知' : String(v) + ' h' }, WorkbenchReference: 'reference', WorkbenchDetailPanel: 'detail-panel', WorkbenchListControls: { Pager: 'pager', EmptyState: 'empty-state' } };
+const controlMocks = { Button: 'button', Issues: 'issues', Pager: 'pager', EmptyState: 'empty-state' };
+const window = {
+  __wbStubs: {
+    'ResourceControls.jsx': controlMocks,
+    'WorkbenchFormat.js': {
+      dateTime: v => v == null ? '未知' : v.replace('T', ' '),
+      date: v => v == null ? '未知' : v.slice(0, 10),
+      number: v => v == null ? '未知' : String(v),
+      hours: v => v == null ? '未知' : String(v) + ' h'
+    },
+    'WorkbenchReferences.jsx': { WorkbenchReference: 'reference', default: { WorkbenchReference: 'reference' } },
+    'WorkbenchDetailPanel.jsx': 'detail-panel',
+  },
+};
+const allCompileNames = [
+  'WorkbenchTerms.js', 'WorkbenchFormat.js',
+  'ResourceControls.jsx', 'DashboardContract.js', 'DashboardEvidence.jsx', 'DashboardPanels.jsx',
+  'MasterOverviewContract.js', 'MasterOverviewTable.jsx', 'MasterOverviewDetail.jsx', 'MasterOverviewWorkspace.jsx',
+  'DashboardAnalysisPanels.jsx', 'DashboardCandidatePanels.jsx',
+  'FieldContract.js', 'PointContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'GanttPresentation.js', 'DashboardTimelineModel.js',
+  'PointGantt.jsx', 'GanttPresentationUI.jsx', 'DashboardTimeline.jsx',
+  'MasterOverviewAPI.js',
+];
+const compiledMap = new Map(
+  compile({
+    sources: allCompileNames.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })),
+    check_combined: false,
+  }).outputs.map(out => [out.path, out.code])
+);
 // 值班台来源依据的按项词表取自全站词表，这里加载真实的 WorkbenchTerms。
-vm.runInNewContext(fs.readFileSync(path.join(app, 'WorkbenchTerms.js'), 'utf8'), { window });
-const controlMocks = window.ResourceControls;
+const uiContext = vm.createContext({ React: react, window });
+vm.runInContext(compiledMap.get('WorkbenchTerms.js'), uiContext);
 const names = ['ResourceControls.jsx', 'DashboardContract.js', 'DashboardEvidence.jsx', 'DashboardPanels.jsx', 'MasterOverviewContract.js', 'MasterOverviewTable.jsx', 'MasterOverviewDetail.jsx', 'MasterOverviewWorkspace.jsx'];
-const source = names.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }));
-const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: source });
-for (const file of built.outputs) {
-  vm.runInNewContext(file.code, { React: react, window });
-  if (file.path.endsWith('ResourceControls.jsx')) window.ResourceControls = { ...controlMocks, MetricValue: window.ResourceControls.MetricValue };
+for (const name of names) {
+  const mod = vm.runInContext(compiledMap.get(name), uiContext);
+  if (name === 'ResourceControls.jsx') {
+    controlMocks.MetricValue = mod.MetricValue;
+    window.__wbRuntime.setStub('ResourceControls.jsx', controlMocks);
+  }
 }
+const DashboardPanels = window.__wbRuntime.getModule('DashboardPanels.jsx');
+const APSMasterOverviewContract = window.__wbRuntime.getModule('MasterOverviewContract.js');
+const MasterOverviewWorkspace = window.__wbRuntime.getModule('MasterOverviewWorkspace.jsx');
+const DashboardEvidence = window.__wbRuntime.getModule('DashboardEvidence.jsx');
+const MasterOverviewTable = window.__wbRuntime.getModule('MasterOverviewTable.jsx');
+const MasterOverviewDetail = window.__wbRuntime.getModule('MasterOverviewDetail.jsx').default;
 function expand(node) { if (!node || typeof node !== 'object') return node; if (typeof node.type === 'function') return expand(node.type({ ...node.props, children: node.children })); return { ...node, children: node.children.map(expand) }; }
 function text(node) { if (node == null) return ''; if (typeof node !== 'object') return String(node); return node.children.map(text).join(' '); }
 function nodes(node) { return !node || typeof node !== 'object' ? [] : [node, ...node.children.flatMap(nodes)]; }
 const noop = () => {}, skeletons = tree => nodes(tree).filter(node => node.props.className === 'wb-metric-placeholder');
 const values = tree => nodes(tree).filter(node => node.type === 'strong').map(text);
-const dashboard = props => expand(h(window.DashboardPanels.Overview, { onCategory: noop, onAnalysis: noop, ...props }));
+const dashboard = props => expand(h(DashboardPanels.Overview, { onCategory: noop, onAnalysis: noop, ...props }));
 const firstDashboard = dashboard({ loading: true });
 assert.deepEqual(values(firstDashboard), Array(7).fill(''), '首读数值区只展示占位，不先写未读取、未知或0');
 assert.equal(skeletons(firstDashboard).length, 12, '七个值位及五个动态备注位均为静态骨架');
@@ -40,7 +75,7 @@ assert.deepEqual(values(analysisFailure), ['0', '读取失败', '0', '0', '0', '
 const dashboardUnknown = dashboard({ data: { categories: { ...dashboardData.categories, external: { ...dashboardData.categories.external, risk_count: null } } },
   analysis: { pressure: { count: 0 }, pending: { count: 0 } } });
 assert.deepEqual(values(dashboardUnknown), ['0', '0', '0', '未知', '0', '0', '0'], '读取成功后的真实0与业务未知保留');
-const masterScope = window.APSMasterOverviewContract.scope({}), master = window.MasterOverviewWorkspace;
+const masterScope = APSMasterOverviewContract.scope({}), master = MasterOverviewWorkspace;
 const statistics = props => expand(h(master.Statistics, { scope: masterScope, domainsId: 'counts', onDomain: noop, ...props }));
 const firstMaster = statistics({ pending: true });
 assert.deepEqual(values(firstMaster), Array(12).fill(''));
@@ -50,7 +85,7 @@ assert.equal(skeletons(firstTabs).length, 2); assert(!text(firstTabs).includes('
 const masterFailure = statistics({ error: new Error('read failed') });
 assert.deepEqual(values(masterFailure), Array(12).fill('读取失败')); assert.equal(skeletons(masterFailure).length, 0);
 const overview = { complete: true, stats: { entities: 0, issues: 0, affected: 0, relations: 0 },
-  domains: window.APSMasterOverviewContract.domains.map(([id]) => ({ id, loaded: true, count: 0, attention: 0, unknown: 0 })) };
+  domains: APSMasterOverviewContract.domains.map(([id]) => ({ id, loaded: true, count: 0, attention: 0, unknown: 0 })) };
 const masterRefreshing = statistics({ overview, pending: true });
 assert.deepEqual(values(masterRefreshing), Array(12).fill('0')); assert.equal(skeletons(masterRefreshing).length, 0, '刷新保留现有全局summary');
 assert(nodes(masterRefreshing).filter(node => node.props['aria-busy'] === true).length === 2);
@@ -60,7 +95,7 @@ assert.equal(values(masterPartial)[3], '未知'); assert.equal(values(masterPart
 assert(text(masterPartial).includes('已读取资料')); assert.equal(skeletons(masterPartial).length, 0, '返回后的实际来源缺口不是loading');
 const sample = { kind: 'delivery', plan_ref: 'a'.repeat(48), request_key: 'c'.repeat(48), code: 'qualification.empty',
   evaluation: { delay_days: 0, planned_finish: null }, requirements: [{ label: '原料', business_code: 'M-001', required_quantity: 0, available_quantity: null }] };
-const tree = expand(h(window.DashboardEvidence.Structure, { value: sample }));
+const tree = expand(h(DashboardEvidence.Structure, { value: sample }));
 assert.match(text(tree), /0/); assert.match(text(tree), /未知/); assert.match(text(tree), /原料/);
 assert(!text(tree).includes('a'.repeat(48)), '完整引用不能进入普通可见字段');
 assert(!text(tree).includes('c'.repeat(48)) && !text(tree).includes('qualification.empty'), '请求键与规则码只能进编号折叠区');
@@ -71,42 +106,50 @@ assert(references.some(row => Object.values(row.props.entries || {}).includes('c
 assert(!references.some(row => Object.values(row.props.entries || {}).includes('M-001')), '业务编号不是技术引用，不得折叠');
 assert(!nodes(tree).some(row => row.type === 'pre'), '来源字段必须结构化呈现');
 const page = { number: 3, pages: 8, total: 15, size: 2 }, onPage = () => {}, onSize = () => {};
-const pager = window.DashboardPanels.Pager({ page, onPage, onSize });
+const pager = DashboardPanels.Pager({ page, onPage, onSize });
 assert.equal(pager.props.page, page, '恢复范围的页码与总数原样传入');
 assert.deepEqual(Array.from(pager.props.sizes), [2, 10, 20, 50, 100], '服务端允许的历史size不可丢失');
 assert.equal(pager.props.onSize, onSize);
-const detailPage = window.MasterOverviewTable.Pager({ page: { number: 1, pages: 1, total: 0, size: 10 }, detail: true, onPage });
+const detailPage = MasterOverviewTable.Pager({ page: { number: 1, pages: 1, total: 0, size: 10 }, detail: true, onPage });
 assert.deepEqual(Array.from(detailPage.props.sizes), [10]);
-const masterPager = window.MasterOverviewTable.Pager({ page: { number: 1, pages: 1, total: 0, size: 20 }, onPage, onSize });
+const masterPager = MasterOverviewTable.Pager({ page: { number: 1, pages: 1, total: 0, size: 20 }, onPage, onSize });
 assert.deepEqual(Array.from(masterPager.props.sizes), [20, 50, 100]);
 const onClose = () => {};
 const item = { item_ref: 'b'.repeat(48), subject: '批次 B1', category: 'delivery', risk: { active: true, message: '预计晚交' }, handling: { status: 'new' }, source: {}, navigation: [] };
-const detail = window.DashboardPanels.Detail({ item, onClose });
+const detail = DashboardPanels.Detail({ item, onClose });
 assert.equal(detail.type, 'detail-panel'); assert.equal(detail.props.detailKey, item.item_ref); assert.equal(detail.props.onClose, onClose);
-assert.equal(window.MasterOverviewDetail({ selected: null }), null, '关闭后不遗留空详情列');
+assert.equal(MasterOverviewDetail({ selected: null }), null, '关闭后不遗留空详情列');
 // Detail owns the latest facts, while the selected list row can retain an older read.
 const staleSelection = { key: 'material-shortage', entity_ref: 'e'.repeat(48), title: '清单旧到料问题', evidence: '需求 10 件，已到料 2 件' };
 const currentIssue = { issue_ref: 'material-shortage', title: '当前到料问题', evidence: '需求 10 件，已到料 5 件', rule: 'arrival', action: '维护', target: {} };
-const currentDetail = expand(window.MasterOverviewDetail({ selected: staleSelection, section: 'issues', navigation: true,
+const currentDetail = expand(MasterOverviewDetail({ selected: staleSelection, section: 'issues', navigation: true,
   result: { data: { entity: { business_code: 'M-001', label: '原料', domain: 'material', status: 'attention', filled_fields: 1, checked_fields: 1, checks_complete: true, target: {} },
     counts: { issues: 1, relations: 0, fields: 1 }, rows: [currentIssue], page: { number: 1, pages: 1, total: 1, size: 10 } } }, onSection: noop, onPage: noop, onBack: noop }));
 assert(text(currentDetail).includes('需求 10 件，已到料 5 件'));
 assert(!text(currentDetail).includes(staleSelection.evidence) && !text(currentDetail).includes(staleSelection.title), 'An older selected issue cannot contradict the current detail facts');
 const missing = { issues: [{ code: 'no_official_plan', message: '当前没有正式计划' }], state: 'no_official_plan', evaluation_gaps: [], risk_count: null, known_risk_count: 0 };
-const gaps = expand(window.DashboardPanels.Gaps({ categories: { delivery: missing, actual: missing, downtime: missing }, selected: 'all' }));
+const gaps = expand(DashboardPanels.Gaps({ categories: { delivery: missing, actual: missing, downtime: missing }, selected: 'all' }));
 assert.equal(nodes(gaps).filter(node => node.type === 'issues').length, 1);
 assert.equal(nodes(gaps).find(node => node.type === 'issues').props.issues.length, 1, '相同原因只出现一次');
 assert.match(text(gaps), /交期风险/); assert.match(text(gaps), /执行偏差/); assert.match(text(gaps), /停机影响/);
 let prevented = false, switched = false;
-const tabs = window.MasterOverviewTable.Tabs({ values: [['issues', '待维护项'], ['entities', '实体清单']], value: 'issues', onChange: () => { switched = true; }, label: '清单类型' });
+const tabs = MasterOverviewTable.Tabs({ values: [['issues', '待维护项'], ['entities', '实体清单']], value: 'issues', onChange: () => { switched = true; }, label: '清单类型' });
 tabs.children[0].props.onKeyDown({ key: 'ArrowLeft', altKey: true, preventDefault: () => { prevented = true; } });
 assert.equal(prevented, false); assert.equal(switched, false, '浏览器返回快捷键不得被页签吞掉');
 // 同一个取值在不同项里按各自的词表显示：齐套的 partial 是“部分齐套”，执行状态的 complete 是“已完工”，记录完整性的 complete 是“完整”；
 // 物料数量按批次详情的口径显示全部小数，0.004 不能读成 0.00。这一段用真实的 WorkbenchFormat。
-const real = { ResourceControls: window.ResourceControls, DashboardContract: window.DashboardContract, WorkbenchReference: 'reference' };
-for (const name of ['WorkbenchFormat.js', 'WorkbenchTerms.js']) vm.runInNewContext(fs.readFileSync(path.join(app, name), 'utf8'), { window: real });
-vm.runInNewContext(built.outputs.find(file => file.path.endsWith('DashboardEvidence.jsx')).code, { React: react, window: real });
-const show = real.DashboardEvidence.display;
+const realControls = { ...controlMocks };
+const real = {
+  __wbStubs: {
+    'ResourceControls.jsx': realControls,
+    'WorkbenchReferences.jsx': { WorkbenchReference: 'reference', default: { WorkbenchReference: 'reference' } },
+  },
+};
+const realContext = vm.createContext({ React: react, window: real, Date });
+for (const name of ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'DashboardContract.js', 'DashboardEvidence.jsx']) vm.runInContext(compiledMap.get(name), realContext);
+const realFormat = real.__wbRuntime.getModule('WorkbenchFormat.js');
+const realEvidence = real.__wbRuntime.getModule('DashboardEvidence.jsx');
+const show = realEvidence.display;
 assert.equal(show('partial', 'ready_status'), '部分齐套');
 assert.equal(show('partial', 'execution_state'), '部分完成');
 assert.equal(show('complete', 'execution_state'), '已完工');
@@ -115,17 +158,15 @@ assert.equal(show('on_time', 'risk'), '预计按期');
 assert.equal(show(0.004, 'required_quantity'), '0.004');
 assert.equal(show(2.0005, 'available_quantity'), '2.0005');
 assert.equal(show(1.5, 'overlap_hours'), '1.50');
-const materials = text(expand(h(real.DashboardEvidence.Structure, { value: { requirements: [{ label: '原料', required_quantity: 0.004, ready_status: 'partial' }] } })));
+const materials = text(expand(h(realEvidence.Structure, { value: { requirements: [{ label: '原料', required_quantity: 0.004, ready_status: 'partial' }] } })));
 assert.match(materials, /0\.004/); assert.match(materials, /部分齐套/); assert(!materials.includes('部分完成'), materials);
-const note = text(expand(h(real.DashboardEvidence.Evidence, { source: { kind: 'execution_deviation', execution_state: 'complete', data_quality: 'complete' } })));
+const note = text(expand(h(realEvidence.Evidence, { source: { kind: 'execution_deviation', execution_state: 'complete', data_quality: 'complete' } })));
 assert.match(note, /执行状态：\s*已完工\s*·\s*记录完整性\s*：\s*完整/, note);
 // 值班台候选对比和影响批次：不足 0.01 的非零差值、超期时长写“不到 0.01”，不显示成 0；按期与计划详情同一叫法。
-real.DashboardTimelineModel = { number: (v, options) => real.WorkbenchFormat.number(v, options) };
-real.ResourceControls = { ...window.ResourceControls, Modal: 'modal' };
-const panels = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
-  sources: ['DashboardAnalysisPanels.jsx', 'DashboardCandidatePanels.jsx'].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) });
-for (const file of panels.outputs) vm.runInNewContext(file.code, { React: react, window: real });
-const P = real.DashboardCandidatePanels, A = real.DashboardAnalysisPanels;
+realControls.Modal = 'modal';
+real.__wbRuntime.setStub('DashboardTimelineModel.js', { number: (v, options) => realFormat.number(v, options) });
+for (const name of ['DashboardAnalysisPanels.jsx', 'DashboardCandidatePanels.jsx']) vm.runInContext(compiledMap.get(name), realContext);
+const P = real.__wbRuntime.getModule('DashboardCandidatePanels.jsx'), A = real.__wbRuntime.getModule('DashboardAnalysisPanels.jsx');
 assert.deepEqual([0.004, -0.001, 0.0003].map(v => P.signed(v)), ['+不到 0.01', '-不到 0.01', '+不到 0.01']);
 assert.deepEqual([0, 2, -0.5, null].map(v => P.signed(v)), ['0', '+2', '-0.50', '未知']);
 assert.equal(P.signed(0.00004, 100), '+不到 0.01');
@@ -139,15 +180,17 @@ for (const R of [P.risk, A.risk]) {
 }
 assert.equal(A.value(0.004), '不到 0.01');
 // 交付/停机共用真实时间轴：跨日仍连续，零工时独立点轨，停机只标登记范围。
+real.__wbRuntime.setStub('DashboardTimelineModel.js', undefined);
 for (const name of ['FieldContract.js', 'PointContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'GanttPresentation.js', 'DashboardTimelineModel.js'])
-  vm.runInNewContext(fs.readFileSync(path.join(app, name), 'utf8'), { window: real });
+  vm.runInContext(compiledMap.get(name), realContext);
 const timelineReact = { ...react, useRef: value => ({ current: value }), useState: value => [typeof value === 'function' ? value() : value, noop],
   useMemo: fn => fn(), useEffect: noop, useLayoutEffect: noop };
-real.ResourceControls = { ...real.ResourceControls, TimelineZoom: 'timeline-zoom' };
-real.WorkbenchListControls = window.WorkbenchListControls;
-const timelineSources = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
-  sources: ['PointGantt.jsx', 'GanttPresentationUI.jsx', 'DashboardTimeline.jsx'].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) });
-for (const file of timelineSources.outputs) vm.runInNewContext(file.code, { React: timelineReact, window: real });
+realControls.TimelineZoom = 'timeline-zoom';
+real.React = timelineReact;
+realContext.React = timelineReact;
+for (const name of ['PointGantt.jsx', 'GanttPresentationUI.jsx', 'DashboardTimeline.jsx']) vm.runInContext(compiledMap.get(name), realContext);
+const realTimelineModel = real.__wbRuntime.getModule('DashboardTimelineModel.js');
+const realTimeline = real.__wbRuntime.getModule('DashboardTimeline.jsx').default;
 const reference = id => String(id).padStart(48, '0'), stamp = (day, hour) => '2026-10-' + day + 'T' + hour + ':00:00';
 const planned = (id, machine, batch, start, end) => ({ task_ref: reference(id), operation_ref: reference(id + 20),
   batch_ref: reference(batch), batch_id: '批次 ' + batch, sequence: id * 10, process_label: '工序 ' + id,
@@ -164,12 +207,12 @@ const timelineData = { time_scope: { range_start: stamp(12, '22'), range_end: st
     start: stamp(12, '23'), end: stamp(13, '00'), recorded_at: stamp(12, '20'), reason: '保养' }] };
 const timelineBefore = JSON.stringify(timelineData), selectedBatches = [];
 for (const mode of ['delivery', 'downtime']) {
-  const model = real.DashboardTimelineModel.layoutPrepared(real.DashboardTimelineModel.groupPrepared(real.DashboardTimelineModel.prepare(timelineData), mode), 800);
+  const model = realTimelineModel.layoutPrepared(realTimelineModel.groupPrepared(realTimelineModel.prepare(timelineData), mode), 800);
   assert.equal(model.tasks.length, mode === 'delivery' ? 4 : 3);
   assert(model.rows.every(row => row.label === '设备 200' || row.label === '设备 201'), '分页时间轴沿用全局资源目录中的名称');
   assert.equal(model.locations.get(reference(1)).item.end - model.locations.get(reference(1)).item.start, 7200000, '跨午夜不折叠夜间');
   assert(model.rows.some(row => row.point) && model.rows.filter(row => row.point).every(row => row.overlap === 0), '点轨不是重叠冲突');
-  const timeline = expand(h(real.DashboardTimeline, { data: timelineData, mode, selectedBatch: reference(300), onSelect: value => selectedBatches.push(value) }));
+  const timeline = expand(h(realTimeline, { data: timelineData, mode, selectedBatch: reference(300), onSelect: value => selectedBatches.push(value) }));
   assert(text(timeline).includes('本页关联'), '分页时间轴明确说明工序为当前页范围');
   const all = nodes(timeline), bands = all.filter(row => row.props.className === 'wb-gantt-axis-band');
   assert.equal(bands.length, 2); assert(bands.some(row => text(row).includes('10-13')), '跨日日期分层来自共用时间轴');
@@ -184,8 +227,8 @@ for (const mode of ['delivery', 'downtime']) {
 }
 assert.deepEqual(selectedBatches, [reference(300), reference(300)]);
 const overlapPage = { ...timelineData, downtimes: [], overlaps: [{ source: { machine_ref: reference(200), downtimes: timelineData.downtimes } }] };
-const overlapPrepared = real.DashboardTimelineModel.prepare(overlapPage);
-const overlapModel = real.DashboardTimelineModel.layoutPrepared(real.DashboardTimelineModel.groupPrepared(overlapPrepared, 'downtime'), 800);
+const overlapPrepared = realTimelineModel.prepare(overlapPage);
+const overlapModel = realTimelineModel.layoutPrepared(realTimelineModel.groupPrepared(overlapPrepared, 'downtime'), 800);
 assert.equal(overlapModel.tasks.length, 3, '停机登记和重叠任务独立分页时，本页关联停机依据仍保留任务及阴影');
 assert.equal(overlapModel.windows.get(reference(200))[0].downtime_ref, reference(500));
 assert.equal(JSON.stringify(timelineData), timelineBefore, '展示和选择不改计划或停机数据');
@@ -195,12 +238,12 @@ async function currentMasterDownloadCount() {
   // Fetch-level answer: the real MasterOverviewAPI and transport check the attachment, CSV bytes, backend filename and the two business headers.
   let headerCount = '3';
   const token = 'S'.repeat(32), filename = '基础资料待维护项.csv';
-  const downloadWindow = { APSMasterOverviewContract: window.APSMasterOverviewContract, WorkbenchTerms: window.WorkbenchTerms };
+  const downloadWindow = {};
   const fetch = routeFetch({ 'GET /api/workbench/v1/master-overview/export': () => file(Uint8Array.from([0xef, 0xbb, 0xbf, 0x61]), 'text/csv; charset=utf-8',
     { 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(filename), 'X-Workbench-Snapshot-Ref': token, 'X-Workbench-Row-Count': headerCount }) });
   const downloadContext = vm.createContext({ window: downloadWindow }); browser(downloadContext, fetch); loadTransport(downloadContext);
-  vm.runInContext(fs.readFileSync(path.join(app, 'MasterOverviewAPI.js'), 'utf8'), downloadContext);
-  const api = downloadWindow.APSMasterOverviewAPI, first = await api.export({}, token);
+  vm.runInContext(compiledMap.get('MasterOverviewAPI.js'), downloadContext);
+  const api = downloadContext.__wbRuntime.getModule('MasterOverviewAPI.js'), first = await api.export({}, token);
   assert.equal(first.count, 3, '下载条数采用本次响应，不再依赖上次列表数量'); assert.equal(first.filename, filename, '文件名取后端附件头');
   assert.equal(fetch.calls.at(-1).query.snapshot_ref, token);
   headerCount = '0';

@@ -2,8 +2,10 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
-const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
-  sources: [{ path: 'ResourceRail.jsx', code: fs.readFileSync(path.join(app, 'ResourceRail.jsx'), 'utf8') }] }).outputs[0].code;
+const built = compile({
+  sources: ['WorkbenchFormat.js', 'ResourceRail.jsx'].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })),
+  check_combined: false,
+}).outputs;
 const nodes = Object.fromEntries([
   ['process', '工艺', '项'], ['material', '物料', '条'], ['op_int', '自制工种', '个'], ['machine', '设备', '台'],
   ['operator', '人员', '人'], ['op_ext', '外协工种', '个'], ['supplier', '供应商', '家']
@@ -12,14 +14,21 @@ function runtime(storage = new Map()) {
   let choice;
   const React = { Fragment: 'fragment', createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
     useState(initial) { if (!choice) choice = initial(); return [choice, value => { choice = value; }]; } };
-  const context = vm.createContext({ React, sessionStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
-    window: { APSResourceContract: { nodes, message: error => error.message }, ResourceControls: {
-      Button: props => React.createElement('button', props, props.children), Icon: () => null,
-      MetricValue: props => props.pending ? React.createElement('span', { 'data-pending': true }) : props.children
-    } } });
-  vm.runInContext(fs.readFileSync(path.join(app, 'WorkbenchFormat.js'), 'utf8'), context);
-  vm.runInContext(built, context);
-  return props => expand(context.window.ResourceRail(props));
+  const context = vm.createContext({
+    React,
+    sessionStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
+    window: {},
+    __wbStubs: {
+      'resource-contract.js': { nodes, message: error => error.message },
+      'ResourceControls.jsx': {
+        Button: props => React.createElement('button', props, props.children),
+        Icon: () => null,
+        MetricValue: props => props.pending ? React.createElement('span', { 'data-pending': true }) : props.children,
+      },
+    },
+  });
+  for (const out of built) vm.runInContext(out.code, context);
+  return props => expand(context.__wbRuntime.getModule('ResourceRail.jsx')(props));
 }
 function expand(node) {
   if (Array.isArray(node)) return node.flatMap(item => { const value = expand(item); return Array.isArray(value) ? value : [value]; });
