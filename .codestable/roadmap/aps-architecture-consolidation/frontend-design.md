@@ -2,14 +2,14 @@
 doc_type: architecture-proposal
 status: approved
 created: 2026-11-09
-updated: 2026-11-09
+updated: 2026-11-10
 roadmap: aps-architecture-consolidation
 summary: 采用固定版本esbuild统一生产与vm.Context测试构建，剥离前端对后端受控DTO的重复重验并归位5类真实边界，彻底拔除prototype生产依赖与DOM事后修补，统一命令结算会话与7条回执查询消费。
 ---
 
 # 工作台前端架构设计
 
-本专题从属于[总设计](aps-architecture-consolidation-roadmap.md)，为已由主代理与审查通道对齐定稿的目标方案。
+本专题从属于[总设计](aps-architecture-consolidation-roadmap.md)，为已由主代理与审查通道对齐定稿的目标方案；其中 `A3`（`frontend-modules`）已完成落地，7 条命令回执查询消费与 404 特判清理随 `A2`（`data-command-boundaries`）同包原子切换。
 一次完成全量迁移、整体验收和发布，不建设旧新 API 兼容层、全局导出桥或两套生产构建。
 下文的任务顺序是同一次实施内部的依赖顺序；任何部分未迁完，均不作为独立上线版本。
 
@@ -39,17 +39,17 @@ summary: 采用固定版本esbuild统一生产与vm.Context测试构建，剥离
 
 ```text
 frontend/workbench/app/
-  shell/              main.jsx、导航、启动 JSON、页面守卫、页面记忆
-  shared/runtime/     react.js、theme.js、浏览器平台能力（inspectEnvironment 等）
-  shared/network/     transport.js、envelope.js、fault.js、downloads.js
+  shell/              main.jsx、系统管理屏入口（与 WorkbenchNavigation.js、WorkbenchGuards.js 等显式配合）
+  shared/runtime/     react.js、theme.js、environment.js（inspectEnvironment 等浏览器平台能力）
+  shared/network/     transport.js（统一信封、命令、查询、下载与错误边界）
   shared/session/     query.js、command-session.js、pending-store.js
-  shared/ui/          icons.jsx、Table.jsx、buttons.jsx、MetricStrip.jsx 等实际复用生产控件
-  shared/contracts/   用户输入归一化、浏览器存储边界校验、点事件/时间区间与身份绑定原语
-  domains/            resource、process、batch、run、plan、trial、field、report、calibration、dashboard、system
+  shared/ui/          icons.jsx、Table.jsx、Button.jsx、Metric.jsx 等实际复用生产控件
+  shared/csv.js       共享导出转义工具（csvCell）
+  *.{js,jsx}          resource、process、batch、run、plan、trial、field、report、calibration、dashboard、system 领域 ESM 模块
   styles/             生产样式入口、tokens、控件、领域样式
 ```
 
-依赖方向为 `shell → domains → shared`；领域视图导入自己领域的 API/展示模型/输入合同；API 只向下依赖网络和共享原语，不反向导入 React 视图。
+依赖方向为 `shell → 领域模块 → shared`；领域视图导入自己领域的 API/展示模型/输入合同；API 只向下依赖网络和共享原语，不反向导入 React 视图。
 领域之间通过明确的导航目标、回调或真正共享的只读表示连接，不导入其他 Workspace 的内部状态。
 共用甘特的几何计算、时间表示、选择控件下沉至 `shared`；候选、正式计划、实际记录各自的业务来源和权限仍由对应领域负责。
 不建立汇总导出所有领域的总 `index.js`，不为每个原文件增加空转发层；实际调用方直接 import 所需命名导出。
@@ -198,10 +198,10 @@ Node 原生无法直接 `import` `.jsx` 源码，且现有契约测试依赖沙�
 | `theme.js` 与主题全局 | `shared/runtime/theme.js` 与 `app/theme.js` 首屏入口 | `window.APSWorkbenchTheme` 导出与调用 |
 | `transport.js` | `shared/network/transport.js`，存储部分移到 `shared/session/pending-store.js` | 原大对象导出、`transport.js:153` 的 404 `receipt_not_found` 特判 |
 | `resource-session.js` | `shared/session/query.js`、`command-session.js` 与领域会话 | 删除 `resource-session.js:148-175` 仅服务坏 DTO 的 summary 深校验 |
-| 25 个 `*Contract.js / *API.js` | 对应 `domains/<领域>/` 的 API、输入合同与展示模型 | 砍掉 `Reflect.ownKeys` 白名单、12 处分页公式重验、文案加总重验、2 万行 diff 重算、全图闭包与 SQL 排序重验；保留并归位 5 类真实边界 |
+| 25 个 `*Contract.js / *API.js` | 保持在 `frontend/workbench/app/` 下按领域显式 ESM 组织 | 砍掉 `Reflect.ownKeys` 白名单、12 处分页公式重验、文案加总重验、2 万行 diff 重算、全图闭包与 SQL 排序重验；保留并归位 5 类真实边界 |
 | `PlanContract.js:209-215` 与 `PlanGanttModel.js:66` | 在 `PlanGanttModel.js` 中直接用已有 `taskIndex` 展开 `after` 引用 | 删除 `PlanContract` 的 `verifiedTasks` `WeakMap`、重复索引与原地篡改 |
-| `CalibrationAdoptionAPI.js:69` 及各采用/试调/排产/系统回执消费者 | 5 类数据库命令（普通、候选采用、试调采用、校准采用、试调编辑）统一消费 `{state: "recorded" \| "not_observed", receipt, may_be_in_flight, resolution}`；排产受理保持 `{found, run, resolution, data_context_ref}`；系统维护保持数据库回执或外部维护日志协议 | 同步修复 `CalibrationAdoptionAPI.js:69` 的 `expect` 与后端 `calibration_adoption.py:42` 的 `g.workbench_result_target`；删除旧 `committed` / 裸 `receipt` 分支与 404 特判 |
-| `prototype/` 生产引用与 `ReportEvidence.jsx:45-60` | 迁入 `shared/ui/{icons,Table,buttons,MetricStrip}.jsx`、`csvCell`、`inspectEnvironment`；`Table` 原生输出无障碍与固定列属性 | 删除 `ds-projection.cjs`、`compile.cjs` `selectDeclarations`、7 个 0 调用死组件及 `TableFrame` 的 `useLayoutEffect` DOM 修补 |
+| `CalibrationAdoptionAPI.js:69` 及各采用/试调/排产/系统回执消费者（`A2` 同包切换） | 5 类数据库命令（普通、候选采用、试调采用、校准采用、试调编辑）统一消费 `{state: "recorded" \| "not_observed", receipt, may_be_in_flight, resolution}`；排产受理保持 `{found, run, resolution, data_context_ref}`；系统维护保持数据库回执或外部维护日志协议 | 同步修复 `CalibrationAdoptionAPI.js:69` 的 `expect` 与后端 `calibration_adoption.py:42` 的 `g.workbench_result_target`；删除旧 `committed` / 裸 `receipt` 分支与 404 特判 |
+| `prototype/` 生产引用与 `ReportEvidence.jsx:45-60` | 迁入 `shared/ui/{icons,Table,Button,Metric}.jsx`、`shared/csv.js`（`csvCell`）、`shared/runtime/environment.js`（`inspectEnvironment`）；`Table` 原生输出无障碍与固定列属性 | 删除 `ds-projection.cjs`、`compile.cjs` `selectDeclarations`、7 个 0 调用死组件及 `TableFrame` 的 `useLayoutEffect` DOM 修补 |
 | `build-order.json`、拼接型 `compile.cjs` | 固定版本 `esbuild` 打包，保持 `asset-manifest.json` 离线静态资产硬契约 | JS `live/pending/foundation/never-live` 顺序表 |
 | 21 项 Node 契约测试与 `gantt_current_runtime.cjs` | 共用 `esbuild` 打包测试入口并在独立 `vm.createContext` 沙箱执行，支持注入 `react.js` 桩与业务替身 | 删除生产 `window` 导出路径，以及 `tests/workbench/*.cjs` 中 `delete task[key]` / `.reverse()` 等母题 D 篡改断言 |
 

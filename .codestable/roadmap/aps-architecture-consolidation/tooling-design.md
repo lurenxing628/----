@@ -2,17 +2,17 @@
 doc_type: architecture-proposal
 status: approved
 created: 2026-11-09
-updated: 2026-11-09
+updated: 2026-11-10
 scope: 门禁检查定义、执行回执、结果复用、完整证明与现行规则收口
 parent: aps-architecture-consolidation-roadmap.md
-implementation: not-started
+implementation: completed
 ---
 
 # 门禁工具链原地瘦身与规则收口设计
 
 ## 1. 目标与核心原则转变（原地做源头减法，不拆 4 个新文件）
 
-本页属于[架构收敛总规划](aps-architecture-consolidation-roadmap.md)，描述已对齐定稿的目标设计，产品与工具实现尚未修改。
+本页属于[架构收敛总规划](aps-architecture-consolidation-roadmap.md)，描述已对齐定稿并已在 `A4`（`tooling-definition`）完成落地的目标设计。
 核心目标是：**让新增或修改一个门禁检查只改一处 `GateCheckSpec` 声明；原地斩断反向导入与死代码孤岛；消除单步重复子进程与绑定历史 commit 的临时扫描器**。
 
 **拒绝拆文件搬家，原地做源头减法**：
@@ -28,7 +28,7 @@ implementation: not-started
 |---|---|---|
 | [quality_gate_shared.py:706](../../../tools/quality_gate_shared.py#L706) 仅声明命令字符串，[long_gate_manifest.py:91](../../../tools/long_gate_manifest.py#L91) 与 [:208](../../../tools/long_gate_manifest.py#L208) 按 display/argv 反猜类别并维护 scopes 大分支 | 改一个检查要同步改命令表、manifest 分类器和 scopes 分支 | 在现有声明层原地定义 `GateCheckSpec`，彻底删除 `classify_quality_gate_command` 与重复 scopes 分支 |
 | [run_quality_gate.py:1028](../../../scripts/run_quality_gate.py#L1028) 按 `display` 字符串分派处理器 | runner 内部维护了第二套字符串分类逻辑 | 改为直接消费 `GateCheckSpec` 的显式字段 |
-| [quality_gate_shared.py:1312](../../../tools/quality_gate_shared.py#L1312) 反向导入 `long_gate_cache / fingerprint / manifest / schema` | `_reusable_quality_gate_results` 与 `verify_quality_gate_manifest`（及 manifest/replay 验证闭包 `:529-551`、`:579-673`、`:986-999`、`:1068-1095`、`:1126-1457`）在全仓生产代码中 **0 调用**，仅靠测试续命并造成双向循环依赖 | 按符号调用闭包删除上述 0 调用死代码孤岛及其专属测试断言（完整保留 `:1460-1502` 活函数底座与 `:458` 使用的回执/resume 原语）；将 [long_gate_schema.py:208](../../../tools/long_gate_schema.py#L208) 的 `repo_identity` 下沉到 schema 层 |
+| [quality_gate_shared.py:1312](../../../tools/quality_gate_shared.py#L1312) 反向导入 `long_gate_cache / fingerprint / manifest / schema` | `_reusable_quality_gate_results` 与 `verify_quality_gate_manifest`（及 manifest/replay 验证闭包 `:529-551`、`:579-673`、`:986-999`、`:1068-1095`、`:1126-1457`）在 `core/web/data/scripts/tools` 主链中 0 调用，仅被 `aps-full-selftest` 技能脚本与测试引用并造成双向循环依赖 | `aps-full-selftest` 同步迁入直接调用共同 runner（`scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache --no-resume`）并锁步纳入 `QUALITY_GATE_TOOL_PATHS` / `pyrightconfig.tools.json`；按符号调用闭包删除上述 manifest/replay 死代码孤岛及其专属测试断言（完整保留 `:1460-1502` 活函数底座与 `:458` 使用的回执/resume 原语）；将 [long_gate_schema.py:208](../../../tools/long_gate_schema.py#L208) 的 `repo_identity` 下沉到 schema 层 |
 | [run_quality_gate.py:955-987](../../../scripts/run_quality_gate.py#L955-L987) `_assert_pyright_tools_coverage` 及 [:994](../../../scripts/run_quality_gate.py#L994) 调用 | 单步跑完一次 `pyright` 后，非缓存分支又起第二个 `pyright --outputjson` 子进程数文件数 | 删除 `_assert_pyright_tools_coverage` 第二次 `pyright` 子进程及 `:994` 调用，统一保留 [:940](../../../scripts/run_quality_gate.py#L940) 配置文件 `include == list(QUALITY_GATE_TOOL_PATHS)` 校验与单次执行 |
 | [scan_anti_regression_gate.py](../../../tools/scan_anti_regression_gate.py) 与 [scan_aps_three_gap_py38_scope.py](../../../tools/scan_aps_three_gap_py38_scope.py) | 绑定历史 `d4589d77` diff、重复收集测试、检查形式主义 docstring、拆分两套 Py3.8 语法扫描 | 退役两个临时扫描器；生产文件范围覆盖并入 `test_registry`，Py3.8 扫描合并到 `scan_py38plus_syntax.py --fail-on-hit` |
 
@@ -61,7 +61,7 @@ implementation: not-started
 ### 3.2 动作 2：按符号调用闭包删除 `quality_gate_shared.py` 中的 manifest/replay 0 调用死代码孤岛，斩断反向导入
 
 源码与引用闭包核查确认：
-- [quality_gate_shared.py:1312](../../../tools/quality_gate_shared.py#L1312) 的 `_reusable_quality_gate_results` 与第 [1405](../../../tools/quality_gate_shared.py#L1405) 行的 `verify_quality_gate_manifest`（及其专属下层调用链：`collect_current_pytest_nodeids` [:529-543](../../../tools/quality_gate_shared.py#L529-L543)、`_resolve_quality_gate_command_args` [:546-551](../../../tools/quality_gate_shared.py#L546-L551)、`replay_quality_gate_command_plan` [:579-673](../../../tools/quality_gate_shared.py#L579-L673)、`_verify_quality_gate_collection_proof` [:986-999](../../../tools/quality_gate_shared.py#L986-L999)、`_verify_receipt_output_content` 与 `_is_default_collect_command` [:1068-1095](../../../tools/quality_gate_shared.py#L1068-L1095)、以及 `_verify_quality_gate_receipt_payload` 至 `git_status_short_lines` [:1126-1457](../../../tools/quality_gate_shared.py#L1126-L1457)）在全仓生产代码中 **0 调用**，仅被 [tools/host_tests/test_quality_gate_shared.py](../../../tools/host_tests/test_quality_gate_shared.py) 测试调用（典型的母题 C/D“次生孤岛、靠测试续命”）。
+- [quality_gate_shared.py:1312](../../../tools/quality_gate_shared.py#L1312) 的 `_reusable_quality_gate_results` 与第 [1405](../../../tools/quality_gate_shared.py#L1405) 行的 `verify_quality_gate_manifest`（及其专属下层调用链：`collect_current_pytest_nodeids` [:529-543](../../../tools/quality_gate_shared.py#L529-L543)、`_resolve_quality_gate_command_args` [:546-551](../../../tools/quality_gate_shared.py#L546-L551)、`replay_quality_gate_command_plan` [:579-673](../../../tools/quality_gate_shared.py#L579-L673)、`_verify_quality_gate_collection_proof` [:986-999](../../../tools/quality_gate_shared.py#L986-L999)、`_verify_receipt_output_content` 与 `_is_default_collect_command` [:1068-1095](../../../tools/quality_gate_shared.py#L1068-L1095)、以及 `_verify_quality_gate_receipt_payload` 至 `git_status_short_lines` [:1126-1457](../../../tools/quality_gate_shared.py#L1126-L1457)）在 `core/web/data/scripts/tools` 主链中 0 调用，仅被 `.limcode/skills/aps-full-selftest/scripts/run_full_selftest.py` 与 [tools/host_tests/test_quality_gate_shared.py](../../../tools/host_tests/test_quality_gate_shared.py) 引用；将 `aps-full-selftest` 同步迁入直接委托共同门禁入口 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache --no-resume`（并锁步纳入 `QUALITY_GATE_TOOL_PATHS` 与 `pyrightconfig.tools.json`）后，该重放闭包彻底降为 0 生产调用孤岛。
 - 正是 `_reusable_quality_gate_results` 在函数体内反向 import 了 `long_gate_cache`、`long_gate_fingerprint`、`long_gate_manifest` 与 `long_gate_schema`。
 - 与之相对，[scripts/run_quality_gate.py:458-490](../../../scripts/run_quality_gate.py#L458-L490) 实际调用的 `--resume-from` 回执校验原语（`_load_verified_quality_gate_receipt` [:1002-1033](../../../tools/quality_gate_shared.py#L1002-L1033)、`_verify_receipt_header` [:1036-1051](../../../tools/quality_gate_shared.py#L1036-L1051)、`_verify_receipt_command_fields` [:1054-1065](../../../tools/quality_gate_shared.py#L1054-L1065)、`_verify_receipt_execution_fields` [:1098-1123](../../../tools/quality_gate_shared.py#L1098-L1123)、`_command_output_policy` [:554-556](../../../tools/quality_gate_shared.py#L554-L556)、`_normalize_command_output_for_policy` [:559-576](../../../tools/quality_gate_shared.py#L559-L576)），以及文件尾部的 [quality_gate_shared.py:1460-1502](../../../tools/quality_gate_shared.py#L1460-L1502)（`collect_quality_rule_files`、`is_startup_scope_path`、`ensure_single_marker`、`extract_marked_block`、`extract_json_code_block`、`render_marked_json_block`，被 `quality_gate_operations.py`、`quality_gate_scan.py`、`quality_gate_ledger.py` 生产调用）均为活代码底座，**必须完整保留**。
 

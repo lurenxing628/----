@@ -1,0 +1,12 @@
+---
+description: 将项目任务导向现行 AGENTS.md 和项目技能
+alwaysApply: true
+---
+
+# 项目入口
+
+遵守根目录 `AGENTS.md`。项目事实目录是 `.codestable/`，项目技能位于 `.limcode/skills/<技能名>/SKILL.md`。
+
+明确任务直接选择相关技能；只在介绍体系或选择完整流程时读取 `.codestable/reference/system-overview.md`。项目注意事项在 `.codestable/attention.md`，已读且未变时复用。
+
+缺少辅助材料不自动初始化、不改用全局旧副本覆盖项目规则。旧工作流只用于明确调用或续作历史任务；该文件不增加审批、落档或验证步骤。

@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "copied_at": "2026-07-10",
+  "source_root": "~/.agents/skills",
+  "target_root": ".limcode/skills",
+  "skill_count": 27,
+  "copy_mode": "physical directories, not symlinks",
+  "host_tool_runtime": "CPython 3.14 for CodeStable/LimCode tooling; APS runtime/tests/package remain Python 3.8 and Win7 compatible",
+  "local_adaptations": {
+    "cs-checkup": "rebased to .codestable/checkup dual-watermark clean-source workflow; added reference.md and host Python 3.14 scanner boundary",
+    "cs-onboard": "documents .limcode/skills/cs-onboard as the preferred local source"
+  },
+  "skills": [
+    {
+      "name": "cs",
+      "source_file_count": 1,
+      "project_file_count": 1,
+      "source_tree_sha256": "5b547dc1847821b60f22645f448dcddc808c67d88028ccfe8fbe4548988374fa",
+      "project_tree_sha256": "5b547dc1847821b60f22645f448dcddc808c67d88028ccfe8fbe4548988374fa",
+      "matches_source": true
+    },
+    {
+      "name": "cs-arch",
+      "source_file_count": 2,
+      "project_file_count": 2,
+      "source_tree_sha256": "3660d4add259a0aa3d9897627b7b165e403335a589e676d9d8fdf4b7f9f09900",
+      "project_tree_sha256": "3660d4add259a0aa3d9897627b7b165e403335a589e676d9d8fdf4b7f9f09900",
+      "matches_source": true
+    },
+    {
+      "name": "cs-audit",
+      "source_file_count": 2,
+      "project_file_count": 2,
+      "source_tree_sha256": "6f284a83cb70c45533da11e2f1b50e5f4cf3ceda002c4c909a74231c90201a27",
+      "project_tree_sha256": "6f284a83cb70c45533da11e2f1b50e5f4cf3ceda002c4c909a74231c90201a27",
+      "matches_source": true
+    },
+    {
+      "name": "cs-brainstorm",
+      "source_file_count": 2,
+      "project_file_count": 2,
+      "source_tree_sha256": "aacf8f56cec89608382f8e555be7ac2d35ca1e29f6fe089c8ce828fc34264baf",
+      "project_tree_sha256": "aacf8f56cec89608382f8e555be7ac2d35ca1e29f6fe089c8ce828fc34264baf",
+      "matches_source": true
+    },
+    {
+      "name": "cs-checkup",
+      "source_file_count": 1,
+      "project_file_count": 2,
+      "source_tree_sha256": "e8afad91dccaaefed3a0b15909444857354acb0f0a3245cced2b9162b76c51c9",
+      "project_tree_sha256": "fee7e79b50140894b8b8de75bbcc3a7bf58ad507a0205d1670e27bb62ccc205c",
+      "matches_source": false
+    },
+    {
+      "name": "cs-decide",
+      "source_file_count": 2,
+      "project_file_count": 2,
+      "source_tree_sha256": "9c19b07bc85421fa07787247c48fe553d37a233f5495235b25c5dfea256bfa79",
+      "project_tree_sha256": "9c19b07bc85421fa07787247c48fe553d37a233f5495235b25c5dfea256bfa79",
+      "matches_source": true
+    },
+    {
+      "name": "cs-explore",
+      "source_file_count": 2,
+      "project_file_count": 2,
+      "source_tree_sha256": "57995363aa6e4333410b4211fffd930f0fd27003966dd5173e9d8a58956f1691",
+      "project_tree_sha256": "57995363aa6e4333410b4211fffd930f0fd27003966dd5173e9d8a58956f1691",
+      "matches_source": true
+    },
+    {
+      "name": "cs-feat",
+      "source_file_count": 1,
+      "project_file_count": 1,
+      "source_tree_sha256": "b73536722b6ccce1002adbffc408cd58c38d4071cb016534384c2e00e49b65a2",
+      "project_tree_sha256": "b73536722b6ccce1002adbffc408cd58c38d4071cb016534384c2e00e49b65a2",
+      "matches_source": true
+    },
+    {
+      "name": "cs-feat-accept",
+      "source_file_count": 2,
+      "project_file_count": 2,
+      "source_tree_sha256": "887e2a48ba1b3b9b37a15aba37b61d80f4626c23a423d7288b3ac0bee4bdec5c",
+      "project_tree_sha256": "887e2a48ba1b3b9b37a15aba37b61d80f4626c23a423d7288b3ac0bee4bdec5c",
+      "matches_source": true
+    },
+    {
+      "name": "cs-feat-design",
+      "source_file_count": 2,
+      "project_file_count": 2,
+      "source_tree_sha256": "5ef23a14f74bf1cfb5706343569a968e1315c4b4f3942774ae1fd638a3910be5",
+      "project_tree_sha256": "5ef23a14f74bf1cfb5706343569a968e1315c4b4f3942774ae1fd638a3910be5",
+      "matches_source": true
+    },
+    {
+      "name": "cs-feat-ff",
+      "source_file_count": 1,
+      "project_file_count": 1,
+      "source_tree_sha256": "777587306d77372278b2aeb3ba2c59d0703bc3852771526a10587a4b4619dc1b",
+      "project_tree_sha256": "777587306d77372278b2aeb3ba2c59d0703bc3852771526a10587a4b4619dc1b",
+      "matches_source": true
+    },
+    {
+      "name": "cs-feat-impl",
+      "source_file_count": 1,
+      "project_file_count": 1,
+      "source_tree_sha256": "e03dfe02ef30eb3f2e4fc65b0eb59562171a10b679b2c2c5b6b3d08e077f7fb7",
+      "project_tree_sha256": "e03dfe02ef30eb3f2e4fc65b0eb59562171a10b679b2c2c5b6b3d08e077f7fb7",
+      "matches_source": true
+    },
+    {
+      "name": "cs-guide",
+      "source_file_count": 1,
+      "project_file_count": 1,
+      "source_tree_sha256": "b36df79636a8856d0494e9fa5e5e4056ce469c64ca7d03bab4fb8dc09ca2a44e",
+      "project_tree_sha256": "b36df79636a8856d0494e9fa5e5e4056ce469c64ca7d03bab4fb8dc09ca2a44e",
+      "matches_source": true
+    },
+    {
+      "name": "cs-issue",
+      "source_file_count": 1,
+      "project_file_count": 1,
+      "source_tree_sha256": "2b9f01b4e3f30a955ecf6beced64a678067bbc638349bdb7cde4f13aac6c1137",
+      "project_tree_sha256": "2b9f01b4e3f30a955ecf6beced64a678067bbc638349bdb7cde4f13aac6c1137",
+      "matches_source": true
+    },
+    {
+      "name": "cs-issue-analyze",
+      "source_file_count": 2,
+      "project_file_count": 2,
+      "source_tree_sha256": "c501d297ca6578b5924c8aa4fe3bea37e0410266d3a571cc296644bebbab4767",
+      "project_tree_sha256": "c501d297ca6578b5924c8aa4fe3bea37e0410266d3a571cc296644bebbab4767",
+      "matches_source": true
+    },
+    {
+      "name": "cs-issue-fix",
+      "source_file_count": 2,
+      "project_file_count": 2,
+      "source_tree_sha256": "4e189d211b557305a1925b3db9211563f60ccac576320770c0d67b59ee72452a",
+      "project_tree_sha256": "4e189d211b557305a1925b3db9211563f60ccac576320770c0d67b59ee72452a",
+      "matches_source": true
+    },
+    {
+      "name": "cs-issue-report",
+      "source_file_count": 2,
+      "project_file_count": 2,
+      "source_tree_sha256": "d59fc1d062756b9a19f5508d0031ad19b5f5cdc613279f4c1b8f93536e3f920c",
+      "project_tree_sha256": "d59fc1d062756b9a19f5508d0031ad19b5f5cdc613279f4c1b8f93536e3f920c",
+      "matches_source": true
+    },
+    {
+      "name": "cs-learn",
+      "source_file_count": 2,
+      "project_file_count": 2,
+      "source_tree_sha256": "a8d3ad04c82d71beae00e321fad3bf50b261701864ac15a045951d793b19c98f",
+      "project_tree_sha256": "a8d3ad04c82d71beae00e321fad3bf50b261701864ac15a045951d793b19c98f",
+      "matches_source": true
+    },
+    {
+      "name": "cs-libdoc",
+      "source_file_count": 2,
+      "project_file_count": 2,
+      "source_tree_sha256": "124b5b96a0d7251c77e0c1a8577c1ba6c1a7a1f5ea8288a9fa4aabcff92912e3",
+      "project_tree_sha256": "124b5b96a0d7251c77e0c1a8577c1ba6c1a7a1f5ea8288a9fa4aabcff92912e3",
+      "matches_source": true
+    },
+    {
+      "name": "cs-note",
+      "source_file_count": 1,
+      "project_file_count": 1,
+      "source_tree_sha256": "bcf926d8d9d10183dd1b2c2103bd2078afadb3bd998e222a99cd222dcd6371c8",
+      "project_tree_sha256": "bcf926d8d9d10183dd1b2c2103bd2078afadb3bd998e222a99cd222dcd6371c8",
+      "matches_source": true
+    },
+    {
+      "name": "cs-onboard",
+      "source_file_count": 10,
+      "project_file_count": 10,
+      "source_tree_sha256": "0c03be96d9aa269da6cc9962feec2ef88b3aeb65f1d93f322dc0afbfedc5f1ed",
+      "project_tree_sha256": "99ae934f152475b8607f065960b8eeb23fed442ec0062a9d51131449b6a135b8",
+      "matches_source": false
+    },
+    {
+      "name": "cs-refactor",
+      "source_file_count": 4,
+      "project_file_count": 4,
+      "source_tree_sha256": "403e28c7cbcdcc067a4466c931beb055a83d34e3445a7017bbe20c6af6c8fc66",
+      "project_tree_sha256": "403e28c7cbcdcc067a4466c931beb055a83d34e3445a7017bbe20c6af6c8fc66",
+      "matches_source": true
+    },
+    {
+      "name": "cs-refactor-ff",
+      "source_file_count": 1,
+      "project_file_count": 1,
+      "source_tree_sha256": "67369917ffbf4217feb71c225cc40697391b118fb40545e0b273390584ebc664",
+      "project_tree_sha256": "67369917ffbf4217feb71c225cc40697391b118fb40545e0b273390584ebc664",
+      "matches_source": true
+    },
+    {
+      "name": "cs-req",
+      "source_file_count": 1,
+      "project_file_count": 1,
+      "source_tree_sha256": "248ec9339ca738caf9a23268e275f1ec42ad5e921c1c8db7a93b2a36d867e90f",
+      "project_tree_sha256": "248ec9339ca738caf9a23268e275f1ec42ad5e921c1c8db7a93b2a36d867e90f",
+      "matches_source": true
+    },
+    {
+      "name": "cs-roadmap",
+      "source_file_count": 2,
+      "project_file_count": 2,
+      "source_tree_sha256": "43160e1296a304dda34077311bb3317e6fe0430b60b17d66f60f37bf5a8775f5",
+      "project_tree_sha256": "43160e1296a304dda34077311bb3317e6fe0430b60b17d66f60f37bf5a8775f5",
+      "matches_source": true
+    },
+    {
+      "name": "cs-semantic-radar",
+      "source_file_count": 2,
+      "project_file_count": 2,
+      "source_tree_sha256": "97a33ccdd633936e52d4f45d871f32c97aedacbc8b2b74c5e5c570b6b4cc9924",
+      "project_tree_sha256": "97a33ccdd633936e52d4f45d871f32c97aedacbc8b2b74c5e5c570b6b4cc9924",
+      "matches_source": true
+    },
+    {
+      "name": "cs-trick",
+      "source_file_count": 2,
+      "project_file_count": 2,
+      "source_tree_sha256": "923183660250c4342b058a9acd27cacf4a9dd43401bb1b390caf1108d51a356f",
+      "project_tree_sha256": "923183660250c4342b058a9acd27cacf4a9dd43401bb1b390caf1108d51a356f",
+      "matches_source": true
+    }
+  ]
+}

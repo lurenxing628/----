@@ -1,0 +1,55 @@
+---
+description: APS 接口设计约定（Service/事实作用域/Repository/Model/Route/前端模块的标准写法）
+globs: ["web/routes/**/*.py", "core/services/**/*.py", "data/repositories/*.py", "core/models/*.py", "frontend/workbench/app/**/*.{js,jsx}"]
+alwaysApply: false
+---
+
+# 接口设计约定
+
+编辑 Route / Service / Repository / Model / 前端工作台模块时，按真实职责遵循以下约定，不强套无消费的样板方法。
+
+## Service 与显式事实作用域
+
+- **有连接业务用例服务**（`core/services/workbench/<domain>/`）：内部按需创建 Repository、`TransactionManager(conn)` 或 `WorkbenchCommandService(conn, logger)`，外部传入 `conn`。
+  - 读取入口遵循“**进门先验轻量修订指纹（`snapshot_token` / `WorkbenchSourceRevisions`）→ 按实际用途取完整关系闭包（如单实例维护免拉全表、报表读取复用单一流式 `PlanMetadataRepository` 上下文）→ 通过显式不可变事实作用域对象单向传参**”。
+  - 严禁在服务实例上用 `self._snapshot` / `self._route_preview` 临时属性 + `try/finally` 偷渡状态，严禁用覆写 `dict.__getitem__` 的魔法字典夹带仓储查库或原地变异自身。
+- **无连接纯计算与验证核心**：如日历引擎 `CalendarEngine(CalendarInputs)`（管理端规范化走 `CalendarAdmin`）、排产业务准备 `PreparedBusinessInput`、求解输入 `SolverInput` / `SolverResources`（持有单一共享 `CalendarEngine`）以及统一安排约束验证 `evaluate_schedule_constraints`，均只消费已准备好的受控内存结构，不持有数据库连接。
+
+## Repository 层
+
+可继承 `BaseRepository` 或直接持有 `conn` 封装领域批量查询与持久化，不强求所有仓储机械套用全套 CRUD 空壳：
+
+| 常见操作 | 方法签名示例 | 返回值约定 |
+|------|---------|--------|
+| 查询单个 | `get(id_or_ref: str)` | `Optional[Model_or_Row]` |
+| 查询列表 / 批量闭包 | `list(**filters)` / 具名批量方法 | `List[...]` / `Dict[...]`（空集合返回 `[]`/`{}`，不返回 `None`） |
+| 创建 / 追加 | `create(model_or_dict)` | 新记录或标识 |
+| 更新 / 删除 | `update(id, updates: Dict)` / `delete(id: str)` | `None` 或受影响状态 |
+
+- 参数化 SQL 只在仓储或 `core/infrastructure/` 内执行；`update()` 动态列须使用显式 `allowed` 白名单。
+- 仓储层不做业务裁决，**禁止**导入或抛出 `WorkbenchCommandRejected` / `reject` 等业务拒绝异常，**禁止**把形参当表名拼入 SQL。
+
+## Model 与外部输入准入合同
+
+```python
+@dataclass(frozen=True)
+class XxxInputContract:
+    field_a: str
+    field_b: Optional[int] = None
+```
+
+- `core/models/*.py` 按实际消费需要定义受控数据结构（如 `@dataclass(frozen=True)`、`Protocol`；仅在需要存储行互转时提供 `from_row()` / `to_dict()`）或外部 HTTP/文件准入合同。
+- 外部不可信输入在准入合同处完成**唯一一次**类型、值域与必填字段校验；进入内部后直接按受控属性/必有键访问，不在下游重复写 `.get()` 默认值兜底或 `getattr` 反射探测。
+
+## Route 与 7 条命令回执协议
+
+- 工作台 JSON 路由（`web/routes/workbench/*.py`）统一使用 `@api_endpoint` / `@read_endpoint` 装饰器（`web/routes/workbench/api_responses.py`）与 `query_success` / `failure` / `json_response`（`web/api_responses.py`），在出口一次性完成 UTF-8 编码、大小预算核验与 `Cache-Control: no-store` 设置；路由内不手写宽泛 `try/except AppError`。
+- 读取路由在加载重型数据前先核验请求上下文，再通过 `bind_read_snapshot`（无快照绑定接口用 `unbound_snapshot`）签发 `meta.snapshot_ref` 与 `meta.as_of`（续读保真首次快照 `as_of`）；分页写令牌 `issue_write_context` 在页码合法性校验通过后签发。
+- **7 条命令/任务回执查询链路**：
+  - 5 类 SQLite 命令回执（普通命令 `web/routes/workbench/commands.py`、候选采用 `run_candidate_adoption.py`、试调采用 `trial_adoption.py`、工时校准采用 `calibration_adoption.py`、试调编辑命令 `trial.py`）共用 `WorkbenchCommandService.lookup` 与 `command_lookup_payload`（`{state: "recorded" | "not_observed", receipt, may_be_in_flight, resolution}`）；非默认回执地址的写入口（如候选采用）必须绑定匹配的 `g.workbench_result_target`。
+  - 排产运行受理查询（`scheduling_jobs.py`）保持 `{found, run, resolution, data_context_ref}`；系统维护保持数据库回执或外部 `SystemMaintenanceJournal` 查询协议。
+
+## 前端工作台 ESM 模块边界
+
+- `frontend/workbench/app/` 全部使用显式 ESM `import/export`：网络与回执查询统一走 `shared/network/transport.js`（`T.read`、`T.preview`、`T.command`、`T.lookup`、`T.envelope(payload, T.modes.lookup)`），查询与命令生命周期走 `shared/session/query.js` 与 `command-session.js`，基础表格走 `shared/ui/Table.jsx`（样式归口 `styles/21-table-frame.css`）。
+- 前端 `Contract` 只校验 HTTP 信封、请求身份/快照绑定、外部表单输入与浏览器 `localStorage` 持久意图；受控 DTO 的紧凑引用展开归位领域 `Model`（如 `PlanGanttModel`）。

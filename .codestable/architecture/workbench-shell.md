@@ -5,8 +5,8 @@ scope: 工作台离线外壳、领域服务、受管运行及恢复边界
 summary: 工作台拥有事务与持久结果，内存绑定和真实出口共享准备，显示模型分准备、布局、绘制
 status: current
 created: 2026-09-09
-last_reviewed: 2026-10-31
-updated: 2026-10-31
+last_reviewed: 2026-11-11
+updated: 2026-11-11
 tags: [workbench, flask, offline, win7]
 depends_on: [ARCHITECTURE]
 implements: [workbench-foundation-read-loop, workbench-production-workflows]
@@ -16,21 +16,22 @@ implements: [workbench-foundation-read-loop, workbench-production-workflows]
 
 ## 当前边界
 
-`/workbench` 和 `/workbench/trial` 支持15个视图，侧栏12项；计划甘特/交付风险及报表/复盘通过页内页签组织：`/workbench?view=gantt|delay|review` 按 `web/routes/workbench/navigation_metadata.py` 的 `VIEW_ALIASES` 落到所属页签，`read_navigation` 解析的精确导航上下文继续生效；站点根路径 `/` 重定向到 `/workbench`，旧多页路由已退役。主数据、工艺、批次、候选生成和采用、正式计划、试调、执行台账、实际甘特、复盘报表、工时校准、值班台和系统维护均通过真实领域服务接线。本文记录 2026-10-15 当前工作区已落地职责；本轮整合验收见[单次准备执行记录](../refactors/2026-10-15-single-pass-workflow/single-pass-workflow-refactor-design.md)，Win7 打包、真机和发布状态由既有路线图维护。
+`/workbench` 和 `/workbench/trial` 支持15个视图，侧栏12项；计划甘特/交付风险及报表/复盘通过页内页签组织：`/workbench?view=gantt|delay|review` 按 `web/routes/workbench/navigation_metadata.py` 的 `VIEW_ALIASES` 落到所属页签，`read_navigation` 解析的精确导航上下文继续生效；站点根路径 `/` 重定向到 `/workbench`，旧多页路由以及 `app_new_ui.py`、`start_new_ui.bat`、`ui_mode` 双入口分支均已退役，全系统收口为唯一生产宿主入口 `app.py`（`create_app()` 无模块导入副作用）。主数据、工艺、批次、候选生成和采用、正式计划、试调、执行台账、实际甘特、复盘报表、工时校准、值班台和系统维护均通过真实领域服务接线。本文记录 2026-11-10 全局架构收敛（`A0`～`A5`）落地职责（持久存储 Schema v45 与归档 JSON 零变更）；前期单次准备重构见[单次准备执行记录](../refactors/2026-10-15-single-pass-workflow/single-pass-workflow-refactor-design.md)，全局收敛裁决见[全局架构收敛路线图](../roadmap/aps-architecture-consolidation/aps-architecture-consolidation-roadmap.md)。
 
 ## 职责
 
-- `web/bootstrap/factory.py` 注册 `web.routes.workbench`，在开库前检查一次实际维护窗口。普通请求消费 runtime 的内存运行状态；static/health 走轻量路径。真正到期的自动维护才进入原维护 owner 与 journal 准入，失败沿原503或存储错误传播；请求关闭和恢复继续由既有生命周期协调。
+- `app.py` 与 `web/bootstrap/factory.py`：`import app` 保持零文件/数据库/线程副作用，`create_app()` 注册 `web.routes.workbench`，在开库前检查一次实际维护窗口。普通请求消费 runtime 的内存运行状态；static/health 走轻量路径。真正到期的自动维护才进入原维护 owner 与 journal 准入，失败沿原503或存储错误传播；请求关闭和恢复继续由既有生命周期协调。
 - `web/routes/workbench/assets.py` 校验本地 manifest 和引用文件；资源不完整时宿主明确503。`pages.py` 提供启动信息和只读 JSON 协议，不执行 SQL。
 - `core/services/system/workbench_overview.py` 使用已提供的连接及路径进行只读投影；不补配置、不读日志正文、不校验备份、不生成备份。失败、未知和0分开。
-- `frontend/workbench/app/` 负责呈现、正式主题键 `aps_theme`、请求时限/取消、响应校验及样例隔离；不计算或保存正式业务事实。
-- `frontend/workbench/prototype/` 是原型依赖的可追溯副本，不是开发时依赖的忽略目录。原始 `前端设计/` 不被构建改写。
-- `scripts/workbench/build.py` 在开发机将固定 React18、原有共享控件和 live 源预编译，发布到 `static/workbench/`。目标Chrome109不需要 Node、Babel现场编译或外网。
+- `frontend/workbench/app/` 全部采用显式 ESM 模块（`shell/main.jsx`、`theme.js`、`shared/network/transport.js`、`shared/session/command-session.js` + `pending-store.js` + `query.js`、`shared/ui/Table.jsx` 及各领域页面/Model/精简 Contract/API），彻底移除业务 `window.*` 全局变量与对本机受控 DTO 的重复算术/字段表/排序重验；`Contract` 负责响应信封、请求身份/快照绑定与外部输入/`localStorage` 校验，紧凑引用展开归位领域 `Model`（如 `PlanGanttModel`），不计算或保存正式业务事实。
+- 壳层与基础样式内聚于 `frontend/workbench/app/styles/`（含 `colors.css`、`typography.css`、`spacing.css`、`index-inline.css` 等，由 `app/styles/index.css` 显式按序 `@import`），本地字体与图标位于 `frontend/workbench/app/assets/`（`MicrosoftYaHei-Regular.ttf`、`logo-mark.svg`、`lucide-LICENSE`）；旧 `frontend/workbench/prototype/`、`static/workbench/prototype/` 与 `import_prototype.py` 均已退役。原始 `前端设计/` 不被构建改写。
+- `scripts/workbench/build.py`（配合 `compile.cjs` 构建期 resolve 插件）在开发机调用固定版本 `esbuild`（`0.25.12`）将 `app/` ESM 源码与固定 React `18.3.1` vendor 离线编译打包，按 `app/styles/index.css` 显式顺序合并样式，并将 `app/assets/` 同步发布到 `static/workbench/`（`app/main.js`、`app/theme.js`、`app/workbench.css`、`app/assets/`、`asset-manifest.json`）。目标机 Chrome 109 不需要 Node、`esbuild` 或外网。
 
-## 服务包结构（2026-09-20 起）
+## 服务包结构（2026-09-20 起，2026-11-11 收敛）
 
-- `core/services/workbench/` 按业务簇分子包，根目录保留跨簇协调件 `commands.py`（命令事务框架）、`command_prefetch.py`（命令事务外有界预取协调件）、`messages.py`（共享文案）与 `decision_file_export.py`（排产决策对比与历史导出共享组装）。业务簇子包：`facts/`（只读事实与叶子助手）、`plan/`、`execution/`、`run/`、`history/`、`trial/`、`report/`、`dashboard/`、`process/`、`resource/`、`material/`、`batch/`、`calibration/`、`outsourcing/`、`system/`、`master/`。
-- 簇之间只允许单向依赖：结果侧 `facts ← plan ← execution ← run ← trial ← report ← dashboard`（`history` 依赖 `facts`、`run`、`trial`），主数据侧 `facts ← process ← resource`，`batch`、`calibration` 在其上，其余只依赖 `facts`。完整方向表、五对历史双向依赖的解法与模块分配表见 `.codestable/roadmap/foundation-boundary-governance/workbench-cluster-layering.md`；当前依赖核对沿开发文档的质量治理入口执行。
+- `core/services/workbench/` 按业务簇分子包，根目录保留跨簇协调件 `commands.py`（命令事务与统一回执查询 `command_lookup_payload`）、`command_prefetch.py`（命令事务外有界预取协调件）、`messages.py`（共享文案）与 `decision_file_export.py`（排产决策对比与历史导出共享组装）。业务簇子包：`facts/`（只读事实与叶子助手）、`plan/`、`execution/`、`run/`、`history/`、`trial/`、`report/`、`dashboard/`、`process/`、`resource/`、`material/`、`batch/`、`calibration/`、`outsourcing/`、`system/`、`master/`。
+- 簇之间只允许单向依赖：结果侧 `facts ← plan ← execution ← run ← trial ← report ← dashboard`（`trial` 单向依赖 `run` 公开约束原语 `candidate_adoption_constraints.py`、`schedule_occupancy_constraints.py` 与 `schedule_row_constraints.py`，正式计划占用约束在 `plan/occupancy_constraints.py`，分件范围与试调约束内聚于 `trial/piece_scope.py` 与 `trial/constraints.py`，彻底解开 `run ⇄ trial` 循环；`history` 依赖 `facts`、`run`、`trial`），主数据侧 `facts ← process ← resource`，`batch`、`calibration` 在其上，其余只依赖 `facts`。完整方向表见 `.codestable/roadmap/foundation-boundary-governance/workbench-cluster-layering.md`；当前依赖核对由 `tools/scan_import_cycles.py` 与质量治理入口执行。
+- 各业务域统一遵循“**进门先验轻量修订指纹（`snapshot_token` / `WorkbenchSourceRevisions`）→ 按实际用途经显式事实作用域（`batch/scope.py:BatchFactScope`、`process/scope.py:ProcessFactScope`、`resource/scope.py:ResourceFactScope`、`execution/field_workspace_scope.py`、`execution/actual_gantt_scope.py`、`trial/piece_scope.py`）取完整关系闭包（如 `batch` 列表/导出与单实例维护免拉无关全表、报表读取复用单一流式 `PlanMetadataRepository` 上下文、现场报工以 `CohortTaskExecution` 冻结 dataclass 按需纯内存展开报工行）→ 显式事实作用域单向传参**”，彻底清退 `self._snapshot` / `self._route_preview` 临时属性偷渡与 `dict` 子类伪仓储。
 - 子包 `__init__.py` 只有 docstring，没有转发导入或懒导出；搬模块用 `tools/move_modules.py` 一次改完所有调用方。
 
 ## 请求与恢复
@@ -39,14 +40,14 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 
 没有可回绑读取快照的响应统一由 `web/routes/workbench/read_context.py:unbound_snapshot()` 生成元数据，`snapshot_ref` 固定为 `null`、`as_of` 与绑定快照同为工厂本地秒级时间：系统概况、系统维护读取与操作结果、排产运行与受理查询、候选与试调正式采用预检、试调采用回执、外协登记预览（取读取器时钟）和工时校准采用预检（取证据生成时间）。其余领域读取经 `bind_read_snapshot` 按真实事实和 scope 绑定读快照。资料总览的列表、详情、定位与导出统一读取该 scope 下的当前资料，响应回传本次 `as_of` 和实际导出条数；过期或 scope 不符沿原 `snapshot_stale` 表达。永久实体引用、短期上下文和页面偏好各有独立职责。
 
-## 2026-10-15 单次准备的当前实现
+## 单次准备与架构收敛后的当前实现
 
-- **事务与计算**：工作台拥有受理、worker、保存和正式采用。批次与工序编辑由工作台 `core/services/workbench/batch/` 承载，原 `ScheduleService` 已退役；候选计算经 `compute_candidate_run` → `orchestrate_schedule_run` → `run_candidate_comparison`，计算阶段使用明确版本上下文。旧运行、collector 生产采集和持久化链已经退役。
-- **共享事实**：`ProductionFactsCapture` 拥有一次事务快照的原始表、最新正式安排索引与资源执行事实；`PreflightFacts`、`CandidateRunInput`、`BatchFacts`、`GenerationFacts` 和 `DecisionSource` 消费已取得内容。worker 同一次副本核对与输入准备共用 capture，写锁内的新事实仍在实际采用或完成事务取得。
+- **事务与计算**：工作台拥有预检/受理共享准备（`PreparedBusinessInput`）、worker、候选保存和正式采用。批次与工序编辑由工作台 `core/services/workbench/batch/` 承载，原 `ScheduleService` 与 `schedule_orchestrator.py` 已退役；候选计算经 `compute_candidate_run`（组装 `SolverInput` 与持有单一缓存 `CalendarEngine` 的 `SolverResources`）直接调用 `run_candidate_comparison`，计算阶段使用明确版本上下文，正式采用单次验证约束后经 `plan/official_persistence.py` 落库。
+- **共享事实**：`ProductionFactsCapture` 拥有一次事务快照的原始表、最新正式安排索引与资源执行事实；`PreflightFacts`、`PreparedBusinessInput`、`BatchFacts`、`GenerationFacts` 和 `DecisionSource` 消费已取得内容。worker 同一次副本核对与输入准备共用 capture，写锁内的新事实仍在实际采用或完成事务取得；资料总览续读保真首次快照 `as_of`，工艺分页在页码校验通过后再签发写令牌。
 - **搜索与档案**：`NativeSchedulePreparation` 和 `SharedDecodeSession` 拥有固定工序、参数适配、资源、拓扑与断点准备，请求表达真实变化。真实解码出口取得安排编号，阶段和目标同步使用档案小视图；未验证 trial 未命中时只保留临时编号。报告消费编号及评价标量，完整来源在 events，最终发布物化结果与选中证据。
 - **内存 token**：`web/public_token_registry.py` 直接保留 `ReadBinding`、`WriteBinding` 和预览/文件对象；共同规范事实按组共享，小键服务签发复用。binding 不再做 JSON 编码后解析，逐行 token 不再各包一份大事实。读写绑定直接引用各自所需值，写入口寿命由自身 expiry 决定；等待写锁后的实际到期检查和锁内当前事实比较继续执行。
-- **规范化、写入和输出**：日历、资源、工艺及报工的原始输入在共同领域入口规范化，写入者返回实际 ref、revision 和时间供响应使用。命令回执首发与重放消费实际保存文本。JSON 最终信封在 `web/api_responses.py:json_response` 编码 UTF-8 并直接发送该字节；独立文件在自己的真实输出边界编码。内部投影按实际消费者加工，HTTP 大小限制位于真实响应出口。
-- **显示和查询**：计划与实际甘特把固定事实准备、可见成员/布局与绘制分开；Canvas 生命周期归 `GanttPresentation.useCanvasPaint`，搜索只更新筛选与轻量汇总，宽度只改变几何，滚动只选择可见区。列筛选由 Enter 或已有按钮提交；资源热图直接消费后端已有桶。报表工序详情使用 `plan + detail` 的窄 DTO，前端同步按详情合同读取。
+- **规范化、写入与 7 条命令回执协议**：日历、资源、工艺及报工的原始输入在共同领域入口规范化，写入者返回实际 ref、revision 和时间供响应使用。5 类 SQLite 命令回执查询（普通命令 `web/routes/workbench/commands.py`、候选采用 `run_candidate_adoption.py`、试调采用 `trial_adoption.py`、工时校准采用 `calibration_adoption.py`、试调编辑命令 `trial.py`）共用 `WorkbenchCommandService.lookup` 与 `{state: "recorded" | "not_observed", receipt, may_be_in_flight, resolution}` 结构（校准采用未命中正常返回 `not_observed` 而非 404 特判；候选采用写入口绑定匹配的 `g.workbench_result_target`）；排产受理查询保持 `{found, run, resolution, data_context_ref}`；系统维护保持数据库回执或外部 `SystemMaintenanceJournal` 查询协议。前端全站回执轮询统一经 `shared/network/transport.js` 的 `T.lookup(path, query, opts)`（及信封接口的 `T.envelope(..., T.modes.lookup)`）结算。JSON 最终信封在 `web/api_responses.py:json_response` 编码 UTF-8 并直接发送该字节；独立文件在自己的真实输出边界编码。
+- **显示和查询**：计划与实际甘特把固定事实准备（含 `PlanGanttModel` 紧凑引用展开）、可见成员/布局与绘制分开；Canvas 生命周期归 `GanttPresentation.useCanvasPaint`，搜索只更新筛选与轻量汇总，宽度只改变几何，滚动只选择可见区。列筛选由 Enter 或已有按钮提交；资源热图直接消费后端已有桶。报表工序详情使用 `plan + detail` 的窄 DTO，前端统一经 `ReportAPI.validate` 校验信封与身份绑定。`shared/session/query.js` 在请求取消（`AbortError`）时将状态对称复位为 `loading: false`，并支持无参 `reloadAndWait()`。
 - **启动和维护**：启动协调器在开库前捕获 journal，后续 owner 消费同一捕获；普通请求读取内存停止状态并在开库前检查维护窗口。当前 Schema 45 在 v41/v42 保存读模型、v43/v44 `WorkbenchSourceRevisions` 与单遍效率索引之上统一日历非空权威列 `periods_json`、补齐 `PartOperations(ext_group_id)` 索引并收敛身份触发器；普通启动检查结构，低版本非空库拒绝启动、不执行历史增量升级迁移，新库与恢复边界执行完整数据合同，归档事实严格按当前 `schema / columns / tables / revisions` 契约核验（历史兼容投影已删除）。
 
 ## 共同事实与存储
@@ -61,25 +62,25 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 
 ## 界面共享层
 
-- 应用样式集中在`frontend/workbench/app/styles/`，由`build-order.json`显式登记，按基础令牌、布局、共享控件和工作区域顺序进入资产清单。原型依赖先加载，应用层负责当前界面；静态样式不再由工作区组件反复插入。视口预算、表内双向滚动、吸顶表头与固定关键/操作列共同保证长表可用。`WorkbenchScrollShadows`在壳层挂载一次，按实际遮挡给表格框打`data-overflow-left/right`，固定列只在遮住其他列时显示滚动阴影；表头`word-break: keep-all`不在中文词内折行。顶栏是唯一可见页面标题，工作区重复的`h2`以`wb-page-title`视觉隐藏、副标题以`wb-page-context`作上下文行；工作区根统一`padding: 0`，灰底加白卡，KPI 条统一四格，甘特滚动框按行数自适应到上限。间距字面量按`--space-1..6`接线，行高有`--wb-line-*`三档，圆角统一`--wb-radius-control`。
+- 应用样式集中在 `frontend/workbench/app/styles/`（含 `colors.css`、`typography.css`、`spacing.css`、`index-inline.css` 等壳层与基础样式，以及共享控件、表格框归口的 `21-table-frame.css` 和各工作区样式），由 `app/styles/index.css` 显式按 `@import` 顺序登记合并为 `static/workbench/app/workbench.css`，本地字体与图标由 `frontend/workbench/app/assets/` 输出至 `static/workbench/app/assets/`；正式表格统一由 `frontend/workbench/app/shared/ui/Table.jsx` 原生渲染语义化 `<caption>`、`<th scope="col">` 与列宽拖拽手柄，不再运行时动态插入 `<style>` 或挂载后遍历 DOM 补属性。视口预算、表内双向滚动、吸顶表头与固定关键/操作列共同保证长表可用。`WorkbenchScrollShadows`在壳层挂载一次，按实际遮挡给表格框打`data-overflow-left/right`，固定列只在遮住其他列时显示滚动阴影；表头`word-break: keep-all`不在中文词内折行。顶栏是唯一可见页面标题，工作区重复的`h2`以`wb-page-title`视觉隐藏、副标题以`wb-page-context`作上下文行；工作区根统一`padding: 0`，灰底加白卡，KPI 条统一四格，甘特滚动框按行数自适应到上限。间距字面量按`--space-1..6`接线，行高有`--wb-line-*`三档，圆角统一`--wb-radius-control`。
 - `WorkbenchFormat`区分工厂本地日期文本与带时区的实际时刻；空值和非法值分开处理，显示层不另加业务取值范围。`number/percent/hours`接受`{ digits, trim }`：trim 保留录入精度（最多 digits 位），录入类工时、报工累计与候选对比指标用它而不是 1 位摘要；-0 归零显示。报工时间经`FieldContract.date`保留秒。`WorkbenchTerms`统一界面术语，`WorkbenchReferences`把完整引用与诊断收纳到可展开区域，保留原始内容；值班台来源只折叠诊断码、`*_ref/*_key`与完整十六进制引用，`business_code`、`kind`等业务字段保持可见。
-- `ResourceControls`和`WorkbenchControls/WorkbenchListControls`提供字段错误、空态、分页、弹窗与详情。`Button`的禁用原因分`inline`与`tooltip`两种呈现，表格操作列和工具栏用 tooltip（title 加视觉隐藏说明），表单与页面级主动作保持 inline；`Issues`把相同消息合并为一行并标注条数。分页档位由领域消费者明确给出，游标模式不虚构总数。详情按业务条目更换内容并管理焦点；只读自动预览可显式保持原焦点。密度由`WorkbenchDensity`共享订阅和保存，切换行距时保持字号和数据不变，保存失败明确显示。
+- `ResourceControls.jsx` 和 `WorkbenchControls.jsx`（配合 `shared/ui/Button.jsx`；旧 `WorkbenchListControls` 已退役合并）提供字段错误、空态、分页、弹窗与详情。`Button`的禁用原因分`inline`与`tooltip`两种呈现，表格操作列和工具栏用 tooltip（title 加视觉隐藏说明），表单与页面级主动作保持 inline；`Issues`把相同消息合并为一行并标注条数。分页档位由领域消费者明确给出，游标模式不虚构总数。详情按业务条目更换内容并管理焦点；只读自动预览可显式保持原焦点。密度由`WorkbenchDensity`共享订阅和保存，切换行距时保持字号和数据不变，保存失败明确显示。
 - `WorkbenchGuards`按owner和作用域登记未保存输入及待核实命令；`WorkbenchGuardHost`通过共享Modal呈现确认，避免核心守卫反向依赖UI。导航、同文档前进后退和编辑器关闭都查询同一守卫，拒绝时保留URL、页面和输入；确认框不再次拦截自己，待核实业务请求不被当成可放弃草稿。`locked`只来自待核实命令，目录弹窗或重读资料等UI忙碌态不得传入；确认等待期间受保护条目全部保存或卸载时，守卫自动放行并关闭空确认框。
 - `PlanSelectionModel`只在没有明确或恢复上下文时选取唯一可读的当前正式计划。选中计划或候选后目录可收起并重新展开；从候选目录切换对象后归还展开入口焦点，外部进入不抢焦点。`ActualGanttWindow`仅计算显示窗口和命中区域，按时间中心与可见时长恢复刷新/跨宽度视窗，保留原`axis_span/as_of`、点工序和真实持续时长。
 - `FieldDraftModel/FieldEditorFields`仅为新建报工生成可清除的建议，并限制“上一条”的来源与复制字段。保存继续必须经过成功回执、重新读取和新的可写上下文；补齐、更正、保留草稿和未知结果继续沿原事务恢复链。任务详情位于列表滚动框之外，避免编辑器被表格高度预算裁切。
 
-界面验证通过普通 pytest 中的 Node 契约（如 `tests/workbench/test_ui_refinement_node_contracts.py` 等）执行，并可按任务需要做现场浏览器检查（旧 opt-in 浏览器自动化通道已退役，详见 `../reference/tools.md`）；日常检查与最终 HEAD 门禁的命令与证据边界统一见 `../../开发文档/README.md` “质量治理入口”。
+界面验证通过普通 pytest 中的 21 项 Node `vm.Context` 契约（`tests/workbench/test_ui_refinement_node_contracts.py`，由 `scripts/workbench/compile.cjs` 调用宿主 `esbuild` 打包注入沙箱）执行，并可按任务需要做现场浏览器检查（旧 opt-in 浏览器自动化通道已退役，详见 `../reference/tools.md`）；日常检查与最终 HEAD 门禁的命令与证据边界统一见 `../../开发文档/README.md` “质量治理入口”。
 
 ## 已接后端
 
 - v20增加`WorkbenchEntityRefs`、`WorkbenchCommandReceipts`及资源生命周期触发器。引用跨进程稳定；更新保留、删除重建或REPLACE产生新实例。复合内部键采用百分号/分隔符转义，覆盖NUL及UTF-8/UTF-16，不改业务字段。物料批次引用查找有独立索引。
-- `WorkbenchCommandService`拥有最外层SQLite事务，先查询已提交回执，再校验短期编辑上下文、执行领域动作和落不可变回执。回执不保存短期token；不确定结果可按`request_key`查证。此服务不用于文件恢复或异步排产受理。
-- `web/routes/workbench/materials.py`开放真实物料列表/详情、新增/修改/删除和命令回执API。领域动作由`WorkbenchMaterialService`（`core/services/workbench/material/service.py`）承担，保留省略字段及`BatchMaterials`事实；NULL库存不显示成零，未配置阈值不声称低库存。
+- `WorkbenchCommandService`拥有最外层SQLite事务，先查询已提交回执，再校验短期编辑上下文、执行领域动作和落不可变回执。回执不保存短期token；不确定结果可经通用命令回执入口 `web/routes/workbench/commands.py` 及各领域回执路由按 `request_key` 查证。此服务不用于文件恢复或异步排产受理。
+- `web/routes/workbench/materials.py`开放真实物料列表/详情、新增/修改/删除API（通用普通命令回执路由已独立抽至 `web/routes/workbench/commands.py`）。领域动作由`WorkbenchMaterialService`（`core/services/workbench/material/service.py`）承担，保留省略字段及`BatchMaterials`事实；NULL库存不显示成零，未配置阈值不声称低库存。
 - v21显式资源表不替代旧授权/班组，也不回填猜测值。资源领域服务复用旧增删改保护，`resources.py`暴露有限类型的公开实体/永久引用和短期上下文；统计过滤发生在分页前。坏资料仅影响相应指标并明确问题，真实存储故障仍拒绝读取。
-- `OperatorQualificationService`同时供资源统计、可选资源池与固定人员校验使用；`core/services/scheduler/calendar/operator_shift.py`由CalendarService调用，个人日期覆盖优先，全局休息与许可仍约束班次。旧完成/冻结事实不参与新资格校验而被误改写。
+- `OperatorQualificationService`同时供资源统计、可选资源池与固定人员校验使用；`core/services/scheduler/calendar/operator_shift.py`由无连接 `CalendarEngine`（`core/services/scheduler/calendar/engine.py`）调用，管理端日历输入规范化由 `CalendarAdmin`（`calendar/admin.py`）承担（原 `CalendarService` 已退役），个人日期覆盖优先，全局休息与许可仍约束班次；月读投影 `CalendarProjection`（`resource/calendar_reading.py`）共享父引擎周期事实缓存并隔离独立策略/分段缓存。旧完成/冻结事实不参与新资格校验而被误改写。
 - 物料`material_actions*`负责服务器预览登记、短引用与真实文件下载，确认仍使用原子SQLite命令。文件导出只读；批删及增量导入整批回滚。只把2000行限制用于导入。
 - `calendars.py`月读和单日/范围维护只修改全局WorkCalendar。公开投影区分编辑字段、原存储字段和实际生效工作窗，不泄露内部revision/history；原始预览留服务器。DATE在仓储统一ISO字符串，不截断datetime或做UTC转换。
-- `ResourceLive`挂载真实adapter与各独立向导。`resource-api.js`验证同源、协议与提交状态；`resource-session.js`在会话存储保留待核实请求键，不持久化生产输入/短期令牌。未确认提交时不自动换请求重试。
+- `ResourceLive`挂载真实adapter与各独立向导。`resource-api.js`验证同源、协议与提交状态；跨资源/试调/维护/运行命令结算与本机待确认存储统一由 `frontend/workbench/app/shared/session/command-session.js` + `pending-store.js`（导出 `storageSlot` / `pendingStore` / `exclusive`；旧 `resource-session.js` 已退役拆分）承载，在会话或本机存储保留待核实请求键，不持久化生产输入/短期令牌。未确认提交时不自动换请求重试。
 - 非物料`resource_actions/resource_file_exports`按白名单类型开放预检、三字段确认、CSV/XLSX模板和下载。服务器保留完整原预览/字节，公开令牌仅短引用；导入限2000行，完整导出与显式批删不沿用该行数限制。scope固定自制/外协类别，未展示旧字段只读回传，不开放新写入口。
 - `WorkbenchResourceFileRepository`为导入冲突核对提供所需引用，将真实SQLite DATE对象规范为ISO日期，保留datetime原义；个人日历/旧授权继续参与删除约束和预检后的过时保护。导出读取当前范围内实际输出列，覆盖完整筛选结果。
 - `ResourceRail`消费真实资源统计与本周日历只读投影。标准工时未配置不填样例值，显式/服务默认/无许可/坏资料分开。工种文件待核实状态独立保留category，跨资源命名空间不混用。
@@ -105,7 +106,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 
 ### 2026-09-15 手动整改实现
 
-- `ResourceControls.jsx`统一本地 `trash-2`、展开/收起与搜索图标，`20-controls.css`统一按钮图文和筛选对齐，`21-table-frame.css`提供单层表格框及编辑列分隔。所有可达删除动作使用垃圾桶和可见文字。可达管理样例的三项共享组件移至 `SystemSampleControls.jsx`，由 build-order 放在资源控件之后、SystemLive 之前，冻结原型不改。
+- `ResourceControls.jsx`统一本地 `trash-2`、展开/收起与搜索图标，`20-controls.css`统一按钮图文和筛选对齐，`21-table-frame.css`提供单层表格框及编辑列分隔。所有可达删除动作使用垃圾桶和可见文字。历史归档：当时可达管理样例的三项共享组件曾移至 `SystemSampleControls.jsx` 并经早期已退役的 build-order 放在资源控件之后、SystemLive 之前（后续均已随“管理样例”下线与 `esbuild` 模块化打包一并退役）。
 - 工艺归属保存继续走 `stagePreview` 与 `process.source_confirm`；明确保存时提交全部有效工序的确认内容，实际解除外协组关系仍单独列出影响。`ProcessHoursEditor.jsx`拆分自制/外协表，`process_zero_hours.py`在事务内按内容绑定的确认记录决定是否要求零值确认，工时文件读写复用相同规则。既有批次不随模板修改自动变化。
 - `batch_template_validation.py`提供必要资料完整性结果，详情与更新预览共用；`batch_template_preview.py`生成逐工序前后变化及设备/人员指定清除列表。更新确认重新检查模板与批次快照并原子替换。更新请求只接受空对象（Round 22 已删除旧客户端 `strict_mode` 字段与 `template_validation_required`），不允许宽松复制缺项资料；旧模板缺少确认记录与资料实际缺项分开判断。
 - `run_data_context.py`由数据库 scope 与数据库外已成功恢复的 journal 集合生成 `data_context_ref`，普通重启及备份创建/删除不改变它。预览、受理和查询绑定同一数据上下文；查找先核对当前任务和回执，再捕获一次 journal 供 resolution 和 data_context_ref 共用。旧 pending 沿原 journal 与受保护备份定位原请求，核对登记文件身份并只读查询实际任务/回执；原来源缺失保持未核实。v2 pending保存最小身份和数据上下文，旧64hex上下文仍可查询；未知查询满60秒暂停自动查询，保留同号重查，真实计算继续查询，不自动重新受理。
@@ -154,20 +155,20 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 2026-09-12界面质量层补充：
 
 - `navigation_metadata.py`提供导航分组/视图别名，`pages.py`下发`nav_groups/view_aliases/help_url`。菜单显示集合与15视图可达集合分别验证；帮助复用现有只读手册路由，壳层通过`WorkbenchNavigation.helpUrl`附加`src=当前视图URL`，手册页据此渲染返回链接。计划中心页签条由`WorkbenchNavigation.historyView`判定，在排产历史上下文中隐藏；报表/复盘页签切换（`preferSaved`）整体恢复目标页签自己保存的上下文（范围、主题、分页、选中、滚动），只有首次进入才沿用当前范围与返回来源；两个页签各自保留范围是验收锁定的既有设计。
-- `app/styles/`按令牌、外壳、控件与领域样式显式排序发布。原型导入保留原文快照并直接核对内容，资产索引登记来源／输入／发布路径及字节数。JSX不再通过runtime style块改变层叠顺序。
+- `app/styles/`按令牌、外壳、控件与领域样式显式排序发布（历史归档中的早期原型导入快照机制已随 `prototype/` 退役收口至 `app/styles/` 与 `app/assets/`），资产索引登记发布路径。JSX不再通过runtime style块改变层叠顺序。
 - `WorkbenchGuards`管理按owner登记的未保存内容和命令锁定；`WorkbenchGuardHost`单独负责共享Modal呈现，避免classic-script依赖环。导航、历史前进后退、编辑器关闭与外部离开遵守同一退出决定，拒绝时保留URL/页面/草稿。
-- `WorkbenchListControls`区分页码与游标分页，档位由既有领域API决定；`WorkbenchDetailPanel`统一用户主动打开后的焦点与返回，自动预览不夺走首屏。共享Field负责字段说明与首错聚焦，错误编号保留在可展开的诊断区域。
+- 历史归档：早期 `WorkbenchListControls`（现已退役并合入 `ResourceControls.jsx` / `WorkbenchControls.jsx`）区分页码与游标分页，档位由既有领域API决定；`WorkbenchDetailPanel`统一用户主动打开后的焦点与返回，自动预览不夺走首屏。共享Field负责字段说明与首错聚焦，错误编号保留在可展开的诊断区域。
 - `WorkbenchFormat`区分工厂本地文本和带时区时刻，超大整数字符串单独无损分组；`WorkbenchTerms`统一同义业务术语。格式层不新增领域取值约束，不把未知补零。
 - `WorkbenchDensity`只保存本机显示偏好。计划默认选择不覆盖明确来源，实际甘特显示窗口与服务器数据范围分离；报工继续操作只在原回执确认并取得新写入上下文后启动。
-- 独立工作台截图／几何／交互按opt-in浏览器入口运行；每份证据记录实际源码、构建和实例身份，发生变化时核对实际影响并补相应验证。
+- 历史归档：早期独立工作台截图／几何／交互曾按旧 opt-in Playwright 浏览器入口运行（该通道现已退役；现行日常 UI 契约统一由 `tests/workbench/test_ui_refinement_node_contracts.py` 通过固定版本 `esbuild` + Node `vm.Context` 沙箱执行，现场浏览器检查按任务需要执行）。
 
 前期专项测试及双尺寸双主题浏览器证据继续保留，不能将旧局部通过重记为最终快照通过。2026-09-16接续时G3/G4/G5/G7与G1放弃已闭环，正向试调采用和最新主实例激活继续收口，具体状态见执行盘点。270587be…的355输入hash及导航92/92只属于22:41冻结阶段，后续已有新修复与b71675b…页面回验，不再把旧构建称为当前最终证明。历史5000同资源工序、四个完整候选的正式隔离测量为122.728285375秒，只绑定当时冻结快照，不自动覆盖最终HEAD。
 
-完整门禁的仓库入口仍为`scripts/run_quality_gate.py`，这是工具事实，不是本轮执行授权。2026-09-15用户明确禁止全门禁，本轮不调用该入口任何模式、不运行整仓测试，仅执行相关专项、构建与手动浏览器验证；未提交工作区不声称clean-worktree proof。历史迁移路线的归档、旧UI退役状态见`../roadmap/workbench-prototype-migration/round2-progress-20260910.md`及同目录`legacy-retirement/`；本轮最新覆盖见上述执行盘点。Win7打包、真机与最终发布仍排除。代码归档不是业务数据库备份，代码回退与新数据保全分别核对，不用旧库覆盖新增事实，未应用的决定不作为已实现能力。
+完整门禁的仓库入口仍为`scripts/run_quality_gate.py`，这是工具事实，不是本轮执行授权。以下为 2026-09-15 历史交付记录：当时用户明确禁止全门禁，仅执行相关专项、构建与手动浏览器验证（旧 opt-in 浏览器自动化通道现已退役，现行日常契约见 `tests/workbench/test_ui_refinement_node_contracts.py`）；未提交工作区不声称clean-worktree proof。历史迁移路线的归档、旧UI退役状态见`../roadmap/workbench-prototype-migration/round2-progress-20260910.md`及同目录`legacy-retirement/`；当时覆盖见上述执行盘点。Win7打包、真机与最终发布仍排除。代码归档不是业务数据库备份，代码回退与新数据保全分别核对，不用旧库覆盖新增事实，未应用的决定不作为已实现能力。
 
 ### 2026-09-21 界面全量审查修复
 
-- “管理样例”下线：`SystemSampleControls.jsx` 删除并从 build-order 移出，`SystemLive.jsx` 只读本机数据，`SystemMaintenanceAPI.pageContext` 只接受 `source: "current"`；恢复状态标签以 `SystemRestoreStatus.labels` 为唯一来源，后端 `workbench_system_restore_view.py` 与之逐字对齐并由测试锁住。
+- “管理样例”下线（历史归档）：`SystemSampleControls.jsx` 删除并从早期已退役的 build-order 移出，`SystemLive.jsx` 只读本机数据，`SystemMaintenanceAPI.pageContext` 只接受 `source: "current"`；恢复状态标签以 `SystemRestoreStatus.labels` 为唯一来源，后端 `workbench_system_restore_view.py` 与之逐字对齐并由测试锁住。
 - 共享控件：`ResourceControls.jsx` 的 Modal 在打开时记住启动器按钮，关闭后按“启动器 → 父弹窗启动器 → 最近可聚焦容器（`#wb-view-panel[tabindex=-1]`）”恢复焦点（vm 合同 `tests/workbench/modal_focus_restore_contract.cjs`）；带 tooltip 原因的 Button 改用 `aria-disabled="true"` 保持可聚焦并拦截点击。
 - 壳层：`main.jsx` 最前面加 `.wb-skip-link` 跳到主内容；帮助链接带 `page=<view id>`，`page_manuals_registry.py` 以视图 id 为键；`theme.js`/`WorkbenchDensity.js` 值未变不通知；滚动记忆 200 ms 尾沿节流并在 `pagehide` 一次性写入。
 - 样式 token：主按钮走 `--wb-primary-button-bg/-text/-hover-bg`（深色映射 `--ui-primary-hover` 底 + `--ui-bg` 字）；深色弹窗遮罩靠 `--wb-modal-backdrop-dim`（`backdrop-filter`）；深色表头底色统一 `--ui-surface-muted`；固定操作列阴影 `--wb-scroll-shadow-right/-left`；产能链收起态由 `section.rail[data-collapsed]` 驱动。
@@ -178,7 +179,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - `RunCandidateWorkspace` 的 `analysis` 候选入口挂载 `RunDecisionComparison.Workspace`；首屏一次读取全部候选紧凑总览，按推荐、收益代价、当前选择动作和候选行表组织页面。默认常用指标，完整指标矩阵按需展开；运行搜索覆盖显示一次，算法角色归入选择依据。比较方式可选同次候选或受理时正式计划，采用记录按需展开。
 - `RunDecisionAPI` 统一 envelope 和响应身份核对；指标单位、精度、改善方向和范围从服务目录消费，差值由服务计算。失败、跳过和待料暂缓显示保存原因与三轴覆盖。
 - 所选候选、查看基准与甘特窗口进入现有 `WorkbenchPageContext`；甘特回跳恢复完整比较上下文。显式 URL 支持候选、运行、查看基准及成对时间窗，沿现有导航入口校验。
-- 采用继续接 `renderAdoption` 的原预检/正式事务入口；CSV/XLSX 总览绑定同一比较快照。离线 JavaScript/CSS 由现有 build-order 编译，浅深主题使用工作台 token。
+- 采用继续接 `renderAdoption` 的原预检/正式事务入口；CSV/XLSX 总览绑定同一比较快照。离线 JavaScript/CSS 现统一由固定版本 `esbuild`（`scripts/workbench/build.py` 与 `compile.cjs`；历史归档中的早期 build-order 顺序拼接已退役）静态打包，浅深主题使用工作台 token。
 - 第 0、1 阶段交付与界面证据见 `../features/2026-10-13-decision-comparison-loop/`，后续能力按整体路线图推进。
 
 ### 2026-10-13 交付与工序影响
@@ -205,7 +206,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 准备汇总覆盖整次受理，区分实际新排、普通未排、合法暂缓和保留／执行／完成；切换汇总按共同窗口及资源视角。两页支持设备、各自业务条件、稳定排序和20／50分页，完整汇总和筛选目录保持原范围。
 - 准备工序行可定位所选或候选／正式基准；事件行可定位同侧前序、后序。钻取消费保存的永久工序及真实安排行身份，返回恢复共同模式、窗口、视角、候选／基准和两页各自条件、排序及页码。URL白名单接受两个页签，内部查询沿现有保存上下文。
 - 总览目录为52项，新增准备／加工8项和实际工种切换2项；准备范围变化使用中性差值，算法保存切换保持独立标签。CSV及XLSX同scope输出准备需求和事件双方原始值，页码只控制屏幕；旧候选、值班台和试调需求／切换读取复用共同投影。
-- 第4阶段设计、验证与交接见 `../features/2026-10-13-decision-preparation-events/`。产品静态资产继续由原build-order本地构建，目标Chrome109。
+- 第4阶段设计、验证与交接见 `../features/2026-10-13-decision-preparation-events/`。产品静态资产现由固定版本 `esbuild` 静态打包（早期 build-order 已退役），目标Chrome109。
 
 ### 2026-10-13 推荐、当前取舍与采用预检
 
@@ -223,7 +224,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - `RunDecisionProcessChart` 用本地SVG显示累计求解耗时与主业务目标、单位；同来源、完成性、目标范围及真实评价集合的已核验相邻点才能连线。搜索阶段变化保留连续的同集合过程，未排齐批次成员变化则断线；旧记录已保存`all_batches`且未排齐批次数为0时，共同投影确定空排除集合并保留连续性；部分旧记录缺评价成员时按离散点显示并说明缺项。无严格改善时固定展示全过程，改善聚焦按钮显示“无改善记录”并禁用。缺耗时点保留键盘详情；全部缺耗时的旧档明确使用已保存事件顺序。图形与分页数值表消费相同保存点，完整score仅用于详情。
 - 记录表、圆点详情与键盘播报共用评价范围名称，完整性标注评价内应排／完整及评价外结果；完整批次子集的已知0直接显示，未知目标保持缺项。候选元数据中的最终值标为算法保存统计。
 - 过程查询叶保存独立成员、attempts/progress、排序、20/50页容量、页码及snapshot。现有 `APSResourceSession` 处理刷新、取消与重试，原 `return_decision_context` 恢复第三查看候选、基准、窗口和过程叶。代表尝试只读取已保存结果，最终候选可进入原甘特。
-- CSV分行及XLSX候选计算／进步事件／搜索阶段／代表尝试与屏幕共用读取协议，保留原数、单位、null和覆盖。原离线build-order与Chrome109目标编译两个过程组件，样式限定过程区。材料见 `../features/2026-10-13-decision-optimization-process/`。
+- CSV分行及XLSX候选计算／进步事件／搜索阶段／代表尝试与屏幕共用读取协议，保留原数、单位、null和覆盖。离线构建（现已由固定版本 `esbuild` 取代早期退役的 build-order）按 Chrome109 目标编译两个过程组件，样式限定过程区。材料见 `../features/2026-10-13-decision-optimization-process/`。
 
 ### 2026-10-13 计划相关页面的共同信息层级
 
@@ -255,7 +256,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - `DecisionHistoryChart.Chart` 与历史数值表读取同一当前页，图按发生时间排列，支持点选、方向键与Home／End。曲线消费每项指标的已知状态、单位、版本、范围和服务给出的连接标记；缺数值或时间保留可选择的条目，原数和具体原因进入详情。列表20／50分页与显示图页保持一致。
 - `DecisionHistoryDetails.Details` 一处呈现四类发生身份、保存结果、具体来源、优化目标、生产条件八类逐字段行和算法实验配置。逐字段保留保存状态、原值和出处；同条件结论及逐指标成立依据由共同服务提供。资源详情分别列所选和基准的实际窗口、永久资源集合、占用分子与可排容量分母；缺省各来源起点固定7天与共同绝对窗口独立于时间线日期。
 - `DecisionHistoryWorkspace.open` 将同一`return_decision_history_context`带入原运行、原候选分析、原试调或正式甘特。`RunDecisionComparison`与`RunCandidateWorkspace`沿现有甘特返回链透传，`SchedulingWorkspace.HistoryReturn`与`TrialWorkspace`提供“返回历史走势”；`navigation_boot._decision_history_state`按共同query校验URL内选中、基准与图指标。返回恢复原时间线、模式、基准、指标、日期、资源窗、排序筛选、分页、选择及快照。
-- 历史导出弹窗选择条目、生产条件、算法配置或XLSX全部分区。条目文件覆盖筛选全集，条件与配置对应选中条目及明确基准；页码只控制屏幕，下载仍走既有取消、错误和原生文件通道。三个历史组件及`36-decision-history.css`登记在离线build-order中；完整历史说明同步`page_manuals_scheduler_outputs.py`与系统手册第6.3节。共同帮助按历史主题分别打开analysis与run章节，并附返回视图；缓存模块由宿主正常加载。
+- 历史导出弹窗选择条目、生产条件、算法配置或XLSX全部分区。条目文件覆盖筛选全集，条件与配置对应选中条目及明确基准；页码只控制屏幕，下载仍走既有取消、错误和原生文件通道。三个历史组件及`36-decision-history.css`纳入离线构建（早期 build-order 已退役，现由 `esbuild` 模块图与 `app/styles/index.css` 显式登记）；完整历史说明同步`page_manuals_scheduler_outputs.py`与系统手册第6.3节。共同帮助按历史主题分别打开analysis与run章节，并附返回视图；缓存模块由宿主正常加载。
 - 零匹配沿共同空态提供清除日期与状态筛选入口，保留时间线、指标、基准和资源窗；越页恢复第1页继续原快照。三组页签使用系统主题选中色与键盘焦点。条目、基准选择、图和详情统一消费目录`label`，运行序号从完整未筛选目录确定，发生时间保留独立字段。
 - 代码入口：`frontend/workbench/app/RunHistoryWorkspace.jsx:TopicTabs`、`DecisionHistoryWorkspace.jsx:Session/Export`、`DecisionHistoryChart.jsx:Chart`、`DecisionHistoryDetails.jsx:Details`、`SchedulingWorkspace.jsx:HistoryReturn`、`web/routes/workbench/navigation_boot.py:_decision_history_state`。设计依据：[历史走势与同条件对照](../features/2026-10-14-decision-history-trends/decision-history-trends-design.md)；本节更新实现职责，阶段验收材料保持独立。
 
@@ -266,5 +267,5 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 资源首开或父scope刷新调用一次`decision/resource-workspace`，同一快照/source返回完整summary与resources；资源错误保留已成功summary并沿原资源错误/重试入口表达。无可查看完成候选时resource_result为null。普通summary/resources/resource-days接口及各自token保持，资源分页/筛选/刷新只读资源；切页签或隐藏重开复用现有成功状态。
 - 服务保留201等实际资源集合、完整候选范围和全窗统计，显示页仅决定完整cell/钻取投影；请求内日历、measurement和前缀统计共用。当前可见20×7与完整100日统计分别负责显示和计算；关闭的详细汇总保持保存内容，首屏以真实可见容量、占用、资源总数和热图判定。
 - 过程页与导出沿保存字段显示“跳过执行次数”和“不同计算请求”；同一排法请求可多次尝试，跳过按次数记录。总运行耗时与首次发现时刻分开，保留原64/40等实际存档值和旧缺项。操作帮助同步同一口径。
-- 当前共同runtime和真实阶段会话承担执行，固定图档、旧选择/health重算与旧独立缓存退出结果生成；内部图profile、SGS评分交接及decode checkpoint证书保持。配置退役四字段保留历史值，新页面只提交有效字段，旧客户端明确刷新。离线资产继续由原build-order构建，目标Chrome109。
+- 当前共同runtime和真实阶段会话承担执行，固定图档、旧选择/health重算与旧独立缓存退出结果生成；内部图profile、SGS评分交接及decode checkpoint证书保持。配置退役四字段保留历史值，新页面只提交有效字段，旧客户端明确刷新。离线资产现由固定版本 `esbuild` 静态打包（早期 build-order 已退役），目标Chrome109。
 - 实施与主验收分别见[统一优化feature](../features/2026-10-13-unified-scheduling-optimization/unified-scheduling-optimization-design.md)和`../../evidence/unified-scheduling-optimization/2026-10-14/`。U5质量/性能绑定其原冻结状态，U6整合与最终实页结果另存；Windows延期。

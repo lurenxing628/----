@@ -1,0 +1,101 @@
+---
+description: APS 项目架构不变量（分层边界、禁止模式、Schema 变更协议）
+alwaysApply: false
+---
+
+# 架构不变量（绝对不可违反）
+
+本页用于产品分层、接口和数据结构变更。授权和完成规则遵守根 AGENTS.md；只编辑技能说明时无需加载产品实现模板。
+
+## 分层调用方向
+
+```
+app.py (create_app，无 import 副作用) / web/bootstrap/
+  ↓
+web/routes/workbench/（可调用 web/viewmodels/page_manuals_registry.py）
+  ↓
+core/services/workbench/<domain>/（轻量修订指纹核验、PreparedBusinessInput、事务裁决与命令回执）
+  ├─→ core/services/workbench/facts/ + 各子域显式 *FactScope（按用途加载完整关系闭包）
+  ├─→ core/services/scheduler/（SolverInput/SolverResources、CalendarEngine、CalendarAdmin）
+  │     ↓
+  │   core/algorithms/ → core/algorithm_runtime/ → core/algorithm_contracts/
+  └─→ data/repositories/ → SQLite DB（CURRENT_SCHEMA_VERSION = 45）
+        ↑
+      core/infrastructure/（连接、事务、Schema 契约、备份与安全文件边界）
+```
+
+- **宿主单入口**：`app.py`（导出无模块导入副作用的 `create_app()` 与 `main()`）是唯一生产与开发宿主入口；旧 `app_new_ui.py`、`start_new_ui.bat` 与 `ui_mode` 分支已退役。
+- **Route 层**（`web/routes/workbench/*.py`）只能调用 Service 层与 `web/api_responses.py` 响应信封，**禁止**直接导入 Repository 或执行 SQL。
+- **ViewModel 层**（`web/viewmodels/`）当前仅保留 `page_manuals_registry.py` 纯说明书视图映射；**禁止**导入 `flask`、`core.services`、`data.repositories`、`web.routes`。
+- **Service 层**（`core/services/workbench/` 与 `core/services/scheduler/` 等）：
+  - 工作台业务簇单向依赖（其间 `workbench/trial -> workbench/run` 单向共享 `candidate_adoption_constraints.py`、`schedule_occupancy_constraints.py` 与 `schedule_row_constraints.py` 公开原语，正式计划占用约束在 `plan/occupancy_constraints.py`，分件试调范围位于 `trial/piece_scope.py`），**禁止**包间循环依赖，**禁止**导入 `flask.request`、`flask.session` 或任何 Web 层对象。
+  - 预检与受理在 `core/services/workbench/run/input.py` 共享 `PreparedBusinessInput`；排产求解编排层 `core/services/scheduler/` 通过 `SolverInput` / `SolverResources` 消费单一无连接 `CalendarEngine(CalendarInputs)`，管理端日历规范化走 `CalendarAdmin`（已退役的 `CalendarService`、`ScheduleService`、`BatchService`、`GanttService`、`ExternalGroupService`、`schedule_orchestrator.py`、`schedule_execution_persistence_guard.py` 均不再保留）。
+- **Repository 层**（`data/repositories/*.py`）只负责参数化 SQL 查询与持久化（可继承 `BaseRepository` 或直接持有连接，按真实契约返回存储行映射字典/元组或具名模型，不强制统一继承 `BaseRepository` 或套用 `from_row`），**禁止**导入/抛出领域拒绝策略（`WorkbenchCommandRejected`、`reject` 等）或把函数形参当表名拼接 SQL。
+- **前端模块层**（`frontend/workbench/app/`）：100% 显式 ESM `import/export`，样式统一收口于 `frontend/workbench/app/styles/` 并按 `styles/index.css` 显式顺序登记，静态字体与图标位于 `frontend/workbench/app/assets/`，由 `scripts/workbench/build.py`（配合 `compile.cjs`）经宿主固定版本 `esbuild` 离线打包至 `static/workbench/`（含 `static/workbench/app/assets/`；已退役的 `frontend/workbench/prototype/` 与 `static/workbench/prototype/` 已清理）；**禁止**新增业务 `window.*` 全局导出，**禁止**在前端 `Contract` 中对本机受控 DTO 重复手写分页算术、字段表白名单或 SQL 排序重验。
+- **Template 层**（`templates/`）仅承载工作台壳页、说明书与错误/恢复页渲染，**禁止**在模板中编写业务逻辑。
+
+## 文件职责边界
+
+- **Route 文件**（`web/routes/workbench/*.py`）：HTTP 准入校验、读写上下文绑定（`bind_read_snapshot` / `issue_write_context`）→ 调用 Service → 构造统一 JSON/文件响应。不做业务判断。
+- **Service 与工作台事实文件**（`core/services/**/*.py`）：业务规则裁决、轻量修订指纹核验（`snapshot_token` / `WorkbenchSourceRevisions`）、按用途经 `core/services/workbench/facts/` 与各子域显式事实作用域（`batch/scope.py:BatchFactScope`、`process/scope.py:ProcessFactScope`、`resource/scope.py:ResourceFactScope`、`execution/field_workspace_scope.py`、`execution/actual_gantt_scope.py`、`trial/piece_scope.py`）获取完整关系闭包并单向传参、事务与命令回执协调（`TransactionManager` / `WorkbenchCommandService`）。
+- **Repository 文件**（`data/repositories/*.py`）：可直接持有连接或继承 `BaseRepository`，执行参数化 SQL 并返回存储行或具名模型，不做业务裁决，不强制经 `data/repositories/__init__.py` 包根重导出或强加无用的 `from_row` 转换壳。
+- **Model 与输入合同文件**（`core/models/*.py`）：区分存储行映射/跨领域受控数据结构（`@dataclass` / `Protocol`，仅真实存储边界行转换使用 `from_row`）与外部 HTTP/文件进入领域用例的纯输入准入合同（在入口一次性完成类型、范围与字段准入，不伪装为数据库行映射模型）；不访问数据库，不包含事务协调。
+
+## 分层禁止模式
+
+- Route 与 Service 层（`core/infrastructure/` 除外）禁止出现 `conn.execute`、`fetchone`、`fetchall`、`sqlite3.connect` 或裸 SQL 字面量（由 `tools/scan_sql_boundary.py` 阻断）。
+- Service 层禁止出现 `from flask import request`、`request.form`、`request.args`。
+- 禁止跨模块导入单下划线私有符号（由 `tools/scan_private_imports.py` 阻断）；拆模块共享原语必须改为公开命名。
+- 禁止往实例上动态塞 `self._snapshot` 等临时私有属性偷渡状态（`try/finally` 置空）、用 `dict` 子类夹带仓储偷跑 SQL，或对内部受控结构写 `getattr`/`hasattr` 反射探测与 `.get()` 静默兜底（由 `tools/scan_over_defense.py` 阻断）。
+- 禁止新增全局可变状态（模块级可变 `dict`/`list`，受控只读缓存与线程锁除外；全局缓存公开出口须做唯一一次隔离拷贝）。
+
+> 文件大小、函数复杂度、静默吞异常与 6 个边界/孤岛扫描器规则见 `code-quality-gate.mdc`。
+
+## 高内聚低耦合原则
+
+- 每个类/模块只做一件事；Service 之间可单向调用但禁止循环依赖（由 `tools/scan_import_cycles.py` 阻断）。
+- 数据在层间传递使用明确类型（不可变 dataclass、显式事实作用域、具名参数），禁止传整个 `request` 或多元素位置元组。
+- 配置值通过 `ScheduleConfig`（20 项运行配置快照）/ `SystemConfig` 管理，不硬编码。
+- 发现多重职责或无关模块被牵连时检查依赖；按真实职责决定拆分，不仅依据方法数量。
+
+## 新增模块检查单
+
+新增任何 Route / Service / Repository / 前端模块时必须：
+1. 遵循已有职责子包与命名模式（如 `core/services/workbench/<domain>/`、`xxx_repo.py`、`web/routes/workbench/`、`frontend/workbench/app/`）。
+2. Route 通过 `web/routes/workbench/registration.py` 及 `app.py:create_app()` 应用工厂注册；前端样式按级联顺序显式登记到 `frontend/workbench/app/styles/index.css`。
+3. Repository 只封装参数化 SQL 访问（继承 `BaseRepository` 或直接持有连接），按模块显式导入，不强制在 `data/repositories/__init__.py` 中重导出。
+4. 新增或调整任何非 `/static` 的 `GET/POST` 路由，必须同步登记到 `开发文档/系统速查表.md`（由 `tests/gate_meta/check_quickref_vs_routes.py` 校验）。
+
+## Schema 变更协议
+
+任何涉及数据库表、索引、触发器或 Schema 契约的改动，**必须同时完成**：
+1. 在 `core/infrastructure/` 下的声明式 Schema 模块（`core_schema.py` 及各 `*_schema.py`）中维护 DDL 定义，并在 `migration_state.py` / `schema_structure.py` 中同步契约校验与版本演进（旧 `migrations/` 目录已退役）。
+2. 运行 `python -m tools.generate_schema_sql --write` 导出更新 `schema.sql`，并通过 `--check` 确认一致。
+3. 更新 `开发文档/开发文档.md` 中的数据模型章节。
+4. 更新 `开发文档/系统速查表.md` 中的 DB 字段字典。
+5. 若涉及枚举值变更，更新速查表中的枚举清单，并全局搜索所有引用点确认兼容。
+
+## 安全底线
+
+- **SQL 必须参数化**：所有 SQL 查询必须使用 `?` 占位符 + params 元组参数化执行（通过 `BaseRepository` 或受控连接执行）。禁止用 f-string、`format()`、`%` 或字符串拼接动态输入构造 SQL。
+- **XSS 防护**：依赖 Jinja2 autoescape（Flask 默认开启）。模板中如需渲染原始 HTML，必须使用 `Markup()` 显式标记，并确认内容来源安全。禁止在模板中使用 `| safe` 过滤器处理用户输入。
+- **不暴露内部错误**：生产环境禁止返回 Python traceback 给用户。所有异常通过 `AppError` 体系转换为用户可理解的中文提示，技术细节只记录到日志。
+- **不硬编码敏感信息**：数据库路径、监听地址与端口号、运行状态目录及排产/系统运行参数等通过环境变量、`web/bootstrap/app_config.py` / `startup_config.py` / `launcher_paths.py` 及 `ScheduleConfig` / `SystemConfig` 管理（已退役的 `config.py` 不再存在），不写死在业务代码中。
+
+## 接口设计规范
+
+新增/修改 Service、Repository、Model、Route 文件时，必须遵循已有接口约定。
+
+**完整规范（含代码模板和示例）见**：`.limcode/rules/interface-patterns.mdc`（按需读取；是否自动注入由当前宿主决定）。
+
+## DRY 原则
+
+语义和变化原因相同的重复逻辑可在所属层抽取；仅字面相似时不强行合并。保持分层调用方向，避免通过公共工具绕开业务边界。
+
+## 枚举与状态常量
+
+状态值必须在 `core/models/enums.py` 定义为 `str, Enum`，业务代码引用枚举成员（`BatchStatus.PENDING`），禁止裸字符串。新增枚举：`enums.py` → 速查表 → 业务代码。
+
+## 关键技术选型（变更前必须创建 ADR）
+
+Python 3.8 | Flask 2.3.3 | SQLite（Schema v45） | openpyxl 3.0.10（pandas 可通过 TabularBackend 可选插件引入） | React 18.3.1（宿主 esbuild 离线编译 ESM，目标 Chrome 109） | PyInstaller 4.10

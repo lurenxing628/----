@@ -1,0 +1,12 @@
+---
+description: 明确提交任务的范围、历史与编码检查
+alwaysApply: false
+---
+
+# Git 提交
+
+授权遵守根 AGENTS.md。提交前核对 status、实际暂存diff及最近提交；仅纳入本次明确文件，不夹带别人的staged/untracked内容。禁止把真实commit当命令测试手段。
+
+使用可读中文提交说明，提交后核对内容与实际提交范围。历史重写需要明确授权并先留恢复点；普通提交不推定推送。
+
+命令、乱码或PowerShell排障按需读 `.limcode/skills/git-commit-safe-workflow/git-safety.md`。不在macOS加载无关PowerShell步骤，不假设worktree的.git一定是目录。

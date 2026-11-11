@@ -79,14 +79,42 @@ tmp_round*_check/
 
 # Local editor/agent artifacts
 .cursor/
-# CodeStable 是项目事实源，路线图 / 需求 / 架构 / 验收记录需要纳入版本控制。
-# 只忽略其中的本地缓存、临时输出和重型运行产物。
+# CodeStable 是项目事实源：保留权威常驻目录与当前有效路线图/体检基线入口，忽略本机历史审计/任务草稿与运行产物。
+# 新增路线图或明确要求入库的归档记录，按需增补下方白名单或显式 git add -f。
+.codestable/*
+!.codestable/attention.md
+!.codestable/architecture/
+!.codestable/architecture/**
+!.codestable/reference/
+!.codestable/reference/**
+.codestable/reference/redundancy-hook-*.json
+!.codestable/requirements/
+!.codestable/requirements/**
+!.codestable/tools/
+!.codestable/tools/**
+.codestable/tools/jev_client.py
+!.codestable/checkup/
+.codestable/checkup/*
+!.codestable/checkup/README.md
+!.codestable/checkup/baseline.json
+!.codestable/checkup/*_baseline.json
+!.codestable/checkup/scripts/
+!.codestable/checkup/scripts/**
+!.codestable/roadmap/
+.codestable/roadmap/*
+!.codestable/roadmap/aps-architecture-consolidation/
+!.codestable/roadmap/aps-architecture-consolidation/**
+!.codestable/roadmap/foundation-boundary-governance/
+.codestable/roadmap/foundation-boundary-governance/*
+!.codestable/roadmap/foundation-boundary-governance/*.md
+!.codestable/roadmap/foundation-boundary-governance/*.yaml
 .codestable/**/.cache/
 .codestable/**/__pycache__/
 .codestable/**/*.pyc
 .codestable/**/*.pyo
 .codestable/**/.pytest_cache/
 .codestable/**/.ruff_cache/
+.codestable/**/.hypothesis/
 .codestable/**/tmp/
 .codestable/**/temp/
 .codestable/**/ignored/

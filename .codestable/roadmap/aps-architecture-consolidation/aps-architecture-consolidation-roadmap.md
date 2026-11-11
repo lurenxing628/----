@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: aps-architecture-consolidation
 status: active
 created: 2026-11-09
-last_reviewed: 2026-11-09
+last_reviewed: 2026-11-12
 summary: 保留离线模块化单体，穿透收敛排产/试调/采用、工作台事实作用域、前端显式模块与受控DTO边界、宿主单入口及门禁单一描述，零存储格式变更一次性切换交付
 tags: [architecture, maintainability, scheduler, workbench, offline, one-shot-migration]
 related_requirements: [workbench-production-workflows, candidate-comparison-business-view]
@@ -24,7 +24,7 @@ related_architecture: [ARCHITECTURE, service-scheduler, workbench-shell, ui-gant
 
 **用户已明确：无需照顾过去的兼容问题，迁移一次性全部完成。** 所有生产调用者、测试、构建、规则与文档在一个交付单元内完成切换；不交付旧新双轨、兼容重导出空壳、旧协议适配或半迁移状态。经源码与 Schema（`CURRENT_SCHEMA_VERSION=45`，`migration_state.py:55`）穿透核实，**本次架构重构对持久存储格式保持 100% 零变更**，无需离线数据库格式转换器。文中的工作包是依赖顺序与并行开发分工，不是分批上线。
 
-本文状态为 `active`：总体路线图与四份专题设计已定稿冻结，作为后续實施的唯一架构依据；代码实施条目仍保持 `planned`，待实施授权后推进。
+本文状态为 `active`：总体路线图与四份专题设计已定稿冻结，作为实施的唯一架构依据；当前 `A0`（`ownership-contracts`）、`A1`（`scheduler-use-case`）、`A2`（`data-command-boundaries`）、`A3`（`frontend-modules`）与 `A4`（`tooling-definition`）已完成（`completed`），最终合流工作包 `A5`（`integrated-cutover`）保持 `in-progress`（macOS Python 3.8.10 下 `scripts/run_daily_quality_gate.py` 通过 `1095 passed, 20 skipped` 且宿主工具测试 `tools/host_tests` 全部通过；`scripts/run_quality_gate.py --allow-dirty-worktree --long-gate-cache` 第 1～14 步全部通过——全集收集 `1404` 项：`1368 passed`、`36 skipped`、`0 failed`、`0 active xfail`，退役历史债务 `5` 项，其中 `36` 项平台/环境跳过含必跑回归中的 `20` 个 Windows/PowerShell 节点即 `test_launcher_startup.py` `15` 个与 `test_runtime_server_binding.py` `5` 个，另有非必跑 `test_sample_switch.py` `15` 个 `pwsh` 节点与 `test_portable_delivery.py` `1` 个 Windows 7-Zip 节点，故第 15 步 `required_regressions` 在 macOS 上按设计因该 `20` 个必跑跳过节点返回 `1`；隔离临时库现场浏览器验收通过——通过 `aps-start-and-rerun-route` `rerun --db-path /private/tmp/.../demo.db` 在 `127.0.0.1:58766` 完成预检、排产与正式采用 `v1` 19 道任务，实测甘特图、正式 `Table` 原生 `<caption>`/`<th scope="col">`/列宽拖拽 `+30.12px`、`/workbench/trial` 及 100% 本地静态资源，`0` 控制台/页面/网络错误；剩余待办仅限 Win7 x64 目标机实跑 Windows 专属测试节点与 Chrome 109 验收，以及正式 git commit 后执行 `--require-clean-worktree --long-gate-cache --no-resume` 生成最终 clean-worktree proof）。
 
 | 阅读对象 | 文档 | 内容 |
 |---|---|---|
@@ -33,7 +33,7 @@ related_architecture: [ARCHITECTURE, service-scheduler, workbench-shell, ui-gant
 | 业务和运行时实施者 | [数据与运行时专题](data-and-runtime-design.md) | 轻量指纹与按需事实闭包、7 条命令回执统一、宿主单入口与零存储格式变更切换 |
 | 前端实施者 | [前端专题](frontend-design.md) | 显式 ESM 模块、`esbuild` + `vm.Context` 测试沙箱、拔除 `prototype/`、剥离受控 DTO 重复重验与展开归位 |
 | 工具维护者 | [治理工具专题](tooling-design.md) | `GateCheckSpec` 单一定义、删 0 调用孤岛与重复 `pyright`、退役临时扫描器与规则同步 |
-| 调度实施进度 | [工作包清单](aps-architecture-consolidation-items.yaml) | 6 个工作包全部为 `planned`，含修正后依赖顺序与退出条件 |
+| 调度实施进度 | [工作包清单](aps-architecture-consolidation-items.yaml) | `A0`、`A1`、`A2`、`A3`、`A4` 已完成（`completed`），`A5` 保持 `in-progress`（macOS Python 3.8.10 下 `scripts/run_daily_quality_gate.py` `1095 passed, 20 skipped` 与 `tools/host_tests` 全过；`scripts/run_quality_gate.py --allow-dirty-worktree --long-gate-cache` 第 1～14 步全过，全集 `1404` 项为 `1368 passed`、`36 skipped`、`0 failed`、`0 active xfail`、退役历史债务 `5` 项，第 15 步 `required_regressions` 因必跑回归中 `20` 个 Windows/PowerShell 跳过节点——`test_launcher_startup.py` `15` 个与 `test_runtime_server_binding.py` `5` 个、另含非必跑 `test_sample_switch.py` `15` 个 `pwsh` 与 `test_portable_delivery.py` `1` 个 Windows 7-Zip 节点共 `36` 项跳过——在 macOS 按设计返回 `1`；`aps-start-and-rerun-route` 隔离临时库 `127.0.0.1:58766` 预检/排产/正式采用 `v1` 19 道任务与现场浏览器验收 `0` 错误通过；剩余待办仅限 Win7 x64 目标机实跑 Windows 专属测试节点与 Chrome 109 验收，及正式 git commit 后执行 `--require-clean-worktree --long-gate-cache --no-resume` 生成最终 clean-worktree proof），含修正后依赖顺序与退出条件 |
 
 总文决定范围、依赖和切换规则；专题拥有该领域的具体接口与逐文件迁移表。实施中调整专题细节时，必须同步其全部生产与测试消费者，严禁另建同名第二版本或兼容垫片绕开。
 
@@ -44,7 +44,7 @@ related_architecture: [ARCHITECTURE, service-scheduler, workbench-shell, ui-gant
 - 核对日期：2026-11-09；Git HEAD：`7ff4fc47f`，当前工作树含 500+ 项既有改动，**本设计依据当前工作树源码核实，实施前必须先对当前工作树建立可恢复 Git 快照**。
 - 已完成全仓相关源码、Schema 定义、测试夹具与治理脚本的穿透核对；本轮定稿只修改路线图文档，未运行排产或改动代码。
 - 既有测试用于锁定验收入口与迁移范围；产品函数修改前按项目约定使用 `python3 -m tools.symbol_locator` 核查全部引用。
-- 规划文档位于 `.codestable/roadmap/`；该目录被本机 Git exclude 规则忽略，交接或提交时须按授权显式处理。
+- 规划文档位于 `.codestable/roadmap/aps-architecture-consolidation/`；`.git/info/exclude` 已收窄放行受控治理路径（含 `.codestable/roadmap/aps-architecture-consolidation/`、`.codestable/architecture/`、`.codestable/checkup/`、`.limcode/{rules,skills}/`），仅忽略运行期草稿与大体积历史证据。
 
 ### 2.2 支撑设计的当前事实
 
@@ -146,7 +146,7 @@ core/
 data/repositories/              SQL 访问、原始记录与明确批量查询
 frontend/workbench/app/
   shell/ shared/                应用外壳、唯一 vendor 边界、正式基础组件（含完整 Table）及请求/命令会话
-  domains/                      run/trial/plan/field 等 ESM 页面、Model（含甘特展开）与精简 Contract/API
+  *.{js,jsx}                    run/trial/plan/field 等领域 ESM 页面、Model（含甘特展开）与精简 Contract/API
   styles/                       样式入口、tokens、控件与领域样式
 scripts/workbench/              固定版本 esbuild 构建入口、Node vm.Context 测试打包辅助与离线资产发布
 tools/                          quality_gate_shared.py（含 GateCheckSpec）、执行器、证据缓存与 repo_identity
@@ -236,7 +236,7 @@ tests/                          按业务责任和真实接口验证（彻底移
    - 全部生产前端模块改为显式 `import/export`，彻底删除业务 `window.*` 全局导出与 `build.py` / `compile.cjs` 人工脚本顺序表。
    - 宿主使用固定版本 `esbuild` 同时服务生产 IIFE 离线打包与 Node `vm.Context` 测试沙箱打包（支持按测试注入 React/模块替身），目标机只消费编译产物。
 2. **彻底拔除 `prototype/` 生产依赖并补齐正式 `Table`**：
-   - 将生产代码引用 `prototype/components/data/Table.jsx` 等路径清零；正式 `app/shared/ui/Table.jsx` 完整保留列宽拖拽交互，并原生渲染无障碍 `caption` 与表头 `scope`，从而彻底删除 `ReportEvidence.jsx:45` 挂载后用 `useLayoutEffect` 遍历 DOM 补属性的补丁。
+   - `frontend/workbench/prototype/`、`static/workbench/prototype/` 与 `scripts/workbench/import_prototype.py` 已 100% 物理清退归零（存活样式/字体/图标迁入 `frontend/workbench/app/{styles,assets}/`）；正式 `app/shared/ui/Table.jsx` 完整保留列宽拖拽交互，并原生渲染无障碍 `caption` 与表头 `scope`，从而彻底删除 `ReportEvidence.jsx:45` 挂载后用 `useLayoutEffect` 遍历 DOM 补属性的补丁。
 3. **剥离对本机受控 DTO 的数千行重复自检与职责错位**：
    - 从 25 个 `Contract/API` 模块中剥离对本机 Python 后端受控 DTO 的 `Reflect.ownKeys` 键数白名单、分页公式重算（`totalPages` 等）、主线程 2 万行全量 diff 重验与 SQL 排序顺序重验。
    - 将 `PlanContract.js:209` 在校验器内混做的甘特图紧凑引用展开归位到 `PlanGanttModel`。
@@ -345,7 +345,7 @@ tests/                          按业务责任和真实接口验证（彻底移
 | 预检/受理重复准备、九元元组交接、`preflight_result.py:76` 原地 `pop` 删字段 | 统一为 `PreparedBusinessInput`，公开投影与内部评估行源头分离，受理仅增量补齐未选工序投影 |
 | 候选发布、普通/分件采用、试调保存/采用各写一套验证，试调采用同事务双跑验证器 | 收口为单一安排约束验证函数与结果，退役 `schedule_execution_persistence_guard.py`、`schedule_orchestrator.py` 及两处 8 行采用持久化转发壳 |
 | 业务域 `self._snapshot` 临时属性偷渡、`_RawProcessFacts(dict)` 偷跑 SQL、`batch` 白取全库快照 | 统一为“轻量指纹 → 按用途完整关系闭包 → 显式事实作用域传参”，临时属性与字典伪仓储清零 |
-| 前端 `window.*` 导出、反向依赖 `prototype/`、25 个 `Contract/API` 数千行重复算术/排序重验 | 100% ESM + `esbuild`，`prototype/` 生产引用清零，正式 `Table` 原生支持拖拽与无障碍属性，受控 DTO 重复自检剥离且甘特展开归位 `PlanGanttModel` |
+| 前端 `window.*` 导出、反向依赖 `prototype/`、25 个 `Contract/API` 数千行重复算术/排序重验 | 100% ESM + `esbuild`，`frontend/workbench/prototype/`、`static/workbench/prototype/` 与 `scripts/workbench/import_prototype.py` 已 100% 物理清退归零（存活样式/字体/图标迁入 `frontend/workbench/app/{styles,assets}/`），正式 `Table` 原生支持拖拽与无障碍属性，受控 DTO 重复自检剥离且甘特展开归位 `PlanGanttModel` |
 | `app_new_ui.py` / `ui_mode` 双入口分裂，`app.py:52` import 触发重副作用 | 唯一生产入口 `app.py`，`import app` 零副作用，`ui_mode` 全面退役 |
 | 门禁靠字符串分类、`quality_gate_shared.py:1312` 0 调用孤岛反向导入、单步双跑 `pyright`、硬编码 `d4589d77` | 单一 `GateCheckSpec`，0 调用孤岛与第二次 `pyright` 删除，临时扫描器退役并由 `test_registry` 接管完整生产文件集 |
 
@@ -379,4 +379,4 @@ tests/                          按业务责任和真实接口验证（彻底移
 
 ## 13. 文档定稿状态
 
-本路线图及四份专题（[调度专题](scheduler-design.md)、[数据与运行时专题](data-and-runtime-design.md)、[前端专题](frontend-design.md)、[治理工具专题](tooling-design.md)）、[工作包清单](aps-architecture-consolidation-items.yaml)已完成全仓源码穿透核查与双模型多轮定稿收敛。路线图状态已更新为 `active`；6 个实施工作包保持 `planned`，依赖顺序已修正为 `A0 -> {A1, A3, A4} -> A2 (依赖 A0, A1, A3) -> A5`，并明确了 100% 零持久存储格式变更裁决。
+本路线图及四份专题（[调度专题](scheduler-design.md)、[数据与运行时专题](data-and-runtime-design.md)、[前端专题](frontend-design.md)、[治理工具专题](tooling-design.md)）、[工作包清单](aps-architecture-consolidation-items.yaml)已完成全仓源码穿透核查与双模型多轮定稿收敛。路线图状态已更新为 `active`；当前 `A0`、`A1`、`A2`、`A3`、`A4` 已完成（`completed`），`A5` 保持 `in-progress`（macOS Python 3.8.10 下 `scripts/run_daily_quality_gate.py` 通过 `1095 passed, 20 skipped` 且宿主工具测试 `tools/host_tests` 全部通过；`scripts/run_quality_gate.py --allow-dirty-worktree --long-gate-cache` 第 1～14 步全部通过——全集收集 `1404` 项：`1368 passed`、`36 skipped`、`0 failed`、`0 active xfail`，退役历史债务 `5` 项，其中 `36` 项平台/环境跳过含必跑回归中的 `20` 个 Windows/PowerShell 节点即 `test_launcher_startup.py` `15` 个与 `test_runtime_server_binding.py` `5` 个，另有非必跑 `test_sample_switch.py` `15` 个 `pwsh` 节点与 `test_portable_delivery.py` `1` 个 Windows 7-Zip 节点，故第 15 步 `required_regressions` 在 macOS 上按设计因该 `20` 个必跑跳过节点返回 `1`；隔离临时库现场浏览器验收通过——通过 `aps-start-and-rerun-route` `rerun --db-path /private/tmp/.../demo.db` 在 `127.0.0.1:58766` 完成预检、排产与正式采用 `v1` 19 道任务，实测甘特图、正式 `Table` 原生 `<caption>`/`<th scope="col">`/列宽拖拽 `+30.12px`、`/workbench/trial` 及 100% 本地静态资源，`0` 控制台/页面/网络错误；剩余待办仅限 Win7 x64 目标机实跑 Windows 专属测试节点与 Chrome 109 验收，以及正式 git commit 后执行 `--require-clean-worktree --long-gate-cache --no-resume` 生成最终 clean-worktree proof），依赖顺序已修正为 `A0 -> {A1, A3, A4} -> A2 (依赖 A0, A1, A3) -> A5`，并明确了 100% 零持久存储格式变更裁决。

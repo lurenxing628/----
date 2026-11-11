@@ -1,0 +1,129 @@
+{
+  // 将本片段合并到工作区 `.vscode/settings.json`，或写入全局 VS Code 设置里的
+  // `limcode.toolsConfig.subagents`。
+  //
+  // 重要说明：
+  // 1. 每个原生子代理都必须绑定真实 `channel.channelId`
+  // 2. 模板默认 `enabled: false`，请在填好渠道后再启用
+  // 3. `.limcode/agents/*.md` 是更完整的角色正文源文件；这里给的是可直接落到 LimCode 设置里的精简版
+  "limcode.toolsConfig": {
+    "subagents": {
+      // 建议先保持 1，避免同一分支上的多个实现型子代理并发写文件。
+      "maxConcurrentAgents": 1,
+      "agents": [
+        {
+          // fuller source: .limcode/agents/plan-implementer.md
+          "type": "aps-plan-implementer",
+          "name": "APS 实施子代理",
+          "description": "按单任务边界做最小实现、验证与自查。",
+          "systemPrompt": "遵守当前项目 AGENTS.md，按需读取 .limcode/agents/plan-implementer.md 并执行主代理分配的范围。审查只读，修复按明确授权；不增加固定审批或审查循环，返回实际证据与未完成项。",
+          "channel": {
+            "channelId": "__YOUR_CHANNEL_ID__"
+            // "modelId": "__OPTIONAL_MODEL_ID__"
+          },
+          "tools": {
+            "mode": "whitelist",
+            "list": [
+              "read_file",
+              "list_files",
+              "find_files",
+              "search_in_files",
+              "get_symbols",
+              "goto_definition",
+              "find_references",
+              "write_file",
+              "apply_diff",
+              "insert_code",
+              "delete_code",
+              "execute_command"
+            ]
+          },
+          "maxIterations": 12,
+          "maxRuntime": 600,
+          "enabled": false
+        },
+        {
+          // fuller source: .limcode/agents/spec-reviewer.md
+          "type": "aps-spec-reviewer",
+          "name": "APS 符合性审查子代理",
+          "description": "只判断实现是否符合 design / plan / 用户要求。",
+          "systemPrompt": "遵守当前项目 AGENTS.md，按需读取 .limcode/agents/spec-reviewer.md 并执行主代理分配的范围。审查只读，修复按明确授权；不增加固定审批或审查循环，返回实际证据与未完成项。",
+          "channel": {
+            "channelId": "__YOUR_CHANNEL_ID__"
+            // "modelId": "__OPTIONAL_MODEL_ID__"
+          },
+          "tools": {
+            "mode": "whitelist",
+            "list": [
+              "read_file",
+              "list_files",
+              "find_files",
+              "search_in_files",
+              "get_symbols",
+              "goto_definition",
+              "find_references",
+              "history_search"
+            ]
+          },
+          "maxIterations": 8,
+          "maxRuntime": 300,
+          "enabled": false
+        },
+        {
+          // fuller source: .limcode/agents/code-quality-reviewer.md
+          "type": "aps-code-quality-reviewer",
+          "name": "APS 质量审查子代理",
+          "description": "按任务范围检查分层、测试、边界、复杂度与维护性。",
+          "systemPrompt": "遵守当前项目 AGENTS.md，按需读取 .limcode/agents/code-quality-reviewer.md 并执行主代理分配的范围。审查只读，修复按明确授权；不增加固定审批或审查循环，返回实际证据与未完成项。",
+          "channel": {
+            "channelId": "__YOUR_CHANNEL_ID__"
+            // "modelId": "__OPTIONAL_MODEL_ID__"
+          },
+          "tools": {
+            "mode": "whitelist",
+            "list": [
+              "read_file",
+              "list_files",
+              "find_files",
+              "search_in_files",
+              "get_symbols",
+              "goto_definition",
+              "find_references",
+              "history_search"
+            ]
+          },
+          "maxIterations": 10,
+          "maxRuntime": 300,
+          "enabled": false
+        },
+        {
+          // fuller source: .limcode/agents/code-reviewer.md
+          "type": "aps-code-reviewer",
+          "name": "APS 整体验收子代理",
+          "description": "对阶段性完成实现做独立整体验收。",
+          "systemPrompt": "遵守当前项目 AGENTS.md，按需读取 .limcode/agents/code-reviewer.md 并执行主代理分配的范围。审查只读，修复按明确授权；不增加固定审批或审查循环，返回实际证据与未完成项。",
+          "channel": {
+            "channelId": "__YOUR_CHANNEL_ID__"
+            // "modelId": "__OPTIONAL_MODEL_ID__"
+          },
+          "tools": {
+            "mode": "whitelist",
+            "list": [
+              "read_file",
+              "list_files",
+              "find_files",
+              "search_in_files",
+              "get_symbols",
+              "goto_definition",
+              "find_references",
+              "history_search"
+            ]
+          },
+          "maxIterations": 12,
+          "maxRuntime": 420,
+          "enabled": false
+        }
+      ]
+    }
+  }
+}

@@ -3,15 +3,15 @@ doc_type: architecture-proposal
 slug: aps-data-and-runtime-consolidation
 status: approved
 created: 2026-11-09
-updated: 2026-11-09
+updated: 2026-11-10
 scope: 业务域所有权、SQLite事务、显式事实作用域、7条命令回执查询统一、运行宿主单入口化与Win7交付
-summary: 持久化存储格式0变更；消除实例私有属性偷渡与全库冗余构造，统一7条回执查询链路与单入口运行宿主。
+summary: 持久化存储格式0变更；消除实例私有属性偷渡与全库冗余构造，统一7条回执查询链路与单入口运行宿主（A1与A2工作包已完成）。
 related_roadmap: aps-architecture-consolidation
 ---
 
 # 数据、业务事务与运行宿主设计
 
-本文是[总设计](aps-architecture-consolidation-roadmap.md)的数据与运行时定稿详设。以下目标结构已由主代理与审查通道对齐定稿，当前源码证据单独标出。
+本文是[总设计](aps-architecture-consolidation-roadmap.md)的数据与运行时定稿详设。以下目标结构已由主代理与审查通道对齐定稿，其中宿主单入口化（`A1`）与显式事实作用域、按用途完整关系闭包及前后端 7 条命令回执查询统一切换（`A2`）均已落地完成。
 
 ## 1. 设计结论与持久化存储 0 变更边界
 
@@ -268,4 +268,4 @@ def execute(*, request_key: str, action: str, context_ref: str,
 
 目前登记的 **15个Windows启动器节点、5个Windows独占监听节点** 仍是目标环境待验，开发重载另有用例；实施不能把平台skip当通过。[台账:1920—1923](../../../开发文档/技术债务治理台账.md#L1920)。
 
-本专题完成的信号是：持久存储保持 0 格式变更；各域通过显式事实作用域与按需关系闭包读取数据，彻底消除实例属性偷渡和全库无条件重型构造；全仓 7 条回执与结果查询链路口径统一；`app_new_ui.py`、`ui_mode` 与 `app.py` 顶层实例化副作用全部退出。
+本专题完成的信号是：持久存储保持 0 格式变更；各域通过显式事实作用域与按需关系闭包读取数据，彻底消除实例属性偷渡和全库无条件重型构造；全仓 7 条回执与结果查询链路口径统一；`app_new_ui.py`、`ui_mode` 与 `app.py` 顶层实例化副作用全部退出。当前 `A1` 与 `A2` 实施内容已全部完成并通过门禁验证。

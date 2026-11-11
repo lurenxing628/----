@@ -5,8 +5,8 @@ scope: 当前工作台排产计算、事务事实、搜索会话、结果档案�
 summary: 工作台拥有受理和持久化，scheduler 只编排计算；事实、固定准备和已解码结果在各自作用域内共享
 status: current
 created: 2026-06-28
-last_reviewed: 2026-10-15
-updated: 2026-10-15
+last_reviewed: 2026-11-11
+updated: 2026-11-11
 tags: [scheduler, core, service, 排产, architecture]
 depends_on: []
 implements: []
@@ -14,48 +14,50 @@ implements: []
 
 # 排产调度模块架构现状
 
-本文以 2026-10-15 当前工作区已落地代码为准。单次准备重构的整合检查、性能材料和平台延期状态由[方案及执行记录](../refactors/2026-10-15-single-pass-workflow/single-pass-workflow-refactor-design.md)统一维护；文末专题段落保留各次交付时的历史口径。
+本文以 2026-11-10 全局架构收敛（`A0`～`A5`）落地代码为准（持久存储 Schema v45 与归档 JSON 零变更）。前期单次准备重构背景见[单次准备方案及执行记录](../refactors/2026-10-15-single-pass-workflow/single-pass-workflow-refactor-design.md)，全局收敛裁决见[全局架构收敛路线图](../roadmap/aps-architecture-consolidation/aps-architecture-consolidation-roadmap.md)；文末专题段落保留各次交付时的历史口径。
 
 ## 1. 入口与职责
 
-工作台的 `core/services/workbench/run/` 拥有排产预检、持久受理、worker、候选保存和正式采用。`core/services/scheduler/run/` 消费准备好的输入，执行算法、校验结果并生成摘要。正式版本在采用事务中分配，计算阶段使用明确的版本上下文。
+工作台的 `core/services/workbench/run/` 拥有排产预检与持久受理共享的业务输入准备（`PreparedBusinessInput`）、候选/单件统一安排约束验证（`run/candidate_adoption_constraints.py`，配 `run/schedule_occupancy_constraints.py` 与 `run/schedule_row_constraints.py`；正式计划占用约束位于 `plan/occupancy_constraints.py`）、worker 计算入口（`compute.py`）、候选保存和正式采用；`core/services/workbench/trial/` 拥有试调草稿、场景保存与正式采用，单向依赖 `workbench/run/` 共享安排约束原语（分件范围与试调约束内聚于 `trial/piece_scope.py`、`trial/constraints.py`）；各工作台子域通过 `core/services/workbench/facts/` 与显式事实作用域（`batch/scope.py:BatchFactScope`、`process/scope.py:ProcessFactScope`、`resource/scope.py:ResourceFactScope`、`execution/field_workspace_scope.py`、`execution/actual_gantt_scope.py`、`trial/piece_scope.py`）按用途加载完整关系闭包。`core/services/scheduler/run/` 消费准备好的 `SolverInput` 与 `SolverResources`（内含单一共享的无连接 `CalendarEngine`），执行共享优化搜索并生成候选结果。正式版本在采用事务中分配，计算阶段使用明确的版本上下文。
 
 `core/services/scheduler/__init__.py` 不再装配或再导出服务，消费者从各职责子包深路径直接导入：
 
 | 子包 / 模块 | 当前职责 |
 |---|---|
-| `calendar/service.py` | 提供 `CalendarService`，负责工作日历及资源班次查询 |
+| `calendar/` | 提供单一无连接纯内存日历引擎 `CalendarEngine(CalendarInputs)`（`engine.py`，区分缺表 `None` 与空表 `()`、按日惰性解析时段与解码缓存、共享跨夜尾巴分段纯函数、注册 checkpoint 证书）及管理端规范化入口 `CalendarAdmin`（`admin.py` / `defaults.py` / `operator_shift.py`）；旧 `CalendarService` 与带连接日历快照子类已退役 |
 | `execution/` | 提供 `ExecutionFactProvider`、`execution_snapshot.py` 与执行台账适配（`execution_ledger_adapter.py`、`execution_ledger_guard.py`） |
-| `run/`、`summary/`、`contracts/`、`graph/`、`config/`、`gantt/` | 纯计算编排、摘要组装、公开投影合同、工序图分析、配置解析与甘特构建 |
+| `run/`、`summary/`、`contracts/`、`graph/`、`config/`、`gantt/` | 求解输入合同（`SolverInput` / `SolverResources`）、候选共享优化（`schedule_candidate_runner.py` / `schedule_shared_optimizer.py`）、摘要组装、公开投影合同、工序图分析、配置解析与甘特构建（旧 `schedule_orchestrator.py` 与 `schedule_execution_persistence_guard.py` 已退役） |
 | 根包支撑模块 | `resource_pool_builder.py`、`schedule_lock.py`、`template_lineage*.py`、`workbench_plan_catalog.py` 各司其职 |
 
-批次主数据与批次工序维护归入 `core/services/workbench/batch/`，现场报工归入 `core/services/workbench/execution/`。原 `ScheduleService`、`OperationExecutionFeedbackService`、输入 collector 的生产采集链和 `schedule_persistence.py` 均已退役；`schedule_input_contracts.py` 保留共同输入合同，输入领域校验、资源事实和实际错误类型仍由当前消费者使用。排产配置通过 `core/models/schedule_config_runtime*` 的共同字段、Snapshot 和解析规则进入计算；旧配置服务装配及页面保存入口已经退出。
+批次主数据与批次工序维护归入 `core/services/workbench/batch/`，现场报工归入 `core/services/workbench/execution/`。历史归档中的旧 `BatchService`、`ScheduleService`、`GanttService`、`CalendarService`、`ExternalGroupService`、`OperationExecutionFeedbackService`、输入 collector 的生产采集链、`schedule_persistence.py`、`schedule_orchestrator.py`、`schedule_execution_persistence_guard.py` 及采用持久化薄转发壳均已退役；`schedule_input_contracts.py` 承载 `SolverInput` / `SolverResources` 求解合同，输入领域校验、资源事实和实际错误类型仍由当前消费者使用。排产配置通过 `core/models/schedule_config_runtime*` 的共同字段、Snapshot 和解析规则进入计算；旧配置服务装配及页面保存入口已经退出。
 
 ## 2. 当前分层
 
 | 位置 | 所有者职责 |
 |---|---|
-| `workbench/run/` | 预检、输入准备、worker、保存、查询与采用 |
-| `scheduler/run/` | 纯计算编排、共同优化、图准备、产出校验 |
+| `workbench/facts/` + 各子域 `*FactScope` | 只读事实叶子与按请求/命令事务隔离的显式事实作用域（`BatchFactScope`、`ProcessFactScope`、`ResourceFactScope`、`field_workspace_scope.py`、`actual_gantt_scope.py`、`trial/piece_scope.py`） |
+| `workbench/run/` | 预检与受理共享 `PreparedBusinessInput`、统一候选/单件安排约束验证（`candidate_adoption_constraints.py` 配 `schedule_occupancy_constraints.py` / `schedule_row_constraints.py`，公开原语 `resource_gaps` / `readiness_issues`）、worker 计算编排（`compute.py`）、候选保存、决策查询与正式采用 |
+| `workbench/plan/` | 正式计划查询、占用约束校验（`plan/occupancy_constraints.py`）、交付投影与正式持久化（`plan/official_persistence.py`） |
+| `workbench/trial/` | 试调草稿、场景保存与试调采用；单向依赖 `workbench/run/`（`trial/piece_scope.py`、`trial/constraints.py`、`trial/validation.py`、`trial/adoption_validation.py`），彻底消除 `workbench/run ⇄ workbench/trial` 循环依赖与属性偷渡 |
+| `scheduler/run/` | 求解输入合同（`SolverInput` / `SolverResources`）、共同优化搜索（`schedule_candidate_runner.py`）、图准备与产出校验 |
 | `scheduler/run/optimizer/` | 共享预算、解码会话、结果档案与各阶段的小视图 |
 | `scheduler/run/optimizer/graph/` | Profile、Repair、IG 以及父代和真实续排决策 |
 | `scheduler/summary/`、`scheduler/contracts/` | 当前摘要组装及公开投影合同 |
 | `scheduler/graph/` | 可选工序图分析，按实际功能延迟加载 NetworkX |
-| `scheduler/calendar/`、`scheduler/execution/` | 日历与执行事实叶子 |
+| `scheduler/calendar/`、`scheduler/execution/` | 无连接 `CalendarEngine` / 管理端 `CalendarAdmin` 与执行事实叶子 |
 | `core/algorithms/`、`core/algorithm_runtime/`、`core/algorithm_contracts/` | 算法、动态运行态与中立输入合同 |
 
-主要方向为工作台领域服务 → scheduler 计算 → algorithms/runtime/contracts；算法和事实叶子保持各自职责。具体目录依赖约束继续由现有分层检查维护，本文不沿用旧文件数或历史 SCC 数字描述当前规模。
+编译依赖严格保持单向：`workbench/trial → workbench/run → scheduler → algorithms/runtime/contracts`；算法和事实叶子不反向依赖上层编排。具体目录依赖约束由 `tools/scan_import_cycles.py` 与现有边界检查维护。
 
-## 3. 一次排产的数据流
+## 3. 一次排产与采用的数据流
 
-1. 工作台受理在事务内捕获输入、执行事实与当时正式计划，保存持久任务及来源。
-2. `WorkbenchRunWorker` 在私有计算副本中创建 `ProductionFactsCapture`；事实复核和 `compute_candidate_run` 共用这一份捕获。
-3. `PreflightFacts` 消费已捕获的表、最新安排索引、执行与资源事实，`prepare_candidate_run_input` 生成 `CandidateRunInput`。组合入口在同一只读快照内直接计算；独立 `compute_prepared_candidate_run` 对跨时点输入继续核对当前事实。
-4. `orchestrate_schedule_run` 调用 `run_candidate_comparison`，执行一次 `optimize_shared_schedule`；选中结果、校验 payload 和对象摘要沿同一计算链交接。
-5. worker 的结果准备构造实际保存文本和读模型；完成事务重新取得当时事实，再保存候选与终态。保存推荐、当前查看和比较基准各有自己的身份。
-6. 正式采用由 `candidate_adoption*` 或试调采用入口在写事务中核对来源、当前执行事实、资源约束与版本，并原子写入正式计划和回执。
+1. **预检与受理共享业务准备**：`workbench/run/input.py` 在单次快照内构造不可变的 `PreparedBusinessInput`（完整持有 `algo_ops`、执行保护、`SeedPreparation` 含 `to_schedule` 与人员资格准入、`piece_scope` + `predecessors`、`dispositions`、`latest_plan_rows`、`operation_efforts`，取代旧九元位置元组）；预检公开 DTO 投影与内部评估行从源头分离（无原地 `pop` 删字段），受理复用同一准备核心并仅按需增量补齐上版正式计划未选工序投影，在事务内捕获输入、执行事实与当时正式计划。
+2. **单一缓存日历引擎与求解资源装配**：`WorkbenchRunWorker` 在私有计算副本中创建 `ProductionFactsCapture`；事实复核与 `compute.py:compute_candidate_run` 共用这一份捕获。`CalendarFacts.calendar()` 从已读班次行原地去重提取 `shift_profiles`，实时事实与归档表分别经 `calendar_inputs_from_facts` 与 `calendar_inputs_from_archive_tables` 构建 `CalendarInputs`；`input_runtime.py` 汇总操作工集合向 `business.facts.calendar(operator_ids)` 取得单一缓存 `CalendarEngine`，并随 `SolverResources.calendar_engine` 下传给 `compute.py` 与 `schedule_candidate_runner.py` 全链路复用（不再重复实例化 `CalendarEngine`）。
+3. **共享搜索与候选验证**：`compute.py` 直接调用 `run_candidate_comparison` 执行一次 `optimize_shared_schedule`；候选结果经 `evaluate_schedule_constraints` 完成安排约束验证，选中结果、校验 payload 和对象摘要沿同一计算链交接。
+4. **候选发布**：worker 的结果准备构造实际保存文本和 `decision-read-v1` 读模型；完成事务重新取得当时事实，再保存候选与终态。保存推荐、当前查看和比较基准各有自己的身份。
+5. **正式采用单次验证落库**：候选正式采用（`run/candidate_adoption.py`）与试调正式采用（`trial/adoption.py`，由 `trial/adoption_validation.py:validate_trial_adoption` 在同一快照事务内顺序执行 `validator.evaluate_saved(check_baseline=False)` 与 `ScheduleValidationOutcome` 单次验证并返回 `TrialAdoptionEvidence`）在写事务中核对来源、当前执行事实、安排约束与版本，直接经 `plan/official_persistence.py` 原子写入正式计划和命令回执。
 
-`ProductionFactsCapture` 的作用域是一份事务快照，`latest_plan_rows` 等派生索引也归它拥有。`PreflightFacts`、`BatchFacts`、`GenerationFacts`、`DecisionSource` 分别复用本次操作已取得的行、永久引用、解码表和共同来源；新请求、新事务或真实写入后的事实由对应入口重新取得。
+`ProductionFactsCapture` 的作用域是一份事务快照，`latest_plan_rows` 等派生索引也归它拥有。`PreflightFacts`、`PreparedBusinessInput`、`BatchFacts`、`GenerationFacts`、`DecisionSource` 分别复用本次操作已取得的行、永久引用、解码表和共同来源；新请求、新事务或真实写入后的事实由对应入口重新取得。
 
 ## 4. 一次搜索的固定准备与结果所有权
 
@@ -84,7 +86,7 @@ implements: []
 - [工作台外壳](workbench-shell.md)、[甘特显示模型](ui-gantt.md)记录宿主、token、输出和前端职责。
 - [单次准备方案](../refactors/2026-10-15-single-pass-workflow/single-pass-workflow-refactor-design.md)及同目录执行记录维护本轮范围和验收状态。
 - 2026-06-28 的 43886 行、219 个文件、79 个根目录文件属于当时普查。2026-07 A1/A3 拆除循环依赖，2026-09-20 将 gantt/resource_dispatch/calendar 分包、batch 迁出、旧 analysis 与转发垫片退役；上述规模和引用计数保留为历史事实。
-- 2026-09 的多候选外层预算、原生内容认证、图缓存与旧 `ScheduleService` 运行链属于本轮重构前结构，已由当前单会话与工作台拥有者接替。历史验收材料保留各自源码和环境范围。
+- 历史归档：2026-09 的多候选外层预算、原生内容认证、图缓存与已退役的旧 `ScheduleService` 运行链属于重构前结构，已由当前单会话与工作台拥有者接替。历史验收材料保留各自源码和环境范围。
 
 ## 历史专题记录（2026-10-13—2026-10-14）
 

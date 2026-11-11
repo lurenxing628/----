@@ -1,0 +1,29 @@
+---
+description: 产品代码与工作台变更的质量边界与实际门禁入口
+globs: ["core/**/*.py", "data/**/*.py", "web/**/*.py", "tests/**/*.py", "frontend/workbench/app/**/*.{js,jsx}", "tools/**/*.py", "scripts/**/*.py"]
+alwaysApply: false
+---
+
+# 产品代码质量
+
+任务范围和验证深度按 AGENTS.md，真实质量门禁与证明类型见 `开发文档/README.md` 的“质量治理入口”。无需依赖某个宿主专有 ReadLints 工具；用当前可用的项目检查入口验证，不把每次编辑都变成全量检查。
+
+## 结构、门禁规格与棘轮边界
+
+- 产品保持 Python 3.8 / Win7 x64 / Chrome 109 离线兼容；宿主构建与检查工具（如固定版本 `esbuild`、Node `vm.Context`、宿主维护脚本）的例外见 `.codestable/attention.md`，不得把宿主工具依赖打入离线交付包。
+- 完整门禁检查项在 `tools/quality_gate_shared.py` 中以单一 `GateCheckSpec`（`build_quality_gate_check_specs`）声明命令、输入作用域、缓存策略与证明类型，供 `scripts/run_quality_gate.py`、`tools/long_gate_manifest.py` 与回执校验共同消费；`QUALITY_GATE_TOOL_PATHS` 与 `pyrightconfig.tools.json` 的 `include` 必须保持同序锁步一致；完整生产文件集的 required 回归覆盖由 `tools/test_registry.py` 直接校验（历史临时扫描脚本已退役）。
+- 文件大小（`FILE_SIZE_LIMIT`）、圈复杂度（`COMPLEXITY_THRESHOLD`）、静默回退与测试债务存量由 `开发文档/技术债务治理台账.md` 受控管辖；6 个代码边界与死代码棘轮扫描器——`tools/scan_import_cycles.py`（包间循环依赖）、`tools/scan_sql_boundary.py`（服务层不写 SQL / 仓储层不做业务裁决）、`tools/scan_private_imports.py`（禁跨模块私有导入）、`tools/scan_dead_path_literals.py`（失效仓库路径字面量）、`tools/scan_over_defense.py`（内部反射字面量、参数进门覆盖、零引用/仅测试引用函数、外部对象写私有属性等）、`tools/scan_dead_code_islands.py`（疑似死代码孤岛）——各自与 `.codestable/checkup/*_baseline.json` 对账，只减不增，禁止为过门禁静默放宽基线。
+- 函数保持聚焦，沿用函数不超过 80 行、嵌套不超过 4 层的项目约束；需要拆分时按职责和真实依赖划分，不能单纯搬移代码或留薄转发壳规避门禁。超出任务的历史问题如实记录。
+- 公开接口有完整类型注解，返回类型、`None`/空集合语义遵守现有契约（精确整数、微秒时间差与有理数容量全程用 `int` / `Decimal` / `Fraction`，不绕道 `float`）；新增产品代码使用 Python 3.8 可用语法（`tools/scan_py38plus_syntax.py --fail-on-hit` 阻断）。相关业务状态引用 `core/models/enums.py`，不新造同义裸字符串。
+- 分层、事务与接口规则按需查 `architecture-invariants.mdc` 和 `interface-patterns.mdc`。
+
+## 错误与反过度防御
+
+- 外部输入在准入合同处校验一次到位；预期业务失败使用 `AppError` / `WorkbenchCommandRejected` 体系明确表达，不得吞异常、静默回退默认值、裸 `except` 或把失败包装成成功。
+- 内部受控结构直接按契约访问，禁止重复判空、`.get()` 装不熟、`getattr`/`hasattr` 能力探测、无脑深浅拷贝（仅在全局缓存公开出口或可变草稿边界做唯一一次隔离拷贝）或前端对本机受控 DTO 重跑算术/排序自检。
+- 数据写入有明确单层事务保护，锁与事务内不做无关重 I/O，失败/取消（含前端 `AbortError`）对称复位状态；用户提示使用中文，技术细节进入日志，不暴露内部 traceback 或路径。
+- 禁止新增 `import *`、无理由的 `type: ignore`/`noqa`、无归属的全局可变状态；不提交注释掉的旧代码，删除死代码时顺着引用把 0 引用下游与冗余测试桩清理干净（可疑死代码先排查回调与反射，见 `.codestable/attention.md`）。
+
+## 验证
+
+bug 回归和新增行为契约验证真实输出与状态（工作台前端改动同步构建 `scripts/workbench/build.py` 并通过 `tests/workbench/test_ui_refinement_node_contracts.py` 21 项 Node 契约及必要的实际浏览器检查），不只验证 mock 被调用，也不为纯文档修改编造字面量测试。已有测试覆盖充分时复用；当前范围需要的检查通过后交付，静态、定点、全量与 clean proof 分开报告。

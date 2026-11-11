@@ -7,7 +7,7 @@ updated: 2026-11-09
 
 # 排产计算主链与求解职责收敛设计
 
-本文是[整体优化路线图](aps-architecture-consolidation-roadmap.md)的调度专题，描述已对齐定稿的目标架构，尚未表示代码已经迁移。
+本文是[整体优化路线图](aps-architecture-consolidation-roadmap.md)的调度专题，描述已对齐定稿并已在 `A1`（`scheduler-use-case`）完成最小开发闭环落地的目标架构。
 设计基于 2026-11-09 的当前工作树；源码锚点是本次设计的调查位置，实施时重新核对。
 本专题覆盖 `Preflight ↔ Admission ↔ Compute ↔ Trial ↔ Adoption` 全链路，只收敛内部职责、类型和调用关系，不改变排产业务规则。
 
@@ -63,10 +63,10 @@ updated: 2026-11-09
 | 预检评估与投影 | `workbench/run/preflight*.py` | 轻量指纹核验 → 内部不可变评估结果 → 公开预检 DTO | 不在重计算后才验版本，不原地 `pop` 篡改评估行 |
 | 运行生命周期 | `workbench/run/worker.py` | 已受理归档 → 计算结果 → 原子保存回执 | 不选择邻域，不重算当日物料分类，不创建第二份算法事实 |
 | 业务输入准备 | `workbench/run/input.py` | 本事务事实、设置、执行投影、保留安排 → `PreparedBusinessInput` | 不构建求解器，不生成空占位资源元组 |
-| 现场资源提取 | `workbench/run/input_runtime.py` | `PreparedBusinessInput`、capture → `SolverResources`（含 `CalendarInputs`） | 不重新分类，不创建算法引擎，不重读相同表 |
+| 现场资源提取 | `workbench/run/input_runtime.py` | `PreparedBusinessInput`、`SolverInput`、capture → `SolverResources`（直接持有单一缓存无连接 `CalendarEngine`） | 不重新分类，不创建搜索/解码引擎，不重读相同表 |
 | 共同排程约束验证 | `workbench/run/` 共同验证模块 | `PreparedBusinessInput`、`CalendarEngine`、待验安排 → `ScheduleValidationOutcome` | 不为普通/分件/试调维护三套逐行校验循环 |
 | 候选计算用例 | `workbench/run/compute.py` | 业务输入、求解输入、资源 → 经验证的候选与摘要 | 不领取任务，不保存正式计划，不经 orchestrator 回调绕圈 |
-| 固定算法准备与共同搜索 | `scheduler/run` | `SolverInput`、`SolverResources` → 纯 `CalendarEngine`、图/native preparation → `CandidateComparisonOutcome` | 不读数据库，不引用工作台 facts，不接受带连接服务 |
+| 固定算法准备与共同搜索 | `scheduler/run` | `SolverInput`、`SolverResources`（直接消费 `calendar_engine`） → 图/native preparation → `CandidateComparisonOutcome` | 不读数据库，不引用工作台 facts，不接受带连接服务 |
 | 真实解码 | `optimizer/shared_decode.py` 与 `algorithms/greedy` | 固定准备、候选变化 → 实际安排与指标 | 不解释归档，不决定页面发布格式 |
 | 输出发布与正式落库 | `result_preparation.py` 与 `official_persistence.py` | 已验证候选/采用命令 → 归档材料或正式计划回执 | 不再次求解，不保留 8 行纯转发文件 |
 
@@ -84,7 +84,7 @@ updated: 2026-11-09
 - **基础设置与事实**：`settings`、`facts`（`PreflightFacts`）、`batches`、`operations`（原始 `BatchOperation`）、`config`（`ScheduleConfigSnapshot`）、`start`、`end_date`、`readiness_gate_enabled`。
 - **完整 `algo_ops: Sequence[OpForScheduleAlgo]`**：精确定义为**可排工序 + 执行/合并外协保护节点**（见 [input.py:153](../../../core/services/workbench/run/input.py#L153) `_algorithm_scope`）。既不能把 skipped/合法待料工序塞回求解图，也不能从 `PreparedBusinessInput` 移走——否则会导致候选验证 [compute_validation.py:16](../../../core/services/workbench/run/compute_validation.py#L16)、[:49](../../../core/services/workbench/run/compute_validation.py#L49)、采用复核 [candidate_adoption_constraints.py:83](../../../core/services/workbench/run/candidate_adoption_constraints.py#L83)、[:152](../../../core/services/workbench/run/candidate_adoption_constraints.py#L152) 以及分件采用 [piece_adoption.py:78](../../../core/services/workbench/run/piece_adoption.py#L78) 断链。
 - **完整业务执行保护结构 `ExecutionGuardState`**：内聚 `execution_facts`（含多段实际资源占用 `execution_resource_segments`）、`execution_completed_op_ids`、`execution_seed_results` 以及 `execution_snapshot_revision / op_ids / op_count`（见 [input.py:104](../../../core/services/workbench/run/input.py#L104)、[candidate_adoption_constraints.py:27](../../../core/services/workbench/run/candidate_adoption_constraints.py#L27)、[schedule_orchestrator.py:83](../../../core/services/scheduler/run/schedule_orchestrator.py#L83)）。数量只在构造处求出一次，下游直接消费。
-- **`seeds: SeedPreparation`**：包含 `frozen_op_ids`、`seed_results`、`freeze_meta` 以及在种子准备阶段形成的**待排子集 `to_schedule: Sequence[OpForScheduleAlgo]`**。固定人员资格校验与待排工时准入（[schedule_input_runtime_support.py:145](../../../core/services/scheduler/run/schedule_input_runtime_support.py#L145)）留在种子准备阶段完成，采用路径同样执行该业务准入，绝不跳过。
+- **`seeds: SeedPreparation`**：包含 `frozen_op_ids`、`seed_results`、`freeze_meta`、在种子准备阶段形成的**待排子集 `to_schedule: Sequence[OpForScheduleAlgo]`** 以及 `unscheduled_external_seed_by_op`。工时准入已在读取边界 `batch_model` / `operation_model` 一次完成；种子准备阶段仅保留完成种子先后序校验与固定人员资格校验（[schedule_input_runtime_support.py:82](../../../core/services/scheduler/run/schedule_input_runtime_support.py#L82)），采用路径同样执行该业务准入，绝不跳过。
 - **完整 `piece_scope: Optional[PieceScope]` 与显式前置关系 `predecessors: Mapping[int, Sequence[int]]`**：`piece_scope` 保留分件目标数量 `work.target_quantity` 与分件树范围（供 [piece_adoption.py:93](../../../core/services/workbench/run/piece_adoption.py#L93)、[:110](../../../core/services/workbench/run/piece_adoption.py#L110) 核验），`predecessors` 表达完整显式前置边。
 - **分类与基线约束**：`dispositions`、`baseline_version`（原 `prev_version`）、`latest_plan_rows`、`allowed_op_ids`（原 `schedule_output_allowed_op_ids`）、`missing_internal_resource_op_ids`、`operation_sources`。
 - **`operation_efforts: Sequence[OperationEffort]`**：在受理回执（[jobs.py:94-97](../../../core/services/workbench/run/jobs.py#L94-L97)）与计算结果发布（[result_preparation.py:78](../../../core/services/workbench/run/result_preparation.py#L78)）两个出口消费，供下游决策、候选工时与试调消费。其构造依赖 `seeds.to_schedule` 和 [input_effort.py:19](../../../core/services/workbench/run/input_effort.py#L19) 的 `saved_seed_efforts` 按原正式版本读取保留安排的历史工时需求（不能用当前模板重算保留安排）；仅正式采用路径不构造 `operation_efforts`（传 `()`）。
@@ -96,7 +96,7 @@ updated: 2026-11-09
 - **借用 `business.seeds.to_schedule`**：作为本次待排工序子集，与 `seeds` 一起驱动解码。
 - **剔除无关字段**：不再往 `SolverInput` 中塞入搜索与解码根本不读的 `operation_efforts`、`PreflightFacts`、数据库连接或页面投影。
 
-`SolverResources` 集中表达本次无连接日历事实 `calendar_inputs: CalendarInputs`、停机映射 `downtime_map`、资源池 `resource_pool`、派生元信息及 `optimizer_seed_version`；采用入口不构建 `SolverResources`，也不创建九元空值占位元组。
+`SolverResources` 直接持有单一缓存的无连接 `calendar_engine: CalendarEngine`（无需在 `scheduler` 二次从 `calendar_inputs` 实例化引擎）、停机映射 `downtime_map`、资源池 `resource_pool`、派生元信息及 `optimizer_seed_version`；采用入口不构建 `SolverResources`，也不创建九元空值占位元组。
 
 ### 4.3 冗余模块与私有旁路清理清单
 
@@ -127,16 +127,16 @@ updated: 2026-11-09
 4. **跨夜尾巴分段计算同源**：
    提取消费已解析 `DayPolicy` 的“今日安排覆盖昨日跨夜尾巴”纯分段函数，同时服务排产引擎（[engine.py:313](../../../core/services/scheduler/calendar/engine.py#L313)）与容量投影（[plan_calendar_windows.py:33](../../../core/services/capacity/plan_calendar_windows.py#L33)），消除两处镜像分段逻辑。
 
-日历事实准备提供可独立复用的 `prepare_calendar_inputs(facts, operator_ids) -> CalendarInputs`。正式采用与试调验证只为被检验安排与保护种子涉及的人员范围准备 `CalendarInputs` 并构造 `CalendarEngine`，不调用 `prepare_solver_resources`、不建立自动选择资源池。
+日历事实装配在 [calendar_inputs.py](../../../core/services/workbench/facts/calendar_inputs.py) 按来源统一提供 `calendar_inputs_from_capture`、`calendar_inputs_from_facts` 与 `calendar_inputs_from_archive_tables`（`PreflightFacts.calendar(operator_ids)` 复用 `calendar_inputs_from_capture` 按人员范围缓存单一 `CalendarEngine`）。正式采用与试调验证只为被检验安排与保护种子涉及的人员范围获取无连接 `CalendarEngine`，不调用 `prepare_solver_resources`、不建立自动选择资源池。
 
 ## 5. Python 3.8 接口草图
 
 以下是目标签名与核心具名结果（遵循 Python 3.8 类型契约），实施时直接替换旧结构，不保留空壳转发层。
 
 ```python
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Dict, FrozenSet, Mapping, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 @dataclass(frozen=True)
 class ExecutionGuardState:
@@ -151,50 +151,50 @@ class ExecutionGuardState:
 @dataclass(frozen=True)
 class SeedPreparation:
     frozen_op_ids: Set[int]
-    seed_results: Sequence[Dict[str, Any]]
+    seed_results: List[Dict[str, Any]]
     freeze_meta: Mapping[str, Any]
-    to_schedule: Sequence["OpForScheduleAlgo"]
+    to_schedule: List["OpForScheduleAlgo"]
+    unscheduled_external_seed_by_op: Mapping[int, Tuple[datetime, datetime]]
 
 @dataclass(frozen=True)
 class CalendarInputs:
-    operator_ids: FrozenSet[str]
-    defaults: Optional[Sequence[Mapping[str, Any]]]
-    public_days: Optional[Sequence[Mapping[str, Any]]]
-    personal_days: Optional[Sequence[Mapping[str, Any]]]
-    operator_profiles: Optional[Sequence[Mapping[str, Any]]]
-    shift_profiles: Optional[Sequence[Mapping[str, Any]]]
-    shift_patterns: Optional[Sequence[Mapping[str, Any]]]
-    default_periods: Optional[Sequence[Mapping[str, Any]]]
-    decoded_periods: Mapping[str, Sequence[Mapping[str, Any]]]
+    defaults: Optional[Sequence[Dict[str, Any]]] = ()
+    public_days: Optional[Sequence[Dict[str, Any]]] = ()
+    personal_days: Optional[Sequence[Dict[str, Any]]] = ()
+    operator_profiles: Optional[Sequence[Dict[str, Any]]] = ()
+    shift_profiles: Optional[Sequence[Dict[str, Any]]] = ()
+    shift_patterns: Optional[Sequence[Dict[str, Any]]] = ()
+    decoded_periods: Optional[Mapping[str, List[Dict[str, Any]]]] = None
 
 @dataclass(frozen=True)
 class SolverResources:
-    calendar_inputs: CalendarInputs
-    downtime_map: Mapping[str, Sequence[Tuple[datetime, datetime]]]
-    resource_pool: Optional[Mapping[str, Any]]
+    calendar_engine: "CalendarEngine"
+    downtime_map: Dict[str, List[Tuple[datetime, datetime]]]
+    resource_pool: Optional[Dict[str, Any]]
     downtime_meta: Mapping[str, Any]
     resource_pool_meta: Mapping[str, Any]
     optimizer_seed_version: int
 
 @dataclass(frozen=True)
 class SolverInput:
-    batches: Mapping[str, "Batch"]
-    algo_ops: Sequence["OpForScheduleAlgo"]
-    to_schedule: Sequence["OpForScheduleAlgo"]
+    batches: Dict[str, "Batch"]
+    algo_ops: List["OpForScheduleAlgo"]
+    to_schedule: List["OpForScheduleAlgo"]
     config: "ScheduleConfigSnapshot"
     start: datetime
-    end_date: date
+    end_date: Optional[date]
     readiness_gate_enabled: bool
     seeds: SeedPreparation
-    predecessors: Mapping[int, Sequence[int]]
+    predecessors: Mapping[int, Sequence[int]] = field(default_factory=dict)
 
 @dataclass(frozen=True)
 class PreparedBusinessInput:
     settings: Mapping[str, Any]
     facts: "PreflightFacts"
-    batches: Mapping[str, "Batch"]
-    operations: Sequence["BatchOperation"]
-    algo_ops: Sequence["OpForScheduleAlgo"]
+    normalized_batch_ids: List[str]
+    batches: Dict[str, "Batch"]
+    operations: List["BatchOperation"]
+    algo_ops: List["OpForScheduleAlgo"]
     config: "ScheduleConfigSnapshot"
     start: datetime
     end_date: date
@@ -203,35 +203,44 @@ class PreparedBusinessInput:
     seeds: SeedPreparation
     piece_scope: Optional["PieceScope"]
     predecessors: Mapping[int, Sequence[int]]
-    dispositions: Sequence[Mapping[str, Any]]
+    dispositions: List[Dict[str, Any]]
     baseline_version: int
     latest_plan_rows: Mapping[int, Mapping[str, Any]]
     allowed_op_ids: Set[int]
     missing_internal_resource_op_ids: Set[int]
-    operation_sources: Mapping[int, str]
+    operation_sources: Dict[int, str]
     operation_efforts: Sequence["OperationEffort"]
+    t0: float
 
 @dataclass(frozen=True)
 class ScheduleValidationOutcome:
     validated_payload: "ValidatedSchedulePayload"
     resolved_intervals: Mapping[int, Tuple[datetime, datetime]]
-    resource_segments: Mapping[Tuple[str, str], Sequence[Tuple[datetime, Optional[datetime], int]]]
     issues: Tuple[Dict[str, Any], ...]
 
 def prepare_business_input(
-    facts: "PreflightFacts",
-    settings: Mapping[str, Any],
+    conn: Any,
+    normalized_input: Mapping[str, Any],
+    execution_projections: Sequence["ExecutionProjection"],
     *,
-    dispositions: Sequence[Mapping[str, Any]],
+    facts: "PreflightFacts",
+    config_snapshot: Optional["ScheduleConfigSnapshot"] = None,
+    baseline: Optional[Mapping[str, Any]] = None,
     held: Optional["HeldArrangements"] = None,
+    preflight_rows: Optional[Sequence[Mapping[str, Any]]] = None,
+    admitted_dispositions: Any = _CLASSIFY_CURRENT,
     include_efforts: bool = True,
 ) -> PreparedBusinessInput: ...
 
 def prepare_solver_input(business: PreparedBusinessInput) -> SolverInput: ...
 
-def prepare_calendar_inputs(
-    facts: "PreflightFacts", operator_ids: FrozenSet[str],
+def calendar_inputs_from_capture(
+    capture: "ProductionFactsCapture", *, operator_ids: Optional[Iterable[str]] = None,
 ) -> CalendarInputs: ...
+
+def calendar_inputs_from_facts(facts: Mapping[str, Any]) -> CalendarInputs: ...
+
+def calendar_inputs_from_archive_tables(tables: Mapping[str, Any]) -> CalendarInputs: ...
 
 def prepare_solver_resources(
     business: PreparedBusinessInput, solver_input: SolverInput,
@@ -240,7 +249,11 @@ def prepare_solver_resources(
 def evaluate_schedule_constraints(
     business: PreparedBusinessInput,
     calendar: "CalendarEngine",
-    arrangements: Sequence[Mapping[str, Any]],
+    arrangements: Sequence[Any],
+    *,
+    purpose: str = "adoption",
+    context: Optional[Mapping[str, Any]] = None,
+    failure_details: Sequence[Any] = (),
 ) -> ScheduleValidationOutcome: ...
 
 def run_candidate_comparison(
@@ -268,7 +281,7 @@ def run_candidate_comparison(
 消除 [trial/adoption_validation.py:48-63](../../../core/services/workbench/trial/adoption_validation.py#L48-L63) 同事务双跑全量校验，以及 [candidate_adoption_constraints.py](../../../core/services/workbench/run/candidate_adoption_constraints.py) 与 [piece_adoption.py:121-189](../../../core/services/workbench/run/piece_adoption.py#L121-L189) 复制粘贴两套逐行验证的问题：
 
 1. **提取唯一的排程约束验证核心（`evaluate_schedule_constraints` → `ScheduleValidationOutcome`）**：
-   一次扫描产出一个结构化的“安排约束结果”（含已解析区间 `resolved_intervals`、资源占用 `resource_segments`、违规项 `issues` 与有效 `validated_payload`），统一覆盖：
+   一次扫描产出一个结构化的“安排约束结果”（含有效 `validated_payload`、已解析区间 `resolved_intervals` 与违规项 `issues`），统一覆盖：
    - 保护种子原样保持（`seeds`）；
    - 显式前驱 `predecessors` 与分件树范围（`piece_scope`）；
    - 资源存在性与人员资格、机台/人员时间重叠；
@@ -278,7 +291,7 @@ def run_candidate_comparison(
 2. **保留三类消费者的真实业务边界**：
    - **试调草稿与方案保存**（[trial/validation.py:94](../../../core/services/workbench/trial/validation.py#L94)、[trial/service.py:151](../../../core/services/workbench/trial/service.py#L151)）：允许保存含冲突草稿，消费结构化 `issues`（完整保留 [adoption_validation.py:96](../../../core/services/workbench/trial/adoption_validation.py#L96) 从 `source_task_ref` 到当前 `task_ref` 的映射）、原始/当前 interval 与多段占用供页面和容量展示。**试调正式采用在同一写事务内直接消费该完整核验结果**，不再二次重建 `CandidateRunInput` 重跑第二遍；同时删掉 [adoption_validation.py:85](../../../core/services/workbench/trial/adoption_validation.py#L85) 已被父类捕获的 `PieceAdoptionBlocked` 死分支。
    - **候选发布**（[compute.py:50](../../../core/services/workbench/run/compute.py#L50)、[piece_adoption.py:109](../../../core/services/workbench/run/piece_adoption.py#L109)、[test_piece_chain_boundaries.py:90](../../../tests/workbench/test_piece_chain_boundaries.py#L90)）：允许非空、闭合的部分候选（partial），不套用正式采用的完整范围要求；验证通过的 `validated_payload`（[compute_validation.py:20](../../../core/services/workbench/run/compute_validation.py#L20)）直接复用于摘要构造与归档保存。
-   - **正式采用（普通批次与分件批次）**：要求覆盖完整范围（扣除合法待料工序）并覆盖已有正式安排（`_require_official_scope`）。普通批次与分件批次的错误码差异（`candidate_*` vs `piece_*`，如 `piece_external_duration_conflict`，见 [candidate_adoption_constraints.py:102](../../../core/services/workbench/run/candidate_adoption_constraints.py#L102) vs [piece_adoption.py:132](../../../core/services/workbench/run/piece_adoption.py#L132)）通过出口薄映射保留；已完工历史工序只核对资源身份可辨认，不按今日资格或今日齐套重算。
+   - **正式采用（普通批次与分件批次）**：要求覆盖完整范围（扣除合法待料工序）并覆盖已有正式安排（`require_official_scope`）。普通批次与分件批次的错误码差异（`candidate_*` vs `piece_*`，如 `piece_external_duration_conflict`，见 [candidate_adoption_constraints.py:102](../../../core/services/workbench/run/candidate_adoption_constraints.py#L102) vs [piece_adoption.py:132](../../../core/services/workbench/run/piece_adoption.py#L132)）通过出口薄映射保留；已完工历史工序只核对资源身份可辨认，不按今日资格或今日齐套重算。
 
 3. **直接退役旧平铺扫描守卫 [schedule_execution_persistence_guard.py:95](../../../core/services/scheduler/run/schedule_execution_persistence_guard.py#L95)**：
    该守卫按 `(batch_id, seq)` 线性扫描下游，而账本准入、实际种子保持和显式前驱 `predecessors` 已由业务准备阶段与共同验证核心完整覆盖，无需再留一层平铺重复扫描。
@@ -287,7 +300,7 @@ def run_candidate_comparison(
 
 `compute_candidate_run` 直接表达下列顺序，删除 `schedule_orchestrator.py`、`ScheduleOrchestrationOutcome` 和 `_run_plan_selection`：
 1. 工作台在只读计算快照中调用 `prepare_business_input` 取得业务输入、保护种子与 `operation_efforts`，再显式调用 `prepare_solver_input` 与 `prepare_solver_resources`。
-2. 直接调用 `run_candidate_comparison`；scheduler 从 `SolverResources.calendar_inputs` 创建纯 `CalendarEngine`，在预算内完成图准备、`NativeSchedulePreparation` 与共享搜索，全程零数据库访问。
+2. 直接调用 `run_candidate_comparison`；scheduler 直接消费 `SolverResources.calendar_engine` 持有的单一缓存无连接 `CalendarEngine`（无需在 `scheduler` 二次从 `calendar_inputs` 实例化引擎），在预算内完成图准备、`NativeSchedulePreparation` 与共享搜索，全程零数据库访问。
 3. 对实际发布的候选逐个调用共同约束验证；选中候选的验证结果直接供 `SummaryBuildContext / build_result_summary` 和 `prepare_run_result` 复用。
 4. [分件图准备](../../../core/services/workbench/run/compute_graph.py#L27)与[普通图准备](../../../core/services/scheduler/run/schedule_graph_report.py#L62)归入 scheduler 统一图准备机制（消费 `SolverInput.algo_ops` 与显式 `predecessors`），删除 `partial(compare, prepare_graph_fn=...)` 回调装配；图准备保持在 `run_candidate_comparison` 创建预算之后执行。
 
