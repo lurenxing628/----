@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from .schedule_graph_dispatch_context import build_graph_ready_context, schedule_input_op_id_sets
 from .schedule_graph_resource_matching_context import build_graph_resource_matching_projection
 from .schedule_graph_score_projection import build_graph_score_projection
+from .schedule_input_contracts import SolverInput
 
 
 @dataclass(frozen=True)
@@ -19,7 +20,7 @@ class GraphDispatchProjections:
 
 
 def build_graph_dispatch_projections(
-    schedule_input: Any,
+    schedule_input: SolverInput,
     *,
     mode: str,
     nodes: List[Any],

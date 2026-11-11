@@ -151,26 +151,43 @@ _RECEIPT = ("INSERT INTO WorkbenchCommandReceipts(request_key,receipt_ref,action
 
 
 @pytest.mark.parametrize("change,stale", [(_RECEIPT.format("dashboard.transition", "committed"), False), (_RECEIPT.format("calendar.defaults", "committed"), True)])
-def test_input_ref_uses_the_run_worker_facts_scope(pf, change, stale):
+def test_input_ref_uses_the_run_worker_facts_scope(pf, change, stale, monkeypatch):
     # 检查到开始之间：日志、自动维护时钟、看板处置、试调和“无改动”回执排产都不读，和排产计算同一口径，不算现场变化；
     # 其他已提交的回执仍保守地算变化。
+    from core.services.workbench.run.preflight import PreflightService
+    from data.repositories.workbench_preflight_facts_repo import WorkbenchPreflightFactsRepository
+
     data = checked(pf)
     pf.conn.execute(change)
     pf.conn.commit()
     with pf.application.app_context():
         pf.conn.execute("BEGIN")
         try:
-            facts = PreflightFacts(pf.conn)
-            with facts.snapshot(fingerprint=False):
+            table_reads = []
+            if stale:
+                monkeypatch.setattr(
+                    WorkbenchPreflightFactsRepository,
+                    "capture_table",
+                    lambda _repo, name: table_reads.append(name),
+                )
+
+                def forbid_evaluate(*_args, **_kwargs):
+                    raise AssertionError("stale input_ref must be rejected before evaluate_prepared")
+
+                monkeypatch.setattr(PreflightService, "evaluate_prepared", forbid_evaluate)
+            with PreflightFacts.open(pf.conn) as facts:
                 if stale:
                     with pytest.raises(WorkbenchCommandRejected, match="有变化"):
                         evaluate_preflight_input_prepared(pf.conn, data["input_ref"], facts=facts)
+                    assert table_reads == []
                 else:
                     first = evaluate_preflight_input_prepared(pf.conn, data["input_ref"], facts=facts)
                     second = evaluate_preflight_input_prepared(pf.conn, data["input_ref"], facts=facts)
                     assert first.data["normalized_input"] == second.data["normalized_input"] == payload(pf)
                     assert first.preflight_facts is second.preflight_facts is facts
                     assert first.capture is second.capture is facts.capture
+                    assert all("op_id" in row for row in first.evaluation_rows)
+                    assert all("op_id" not in row for row in first.data["tasks"])
         finally:
             pf.conn.rollback()
 

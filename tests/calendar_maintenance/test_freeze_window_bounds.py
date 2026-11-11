@@ -24,9 +24,9 @@ def test_freeze_window_bounds(run_case):
     case.conn.commit()
     settings = case.settings("B1", "inside", "after", hold_window={"start": "2026-09-09T08:00", "end": "2026-09-10T08:00"})
     result = unchanged(case, lambda: compute_run(case.conn, settings, case.projections()))
-    assert result.schedule_input.frozen_op_ids == {ids["inside"]}
-    for payload in result.candidate_payloads.values():
-        held = next(row for row in payload.schedule_rows if row.op_id == ids["inside"])
+    assert result.schedule_input.seeds.frozen_op_ids == {ids["inside"]}
+    for outcome in result.candidate_outcomes.values():
+        held = next(row for row in outcome.validated_payload.schedule_rows if row.op_id == ids["inside"])
         assert (held.start_time, held.end_time) == (datetime(2026, 9, 9, 10), datetime(2026, 9, 9, 11))
 
 
@@ -48,49 +48,59 @@ def test_piece_batches_hold_only_the_covered_piece_and_common_work():
     assert prefix_op_ids_for_anchors(plain, {None: 20}) == [1, 2]
 
 
-@pytest.mark.parametrize("mismatch", ["other_machine", "bare_true"])
+@pytest.mark.parametrize("mismatch", ["other_machine", "missing"])
 def test_point_prefix_carries_its_witness_and_a_mismatched_witness_rejects_the_whole_prefix(mismatch):
     """零工时点事件的见证在冻结前缀校验时按最终 seed 口径取一次、随 seed 带出，排产种子合同直接接受；
-    见证对不上（或只给真假值）时，冻结整次拒绝（冻结只有严格口径）。"""
+    见证对不上或缺失时，stored_point_validator 直接按 point_evidence_unproven 拒绝。"""
     from dataclasses import replace
     from types import SimpleNamespace as Op
 
     from core.algorithm_contracts.schedule_point_evidence import PointSeedResult, SchedulePointEvidence
-    from core.errors import ValidationError
+    from core.models.workbench_run_compute import CandidateRunInputError
     from core.services.scheduler.run.freeze_window import build_freeze_window_seed
     from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_result_item
+    from core.services.workbench.run.input_runtime import stored_point_validator
 
     ops = [Op(id=oid, op_code="B1-" + str(oid), batch_id="B1", seq=oid, piece_id=None, source="internal",
               op_type_name="Turning", op_type_id="T1") for oid in (1, 2)]
-    rows = [{"op_id": 1, "machine_id": "M1", "operator_id": "O1",
-             "start_time": "2026-09-09 08:00:00", "end_time": "2026-09-09 10:00:00"},
-            {"op_id": 2, "machine_id": "M1", "operator_id": "O1",
-             "start_time": "2026-09-09 10:00:00", "end_time": "2026-09-09 10:00:00"}]
+    rows = [
+        {
+            "op_id": 1,
+            "machine_id": "M1",
+            "operator_id": "O1",
+            "start_time": "2026-09-09 08:00:00",
+            "end_time": "2026-09-09 10:00:00",
+            "_parsed_times": (datetime(2026, 9, 9, 8), datetime(2026, 9, 9, 10)),
+        },
+        {
+            "op_id": 2,
+            "machine_id": "M1",
+            "operator_id": "O1",
+            "start_time": "2026-09-09 10:00:00",
+            "end_time": "2026-09-09 10:00:00",
+            "_parsed_times": (datetime(2026, 9, 9, 10), datetime(2026, 9, 9, 10)),
+        },
+    ]
     witness = SchedulePointEvidence(op_id=2, machine_id="M1", operator_id="O1", at=datetime(2026, 9, 9, 10),
                                     setup_hours=0, unit_hours=0, quantity=3)
 
-    def freeze(evidence):
-        seen, meta = [], {}
-
-        def validator(row):
-            seen.append(row)
-            return evidence
-
+    def freeze(point_work):
+        meta = {}
+        facts = Op(official_source=lambda version: {"point_work": lambda: point_work})
         frozen, seeds = build_freeze_window_seed(
             prev_version=1, start_dt=datetime(2026, 9, 9), reschedulable_operations=ops, meta=meta,
-            point_validator=validator, schedule_rows_reader=lambda **_: rows,
+            point_validator=stored_point_validator(facts, 1), schedule_rows_reader=lambda **_: rows,
             hold_window=(datetime(2026, 9, 9, 9), datetime(2026, 9, 9, 11)))
-        return frozen, seeds, meta, seen
+        return frozen, seeds, meta
 
-    frozen, seeds, meta, seen = freeze(witness)
+    frozen, seeds, meta = freeze({2: {"witness": witness}})
     assert frozen == {1, 2} and meta["freeze_state"] == "active"
-    assert [row.op_id for row in seen] == [2] and seen[0].source == "internal"
     interval, point = seeds
     assert "_point_evidence" not in interval
     assert point["_point_evidence"] is witness
     assert type(coerce_seed_result_item(point, idx=1)) is PointSeedResult
 
-    bad = {"other_machine": replace(witness, machine_id="M2"), "bare_true": True}[mismatch]
-    with pytest.raises(ValidationError) as rejected:
+    bad = {"other_machine": {2: {"witness": replace(witness, machine_id="M2")}}, "missing": {}}[mismatch]
+    with pytest.raises(CandidateRunInputError) as exc:
         freeze(bad)
-    assert rejected.value.field == "freeze_window"
+    assert exc.value.code == "point_evidence_unproven"

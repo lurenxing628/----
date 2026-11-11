@@ -102,9 +102,9 @@ def run_stage(conn, action, payload, *, key=KEY):
     reader = WorkbenchProcessQueryService(conn, part_ref=identity.ref)
 
     def guard():
-        with reader.read_snapshot():
-            facts = reader.facts()
-            checked = service.checked_facts(reader.resolve(identity.ref), facts)
+        with reader.read_snapshot() as scope:
+            facts = scope.facts()
+            checked = service.checked_facts(scope.resolve(identity.ref), facts)
             return service.prepare_checked(action, normalized, checked, facts=facts)
 
     return WorkbenchCommandService(conn).execute(

@@ -88,8 +88,6 @@ class PreparedReceiptValues:
     returned: Optional[datetime]
 
     def check_recording_time(self, now):
-        if not isinstance(now, datetime) or now.tzinfo is not None:
-            raise ValueError("Outsourcing clock must return factory-local naive datetime")
         if self.sent > now or self.returned is not None and self.returned > now:
             reject("实际发出和实际回厂不能晚于当前时间。")
 

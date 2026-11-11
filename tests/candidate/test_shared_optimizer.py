@@ -23,6 +23,7 @@ from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.models.objective import objective_metric_keys, target_objectives_for
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.models.schedule_config_runtime_snapshot import snapshot_from_values
+from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
 from core.services.scheduler.graph.input_adapter import build_operation_nodes_from_rows
 from core.services.scheduler.run import schedule_shared_search
@@ -68,13 +69,18 @@ from core.services.scheduler.run.optimizer.shared_archive import CandidateArchiv
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget, SharedSearchSkip
 from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession, decode_and_metrics
 from core.services.scheduler.run.schedule_candidate_runner import _business_representative, run_candidate_comparison
-from core.services.scheduler.run.schedule_graph_report import ScheduleGraphDispatchPreparation
-from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInput
+from core.services.scheduler.run.schedule_graph_report import (
+    ScheduleGraphDispatchPreparation,
+    prepare_schedule_graph_for_dispatch,
+)
+from core.services.scheduler.run.schedule_input_contracts import (
+    SeedPreparation,
+    SolverInput,
+    SolverResources,
+)
 from core.services.scheduler.run.schedule_shared_optimizer import optimize_shared_schedule
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
-from core.services.workbench.run.compute_graph import piece_graph_preparer
 from tests._support.algo_operations import make_algo_op, make_batch
-from tests._support.optimizer_business_cases import batch_operation_from_fixture
 from tests._support.optimizer_graph_ready_benchmark import (
     START_DT,
     ContinuousCalendar,
@@ -186,20 +192,11 @@ def _linear_fixture():
     return operations, batches, context, pool, downtime, _fixed_seed()
 
 
-def _comparison_input(*, cfg, calendar, operations, batches, seeds, pool, downtime):
-    batch_operations = [batch_operation_from_fixture(vars(operation)) for operation in operations]
-    operation_ids = {operation.id for operation in operations}
+def _comparison_input(*, cfg, operations, batches, seeds, pool, downtime):
     frozen_ids = {row["op_id"] for row in seeds}
-    return ScheduleRunInput(
-        cfg=cfg, cal_svc=calendar, start_dt_norm=START_DT, end_date_norm=None,
-        normalized_batch_ids=list(batches), t0=monotonic(), readiness_gate_enabled=False,
-        batches=dict(batches),
-        operations=batch_operations, missing_internal_resource_op_ids=set(),
-        algo_ops=operations, algo_ops_to_schedule=operations,
-        prev_version=0, frozen_op_ids=frozen_ids, seed_results=seeds, execution_facts={},
-        execution_completed_op_ids=set(), execution_seed_results=[],
-        execution_snapshot_revision="fixture", execution_snapshot_op_ids=[], execution_snapshot_op_count=0,
-        schedule_output_allowed_op_ids=operation_ids | frozen_ids, payload_validation_operations=batch_operations,
+    seed_preparation = SeedPreparation(
+        frozen_op_ids=frozen_ids,
+        seed_results=seeds,
         freeze_meta={
             "freeze_state": "disabled",
             "freeze_applied": False,
@@ -207,9 +204,28 @@ def _comparison_input(*, cfg, calendar, operations, batches, seeds, pool, downti
             "freeze_days": 0,
             "freeze_disabled_reason": None,
         },
-        downtime_meta={}, resource_pool_meta={},
-        downtime_map=downtime, resource_pool=pool, optimizer_seed_version=0,
+        to_schedule=operations,
+        unscheduled_external_seed_by_op={},
     )
+    solver_input = SolverInput(
+        batches=dict(batches),
+        algo_ops=operations,
+        to_schedule=operations,
+        config=cfg,
+        start=START_DT,
+        end_date=None,
+        readiness_gate_enabled=False,
+        seeds=seed_preparation,
+    )
+    resources = SolverResources(
+        calendar_engine=CalendarEngine(),
+        downtime_map=downtime,
+        resource_pool=pool,
+        downtime_meta={},
+        resource_pool_meta={},
+        optimizer_seed_version=0,
+    )
+    return solver_input, resources
 
 
 def _piece_fixture(cfg):
@@ -228,10 +244,26 @@ def _piece_fixture(cfg):
     batches = {"B_LONG": graph_ready_benchmark_batches()["B_LONG"]}
     batches["B_LONG"].quantity = 2
     seed = replace(_fixed_seed(), seq=10)
-    prepared = SimpleNamespace(
-        operations=[fixed] + operations, batches=batches, algo_ops=[fixed] + operations,
-        algo_ops_to_schedule=operations, frozen_op_ids={99}, seed_results=[asdict(seed)],
-        resource_pool=None, cfg=cfg, piece_scope=build_piece_adoption_scope([fixed] + operations, {"B_LONG": 2}),
+    all_ops = [fixed] + operations
+    scope = build_piece_adoption_scope(all_ops, {"B_LONG": 2})
+    predecessors = {work.op_id: tuple(work.predecessor_op_ids) for work in scope.operations}
+    seeds = SeedPreparation(
+        frozen_op_ids={99},
+        seed_results=[asdict(seed)],
+        freeze_meta={},
+        to_schedule=operations,
+        unscheduled_external_seed_by_op={},
+    )
+    prepared = SolverInput(
+        batches=batches,
+        algo_ops=all_ops,
+        to_schedule=operations,
+        config=cfg,
+        start=START_DT,
+        end_date=None,
+        readiness_gate_enabled=False,
+        seeds=seeds,
+        predecessors=predecessors,
     )
     return prepared, seed
 
@@ -635,7 +667,7 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
 def test_piece_graph_repeats_sequences_per_piece_without_duplicate_seq_warnings():
     """回归：两个分件各自使用 seq=20/30，分件图分析不能把它们当成同批重复顺序号。"""
     prepared, _seed = _piece_fixture(_config(mode="greedy", graph="off"))
-    preparation = piece_graph_preparer(prepared)(prepared)
+    preparation = prepare_schedule_graph_for_dispatch(prepared)
     public, diagnostics = preparation.graph_analysis_public, preparation.graph_analysis_diagnostics
     assert public is not None and diagnostics is not None
     assert public["warning_count"] == 0
@@ -649,14 +681,18 @@ def test_piece_graph_reported_join_is_fixed_successor_not_released():
     join = next(op for op in prepared.algo_ops if op.id == 100)
     seed100 = replace(seed99, op_id=100, op_code=join.op_code, seq=join.seq,
                       start_time=START_DT + timedelta(hours=1), end_time=START_DT + timedelta(hours=2))
-    prepared.algo_ops_to_schedule = [op for op in prepared.algo_ops_to_schedule if op.id != 100]
-    prepared.seed_results = [asdict(seed99), asdict(seed100)]
-    context = piece_graph_preparer(prepared)(prepared).graph_ready_context
+    to_schedule = [op for op in prepared.to_schedule if op.id != 100]
+    prepared = replace(
+        prepared,
+        to_schedule=to_schedule,
+        seeds=replace(prepared.seeds, seed_results=[asdict(seed99), asdict(seed100)], to_schedule=to_schedule),
+    )
+    context = prepare_schedule_graph_for_dispatch(prepared).graph_ready_context
     assert context is not None and 100 in context["fixed_op_ids"]
     assert all(100 in context["successor_op_ids_by_op_id"][op_id] for op_id in (3, 4))
     decoded = production_decode(
         GreedyScheduler(calendar_service=ContinuousCalendar(), config_service=cfg),
-        operations=prepared.algo_ops_to_schedule, batches=prepared.batches, strategy=SortStrategy.FIFO,
+        operations=prepared.to_schedule, batches=prepared.batches, strategy=SortStrategy.FIFO,
         strategy_params={}, start_dt=START_DT, dispatch_mode="sgs", dispatch_rule="slack", resource_pool=None,
         machine_downtimes={}, seed_results=[seed99, seed100], graph_ready_context=context,
     )
@@ -864,17 +900,16 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
     # Graph-off piece work still carries its real fanout/join DAG into the unique ordinary SGS start.
     piece_cfg, piece_created, piece_contexts = _config(mode="greedy", graph="off"), [], []
     prepared, piece_seed = _piece_fixture(piece_cfg)
-    prepare_piece = piece_graph_preparer(prepared)
 
     def prepare_piece_once():
-        preparation = prepare_piece(prepared)
+        preparation = prepare_schedule_graph_for_dispatch(prepared)
         piece_contexts.append(preparation.graph_ready_context)
         return preparation
 
     piece = optimize_shared_schedule(
         calendar_service=ContinuousCalendar(), cfg=piece_cfg,
-        algo_ops_to_schedule=prepared.algo_ops_to_schedule, batches=prepared.batches,
-        start_dt=START_DT, end_date=None, downtime_map={}, seed_results=prepared.seed_results,
+        algo_ops_to_schedule=prepared.to_schedule, batches=prepared.batches,
+        start_dt=START_DT, end_date=None, downtime_map={}, seed_results=prepared.seeds.seed_results,
         resource_pool=None, version=0, readiness_gate_enabled=False,
         graph_prepare=prepare_piece_once, search_budget=_run_budget(piece_cfg), _runtime=_runtime(piece_created),
     )
@@ -889,7 +924,7 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
     assert not piece_call["decode_checkpoints"] and not piece_call["decode_resume"]
     piece_primary = piece.archive.materialize(piece.archive.best_by_objective[piece.target_objectives[0]])
     assert piece_primary["summary"].success and piece_primary["summary"].failed_ops == 0
-    _assert_arrangement(piece_primary["results"], operations=prepared.algo_ops_to_schedule,
+    _assert_arrangement(piece_primary["results"], operations=prepared.to_schedule,
                         seed=piece_seed, context=piece_call["graph_ready_context"], pool=None, downtime={})
     assert piece.process_facts["initial_construction_count"] == 1
     assert piece.process_facts["graph_preparation_calls"] == 1
@@ -897,20 +932,23 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
     assert len(piece.process_facts["actions"]) == 1 and piece.process_facts["bridges"] == []
     assert piece.process_facts["unified_process"]["counts"]["actual_decoder_calls"] == 1
     _assert_target_evaluations(piece.archive, piece.process_facts["initial_entry_id"],
-                               operations=prepared.algo_ops_to_schedule, batches=prepared.batches, seed=piece_seed)
+                               operations=prepared.to_schedule, batches=prepared.batches, seed=piece_seed)
 
     # The public adapter consumes those same native archives, with no decoder replay or target-wise solve.
     for actual, actual_cfg, actual_ops, actual_batches, actual_seeds, actual_pool, actual_downtime, actual_created in (
         (shared, cfg, operations, batches, [asdict(seed)], pool, downtime, created),
         (ordinary, ordinary_cfg, operations, batches, [asdict(seed)], pool, downtime, ordinary_created),
-        (piece, piece_cfg, prepared.algo_ops_to_schedule, prepared.batches, prepared.seed_results, None, {}, piece_created),
+        (piece, piece_cfg, prepared.to_schedule, prepared.batches, prepared.seeds.seed_results, None, {}, piece_created),
     ):
-        env = _comparison_input(cfg=actual_cfg, calendar=actual_created[0].calendar,
+        solver_input, resources = _comparison_input(cfg=actual_cfg,
             operations=actual_ops, batches=actual_batches, seeds=actual_seeds,
             pool=actual_pool, downtime=actual_downtime)
         decoder_count = len(actual_created[0].calls)
-        with patch("core.services.scheduler.run.schedule_candidate_runner.optimize_shared_schedule", return_value=actual) as solve:
-            public = run_candidate_comparison(schedule_input=env)
+        with patch(
+            "core.services.scheduler.run.schedule_candidate_runner.optimize_shared_schedule",
+            side_effect=lambda **kwargs: (kwargs["graph_prepare"](), actual)[1],
+        ) as solve:
+            public = run_candidate_comparison(solver_input, resources)
         assert solve.call_count == 1 and len(actual_created[0].calls) == decoder_count
         assert solve.call_args.kwargs["algo_ops_to_schedule"] is actual_ops
         assert solve.call_args.kwargs["seed_results"] is actual_seeds
@@ -1166,7 +1204,7 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
                 "selected_entries_by_objective": {target: publication_archive.selected_entry(target) for target in targets},
                 "evidence_event_ids_by_entry": {published.entry_id: shared.evidence_event_ids[partial_entry.entry_id]}}),
             publication_entry, sequence=0, primary=targets[0], targets=targets, cfg=scheduler.config,
-            preparation=None, total_budget=1.0)
+            preparation=ScheduleGraphDispatchPreparation(None, None, None), total_budget=1.0)
         assert partial_public.status == "completed" and partial_public.representative_objectives == list(targets)
         assert partial_public.results == partial_candidate["results"] and partial_public.summary == partial_candidate["summary"]
         assert partial_public.score == partial_entry.evaluations[targets[0]].score

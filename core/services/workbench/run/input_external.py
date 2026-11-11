@@ -10,12 +10,8 @@ from core.services.scheduler.contracts.external_context import (
     merged_supplier_problem,
 )
 from core.services.scheduler.run.schedule_execution_guardrails import build_execution_guardrails_from_projections
-from core.services.scheduler.run.schedule_input_seed_metadata import (
-    merged_actual_group_intervals,
-    merged_group_identity,
-)
+from core.services.scheduler.run.schedule_input_seed_metadata import merged_group_identity
 from core.services.scheduler.run.schedule_template_lookup import FrozenExternalContext
-from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.run_input_rows import fail
 from core.services.workbench.facts.stored_algo_inputs import stored_batch, stored_batch_operation
 from data.repositories.sqlite_rows import sql_order
@@ -67,10 +63,9 @@ def _cycle_members(groups, periods, actual_ids):
             for op_id, group in groups.items() if op_id not in actual_ids and group in periods}
 
 
-def external_execution_cycles(facts, batches, operations, seeds, actual_ids):
+def external_execution_cycles(facts, batches, operations, actual_group_intervals, actual_ids):
     """Use proven actual periods with valid immutable batch/group/piece bindings."""
-    groups = execution_groups(facts, batches, operations)
-    return _cycle_members(groups, merged_actual_group_intervals(groups, seeds, actual_ids), actual_ids)
+    return _cycle_members(execution_groups(facts, batches, operations), actual_group_intervals, actual_ids)
 
 
 def _time(value):
@@ -114,7 +109,7 @@ def preflight_external_cycles(facts, batches, operations, projections):
     batch_models = {batch["batch_id"]: stored_batch(batch) for batch in batches}
     groups = execution_groups(facts, batch_models, models)
     _, completed, seeds, _ = build_execution_guardrails_from_projections(
-        facts.conn, models, prev_version=version, execution_projections=prior, facts=facts)
+        models, prev_version=version, execution_projections=prior, facts=facts)
     rows = {op["id"]: op for op in operations}
     periods, problems = _actual_periods(facts, groups, seeds, rows)
     cycles = _cycle_members(groups, periods, completed)
@@ -125,14 +120,17 @@ def prior_execution_projections(facts, version):
     refs = {facts.operation_refs[op_id] for op_id in facts.latest_plan_rows(version)}
     supplied = facts.execution_projections
     missing = sorted(refs - set(supplied))
-    ledger = facts.execution_service or ExecutionLedgerService(facts.conn)
+    ledger = facts.ledger
     for offset in range(0, len(missing), 10000):
-        supplied.update((item.operation_ref, item) for item in ledger.project_operations(missing[offset:offset + 10000]))
+        supplied.update(
+            (item.operation_ref, item)
+            for item in ledger.reader.project_operations(ledger, missing[offset:offset + 10000])
+        )
     return [supplied[ref] for ref in sorted(refs)]
 
 
 def _holds_resource(row):
-    return row.get("actual_machine_ref") is not None or row.get("actual_operator_ref") is not None
+    return row["actual_machine_ref"] is not None or row["actual_operator_ref"] is not None
 
 
 def _projection_holds_resource(projection):
@@ -149,9 +147,9 @@ def _resource_bearing_external(facts, version):
     external = _planned_external(facts, version)
     supplied = {ref: facts.execution_projections[ref].to_dict() for ref in external if ref in facts.execution_projections}
     missing = sorted(set(external) - set(supplied))
-    ledger = facts.execution_service or ExecutionLedgerService(facts.conn)
+    ledger = facts.ledger
     for offset in range(0, len(missing), 10000):
-        for row in ledger.project_operations(missing[offset:offset + 10000]):
+        for row in ledger.reader.project_operations(ledger, missing[offset:offset + 10000]):
             facts.execution_projections[row.operation_ref] = row
             supplied[row.operation_ref] = row.to_dict()
     return {op["id"]: (op, supplied[ref]) for ref, op in external.items()

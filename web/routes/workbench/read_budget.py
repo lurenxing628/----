@@ -4,7 +4,7 @@ from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass
 from threading import Condition
-from typing import Optional
+from typing import Any, Mapping, Optional, Tuple
 
 from core.models.workbench_command import WorkbenchCommandRejected
 
@@ -73,8 +73,22 @@ CALIBRATION_READ_SLOTS = ReadBudget(2)
 
 
 @contextmanager
-def batch_read_snapshot(reader):
+def batch_read_snapshot(
+    reader,
+    *,
+    bind=None,
+    mode: str = "collection",
+    target_ref: Optional[str] = None,
+    target_refs: Optional[Tuple[str, ...]] = None,
+    query_filter: Optional[Mapping[str, Any]] = None,
+):
     # FIFO waiters hold no SQLite transaction and cannot starve behind newcomers.
     with BATCH_READ_SLOTS.slot():
-        with reader.detached_read_snapshot() as fingerprint:
-            yield fingerprint
+        with reader.facts.detached_read_snapshot(
+            bind=bind,
+            mode=mode,
+            target_ref=target_ref,
+            target_refs=target_refs,
+            query_filter=query_filter,
+        ) as scope:
+            yield scope

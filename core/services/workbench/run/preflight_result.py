@@ -65,6 +65,19 @@ def effective_config(settings, hold):
     return {**{key: settings[key] for key in keys}, "hold_window": window_text(hold[0]), "hold_window_source": hold[1]}
 
 
+_INTERNAL_TASK_KEYS = ("op_id", "external_execution_cycle")
+
+
+def _public_task_row(row):
+    return {
+        **{key: value for key, value in row.items() if key not in _INTERNAL_TASK_KEYS},
+        "issues": [dict(item) for item in row["issues"]],
+        "predecessor_refs": list(row["predecessor_refs"]),
+        "execution": dict(row["execution"]),
+        "held": dict(row["held"]) if row["held"] is not None else None,
+    }
+
+
 def summarize(settings, batches, rows, no_route, unready, dependency_reasons, notes, hold):
     """hold 是本次不重排时段 ((开始, 结束) 或 None, 来源 explicit/default)，原样写进 effective_config。"""
     counts = result_counts(batches, rows, no_route, unready)
@@ -73,15 +86,13 @@ def summarize(settings, batches, rows, no_route, unready, dependency_reasons, no
     warnings = result_warnings(settings, counts) + adoption_warnings(settings, rows) + list(notes)
     included_refs = {row["batch_ref"] for row in rows if row["status"] in ("eligible", "auto_assign_required")
                      or (row["status"] == "protected" and row.get("external_execution_cycle"))}
-    for row in rows:
-        row.pop("op_id", None)
-        row.pop("external_execution_cycle", None)
+    public_tasks = [_public_task_row(row) for row in rows]
     included = [{"batch_ref": row["ref"], "batch_id": row["batch_id"]} for row in batches if row["ref"] in included_refs]
     excluded = [{"batch_ref": row["ref"], "batch_id": row["batch_id"], "reason": "这批没有可排的工序。具体原因见工序明细，或者这批还没生成工艺。"}
                 for row in batches if row["ref"] not in included_refs]
     start, end = preflight_window(settings)
     return {"normalized_input": settings, "scope": {"source": "production", "batch_refs": settings["batch_refs"]},
-            "included_batches": included, "excluded_batches": excluded, "tasks": rows, "counts": counts,
+            "included_batches": included, "excluded_batches": excluded, "tasks": public_tasks, "counts": counts,
             "eligible_tasks": counts["eligible_tasks"], "auto_assign_required": counts["auto_assign_required"],
             "skipped_tasks": counts["skipped_tasks"], "blockers": blockers, "warnings": warnings,
             "no_route_batches": [{"batch_ref": row["ref"], "batch_id": row["batch_id"]} for row in no_route],

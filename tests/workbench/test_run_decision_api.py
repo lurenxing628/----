@@ -373,7 +373,9 @@ def test_unsaved_recommendation_does_not_invent_missing_saved_selection_evidence
 def test_decision_queries_preparation_pagination_and_recommendation_export_truth(candidate_case, monkeypatch):
     from core.infrastructure.transaction import TransactionManager
     from core.models.workbench_batch_material import normalize_material_changes
+    from core.services.workbench.batch.facts import BatchFacts
     from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
+    from core.services.workbench.batch.scope import BatchFactScope
     from data.repositories.workbench_run_candidate_repo import WorkbenchRunCandidateRepository
 
     case = candidate_case
@@ -405,8 +407,11 @@ def test_decision_queries_preparation_pagination_and_recommendation_export_truth
         )
     case.conn.commit()
     with TransactionManager(case.conn).transaction():
+        batch_ref = case.ref("batch", "B2")
+        scope = BatchFactScope(BatchFacts(case.conn), command=True, mode="single_instance", target_ref=batch_ref)
         WorkbenchBatchMaterialService(case.conn).apply_normalized(
-            case.ref("batch", "B2"),
+            scope,
+            batch_ref,
             normalize_material_changes({"removed_keys": [], "rows": b2_material_rows}),
         )
 

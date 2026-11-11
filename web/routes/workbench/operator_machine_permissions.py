@@ -20,7 +20,7 @@ _MISMATCH_MESSAGE = "预检与所选人员不一致，请重新预检。"
 def operator_machine_preview(ref):
     body = json_body({"machine_permissions", "write_token"})
     service = WorkbenchOperatorMachinePermissions(g.db, current_app.logger)
-    with service.reader.read_snapshot() as fingerprint:
+    with service.reader.read_snapshot() as scope:
         preview = service.preview(ref, body["machine_permissions"])
         value = preview.as_dict()
         validate_write_context(body["write_token"], ref, "operator.update", value["request"]["expected_operator"])
@@ -28,7 +28,7 @@ def operator_machine_preview(ref):
         data = {"operator_ref": ref, "preview_ref": preview_ref, "expires_at": expiry,
                 "rows": value["rows"], "summary": value["summary"], "commit_policy": "atomic",
                 "write_context": preview_write_context(preview_ref, expiry, [OPERATION])}
-        snapshot = bind_read_snapshot({"kind": "operator", "ref": ref, "action": OPERATION}, fingerprint)
+        snapshot = bind_read_snapshot({"kind": "operator", "ref": ref, "action": OPERATION}, scope.state_fingerprint())
     return query_success(data, snapshot)
 
 

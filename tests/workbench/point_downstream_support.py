@@ -22,8 +22,8 @@ def adopted(case, **options):
     candidate = point_candidate(case, **options)
     plan = adopt(case, candidate, key='ek-point-adopt-' + uuid.uuid4().hex)
     reader = ActualGanttService(case.conn)
-    with reader.read_snapshot():
-        data, _ = reader.workspace(ActualGanttScope(plan['plan_ref']), full_workspace=True)
+    with reader.read_snapshot() as gantt_scope:
+        data, _ = reader.workspace(gantt_scope, ActualGanttScope(plan['plan_ref']), full_workspace=True)
     return {'candidate_ref': candidate, 'plan': plan, 'task': data['items'][0]['task']}
 
 

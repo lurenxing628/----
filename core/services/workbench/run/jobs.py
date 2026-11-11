@@ -22,7 +22,7 @@ from core.services.workbench.facts.decision_baseline_source import decision_base
 from core.services.workbench.facts.decision_read_models import public_job_head, public_job_status
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
-from .input_admission import candidate_admission_issues
+from .input_admission import PreparedAdmission, prepare_candidate_admission
 from .preflight import PreparedPreflight
 from .preflight_facts import PreflightFacts
 
@@ -30,7 +30,7 @@ from .preflight_facts import PreflightFacts
 @dataclass(frozen=True)
 class AdmittedRun:
     """What admission adds to one checked preflight: the new run's identity, head, capture and read models."""
-    prepared: PreparedPreflight
+    admission: PreparedAdmission
     run_ref: str
     accepted_at: str
     data_context_ref: str
@@ -66,35 +66,43 @@ class WorkbenchRunService:
             raise RuntimeError("Run service must own the outer transaction")
 
     def _resolve(self, input_ref):
-        facts = PreflightFacts(self.conn)
-        with read_evidence_scope(self.conn), facts.snapshot(fingerprint=False):
+        with read_evidence_scope(self.conn), PreflightFacts.open(self.conn) as facts:
             prepared = self.input_resolver(self.conn, input_ref, facts=facts)
             if not prepared.data["blockers"]:
-                issues = candidate_admission_issues(self.conn, prepared=prepared)
-                prepared.data["blockers"].extend(issues)
+                admission = prepare_candidate_admission(self.conn, prepared=prepared)
+            else:
+                admission = PreparedAdmission(
+                    preflight=prepared,
+                    baseline=None,
+                    execution_projections=prepared.execution_projections,
+                    business_input=None,
+                    issues=(),
+                )
             snapshot = {"input_ref": input_ref, "normalized_input": prepared.settings,
                         "data_context_ref": self.data_context.ref()}
-            return prepared, snapshot
+            return admission, snapshot
 
     @staticmethod
     def _used_input_reason():
         return {"code": "input_already_used", "message": "这份检查结果已经开始过排产，请重新检查后再开始下一次。"}
 
-    def _prepare_admission(self, prepared, input_ref, request_key, data_context_ref):
+    def _prepare_admission(self, admission, input_ref, request_key, data_context_ref):
         from core.services.workbench.facts.decision_read_model import prepare_admission_read_models
 
+        prepared = admission.preflight
+        business = admission.business_input
         run_ref = new_run_ref()
         accepted_at = self.clock().isoformat(timespec="microseconds")
         facts_text = prepared.capture.content()
         capture = {"input": prepared.settings, "facts_text": facts_text,
                    "facts": prepared.capture.archive(),
-                   "execution": [row.to_dict() for row in prepared.execution_projections],
-                   "baseline": prepared.baseline, "run_options": prepared.run_options}
+                   "execution": [row.to_dict() for row in admission.execution_projections],
+                   "baseline": admission.baseline, "run_options": prepared.run_options}
         facts = GenerationFacts(capture)
-        receipt = {"dispositions": prepared.prepared_input.dispositions,
+        receipt = {"dispositions": business.dispositions,
                    "operation_effort": {"effort_basis": RUNTIME_REQUIREMENT_BASIS, "items": [
-                       {**durable_value(item.to_dict()), "operation_ref": prepared.preflight_facts.operation_refs[item.op_id]}
-                       for item in prepared.prepared_input.operation_efforts]}}
+                       {**durable_value(item.to_dict()), "operation_ref": business.facts.operation_refs[item.op_id]}
+                       for item in business.operation_efforts]}}
         disposition = {row["operation_ref"]: row for row in receipt["dispositions"]}
         official = read_decision_baseline(capture, facts, disposition,
                                          source_resolver=decision_baseline_source_resolver(self.conn))
@@ -107,10 +115,10 @@ class WorkbenchRunService:
                 "executor_ref": None, "started_at": None, "finished_at": None, "error_json": None}
         read_models = prepare_admission_read_models(head, capture, official,
                                                     facts=facts, receipt=receipt, dependencies=dependencies)
-        return AdmittedRun(prepared, run_ref, accepted_at, data_context_ref, head, capture, read_models)
+        return AdmittedRun(admission, run_ref, accepted_at, data_context_ref, head, capture, read_models)
 
-    def _reasons(self, data):
-        reasons = list(data["blockers"])
+    def _reasons(self, admission):
+        reasons = [*admission.preflight.data["blockers"], *admission.issues]
         if not self.integration_enabled:
             reasons.append({"code": "run_worker_not_connected", "message": "排产功能尚未开通，这次排产不能开始。请联系维护人员。"})
         return reasons
@@ -120,9 +128,10 @@ class WorkbenchRunService:
         self._require_outer()
         with TransactionManager(self.conn).transaction():
             used = self.repo.input_admitted(input_ref)
-            prepared, snapshot = self._resolve(input_ref)
+            admission, snapshot = self._resolve(input_ref)
+            prepared = admission.preflight
             settings, data = prepared.settings, prepared.data
-            reasons = self._reasons(data)
+            reasons = self._reasons(admission)
             if used:
                 reasons.append(self._used_input_reason())
             context = {"write_token": None, "expires_at": None,
@@ -149,20 +158,21 @@ class WorkbenchRunService:
                 reason = self._used_input_reason()
                 raise WorkbenchCommandRejected(reason["code"], reason["message"])
             with read_evidence_scope(self.conn):
-                prepared, snapshot = self._resolve(input_ref)
-                if self._reasons(prepared.data):
+                admission, snapshot = self._resolve(input_ref)
+                if self._reasons(admission):
                     raise WorkbenchCommandRejected("constraint_conflict", "排产检查还有缺资料的项，这次排产没有开始。请先按上面列出的项补齐。")
                 self.context_validator(write_token, input_ref, "scheduling.run", snapshot)
-                return self._prepare_admission(prepared, input_ref, request_key, snapshot["data_context_ref"])
+                return self._prepare_admission(admission, input_ref, request_key, snapshot["data_context_ref"])
 
-        def mutate(admission):
-            prepared = admission.prepared
+        def mutate(admitted_run):
+            admission = admitted_run.admission
+            prepared = admission.preflight
             ref = self.repo.insert(request_key=request_key, input_ref=input_ref, settings=prepared.settings,
-                facts_json=admission.capture["facts_text"],
-                projections=prepared.execution_projections, baseline=prepared.baseline,
-                now=admission.accepted_at, run_ref=admission.run_ref)
-            self.repo.insert_admission_read_model(ref, admission.read_models["scope"], admission.read_models["decision"])
-            admitted.append(admission)
+                facts_json=admitted_run.capture["facts_text"],
+                projections=admission.execution_projections, baseline=admission.baseline,
+                now=admitted_run.accepted_at, run_ref=admitted_run.run_ref)
+            self.repo.insert_admission_read_model(ref, admitted_run.read_models["scope"], admitted_run.read_models["decision"])
+            admitted.append(admitted_run)
             return WorkbenchCommandOutcome("committed", {"run_ref": ref})
 
         result = WorkbenchCommandService(self.conn).execute(request_key=request_key, action="scheduling.run",

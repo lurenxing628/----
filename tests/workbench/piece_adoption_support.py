@@ -13,6 +13,7 @@ from core.services.scheduler.run.schedule_payload_contract import build_validate
 from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_results
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.zero_duration import candidate_point_validator
+from core.services.workbench.run.input_runtime import runtime_resource_inputs
 from tests._support.algo_operations import make_schedule_result
 from tests.workbench.run_candidate_adoption_support import snapshot
 from tests.workbench.run_candidate_support import candidate_case as candidate_case  # noqa: F401
@@ -42,39 +43,42 @@ def lower_input(case, *batch_ids):
     return prepare_run_input(case.conn, case.settings(*ids), case.projections(*ids))
 
 
-def payload(prepared, results):
-    """The production final guard for one candidate's rows (compute_validation.validate_candidate)."""
-    return build_validated_schedule_payload(
-        results, allowed_op_ids=prepared.schedule_output_allowed_op_ids, operations=prepared.payload_validation_operations,
-        operation_sources=prepared.operation_sources,
-        missing_internal_resource_op_ids=prepared.missing_internal_resource_op_ids,
-        point_validator=candidate_point_validator(prepared))
-
-
 def slot_payload(prepared, *, placements=None):
     """Real slot-engine results, never a claim of a completed production run."""
     placements = placements or {}
     scope = build_piece_adoption_scope(prepared.operations, {key: batch.quantity for key, batch in prepared.batches.items()})
     work = {row.op_id: row for row in scope.operations}
-    result = {row.op_id: row for row in coerce_seed_results(prepared.seed_results, optimizer_algo_stats=make_algo_stats())}
+    downtimes = runtime_resource_inputs(prepared.facts).downtimes
+    result = {row.op_id: row for row in coerce_seed_results(prepared.seeds.seed_results, optimizer_algo_stats=make_algo_stats())}
     for op in sorted(prepared.algo_ops, key=lambda item: (item.seq, item.id)):
         if op.id in result:
             continue
         target = work[op.id]
         batch = prepared.batches[op.batch_id]
-        previous = max([result[key].end_time for key in target.predecessor_op_ids] or [prepared.start_dt_norm])
-        slot = estimate_internal_slot(calendar=prepared.cal_svc, op=op, batch=batch,
+        previous = max([result[key].end_time for key in target.predecessor_op_ids] or [prepared.start])
+        slot = estimate_internal_slot(
+            calendar=prepared.facts.calendar(
+                frozenset(op.operator_id for op in prepared.operations if op.operator_id is not None)
+            ),
+            op=op, batch=batch,
             machine_id=op.machine_id, operator_id=op.operator_id,
-            base_time=placements.get(op.id, prepared.start_dt_norm), prev_end=previous,
+            base_time=placements.get(op.id, prepared.start), prev_end=previous,
             machine_timeline=[(row.start_time, row.end_time) for row in result.values() if row.machine_id == op.machine_id],
             operator_timeline=[(row.start_time, row.end_time) for row in result.values() if row.operator_id == op.operator_id],
-            machine_downtimes=prepared.downtime_map.get(op.machine_id, ()), end_dt_exclusive=None,
+            machine_downtimes=downtimes.get(op.machine_id, ()), end_dt_exclusive=None,
             last_op_type_by_machine=None, abort_after=None,
             total_hours_base=op.setup_hours + op.unit_hours * target.target_quantity)
         result[op.id] = make_schedule_result(op_id=op.id, op_code=op.op_code, batch_id=op.batch_id, seq=op.seq,
             machine_id=op.machine_id, operator_id=op.operator_id, start_time=slot.start_time, end_time=slot.end_time,
             source=op.source, op_type_name=op.op_type_name, op_type_id=op.op_type_id)
-    return payload(prepared, list(result.values()))
+    return build_validated_schedule_payload(
+        list(result.values()),
+        allowed_op_ids=prepared.allowed_op_ids,
+        operations=prepared.operations,
+        operation_sources=prepared.operation_sources,
+        missing_internal_resource_op_ids=prepared.missing_internal_resource_op_ids,
+        point_validator=candidate_point_validator(prepared),
+    ).schedule_rows
 
 
 def checked_read_only(case, function):

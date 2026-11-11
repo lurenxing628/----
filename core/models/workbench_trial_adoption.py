@@ -24,7 +24,7 @@ class TrialAdoptionEvidence:
     baseline: Dict[str, Any]
     snapshot: Dict[str, Any]
     prepared: Any
-    payload: Any
+    outcome: Any
     # The source run's recorded start/end dates (and hold window when set); the new plan repeats them.
     run_window: Dict[str, Any]
     # Persistent audit stores source references; complete content stays in the original archives.

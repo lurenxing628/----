@@ -128,11 +128,13 @@ def test_shipped_react_analysis_uses_task_identity_for_both_navigation_handlers(
     client = api(dashboard_case, monkeypatch)
     document = client.get(BASE + "/analysis", query_string={"section": "actual"}).get_json()
     program = r"""
-const w = h.runtime, data = w.DashboardAnalysisAPI.validate(sourceData, sourceData.data.plan.plan_ref, {section: 'actual'});
+const DashboardAnalysisAPI = h.module('DashboardAnalysisAPI.js'),
+  DashboardAnalysisPanels = h.module('DashboardAnalysisPanels.jsx').DashboardAnalysisPanels;
+const data = DashboardAnalysisAPI.validate(sourceData, sourceData.data.plan.plan_ref, {section: 'actual'});
 const tasks = new Map(data.tasks.map(task => [task.task_ref, task]));
 const calls = [];
 function check(value) {
-  const tree = h.render(w.DashboardAnalysisPanels.Actual, {data: value, navigate: entry => calls.push(entry)});
+  const tree = h.render(DashboardAnalysisPanels.Actual, {data: value, navigate: entry => calls.push(entry)});
   const buttons = h.walk(tree).filter(node => node.type === 'button');
   assert.strictEqual(buttons.length, data.execution.length * 2);
   data.execution.forEach((row, index) => {

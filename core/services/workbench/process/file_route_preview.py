@@ -13,6 +13,7 @@ from .part_actions_facts import check_process_template
 from .projection import project_group, public_sequence, require_ref
 from .route_apply import affected_group_rows
 from .route_choices import changed_route_sequences, preview_existing_route, route_choice_context
+from .route_facts import ProcessRouteFacts
 from .route_preview import ProcessRoutePreviewService
 
 
@@ -59,15 +60,16 @@ def _route_summary(preview, existing):
 
 
 class RouteFilePreview:
-    def __init__(self, conn, logger, facts, target_ref, stack):
-        self.parts = facts.parts
-        self.identities = facts.identities
-        self.operations, self.groups = facts.operations, facts.groups
-        self.group_parts = facts.group_parts
-        self.target_ref, self.stack = target_ref, stack
-        self.facts = facts
-        self.parser = ProcessRoutePreviewService(conn, logger, facts=facts)
-        self.parser_ready = False
+    def __init__(self, logger, scope, target_ref):
+        self.logger = logger
+        self.scope = scope
+        self.facts = ProcessRouteFacts(scope.raw_facts())
+        self.parser = None
+        self.parts = self.facts.parts
+        self.identities = self.facts.identities
+        self.operations, self.groups = self.facts.operations, self.facts.groups
+        self.group_parts = self.facts.group_parts
+        self.target_ref = target_ref
         self.choices = {}
 
     def row(self, source):
@@ -179,9 +181,9 @@ class RouteFilePreview:
 
     def _parse_route(self, raw, existing):
         """Reuse one file-wide reference snapshot and retain explicit choices."""
-        if not self.parser_ready:
-            self.stack.enter_context(self.parser.reference_snapshot())
-            self.parser_ready = True
+        if self.parser is None:
+            self.facts.attach_references(*self.scope.load_catalog())
+            self.parser = ProcessRoutePreviewService(self.logger, facts=self.facts)
         preview = self.parser.preview({"mode": "text", "route_raw": raw})
         if not existing:
             return preview, None

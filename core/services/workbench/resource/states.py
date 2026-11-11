@@ -65,7 +65,7 @@ class ResourceChangePreparation:
             references = self._references.get(kind)
             if kind == "op_type":
                 if references is None:
-                    dependencies = self.facts.metrics.repo.op_type_dependencies(chunk)
+                    dependencies = self.facts.op_type_dependencies(chunk)
                 else:
                     from .table_facts import OP_TYPE_DEPENDENCIES
 
@@ -102,9 +102,9 @@ class ResourceChangePreparation:
 
     def selected_record(self, kind, identity, *, category=None):
         raw = self.facts.raw_record(kind, identity.entity_key)
-        if raw.get("status", "active") != "active":
+        if kind != "op_type" and raw["status"] != "active":
             raise WorkbenchCommandRejected("constraint_conflict", "选中的关联资源已经停用，没有保存。请重新选择一个在用的。")
-        if category is not None and not supports_source(raw.get("category"), category):
+        if category is not None and not supports_source(raw["category"], category):
             raise WorkbenchCommandRejected("constraint_conflict", "选中工种的自制或外协归属和当前资源不匹配，没有保存。请换一个工种。")
         return identity, raw
 

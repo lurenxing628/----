@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import sqlite3
-import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
@@ -11,12 +10,18 @@ from core.algorithm_contracts.resource_occupancy import project_internal_occupan
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.models.batch import Batch
-from core.models.batch_operation import BatchOperation
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.models.schedule_config_runtime_snapshot import snapshot_from_values
-from core.services.scheduler.calendar.service import CalendarService
+from core.services.scheduler.calendar.admin import CalendarAdmin
+from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
-from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInput
+from core.services.scheduler.run.schedule_input_contracts import (
+    SeedPreparation,
+    SolverInput,
+    SolverResources,
+)
+from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_capture
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from tests._support.algo_operations import make_algo_op
 from tests._support.optimizer_exact_oracle import (
     OBJECTIVES,
@@ -44,22 +49,6 @@ def algo_operation_from_fixture(operation: Dict[str, Any]) -> OpForScheduleAlgo:
     """像排产输入构建那样产出完整的算法工序；外协组字段只有外协夹具才给。"""
     return make_algo_op(**dict(operation, machine_id=_assigned(operation["machine_id"]),
                                operator_id=_assigned(operation["operator_id"])))
-
-
-def batch_operation_from_fixture(operation: Dict[str, Any]) -> BatchOperation:
-    """像排产入口 run_input_rows.operation_model 那样直接构造工序；夹具描述的是算法工序。
-
-    算法工序用空串表示还没指定设备或人员，库里存 NULL；只有外协工序带 ext_days；
-    piece_id、supplier_id、status、created_at 按新建批次工序的库内取值写明。
-    """
-    return BatchOperation(
-        id=operation["id"], op_code=operation["op_code"], batch_id=operation["batch_id"], piece_id=None,
-        seq=operation["seq"], op_type_id=operation["op_type_id"], op_type_name=operation["op_type_name"],
-        source=operation["source"],
-        machine_id=_assigned(operation["machine_id"]), operator_id=_assigned(operation["operator_id"]),
-        supplier_id=None, setup_hours=operation["setup_hours"], unit_hours=operation["unit_hours"],
-        ext_days=operation.get("ext_days"), status="pending", created_at=None,
-    )
 
 
 def _calendar(hours):
@@ -155,36 +144,26 @@ def case_environment(data, objective, config=None):
     try:
         conn.row_factory = sqlite3.Row
         conn.executescript((REPO_ROOT / "schema.sql").read_text(encoding="utf-8"))
-        calendar = CalendarService(conn)
-        context = calendar.normalization_context()
-        calendar._admin.repo.upsert_many(
-            [calendar._admin._build_work_calendar_from_payload(row, context=context) for row in data["calendar"]]
+        calendar_admin = CalendarAdmin(conn)
+        context = calendar_admin.normalization_context()
+        calendar_admin.repo.upsert_many(
+            [calendar_admin.build_work_calendar_from_payload(row, context=context) for row in data["calendar"]]
         )
         conn.commit()
+        calendar_engine = CalendarEngine(calendar_inputs_from_capture(ProductionFactsCapture(conn)))
         values = default_snapshot_values()
         values.update(sort_strategy="fifo", dispatch_mode="sgs", dispatch_rule="slack", algo_mode="improve",
                       time_budget_seconds=config["time_budget_seconds"], objective=objective, ortools_enabled="no",
                       auto_assign_enabled="no" if "tiny_case" in data else "yes",
                       freeze_window_enabled="no", freeze_window_days=0)
         operations = [algo_operation_from_fixture(row) for row in data["operations"]]
-        batch_operations = [batch_operation_from_fixture(row) for row in data["operations"]]
         seeds: List[Dict[str, Any]] = [dict(row, start_time=datetime.fromisoformat(row["start_time"]),
                       end_time=datetime.fromisoformat(row["end_time"])) for row in data["seed_results"]]
         frozen_ids = {row["op_id"] for row in seeds}
-        yield ScheduleRunInput(
-            cal_svc=calendar, cfg=snapshot_from_values(values),
-            algo_ops=operations, algo_ops_to_schedule=[op for op in operations if op.id not in frozen_ids],
-            batches={row["batch_id"]: Batch(part_no=row["batch_id"], **row) for row in data["batches"]},
-            start_dt_norm=START, end_date_norm=None, downtime_map=data["downtime"], seed_results=seeds,
-            resource_pool=data["resource_pool"], optimizer_seed_version=config["seed"],
-            readiness_gate_enabled=data["readiness_gate_enabled"], frozen_op_ids=frozen_ids,
-            normalized_batch_ids=[row["batch_id"] for row in data["batches"]], t0=time.monotonic(),
-            operations=batch_operations,
-            missing_internal_resource_op_ids=set(),
-            prev_version=0, execution_facts={}, execution_completed_op_ids=set(),
-            execution_seed_results=[], execution_snapshot_revision="fixture", execution_snapshot_op_ids=[],
-            execution_snapshot_op_count=0, schedule_output_allowed_op_ids={row["id"] for row in data["operations"]},
-            payload_validation_operations=batch_operations,
+        to_schedule = [op for op in operations if op.id not in frozen_ids]
+        seed_preparation = SeedPreparation(
+            frozen_op_ids=frozen_ids,
+            seed_results=seeds,
             freeze_meta={
                 "freeze_enabled": values["freeze_window_enabled"] == "yes",
                 "freeze_days": int(values["freeze_window_days"]),
@@ -192,17 +171,36 @@ def case_environment(data, objective, config=None):
                 "freeze_applied": bool(frozen_ids),
                 "freeze_disabled_reason": None if frozen_ids else "config_disabled",
             },
+            to_schedule=to_schedule,
+            unscheduled_external_seed_by_op={},
+        )
+        solver_input = SolverInput(
+            batches={row["batch_id"]: Batch(part_no=row["batch_id"], **row) for row in data["batches"]},
+            algo_ops=operations,
+            to_schedule=to_schedule,
+            config=snapshot_from_values(values),
+            start=START,
+            end_date=None,
+            readiness_gate_enabled=data["readiness_gate_enabled"],
+            seeds=seed_preparation,
+        )
+        resources = SolverResources(
+            calendar_engine=calendar_engine,
+            downtime_map=data["downtime"],
+            resource_pool=data["resource_pool"],
             downtime_meta={},
             resource_pool_meta={},
+            optimizer_seed_version=config["seed"],
         )
+        yield solver_input, resources
     finally:
         conn.close()
 
 
 def _payload(plan, env):
-    seed_results = [ScheduleResult(**row) for row in env.seed_results]
+    seed_results = [ScheduleResult(**row) for row in env.seeds.seed_results]
     metrics = compute_metrics(
-        plan.results, env.batches, expected_operations=env.algo_ops_to_schedule,
+        plan.results, env.batches, expected_operations=env.to_schedule,
         seed_results=seed_results,
         seed_occupancies_by_op_id={row.op_id: project_internal_occupancies(row) for row in seed_results},
         failure_details=plan.summary.failure_details,
@@ -218,18 +216,19 @@ def _payload(plan, env):
     }
 
 
-def _audit_plan(plan, env, data):
+def _audit_plan(plan, env, resources, data):
     assert plan.summary.failed_ops == 0
+    calendar = resources.calendar_engine
     operations = {row["id"]: row for row in data["operations"]}
     results = {row.op_id: row for row in plan.results}
     assert len(results) == len(plan.results) == len(operations)
     assert set(results) == set(operations)
-    for seed in env.seed_results:
+    for seed in env.seeds.seed_results:
         assert all(getattr(results[seed["op_id"]], key) == seed[key] for key in RESULT_FIELDS)
     for op_id, row in results.items():
         operation, batch = operations[op_id], env.batches[row.batch_id]
         assert all(getattr(row, key) == operation[key] for key in ("op_code", "batch_id", "seq", "source", "op_type_name"))
-        if op_id in env.frozen_op_ids:
+        if op_id in env.seeds.frozen_op_ids:
             continue
         assert row.start_time >= START and row.end_time > row.start_time
         if env.readiness_gate_enabled and batch.ready_date:
@@ -241,15 +240,15 @@ def _audit_plan(plan, env, data):
         for field in ("machine_id", "operator_id"):
             if operation[field]:
                 assert getattr(row, field) == operation[field]
-        if env.resource_pool:
-            assert row.machine_id in env.resource_pool["machines_by_op_type"][operation["op_type_id"]]
-            assert row.operator_id in env.resource_pool["operators_by_machine"][row.machine_id]
+        if resources.resource_pool:
+            assert row.machine_id in resources.resource_pool["machines_by_op_type"][operation["op_type_id"]]
+            assert row.operator_id in resources.resource_pool["operators_by_machine"][row.machine_id]
         assert not any(row.start_time < end and start < row.end_time
-                       for start, end in env.downtime_map.get(row.machine_id, []))
-        assert env.cal_svc.adjust_to_working_time(row.start_time, priority=batch.priority,
-                                                operator_id=row.operator_id) == row.start_time
+                       for start, end in resources.downtime_map.get(row.machine_id, []))
+        assert calendar.adjust_to_working_time(row.start_time, priority=batch.priority,
+                                               operator_id=row.operator_id) == row.start_time
         hours = operation["setup_hours"] + operation["unit_hours"] * batch.quantity
-        assert env.cal_svc.add_working_hours(row.start_time, hours, priority=batch.priority,
+        assert calendar.add_effective_hours(row.start_time, hours, priority=batch.priority,
                                             operator_id=row.operator_id) == row.end_time
     for field in ("batch_id", "machine_id", "operator_id"):
         groups = {}
@@ -288,12 +287,12 @@ def _oracle_report(case, payload):
 
 def run_case(scenario, objective):
     data = fixture_data(scenario)
-    with case_environment(data, objective, {"time_budget_seconds": 5, "seed": 0}) as env:
-        outcome = run_candidate_comparison(schedule_input=env)
+    with case_environment(data, objective, {"time_budget_seconds": 5, "seed": 0}) as (solver_input, resources):
+        outcome = run_candidate_comparison(solver_input, resources)
         representatives = {}
         for plan in outcome.candidates:
-            _audit_plan(plan, env, data)
-            representatives[plan.candidate_key] = _payload(plan, env)
+            _audit_plan(plan, solver_input, resources, data)
+            representatives[plan.candidate_key] = _payload(plan, solver_input)
         selected = representatives[outcome.selection.selected_candidate_key]
         winners = {target: representatives[key] for target, key in outcome.selection.objective_winners.items()}
         oracles = ({key: _oracle_report(data["tiny_case"], payload) for key, payload in representatives.items()}

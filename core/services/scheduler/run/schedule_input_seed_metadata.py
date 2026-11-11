@@ -9,19 +9,8 @@ from core.errors import ValidationError
 MERGED_EXECUTION_GROUP_SOURCE = "merged_execution_group"
 
 
-def _metadata_error(op_id: int, reason: str) -> ValidationError:
-    return ValidationError(
-        "保持原安排的外协工序缺少准确组身份，系统已停止排产，没有写入新结果。",
-        field="seed_results",
-        details={"reason": "invalid_external_group_metadata", "op_id": op_id, "cause": reason},
-    )
-
-
 def _enrich_external_seed(seed: Dict[str, Any], by_id: Dict[int, OpForScheduleAlgo]) -> Dict[str, Any]:
-    op_id = seed["op_id"]
-    op = by_id.get(op_id)
-    if op is None:
-        raise _metadata_error(op_id, "missing_operation")
+    op = by_id[seed["op_id"]]
     identity = merged_external_group_identity(op)
     if identity is None:
         return seed
@@ -67,13 +56,13 @@ def _actual_group_conflict(op_id):
         field="seed_results", details={"reason": "execution_merged_group_split", "op_id": op_id})
 
 
-def merged_actual_group_intervals(group_identities, execution_seed_results, actual_op_ids):
+def merged_actual_group_intervals(group_identities, execution_seed_results):
     """Index exact cycles only from seeds proven by the execution guard."""
     intervals = {}
     for seed in execution_seed_results:
         op_id = seed["op_id"]
         identity = group_identities.get(op_id)
-        if op_id not in actual_op_ids or identity is None:
+        if identity is None:
             continue
         period = seed["start_time"], seed["end_time"]
         if identity in intervals and intervals[identity] != period:
@@ -82,23 +71,26 @@ def merged_actual_group_intervals(group_identities, execution_seed_results, actu
     return intervals
 
 
-def with_merged_actual_group_seeds(seed_results, *, algo_ops, groups, actual_op_ids):
+def with_merged_actual_group_seeds(seed_results, *, algo_ops, groups, actual_op_ids, actual_group_intervals):
     """Fix unreported cycle members without inventing reports for those operations.
 
     Existing locked/frozen members must already agree, in either sequence order.
     Returned IDs distinguish these derived seeds from inherited official locks.
     ``groups`` maps every algo op id to merged_external_group_identity(op).
     """
-    intervals = merged_actual_group_intervals(groups, seed_results, actual_op_ids)
+    intervals = actual_group_intervals
     by_id = {seed["op_id"]: seed for seed in seed_results}
     for op_id, seed in by_id.items():
         identity = groups.get(op_id)
         if op_id not in actual_op_ids and identity in intervals and (seed["start_time"], seed["end_time"]) != intervals[identity]:
             raise _actual_group_conflict(op_id)
-    result, derived = list(seed_results), set()
+    result, derived, external_intervals = list(seed_results), set(), {}
     for op in algo_ops:
         identity = groups[op.id]
-        if identity not in intervals or op.id in by_id:
+        if identity not in intervals:
+            continue
+        external_intervals[op.id] = intervals[identity]
+        if op.id in by_id:
             continue
         start, end = intervals[identity]
         result.append({"op_id": op.id, "op_code": op.op_code, "batch_id": op.batch_id, "seq": op.seq,
@@ -106,7 +98,7 @@ def with_merged_actual_group_seeds(seed_results, *, algo_ops, groups, actual_op_
                        "machine_id": None, "operator_id": None, "start_time": start, "end_time": end,
                        "seed_source": MERGED_EXECUTION_GROUP_SOURCE})
         derived.add(op.id)
-    return result, derived
+    return result, derived, external_intervals
 
 
 def protected_interval_problem(previous, current, *, previous_group=None, current_group=None):

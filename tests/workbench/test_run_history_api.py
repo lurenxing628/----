@@ -73,8 +73,8 @@ def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case
         return original(path, *args, **kwargs)
 
     monkeypatch.setattr(sqlite3, "connect", guard)
-    from web.bootstrap.entrypoint import create_app_with_mode
-    app = create_app_with_mode("default")
+    from web.bootstrap.entrypoint import create_app
+    app = create_app()
     if not any(rule.rule == BASE and "GET" in (rule.methods or ()) for rule in app.url_map.iter_rules()):
         bp = Blueprint("bq_full_app_history", __name__)
         register_run_history_routes(bp)
@@ -149,7 +149,9 @@ def test_new_process_reopens_history_without_browser_token_cache(history_case):
             repo.finish(run_ref, result, (when + timedelta(seconds=2)).isoformat(timespec="microseconds"))
         assert not case.conn.in_transaction
         refs.append(run_ref)
-    expected, fingerprint = WorkbenchRunHistoryQueryService(case.conn).catalog(RunHistoryScope())
+    expected, fingerprint = WorkbenchRunHistoryQueryService(case.conn).catalog_for_snapshot(
+        RunHistoryScope(), bind_snapshot=lambda _scope, state: state
+    )
     before = dump(case.conn)
     code = '''import json, sqlite3, sys
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_schema_contract_issues
@@ -162,7 +164,9 @@ conn.execute("PRAGMA foreign_keys=ON")
 assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
 assert current_schema_contract_issues(conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
 conn.execute("PRAGMA query_only=ON")
-data, fingerprint = WorkbenchRunHistoryQueryService(conn).catalog(RunHistoryScope())
+data, fingerprint = WorkbenchRunHistoryQueryService(conn).catalog_for_snapshot(
+    RunHistoryScope(), bind_snapshot=lambda _scope, state: state
+)
 print(json.dumps({"data": data, "fingerprint": fingerprint}))
 conn.close()
 '''
@@ -173,4 +177,40 @@ conn.close()
     assert {row["run_ref"] for row in actual["data"]["runs"]} == set(refs)
     assert {row["state"] for row in actual["data"]["runs"]} == {"complete", "partial", "failed", "interrupted"}
     assert dump(case.conn) == before
+
+
+def test_stale_snapshot_ref_short_circuits_before_listing_jobs(history_case, monkeypatch):
+    from flask import g
+
+    from data.repositories.workbench_run_query_repo import WorkbenchRunHistoryQueryRepository
+
+    case = history_case
+    case.app.config["SECRET_KEY"] = "temporary-run-history-stale-test"
+    bp = Blueprint("bq_stale_history", __name__)
+    register_run_history_routes(bp)
+    case.app.register_blueprint(bp)
+
+    @case.app.before_request
+    def bind_db():
+        g.db = case.conn
+
+    case.accept(new_run_ref())
+    client = case.app.test_client()
+    initial = read(client)
+    stale_token = initial["meta"]["snapshot_ref"]
+    assert stale_token
+    case.accept(new_run_ref())
+
+    list_calls = 0
+
+    def forbid_list_jobs(repo, scope):
+        nonlocal list_calls
+        list_calls += 1
+        raise AssertionError("Stale snapshot_ref must short-circuit before list_jobs")
+
+    monkeypatch.setattr(WorkbenchRunHistoryQueryRepository, "list_jobs", forbid_list_jobs)
+    response = client.get(BASE, query_string={"snapshot_ref": stale_token})
+    assert response.status_code == 409
+    assert response.get_json()["error"]["code"] == "snapshot_stale"
+    assert list_calls == 0
 

@@ -22,7 +22,7 @@ def sample_runtime(tmp_path, monkeypatch):
                        ("APS_BACKUP_DIR", tmp_path / "backups"), ("APS_EXCEL_TEMPLATE_DIR", tmp_path / "templates")):
         monkeypatch.setenv(key, str(value))
     monkeypatch.setenv("APS_ENV", "production")
-    app = create_app_core(ui_mode="default")
+    app = create_app_core()
     scope = str(tmp_path / "launcher")
     lock = acquire_runtime_lock(scope, db_path=str(database))
     runtime = install_workbench_run_runtime(app, runtime_lock=lock)

@@ -414,9 +414,10 @@ def test_dashboard_analysis_reuses_streamed_pressure_without_retaining_calendar_
     index = indexes[0]
     assert index.retain_statistics_values is False
     assert index._measurements == {}
-    assert facts.raw["resource_pressure"]["calendar"]["resources"] is None
-    assert facts.raw["resource_pressure"]["occupancy"] is None
-    assert set(facts.raw["resource_pressure"]) == {"constraints", "unknown_source_operations", "calendar", "occupancy"}
+    assert "resource_pressure" not in facts.raw
+    assert "resources" not in facts.pressure
+    assert facts.pressure["state"] == facts.pressure["calendar_state"] == "available"
+    assert metrics.factory is not None and metrics.factory.source["schema_version"] == 33
 
     def no_geometry(value):
         if isinstance(value, dict):
@@ -465,7 +466,8 @@ def test_plan_without_resource_cohort_beyond_calendar_window_keeps_analysis_read
     reader = WorkbenchDashboardService(case.conn, clock=lambda: NOW)
     with reader.read_snapshot():
         sources = reader.load()
-    assert sources.facts.raw["resource_pressure"]["calendar"]["reason"] == "calendar_range_limit"
+    assert sources.facts.pressure["calendar_state"] == "unavailable"
+    assert sources.facts.pressure_metrics is not None and sources.facts.pressure_metrics.factory is None
     first = reader.analysis(sources, DashboardAnalysisQuery("overview"))
     # The over-wide window only bounds per-resource calendar geometry. Without a resource
     # cohort nothing is projected, yet an internal task missing both identities still counts.

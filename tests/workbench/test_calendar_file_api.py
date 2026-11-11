@@ -75,7 +75,7 @@ def test_preview_does_not_write_and_confirm_commits_once(client, monkeypatch):
     from core.services.scheduler.calendar.admin import CalendarAdmin
     from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 
-    built, build = [], CalendarAdmin._build_work_calendar
+    built, build = [], CalendarAdmin.build_work_calendar_from_payload
 
     def build_once(self, *args, **kwargs):
         model = build(self, *args, **kwargs)
@@ -85,7 +85,7 @@ def test_preview_does_not_write_and_confirm_commits_once(client, monkeypatch):
     def no_receipt_refs(*args):
         raise AssertionError("File receipts do not consume permanent calendar refs")
 
-    monkeypatch.setattr(CalendarAdmin, "_build_work_calendar", build_once)
+    monkeypatch.setattr(CalendarAdmin, "build_work_calendar_from_payload", build_once)
     monkeypatch.setattr(WorkbenchCalendarQueryRepository, "created_refs", no_receipt_refs)
     first = confirm(client, preview)
     assert len(built) == 2
@@ -584,12 +584,10 @@ def test_operator_calendar_identity_binding_readonly_formula_and_xlsx_crlf_round
 
 
 def test_operator_calendar_import_batch_shares_period_decoding_across_rows(client, monkeypatch):
-    from core.models import calendar as calendar_model
-    from core.models import calendar_period_columns, calendar_periods
+    from core.models import calendar_periods
     from core.services.scheduler.calendar import defaults as defaults_module
     from core.services.scheduler.calendar import engine as engine_module
 
-    assert not hasattr(calendar_period_columns, "decode_periods") and not hasattr(calendar_model, "decode_periods")
     with database(client) as conn:
         conn.executemany(
             "INSERT INTO Operators(operator_id,name) VALUES (?,?)",
@@ -693,3 +691,94 @@ def test_overlong_period_count_strings_return_row_errors_instead_of_500(client):
     assert [row["result"] for row in op_preview["rows"]] == ["rejected", "rejected"]
     for row in op_preview["rows"]:
         assert [(err["field"], err["message"]) for err in row["errors"]] == expected_error
+
+
+def test_operator_calendar_file_preserves_legacy_surrounding_whitespace_without_touching_trimmed_sibling(client):
+    with database(client) as conn:
+        conn.executemany(
+            "INSERT INTO Operators(operator_id,name) VALUES (?,?)",
+            [("CAL-O", "无空格人员"), (" CAL-O ", "带空格人员")],
+        )
+        conn.executemany(
+            "INSERT INTO OperatorCalendar(operator_id,date,day_type,efficiency,allow_normal,allow_urgent,remark,periods_json) "
+            "VALUES (?,?, 'workday', 1, 'yes', 'yes', ?, '[{\"start\":\"08:00\",\"end\":\"16:00\",\"day_offset\":0}]')",
+            [("CAL-O", DAY, "无空格原备注"), (" CAL-O ", DAY, "带空格原备注")],
+        )
+        conn.commit()
+
+    export_prev = client.post(
+        BASE + "/operator_calendar/export-preview",
+        json={"range": {"start_date": DAY, "end_date": DAY}},
+    )
+    assert export_prev.status_code == 200, export_prev.get_data(as_text=True)
+    export_ref = export_prev.get_json()["data"]["export_ref"]
+    for fmt in ("csv", "xlsx"):
+        exported = client.get(
+            BASE + "/operator_calendar/export",
+            query_string={"export_ref": export_ref, "format": fmt},
+        )
+        assert exported.status_code == 200, exported.get_data(as_text=True)
+        roundtrip_resp = client.post(
+            BASE + "/operator_calendar/preview",
+            data={"file": (BytesIO(exported.data), "operator_calendar." + fmt), "format": fmt, "mode": "upsert"},
+            content_type="multipart/form-data",
+        )
+        assert roundtrip_resp.status_code == 200, roundtrip_resp.get_data(as_text=True)
+        roundtrip = roundtrip_resp.get_json()["data"]
+        assert roundtrip["can_confirm"] is True
+        assert [row["result"] for row in roundtrip["rows"]] == ["unchanged", "unchanged"]
+        assert {row["after"]["operator_code"] for row in roundtrip["rows"]} == {"CAL-O", " CAL-O "}
+
+    update_bytes = file_bytes(
+        [(" CAL-O ", DAY, "带空格已更新备注")],
+        headers=("工号", "日期", "备注"),
+    )
+    update_resp = client.post(
+        BASE + "/operator_calendar/preview",
+        data={"file": (BytesIO(update_bytes), "operator_calendar.csv"), "format": "csv", "mode": "upsert"},
+        content_type="multipart/form-data",
+    )
+    assert update_resp.status_code == 200, update_resp.get_data(as_text=True)
+    update_prev = update_resp.get_json()["data"]
+    assert update_prev["can_confirm"] is True
+    update_row, = update_prev["rows"]
+    assert update_row["result"] == "update"
+    assert update_row["business_code"] == " CAL-O  / " + DAY
+    assert update_row["changes"] == {"remark": {"before": "带空格原备注", "after": "带空格已更新备注"}}
+
+    confirmed = client.post(
+        BASE + "/operator_calendar/confirm",
+        json={
+            "request_key": "cal-whitespace-update-00001",
+            "write_token": update_prev["write_context"]["write_token"],
+            "input": {"preview_ref": update_prev["preview_ref"]},
+        },
+    )
+    assert confirmed.status_code == 200, confirmed.get_data(as_text=True)
+    assert confirmed.get_json()["result"] == "committed"
+    with database(client) as conn:
+        rows = {
+            r["operator_id"]: r["remark"]
+            for r in conn.execute(
+                "SELECT operator_id, remark FROM OperatorCalendar WHERE date=? AND operator_id IN ('CAL-O', ' CAL-O ')",
+                (DAY,),
+            )
+        }
+    assert rows == {"CAL-O": "无空格原备注", " CAL-O ": "带空格已更新备注"}
+
+    missing_bytes = file_bytes(
+        [(" CAL-MISS ", DAY, "工作日", "08:00", "16:00"), ("CAL-MISS", DAY, "工作日", "08:00", "16:00")],
+        headers=("工号", "日期", "类型", "班次开始", "班次结束"),
+    )
+    missing_resp = client.post(
+        BASE + "/operator_calendar/preview",
+        data={"file": (BytesIO(missing_bytes), "operator_calendar.csv"), "format": "csv", "mode": "upsert"},
+        content_type="multipart/form-data",
+    )
+    assert missing_resp.status_code == 200, missing_resp.get_data(as_text=True)
+    missing_prev = missing_resp.get_json()["data"]
+    assert missing_prev["can_confirm"] is False
+    assert [(r["errors"][0]["field"], r["errors"][0]["message"]) for r in missing_prev["rows"]] == [
+        ("operator_code", "工号不能有首尾空格，请修正后重新导入。"),
+        ("operator_code", "系统里找不到这个工号，这一行没有导入。请先在人员资料里维护好再导入。"),
+    ]

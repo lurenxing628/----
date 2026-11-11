@@ -38,15 +38,19 @@ def calibration_facets(column, selection=False):
     if (selection or number > 1) and not token:
         raise WorkbenchCommandRejected("snapshot_required", messages.STALE, 400)
     binding = resolve_read_snapshot(token) if token is not None else None
-    as_of = binding.as_of_time if binding is not None else None
     with CALIBRATION_READ_SLOTS.slot():
-        service = WorkbenchCalibrationService(g.db, as_of=as_of)
+        service = WorkbenchCalibrationService(g.db)
         bound = {"kind": "calibration_table_facets", "scope": query.scope(), "column": column, "query": search, "size": size}
-        facts = service.read(
-            query,
-            clock=current_snapshot_time if binding is None else None,
-            bind_snapshot=lambda content: bind_read_snapshot(bound, content, token, as_of=service.as_of, binding=binding),
-        )
+        with service.read_snapshot() as ledger_scope:
+            effective_as_of = binding.as_of_time if binding is not None else current_snapshot_time()
+            facts = service.read(
+                ledger_scope,
+                query,
+                as_of=effective_as_of,
+                bind_snapshot=lambda content: bind_read_snapshot(
+                    bound, content, token, as_of=effective_as_of, binding=binding
+                ),
+            )
         cell_cache = {}
         rows = filtered_suggestions(facts["rows"], query, cell_cache=cell_cache, sort=False)
         data = facet_data(rows, column, search, number, size, selection=selection, cell_cache=cell_cache)

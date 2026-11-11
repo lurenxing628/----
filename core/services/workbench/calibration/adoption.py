@@ -5,7 +5,7 @@ from datetime import datetime
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_calibration_adoption import ADOPT_ACTION, adoption_input, closed_context, preview_input
-from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_execution_input import public_ref
 from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
@@ -78,10 +78,9 @@ class WorkbenchCalibrationAdoptionService:
 
     def receipt(self, template_operation_ref, request_key):
         public_ref(template_operation_ref)
-        validate_request_key(request_key)
-        row = self.commands.repo.get(request_key)
-        if row is None:
-            return None
-        if (row["action"], row["context_ref"]) != (ADOPT_ACTION, template_operation_ref):
-            raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号属于另一条记录或另一个操作，请核对上次提交的内容。")
-        return self.commands.repo.public_result(row, replayed=True)
+        return self.commands.lookup(
+            request_key,
+            action=ADOPT_ACTION,
+            context_ref=template_operation_ref,
+            conflict_message="这个操作编号属于另一条记录或另一个操作，请核对上次提交的内容。",
+        )

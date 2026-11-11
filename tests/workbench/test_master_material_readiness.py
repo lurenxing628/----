@@ -1,7 +1,7 @@
 """The material overview uses the same dated readiness facts as batch maintenance."""
 
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 from flask import Blueprint
@@ -59,18 +59,18 @@ def _section(client, result, entity, section):
 
 def test_overview_material_readiness_follows_arrival_day_and_quantity_review(overview_client, monkeypatch, record_property):
     from core.services.workbench.master import overview_facts
-    from core.services.workbench.master.overview import MasterOverviewService
+    from core.services.workbench.master.overview import MasterOverviewReadScope
 
     client = overview_client
     client.batch_conn.executemany("INSERT INTO Materials(material_id,name,unit,stock_qty) VALUES (?,?,'kg',0)",
                                  [("R18-" + str(index).zfill(2), "test material") for index in range(20)])
     client.batch_conn.commit()
-    original, calls = MasterOverviewService.page, []
-    load_facts, captures = overview_facts.MasterOverviewFacts._load, []
+    original, calls = MasterOverviewReadScope.page, []
+    load_facts, captures = overview_facts.MasterOverviewFactScope._load, []
 
-    def page(reader, scope, number=1):
+    def page(view, scope, number=1):
         calls.append(number)
-        return original(reader, scope, number)
+        return original(view, scope, number)
 
     def capture(facts):
         captures.append(facts)
@@ -78,8 +78,8 @@ def test_overview_material_readiness_follows_arrival_day_and_quantity_review(ove
 
     query = {"scope": json.dumps(SCOPE), "page": 2}
     with monkeypatch.context() as patch:
-        patch.setattr(MasterOverviewService, "page", page)
-        patch.setattr(overview_facts.MasterOverviewFacts, "_load", capture)
+        patch.setattr(MasterOverviewReadScope, "page", page)
+        patch.setattr(overview_facts.MasterOverviewFactScope, "_load", capture)
         restored = client.get(BASE, query_string=query)
     assert restored.status_code == 200, restored.get_json()
     direct = restored.get_json()
@@ -93,7 +93,7 @@ def test_overview_material_readiness_follows_arrival_day_and_quantity_review(ove
     repeated = client.get(BASE, query_string={**query, "snapshot_ref": direct["meta"]["snapshot_ref"]}).get_json()
     assert repeated["data"] == direct["data"] and repeated["meta"].keys() == direct["meta"].keys()
     assert repeated["meta"]["request_ref"] != direct["meta"]["request_ref"]
-    assert all(repeated["meta"][key] == value for key, value in direct["meta"].items() if key not in ("request_ref", "as_of"))
+    assert all(repeated["meta"][key] == value for key, value in direct["meta"].items() if key != "request_ref")
     target = direct["data"]["rows"][-1]
     located = client.get(BASE + "/locate/material/" + target["ref"], query_string={
         "scope": json.dumps(SCOPE), "snapshot_ref": direct["meta"]["snapshot_ref"]})
@@ -118,12 +118,14 @@ def test_overview_material_readiness_follows_arrival_day_and_quantity_review(ove
     fields = {row["label"]: row["value"] for row in _section(client, result, entity, "fields")}
     assert fields["FREE-001 当前到料数量"] == 2
 
-    class Tomorrow(date):
-        @classmethod
-        def today(cls):
-            return tomorrow
+    tomorrow_noon = datetime.combine(tomorrow, datetime.min.time()).replace(hour=12)
 
-    monkeypatch.setattr(overview_facts, "date", Tomorrow)
+    class TomorrowDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return tomorrow_noon
+
+    monkeypatch.setattr(overview_facts, "datetime", TomorrowDatetime)
     stale_day = client.get(BASE + "/entities/material/" + entity["ref"], query_string={
         "scope": json.dumps(SCOPE), "snapshot_ref": result["meta"]["snapshot_ref"], "section": "issues"})
     assert stale_day.status_code == 409 and stale_day.get_json()["error"]["code"] == "snapshot_stale"

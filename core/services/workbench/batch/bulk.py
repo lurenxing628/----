@@ -7,8 +7,8 @@ from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchComm
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from data.repositories.batch_material_repo import BatchMaterialRepository
 
-from .facts import BatchFacts
 from .projection import BatchProjection
+from .scope import BatchFactScope
 from .service import WorkbenchBatchService, stored_batch_values
 
 
@@ -29,10 +29,9 @@ def normalize_bulk(payload):
 
 
 class WorkbenchBatchBulkService:
-    def __init__(self, conn, logger=None, reader=None):
+    def __init__(self, conn, logger=None):
         self.conn = conn
-        self.reader = reader if reader is not None else BatchFacts(conn, logger)
-        self.domain = WorkbenchBatchService(conn, logger, facts=self.reader)
+        self.domain = WorkbenchBatchService(conn, logger)
 
     def _prepare_changes(self, payload, preparation):
         prepared, successors = [], {}
@@ -65,12 +64,12 @@ class WorkbenchBatchBulkService:
             requirements[batch_id] = batch_requirements
             source_operations.extend(operations)
         writer = TemplateLineageWriter(self.conn)
-        prepared_rows = writer.prepare_instances(source_operations, facts=facts)
+        prepared_rows = writer.prepare_instances(source_operations, facts=facts, complete_facts=True)
         return writer, {op["id"]: ready for op, ready in zip(source_operations, prepared_rows)}, requirements
 
-    def plan_normalized(self, payload):
-        facts = self.reader.load()
-        preparation = self.domain.preparation(facts)
+    def plan_normalized(self, scope: BatchFactScope, payload):
+        facts = scope.load()
+        preparation = self.domain.preparation(scope)
         prepared = self._prepare_changes(payload, preparation)
         # 关系索引由 preparation 按需建一次（删除准备时已建好，修改和复制在这里首次建），投影直接复用同一份。
         projection = BatchProjection(facts, preparation.relations)
@@ -85,9 +84,18 @@ class WorkbenchBatchBulkService:
             elif payload["action"] == "copy":
                 after = projection.copied_entity(batch, change.created.to_dict())
             rows.append({"entity_ref": ref, "before": before, "after": after})
-        return {"operation": "batch.bulk_confirm", "action": payload["action"], "rows": rows, "count": len(rows), "commit_policy": "atomic",
-                "warnings": ([{"code": "copied_materials_unconfirmed", "message": "复制时保留物料需求，到料量从 0 开始，齐套和齐套日期需要重新核对。"}]
-                             if payload["action"] == "copy" else [])}
+        return {
+            "operation": "batch.bulk_confirm",
+            "action": payload["action"],
+            "rows": rows,
+            "count": len(rows),
+            "commit_policy": "atomic",
+            "warnings": (
+                [{"code": "copied_materials_unconfirmed", "message": "复制时保留物料需求，到料量从 0 开始，齐套和齐套日期需要重新核对。"}]
+                if payload["action"] == "copy"
+                else []
+            ),
+        }
 
     @staticmethod
     def _copy_code(code, used, successors):
@@ -115,10 +123,12 @@ class WorkbenchBatchBulkService:
             serial += 1
         raise WorkbenchCommandRejected("constraint_conflict", "无法为复制批次分配有效编号，请手工新增。")
 
-    def apply_normalized(self, payload):
+    def apply_normalized(self, scope: BatchFactScope, payload):
         if not self.conn.in_transaction:
             raise RuntimeError("批量保存必须由工作台命令事务持有。")
-        preparation = self.domain.preparation()
+        if payload["action"] in ("delete", "copy"):
+            scope.load()
+        preparation = self.domain.preparation(scope)
         prepared = self._prepare_changes(payload, preparation)
         if payload["action"] == "copy":
             relations = preparation.relations
@@ -136,8 +146,10 @@ class WorkbenchBatchBulkService:
         outcomes = []
         for (ref, batch, change), result in zip(changes, applied):
             code = change.business_code
-            mapping = {op["id"]: writer.copy_prepared_instance(code, prepared[op["id"]])
-                       for op in source_relations[batch["batch_id"]]["operations"]}
+            mapping = {
+                op["id"]: writer.copy_prepared_instance(code, prepared[op["id"]])
+                for op in source_relations[batch["batch_id"]]["operations"]
+            }
             BatchMaterialRepository(self.conn).copy_requirements(
                 code, mapping, requirements=requirements[batch["batch_id"]]
             )
@@ -147,5 +159,13 @@ class WorkbenchBatchBulkService:
     @staticmethod
     def _outcome(payload, outcomes):
         result = "committed" if any(row["result"] == "committed" for row in outcomes) else "unchanged"
-        return WorkbenchCommandOutcome(result, {"items": outcomes, "count": len(outcomes), "commit_policy": "atomic", "action": payload["action"],
-                                               "deleted_refs": []})
+        return WorkbenchCommandOutcome(
+            result,
+            {
+                "items": outcomes,
+                "count": len(outcomes),
+                "commit_policy": "atomic",
+                "action": payload["action"],
+                "deleted_refs": [],
+            },
+        )

@@ -6,8 +6,9 @@ from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 from core.models.operation_execution_scope import EXECUTION_STATUS_NOT_STARTED, OperationExecutionScope
 from core.models.workbench_execution import ExecutionProjection
+from core.services.execution.ledger_reader import ExecutionLedgerReadScope
 
-from .execution_ledger_adapter import adapt_ledger_facts, ledger_read_snapshot
+from .execution_ledger_adapter import adapt_ledger_facts
 from .operation_execution_scope_read import scopes_by_op_id_for_plan_rows
 
 
@@ -52,8 +53,7 @@ class ExecutionFactProvider:
     具体计划页和重排保护必须按计划身份读取。
     """
 
-    def __init__(self, conn, *, ledger=None):
-        self.conn = conn
+    def __init__(self, *, ledger: ExecutionLedgerReadScope):
         self.ledger = ledger
 
     def facts_by_scope(
@@ -61,9 +61,8 @@ class ExecutionFactProvider:
         execution_projections: Sequence[ExecutionProjection],
     ) -> Dict[OperationExecutionScope, ExecutionFact]:
         normalized = list(dict.fromkeys(scopes))
-        with ledger_read_snapshot(self.conn, ledger=self.ledger) as ledger:
-            facts = {scope: _initial_fact(scope) for scope in normalized}
-            return adapt_ledger_facts(ledger, facts, execution_projections=execution_projections)
+        facts = {scope: _initial_fact(scope) for scope in normalized}
+        return adapt_ledger_facts(self.ledger, facts, execution_projections=execution_projections)
 
     def facts_by_op_id_for_plan_rows(
         self,

@@ -20,8 +20,9 @@ from core.models.workbench_calendar import (
     require_periods_when_rest_turns_work,
 )
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
-from core.services.scheduler.calendar.admin import CalendarNormalizationContext
-from core.services.scheduler.calendar.service import CalendarService
+from core.services.scheduler.calendar.admin import CalendarAdmin, CalendarNormalizationContext
+from core.services.scheduler.calendar.engine import CalendarEngine
+from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_connection
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 
 from .calendar_reading import (
@@ -45,10 +46,27 @@ def _date_key(value: Any) -> str:
 class WorkbenchCalendarService:
     def __init__(self, conn, logger=None, *, clock: Callable[[], datetime] = datetime.now):
         self.conn = conn
+        self.logger = logger
         self._clock = clock
-        self._calendar = CalendarService(conn, logger=logger)
+        self._admin = CalendarAdmin(conn, logger=logger)
+        self._engine: Optional[CalendarEngine] = None
         self._query = WorkbenchCalendarQueryRepository(conn, logger=logger)
         self._tx = TransactionManager(conn)
+
+    def _base_engine(self) -> CalendarEngine:
+        if self._engine is None:
+            self._engine = CalendarEngine(calendar_inputs_from_connection(self.conn, public_days=()))
+        return self._engine
+
+    def _normalization_context(self) -> CalendarNormalizationContext:
+        return CalendarNormalizationContext(
+            self.conn,
+            logger=self.logger,
+            period_reader=lambda: self._base_engine().default_periods(),
+        )
+
+    def decoded_periods_for_json(self, periods_json: str) -> List[Dict[str, Any]]:
+        return self._base_engine().decoded_periods_for_json(periods_json)
 
     @staticmethod
     def normalize(action: str, payload: Any) -> Dict[str, Any]:
@@ -68,7 +86,7 @@ class WorkbenchCalendarService:
         and identity=None; a GET never invents a ref. A stored date that is not a real
         local date, or a row whose active refs are not exactly one, is a data conflict.
         """
-        self._calendar._engine.clear_policy_cache()
+        self._engine = None
         rows: Dict[str, Dict[str, Any]] = {}
         for row in self._query.calendar_rows(start_date, end_date):
             row["date"] = _date_key(row["date"])
@@ -125,7 +143,7 @@ class WorkbenchCalendarService:
             raise RuntimeError("日历读取必须在快照事务中执行。")
         states = self.range_states(first.isoformat(), last.isoformat())
         rows = {day: state["row"] for day, state in states.items() if state["row"] is not None}
-        projection = CalendarProjection(rows, engine=self._calendar._engine)
+        projection = CalendarProjection(rows, engine=self._base_engine())
         periods = projection.default_periods()
         days = []
         for offset in range(count):
@@ -133,7 +151,9 @@ class WorkbenchCalendarService:
             snapshot = self._snapshot(day.isoformat(), states, projection=projection)
             days.append({**snapshot, "day": day.day, "weekday": day.weekday(),
                          "is_weekend": day.weekday() >= 5, "is_today": day == now.date()})
-        rows.update(self._following_row(last, days[-1]))
+        following = self._following_row(last, days[-1])
+        if following:
+            projection = projection.with_rows({**rows, **following})
         cells = [None] * first.weekday() + days
         cells += [None] * (-len(cells) % 7)
         return {"year": year, "month": month, "as_of": now.isoformat(timespec="seconds"),
@@ -166,7 +186,7 @@ class WorkbenchCalendarService:
 
     def projection(self, states: Dict[str, Dict[str, Any]]) -> CalendarProjection:
         rows = {day: state["row"] for day, state in states.items() if state["row"] is not None}
-        return CalendarProjection(rows, engine=self._calendar._engine)
+        return CalendarProjection(rows, engine=self._base_engine())
 
     def day_state(self, day: str, states: Dict[str, Dict[str, Any]],
                   *, projection: CalendarProjection) -> Dict[str, Any]:
@@ -208,13 +228,13 @@ class WorkbenchCalendarService:
         else:
             payload = {"date": before["date"]}
             if "type" not in fields:
-                default = self._calendar._engine._default_for_date(before["date"])
+                default = self._base_engine()._default_for_date(before["date"])
                 payload.update(default.to_dict())
                 payload["remark"] = None
         patch = calendar_domain_fields(fields)
         require_periods_when_rest_turns_work(before["date"], row, patch)
         payload.update(patch)
-        proposed = self._calendar._admin._build_work_calendar_from_payload(payload, context=context)
+        proposed = self._admin.build_work_calendar_from_payload(payload, context=context)
         return proposed, proposed.to_dict()
 
     @staticmethod
@@ -232,7 +252,7 @@ class WorkbenchCalendarService:
         if not self.conn.in_transaction or not in_transaction_context(self.conn):
             raise RuntimeError("日历写入必须由外层 WorkbenchCommandService 持有写事务。")
 
-    def _apply_checked(self, action, normalized_input, checked):
+    def apply_checked(self, action, normalized_input, checked):
         """Consume the guard's current facts in its same outer command transaction."""
         payload = normalized_input
         if action == "confirm":
@@ -242,7 +262,7 @@ class WorkbenchCalendarService:
         return self._apply_day(action, payload, checked)
 
     def _apply_day(self, action, payload, before):
-        context = self._calendar.normalization_context()
+        context = self._normalization_context()
         after, row, _ = (
             self._form_proposed(payload["fields"], before, context=context, projection=self.projection({}))
             if action == "upsert"
@@ -277,13 +297,13 @@ class WorkbenchCalendarService:
                 calendars.append(after)
                 if ref is None and include_refs:
                     created.append(day)
-        repo = self._calendar._admin.repo
+        repo = self._admin.repo
         if calendars:
             repo.upsert_many(calendars)
         if deleted:
             repo.delete_many(deleted)
         if calendars or deleted:
-            self._calendar._engine.clear_policy_cache()
+            self._engine = None
         refs = self._query.created_refs("calendar", created) if created else {}
         for outcome in results:
             if include_refs and outcome.result == "committed" and outcome.data["calendar_ref"] is None:
@@ -334,7 +354,7 @@ class WorkbenchCalendarService:
         """
         request, now = self.normalize("preview", payload), self._now()
         with self._tx.transaction():
-            context = self._calendar.normalization_context()
+            context = self._normalization_context()
             facts = self._preview_days(request, context=context)
         return CalendarRangePreview(
             preview_ref=uuid.uuid4().hex, created_at=now.isoformat(timespec="seconds"),
@@ -355,7 +375,7 @@ class WorkbenchCalendarService:
         now = self._now().isoformat(timespec="seconds")
         if not preview.created_at <= now < preview.expires_at:
             raise WorkbenchCommandRejected("snapshot_stale", "这份变更清单已过期或内容有变化，请重新点「预览变更」。")
-        context = self._calendar.normalization_context()
+        context = self._normalization_context()
         current = self._preview_days(preview.request, expected=preview, context=context)
         if current["days"] != preview.days:
             raise WorkbenchCommandRejected("snapshot_stale", "范围里的日历或命中的日期已经变了，请重新点「预览变更」。")

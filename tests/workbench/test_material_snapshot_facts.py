@@ -70,32 +70,31 @@ def test_snapshot_reuses_raw_requirements_and_projected_rows_preserving_sqlite_s
         return original_check(raw)
 
     monkeypatch.setattr(queries, "material_row", counted_check)
-    with reader.read_snapshot() as fingerprint:
+    with reader.read_snapshot() as snapshot:
+        fingerprint = snapshot.state_fingerprint()
         assert fingerprint == expected_fingerprint
-        assert reader._snapshot["rows"] is None
-        assert reader.state_fingerprint() is fingerprint
+        assert snapshot.state_fingerprint() is fingerprint
         assert [sql for sql in statements if sql.lstrip().upper().startswith("SELECT")] == [
             sql for sql in statements if "WorkbenchSourceRevisions" in sql
         ]
         for scope, (records, total, counts) in zip(scopes, expected):
-            actual, page = reader.page(scope)
+            actual, page = snapshot.page(scope)
             assert [asdict(record) for record in actual] == records
-            assert page["total"] == total and reader.metrics(scope)["counts"] == counts
-        assert reader._snapshot["rows"] == expected_rows
+            assert page["total"] == total and snapshot.metrics(scope)["counts"] == counts
         scope = MaterialPageRequest(sort="spec")
-        facets = reader.facets(scope, "spec")
+        facets = snapshot.facets(scope, "spec")
         assert facets["row_count"] == 6
-        index = reader.table_index(scope)
-        records, page = reader.page(scope)
+        index = snapshot.table_index(scope)
+        records, page = snapshot.page(scope)
         # 表格查询的分页和导出直接复用索引里已过存储校验的同一份物料行。
         assert page["total"] == 6 and all(record.state["material"] is index.rows[record.identity.entity_key].raw for record in records)
-        assert reader.matching_rows(scope) == [index.rows[record.identity.entity_key] for record in records]
-        assert reader.facet_selection(scope, "spec")["total"] == len(facets["options"])
+        assert snapshot.matching_rows(scope) == [index.rows[record.identity.entity_key] for record in records]
+        assert snapshot.facet_selection(scope, "spec")["total"] == len(facets["options"])
         filtered = MaterialPageRequest(column_filters={"status": {"mode": "include", "values": [index.cells["M1"]["status"].key]}})
-        records, page = reader.page(filtered)
+        records, page = snapshot.page(filtered)
         assert [record.identity.entity_key for record in records] == ["M1", "M5", "M6"] and page["total"] == 3
-        assert reader.metrics(filtered)["counts"] == {"total": 3, "active": 3, "inactive": 0, "stock_unknown": 0}
-        assert reader.table_index(filtered) is index
+        assert snapshot.metrics(filtered)["counts"] == {"total": 3, "active": 3, "inactive": 0, "stock_unknown": 0}
+        assert snapshot.table_index(filtered) is index
     selects = [sql for sql in statements if sql.lstrip().upper().startswith("SELECT")]
     assert len(selects) == 3
     assert sum("GROUP BY material_id" in sql for sql in selects) == 1
@@ -103,43 +102,40 @@ def test_snapshot_reuses_raw_requirements_and_projected_rows_preserving_sqlite_s
     assert sorted(projected) == ["M1", "M2", "M3", "M4", "M5", "M6"]
     # 七次普通分页、筛选项、表格索引、导出行和列筛选分页共用快照内同一次存储校验。
     assert sorted(checked) == ["M1", "M2", "M3", "M4", "M5", "M6"]
-    assert reader._snapshot is None
 
 
 def test_ordinary_page_defers_unshown_bad_stock_and_nested_snapshot_is_restored(mem_conn):
     _seed(mem_conn, [("A", "shown", None, 1, "active"), ("Z", "unshown", None, 0, "active")])
     reader = WorkbenchMaterialQueryService(mem_conn)
     scope = MaterialPageRequest(size=1)
-    with reader.read_snapshot() as fingerprint:
-        records, page = reader.page(scope)
+    with reader.read_snapshot() as outer:
+        fingerprint = outer.state_fingerprint()
+        records, page = outer.page(scope)
         assert records[0].entity["business_code"] == "A" and page["total"] == 2
-        assert reader.toolbar_metrics(scope)["total"] == 2
-        outer = reader._snapshot
+        assert outer.toolbar_metrics(scope)["total"] == 2
         with reader.read_snapshot() as inner:
-            assert inner == fingerprint and reader._snapshot is not outer
-            bounded, _ = reader.page(MaterialPageRequest(query="shown", size=1))
+            assert inner is not outer and inner.state_fingerprint() == fingerprint
+            bounded, _ = inner.page(MaterialPageRequest(query="shown", size=1))
             assert bounded[0].entity["business_code"] == "A"
-        assert reader._snapshot is outer and reader.state_fingerprint() is fingerprint
-        assert reader.page(scope)[0][0] is records[0]
-    assert reader._snapshot is None
+        assert outer.state_fingerprint() is fingerprint
+        assert outer.page(scope)[0][0] is records[0]
     mem_conn.execute("UPDATE Materials SET stock_qty=2 WHERE material_id='Z'")
     mem_conn.commit()
+    file_service = WorkbenchMaterialFileService(mem_conn)
     with reader.read_snapshot() as fresh:
-        assert fresh != fingerprint
+        assert fresh.state_fingerprint() != fingerprint
         statements = []
         mem_conn.set_trace_callback(statements.append)
         try:
-            assert WorkbenchMaterialFileService(mem_conn, reader=reader).export_rows("csv", selected_refs=[]) == []
+            assert file_service.export_rows(fresh, "csv", selected_refs=[]) == []
+            assert not any("FROM Materials" in sql for sql in statements)
+            detail = fresh.detail(format(2, "048x"))
+            assert detail.entity["business_code"] == "Z"
+            assert not any("ORDER BY m.material_id" in sql for sql in statements)
+            exported = file_service.export_rows(fresh, "csv", selected_refs=[format(2, "048x")])
+            assert not any("ORDER BY m.material_id" in sql for sql in statements)
+            assert [row["business_code"] for row in exported] == ["Z"] and exported[0]["stock_qty"] == 2
+            assert fresh.page(MaterialPageRequest(number=2, size=1))[0][0].entity["fields"]["stock_qty"] == 2
+            assert sum("ORDER BY m.material_id" in sql for sql in statements) == 1
         finally:
             mem_conn.set_trace_callback(None)
-        assert not any("FROM Materials" in sql for sql in statements)
-        assert reader._snapshot["rows"] is None
-        detail = reader.detail(format(2, "048x"))
-        assert detail.entity["business_code"] == "Z" and reader._snapshot["rows"] is None
-        exported = WorkbenchMaterialFileService(mem_conn, reader=reader).export_rows(
-            "csv", selected_refs=[format(2, "048x")]
-        )
-        assert reader._snapshot["rows"] is None
-        assert [row["business_code"] for row in exported] == ["Z"] and exported[0]["stock_qty"] == 2
-        assert reader.page(MaterialPageRequest(number=2, size=1))[0][0].entity["fields"]["stock_qty"] == 2
-        assert reader._snapshot["rows"] is not None

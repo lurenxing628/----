@@ -10,7 +10,7 @@ from core.models.workbench_piece_adoption import PieceAdoptionScope, PieceOperat
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.services.workbench.facts.official_scope_coverage import official_scope_coverage
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
-from core.services.workbench.run.candidate_adoption_validation import _require_official_scope
+from core.services.workbench.run.candidate_adoption_validation import require_official_scope
 from core.services.workbench.run.piece_adoption_execution import _quantities
 from tests.workbench.run_candidate_adoption_support import INTENT, candidate, preview, service, snapshot
 from tests.workbench.run_candidate_adoption_support import candidate_case as _case  # noqa: F401
@@ -30,9 +30,9 @@ def test_saved_permanent_coverage_agrees_with_real_adoption_guard(candidate_case
                         "covered_official_operation_count": 1, "missing_official_operations": [refs[second]]}
     before = snapshot(case.conn)
     with pytest.raises(CandidateAdoptionBlocked) as exc:
-        _require_official_scope(ProductionFactsCapture(case.conn).latest_plan_rows(1), {case.op_id})
+        require_official_scope(ProductionFactsCapture(case.conn).latest_plan_rows(1), {case.op_id})
     assert exc.value.code == "official_scope_not_covered"
-    _require_official_scope(ProductionFactsCapture(case.conn).latest_plan_rows(1), {case.op_id, second})
+    require_official_scope(ProductionFactsCapture(case.conn).latest_plan_rows(1), {case.op_id, second})
     assert snapshot(case.conn) == before
 
 

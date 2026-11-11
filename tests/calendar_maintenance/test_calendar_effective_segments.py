@@ -9,10 +9,11 @@ import pytest
 from core.infrastructure.database import get_connection
 from core.models.calendar_periods import decode_periods
 from core.services.scheduler.calendar import engine as engine_module
+from core.services.scheduler.calendar.admin import CalendarAdmin
 from core.services.scheduler.calendar.day_policy import DayPolicy
 from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.scheduler.calendar.period_offsets import period_offsets
-from core.services.scheduler.calendar.service import CalendarService
+from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_capture
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 
 
@@ -21,7 +22,7 @@ def dt(text):
 
 
 def engine(today_normal='yes', previous_normal='yes', *, start='05:00', end='13:00', efficiency=1):
-    result = CalendarEngine(None)
+    result = CalendarEngine()
 
     def resolve(date_str, op_id=None):
         night = date_str == '2026-10-05'
@@ -41,14 +42,14 @@ def test_overlap_is_counted_once_and_calendar_hours_are_not_efficiency_weighted(
     start = dt('06T04:00')
     assert cal.working_hours_between(start, dt('06T06:00'), priority) == 2
     for hours in (.25, 2, 9, 15):
-        end = cal.add_working_hours(start, hours, priority)
+        end = cal.add_effective_hours(start, hours, priority)
         assert cal.working_hours_between(start, end, priority) == pytest.approx(hours)
         assert cal.working_hours_between(end, start, priority) == pytest.approx(-hours)
 
 
 def test_current_window_priority_wins_and_tail_resumes_after_short_current_window():
     cal = engine(today_normal='no', start='05:00', end='05:30')
-    assert cal.add_working_hours(dt('06T04:00'), 1.5, 'normal') == dt('06T06:00')
+    assert cal.add_effective_hours(dt('06T04:00'), 1.5, 'normal') == dt('06T06:00')
     assert cal.adjust_to_working_time(dt('06T05:00'), 'normal') == dt('06T05:30')
     assert cal.working_hours_between(dt('06T04:00'), dt('06T06:00'), 'normal') == 1.5
     assert cal.working_hours_between(dt('06T04:00'), dt('06T06:00'), 'urgent') == 2
@@ -64,43 +65,48 @@ def test_people_share_public_dates_and_shift_facts_then_maintenance_reloads(sche
         ('[{"start":"09:00","end":"12:00","day_offset":0},{"start":"13:00","end":"17:00","day_offset":0}]',),
     )
     conn.executemany("INSERT INTO WorkbenchOperatorProfiles(operator_id,shift_profile_id) VALUES (?,'S')", [("O1",), ("O2",)])
-    service = CalendarService(conn)
-    service._admin.repo.upsert_many([
-        service._admin._build_work_calendar(
-            date_value="2026-10-12",
-            periods=[{"start": "08:00", "end": "16:00", "day_offset": 0}],
-            context=service.normalization_context(),
+    admin = CalendarAdmin(conn)
+    admin.repo.upsert_many([
+        admin.build_work_calendar_from_payload(
+            {"date": "2026-10-12", "periods": [{"start": "08:00", "end": "16:00", "day_offset": 0}]},
+            context=admin.normalization_context(),
         )
     ])
     conn.commit()
-    service._engine.clear_policy_cache()
-    cal, counts = service._engine, {}
-    built, build = [], service._engine._policy_from_calendar
-
-    def build_policy(row):
-        built.append((row.date, type(row)))
-        return build(row)
-
-    monkeypatch.setattr(cal, "_policy_from_calendar", build_policy)
-    parsed, decode = [], engine_module.decode_periods
+    built, parsed, counts = [], [], {}
+    decode = engine_module.decode_periods
 
     def parse(raw):
         parsed.append(raw)
         return decode(raw)
 
     monkeypatch.setattr(engine_module, "decode_periods", parse)
-    for name, repo, method in (("public", cal.repo, "get"), ("personal", cal.operator_calendar_repo, "get"),
-                              ("profile", cal.operator_shift_calendar.repo, "profile_for_operator"),
-                              ("pattern", cal.operator_shift_calendar.repo, "pattern_day")):
-        def count(*args, _name=name, _original=getattr(repo, method)):
-            counts[_name] = counts.get(_name, 0) + 1
-            return _original(*args)
-        monkeypatch.setattr(repo, method, count)
+
+    def bind_engine():
+        engine_inst = CalendarEngine(calendar_inputs_from_capture(ProductionFactsCapture(conn)))
+        original_build = engine_inst._policy_from_calendar
+
+        def build_policy(row):
+            built.append((row.date, type(row)))
+            return original_build(row)
+
+        monkeypatch.setattr(engine_inst, "_policy_from_calendar", build_policy)
+        for name, method in (("profile", "_resolve_profile"), ("pattern", "_pattern")):
+            original = getattr(engine_inst.operator_shift_calendar, method)
+
+            def count(*args, _name=name, _original=original):
+                counts[_name] = counts.get(_name, 0) + 1
+                return _original(*args)
+
+            monkeypatch.setattr(engine_inst.operator_shift_calendar, method, count)
+        return engine_inst
+
+    cal = bind_engine()
     days = ("2026-10-12", "2026-10-13", "2026-10-14")
     for who in ("O1", "O2"):
         assert [cal._policy_for_date(day, who).hours for day in days] == [7, 7, 7]
     assert len(built) == 3
-    assert counts == {"public": 3, "personal": 6, "profile": 2, "pattern": 1}
+    assert counts == {"profile": 2, "pattern": 1}
     assert parsed == [
         '[{"start":"08:00","end":"16:00","day_offset":0}]',
         '[{"start":"09:00","end":"12:00","day_offset":0},{"start":"13:00","end":"17:00","day_offset":0}]',
@@ -116,35 +122,36 @@ def test_people_share_public_dates_and_shift_facts_then_maintenance_reloads(sche
         "UPDATE WorkbenchShiftPatternDays SET periods_json=? WHERE profile_id='S'",
         ('[{"start":"10:00","end":"12:00","day_offset":0},{"start":"13:00","end":"16:00","day_offset":0}]',),
     )
-    service._admin.repo.upsert_many([
-        service._admin._build_work_calendar(
-            date_value="2026-10-12",
-            periods=[{"start": "08:00", "end": "12:00", "day_offset": 0}],
-            context=service.normalization_context(),
+    admin.repo.upsert_many([
+        admin.build_work_calendar_from_payload(
+            {"date": "2026-10-12", "periods": [{"start": "08:00", "end": "12:00", "day_offset": 0}]},
+            context=admin.normalization_context(),
         )
     ])
     conn.commit()
-    service._engine.clear_policy_cache()
+    cal = bind_engine()
     assert not cal._policy_operator_keys
     for who in ("O1", "O2"):
         policies = [cal._policy_for_date(day, who) for day in days]
         assert [policy.hours for policy in policies] == [4, 5, 5]
         assert all(policy.work_window()[0].hour == 10 for policy in policies)
     assert len(built) == 6
-    assert counts == {"public": 6, "personal": 12, "profile": 4, "pattern": 2}
-    assert len(parsed) == 4
+    assert counts == {"profile": 4, "pattern": 2}
+    assert len(parsed) == 5
     assert cal.default_periods() == [{"start": "09:00", "end": "15:00", "day_offset": 0}]
     assert cal.default_periods() is not defaults
-    service._admin.operator_calendar_repo.upsert_many(
-        [service._admin._build_operator_calendar(
-            operator_id="O2",
-            date_value="2026-10-13",
-            periods=[{"start": "11:00", "end": "13:00", "day_offset": 0}],
-            context=service.normalization_context(),
+    admin.operator_calendar_repo.upsert_many(
+        [admin.build_operator_calendar_from_payload(
+            {
+                "operator_id": "O2",
+                "date": "2026-10-13",
+                "periods": [{"start": "11:00", "end": "13:00", "day_offset": 0}],
+            },
+            context=admin.normalization_context(),
         )]
     )
     conn.commit()
-    service._engine.clear_policy_cache()
+    cal = bind_engine()
     assert cal._policy_for_date("2026-10-13", "O2").hours == 2
     assert len(built) == 7
 
@@ -188,22 +195,29 @@ def test_captured_rows_keep_live_null_override_cycle_defaults_and_source_errors(
     )
     conn.commit()
 
-    def calendars():
-        return CalendarService(conn), CalendarService(conn, capture=ProductionFactsCapture(conn))
+    captured = CalendarEngine(calendar_inputs_from_capture(ProductionFactsCapture(conn)))
+    assert captured._policy_for_date("2026-10-12", "O3").work_window()[0].hour == 8
+    assert captured._policy_for_date("2026-10-13", "O2").hours == 2
+    assert captured._policy_for_date("2026-10-23", "O1").hours == 0
+    checkpoint = captured.certified_decode_checkpoint_snapshot()
+    assert isinstance(checkpoint, tuple) and len(checkpoint) > 0
 
-    live, captured = calendars()
-    for who in (None, "O1", "O2", "O3"):
-        for day in ("2026-10-12", "2026-10-13", "2026-10-14", "2026-10-23"):
-            assert captured._engine._policy_for_date(day, who) == live._engine._policy_for_date(day, who)
-    assert captured._engine._policy_for_date("2026-10-12", "O3").work_window()[0].hour == 8
-    assert captured._engine._policy_for_date("2026-10-13", "O2").hours == 2
-    assert captured._engine._policy_for_date("2026-10-23", "O1").hours == 0
-    assert captured.certified_decode_checkpoint_snapshot() == live.certified_decode_checkpoint_snapshot()
+    capture = ProductionFactsCapture(conn)
+    scoped_o3 = calendar_inputs_from_capture(capture, operator_ids=["O3"])
+    assert scoped_o3.personal_days == ()
+    assert scoped_o3.operator_profiles == ()
+    assert scoped_o3.shift_profiles == ()
+    assert scoped_o3.shift_patterns == ()
+    scoped_o2 = calendar_inputs_from_capture(capture, operator_ids=["O2"])
+    assert [row["operator_id"] for row in scoped_o2.personal_days] == ["O2"]
+    assert [row["operator_id"] for row in scoped_o2.operator_profiles] == ["O2"]
+    assert [row["profile_id"] for row in scoped_o2.shift_profiles] == ["S"]
+    assert len(scoped_o2.shift_patterns) == 12
 
 
 def test_add_hours_preserves_microsecond_remainders_exact_shift_fit_and_min_positive_step():
     # 1. 微秒级余量不被 1e-9 小时（3.6 µs）容差吞没，低效率班段同样精确跨午休
-    cal = CalendarEngine(None)
+    cal = CalendarEngine()
     cal._resolve_calendar_row = lambda date_str, op_id=None: SimpleNamespace(
         date=date_str,
         day_type="workday",
@@ -215,11 +229,11 @@ def test_add_hours_preserves_microsecond_remainders_exact_shift_fit_and_min_posi
     morning_start = datetime(2026, 10, 12, 8, 0)
     for extra_us in (1, 2, 3):
         hours = (4 * 3_600_000_000 + extra_us) / 3_600_000_000.0
-        end = cal.add_working_hours(morning_start, hours)
+        end = cal.add_effective_hours(morning_start, hours)
         assert end == datetime(2026, 10, 12, 13, 0, 0, extra_us)
         assert cal.working_hours_between(morning_start, end) == hours
 
-    low_eff_cal = CalendarEngine(None)
+    low_eff_cal = CalendarEngine()
     low_eff_cal._resolve_calendar_row = lambda date_str, op_id=None: SimpleNamespace(
         date=date_str,
         day_type="workday",
@@ -232,7 +246,7 @@ def test_add_hours_preserves_microsecond_remainders_exact_shift_fit_and_min_posi
     assert low_eff_cal.add_effective_hours(morning_start, eff_hours) == datetime(2026, 10, 12, 13, 0, 0, 10)
 
     # 2. 200 / 60.0 与 0.1 + 0.2 等二进制尾数微超整分钟的工时刚好装入早班，不误跨午休
-    split_cal = CalendarEngine(None)
+    split_cal = CalendarEngine()
     split_cal._resolve_calendar_row = lambda date_str, op_id=None: SimpleNamespace(
         date=date_str,
         day_type="workday",
@@ -241,9 +255,9 @@ def test_add_hours_preserves_microsecond_remainders_exact_shift_fit_and_min_posi
         allow_urgent="yes",
         periods_json='[{"start":"08:30","end":"11:50","day_offset":0},{"start":"13:00","end":"17:20","day_offset":0}]',
     )
-    assert split_cal.add_working_hours(datetime(2026, 10, 12, 8, 30), 200 / 60.0) == datetime(2026, 10, 12, 11, 50)
+    assert split_cal.add_effective_hours(datetime(2026, 10, 12, 8, 30), 200 / 60.0) == datetime(2026, 10, 12, 11, 50)
 
-    short_cal = CalendarEngine(None)
+    short_cal = CalendarEngine()
     short_cal._resolve_calendar_row = lambda date_str, op_id=None: SimpleNamespace(
         date=date_str,
         day_type="workday",
@@ -252,10 +266,10 @@ def test_add_hours_preserves_microsecond_remainders_exact_shift_fit_and_min_posi
         allow_urgent="yes",
         periods_json='[{"start":"08:00","end":"08:18","day_offset":0},{"start":"13:00","end":"17:00","day_offset":0}]',
     )
-    assert short_cal.add_working_hours(morning_start, 0.1 + 0.2) == datetime(2026, 10, 12, 8, 18)
+    assert short_cal.add_effective_hours(morning_start, 0.1 + 0.2) == datetime(2026, 10, 12, 8, 18)
 
     # 3. 正剩余跨入高效率班次至少占 1 µs，不退化为零长点事件
-    jump_cal = CalendarEngine(None)
+    jump_cal = CalendarEngine()
     jump_cal._resolve_calendar_row = lambda date_str, op_id=None: SimpleNamespace(
         date=date_str,
         day_type="workday",
@@ -270,7 +284,7 @@ def test_add_hours_preserves_microsecond_remainders_exact_shift_fit_and_min_posi
 
 
 def test_capacity_hours_between_accumulates_microseconds_without_piecewise_drift():
-    cal = CalendarEngine(None)
+    cal = CalendarEngine()
     cal._resolve_calendar_row = lambda date_str, op_id=None: SimpleNamespace(
         date=date_str,
         day_type="workday",
@@ -282,14 +296,14 @@ def test_capacity_hours_between_accumulates_microseconds_without_piecewise_drift
     # 30 天 × 460 分钟/天 × 0.85 = 195.5 小时整，消除逐段 / 3600 累加产生的 1e-13 漂移
     oct_start = datetime(2026, 10, 1, 0, 0)
     oct_end = datetime(2026, 10, 31, 0, 0)
-    assert cal.capacity_hours_between(oct_start, oct_end) == 195.5
+    assert float(cal.capacity_fraction_between(oct_start, oct_end)) == 195.5
 
     # 30 天 × 460 分钟/天 × 0.75 = 172.5 小时整，整段与逐日求和 0 误差
     nov_start = datetime(2026, 11, 1, 0, 0)
     nov_end = datetime(2026, 12, 1, 0, 0)
     daily_sum = sum(
-        cal.capacity_hours_between(nov_start + timedelta(days=i), nov_start + timedelta(days=i + 1))
+        float(cal.capacity_fraction_between(nov_start + timedelta(days=i), nov_start + timedelta(days=i + 1)))
         for i in range(30)
     )
-    assert cal.capacity_hours_between(nov_start, nov_end) == 172.5
+    assert float(cal.capacity_fraction_between(nov_start, nov_end)) == 172.5
     assert daily_sum == 172.5

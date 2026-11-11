@@ -9,7 +9,7 @@ import pytest
 from openpyxl import load_workbook
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.services.scheduler.calendar.service import CalendarService
+from core.services.scheduler.calendar.admin import CalendarAdmin
 from core.services.workbench.facts import resource_calendar, resource_projection
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline
 from core.services.workbench.facts.candidate_store import CandidateStore
@@ -54,16 +54,20 @@ def representative_archive(case, monkeypatch, settings=None, *, count=1, edits=N
     from core.models.workbench_run_job import durable_value
     from core.services.workbench.run import compute as compute_module
 
-    real_payloads = compute_module._candidate_payloads
+    real_outcomes = compute_module._candidate_outcomes
 
-    def payloads_with_edits(conn, schedule_input, comparison, *, selected_payload, validation_context):
-        payloads = real_payloads(
-            conn, schedule_input, comparison,
-            selected_payload=selected_payload, validation_context=validation_context,
+    def outcomes_with_edits(conn, schedule_input, comparison, *, calendar, validation_context):
+        outcomes = real_outcomes(
+            conn,
+            schedule_input,
+            comparison,
+            calendar=calendar,
+            validation_context=validation_context,
         )
         for index, edit in (edits or {}).items():
             key = comparison.candidates[index].candidate_key
-            payload = payloads[key]
+            outcome = outcomes[key]
+            payload = outcome.validated_payload
             rows = []
             for row in payload.schedule_rows:
                 item = durable_value(row)
@@ -75,13 +79,18 @@ def representative_archive(case, monkeypatch, settings=None, *, count=1, edits=N
                     start_time=datetime.fromisoformat(item["start_time"]),
                     end_time=datetime.fromisoformat(item["end_time"]),
                 ))
-            payloads[key] = replace(payload, schedule_rows=tuple(rows))
-        return payloads
+            updated_payload = replace(payload, schedule_rows=list(rows))
+            outcomes[key] = replace(
+                outcome,
+                validated_payload=updated_payload,
+                resolved_intervals={row.op_id: (row.start_time, row.end_time) for row in rows},
+            )
+        return outcomes
 
     with monkeypatch.context() as archived:
         install_representatives(archived, count)
         if edits:
-            archived.setattr(compute_module, "_candidate_payloads", payloads_with_edits)
+            archived.setattr(compute_module, "_candidate_outcomes", outcomes_with_edits)
         return compute(case, settings)
 
 
@@ -196,19 +205,32 @@ def test_partial_night_window_splits_days_and_preserves_overlap_identity(candida
     case = candidate_case
     second, boundary = case.operation(seq=2), case.operation(seq=3)
     case.conn.commit()
-    calendar = CalendarService(case.conn)
+    calendar = CalendarAdmin(case.conn)
     context = calendar.normalization_context()
     night_periods = [{"start": "22:00", "end": "06:00", "day_offset": 0}]
-    calendar._admin.repo.upsert_many([
-        calendar._admin._build_work_calendar(
-            date_value=DAY, periods=night_periods, efficiency=1, allow_normal="yes", allow_urgent="yes",
+    calendar.repo.upsert_many([
+        calendar.build_work_calendar_from_payload(
+            {
+                "date": DAY,
+                "periods": night_periods,
+                "efficiency": 1,
+                "allow_normal": "yes",
+                "allow_urgent": "yes",
+            },
             context=context,
         )
     ])
-    calendar._admin.operator_calendar_repo.upsert_many([
-        calendar._admin._build_operator_calendar(
-            operator_id="O1", date_value=DAY, periods=night_periods, efficiency=0.5,
-            allow_normal="yes", allow_urgent="yes", context=context,
+    calendar.operator_calendar_repo.upsert_many([
+        calendar.build_operator_calendar_from_payload(
+            {
+                "operator_id": "O1",
+                "date": DAY,
+                "periods": night_periods,
+                "efficiency": 0.5,
+                "allow_normal": "yes",
+                "allow_urgent": "yes",
+            },
+            context=context,
         )
     ])
     case.conn.commit()
@@ -327,20 +349,34 @@ def test_unknown_operator_capacity_and_known_zero_capacity_remain_distinct(candi
     add_pair(case)
     add_pair(case, "M3", "O3")
     case.conn.commit()
-    calendar = CalendarService(case.conn)
+    calendar = CalendarAdmin(case.conn)
     context = calendar.normalization_context()
     day_periods = [{"start": "08:00", "end": "16:00", "day_offset": 0}]
-    calendar._admin.operator_calendar_repo.upsert_many([
+    calendar.operator_calendar_repo.upsert_many([
         *(
-            calendar._admin._build_operator_calendar(
-                operator_id="O1", date_value=override_day, periods=day_periods, efficiency=1,
-                allow_normal="yes", allow_urgent="yes", context=context,
+            calendar.build_operator_calendar_from_payload(
+                {
+                    "operator_id": "O1",
+                    "date": override_day,
+                    "periods": day_periods,
+                    "efficiency": 1,
+                    "allow_normal": "yes",
+                    "allow_urgent": "yes",
+                },
+                context=context,
             )
             for override_day in ("2026-09-07", "2026-09-08")
         ),
-        calendar._admin._build_operator_calendar(
-            operator_id="O2", date_value=DAY, periods=day_periods, efficiency=1,
-            allow_normal="no", allow_urgent="no", context=context,
+        calendar.build_operator_calendar_from_payload(
+            {
+                "operator_id": "O2",
+                "date": DAY,
+                "periods": day_periods,
+                "efficiency": 1,
+                "allow_normal": "no",
+                "allow_urgent": "no",
+            },
+            context=context,
         ),
     ])
     case.conn.execute(

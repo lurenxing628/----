@@ -15,9 +15,12 @@ def read_facts(conn, version=1):
     """The guard's read: one formal plan's facts with that plan's ledger projections supplied, as the run input does."""
     rows = plan_rows(conn, version)
     refs = WorkbenchPlanIdentityRepository(conn).get_operation_refs(row["op_id"] for row in rows)
-    projections = ExecutionLedgerReader(conn, current_plan_provider=current_execution_plan).project_operations(
-        sorted({refs[row["op_id"]] for row in rows}))
-    return ExecutionFactProvider(conn).facts_by_op_id_for_plan_rows(rows, execution_projections=projections)
+    reader = ExecutionLedgerReader(conn, current_plan_provider=current_execution_plan)
+    with reader.read_snapshot() as scope:
+        projections = reader.project_operations(scope, sorted({refs[row["op_id"]] for row in rows}))
+        return ExecutionFactProvider(ledger=scope).facts_by_op_id_for_plan_rows(
+            rows, execution_projections=projections
+        )
 
 
 def formal_rows(conn):

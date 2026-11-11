@@ -11,7 +11,6 @@ _PUBLIC_EVENT_MESSAGES = {
     "dispatch_failure_details": "部分工序没有形成有效排程，摘要已保留失败和跳过明细。",
     "resource_load_capacity_failed": "部分日期的容量暂时算不了，相关负荷格按「利用率暂时算不了」显示。",
     "bad_time_row_skipped": "有些甘特记录的开始或结束时间写法不对，页面已先过滤。",
-    "plugin_bootstrap_db_unavailable": "扩展功能设置暂时读不到，当前按默认开关运行。",
     "plugin_bootstrap_config_read_failed": "扩展功能设置读取失败，当前按默认开关运行。",
     "plugin_bootstrap_load_failed": "插件加载失败，请联系维护人员检查系统运行记录。",
     "plugin_bootstrap_telemetry_failed": "扩展功能启动记录写入失败，请联系维护人员检查系统运行记录。",

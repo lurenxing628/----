@@ -66,7 +66,6 @@ def pagination(number, size):
 
 
 def page(rows, number, size):
-    pagination(number, size)
     start = (number - 1) * size
     return {"items": rows[start:start + size], "page": {"number": number, "size": size,
             "total": len(rows), "pages": (len(rows) + size - 1) // size}}

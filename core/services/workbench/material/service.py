@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-from core.errors import AppError, BusinessError, ErrorCode
+from core.errors import BusinessError, ErrorCode
 from core.models.material import Material
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
@@ -22,6 +21,24 @@ class PreparedMaterialChange:
     identity: Optional[WorkbenchEntityIdentity]
     business_code: str
     values: Dict[str, Any]
+
+
+def material_action_policy(requirement_count: int) -> Tuple[List[str], Dict[str, bool], List[Dict[str, str]]]:
+    referenced = requirement_count > 0
+    actions = ["material.update"] + ([] if referenced else ["material.delete"])
+    capabilities = {"material.update": True, "material.delete": not referenced}
+    blocked_reasons = (
+        [
+            {
+                "action": "material.delete",
+                "code": "constraint_conflict",
+                "message": "这条物料已经被批次的物料需求用到，不能删除。请先处理相关批次的物料需求，再删除物料。",
+            }
+        ]
+        if referenced
+        else []
+    )
+    return actions, capabilities, blocked_reasons
 
 
 class WorkbenchMaterialService:
@@ -45,8 +62,11 @@ class WorkbenchMaterialService:
             values = {"material_id": code, "name": payload["label"], "spec": None, "unit": None,
                       "stock_qty": 0.0, "status": "active", "remark": None, **payload["fields"]}
             return PreparedMaterialChange(action, None, code, values)
-        current = WorkbenchEntityIdentity(**checked["identity"])
+        current = checked["identity"]
         if action == "delete":
+            _, capabilities, blocked = material_action_policy(checked["material"]["requirement_count"])
+            if not capabilities["material.delete"]:
+                raise WorkbenchCommandRejected(blocked[0]["code"], blocked[0]["message"])
             return PreparedMaterialChange(action, current, current.entity_key, {})
         changes = dict(payload["fields"])
         if "label" in payload:
@@ -63,7 +83,7 @@ class WorkbenchMaterialService:
                 self._materials.create(Material(**prepared.values))
                 created_codes.append(prepared.business_code)
             elif prepared.action == "delete":
-                self._delete(prepared.business_code)
+                self._materials.delete(prepared.business_code)
             elif prepared.values:
                 self._materials.update(prepared.business_code, prepared.values)
         created_identities = self._identities.active_map("material", created_codes) if created_codes else {}
@@ -81,17 +101,6 @@ class WorkbenchMaterialService:
 
     def apply_prepared(self, prepared):
         return self.apply_prepared_many([prepared])[0]
-
-    def _delete(self, material_id: str) -> None:
-        try:
-            self._materials.delete(material_id)
-        except AppError as exc:
-            # Translate only the domain repository's actual foreign-key rejection.
-            if (exc.code == ErrorCode.DB_INTEGRITY_ERROR
-                    and isinstance(exc.cause, sqlite3.IntegrityError)
-                    and str(exc.cause) == "FOREIGN KEY constraint failed"):
-                raise WorkbenchCommandRejected("constraint_conflict", "这个物料还被别的数据用着，不能删除。") from exc
-            raise
 
     @staticmethod
     def _outcome(result: str, identity) -> WorkbenchCommandOutcome:

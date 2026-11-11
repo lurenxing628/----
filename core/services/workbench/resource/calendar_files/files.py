@@ -116,7 +116,7 @@ class WorkbenchCalendarFileService:
     def _preview_import(self, prepared: PreparedImportSource):
         request = prepared.request()
         source, notices = prepared.parsed()
-        context = self.calendar._calendar.normalization_context()
+        context = self.calendar._normalization_context()
         rows = self._build_rows(source, context=context)
         calendars = {row["row"]: row.pop("calendar") for row in rows if "calendar" in row}
         return AtomicActionPreview.build(
@@ -250,7 +250,7 @@ class WorkbenchCalendarFileService:
         self._add_notes(row, after)
 
     def _periods(self, row: Dict[str, Any]):
-        return self.calendar._calendar._engine.decoded_periods_for_json(row["periods_json"])
+        return self.calendar.decoded_periods_for_json(row["periods_json"])
 
     def _add_notes(self, row, after) -> None:
         # 不写入的行不提醒、也不要求确认：原样再导一次已确认过的天，不必每次再勾一遍（与关系文件同一口径）。

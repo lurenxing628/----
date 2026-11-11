@@ -43,14 +43,18 @@ def _read(*, export=False, suggestion_ref=None):
     if export and format_name not in ("csv", "xlsx"):
         raise WorkbenchCommandRejected("invalid_input", "只支持 CSV 或 XLSX 格式。", 400)
     binding = resolve_read_snapshot(token) if token is not None else None
-    as_of = binding.as_of_time if binding is not None else None
     with CALIBRATION_READ_SLOTS.slot():
-        service = WorkbenchCalibrationService(g.db, as_of=as_of)
-        facts = service.read(
-            query,
-            clock=current_snapshot_time if binding is None else None,
-            bind_snapshot=lambda content: bind_read_snapshot(query.scope(), content, token, as_of=service.as_of, binding=binding),
-        )
+        service = WorkbenchCalibrationService(g.db)
+        with service.read_snapshot() as ledger_scope:
+            effective_as_of = binding.as_of_time if binding is not None else current_snapshot_time()
+            facts = service.read(
+                ledger_scope,
+                query,
+                as_of=effective_as_of,
+                bind_snapshot=lambda content: bind_read_snapshot(
+                    query.scope(), content, token, as_of=effective_as_of, binding=binding
+                ),
+            )
         snapshot = facts["snapshot"]
         data, rows = service.workspace(facts, query, snapshot, suggestion_ref=suggestion_ref, export=export)
     if export:

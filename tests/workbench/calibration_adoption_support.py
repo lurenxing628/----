@@ -33,12 +33,6 @@ def adoption_case(lineage_case, monkeypatch):
     case.app.config.update(TESTING=True, SECRET_KEY="co-calibration-adoption-only", WORKBENCH_CALIBRATION_ADOPTION_ENABLED=True)
     bp = Blueprint("workbench", __name__)
     register_calibration_adoption_routes(bp)
-
-    # Existing api_endpoint uses this shared target for unknown-commit errors.
-    @bp.route("/test-command-receipt/<request_key>")
-    def command_receipt(request_key):
-        return {"request_key": request_key}
-
     case.app.register_blueprint(bp)
 
     @case.app.before_request

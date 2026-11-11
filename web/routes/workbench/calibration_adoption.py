@@ -4,8 +4,8 @@ from flask import current_app, g, request
 
 from core.models.workbench_calibration import MAX_RESPONSE_BYTES
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
-from core.services.workbench import messages
 from core.services.workbench.calibration.adoption import WorkbenchCalibrationAdoptionService
+from core.services.workbench.commands import command_lookup_payload
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint, read_endpoint
@@ -40,6 +40,9 @@ def calibration_adoption_confirm(suggestion_ref):
     value = _body(("write_token", "request_key", "input"))
     validate_request_key(value["request_key"])
     g.workbench_request_key = value["request_key"]
+    g.workbench_result_target = (
+        "/api/workbench/v1/calibration/" + suggestion_ref + "/adopt/receipts/" + value["request_key"]
+    )
     result = _service().confirm(suggestion_ref, value["write_token"], value["request_key"], value["input"])
     return json_response(result)
 
@@ -49,9 +52,7 @@ def calibration_adoption_receipt(suggestion_ref, request_key):
     if request.args:
         raise WorkbenchCommandRejected("invalid_input", "查询保存结果时不需要其他筛选条件。请直接点「查询结果」。", 400)
     result = _service().receipt(suggestion_ref, request_key)
-    if result is None:
-        raise WorkbenchCommandRejected("receipt_not_found", messages.pending("采用"), 404)
-    return json_response(result)
+    return json_response(command_lookup_payload(result))
 
 
 def register_calibration_adoption_routes(bp):

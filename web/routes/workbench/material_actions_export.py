@@ -41,7 +41,7 @@ from .resource_action_context import (
 )
 
 
-def _selection(body, reader, request):
+def _selection(body, scope, request):
     """The export's arguments (a validated request or explicit refs), their public scope and row count."""
     selected = admit_export_selection(
         body,
@@ -49,10 +49,10 @@ def _selection(body, reader, request):
     )
     if selected == "selected":
         refs = normalize_refs(body["refs"], allow_empty=True)
-        reader.resolve_many(refs)
+        scope.resolve_many(refs)
         return {"selected_refs": refs}, None, len(refs)
     effective = MaterialPageRequest() if selected == "all" else request
-    return {"request": effective}, wire_scope(effective), reader.count(effective)
+    return {"request": effective}, wire_scope(effective), scope.count(effective)
 
 
 @read_endpoint
@@ -60,10 +60,10 @@ def material_export_preview():
     body = json_body({"selection", "scope", "snapshot_ref"}, {"refs", "page_size"})
     page_request, query_scope, snapshot_ref = scope_input(body)
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as fingerprint:
+    with reader.read_snapshot() as fact_scope:
         read_binding = resolve_read_snapshot(snapshot_ref)
-        snapshot = bind_read_snapshot(query_scope, fingerprint, snapshot_ref, binding=read_binding)
-        arguments, scope, count = _selection(body, reader, page_request)
+        snapshot = bind_read_snapshot(query_scope, fact_scope.state_fingerprint(), snapshot_ref, binding=read_binding)
+        arguments, scope, count = _selection(body, fact_scope, page_request)
         document = {"query_scope": query_scope, "snapshot_ref": snapshot_ref, "arguments": arguments}
         identity = {"selected_refs": arguments["selected_refs"]} if scope is None else {"scope": scope}
         ref, expires_at = retain_context(
@@ -83,9 +83,14 @@ def material_export():
     ref = opaque_ref(request.args["export_ref"])
     binding, read_binding = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale", expired_message=EXPIRED_MESSAGE)
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as fingerprint:
-        snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"], binding=read_binding)
-        rows = WorkbenchMaterialFileService(g.db, current_app.logger, reader=reader).export_rows(file_format, **binding["arguments"])
+    with reader.read_snapshot() as scope:
+        snapshot = bind_read_snapshot(
+            binding["query_scope"],
+            scope.state_fingerprint(),
+            binding["snapshot_ref"],
+            binding=read_binding,
+        )
+        rows = WorkbenchMaterialFileService(g.db, current_app.logger).export_rows(scope, file_format, **binding["arguments"])
     # 读事务已结束：生成 CSV/XLSX 只用已读出的行，不再挡别人提交写入。
     response = file_response(write_material_file(rows, file_format))
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]

@@ -137,14 +137,17 @@ def test_calibration_prebinds_snapshot_once_per_part_and_defers_report_dto_until
         lambda self: (calls.__setitem__("report_to_dict", calls["report_to_dict"] + 1), orig_report_to_dict(self))[1],
     )
 
-    cal = WorkbenchCalibrationService(case.conn, as_of=NOW)
+    cal = WorkbenchCalibrationService(case.conn)
     with pytest.raises(WorkbenchCommandRejected) as stale:
-        cal.read(
-            CalibrationQuery(part_ref=part_ref),
-            bind_snapshot=lambda _content: (_ for _ in ()).throw(
-                WorkbenchCommandRejected("snapshot_stale", "stale", 409)
-            ),
-        )
+        with cal.read_snapshot() as ledger_scope:
+            cal.read(
+                ledger_scope,
+                CalibrationQuery(part_ref=part_ref),
+                as_of=NOW,
+                bind_snapshot=lambda _content: (_ for _ in ()).throw(
+                    WorkbenchCommandRejected("snapshot_stale", "stale", 409)
+                ),
+            )
     assert stale.value.code == "snapshot_stale"
     assert calls["part_identity"] == 1 and calls["template_rows"] == 0
 
@@ -157,10 +160,13 @@ def test_calibration_prebinds_snapshot_once_per_part_and_defers_report_dto_until
         "build_correction_history",
         lambda *a, **kw: (calls.__setitem__("correction_history", calls["correction_history"] + 1), orig_build_history(*a, **kw))[1],
     )
-    facts = cal.read(
-        CalibrationQuery(part_ref=part_ref),
-        bind_snapshot=lambda _content: {"snapshot_ref": "snap-1", "as_of": NOW.isoformat(timespec="seconds")},
-    )
+    with cal.read_snapshot() as ledger_scope:
+        facts = cal.read(
+            ledger_scope,
+            CalibrationQuery(part_ref=part_ref),
+            as_of=NOW,
+            bind_snapshot=lambda _content: {"snapshot_ref": "snap-1", "as_of": NOW.isoformat(timespec="seconds")},
+        )
     assert calls["part_identity"] == 1 and calls["template_rows"] == 1
     assert calls["report_to_dict"] == 0 and calls["correction_history"] == 0
     list_data, _ = cal.workspace(facts, CalibrationQuery(part_ref=part_ref), facts["snapshot"], suggestion_ref=None, export=False)

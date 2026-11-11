@@ -67,7 +67,7 @@ def verify_arranged(conn, plan_ref, version, arranged, *, context,
         original_times = arranged_times.get(op_id) if arranged_times is not None else None
         if not _arrangement_matches(row, original, known_times=known_times, original_times=original_times):
             fail("adoption_plan_drift", "selected_saved_arrangement")
-    references = context.references if context is not None else WorkbenchPlanIdentityRepository(conn)
+    references = context.bindings if context is not None else WorkbenchPlanIdentityRepository(conn)
     try:
         task_refs = references.get_task_refs(plan_ref, ((row["id"], row["op_id"], row["version"]) for row in rows))
         operations = references.get_operation_refs(current)
@@ -128,7 +128,7 @@ def light_baseline_tasks(conn, baseline, tables, facts, *, point_annotator, cont
     if context.history(version) is None:
         fail("adoption_baseline_archived", "ScheduleHistory.original_version")
     try:
-        locator = context.references.resolve_plan(ref)
+        locator = context.resolve(ref)
     except WorkbenchPlanReferenceError:
         fail("adoption_reference_invalid", "baseline.plan_ref")
     if locator != WorkbenchPlanLocator(version, "adopted"):
@@ -209,8 +209,8 @@ def _task_bindings(conn, baseline, tables, *, context):
     tasks, task_refs, operations, used = _captured_tasks(baseline, tables)
     _live_sources(conn, list({row["ref"]: row for row in used}.values()), context=context)
     try:
-        current_tasks = context.references.get_task_refs(ref, ((row["id"], row["op_id"], row["version"]) for row in rows))
-        current_ops = context.references.get_operation_refs(operations)
+        current_tasks = context.bindings.get_task_refs(ref, ((row["id"], row["op_id"], row["version"]) for row in rows))
+        current_ops = context.bindings.get_operation_refs(operations)
     except WorkbenchPlanReferenceError:
         fail("adoption_reference_invalid", "baseline.current_task_binding")
     if current_tasks != task_refs or current_ops != operations:

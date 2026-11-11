@@ -110,7 +110,7 @@ def test_internal_source_size_is_checked_only_when_its_document_is_saved(outsour
     case.conn.execute("UPDATE Parts SET remark=? WHERE part_no='XP1'", ("x" * 2048,))
     case.conn.commit()
     with case.reader.read_snapshot():
-        targets = case.reader.targets(size=1)
+        targets = case.reader.targets(size=1, bind_snapshot=lambda _content: None)
     assert len(targets["items"]) == 1 and targets["page"]["total"] == 3
     preview = case.preview(case.payload())
     with pytest.raises(WorkbenchCommandRejected) as oversized:

@@ -13,8 +13,8 @@ from .blueprint import demo_blueprint
 
 
 @contextmanager
-def serve_database(database, workspace, with_worker=False):
-    """Own one local app, its request drain, and optionally its normal worker."""
+def serve_database(database, workspace):
+    """Own one local app and its request drain."""
     workspace = Path(workspace).resolve()
     database = Path(database).resolve()
     overrides = {"APS_ENV": "production", "APS_DB_PATH": str(database), "APS_LOG_DIR": str(workspace / "logs"),
@@ -22,19 +22,12 @@ def serve_database(database, workspace, with_worker=False):
     previous = {key: os.environ.get(key) for key in overrides}
     os.environ.update(overrides)
     from web.bootstrap.factory import create_app_core
-    from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
     from web.bootstrap.runtime_server import create_runtime_server
-    from web.bootstrap.workbench_run_runtime import install_workbench_run_runtime
 
-    runtime, server, thread, lock = None, None, None, None
+    server, thread = None, None
     app = None
-    scope = str(workspace / "launcher")
     try:
-        app = create_app_core(ui_mode="default", enable_secret_key=True, enable_security_headers=True,
-                              enable_session_cookie_hardening=True)
-        if with_worker:
-            lock = acquire_runtime_lock(scope, db_path=str(database))
-            runtime = install_workbench_run_runtime(app, runtime_lock=lock)
+        app = create_app_core()
         logging.getLogger("werkzeug").setLevel(logging.WARNING)
         server = create_runtime_server(app, "127.0.0.1", 0)
         thread = threading.Thread(target=server.serve_forever, name="workbench-data-builder")
@@ -46,12 +39,8 @@ def serve_database(database, workspace, with_worker=False):
             if thread is not None:
                 thread.join()
             server.server_close()
-        if runtime is not None and not runtime.shutdown(timeout=30):
-            raise RuntimeError("排产后台尚未停止，数据库保留在构建目录。")
         if app is not None and not app.extensions["workbench_request_lifecycle"].shutdown(timeout=15):
             raise RuntimeError("业务请求尚未结束，数据库保留在构建目录。")
-        if lock is not None:
-            release_runtime_lock(scope, expected_payload=lock)
         for key, value in previous.items():
             if value is None:
                 os.environ.pop(key, None)

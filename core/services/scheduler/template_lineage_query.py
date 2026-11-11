@@ -157,6 +157,42 @@ def _validate_template_revision(origin, templates):
         _invalid()
 
 
+def _too_many_ancestors() -> NoReturn:
+    raise WorkbenchCommandRejected("query_too_large", "模板复制来源超过 100 层或 10000 道工序，这次没有读取。请缩小范围后重试。", 413)
+
+
+def _ancestors(repo, origins):
+    if len(origins) > MAX_OPERATIONS:
+        _too_many_ancestors()
+    frontier = list(origins.values())
+    for _ in range(100):
+        missing = {
+            row["source_operation_ref"]
+            for row in frontier
+            if row["source_operation_ref"] is not None and row["source_operation_ref"] not in origins
+        }
+        if not missing:
+            return
+        rows = _read_origins(repo, sorted(missing))
+        if not rows:
+            return
+        origins.update(rows)
+        if len(origins) > MAX_OPERATIONS:
+            break
+        frontier = list(rows.values())
+    _too_many_ancestors()
+
+
+def _resolve_partial(keys, known, loader):
+    missing = [ref for ref in keys if ref not in known]
+    loaded = loader(missing) if missing else {}
+    return {
+        ref: (known[ref] if ref in known else loaded[ref])
+        for ref in keys
+        if ref in known or ref in loaded
+    }
+
+
 class TemplateLineageQuery:
     def __init__(self, conn, repo=None):
         self.repo = repo if repo is not None else WorkbenchTemplateLineageRepository(conn)
@@ -165,37 +201,29 @@ class TemplateLineageQuery:
     def prepared_origin(self, operation_ref):
         return self._prepared[operation_ref]
 
-    def read(self, operation_refs, *, current=None, templates=None, current_by_ref=None, templates_by_ref=None):
-        self._prepared = {}
+    def _load_origins_and_events(self, operation_refs):
         refs = sorted(set(operation_refs))
         origins = _read_origins(self.repo, refs)
-        self._ancestors(origins)
+        _ancestors(self.repo, origins)
         events = read_events(self.repo, list(origins))
-        if current is not None:
-            current = {ref: current[ref] for ref in origins if ref in current}
-        elif current_by_ref is not None:
-            missing_current = [ref for ref in origins if ref not in current_by_ref]
-            loaded_current = self.repo.current_instances(missing_current) if missing_current else {}
-            current = {
-                ref: (current_by_ref[ref] if ref in current_by_ref else loaded_current[ref])
-                for ref in origins
-                if ref in current_by_ref or ref in loaded_current
-            }
-        else:
-            current = self.repo.current_instances(list(origins))
+        return origins, events
+
+    @classmethod
+    def capture_partial_facts(cls, conn, operation_refs, *, current_by_ref):
+        query = cls(conn)
+        origins, events = query._load_origins_and_events(operation_refs)
+        current = _resolve_partial(list(origins), current_by_ref, query.repo.current_instances)
         template_refs = sorted({row["template_operation_ref"] for row in origins.values()})
-        if templates is not None:
-            templates = {ref: templates[ref] for ref in template_refs if ref in templates}
-        elif templates_by_ref is not None:
-            missing_templates = [ref for ref in template_refs if ref not in templates_by_ref]
-            loaded_templates = self.repo.current_templates(missing_templates) if missing_templates else {}
-            templates = {
-                ref: (templates_by_ref[ref] if ref in templates_by_ref else loaded_templates[ref])
-                for ref in template_refs
-                if ref in templates_by_ref or ref in loaded_templates
-            }
-        else:
-            templates = self.repo.current_templates(template_refs)
+        templates = query.repo.current_templates(template_refs) if template_refs else {}
+        return {
+            "origins": origins,
+            "events": events,
+            "current": current,
+            "templates": templates,
+            "source_instances": current_by_ref,
+        }
+
+    def _evaluate(self, origins, events, current, templates):
         restored_templates = {}
         self._prepared = {
             ref: _prepare_origin(origin, events.get(ref, []), restored_templates=restored_templates)
@@ -206,28 +234,37 @@ class TemplateLineageQuery:
             _validate_source(origin, origins, self._prepared)
             _validate_template_revision(origin, templates)
             problems[ref] = _problems(self._prepared[ref], current.get(ref))
-            lineages[ref] = CalibrationLineage(origin["template_operation_ref"], origin["template_revision"], origin["lineage_ref"])
-        return {"available": True, "origins": origins, "events": events, "current": current, "templates": templates,
-                "lineages": lineages, "problems": problems}
+            lineages[ref] = CalibrationLineage(
+                origin["template_operation_ref"], origin["template_revision"], origin["lineage_ref"]
+            )
+        return {
+            "available": True,
+            "origins": origins,
+            "events": events,
+            "current": current,
+            "templates": templates,
+            "lineages": lineages,
+            "problems": problems,
+        }
 
-    def _ancestors(self, origins):
-        frontier = list(origins.values())
-        if len(origins) > MAX_OPERATIONS:
-            self._too_many_ancestors()
-        for _ in range(100):
-            missing = {row["source_operation_ref"] for row in frontier if row["source_operation_ref"] is not None
-                       and row["source_operation_ref"] not in origins}
-            if not missing:
-                return
-            rows = _read_origins(self.repo, sorted(missing))
-            if set(rows) != missing:
-                _invalid()
-            origins.update(rows)
-            if len(origins) > MAX_OPERATIONS:
-                break
-            frontier = list(rows.values())
-        self._too_many_ancestors()
+    def read_complete(self, operation_refs, *, current, templates):
+        origins, events = self._load_origins_and_events(operation_refs)
+        resolved_current = {ref: current[ref] for ref in origins if ref in current}
+        template_refs = sorted({row["template_operation_ref"] for row in origins.values()})
+        resolved_templates = {ref: templates[ref] for ref in template_refs if ref in templates}
+        return self._evaluate(origins, events, resolved_current, resolved_templates)
 
-    @staticmethod
-    def _too_many_ancestors():
-        raise WorkbenchCommandRejected("query_too_large", "模板复制来源超过 100 层或 10000 道工序，这次没有读取。请缩小范围后重试。", 413)
+    def read_partial(self, operation_refs, *, current_by_ref, templates_by_ref):
+        origins, events = self._load_origins_and_events(operation_refs)
+        resolved_current = _resolve_partial(list(origins), current_by_ref, self.repo.current_instances)
+        template_refs = sorted({row["template_operation_ref"] for row in origins.values()})
+        resolved_templates = _resolve_partial(template_refs, templates_by_ref, self.repo.current_templates)
+        return self._evaluate(origins, events, resolved_current, resolved_templates)
+
+    def read_captured(self, captured):
+        return self._evaluate(
+            captured["origins"],
+            captured["events"],
+            captured["current"],
+            captured["templates"],
+        )

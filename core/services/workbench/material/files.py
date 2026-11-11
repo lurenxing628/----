@@ -13,10 +13,9 @@ normalized_input. All facts/inputs are rechecked before writes; the outer comman
 transaction rolls back the whole batch on any domain failure. Referenced updates
 are flagged requires_confirmation in the approved preview.
 
-export_rows(file_format, *, request=None, selected_refs=None) requires the caller's
-already validated read-snapshot transaction and exactly one validated
-MaterialPageRequest or ref list. Pass that snapshot's reader to the service to
-reuse its captured rows.
+export_rows(scope, file_format, *, request=None, selected_refs=None) requires the caller's
+already validated read-snapshot transaction, its MaterialFactScope, and exactly one
+validated MaterialPageRequest or ref list.
 Filters export every matching row in query order; selected refs retain their
 explicit order. The 2000-row import cap does not apply to either selection.
 XLSX is limited only by worksheet capacity; CSV has no worksheet row/cell cap.
@@ -45,16 +44,15 @@ from data.repositories.workbench_material_file_repo import WorkbenchMaterialFile
 
 from .bulk import full_material_snapshot
 from .file_codec import check_export_capacity, read_material_file
-from .queries import WorkbenchMaterialQueryService
-from .service import WorkbenchMaterialService
+from .queries import MaterialFactScope
+from .service import WorkbenchMaterialService, material_action_policy
 from .table_facts import MaterialRow
 
 
 class WorkbenchMaterialFileService:
-    def __init__(self, conn, logger=None, reader=None):
+    def __init__(self, conn, logger=None):
         self.conn = conn
         self.adapter = WorkbenchMaterialService(conn, logger=logger)
-        self.reader = reader if reader is not None else WorkbenchMaterialQueryService(conn, logger=logger)
         self.repo = WorkbenchMaterialFileRepository(conn, logger=logger)
         self.tx = TransactionManager(conn)
 
@@ -157,31 +155,45 @@ class WorkbenchMaterialFileService:
             changes["name"] = {"before": raw["name"], "after": normalized["label"]}
         row["changes"] = changes
         row["result"] = "update" if row["changes"] else "unchanged"
-        row["requires_confirmation"] = bool(row["changes"] and row["expected"]["requirements"])
+        _, capabilities, _ = material_action_policy(raw["requirement_count"])
+        row["requires_confirmation"] = bool(row["changes"] and not capabilities["material.delete"])
 
     def confirm_import(self, preview):
         if not self.conn.in_transaction:
             raise RuntimeError("物料导入确认必须在外层工作台写事务中执行。")
         current, rows = self._prepare_import(preview.source)
         body = preview.check_current(current)
-        changes = [self.adapter.prepare_checked(row["action"], row["input"], row["expected"]) for row in rows]
+        changes = [
+            self.adapter.prepare_checked(
+                row["action"],
+                row["input"],
+                {
+                    **row["expected"],
+                    "identity": (
+                        None
+                        if row["expected"]["identity"] is None
+                        else WorkbenchEntityIdentity(**row["expected"]["identity"])
+                    ),
+                },
+            )
+            for row in rows
+        ]
         outcomes = self.adapter.apply_prepared_many(changes)
         results = [{"row": row["row"], "result": outcome.result, **outcome.data}
                    for row, outcome in zip(rows, outcomes)]
         result = "committed" if any(row["result"] == "committed" for row in results) else "unchanged"
         return WorkbenchCommandOutcome(result, {"rows": results, "summary": body["summary"]})
 
-    def export_rows(self, file_format, *, request=None, selected_refs=None):
+    def export_rows(self, scope: MaterialFactScope, file_format, *, request=None, selected_refs=None):
         """在调用方已验证的读快照里读完整份导出行；编码文件交给 write_material_file，在读事务结束后做。"""
-        snapshot = self.reader._snapshot
-        if not self.conn.in_transaction or snapshot is None:
+        if not self.conn.in_transaction:
             raise RuntimeError("物料导出必须在调用方已验证的查询快照事务中执行。")
         if selected_refs is None:
-            rows = self.reader.matching_rows(request)
+            rows = scope.matching_rows(request)
             check_export_capacity(len(rows), file_format)
         else:
             check_export_capacity(len(selected_refs), file_format)
-            rows = self.reader.selected_rows(selected_refs)
+            rows = scope.selected_rows(selected_refs)
         return [self._export_row(row) for row in rows]
 
     @staticmethod

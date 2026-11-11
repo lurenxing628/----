@@ -5,7 +5,9 @@ from datetime import datetime
 
 import pytest
 
-from core.services.scheduler.calendar.service import CalendarService
+from core.services.scheduler.calendar.engine import CalendarEngine
+from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_capture
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from tests.workbench.identity_metadata_support import insert_row
 from tests.workbench.run_compute_support import admitted_dispositions, compute_admitted, compute_run, unchanged
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
@@ -25,9 +27,10 @@ def test_only_the_hold_window_keeps_an_original_arrangement(run_case, hold):
     case.conn.commit()
     result = unchanged(case, lambda: compute_run(case.conn, settings, case.projections()))
     held = hold == "window"
-    assert result.schedule_input.frozen_op_ids == ({case.op_id} if held else set())
+    assert result.schedule_input.seeds.frozen_op_ids == ({case.op_id} if held else set())
     expected = (datetime(2026, 9, 9, 8), datetime(2026, 9, 9, 10) if held else datetime(2026, 9, 9, 8, 45))
-    for payload in result.candidate_payloads.values():
+    for outcome in result.candidate_outcomes.values():
+        payload = outcome.validated_payload
         rows = {row.op_id: row for row in payload.schedule_rows}
         assert (rows[case.op_id].start_time, rows[case.op_id].end_time) == expected
         assert rows[successor].start_time >= rows[case.op_id].end_time
@@ -46,12 +49,13 @@ def test_night_operator_calendar_efficiency_and_downtime_are_real(run_case, quan
                start_time="2026-09-09 22:00:00", end_time="2026-09-10 00:00:00", reason_code="maintenance", status="active"))
     case.conn.commit()
     result = unchanged(case, lambda: compute_run(case.conn, case.settings(end_date="2026-09-10"), case.projections()))
-    for payload in result.candidate_payloads.values():
+    for outcome in result.candidate_outcomes.values():
+        payload = outcome.validated_payload
         row = payload.schedule_rows[0]
         assert row.start_time == datetime(2026, 9, 10)
         assert row.end_time == finish
-        assert CalendarService(case.conn).capacity_hours_between(
-            row.start_time, row.end_time, priority="normal", operator_id="O1") == pytest.approx(quantity * 0.25)
+        assert float(CalendarEngine(calendar_inputs_from_capture(ProductionFactsCapture(case.conn))).capacity_fraction_between(
+            row.start_time, row.end_time, priority="normal", operator_id="O1")) == pytest.approx(quantity * 0.25)
 
 
 def test_complex_merged_external_chain_and_shared_resource_competition(run_case):
@@ -73,7 +77,8 @@ def test_complex_merged_external_chain_and_shared_resource_competition(run_case)
     case.conn.commit()
     result = unchanged(case, lambda: compute_run(case.conn, case.settings("B1", "B2"), case.projections()))
     expected = {case.op_id, last, competing} | set(external_ids)
-    for payload in result.candidate_payloads.values():
+    for outcome in result.candidate_outcomes.values():
+        payload = outcome.validated_payload
         assert payload.scheduled_op_ids == expected
         rows = {row.op_id: row for row in payload.schedule_rows}
         first, second = (rows[op_id] for op_id in external_ids)
@@ -111,7 +116,9 @@ def test_compute_consumes_captured_calendar_rows_once_and_next_run_sees_changes(
         conn.set_trace_callback(statements.append)
         try:
             result: Any = compute_admitted(conn, case.settings(), projections, dispositions)
-            signature = result.schedule_input.cal_svc.certified_decode_checkpoint_snapshot()
+            signature = result.schedule_input.facts.calendar(
+                frozenset(op.operator_id for op in result.schedule_input.operations if op.operator_id is not None)
+            ).certified_decode_checkpoint_snapshot()
         finally:
             conn.set_trace_callback(None)
         for table in tables:
@@ -121,12 +128,14 @@ def test_compute_consumes_captured_calendar_rows_once_and_next_run_sees_changes(
         return result, signature
 
     original, signature = unchanged(case, run)
-    assert original.orchestration.validated_schedule_payload.schedule_rows[0].start_time == datetime(2026, 9, 9, 9)
+    original_selected = original.candidate_comparison.selection.selected_candidate_key
+    assert original.candidate_outcomes[original_selected].validated_payload.schedule_rows[0].start_time == datetime(2026, 9, 9, 9)
     conn.execute("UPDATE WorkbenchShiftPatternDays SET periods_json=? WHERE profile_id='S'",
                  ('[{"start":"11:00","end":"17:00","day_offset":0}]',))
     conn.commit()
     changed, changed_signature = unchanged(case, run)
-    assert changed.orchestration.validated_schedule_payload.schedule_rows[0].start_time == datetime(2026, 9, 9, 11)
+    changed_selected = changed.candidate_comparison.selection.selected_candidate_key
+    assert changed.candidate_outcomes[changed_selected].validated_payload.schedule_rows[0].start_time == datetime(2026, 9, 9, 11)
     assert changed_signature != signature
 
 
@@ -143,6 +152,7 @@ def test_compute_candidate_run_builds_point_validator_once(run_case, monkeypatch
 
     result = unchanged(case, lambda: compute_run(case.conn, case.settings(), case.projections()))
     assert validator_calls.call_count == 1
-    for payload in result.candidate_payloads.values():
+    for outcome in result.candidate_outcomes.values():
+        payload = outcome.validated_payload
         rows = {row.op_id: row for row in payload.schedule_rows}
         assert rows[zero_op].start_time == rows[zero_op].end_time == rows[case.op_id].end_time

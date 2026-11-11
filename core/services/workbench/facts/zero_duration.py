@@ -86,21 +86,31 @@ def estimate_point_event(calendar, *, setup_hours, unit_hours, quantity, machine
     return slot_start, slot_end
 
 
-def candidate_point_validator(schedule_input):
+def candidate_point_validator(schedule_input, *, proven_points=None):
     """Build one index for all rows in this exact prepared input."""
     operations = {op.id: op for op in schedule_input.operations}
     dispositions = {item["op_id"]: item for item in schedule_input.dispositions}
+    base_operators = frozenset(
+        item
+        for item in (
+            *(seed["operator_id"] for seed in schedule_input.seeds.seed_results),
+            *(op.operator_id for op in schedule_input.operations),
+        )
+        if item is not None
+    )
 
     def validate(row):
-        return _candidate_point_evidence(schedule_input, row, operations, dispositions)
+        return _candidate_point_evidence(
+            schedule_input, row, operations, dispositions, base_operators, proven_points=proven_points
+        )
 
     return validate
 
 
-def _candidate_point_evidence(schedule_input, row, operations, dispositions):
-    op = operations.get(row.op_id)
-    if op is None:
-        raise PointEventError("point_identity_unproven", "这道零工时工序找不到对应的原工序。")
+def _candidate_point_evidence(
+    schedule_input, row, operations, dispositions, base_operators, *, proven_points=None
+):
+    op = operations[row.op_id]
     # 排产输入为每道工序恰好分类一行处置（classify_rows），找得到工序就找得到处置。
     disposition = dispositions[row.op_id]
     batch = schedule_input.batches[op.batch_id]
@@ -112,18 +122,25 @@ def _candidate_point_evidence(schedule_input, row, operations, dispositions):
     work = {"id": op.id, "batch_id": op.batch_id, "piece_id": op.piece_id, "source": op.source}
     quantity = point_work_quantity(work, {"batch_id": batch.batch_id, "quantity": batch.quantity},
                                    disposition["execution"], disposition["operation_ref"])
-    if row.op_id in schedule_input.execution_completed_op_ids:
+    if row.op_id in schedule_input.execution_guard.execution_completed_op_ids:
         if internal_duration_hours(op.setup_hours, op.unit_hours, quantity) != 0:
             raise PointEventError("point_duration_nonzero", "这道工序有实际工时，不是零工时工序。")
         point_event_dto(row.start_time, row.end_time)
-        fact = schedule_input.execution_facts[row.op_id]
+        fact = schedule_input.execution_guard.execution_facts[row.op_id]
         if (
             (row.start_time, row.end_time) == (fact.actual_start_time, fact.actual_end_time)
             and (row.machine_id, row.operator_id) == (fact.actual_machine_id, fact.actual_operator_id)
         ):
             return SchedulePointEvidence(row.op_id, row.machine_id, row.operator_id, row.start_time,
                                          op.setup_hours, op.unit_hours, quantity)
-    start, end = estimate_point_event(schedule_input.cal_svc, setup_hours=op.setup_hours,
+    if proven_points is not None and row.op_id in proven_points and proven_points[row.op_id].matches(row):
+        return proven_points[row.op_id]
+    calendar = schedule_input.facts.calendar(
+        base_operators
+        if row.operator_id is None or row.operator_id in base_operators
+        else (base_operators | {row.operator_id})
+    )
+    start, end = estimate_point_event(calendar, setup_hours=op.setup_hours,
         unit_hours=op.unit_hours, quantity=quantity, machine_id=row.machine_id,
         operator_id=row.operator_id, priority=batch.priority, start=row.start_time)
     if (start, end) != (row.start_time, row.end_time):

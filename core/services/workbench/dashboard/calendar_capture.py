@@ -210,5 +210,4 @@ def capture_resource_pressure(conn, *, entry, scope, resources, identities, plan
     dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope, "basis": "selected_plan_only",
            "resource_count": sum(len(keys) for keys in ids.values()), "issues": issues,
            "calendar_state": calendar["state"]}
-    return dto, {"constraints": constraints.private(), "unknown_source_operations": unknown,
-                 "calendar": calendar, "occupancy": None}, metrics
+    return dto, metrics

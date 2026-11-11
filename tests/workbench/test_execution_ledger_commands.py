@@ -94,13 +94,14 @@ def test_ledger_snapshot_reuses_loaded_facts_and_next_snapshot_refreshes(ledger_
         return original(repo, refs, limit)
 
     monkeypatch.setattr(WorkbenchExecutionRepository, "reports", reports)
-    with case.ledger.read_snapshot():
-        first = case.ledger.load([saved["operation_ref"]], comparison_plan_ref=case.plan_ref(1))
-        second = case.ledger.load([saved["operation_ref"]], comparison_plan_ref=case.plan_ref(1))
+    with case.ledger.read_snapshot() as scope:
+        first = case.ledger.load(scope, [saved["operation_ref"]], comparison_plan_ref=case.plan_ref(1))
+        second = case.ledger.load(scope, [saved["operation_ref"]], comparison_plan_ref=case.plan_ref(1))
         assert first["plan"] is second["plan"]
         assert first["reports"][saved["operation_ref"]] is second["reports"][saved["operation_ref"]]
         assert len(reads) == 1
-    case.ledger.project_operations([saved["operation_ref"]])
+    with case.ledger.read_snapshot() as scope:
+        case.ledger.project_operations(scope, [saved["operation_ref"]])
     assert len(reads) == 2
 
 
@@ -170,35 +171,41 @@ def test_execution_adapter_consumes_one_ledger_plan_task_and_resource_scope(ledg
             return original(self, *args, **kwargs)
 
         monkeypatch.setattr(cls, name, captured)
-    with case.ledger.read_snapshot():
-        projected = case.ledger.project_operations([saved['operation_ref']])
-        provider = ExecutionFactProvider(case.conn, ledger=case.ledger)
+    with case.ledger.read_snapshot() as ledger_scope:
+        projected = case.ledger.project_operations(ledger_scope, [saved['operation_ref']])
+        provider = ExecutionFactProvider(ledger=ledger_scope)
         first = provider.facts_by_scope([scope], execution_projections=projected)
         second = provider.facts_by_scope([scope], execution_projections=projected)
         assert first == second and first[scope].target_quantity == 10
     assert calls == {'plan': 1, 'tasks': 1, 'scope': 0, 'resources': 1, 'orphans': 1}
 
 
-@pytest.mark.parametrize("method", ["revision_clock", "scope_task_rows"])
+@pytest.mark.parametrize("method", ["read_clock", "scope_task_rows"])
 def test_execution_adapter_translates_ledger_read_rejection(ledger_case, monkeypatch, method):
     from core.errors import AppError
     from core.models.operation_execution_scope import OperationExecutionScope
+    from core.services.execution.ledger_reader import ExecutionLedgerReader
     from core.services.scheduler.execution.execution_fact_provider import ExecutionFactProvider
+    from core.services.scheduler.execution.execution_ledger_adapter import ledger_read_snapshot
     from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
     case = ledger_case
     schedule_id = case.conn.execute("SELECT id FROM Schedule WHERE op_id=?", (case.op_id,)).fetchone()[0]
     scope = OperationExecutionScope.from_values(schedule_version=1, schedule_id=schedule_id, op_id=case.op_id, batch_id="B1")
     operation_ref = WorkbenchPlanIdentityRepository(case.conn).get_operation_refs([case.op_id])[case.op_id]
-    projected = case.ledger.project_operations([operation_ref])
+    with case.ledger.read_snapshot() as initial_scope:
+        projected = case.ledger.project_operations(initial_scope, [operation_ref])
 
     def deny(*_args, **_kwargs):
         raise WorkbenchCommandRejected("ledger_read_rejected", "injected ledger read rejection", 409)
 
     # Rejected before the snapshot opens, or while adapting facts against the supplied projections.
-    monkeypatch.setattr(case.ledger, method, deny)
+    monkeypatch.setattr(ExecutionLedgerReader, method, deny)
     with pytest.raises(AppError) as error:
-        ExecutionFactProvider(case.conn, ledger=case.ledger).facts_by_scope([scope], execution_projections=projected)
+        with ledger_read_snapshot(case.conn) as ledger_scope:
+            ExecutionFactProvider(ledger=ledger_scope).facts_by_scope(
+                [scope], execution_projections=projected
+            )
     assert error.value.details == {"reason": "ledger_read_rejected"}
 
 
@@ -233,13 +240,13 @@ def test_lightweight_execution_projection_skips_history_and_caches_parsed_period
         return orig_history(*args, **kwargs)
 
     monkeypatch.setattr(exec_projection, "build_correction_history", counted_history)
-    with case.ledger.read_snapshot():
-        light = case.ledger.project_loaded(case.ledger.load([op_ref]), include_history=False)[0]
+    with case.ledger.read_snapshot() as scope:
+        light = case.ledger.project_loaded(case.ledger.load(scope, [op_ref]), include_history=False)[0]
     assert history_calls == []
     assert len(light.reports) == 1 and light.reports[0].correction_history == []
 
-    with case.ledger.read_snapshot():
-        full = case.ledger.project_loaded(case.ledger.load([op_ref]), include_history=True)[0]
+    with case.ledger.read_snapshot() as scope:
+        full = case.ledger.project_loaded(case.ledger.load(scope, [op_ref]), include_history=True)[0]
     assert len(history_calls) == 1
     assert len(full.reports[0].correction_history) == 1
 
@@ -327,7 +334,8 @@ def test_bounded_report_and_void_reads_skip_sql_sort_and_preserve_sql_order(ledg
     assert heads[first_saved["operation_ref"]] == [first_saved["report_ref"]]
     assert [row["sequence"] for row in reports[first_saved["operation_ref"]][first_saved["report_ref"]]] == [1, 2, "bad-seq"]
     with pytest.raises(WorkbenchCommandRejected) as bad_seq_err:
-        case.ledger.project_operations([first_saved["operation_ref"]])
+        with case.ledger.read_snapshot() as scope:
+            case.ledger.project_operations(scope, [first_saved["operation_ref"]])
     assert bad_seq_err.value.code == "storage_failure" and bad_seq_err.value.status == 500
 
     orphan_ref = "0" * 48
@@ -342,5 +350,6 @@ def test_bounded_report_and_void_reads_skip_sql_sort_and_preserve_sql_order(ledg
     assert orphan_heads[second_saved["operation_ref"]] == sorted([orphan_ref, second_saved["report_ref"]])
     assert list(orphan_reports[second_saved["operation_ref"]]) == [second_saved["report_ref"]]
     with pytest.raises(WorkbenchCommandRejected) as orphan_err:
-        case.ledger.project_operations([second_saved["operation_ref"]])
+        with case.ledger.read_snapshot() as scope:
+            case.ledger.project_operations(scope, [second_saved["operation_ref"]])
     assert orphan_err.value.code == "storage_failure" and orphan_err.value.status == 500

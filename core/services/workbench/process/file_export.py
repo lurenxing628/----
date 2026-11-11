@@ -29,19 +29,19 @@ def _requires_workflow_table(query):
     )
 
 
-def select_export_parts(reader, refs, request):
+def select_export_parts(scope, refs, request):
     """The export's current parts: explicit refs in their order, else request's matching rows; both were admitted at preflight."""
-    parts = {row["ref"]: row for row in reader.raw_facts()["parts"]}
+    parts = {row["ref"]: row for row in scope.raw_facts()["parts"]}
     if refs is None:
-        table = reader.table() if _requires_workflow_table(request) else reader.raw_table()
+        table = scope.table() if _requires_workflow_table(request) else scope.raw_table()
         refs = [row["ref"] for row in table.matching_rows(request)]
-    elif reader.repo.part_ref is None:
+    elif scope.part_ref is None:
         for ref in refs:
             if ref not in parts:
                 raise WorkbenchCommandRejected("entity_not_found", "这个零件已经不在了。请刷新列表后重新选择。", 404)
     else:
         for ref in refs:
-            reader.identity_of(ref)
+            scope.identity_of(ref)
             if ref not in parts:
                 raise WorkbenchCommandRejected("storage_failure", "零件编号和实际资料对不上。请刷新列表后重新选择。", 500)
     return [parts[ref] for ref in refs]

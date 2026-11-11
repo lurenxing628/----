@@ -36,8 +36,8 @@ def test_summary_keeps_complete_entity_values_and_whole_scope_pagination(batch_c
     page_batches(conn)
     reader = WorkbenchBatchQueryService(conn)
     scope = batch_scope({"query": "PAGE-", "sort": "quantity", "size": 1})
-    with reader.detached_read_snapshot():
-        facts = reader.load()
+    with reader.facts.detached_read_snapshot(query_filter=scope) as snap:
+        facts = snap.load()
         projection = BatchProjection(facts)
         full = {row["batch_id"]: projection.entity(row) for row in facts["Batches"] if row["batch_id"].startswith("PAGE-")}
         expanded, serialize = [], ExecutionProjection.to_dict
@@ -49,18 +49,19 @@ def test_summary_keeps_complete_entity_values_and_whole_scope_pagination(batch_c
         monkeypatch.setattr(ExecutionProjection, "to_dict", capture)
         order = ["PAGE-B", "PAGE-C", "PAGE-A", "PAGE-D"]
         for number, code in enumerate(order, 1):
-            data = reader.page(dict(scope, page=number))
+            data = reader.page(snap, dict(scope, page=number))
             assert data["page"]["total"] == 4 and data["page"]["pages"] == 4
             assert data["metrics"] == {"scope": "filtered", "total": 4, "completed": 1}
             assert data["entities"] == [{key: value for key, value in full[code].items() if key != "operations"}]
-        assert [row["business_code"] for row in reader.matched(dict(scope, focus="gaps"))] == ["PAGE-C", "PAGE-A", "PAGE-D"]
-        assert [row["business_code"] for row in reader.matched(dict(scope, focus="unready"))] == ["PAGE-C", "PAGE-D"]
-        assert [row["business_code"] for row in reader.matched(dict(scope, status="completed"))] == ["PAGE-D"]
-        assert [row["business_code"] for row in reader.matched(dict(scope, sort="due_date", direction="desc"))] == ["PAGE-A", "PAGE-C", "PAGE-B", "PAGE-D"]
-        selection = reader.selection(scope)
+        assert [row["business_code"] for row in reader.matched(snap, dict(scope, focus="gaps"))] == ["PAGE-C", "PAGE-A", "PAGE-D"]
+        assert [row["business_code"] for row in reader.matched(snap, dict(scope, focus="unready"))] == ["PAGE-C", "PAGE-D"]
+        assert [row["business_code"] for row in reader.matched(snap, dict(scope, status="completed"))] == ["PAGE-D"]
+        assert [row["business_code"] for row in reader.matched(snap, dict(scope, sort="due_date", direction="desc"))] == ["PAGE-A", "PAGE-C", "PAGE-B", "PAGE-D"]
+        selection = reader.selection(snap, scope)
         assert selection == {"refs": [full[code]["ref"] for code in order], "count": 4}
         assert expanded == []
-        actual = reader.detail(full["PAGE-B"]["ref"])
+    with reader.facts.detached_read_snapshot(mode="single_template", target_ref=full["PAGE-B"]["ref"]) as detail_snap:
+        actual = reader.detail(detail_snap, full["PAGE-B"]["ref"])
         assert {key: value for key, value in actual.items() if key not in ("materials", "template")} == full["PAGE-B"]
         assert expanded == [full["PAGE-B"]["operations"][0]["ref"]]
 
@@ -85,10 +86,19 @@ def test_filtered_selection_facets_and_export_use_summaries(batch_client, monkey
     def no_details(_row):
         raise AssertionError("A batch list, selection, facet or basic export must not expand operation DTOs.")
 
+    summarized_batches = []
+    original_op_summary = BatchProjection.operation_summary
+
+    def track_op_summary(self, batch, row):
+        summarized_batches.append(batch["batch_id"])
+        return original_op_summary(self, batch, row)
+
     monkeypatch.setattr(ExecutionProjection, "to_dict", no_details)
+    monkeypatch.setattr(BatchProjection, "operation_summary", track_op_summary)
     scope = batch_scope({"query": "PAGE-", "size": 1, "column_filters": {"quantity": [2]}})
     response = batch_client.post(BASE + "/query", json=scope)
     assert response.status_code == 200, response.get_json()
+    assert set(summarized_batches) == {"PAGE-B", "PAGE-C"}
     listed = response.get_json()
     assert listed["data"]["page"]["total"] == 2
     assert listed["data"]["entities"][0]["business_code"] == "PAGE-B"
@@ -109,3 +119,80 @@ def test_filtered_selection_facets_and_export_use_summaries(batch_client, monkey
         assert [row[2] for row in rows[1:]] == [2, 2]
     finally:
         workbook.close()
+
+
+def test_sql_pushdown_preserves_zero_float_null_unicode_parts_scoping_and_chunked_bind_budget(batch_client):
+    conn = batch_client.batch_conn
+    insert_row(conn, "Parts", {"part_no": "P-UNICODE", "part_name": "Straße Welle"})
+    insert_row(conn, "Parts", {"part_no": "P-UNUSED", "part_name": "unused catalog part"})
+    for code, part_no, qty, priority in (
+        ("PUSH-ZERO", "P1", 0, "normal"),
+        ("PUSH-FLOAT5", "P-UNICODE", 5.0, "urgent"),
+        ("PUSH-BADQTY", "P1", -3, None),
+    ):
+        insert_row(
+            conn,
+            "Batches",
+            {
+                "batch_id": code,
+                "part_no": part_no,
+                "part_name": "part",
+                "quantity": qty,
+                "due_date": "2026-10-20",
+                "priority": priority,
+                "ready_status": "yes",
+                "status": "pending",
+            },
+        )
+    conn.commit()
+
+    # 1) quantity=[0] and quantity=[5.0] push down exact integers without dropping 0 or integral float.
+    zero_resp = batch_client.post(BASE + "/query", json={"query": "PUSH-", "column_filters": {"quantity": [0]}})
+    assert zero_resp.status_code == 200
+    assert [row["business_code"] for row in zero_resp.get_json()["data"]["entities"]] == ["PUSH-ZERO"]
+
+    float_resp = batch_client.post(BASE + "/query", json={"column_filters": {"quantity": [5.0]}})
+    assert float_resp.status_code == 200
+    float_codes = {row["business_code"] for row in float_resp.get_json()["data"]["entities"]}
+    assert {"FREE-001", "PUSH-FLOAT5"} <= float_codes
+
+    # 2) quantity=[None] and priority=[None] preserve NULL / invalid-quantity degraded None rows.
+    bad_qty_resp = batch_client.post(BASE + "/query", json={"query": "PUSH-", "column_filters": {"quantity": [None]}})
+    assert bad_qty_resp.status_code == 200
+    assert [row["business_code"] for row in bad_qty_resp.get_json()["data"]["entities"]] == ["PUSH-BADQTY"]
+
+    null_prio_resp = batch_client.post(BASE + "/query", json={"query": "PUSH-", "column_filters": {"priority": [None]}})
+    assert null_prio_resp.status_code == 200
+    assert [row["business_code"] for row in null_prio_resp.get_json()["data"]["entities"]] == ["PUSH-BADQTY"]
+
+    # 3) aps_casefold matches Python .casefold() ('ß' <-> 'SS') and page loads only candidate Parts.
+    reader = WorkbenchBatchQueryService(conn)
+    unicode_query = batch_scope({"query": "STRASSE"})
+    with reader.facts.detached_read_snapshot(query_filter=unicode_query) as unicode_scope:
+        captured_parts = [row["part_no"] for row in unicode_scope.load()["Parts"]]
+        matched = reader.page(unicode_scope, unicode_query)
+    assert [row["business_code"] for row in matched["entities"]] == ["PUSH-FLOAT5"]
+    assert captured_parts == ["P-UNICODE"]
+    choices = batch_client.get(BASE + "/choices").get_json()["data"]
+    assert {"P1", "P-UNICODE", "P-UNUSED"} <= {row["business_code"] for row in choices["parts"]}
+
+    # 4) >1000 items in column_filters / batch_ids chunk <= 400 params per SQL without hitting SQLite's 999 limit.
+    large_codes = [f"ABSENT-{idx:04d}" for idx in range(1250)] + ["PUSH-ZERO", "PUSH-FLOAT5"]
+    executed_sql = []
+    conn.set_trace_callback(executed_sql.append)
+    try:
+        large_resp = batch_client.post(
+            BASE + "/query",
+            json={
+                "batch_ids": large_codes,
+                "column_filters": {"business_code": large_codes, "priority": ["normal", "urgent"]},
+            },
+        )
+    finally:
+        conn.set_trace_callback(None)
+    assert large_resp.status_code == 200, large_resp.get_json()
+    assert [row["business_code"] for row in large_resp.get_json()["data"]["entities"]] == ["PUSH-FLOAT5", "PUSH-ZERO"]
+    # Trace callback receives expanded SQL; verify chunked Batches rowid queries ran and stayed bounded.
+    rowid_queries = [sql for sql in executed_sql if 'SELECT b.rowid AS rowid FROM "Batches"' in sql]
+    assert len(rowid_queries) >= 7
+    assert all(sql.count(",") <= 405 for sql in rowid_queries)

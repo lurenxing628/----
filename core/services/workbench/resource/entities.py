@@ -11,6 +11,7 @@ from data.repositories import MachineRepository, OperatorRepository, OpTypeRepos
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_resource_state_repo import WorkbenchResourceStateRepository
 
+from .projection import resource_state_referenced
 from .states import ResourceChange
 
 
@@ -29,7 +30,7 @@ class WorkbenchResourceService:
         code = payload["business_code"] if identity is None else identity.entity_key
         raw = {} if checked is None else checked["record"]
         if action == "delete":
-            if any(checked["dependencies"].values()):
+            if resource_state_referenced(self.kind, checked):
                 raise WorkbenchCommandRejected("constraint_conflict", "这个资源还被工序、授权、班表或历史报工使用，请先解除这些关联。")
             return ResourceChange(action, code, identity, {}, {})
         if action == "create" and preparation.raw(self.kind, code) is not None:

@@ -3,7 +3,9 @@
 import pytest
 
 from core.models.calendar_periods import DEFAULT_WORK_PERIODS
-from core.services.scheduler.calendar.service import CalendarService
+from core.services.scheduler.calendar.engine import CalendarEngine
+from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_capture
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from tests.workbench.calendar_api_support import (
     BASE,
     WORK,
@@ -43,8 +45,8 @@ def test_default_periods_are_readonly_until_confirmed_and_persist_across_service
     assert day["effective"]["window_start"] == "2026-09-10T09:00:00"
     assert day["fields"]["hours"] == 7 and day["fields"]["periods"] == PERIODS
     with calendar_api.db() as conn:
-        service = CalendarService(conn)
-        assert service._engine._policy_for_date("2026-09-10").hours == 7
+        engine = CalendarEngine(calendar_inputs_from_capture(ProductionFactsCapture(conn)))
+        assert engine._policy_for_date("2026-09-10").hours == 7
         assert conn.execute("SELECT COUNT(*) FROM WorkbenchCalendarDefaults").fetchone()[0] == 1
     sep = calendar_api.month(2026, 9)
     assert calendar_api.month(2026, 9, snapshot_ref=sep["meta"]["snapshot_ref"])["data"] == sep["data"]

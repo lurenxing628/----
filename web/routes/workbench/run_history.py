@@ -27,8 +27,12 @@ def run_history_list():
     scope = RunHistoryScope(state=request.args.get("state", "all"), accepted_from=request.args.get("accepted_from"),
         accepted_to=request.args.get("accepted_to"), sort=request.args.get("sort", "accepted_at"),
         order=request.args.get("order", "desc"), page=_integer("page", "1"), size=_integer("size", "20"))
-    data, fingerprint = WorkbenchRunHistoryQueryService(g.db).catalog(scope)
-    snapshot = bind_read_snapshot(scope.scope(), fingerprint, request.args.get("snapshot_ref"))
+    data, snapshot = WorkbenchRunHistoryQueryService(g.db).catalog_for_snapshot(
+        scope,
+        bind_snapshot=lambda bound_scope, state: bind_read_snapshot(
+            bound_scope, state, request.args.get("snapshot_ref")
+        ),
+    )
     return query_success(data, snapshot)
 
 

@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime
-from functools import partial
 from itertools import groupby
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Mapping, Set, Tuple
 
 from core.algorithm_contracts.ordering import clean_resource_id
-from core.algorithm_runtime.internal_slot import validate_internal_hours
-from core.errors import AppError, ErrorCode, ValidationError
+from core.errors import AppError, ErrorCode
 from core.models.batch_operation import BatchOperation
-from core.models.enums import SourceType
 
 from .schedule_input_seed_metadata import (
     merged_external_group_identity,
@@ -27,7 +24,7 @@ def _resolve_algo_ops_to_schedule(
     execution_completed_op_ids: Set[int],
     run_label: str,
     raise_schedule_empty_result_fn: Any,
-    derived_group_op_ids: Optional[Set[int]] = None,
+    derived_group_op_ids: Set[int],
 ) -> List[Any]:
     fixed_seed_op_ids = frozen_op_ids | execution_completed_op_ids
     algo_ops_to_schedule = [op for op in algo_ops if op.id not in fixed_seed_op_ids]
@@ -48,34 +45,6 @@ def _resolve_algo_ops_to_schedule(
         reason="all_operations_frozen",
     )
     return []
-
-
-def _ensure_internal_runtime_hours(batches: Dict[str, Any], algo_ops: List[Any]) -> None:
-    for op in algo_ops:
-        if op.source != SourceType.INTERNAL.value:
-            continue
-        batch_id = op.batch_id
-        batch = batches.get(batch_id)
-        if batch is None:
-            raise ValidationError(f"自制工序 {op.op_code or '-'} 找不到所属批次，无法计算总工时。", field="batch_id")
-        # 单一真相源：直接复用算法层 internal_slot.validate_internal_hours 校验自制工时。
-        # 它要求 setup/unit/quantity 都是非负有限数字：缺失（None）等读不出的值报“工时字段不合法”，
-        # 负数和非有限数同样拦下；值为 0 合法，总工时 0 也合法（含 quantity==0：总量=setup，算法层按瞬时排）。
-        # 此处不再手搓第二套 quantity/工时校验，避免口径分叉
-        # （quantity==0 曾被错误硬拦整批，详见 issue 2026-06-24-core-algorithm-deep-review-fixes 复修讨论）。
-        try:
-            validate_internal_hours(op, batch)
-        except ValueError as exc:
-            raise ValidationError(
-                f"自制工序 {op.op_code or '-'} 的工时不合法，请检查换型时间、单件工时和数量。",
-                field="work_hours",
-                details={
-                    "reason": "invalid_internal_work_hours",
-                    "op_id": int(op.id),
-                    "batch_id": batch_id,
-                    "op_code": op.op_code,
-                },
-            ) from exc
 
 
 def _load_runtime_resource_inputs(
@@ -113,35 +82,44 @@ def prepare_runtime_seeds(
     conn: sqlite3.Connection,
     *,
     run_label: str,
-    batches: Dict[str, Any],
     operations: List[BatchOperation],
     algo_ops: List[Any],
     frozen_op_ids: Set[int],
     freeze_seed_results: List[Dict[str, Any]],
     execution_completed_op_ids: Set[int],
     execution_seed_results: List[Dict[str, Any]],
+    actual_group_intervals: Mapping[Any, Tuple[datetime, datetime]],
     raise_schedule_empty_result_fn: Any,
     validate_fixed_operator_qualifications_fn: Any,
     validate_completed_seed_constraints_fn: Any = None,
-) -> Tuple[Set[int], List[Dict[str, Any]], List[Any]]:
+) -> Tuple[Set[int], List[Dict[str, Any]], List[Any], Dict[int, Tuple[datetime, datetime]]]:
     seed_results = _merge_execution_and_freeze_seed_results(
         execution_seed_results=execution_seed_results,
         freeze_seed_results=freeze_seed_results,
     )
     # 合并外协组身份按本次 algo_ops 算一次，组内派生原安排和完工下游校验（含分件校验）共用。
     groups = {op.id: merged_external_group_identity(op) for op in algo_ops}
-    seed_results, derived_group_ids = with_merged_actual_group_seeds(seed_results, algo_ops=algo_ops,
-        groups=groups, actual_op_ids=execution_completed_op_ids)
+    seed_results, derived_group_ids, external_intervals = with_merged_actual_group_seeds(
+        seed_results,
+        algo_ops=algo_ops,
+        groups=groups,
+        actual_op_ids=execution_completed_op_ids,
+        actual_group_intervals=actual_group_intervals,
+    )
     frozen_op_ids = frozen_op_ids | derived_group_ids
     seed_results = with_external_seed_metadata(seed_results, algo_ops=algo_ops)
-    validate_seeds = validate_completed_seed_constraints_fn or partial(
-        _validate_completed_downstream_seed_constraints, operations=operations,
-    )
-    validate_seeds(
-        seed_results=seed_results,
-        groups=groups,
-        execution_completed_op_ids=execution_completed_op_ids,
-    )
+    if validate_completed_seed_constraints_fn is not None:
+        validate_completed_seed_constraints_fn(
+            seed_results=seed_results,
+            groups=groups,
+        )
+    else:
+        _validate_completed_downstream_seed_constraints(
+            seed_results=seed_results,
+            operations=operations,
+            groups=groups,
+            execution_completed_op_ids=execution_completed_op_ids,
+        )
     algo_ops_to_schedule = _resolve_algo_ops_to_schedule(
         algo_ops=algo_ops,
         frozen_op_ids=frozen_op_ids,
@@ -150,9 +128,8 @@ def prepare_runtime_seeds(
         raise_schedule_empty_result_fn=raise_schedule_empty_result_fn,
         derived_group_op_ids=derived_group_ids,
     )
-    _ensure_internal_runtime_hours(batches, algo_ops_to_schedule)
     validate_fixed_operator_qualifications_fn(conn, algo_ops_to_schedule)
-    return frozen_op_ids, seed_results, algo_ops_to_schedule
+    return frozen_op_ids, seed_results, algo_ops_to_schedule, external_intervals
 
 
 def _raise_downstream_seed_conflict(*, op_id: int, completed_op_id: int) -> None:
@@ -264,10 +241,10 @@ def _validate_completed_downstream_seed_constraints(
 
 def _seed_conflicts(execution_seed: Dict[str, Any], freeze_seed: Dict[str, Any]) -> bool:
     return (
-        execution_seed.get("start_time") != freeze_seed.get("start_time")
-        or execution_seed.get("end_time") != freeze_seed.get("end_time")
-        or clean_resource_id(execution_seed.get("machine_id")) != clean_resource_id(freeze_seed.get("machine_id"))
-        or clean_resource_id(execution_seed.get("operator_id")) != clean_resource_id(freeze_seed.get("operator_id"))
+        execution_seed["start_time"] != freeze_seed["start_time"]
+        or execution_seed["end_time"] != freeze_seed["end_time"]
+        or clean_resource_id(execution_seed["machine_id"]) != clean_resource_id(freeze_seed["machine_id"])
+        or clean_resource_id(execution_seed["operator_id"]) != clean_resource_id(freeze_seed["operator_id"])
     )
 
 
@@ -279,25 +256,18 @@ def _raise_seed_conflict(op_id: int) -> None:
     )
 
 
-def _with_seed_source(seed: Dict[str, Any], source: str) -> Dict[str, Any]:
-    if seed.get("seed_source") == source:
-        return seed
-    return {**seed, "seed_source": source}
-
-
 def _merge_execution_and_freeze_seed_results(
     *,
     execution_seed_results: List[Dict[str, Any]],
     freeze_seed_results: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     execution_by_op_id = {
-        int(seed["op_id"]): _with_seed_source(seed, "execution_fact")
+        int(seed["op_id"]): seed
         for seed in execution_seed_results
     }
     merged: Dict[int, Dict[str, Any]] = {}
-    for seed in freeze_seed_results:
-        op_id = int(seed["op_id"])
-        freeze_seed = _with_seed_source(seed, "freeze_window")
+    for freeze_seed in freeze_seed_results:
+        op_id = int(freeze_seed["op_id"])
         execution_seed = execution_by_op_id.get(op_id)
         if execution_seed is not None:
             if _seed_conflicts(execution_seed, freeze_seed):

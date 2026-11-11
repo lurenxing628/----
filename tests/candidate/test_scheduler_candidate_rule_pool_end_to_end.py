@@ -22,9 +22,9 @@ def _compare(scenario, objective="min_overdue"):
     config = {"seed": 0, "time_budget_seconds": 20}
     ticks = itertools.count(0.0, 0.01)
     data = fixture_data(scenario)
-    with case_environment(data, objective, config) as schedule_input, pytest.MonkeyPatch.context() as runner_patch:
+    with case_environment(data, objective, config) as (solver_input, resources), pytest.MonkeyPatch.context() as runner_patch:
         runner_patch.setattr(schedule_candidate_runner, "monotonic", lambda: next(ticks))
-        return run_candidate_comparison(schedule_input=schedule_input)
+        return run_candidate_comparison(solver_input, resources)
 
 
 @pytest.fixture(scope="module")

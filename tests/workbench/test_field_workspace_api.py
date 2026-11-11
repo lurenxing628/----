@@ -107,7 +107,8 @@ def test_supplement_keeps_known_facts_through_correction(ledger_case):
                                 "actual_operator_ref": case.ref("operator", "O1")}))
     assert response.status_code == 409 and all_rows(case.conn) == before
     # Maintaining hours/remark on an earlier plan's report preserves historical machine/operator actuals.
-    original = case.ledger.load([record["operation_ref"]])["reports"][record["operation_ref"]][record["report_ref"]][-1]
+    with case.ledger.read_snapshot() as ledger_scope:
+        original = case.ledger.load(ledger_scope, [record["operation_ref"]])["reports"][record["operation_ref"]][record["report_ref"]][-1]
     damaged = dict(original, revision_ref=new_ref(), sequence=3, previous_revision_ref=original["revision_ref"],
                    action="correct", reason="old accepted correction", values=dict(original["values"],
                    effective_processing_hours=0.5))
@@ -217,3 +218,135 @@ def test_field_workspace_pagination_rejects_oversized_non_ascii_and_leading_zero
     assert page_input({'page': '100000', 'size': '100'}) == (100000, 100)
     first_wide = field_api.read(page=1, size=100)['data']
     assert first_wide['page']['number'] == 1 and first_wide['page']['size'] == 100
+
+
+def test_external_operation_template_preserves_incomplete_row_and_allocates_new_row_when_four_fields_complete(field_api):
+    from tests.workbench.execution_ledger_support import publish_official_plan
+
+    api = field_api
+    conn = api.case.conn
+    conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('T_EXT','热处理','external')")
+    conn.execute("INSERT INTO Suppliers(supplier_id,name) VALUES ('S1','外协一厂')")
+    ext_op_id = conn.execute(
+        "INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source,supplier_id,ext_days) "
+        "VALUES ('OP_EXT','B1',2,'T_EXT','热处理','external','S1',2)"
+    ).lastrowid
+    publish_official_plan(
+        conn,
+        2,
+        [{"op_id": ext_op_id, "machine_id": None, "operator_id": None,
+          "start_time": "2026-09-02T08:00:00", "end_time": "2026-09-04T08:00:00"}],
+    )
+    conn.commit()
+
+    # ② 若已有外协报工缺必填项（如 actual_end 为空），/files/template 仍带出原报工单号供补齐。
+    ext_task = api.task()
+    assert ext_task['source'] == 'external'
+    api.create(
+        {'actual_start': '2026-09-02T08:00:00', 'completed_quantity': 4, 'effective_processing_hours': 8},
+        ext_task,
+    )
+    first_report = api.task()['execution']['reports'][0]
+    first_report_no = first_report['report_no']
+    assert api.task()['execution']['records_complete'] is False
+
+    reading = api.read()
+    template_incomplete = api.client.get(
+        BASE + '/files/template',
+        query_string={**reading['data']['scope'], 'snapshot_ref': reading['meta']['snapshot_ref']},
+    )
+    assert template_incomplete.status_code == 200
+    book = load_workbook(BytesIO(template_incomplete.data))
+    sheet = book.worksheets[0]
+    assert sheet.max_row == 2
+    assert sheet.cell(2, 1).value == first_report_no
+    assert sheet.cell(2, 4).value == '4'
+    assert sheet.cell(2, 6).value is None
+    sheet.cell(2, 6, '2026-09-03 08:00:00')
+    supplement_buf = BytesIO()
+    book.save(supplement_buf)
+    book.close()
+
+    supplement_preview = success(api.upload(supplement_buf.getvalue(), reading))
+    assert supplement_preview['data']['can_confirm'] is True
+    assert supplement_preview['data']['rows'][0]['result'] == 'supplement'
+    confirmed_supplement = success(api.client.post(BASE + '/files/confirm', json=api.confirm_body(supplement_preview)))
+    assert confirmed_supplement['result'] == 'committed'
+
+    # ① 外协工序目标数量 10、已有一条四项齐全的完整报工（数量 4）时，下载 /files/template 生成全新 BG-T-... 单号空白行，
+    # 填写本次数量 6 后经 /files/preview + /files/confirm 成功新增第 2 条外协报工且不触发 supplement 覆盖冲突。
+    after_first = api.task()['execution']
+    assert after_first['target_quantity'] == 10 and after_first['known_completed_quantity'] == 4
+    assert after_first['records_complete'] is True and after_first['execution_state'] == 'partial'
+
+    reading = api.read()
+    template_complete = api.client.get(
+        BASE + '/files/template',
+        query_string={**reading['data']['scope'], 'snapshot_ref': reading['meta']['snapshot_ref']},
+    )
+    assert template_complete.status_code == 200
+    book2 = load_workbook(BytesIO(template_complete.data))
+    sheet2 = book2.worksheets[0]
+    assert sheet2.max_row == 2
+    second_report_no = sheet2.cell(2, 1).value
+    assert isinstance(second_report_no, str) and second_report_no.startswith('BG-T-')
+    assert second_report_no != first_report_no
+    assert [sheet2.cell(2, col).value for col in range(4, 10)] == [None] * 6
+
+    sheet2.cell(2, 4, 6)
+    sheet2.cell(2, 5, '2026-09-03 09:00:00')
+    sheet2.cell(2, 6, '2026-09-04 08:00:00')
+    sheet2.cell(2, 7, 10)
+    second_buf = BytesIO()
+    book2.save(second_buf)
+    book2.close()
+
+    second_preview = success(api.upload(second_buf.getvalue(), reading))
+    assert second_preview['data']['can_confirm'] is True
+    assert second_preview['data']['rows'][0]['result'] == 'create'
+    assert second_preview['data']['summary'] == {'total': 1, 'blank': 0, 'rejected': 0, 'changed': 1, 'unchanged': 0}
+    confirmed_second = success(api.client.post(BASE + '/files/confirm', json=api.confirm_body(second_preview)))
+    assert confirmed_second['result'] == 'committed'
+
+    final_exec = api.task()['execution']
+    assert final_exec['execution_state'] == 'complete'
+    assert final_exec['known_completed_quantity'] == 10 and final_exec['remaining_quantity'] == 0
+    assert final_exec['records_complete'] is True and final_exec['data_quality'] == 'complete'
+    assert [(r['report_no'], r['completed_quantity']) for r in final_exec['reports']] == [
+        (first_report_no, 4),
+        (second_report_no, 6),
+    ]
+
+
+def test_void_preview_does_not_issue_write_tokens_for_downstream_operations(ledger_case):
+    from web import public_token_registry
+    from web.routes.workbench.write_context import _SCOPE as WRITE_SCOPE
+
+    case = ledger_case
+    downstream = case.op("OP2", seq=2)
+    case.plan(2, [case.op_id, downstream])
+    api = FieldAPI(case)
+    first_task = next(row for row in api.read()["data"]["tasks"] if row["sequence"] == 1)
+    api.create(case.values(4), first_task)
+    report = next(row for row in api.read()["data"]["tasks"] if row["sequence"] == 1)["execution"]["reports"][0]
+
+    with api.app.app_context():
+        before_tokens = set(public_token_registry._registry().get(WRITE_SCOPE, {}).get("tokens", ()))
+
+    preview = success(
+        api.client.post(
+            BASE + "/reports/" + report["report_ref"] + "/void-preview",
+            json={
+                "input": {
+                    "original_revision_ref": report["revision_ref"],
+                    "reason": "核对下游影响",
+                    "declared_operator": "Foreman",
+                }
+            },
+        )
+    )["data"]
+
+    with api.app.app_context():
+        after_tokens = set(public_token_registry._registry()[WRITE_SCOPE]["tokens"])
+
+    assert after_tokens - before_tokens == {preview["write_context"]["write_token"]}

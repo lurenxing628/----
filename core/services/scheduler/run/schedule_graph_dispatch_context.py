@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.services.scheduler.graph.types import OperationGraphEdge, OperationGraphNode
 
-from .schedule_input_contracts import ScheduleRunInput
+from .schedule_input_contracts import SolverInput
 
 GRAPH_CYCLE_DISABLED_REASON = "schedule_graph_cycle"
 _GRAPH_INPUT_SCOPE = "all_algo_ops_with_frozen_markers"
@@ -17,14 +17,14 @@ def effective_graph_analysis_mode(mode: str) -> str:
 
 
 def graph_input_scope(
-    schedule_input: ScheduleRunInput, *, nodes: List[OperationGraphNode],
+    schedule_input: SolverInput, *, nodes: List[OperationGraphNode],
 ) -> Dict[str, Any]:
     return {
         "input_scope": _GRAPH_INPUT_SCOPE,
         "total_algo_op_count": len(schedule_input.algo_ops),
-        "reschedulable_unfrozen_op_count": len(schedule_input.algo_ops_to_schedule),
+        "reschedulable_unfrozen_op_count": len(schedule_input.to_schedule),
         "frozen_node_count": sum(1 for node in nodes if node.is_frozen),
-        "seed_result_count": len(schedule_input.seed_results),
+        "seed_result_count": len(schedule_input.seeds.seed_results),
     }
 
 
@@ -63,11 +63,11 @@ def graph_ready_public_fields(*, mode: str, is_dag: bool, graph_block_on_cycle: 
     }
 
 
-def schedule_input_op_id_sets(schedule_input: ScheduleRunInput) -> Tuple[Set[int], Set[int]]:
+def schedule_input_op_id_sets(schedule_input: SolverInput) -> Tuple[Set[int], Set[int]]:
     """(schedulable, fixed): fixed operations are the frozen ones plus every seeded one."""
-    schedulable_op_ids = {op.id for op in schedule_input.algo_ops_to_schedule}
-    seed_op_ids = {seed["op_id"] for seed in schedule_input.seed_results}
-    return schedulable_op_ids, schedule_input.frozen_op_ids | seed_op_ids
+    schedulable_op_ids = {op.id for op in schedule_input.to_schedule}
+    seed_op_ids = {seed["op_id"] for seed in schedule_input.seeds.seed_results}
+    return schedulable_op_ids, schedule_input.seeds.frozen_op_ids | seed_op_ids
 
 
 def sort_key_by_op_id(nodes: List[OperationGraphNode], *, schedulable_op_ids: Set[int]) -> Dict[int, Tuple[int, int, int]]:

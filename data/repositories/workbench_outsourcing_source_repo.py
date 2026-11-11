@@ -149,7 +149,7 @@ class WorkbenchOutsourcingSourceRepository:
             for row in rows:
                 facts._source_rows[chunk[row[0]]] = dict(zip(columns, row[1:]))
 
-    def capture(self, targets, *, entities=(), include_routes=False):
+    def capture(self, targets, *, entities=(), include_routes=False, revision: int):
         """Read every dependency once for these targets in the caller's current transaction.
 
         entities contains already-read {identity, row} pairs, such as the selected
@@ -157,8 +157,7 @@ class WorkbenchOutsourcingSourceRepository:
         """
         if not self.conn.in_transaction:
             raise RuntimeError("Outsourcing source capture requires a caller-owned snapshot")
-        # The caller's transaction pins one snapshot, so the plan clock is the same before or after the reads.
-        facts = WorkbenchOutsourcingSourceFacts(self.plan_identity_revision())
+        facts = WorkbenchOutsourcingSourceFacts(revision)
         targets = list(targets)
         for entity in entities:
             identity = entity["identity"]

@@ -4,16 +4,12 @@ from collections import defaultdict
 
 from core.errors import BusinessError, ValidationError
 from core.models.resource_capabilities import machine_type_index, supports_source
-from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_intervals import IntervalIndex
 from core.services.capacity.plan_calendar_issues import issue
 from core.services.capacity.plan_calendar_windows import available_intervals
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from core.services.workbench.facts.archived_calendar import DowntimeIndex
 from core.services.workbench.facts.zero_duration import estimate_point_event
-
-# 区分“调用方没给点时间日历”和“调用方明确给了 None（归档日历本身已损坏）”。
-_UNSET = object()
 
 
 class _SkillFacts:
@@ -50,6 +46,9 @@ def _downtime_indexes(rows):
     return lambda machine_id: DowntimeIndex(by_machine[machine_id])
 
 
+_UNSET = object()
+
+
 class TaskConstraints:
     """``calendar_lookup``/``downtime_lookup`` reuse a calendar factory's projections of the
     same captured sources; without them each resource is projected from ``calendar_facts``."""
@@ -60,11 +59,11 @@ class TaskConstraints:
         self.calendar_lookup = calendar_lookup
         self.issues = defaultdict(set)
         self.indexes, self.qualification_cache, self.skills_cache = {}, {}, {}
+        self.point_calendar = None
         if not self.available:
             return
         facts = calendar_facts["sources"]
-        # 点时间日历只有零工时点事件才用，未给时到第一次点事件检查再建。
-        self._facts, self.point_calendar = facts, point_calendar
+        self.point_calendar = calendar_facts["engine"] if point_calendar is _UNSET else point_calendar
         self.records = {kind: {row[kind + "_id"]: row for row in facts[kind + "s"]}
                         for kind in ("machine", "operator")}
         self.operations = {row["id"]: row for row in facts["operations"]}
@@ -111,9 +110,6 @@ class TaskConstraints:
         self._check_type_and_qualification(row)
 
     def _check_point_calendar(self, row, work, at):
-        if self.point_calendar is _UNSET:
-            # 坏日历内容由引擎留到读到那天再抛，下面记为算不出。
-            self.point_calendar = SnapshotCalendarEngine(self._facts)
         if self.point_calendar is None:
             self._add("assignment_calendar_unavailable", row["op_id"])
             return
@@ -190,6 +186,3 @@ class TaskConstraints:
 
     def public(self):
         return [issue(code, operation_count=len(ids)) for code, ids in sorted(self.issues.items())]
-
-    def private(self):
-        return {code: sorted(ids) for code, ids in sorted(self.issues.items())}

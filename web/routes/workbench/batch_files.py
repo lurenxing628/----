@@ -45,8 +45,9 @@ def batch_import_preview():
         raise WorkbenchCommandRejected("invalid_input", "没有选好导入方式，或本页数据已过期，文件还没有导入。请刷新页面后重新选择文件。", 400)
     scope_invalid = rejecter("文件导入范围不对，文件还没有导入。请刷新页面后重新点「开始预检」。")
     values = load_strict_json(request.form["scope"], on_malformed=scope_invalid)
+    query = None
     try:
-        scope = batch_scope(values)
+        query = batch_scope(values)
     except WorkbenchCommandRejected:
         # 范围内容不合格与读不出来报同一句，保持现有界面提示。
         scope_invalid()
@@ -58,9 +59,13 @@ def batch_import_preview():
     parsed = WorkbenchBatchFileService.read(content, request.form["mode"])
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
     # File checks only compare rows with the captured facts; no further SQL after the snapshot.
-    with batch_read_snapshot(reader) as fingerprint:
-        bind_read_snapshot(snapshot_scope(scope), fingerprint, request.form["snapshot_ref"])
-        document = WorkbenchBatchFileService(g.db, current_app.logger, reader=reader).preview(request.form["mode"], parsed)
+    with batch_read_snapshot(
+        reader,
+        bind=lambda fingerprint: bind_read_snapshot(snapshot_scope(query), fingerprint, request.form["snapshot_ref"]),
+        mode="collection",
+    ) as scope:
+        document = WorkbenchBatchFileService(g.db, current_app.logger).preview(scope, request.form["mode"], parsed)
+        fingerprint = scope.fingerprint()
     # Retaining the finished document needs no read slot or second write token.
     token, expires_at = save_preview("import_confirm", None, document, fingerprint, with_expiry=True)
     data = {**document, "preview_ref": token, "expires_at": expires_at, "write_context": None}
@@ -78,28 +83,32 @@ def batch_import_confirm():
     if not isinstance(token, str) or not token:
         raise WorkbenchCommandRejected("invalid_input", retry_message("import_confirm", "预检结果编号缺失"), 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
+    with reader.facts.command_snapshot(mode="collection") as scope:
+        def guard():
+            binding = load_preview(token, "import_confirm", None)
+            if binding["fingerprint"] != scope.fingerprint():
+                raise WorkbenchCommandRejected("stale_write", retry_message("import_confirm", "预检之后批次资料有变化"))
+            validate_preview_confirmation(body["write_token"], token)
+            return binding["input"]
 
-    def guard():
-        binding = load_preview(token, "import_confirm", None)
-        fingerprint = reader.fingerprint()
-        if binding["fingerprint"] != fingerprint:
-            raise WorkbenchCommandRejected("stale_write", retry_message("import_confirm", "预检之后批次资料有变化"))
-        validate_preview_confirmation(body["write_token"], token)
-        return binding["input"]
-
-    with reader.command_snapshot():
-        return json_response(WorkbenchCommandService(g.db, current_app.logger).execute(request_key=body["request_key"], action="batch.import_confirm",
-            context_ref=token, normalized_input=normalized, guard=guard,
-            mutate=lambda document: WorkbenchBatchFileService(g.db, current_app.logger, reader=reader).apply(document)))
+        return json_response(WorkbenchCommandService(g.db, current_app.logger).execute(
+            request_key=body["request_key"],
+            action="batch.import_confirm",
+            context_ref=token,
+            normalized_input=normalized,
+            guard=guard,
+            mutate=lambda document: WorkbenchBatchFileService(g.db, current_app.logger).apply(scope, document),
+        ))
 
 
 @read_endpoint
 def batch_export_preview():
     body = object_fields(json_body(), ("selection", "scope", "refs"), ("selection", "scope"))
-    scope = batch_scope(body["scope"])
-    if body["selection"] not in ("selected", "filtered") or not scope.get("snapshot_ref"):
+    query = batch_scope(body["scope"])
+    if body["selection"] not in ("selected", "filtered") or not query.get("snapshot_ref"):
         raise WorkbenchCommandRejected("invalid_input", "请先选好导出当前筛选还是导出选中的批次，没有开始下载。数据已更新时请先点「刷新」，再点「下载批次清单」。", 400)
-    if body["selection"] == "selected":
+    is_selected = body["selection"] == "selected"
+    if is_selected:
         refs = body.get("refs")
         if not isinstance(refs, list) or not 1 <= len(refs) <= MAX_ROWS:
             raise WorkbenchCommandRejected("invalid_input", "导出要选 1 至 5000 批批次且不能重复，没有开始下载。请重新选择后点「下载批次清单」。", 400)
@@ -111,13 +120,19 @@ def batch_export_preview():
     else:
         refs = []
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with batch_read_snapshot(reader) as fingerprint:
-        bind_read_snapshot(snapshot_scope(scope), fingerprint, scope["snapshot_ref"])
-        if body["selection"] == "selected":
+    with batch_read_snapshot(
+        reader,
+        bind=lambda fingerprint: bind_read_snapshot(snapshot_scope(query), fingerprint, query["snapshot_ref"]),
+        mode="batch_closure" if is_selected else "collection",
+        target_refs=tuple(refs) if is_selected else None,
+        query_filter=None if is_selected else query,
+    ) as scope:
+        if is_selected:
             for ref in refs:
-                reader.resolve(ref)
+                scope.resolve(ref)
         else:
-            refs = reader.selection(scope)["refs"]
+            refs = reader.selection(scope, query)["refs"]
+        fingerprint = scope.fingerprint()
         token = save_preview("export", None, {"refs": refs}, fingerprint)
         snapshot = bind_read_snapshot({"kind": "batch_export", "export_ref": token}, fingerprint)
     return query_success({"export_ref": token, "count": len(refs), "selection": body["selection"]}, snapshot)
@@ -129,11 +144,20 @@ def batch_export():
         raise WorkbenchCommandRejected("invalid_input", "导出范围已过期，没有开始下载。请重新点「下载批次清单」。", 400)
     binding = load_preview(request.args["export_ref"], "export", None)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    # One projection serves every exported batch; the workbook is written after the read slot is released.
-    with batch_read_snapshot(reader) as fingerprint:
+
+    def verify_export_snapshot(fingerprint):
         if binding["fingerprint"] != fingerprint:
             raise WorkbenchCommandRejected("snapshot_stale", "导出范围里的批次有变化，没有开始下载。请重新点「下载批次清单」。")
-        entities = reader.summaries(binding["input"]["refs"])
+
+    target_refs = tuple(binding["input"]["refs"])
+    # One projection serves every exported batch; the workbook is written after the read slot is released.
+    with batch_read_snapshot(
+        reader,
+        bind=verify_export_snapshot,
+        mode="batch_closure",
+        target_refs=target_refs,
+    ) as scope:
+        entities = reader.summaries(scope, binding["input"]["refs"])
     content = WorkbenchBatchFileService.export(entities)
     return download(content, "批次清单.xlsx", len(entities))
 

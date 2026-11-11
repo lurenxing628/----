@@ -44,18 +44,6 @@ def _build_external_merge_context(facts: FrozenExternalContext, op: BatchOperati
     )
 
 
-def _internal_work_hour(
-    raw_value: Optional[float],
-    *,
-    field: str,
-    field_label: str,
-) -> float:
-    try:
-        return parse_required_float(raw_value, field=field_label, min_value=0.0)
-    except ValidationError as exc:
-        raise ValidationError(f"自制工序的{field_label}必须是大于等于 0 的数字。", field=field) from exc
-
-
 def _make_algo_operation(
     op: BatchOperation,
     *,
@@ -98,13 +86,13 @@ def build_algo_operations(
     - 本层只消费调用方传入的 `reschedulable_operations`，不再自行扩散状态语义；
     - 来源只会是 internal/external：读取边界 operation_model 已按算法值域校验过，本层不再归一化；
     - 外协工序的冻结周期记录由输入准备阶段一次核对后经 `external_contexts` 传入，本层不回库；
-    - 工时与外协周期只有严格口径：填得不对抛 ValidationError，不按默认值兜底。
+    - 自制工序工时已由读取边界 `operation_model` 保证为非负有限原生数字，这里直接转为 `float`；单独外协周期只有严格口径：填得不对抛 ValidationError，不按默认值兜底。
     """
     algo_ops: List[OpForScheduleAlgo] = []
     for op in reschedulable_operations:
         if op.source == INTERNAL:
-            setup_hours = _internal_work_hour(op.setup_hours, field="setup_hours", field_label="换型时间")
-            unit_hours = _internal_work_hour(op.unit_hours, field="unit_hours", field_label="单件工时")
+            setup_hours = float(op.setup_hours)
+            unit_hours = float(op.unit_hours)
             external_context = _EMPTY_EXTERNAL_CONTEXT
         else:
             # External work uses its calendar cycle and has no internal workload.

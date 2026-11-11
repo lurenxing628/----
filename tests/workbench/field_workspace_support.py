@@ -6,11 +6,10 @@ import uuid
 from io import BytesIO
 
 import pytest
-from flask import Blueprint, Flask, g, jsonify, request
+from flask import Blueprint, Flask, g, request
 
-from core.services.workbench.commands import WorkbenchCommandService
 from tests.workbench.execution_ledger_support import ledger_case as _ledger_fixture
-from web.routes.workbench.api_responses import api_endpoint
+from web.routes.workbench.commands import register_command_routes
 from web.routes.workbench.execution import register_execution_routes
 from web.routes.workbench.resources import register_resource_routes
 
@@ -31,13 +30,7 @@ def make_app(path):
     bp = Blueprint('workbench', __name__)
     register_execution_routes(bp)
     register_resource_routes(bp)
-
-    @bp.get('/api/workbench/v1/commands/<request_key>')
-    @api_endpoint
-    def command_receipt(request_key):
-        result = WorkbenchCommandService(g.db).lookup(request_key)
-        return jsonify(result or {'ok': True, 'state': 'not_recorded', 'receipt': None, 'may_be_in_flight': True})
-
+    register_command_routes(bp)
     app.register_blueprint(bp)
 
     @app.before_request

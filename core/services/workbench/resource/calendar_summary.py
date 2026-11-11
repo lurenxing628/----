@@ -5,8 +5,9 @@ from datetime import date, datetime, time, timedelta
 
 from core.errors import ValidationError
 from core.models.calendar_periods import period_hours
-from core.services.scheduler.calendar.service import CalendarService
+from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.scheduler.config.config_field_spec import coerce_config_field
+from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_connection
 from data.repositories.config_repo import ConfigRepository
 from data.repositories.workbench_resource_summary_repo import WorkbenchResourceSummaryRepository
 
@@ -48,10 +49,6 @@ def owned_hours(engine, day, *, policy=None):
 
 
 def _effective(policy, owned):
-    if policy.day_type not in ("workday", "weekend", "holiday"):
-        raise ValueError("日历类型无法核实。")
-    if policy.allow_normal not in ("yes", "no") or policy.allow_urgent not in ("yes", "no"):
-        raise ValueError("日历普通件或急件许可无法核实。")
     normal, urgent = policy.is_priority_allowed("normal"), policy.is_priority_allowed("urgent")
     working = policy.is_working()
     hours = owned * policy.efficiency
@@ -68,15 +65,15 @@ def _effective(policy, owned):
             "rest_reason": None if working else "zero_hours" if policy.hours == 0 else "priorities_disabled"}
 
 
-def _day_summary(service, day, row, today):
+def _day_summary(engine, day, row, today):
     result = {"date": day.isoformat(), "weekday": day.weekday(), "is_today": day == today,
               "explicit": row is not None, "source": "explicit" if row is not None else "service_default",
               "status": "known", "effective": None, "issues": []}
     try:
         # The datetime API can belong to yesterday's night shift. This rail groups
-        # shift windows by their start date, using the facade's actual date policy.
-        policy = service._engine._policy_for_date(day.isoformat())
-        result["effective"] = _effective(policy, owned_hours(service._engine, day, policy=policy))
+        # shift windows by their start date, using the engine's actual date policy.
+        policy = engine._policy_for_date(day.isoformat())
+        result["effective"] = _effective(policy, owned_hours(engine, day, policy=policy))
     except (ValidationError, ValueError, TypeError, OverflowError) as exc:
         result.update(status="unavailable", issues=[{"code": "calendar_day_unavailable", "message": str(exc)}])
     return result
@@ -107,8 +104,8 @@ def resource_calendar_summary(conn, logger=None):
     last = first + timedelta(days=6)
     rows = WorkbenchResourceSummaryRepository(conn, logger=logger).calendar_rows(
         first.isoformat(), (last + timedelta(days=1)).isoformat())
-    service = CalendarService(conn, logger=logger, captured_global_rows=rows)
-    days = [_day_summary(service, first + timedelta(days=index), rows.get((first + timedelta(days=index)).isoformat()), today)
+    engine = CalendarEngine(calendar_inputs_from_connection(conn, public_days=tuple(rows.values())))
+    days = [_day_summary(engine, first + timedelta(days=index), rows.get((first + timedelta(days=index)).isoformat()), today)
             for index in range(7)]
     stats = _week_stats(days)
     return {"status": "partial" if stats["unavailable_days"] or stats["issues"] else "known",
@@ -117,7 +114,7 @@ def resource_calendar_summary(conn, logger=None):
             "basis": "全局班次按起始日期归到那一天；有效工时 = 班次时长 × 效率，普通件和急件按许可分别算。"
                      "跨夜不拆成两天，但与次日班次重叠的部分归次日，不重复计算；"
                      "不算人员专属班表、班次、设备停机和当前占用；外协周期仍按自然日算。",
-            "standard_hours": {"status": "known", "value": period_hours(service._engine.default_periods()),
+            "standard_hours": {"status": "known", "value": period_hours(engine.default_periods()),
                                "source": "factory_default_calendar", "message": "未单独设置的工作日按默认工作时段计算。"},
-            "default_periods": service._engine.default_periods(),
+            "default_periods": engine.default_periods(),
             "holiday_default_efficiency": _holiday_efficiency(conn, logger), "days": days, "stats": stats}

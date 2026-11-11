@@ -4,12 +4,14 @@ The query repository returns bounded rows only; schema readiness, missing identi
 and size limits are ruled on here before anything is projected.
 """
 
-from contextlib import contextmanager
+from datetime import datetime
+from typing import ContextManager
 
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.workbench_calibration import MAX_OPERATIONS, MAX_TEMPLATES, CalibrationTemplate
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import public_ref
+from core.services.execution.ledger_reader import ExecutionLedgerReadScope, project_loaded_facts
 from core.services.scheduler.template_lineage_query import TemplateLineageQuery
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.source_revisions import CALIBRATION_SOURCE_KEYS, read_source_revisions
@@ -65,58 +67,50 @@ def read_candidate_instances(repo, part_numbers):
 
 
 class CalibrationFacts:
-    def __init__(self, conn, *, as_of):
+    def __init__(self, conn):
         self.conn = conn
         self.repo = WorkbenchCalibrationQueryRepository(conn)
-        self.as_of = as_of
         self.ledger = ExecutionLedgerService(conn)
         self.lineage = TemplateLineageQuery(conn)
 
-    @contextmanager
-    def read_snapshot(self, *, clock=None):
-        with self.ledger.read_snapshot():
-            if clock is not None:
-                self.as_of = clock()
-            yield self.as_of
+    def read_snapshot(self) -> ContextManager[ExecutionLedgerReadScope]:
+        return self.ledger.read_snapshot()
 
-    def read(self, query, *, clock=None, bind_snapshot=None):
+    def read(self, ledger_scope: ExecutionLedgerReadScope, query, *, as_of: datetime, bind_snapshot=None):
         snapshot = None
-        with self.read_snapshot(clock=clock):
-            part_identity = None
-            if query.part_ref is not None:
-                part_identity = self.repo.part_identity(query.part_ref)
-                if part_identity is None:
-                    raise WorkbenchCommandRejected("entity_not_found", "所选零件已失效，请重新选择。", 404)
-            if bind_snapshot is not None:
-                content = {
-                    "revisions": read_source_revisions(self.conn, CALIBRATION_SOURCE_KEYS),
-                    "ledger_revision": self.ledger.revision_clock(),
-                    "scope": query.scope(),
-                }
-                snapshot = bind_snapshot(content)
-            templates_by_ref = {}
-            templates = read_templates(self.repo, query, lineage_templates=templates_by_ref, part_identity=part_identity)
-            instances = read_candidate_instances(self.repo, [row.part_no for row in templates])
-            self.ledger.seed_operations(instances)
-            current_by_ref = {row["operation_ref"]: row for row in instances}
-            refs = [row["operation_ref"] for row in instances]
-            facts = self.ledger.load(refs)
-            lineage = self.lineage.read(
-                refs,
-                current_by_ref=current_by_ref,
-                templates_by_ref=templates_by_ref,
-            )
+        part_identity = None
+        if query.part_ref is not None:
+            part_identity = self.repo.part_identity(query.part_ref)
+            if part_identity is None:
+                raise WorkbenchCommandRejected("entity_not_found", "所选零件已失效，请重新选择。", 404)
+        if bind_snapshot is not None:
+            content = {
+                "revisions": read_source_revisions(self.conn, CALIBRATION_SOURCE_KEYS),
+                "ledger_revision": self.ledger.revision_clock(ledger_scope),
+                "scope": query.scope(),
+            }
+            snapshot = bind_snapshot(content)
+        templates_by_ref = {}
+        templates = read_templates(self.repo, query, lineage_templates=templates_by_ref, part_identity=part_identity)
+        instances = read_candidate_instances(self.repo, [row.part_no for row in templates])
+        self.ledger.seed_operations(ledger_scope, instances)
+        current_by_ref = {row["operation_ref"]: row for row in instances}
+        refs = [row["operation_ref"] for row in instances]
+        facts = self.ledger.load(ledger_scope, refs)
+        lineage = self.lineage.read_partial(
+            refs,
+            current_by_ref=current_by_ref,
+            templates_by_ref=templates_by_ref,
+        )
         projections = {
             row.operation_ref: row
-            for row in self.ledger.project_loaded(
-                facts, contexts=False, include_history=False
-            )
+            for row in project_loaded_facts(facts, include_history=False)
         }
         result = project_lineage_calibration(
             templates,
             instances,
             projections,
             lineage,
-            as_of=self.as_of,
+            as_of=as_of,
         )
         return {**result, "snapshot": snapshot, "report_histories": facts["reports"]}

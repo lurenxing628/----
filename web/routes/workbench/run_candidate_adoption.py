@@ -3,6 +3,7 @@
 from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_run_job import validate_run_ref
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint, read_endpoint
@@ -38,8 +39,12 @@ def run_candidate_adopt_preview(candidate_ref):
 @api_endpoint
 def run_candidate_adopt(candidate_ref):
     value = _body(("write_token", "request_key", "input"))
+    validate_run_ref(candidate_ref)
     validate_request_key(value["request_key"])
     g.workbench_request_key = value["request_key"]
+    g.workbench_result_target = (
+        "/api/workbench/v1/scheduling/candidates/" + candidate_ref + "/adoption-commands/" + value["request_key"]
+    )
     result = _service().adopt(candidate_ref, value["write_token"], value["request_key"], value["input"])
     return json_response(result)
 
@@ -49,8 +54,8 @@ def run_candidate_adoption_command(candidate_ref, request_key):
     if ("data_context_ref" not in request.args or set(request.args) - {"run_ref", "data_context_ref"}
             or any(len(values) != 1 for _, values in request.args.lists())):
         raise WorkbenchCommandRejected("invalid_input", "查询采用结果的条件不完整、有多余项或重复项，请重新查询。", 400)
-    _, result = _service().resolve_command(candidate_ref, request_key, run_ref=request.args.get("run_ref"),
-                                          data_context_ref=request.args["data_context_ref"])
+    result = _service().resolve_command(candidate_ref, request_key, run_ref=request.args.get("run_ref"),
+                                        data_context_ref=request.args["data_context_ref"])
     return json_response(result)
 
 

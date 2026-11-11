@@ -7,6 +7,7 @@ from core.models.workbench_resource_input import normalize_resource_input
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_resource_state_repo import WorkbenchResourceStateRepository
 
+from .projection import resource_state_referenced
 from .states import ResourceChange
 
 _KIND_NAMES = {"machine_group": "设备组", "shift_profile": "班次档"}
@@ -25,7 +26,7 @@ class WorkbenchResourceCatalogService:
         identity = None if action == "create" else preparation.identity(self.kind, checked["identity"]["ref"])
         code = payload["business_code"] if identity is None else identity.entity_key
         if action == "delete":
-            if checked["members"]:
+            if resource_state_referenced(self.kind, checked):
                 raise WorkbenchCommandRejected("constraint_conflict", "还有资源在用这个" + _KIND_NAMES[self.kind] + "，请先把这些资源改到别处。")
             return ResourceChange(action, code, identity, {}, {})
         if action == "create" and preparation.raw(self.kind, code) is not None:

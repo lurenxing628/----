@@ -42,18 +42,18 @@ def test_route_review_reuses_current_facts_for_parser_and_choices(stage_conn, mo
     identity = identity_for(stage_conn)
     assert identity is not None
     reader = WorkbenchProcessQueryService(stage_conn, part_ref=identity.ref)
-    with reader.read_snapshot():
-        facts = reader.facts()
+    with reader.read_snapshot() as scope:
+        facts = scope.facts()
         assert [row["part_no"] for row in facts["parts"]] == ["PROC-001"]
         assert {row["part_no"] for row in facts["operations"]} == {"PROC-001"}
         assert {row["part_no"] for row in facts["groups"]} == {"PROC-001"}
         assert set(facts["workflow"]) == {"PROC-001"}
         monkeypatch.setattr(WorkbenchProcessQueryRepository, "references", reread)
         monkeypatch.setattr(WorkbenchProcessQueryRepository, "identities", reread)
-        preview, _, affected = reader.prepare_route(identity,
-                                                    {"mode": "text", "route_raw": "10车削30检验"})
-        mixed_preview, _, _ = reader.prepare_route(identity,
-                                                   {"mode": "text", "route_raw": "10车削20:热处理"})
+        preview, _, affected = scope.prepare_route(identity,
+                                                   {"mode": "text", "route_raw": "10车削30检验"})
+        mixed_preview, _, _ = scope.prepare_route(identity,
+                                                  {"mode": "text", "route_raw": "10车削20:热处理"})
     assert len(calls) == 2 and preview["can_confirm_route"]
     assert not mixed_preview["can_confirm_route"]
     assert "explicit_route_invalid" in {row["code"] for row in mixed_preview["diagnostics"]}
@@ -108,8 +108,8 @@ def test_master_workflow_reuses_catalog_identity_index(stage_conn, monkeypatch):
         return tables
 
     monkeypatch.setattr(facts.repo, "overview_tables", capture)
-    with facts.read_snapshot():
-        assert facts.workflow == expected
+    with facts.read_snapshot() as scope:
+        assert scope.workflow == expected
     assert len(scans) == 1
 
 
@@ -119,13 +119,14 @@ def test_group_impact_is_readonly_and_exact_ack_is_required(stage_conn):
     before = storage(stage_conn)
     service = WorkbenchProcessMutationService(stage_conn)
     reader = WorkbenchProcessQueryService(stage_conn)
-    with reader.read_snapshot():
+    with reader.read_snapshot() as scope:
         identity = identity_for(stage_conn)
         assert identity is not None
-        checked = service.checked_facts(reader.resolve(identity.ref), reader.facts())
+        facts = scope.facts()
+        checked = service.checked_facts(scope.resolve(identity.ref), facts)
         normalized = service.normalize("route_confirm", payload)
         with read_only_probe(stage_conn):
-            prepared = service.prepare_review("route_confirm", normalized, checked, facts=reader.facts())
+            prepared = service.prepare_review("route_confirm", normalized, checked, facts=facts)
         affected = sorted(row["ref"] for row in prepared.affected)
     assert affected == [ref_for(stage_conn, "template_external_group", "PROC-G")] and storage(stage_conn) == before
     with pytest.raises(WorkbenchCommandRejected):
@@ -205,8 +206,8 @@ def test_text_and_rows_route_inputs_preserve_padded_operation_name_and_bound_cho
     text_route = {"mode": "text", "route_raw": '10: " A "'}
     rows_route = {"mode": "rows", "rows": [{"seq": 10, "op_type_name": " A "}]}
     for key_suffix, route_body in (("text", text_route), ("rows", rows_route)):
-        with reader.read_snapshot():
-            preview, _, affected = reader.prepare_route(identity, route_body)
+        with reader.read_snapshot() as scope:
+            preview, _, affected = scope.prepare_route(identity, route_body)
         assert affected == []
         assert preview["can_confirm_route"] is True
         assert preview["route_raw"] == '10: " A "'

@@ -9,6 +9,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler import template_lineage_query
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.workbench.batch.facts import BatchFacts
+from core.services.workbench.batch.scope import BatchFactScope
 from tests.workbench.template_lineage_support import create, instance_for, lineage, origin
 from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
 from tests.workbench.template_lineage_support import lineage_case as _lineage_case  # noqa: F401
@@ -31,14 +32,14 @@ def test_batch_copies_prepare_raw_sources_once_and_reuse_across_targets(lineage_
     conn.execute("UPDATE BatchExternalContexts SET origin='instance_copy' WHERE operation_id IN "
                  "(SELECT id FROM BatchOperations WHERE batch_id='PREP-SOURCE')")
     conn.commit()
-    facts = BatchFacts(conn).load()
+    facts = BatchFactScope(BatchFacts(conn)).load()
     source_rows = [row for row in facts["BatchOperations"] if row["batch_id"] == "PREP-SOURCE"]
     trace.clear()
     with TransactionManager(conn).transaction():
         writer = TemplateLineageWriter(conn)
         conn.set_trace_callback(trace.append)
         try:
-            prepared = writer.prepare_instances(source_rows, facts=facts)
+            prepared = writer.prepare_instances(source_rows, facts=facts, complete_facts=True)
             for code in ("PREP-FIRST", "PREP-SECOND"):
                 conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES (?,'P1',10)", (code,))
                 for row in prepared:
@@ -68,7 +69,11 @@ def test_copy_eligibility_uses_the_source_event_at_birth_after_change_back_withd
         with TransactionManager(conn).transaction():
             conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES (?,'P1',10)", (code,))
             writer = TemplateLineageWriter(conn)
-            prepared = writer.prepare_instances([{"id": source_id}], facts=BatchFacts(conn).load())[0]
+            prepared = writer.prepare_instances(
+                [{"id": source_id}],
+                facts=BatchFactScope(BatchFacts(conn)).load(),
+                complete_facts=True,
+            )[0]
             return writer.copy_prepared_instance(code, prepared)
 
     early_first, early_second = copy("HISTORY-EARLY-1"), copy("HISTORY-EARLY-2")
@@ -135,3 +140,80 @@ def test_calibration_merges_and_sorts_duplicate_exclusion_reasons_across_bound_a
     assert codes == sorted(set(codes))
     by_code = {row["code"]: row["count"] for row in reasons}
     assert by_code["production_reports_missing"] == 3
+
+
+def test_single_split_captures_lineage_in_same_snapshot_with_zero_post_lock_sql_and_ancestor_integrity(lineage_case):
+    case, conn = lineage_case, lineage_case.conn
+    ancestor_op_id = create(case, "SPLIT-ANCESTOR", quantity=10)
+    ancestor_ref = instance_for(case, ancestor_op_id)["operation_ref"]
+    with TransactionManager(conn).transaction():
+        conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('SPLIT-GEN2','P1',6)")
+        writer = TemplateLineageWriter(conn)
+        gen1_prepared = writer.prepare_instances(
+            [{"id": ancestor_op_id}],
+            facts=BatchFactScope(BatchFacts(conn)).load(),
+            complete_facts=True,
+        )[0]
+        gen2_op_id = writer.copy_prepared_instance("SPLIT-GEN2", gen1_prepared)
+    gen2_ref = instance_for(case, gen2_op_id)["operation_ref"]
+    gen2_batch_ref = conn.execute(
+        "SELECT ref FROM WorkbenchEntityRefs WHERE kind='batch' AND entity_key='SPLIT-GEN2' AND active=1"
+    ).fetchone()[0]
+
+    reader = BatchFacts(conn)
+
+    # 1) Corrupting the live ancestor's batch identity mapping must be caught (not masked as retired).
+    conn.execute("UPDATE WorkbenchEntityRefs SET active=0 WHERE kind='batch' AND entity_key='SPLIT-ANCESTOR'")
+    conn.commit()
+    with reader.detached_read_snapshot(mode="single_split", target_ref=gen2_batch_ref) as bad_ancestor_scope:
+        bad_ancestor_facts = bad_ancestor_scope.load()
+        source_ops = [row for row in bad_ancestor_facts["BatchOperations"] if row["batch_id"] == "SPLIT-GEN2"]
+        with pytest.raises(WorkbenchCommandRejected) as ancestor_err:
+            TemplateLineageWriter(conn).prepare_instances(
+                source_ops, facts=bad_ancestor_facts, complete_facts=False
+            )
+    assert ancestor_err.value.code == "template_lineage_corrupt" and ancestor_err.value.status == 500
+    conn.execute("UPDATE WorkbenchEntityRefs SET active=1 WHERE kind='batch' AND entity_key='SPLIT-ANCESTOR'")
+    conn.commit()
+
+    # 2) Corrupting the live template entity mapping must be rejected with 500 template_lineage_corrupt.
+    conn.execute(
+        "UPDATE WorkbenchEntityRefs SET entity_key='999999' WHERE kind='template_operation' AND entity_key=?",
+        (str(case.template_id),),
+    )
+    conn.commit()
+    with reader.detached_read_snapshot(mode="single_split", target_ref=gen2_batch_ref) as bad_tpl_scope:
+        bad_tpl_facts = bad_tpl_scope.load()
+        source_ops = [row for row in bad_tpl_facts["BatchOperations"] if row["batch_id"] == "SPLIT-GEN2"]
+        with pytest.raises(WorkbenchCommandRejected) as tpl_err:
+            TemplateLineageWriter(conn).prepare_instances(
+                source_ops, facts=bad_tpl_facts, complete_facts=False
+            )
+    assert tpl_err.value.code == "template_lineage_corrupt" and tpl_err.value.status == 500
+    conn.execute(
+        "UPDATE WorkbenchEntityRefs SET entity_key=? WHERE kind='template_operation' AND entity_key='999999'",
+        (str(case.template_id),),
+    )
+    conn.commit()
+
+    # 3) After detached_read_snapshot exits its read tx, prepare_instances runs 0 SQL and ignores concurrent writes.
+    with reader.detached_read_snapshot(mode="single_split", target_ref=gen2_batch_ref) as split_scope:
+        conn.execute("UPDATE Batches SET quantity=99 WHERE batch_id='SPLIT-ANCESTOR'")
+        conn.commit()
+        trace = []
+        conn.set_trace_callback(trace.append)
+        try:
+            facts = split_scope.load()
+            source_ops = [row for row in facts["BatchOperations"] if row["batch_id"] == "SPLIT-GEN2"]
+            captured_lineage = template_lineage_query.TemplateLineageQuery(conn).read_captured(
+                facts["template_lineage_capture"]
+            )
+            prepared = TemplateLineageWriter(conn).prepare_instances(
+                source_ops, facts=facts, complete_facts=False
+            )
+        finally:
+            conn.set_trace_callback(None)
+        assert trace == []
+        assert captured_lineage["problems"][ancestor_ref] == []
+        assert captured_lineage["problems"][gen2_ref] == []
+        assert len(prepared) == 1 and prepared[0].source_eligible is True

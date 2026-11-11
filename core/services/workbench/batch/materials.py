@@ -15,18 +15,17 @@ from data.repositories.batch_material_repo import BatchMaterialRepository
 from data.repositories.batch_material_stage_repo import BatchMaterialStageRepository
 from data.repositories.batch_repo import BatchRepository
 
-from .facts import BatchFacts
+from .scope import BatchFactScope
 
 
 class WorkbenchBatchMaterialService:
-    def __init__(self, conn, logger=None, reader=None):
+    def __init__(self, conn, logger=None):
         self.conn = conn
-        self.reader = reader if reader is not None else BatchFacts(conn, logger)
         self.repo = BatchMaterialRepository(conn, logger)
         self.batches = BatchRepository(conn, logger)
         self.stages = BatchMaterialStageRepository(conn, logger)
 
-    def _proposed(self, ref, payload, batch, facts):
+    def _proposed(self, scope: BatchFactScope, ref, payload, batch, facts):
         requirements = [row for row in facts["BatchMaterials"] if row["batch_id"] == batch["batch_id"]]
         requirement_ids = {row["id"] for row in requirements}
         bindings = {row["requirement_id"]: row["operation_id"] for row in facts["BatchMaterialStages"]}
@@ -44,17 +43,17 @@ class WorkbenchBatchMaterialService:
         op_ids_by_ref = {
             facts["operation_refs"][row["id"]]: row["id"]
             for row in facts["BatchOperations"]
-            if row["batch_id"] == batch["batch_id"] and row.get("piece_id") is None
+            if row["batch_id"] == batch["batch_id"] and row["piece_id"] is None
         }
         for index, item in enumerate(payload["rows"]):
             key = item["row_key"]
-            final[key or "new:" + str(index)] = self._material_row(item, key, old, materials, batch, op_ids_by_ref)
+            final[key or "new:" + str(index)] = self._material_row(scope, item, key, old, materials, batch, op_ids_by_ref)
         return old, final
 
-    def _material_row(self, item, key, old, materials, batch, op_ids_by_ref):
+    def _material_row(self, scope: BatchFactScope, item, key, old, materials, batch, op_ids_by_ref):
         if key is not None and key not in old:
             raise WorkbenchCommandRejected("stale_write", "要修改的物料需求已变化，请刷新后重新核对。")
-        identity = self.reader.resolve(item["material_ref"], "material")
+        identity = scope.resolve(item["material_ref"], "material")
         if key is not None and old[key]["material_id"] != identity.entity_key:
             raise WorkbenchCommandRejected("constraint_conflict", "已有需求不能直接更换物料，请明确移除后重新新增。")
         if key is None and materials[identity.entity_key]["status"] != "active":
@@ -95,15 +94,15 @@ class WorkbenchBatchMaterialService:
             return ReadyStatus.YES.value
         return ReadyStatus.PARTIAL.value if any(flag[1] for flag in flags) else ReadyStatus.NO.value
 
-    def apply_normalized(self, ref, payload):
+    def apply_normalized(self, scope: BatchFactScope, ref, payload):
         if not self.conn.in_transaction:
             raise RuntimeError("物料需求维护必须由工作台命令事务持有。")
-        facts = self.reader.load()
-        batch = self.reader.batch(ref)
+        facts = scope.load()
+        batch = scope.batch(ref)
         if type(batch["quantity"]) is not int or batch["quantity"] < 0:
             raise WorkbenchCommandRejected("constraint_conflict", "请先在批次基础信息中填好数量，再核对物料需求。")
-        old, final = self._proposed(ref, payload, batch, facts)
-        ready = self._ready(list(final.values()), facts["material_day"])
+        old, final = self._proposed(scope, ref, payload, batch, facts)
+        ready = self._ready(final.values(), facts["material_day"])
         changed = bool(payload["removed_keys"])
         for key in payload["removed_keys"]:
             self.repo.delete(cast(int, old[key]["id"]))

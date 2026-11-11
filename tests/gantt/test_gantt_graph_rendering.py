@@ -5,11 +5,12 @@ from tests._support.gantt_current_js import run_current_js
 
 def test_actual_critical_chain_reuses_prepared_nodes_across_renders():
     result = run_current_js(r"""
-const data=h.processFixture(), index=h.runtime.GanttGraph.create(data.gantt_graph), located=[];
+const GanttGraph=h.module('GanttGraph.js'), ActualGanttControls=h.module('ActualGanttControls.jsx');
+const data=h.processFixture(), index=GanttGraph.create(data.gantt_graph), located=[];
 const expected=data.gantt_graph.critical_task_refs.slice();
 Object.defineProperty(data.gantt_graph,'nodes',{get(){throw Error('Critical-chain rendering must consume the prepared node index');}});
 for (const items of [data.tasks.map(task=>({task})),[],data.tasks.slice(0,1).map(task=>({task}))]) {
-  const tree=h.render(h.runtime.ActualGanttControls.Chain,{index,model:{shownRefs:new Set(items.map(item=>item.task.task_ref))},onLocate:ref=>located.push(ref)});
+  const tree=h.render(ActualGanttControls.Chain,{index,model:{shownRefs:new Set(items.map(item=>item.task.task_ref))},onLocate:ref=>located.push(ref)});
   const buttons=h.walk(tree).filter(node=>node.props['data-chain-node']);
   assert.deepEqual(buttons.map(node=>node.props['data-chain-node']),expected);
   for (const button of buttons) {
@@ -29,6 +30,7 @@ return true;
 
 def test_shipped_gantts_highlight_complete_route_on_hover_and_keep_clicked_route():
     result = run_current_js(r"""
+const GanttGraph=h.module('GanttGraph.js');
 const plan=h.processFixture();
 const candidate={tasks:plan.tasks.map(task=>({...task,row_ref:task.task_ref,batch_ref:h.reference(300),batch_label:task.batch_id,
   machine:{ref:task.machine_ref,label:'Machine 1'},operator:{ref:task.operator_ref,label:'Operator 1'},supplier:null,
@@ -38,9 +40,11 @@ const candidate={tasks:plan.tasks.map(task=>({...task,row_ref:task.task_ref,batc
   gantt_graph:{...plan.gantt_graph,scope:'full_candidate'}};
 for (const isCandidate of [false,true]) {
   const component=isCandidate?'RunCandidateGantt':'PlanGantt', data=isCandidate?candidate:plan;
-  const choices=[], props={data,prepared:h.prepare(h.runtime[isCandidate?'RunCandidateModel':'PlanGanttModel'],data),...(isCandidate?{}:{graph:h.runtime.GanttGraph.create(data.gantt_graph)}),query:'',selected:null,onSelect:(task,before)=>choices.push(isCandidate?task:{task,before}),
+  const model=h.module(isCandidate?'RunCandidateModel.js':'PlanGanttModel.js');
+  const Component=h.module(component+'.jsx').default;
+  const choices=[], props={data,prepared:h.prepare(model,data),...(isCandidate?{}:{graph:GanttGraph.create(data.gantt_graph)}),query:'',selected:null,onSelect:(task,before)=>choices.push(isCandidate?task:{task,before}),
     onQuery:()=>{},asOf:'2026-05-11T12:00:00'};
-  const render=states=>h.render(h.runtime[component],props,states||{});
+  const render=states=>h.render(Component,props,states||{});
   const edges=tree=>h.walk(tree).filter(node=>node.props['data-gantt-edge']);
   let tree=render();
   assert.equal(edges(tree).length,0,component+' starts with clear critical marks and no global lines');
@@ -73,6 +77,7 @@ return true;
 
 def test_printed_gantt_connections_travel_with_each_paginating_row():
     result = run_current_js(r"""
+const GanttGraph=h.module('GanttGraph.js'), WorkbenchControls=h.module('WorkbenchControls.jsx');
 const plan=h.processFixture();
 plan.tasks.forEach((task,index)=>task.machine_ref=h.reference(200+index));
 plan.resources=plan.tasks.map((task,index)=>({ref:task.machine_ref,label:'Machine '+index,business_code:'M'+index}));
@@ -82,13 +87,15 @@ const candidate={tasks:plan.tasks.map(task=>({...task,row_ref:task.task_ref,batc
   delivery_risks:{items:[]},candidate:{label:'测试候选'},
   generation:{algorithm:{mode_label:'测试算法',strategy_label:null},baseline:{version:1,captured_at:'2026-05-11T08:00:00'}},
   gantt_graph:{...plan.gantt_graph,scope:'full_candidate'}};
-const original=h.runtime.WorkbenchControls.usePrintLayout;
+const original=WorkbenchControls.usePrintLayout;
 try {
-  h.runtime.WorkbenchControls.usePrintLayout=()=>true;
+  WorkbenchControls.usePrintLayout=()=>true;
   for (const isCandidate of [false,true]) {
     const data=isCandidate?candidate:plan, task=data.tasks[1];
-    const tree=h.render(h.runtime[isCandidate?'RunCandidateGantt':'PlanGantt'],{
-      data,prepared:h.prepare(h.runtime[isCandidate?'RunCandidateModel':'PlanGanttModel'],data),...(isCandidate?{}:{graph:h.runtime.GanttGraph.create(data.gantt_graph)}),query:'',selected:isCandidate?task:{task,before:false},onSelect:()=>{},onQuery:()=>{},asOf:'2026-05-11T12:00:00'});
+    const Component=h.module(isCandidate?'RunCandidateGantt.jsx':'PlanGantt.jsx').default;
+    const model=h.module(isCandidate?'RunCandidateModel.js':'PlanGanttModel.js');
+    const tree=h.render(Component,{
+      data,prepared:h.prepare(model,data),...(isCandidate?{}:{graph:GanttGraph.create(data.gantt_graph)}),query:'',selected:isCandidate?task:{task,before:false},onSelect:()=>{},onQuery:()=>{},asOf:'2026-05-11T12:00:00'});
     const nodes=h.walk(tree), rows=nodes.filter(node=>node.props.className===(isCandidate?'rc-lane':'plan-lane'));
     const slices=nodes.filter(node=>node.props['data-gantt-graph-lines']);
     assert.equal(rows.length,3); assert.equal(slices.length,rows.length,'Printing must not keep an independently paginating whole-chart SVG');
@@ -103,7 +110,7 @@ try {
       assert(edges.every(edge=>!String(edge.props.d).includes('NaN')));
     });
   }
-} finally { h.runtime.WorkbenchControls.usePrintLayout=original; }
+} finally { WorkbenchControls.usePrintLayout=original; }
 return true;
 """)
     assert result["result"] is True
@@ -111,11 +118,12 @@ return true;
 
 def test_plan_gantt_source_preserves_unavailable_reason_and_plan_identity():
     result = run_current_js(r"""
+const { PlanGanttSource }=h.module('PlanGantt.jsx'), PlanGanttModel=h.module('PlanGanttModel.js');
 const plan=h.processFixture();
 Object.assign(plan.plan,{kind:'official',version:null,display_name:'正式计划 A'});
 plan.projections.baseline.reason='采纳凭据未记录，无法读取原安排。';
 plan.provenance.reason='生成来源凭据不完整，暂时无法核对。';
-let tree=h.render(h.runtime.PlanGanttSource,{data:plan});
+let tree=h.render(PlanGanttSource,{data:plan});
 const source=tree=>h.walk(tree).find(node=>node.props['data-gantt-comparison-source']);
 assert(h.text(source(tree)).includes(plan.projections.baseline.reason),'Unavailable evidence must not be described as no original plan');
 assert(h.text(source(tree)).includes(plan.provenance.reason),'The generation source must retain its own unavailable reason');
@@ -123,9 +131,9 @@ assert(!h.text(source(tree)).includes('vnull'),'A plan without an official versi
 assert(h.text(source(tree)).includes('当前安排：正式计划 · 正式计划 A'));
 plan.projections.baseline={state:'available',basis:'official_base',items:[],item_count:1,items_complete:false,
   baseline_plan:{kind:'official',version:1,display_name:'对照计划'}};
-const taskFacts=h.runtime.PlanGanttModel.prepareTasks(plan);
-assert.equal(h.runtime.PlanGanttModel.prepareBaseline(plan,taskFacts).baselineLoaded,false);
-tree=h.render(h.runtime.PlanGanttSource,{data:plan});
+const taskFacts=PlanGanttModel.prepareTasks(plan);
+assert.equal(PlanGanttModel.prepareBaseline(plan,taskFacts).baselineLoaded,false);
+tree=h.render(PlanGanttSource,{data:plan});
 assert(h.text(source(tree)).includes('原安排：正式计划 · 对照计划 · v1'));
 assert(!h.text(source(tree)).includes('vnull'));
 return true;
@@ -135,6 +143,8 @@ return true;
 
 def test_field_detail_keeps_positive_microsecond_interval_distinct_from_point():
     result = run_current_js(r"""
+const APSResourceSession=h.module('shared/session/query.js'),
+  FieldContract=h.module('FieldContract.js'), FieldDetail=h.module('FieldDetail.jsx').default;
 const ref=h.reference(100),task={task_ref:ref,plan_ref:ref,operation_ref:ref,
   planned_start:'2026-10-12T08:00:00.000001',planned_end:'2026-10-12T08:00:00.000002',
   piece_id:null,quantity:1,batch_quantity:1,quantity_basis:'run_admission',quantity_reason:null,batch_id:'B1',operation_label:'精加工',
@@ -142,10 +152,9 @@ const ref=h.reference(100),task={task_ref:ref,plan_ref:ref,operation_ref:ref,
     known_completed_quantity:0,remaining_quantity:1,records_complete:true,quantity_complete:false,unknown_record_count:0,
     data_gaps:[],reports:[],voided_reports:[],write_context:{write_token:null,capabilities:{},blocked_reasons:[]},completion_basis:null}};
 const response={ok:true,schema_version:1,meta:{source:'production',time_basis:'factory_local',snapshot_ref:ref,as_of:'2026-10-12T08:00:00'},data:{task}};
-const query=h.runtime.APSResourceSession.useQuery;
 try {
-  h.runtime.APSResourceSession.useQuery=()=>({result:h.runtime.FieldContract.query(response,'detail',ref),loading:false,error:null});
-  const render=()=>h.render(h.runtime.FieldDetail,{taskRef:ref,adapter:{},scope:{},snapshot:ref,revision:0,command:{locked:false}},{FieldDetail:{1:true}});
+  h.setStub('shared/session/query.js',{...APSResourceSession,useQuery:()=>({result:FieldContract.detail(response,ref),loading:false,error:null})});
+  const render=()=>h.render(FieldDetail,{taskRef:ref,adapter:{},scope:{},snapshot:ref,revision:0,command:{locked:false}},{FieldDetail:{1:true}});
   let nodes=h.walk(render()),bar=nodes.find(node=>node.props.className==='field-timeline-bar planned');
   assert(bar,'A positive interval must render the actual planned bar');
   assert(Number.isFinite(parseFloat(bar.props.style.left))); assert(Number.isFinite(parseFloat(bar.props.style.width)));
@@ -156,7 +165,7 @@ try {
   nodes=h.walk(render());
   assert(nodes.some(node=>node.props['data-field-point']==='plan'));
   assert(!nodes.some(node=>node.props.className==='field-timeline-bar planned'),'A real point keeps the existing marker contract');
-} finally { h.runtime.APSResourceSession.useQuery=query; }
+} finally { h.setStub('shared/session/query.js',undefined); }
 return true;
 """)
     assert result["result"] is True
@@ -164,11 +173,12 @@ return true;
 
 def test_gantt_graph_controls_disable_incomplete_graph_and_never_fabricate_zero_critical_tasks():
     result = run_current_js(r"""
+const PlanGantt=h.module('PlanGantt.jsx').default, PlanGanttModel=h.module('PlanGanttModel.js'), GanttGraph=h.module('GanttGraph.js');
 const full=h.processFixture();
 const incomplete={...full,gantt_graph:{...full.gantt_graph,nodes:[],node_count:full.gantt_graph.nodes.length,
   nodes_complete:false,critical_task_refs:[],critical_edges:[]}};
-const renderPlan=(data,extra={})=>h.render(h.runtime.PlanGantt,{
-  data,prepared:h.prepare(h.runtime.PlanGanttModel,data),graph:h.runtime.GanttGraph.create(data.gantt_graph),query:'',selected:null,onSelect:()=>{},onQuery:()=>{},
+const renderPlan=(data,extra={})=>h.render(PlanGantt,{
+  data,prepared:h.prepare(PlanGanttModel,data),graph:GanttGraph.create(data.gantt_graph),query:'',selected:null,onSelect:()=>{},onQuery:()=>{},
   asOf:'2026-05-11T12:00:00',...extra},{PlanGantt:{7:true}});
 const tools=tree=>h.walk(tree).find(node=>node.props.className==='wb-gantt-graph-tools');
 const checkbox=tree=>h.walk(tools(tree)).find(node=>node.type==='input'&&node.props.type==='checkbox');

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple, cast
+from typing import Any, Dict, Mapping, Optional, Sequence, Tuple, cast
 
 from core.errors import ValidationError
 
 from .schedule_graph_dispatch_context import (
     GRAPH_CYCLE_DISABLED_REASON as _GRAPH_CYCLE_DISABLED_REASON,
+)
+from .schedule_graph_dispatch_context import (
+    build_graph_ready_context as _build_graph_ready_context,
 )
 from .schedule_graph_dispatch_context import (
     effective_graph_analysis_mode as _effective_graph_analysis_mode,
@@ -21,6 +24,9 @@ from .schedule_graph_dispatch_context import (
 from .schedule_graph_dispatch_context import (
     graph_ready_public_fields as _graph_ready_public_fields,
 )
+from .schedule_graph_dispatch_context import (
+    schedule_input_op_id_sets as _schedule_input_op_id_sets,
+)
 from .schedule_graph_projection_helpers import (
     graph_node_metrics_sample as _graph_node_metrics_sample,
 )
@@ -33,12 +39,15 @@ from .schedule_graph_projection_helpers import (
 )
 from .schedule_graph_projections import build_graph_dispatch_projections
 from .schedule_graph_score_projection import (
+    build_graph_score_projection as _build_graph_score_projection,
+)
+from .schedule_graph_score_projection import (
     graph_score_requested as _graph_score_requested,
 )
 from .schedule_graph_score_projection import (
     graph_score_weights as _graph_score_weights,
 )
-from .schedule_input_contracts import ScheduleRunInput
+from .schedule_input_contracts import SolverInput
 
 _GRAPH_TOPOLOGICAL_SAMPLE_LIMIT = 20
 _GRAPH_CRITICAL_PATH_SAMPLE_LIMIT = 50
@@ -59,11 +68,115 @@ def _elapsed_ms(started: float) -> int:
     return max(int((time.monotonic() - float(started)) * 1000), 0)
 
 
+def _prepare_piece_graph_for_dispatch(
+    schedule_input: SolverInput,
+    predecessors: Mapping[int, Sequence[int]],
+    *,
+    resource_pool: Optional[Mapping[str, Any]],
+) -> ScheduleGraphDispatchPreparation:
+    from core.services.scheduler.graph.exporter import graph_summary_to_dict
+    from core.services.scheduler.graph.input_adapter import (
+        GraphResourcePreparation,
+        build_operation_nodes_from_rows,
+    )
+    from core.services.scheduler.graph.metrics import (
+        build_node_metrics,
+        get_critical_path,
+        get_topological_generations,
+    )
+    from core.services.scheduler.graph.precedence_builder import build_precedence_graph
+    from core.services.scheduler.graph.types import GraphAnalysisSummary, OperationGraphEdge
+    from core.services.scheduler.graph.validators import collect_graph_warnings
+
+    weights = _graph_score_weights(schedule_input.config)
+    score_requested = _graph_score_requested(weights)
+    resources = GraphResourcePreparation(resource_pool)
+    nodes = build_operation_nodes_from_rows(
+        schedule_input.algo_ops,
+        batches=schedule_input.batches,
+        resource_preparation=resources,
+        frozen_op_ids=schedule_input.seeds.frozen_op_ids,
+    )
+    by_id = {node.raw["id"]: node.node_id for node in nodes}
+    edges = [
+        OperationGraphEdge(by_id[previous], by_id[op_id], "precedence")
+        for op_id, prev_ids in predecessors.items()
+        if op_id in by_id
+        for previous in prev_ids
+        if previous in by_id
+    ]
+    graph = build_precedence_graph(nodes, edges)
+    generations = get_topological_generations(graph)
+    order = [key for group in generations for key in group]
+    critical, minutes = get_critical_path(graph, topological_order=order)
+    metrics = (
+        build_node_metrics(
+            graph,
+            topological_order=order,
+            critical_path=critical,
+            generation_index={key: index for index, group in enumerate(generations) for key in group},
+        )
+        if score_requested
+        else {}
+    )
+    payload = graph_summary_to_dict(
+        GraphAnalysisSummary(
+            len(nodes),
+            len(edges),
+            True,
+            [],
+            order,
+            critical,
+            minutes,
+            metrics,
+            collect_graph_warnings(graph),
+        )
+    )
+    op_id_sets = _schedule_input_op_id_sets(schedule_input)
+    schedulable_op_ids, _fixed_op_ids = op_id_sets
+    score, score_public, score_diagnostics = _build_graph_score_projection(
+        mode="on",
+        is_dag=True,
+        score_requested=score_requested,
+        score_weights=weights,
+        nodes=nodes,
+        node_metrics=metrics,
+        topological_order=order,
+        schedulable_op_ids=schedulable_op_ids,
+    )
+    context: Any = _build_graph_ready_context(
+        nodes=nodes,
+        edges=edges,
+        enabled=True,
+        score_context=score,
+        op_id_sets=op_id_sets,
+    )
+    context["piece_scope"] = True
+    public, diagnostics = _project_graph_analysis_payload(
+        mode="on",
+        payload=payload,
+        elapsed_ms=0,
+        scope=_graph_input_scope(schedule_input, nodes=nodes),
+        score_public=score_public,
+        score_diagnostics=score_diagnostics,
+    )
+    return ScheduleGraphDispatchPreparation(public, diagnostics, context, "sgs")
+
+
 def prepare_schedule_graph_for_dispatch(
-    schedule_input: ScheduleRunInput,
+    schedule_input: SolverInput,
+    *,
+    resource_pool: Optional[Mapping[str, Any]] = None,
 ) -> ScheduleGraphDispatchPreparation:
     """为本次搜索构建一次图分析、派工和资源投影。"""
-    mode = schedule_input.cfg.graph_analysis_mode
+    predecessors = schedule_input.predecessors
+    if predecessors:
+        return _prepare_piece_graph_for_dispatch(
+            schedule_input,
+            predecessors,
+            resource_pool=resource_pool,
+        )
+    mode = schedule_input.config.graph_analysis_mode
     if mode == "off":
         return ScheduleGraphDispatchPreparation(
             graph_analysis_public=None,
@@ -71,11 +184,12 @@ def prepare_schedule_graph_for_dispatch(
             graph_ready_context=None,
             graph_dispatch_mode_override=None,
         )
-    graph_block_on_cycle = schedule_input.cfg.graph_block_on_cycle
+    graph_block_on_cycle = schedule_input.config.graph_block_on_cycle
     public, diagnostics, graph_ready_context, graph_dispatch_mode_override = _build_schedule_graph_analysis_projection(
         schedule_input,
         mode=mode,
         graph_block_on_cycle=graph_block_on_cycle,
+        resource_pool=resource_pool,
     )
     _enforce_graph_dispatch_policy(
         mode=mode,
@@ -92,10 +206,11 @@ def prepare_schedule_graph_for_dispatch(
 
 
 def _build_schedule_graph_analysis_projection(
-    schedule_input: ScheduleRunInput,
+    schedule_input: SolverInput,
     *,
     mode: str,
     graph_block_on_cycle: str,
+    resource_pool: Optional[Mapping[str, Any]],
 ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
     from core.services.scheduler.graph.exporter import graph_summary_to_dict
@@ -104,14 +219,14 @@ def _build_schedule_graph_analysis_projection(
     from core.services.scheduler.graph.precedence_builder import GraphBuildContractError, build_linear_edges_by_batch
 
     started = time.monotonic()
-    score_weights = _graph_score_weights(schedule_input.cfg)
+    score_weights = _graph_score_weights(schedule_input.config)
     score_requested = mode == "on" and _graph_score_requested(score_weights)
     metrics_mode = "full" if score_requested else "basic"
     nodes = build_operation_nodes_from_rows(
         schedule_input.algo_ops,
         batches=schedule_input.batches,
-        resource_pool=schedule_input.resource_pool,
-        frozen_op_ids=schedule_input.frozen_op_ids,
+        resource_pool=resource_pool,
+        frozen_op_ids=schedule_input.seeds.frozen_op_ids,
     )
     edges = build_linear_edges_by_batch(nodes)
     scope = _graph_input_scope(schedule_input, nodes=nodes)

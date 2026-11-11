@@ -40,8 +40,8 @@ def verify_chain(client, case, plan):
     before = snapshot(case.conn)
     formal = workspace(case.conn, plan['plan_ref'])
     svc = WorkbenchPlanQueryService(case.conn)
-    with svc.read_snapshot():
-        formal_graph = svc.gantt_graph(PlanReadScope(plan['plan_ref']))[0]['gantt_graph']
+    with svc.read_snapshot() as context:
+        formal_graph = svc.gantt_graph(context, PlanReadScope(plan['plan_ref']))[0]['gantt_graph']
     field = read(client, FIELD + '/tasks', plan_ref=plan['plan_ref'])
     actual = read(client, ACTUAL, plan_ref=plan['plan_ref'])
     assert formal['gantt_graph']['nodes_complete'] is False

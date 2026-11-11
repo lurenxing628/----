@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_execution_input import closed_write_context, normalize_report_void_input, reject
+from core.services.execution.ledger_reader import ExecutionLedgerReadScope, project_loaded_facts
 from core.services.execution.projection import materialize_operation_history
 from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository, new_ref
 
@@ -25,10 +26,18 @@ if TYPE_CHECKING:
     from .ledger import ExecutionLedgerService
 
 
-def _downstream_impacts(ledger, facts, before, after, report, dependencies):
-    impacts = execution_conflicts(ledger, facts, before, after, [report], dependencies=dependencies,
-                                  include_downstream_active=True)
-    return execution_conflict_details(ledger, facts, impacts) if impacts else []
+def _downstream_impacts(ledger, ledger_scope: ExecutionLedgerReadScope, facts, before, after, report, dependencies):
+    impacts = execution_conflicts(
+        ledger,
+        ledger_scope,
+        facts,
+        before,
+        after,
+        [report],
+        dependencies=dependencies,
+        include_downstream_active=True,
+    )
+    return execution_conflict_details(ledger, ledger_scope, facts, impacts) if impacts else []
 
 
 def _cycle_warnings(dependencies, operation, before, after):
@@ -47,18 +56,18 @@ class WorkbenchReportVoidService:
         self.ledger, self.commands, self.actor_provider = ledger, commands, actor_provider
         self.conn = ledger.conn
 
-    def _prepare(self, payload):
+    def _prepare(self, ledger_scope: ExecutionLedgerReadScope, payload):
         header = self.ledger.report_header(report_ref=payload["report_ref"])
         if header is None:
             reject("原报工记录不存在，请刷新后重新选择。", "entity_not_found", 404)
-        facts = self.ledger.load([header["operation_ref"]])
+        facts = self.ledger.load(ledger_scope, [header["operation_ref"]])
         history = facts["reports"].get(header["operation_ref"], {}).get(payload["report_ref"])
         if not history:
             reject("原报工的更正记录不完整，不能撤销。", "storage_failure", 500)
         original = history[-1]
         if original["revision_ref"] != payload["original_revision_ref"]:
             reject("这条报工已更正，请刷新后重新核对撤销内容。", "context_stale", 409)
-        before = self.ledger.project_loaded(facts, contexts=False, include_history=False)[0]
+        before = project_loaded_facts(facts, include_history=False)[0]
         existing = facts["voids"].get(payload["report_ref"])
         snapshot = {"input": payload,
                     "execution": self.ledger.fact_snapshot(facts, header["operation_ref"]),
@@ -75,14 +84,16 @@ class WorkbenchReportVoidService:
                     recorded_at=self.ledger.clock().isoformat(timespec="seconds"), receipt_ref=None)
         changed = dict(facts, voids=dict(facts["voids"]))
         changed["voids"][payload["report_ref"]] = fact
-        after = self.ledger.project_loaded(changed, contexts=False, include_history=False)[0]
+        after = project_loaded_facts(changed, include_history=False)[0]
         validate_projection_change(before, after)
         # 执行事实没变（如只去掉了已被其它报工证明的工时）就不牵动前后道，也不会让合并外协组对不上。
         impacts, warnings = [], []
         if execution_facts_changed(before, after):
-            dependencies = ReportDependencies(self.ledger, [after])
+            dependencies = ReportDependencies(ledger_scope, [after])
             dependencies.prepare([facts["operations"][header["operation_ref"]]])
-            impacts = _downstream_impacts(self.ledger, facts, before, after, original, dependencies)
+            impacts = _downstream_impacts(
+                self.ledger, ledger_scope, facts, before, after, original, dependencies
+            )
             warnings = _cycle_warnings(dependencies, facts["operations"][header["operation_ref"]], before, after)
         impacts += adopted_quota_impacts(self.conn, payload["report_ref"], header["operation_ref"])
         # 确认时按预检看到的提醒核对：同组别的工序在这期间改了报工、提醒变了，就要重新查看撤销影响。
@@ -93,8 +104,8 @@ class WorkbenchReportVoidService:
 
     def preview(self, report_ref, payload):
         normalized = normalize_report_void_input(report_ref, payload)
-        with self.ledger.read_snapshot():
-            prepared = self._prepare(normalized)
+        with self.ledger.read_snapshot() as ledger_scope:
+            prepared = self._prepare(ledger_scope, normalized)
             context = closed_write_context()
             if not prepared["impacts"] and self.ledger.context_factory:
                 context = self.ledger.context_factory(report_ref, ["report_void"], prepared["snapshot"])
@@ -127,8 +138,8 @@ class WorkbenchReportVoidService:
         normalized = normalize_report_void_input(report_ref, payload)
 
         def guard():
-            with self.ledger.read_snapshot():
-                prepared = self._prepare(normalized)
+            with self.ledger.read_snapshot() as ledger_scope:
+                prepared = self._prepare(ledger_scope, normalized)
             validate_context(report_ref, "report_void", prepared["snapshot"])
             if prepared["impacts"]:
                 raise ReportBatchRejected("constraint_conflict", "这次撤销会影响已有的后道执行或正式计划，请先处理列出的关联记录。",

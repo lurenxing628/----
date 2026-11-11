@@ -7,10 +7,10 @@ import pytest
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_runtime.algo_stats import make_algo_stats
 from core.infrastructure.transaction import TransactionManager
-from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInput
-from core.services.scheduler.run.schedule_orchestrator import ScheduleOrchestrationOutcome
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.workbench.batch.facts import BatchFacts
+from core.services.workbench.batch.scope import BatchFactScope
+from core.services.workbench.run.input import PreparedBusinessInput
 from tests.workbench.run_compute_support import compute_run, unchanged
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
 
@@ -33,7 +33,7 @@ def _external_plan(case, with_execution):
         conn.execute("INSERT INTO Batches(batch_id,part_no,quantity,due_date,ready_status) "
                      "VALUES ('EXT','P_EXT',1,'2026-09-25','yes')")
         writer = TemplateLineageWriter(conn)
-        facts = BatchFacts(conn).load()
+        facts = BatchFactScope(BatchFacts(conn)).load()
         rows = [row for row in facts["PartOperations"] if row["part_no"] == "P_EXT" and row["status"] == "active"]
         for template in writer.prepare_templates(rows, facts=facts):
             writer.copy_prepared_template("EXT", template)
@@ -59,11 +59,12 @@ def test_template_change_keeps_frozen_batch_cycles_and_execution_facts(run_case,
         hold_window={"start": "2026-09-09T00:00", "end": "2026-09-09T01:00"})
     result = unchanged(case, lambda: compute_run(case.conn, settings, case.projections("EXT", "B1") if with_execution else case.projections("EXT")))
     prepared = result.schedule_input
-    assert isinstance(prepared, ScheduleRunInput)
-    assert prepared.frozen_op_ids == {ids[0]}
-    assert prepared.execution_completed_op_ids == ({case.op_id} if with_execution else set())
-    assert ids[0] not in {op.id for op in prepared.algo_ops_to_schedule}
-    for payload in result.candidate_payloads.values():
+    assert isinstance(prepared, PreparedBusinessInput)
+    assert prepared.seeds.frozen_op_ids == {ids[0]}
+    assert prepared.execution_guard.execution_completed_op_ids == ({case.op_id} if with_execution else set())
+    assert ids[0] not in {op.id for op in prepared.seeds.to_schedule}
+    for outcome in result.candidate_outcomes.values():
+        payload = outcome.validated_payload
         rows = {row.op_id: row for row in payload.schedule_rows}
         assert (rows[ids[0]].start_time, rows[ids[0]].end_time) == (datetime(2026, 9, 9), datetime(2026, 9, 10))
         assert (rows[ids[1]].start_time, rows[ids[1]].end_time) == (datetime(2026, 9, 10), datetime(2026, 9, 11))
@@ -71,9 +72,7 @@ def test_template_change_keeps_frozen_batch_cycles_and_execution_facts(run_case,
         if with_execution:
             assert (rows[case.op_id].start_time, rows[case.op_id].end_time) == (datetime(2026, 9, 9, 8), datetime(2026, 9, 9, 10))
             assert (rows[case.op_id].machine_id, rows[case.op_id].operator_id) == ("M1", "O1")
-    orchestration = result.orchestration
-    assert isinstance(orchestration, ScheduleOrchestrationOutcome)
-    adopted_results = orchestration.candidate_comparison.selection.selected_plan.results
+    adopted_results = result.candidate_comparison.selection.selected_plan.results
     assert all(type(row) is ScheduleResult for row in adopted_results)
     assert not any(key.startswith("_external_group") for row in adopted_results for key in vars(row))
     assert [tuple(row) for row in case.conn.execute("SELECT * FROM Schedule ORDER BY id")] == original

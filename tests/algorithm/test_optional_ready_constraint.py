@@ -14,4 +14,4 @@ def test_optional_ready_constraint(run_case):
     with pytest.raises(CandidateRunInputError, match="没有可排"):
         unchanged(case, lambda: compute_run(case.conn, case.settings(ready_check=True), case.projections()))
     result = unchanged(case, lambda: compute_run(case.conn, case.settings(ready_check=False), case.projections()))
-    assert all(payload.scheduled_op_ids == {case.op_id} for payload in result.candidate_payloads.values())
+    assert all(outcome.validated_payload.scheduled_op_ids == {case.op_id} for outcome in result.candidate_outcomes.values())

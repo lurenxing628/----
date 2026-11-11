@@ -100,7 +100,11 @@ def load_external(conn, now):
     target_rows, entities = reader.sources.target_rows(unregistered_only=True)
     source_targets = [rows["header"]["target"] for rows in receipt_facts.values()]
     source_targets.extend(reader.sources.target_from_row(row) for row in target_rows)
-    sources = reader.sources.capture(source_targets, entities=entities)
+    sources = reader.sources.capture(
+        source_targets,
+        entities=entities,
+        revision=reader.sources.repo.plan_identity_revision(),
+    )
     captured = _receipts(reader, now, result, receipt_facts, sources)
     _targets(reader, result, target_rows, sources)
     gaps = bounded(result["evaluation_gaps"])

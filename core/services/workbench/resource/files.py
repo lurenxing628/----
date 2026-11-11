@@ -24,6 +24,7 @@ from .entities import WorkbenchResourceService
 from .file_input import ResourceFileInput, proposed_fields, same_value
 from .file_projection import flat_resource, reference_count
 from .queries import WorkbenchResourceQueryService
+from .scope import ResourceFactScope
 from .suppliers import WorkbenchSupplierService
 
 
@@ -183,7 +184,7 @@ class WorkbenchResourceFileService:
         result = "committed" if any(row["result"] == "committed" for row in results) else "unchanged"
         return WorkbenchCommandOutcome(result, {"rows": results, "summary": document["summary"]})
 
-    def preview_export(self, selection, *, request, selected_refs=None):
+    def preview_export(self, scope: ResourceFactScope, selection, *, request, selected_refs=None):
         """Export arguments holding the validated request (and any explicit refs), with their row count."""
         if not self.conn.in_transaction:
             raise RuntimeError("资源导出预览必须在已验证的查询快照事务中执行。")
@@ -195,21 +196,23 @@ class WorkbenchResourceFileService:
                 check_category(self.kind, preparation.facts.raw_record(self.kind, identity.entity_key), request.category)
             return {"request": request, "selected_refs": refs}, len(refs)
         effective = ResourcePageRequest(kind=self.kind, category=request.category) if selection == "all" else request
-        matching = self.reader.matching_keys(effective)
+        matching = scope.matching_keys(effective)
         return {"request": effective}, len(matching)
 
-    def export_rows(self, file_format, *, request, selected_refs=None):
+    def export_rows(self, scope: ResourceFactScope, file_format, *, request, selected_refs=None):
         """在已验证的读快照里读完整份导出行；编码文件交给 write_export，在读事务结束后做。"""
         if not self.conn.in_transaction:
             raise RuntimeError("资源导出必须在已验证的查询快照事务中执行。")
         if selected_refs is None:
-            matching = self.reader.matching_keys(request)
+            matching = scope.matching_keys(request)
             check_capacity(len(matching), file_format)
-            preparation = self.reader.preparation()
+            preparation = scope.table_preparation()
             identities = [preparation.identity_by_code(self.kind, code) for code in matching]
         else:
             check_capacity(len(selected_refs), file_format)
-            preparation = self.reader.preparation(refs=selected_refs, machine_authorizations=(self.kind == "machine"))
+            preparation = self.reader.preparation(
+                refs=selected_refs, machine_authorizations=(self.kind == "machine")
+            )
             identities = [preparation.identity(self.kind, ref) for ref in selected_refs]
         return list(self._export_rows(identities, preparation))
 

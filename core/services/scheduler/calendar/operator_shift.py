@@ -3,18 +3,22 @@
 The anchor is a cycle phase reference, not the first employment date. A shift
 can move the clock window but cannot reopen a global non-working day, add hours
 beyond that day's capacity, change efficiency, or relax either priority flag.
-Like CalendarEngine's existing date cache, these reads live within one request
-or scheduling read snapshot; a subsequent request gets a new engine.
 """
 
 from collections import defaultdict
 from dataclasses import replace
 from datetime import date
-from typing import Any, Dict, NamedTuple, Optional, Tuple
+from typing import Any, Dict, NamedTuple, Tuple
 
 from core.errors import ValidationError
 from core.shared.stored_dates import stored_day
-from data.repositories.operator_shift_repo import OperatorShiftRepository
+
+_EMPTY_SHIFT_PROFILE = {
+    "profile_id": None,
+    "anchor_date": None,
+    "cycle_days": None,
+    "status": None,
+}
 
 
 class ShiftFacts(NamedTuple):
@@ -35,72 +39,56 @@ def _pattern_index(rows):
 
 def _with_pattern_range(profile, offsets) -> Dict[str, Any]:
     days = offsets.get(profile["profile_id"], ())
-    return dict(profile, day_count=len(days), first_day=min(days) if days else None,
-                last_day=max(days) if days else None)
+    return dict(
+        profile,
+        day_count=len(days),
+        first_day=min(days) if days else None,
+        last_day=max(days) if days else None,
+    )
 
 
-def index_shift_facts(profile_rows, pattern_rows) -> ShiftFacts:
-    """Index one snapshot's operator profile rows and pattern-day rows."""
-    patterns, offsets = _pattern_index(pattern_rows)
-    return ShiftFacts({row["operator_id"]: _with_pattern_range(row, offsets) for row in profile_rows}, patterns)
+def index_shift_facts(operator_profiles, shift_profiles, shift_patterns) -> ShiftFacts:
+    """Index one snapshot's operator profile rows, shift profile rows and pattern-day rows."""
+    patterns, offsets = _pattern_index(shift_patterns or ())
+    by_profile_id = {row["profile_id"]: row for row in (shift_profiles or ())}
+    profiles: Dict[Any, Dict[str, Any]] = {}
+    for row in operator_profiles or ():
+        operator_id = row["operator_id"]
+        shift_profile_id = row["shift_profile_id"]
+        if shift_profile_id is None:
+            continue
+        if shift_profile_id in by_profile_id:
+            target = by_profile_id[shift_profile_id]
+        else:
+            target = _EMPTY_SHIFT_PROFILE
+        merged = {**target, "operator_id": operator_id, "shift_profile_id": shift_profile_id}
+        profiles[operator_id] = _with_pattern_range(merged, offsets)
+    return ShiftFacts(profiles, patterns)
 
 
 class OperatorShiftCalendar:
-    def __init__(self, conn, logger=None, *, capture=None, facts: Optional[ShiftFacts] = None):
-        # Three sources: a snapshot's indexed facts, a run capture's business tables, or live per-person reads.
-        self.repo = OperatorShiftRepository(conn, logger=logger)
-        self.capture = capture
-        self.facts = facts
+    def __init__(self, *, operator_profiles, shift_profiles, shift_patterns):
+        self.facts = index_shift_facts(operator_profiles, shift_profiles, shift_patterns)
         self._profiles = {}
         self._patterns = {}
-        self._captured_index = None
-
-    def clear_cache(self):
-        self._profiles.clear()
-        self._patterns.clear()
 
     def discard_operator(self, operator_id):
         self._profiles.pop(operator_id, None)
 
     def _profile(self, operator_id):
         if operator_id not in self._profiles:
-            profile = self._read_profile(operator_id)
-            if profile is None:
-                self._profiles[operator_id] = None
-            else:
-                self._validate_profile(profile)
-                anchor = stored_day(profile["anchor_date"])
-                if anchor is None:
-                    raise ValidationError("人员班次的轮换基准日期无效，不能推测排班。", field="shift_profile")
-                self._profiles[operator_id] = profile, anchor
+            self._profiles[operator_id] = self._resolve_profile(operator_id)
         return self._profiles[operator_id]
 
-    def _read_profile(self, operator_id):
-        if self.facts is not None:
-            return self.facts.profiles.get(operator_id)
-        if self.capture is None:
-            return self.repo.profile_for_operator(operator_id)
-        linked = self.capture.index("WorkbenchOperatorProfiles", "operator_id").get(operator_id)
-        if linked is None or linked["shift_profile_id"] is None:
+    def _resolve_profile(self, operator_id):
+        profile = self.facts.profiles.get(operator_id)
+        if profile is None:
             return None
-        profile = self.capture.index("WorkbenchShiftProfiles", "profile_id").get(linked["shift_profile_id"], {})
-        _, offsets = self._captured_patterns(self.capture)
-        return _with_pattern_range({"shift_profile_id": linked["shift_profile_id"],
-                                    **{key: profile.get(key) for key in ("profile_id", "anchor_date", "cycle_days", "status")}},
-                                   offsets)
-
-    def _captured_patterns(self, capture):
-        if self._captured_index is None:
-            self._captured_index = _pattern_index(capture.table("WorkbenchShiftPatternDays"))
-        return self._captured_index
-
-    def _read_pattern(self, profile_id, offset):
-        if self.facts is not None:
-            return self.facts.patterns.get((profile_id, offset))
-        if self.capture is None:
-            return self.repo.pattern_day(profile_id, offset)
-        patterns, _ = self._captured_patterns(self.capture)
-        return patterns.get((profile_id, offset))
+        self._validate_profile(profile)
+        anchor = stored_day(profile["anchor_date"])
+        if anchor is None:
+            raise ValidationError("人员班次的轮换基准日期无效，不能推测排班。", field="shift_profile")
+        return profile, anchor
 
     def apply_policy(self, policy, operator_id, *, prepare_periods):
         prepared = self._profile(operator_id)
@@ -116,7 +104,7 @@ class OperatorShiftCalendar:
         return replace(policy, hours=min(policy.hours, hours), periods_json=periods_json, _period_offsets=offsets)
 
     def _pattern(self, profile_id, offset, prepare_periods):
-        day = self._read_pattern(profile_id, offset)
+        day = self.facts.patterns.get((profile_id, offset))
         if day is None:
             raise ValidationError("人员班次缺少当天的轮换规则，不能回退到默认班次。", field="shift_profile")
         if type(day["is_rest"]) is not int or day["is_rest"] not in (0, 1):
@@ -130,6 +118,11 @@ class OperatorShiftCalendar:
         if profile["profile_id"] is None or profile["status"] != "active":
             raise ValidationError("人员关联的班次不存在或已停用，请先维护班次。", field="shift_profile")
         days = profile["cycle_days"]
-        if (type(days) is not int or not 1 <= days <= 366 or profile["day_count"] != days
-                or profile["first_day"] != 0 or profile["last_day"] != days - 1):
+        if (
+            type(days) is not int
+            or not 1 <= days <= 366
+            or profile["day_count"] != days
+            or profile["first_day"] != 0
+            or profile["last_day"] != days - 1
+        ):
             raise ValidationError("人员班次的轮换日期不完整，不能推测缺失安排。", field="shift_profile")

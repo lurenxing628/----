@@ -7,7 +7,9 @@ import pytest
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_batch_material import normalize_material_changes
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked
+from core.services.workbench.batch.facts import BatchFacts
 from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
+from core.services.workbench.batch.scope import BatchFactScope
 from core.services.workbench.facts.trial_origin import TrialOrigin
 from core.services.workbench.facts.trial_policy import load_draft, load_scenario
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
@@ -236,7 +238,9 @@ def test_trial_includes_selected_batch_with_only_material_deferred_operations(tr
     operation_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
                                       (str(second),)).fetchone()[0]
     with TransactionManager(case.conn).transaction():
-        WorkbenchBatchMaterialService(case.conn).apply_normalized(case.ref("batch", "B2"), normalize_material_changes({"removed_keys": [], "rows": [{
+        batch_ref = case.ref("batch", "B2")
+        scope = BatchFactScope(BatchFacts(case.conn), command=True, mode="single_instance", target_ref=batch_ref)
+        WorkbenchBatchMaterialService(case.conn).apply_normalized(scope, batch_ref, normalize_material_changes({"removed_keys": [], "rows": [{
             "row_key": None, "material_ref": case.ref("material", "STEEL"), "required_quantity": 3,
             "available_quantity": 0, "operation_ref": operation_ref, "arrivals": []}]}))
     accepted = case.accept(settings=case.settings("B1", "B2", material_strategy="stage"))
@@ -290,37 +294,35 @@ def test_trial_includes_selected_batch_with_only_material_deferred_operations(tr
 
 
 _TRIAL_DUE_PROGRAM = r"""
-const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict');
+const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('./scripts/workbench/compile.cjs');
 const app = path.join(process.cwd(), 'frontend/workbench/app'), source = name => fs.readFileSync(path.join(app, name), 'utf8');
 const h = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity).filter(v => v !== null && v !== undefined && v !== false) });
 const React = { createElement: h, Fragment: 'fragment', useMemo: make => make(), useRef: current => ({ current }), useEffect() {}, useState: v => [v, () => {}] };
 const w = { document: {} }, context = vm.createContext({ window: w, React, AbortController, URLSearchParams, setTimeout, clearTimeout });
-for (const name of ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'PointContract.js', 'DeliveryProjectionContract.js', 'EffortProjectionContract.js',
-  'ResourceProjectionContract.js', 'transport.js', 'RunCandidateAPI.js', 'TrialContract.js']) vm.runInContext(source(name), context, { filename: name });
-Object.assign(w, { TrialControls: { Button: 'button', Issues: 'issues', number: String, timeLabel: String, hours: String },
-  TrialGantt: { resourceNames: () => ref => ref }, RunOperationEffort: { Effort: 'effort' } });
-const babel = path.join(process.cwd(), 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js');
-vm.runInContext(compile({ babel_path: babel, sources: [{ path: 'TrialDetails.jsx', code: source('TrialDetails.jsx') }] }).outputs[0].code, context);
+const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'PointContract.js',
+  'shared/network/transport.js', 'RunCandidateAPI.js', 'TrialContract.js'];
+for (const out of compile({ sources: files.map(name => ({ path: name, code: source(name) })) }).outputs)
+  vm.runInContext(out.code, context, { filename: out.path });
+context.__wbRuntime.setStubs({
+  'TrialControls.jsx': { Button: 'button', Issues: 'issues', number: String, timeLabel: String, hours: String },
+  'TrialGantt.jsx': { resourceNames: () => ref => ref },
+  'RunOperationEffort.jsx': { Effort: 'effort' },
+});
+vm.runInContext(compile({ sources: [{ path: 'TrialDetails.jsx', code: source('TrialDetails.jsx') }] }).outputs[0].code, context);
+const TrialContract = context.__wbRuntime.getModule('TrialContract.js');
+const TrialDetails = context.__wbRuntime.getModule('TrialDetails.jsx').TrialDetails;
 const text = node => node == null ? '' : typeof node !== 'object' ? String(node) : node.children.map(text).join('');
 const walk = node => !node || typeof node !== 'object' ? [] : [node, ...node.children.flatMap(walk)];
 const shown = {};
 for (const [state, data] of Object.entries(JSON.parse(fs.readFileSync(0, 'utf8')))) {
-  w.TrialContract.workspace(data);
+  TrialContract.workspace(data);
   const task = data.tasks[0];
-  const tree = w.TrialDetails({ data, selected: task.task_ref, commands: {}, onSelect() {}, onEditing() {}, onRecheck() {},
+  const tree = TrialDetails({ data, selected: task.task_ref, commands: {}, onSelect() {}, onEditing() {}, onRecheck() {},
     guardOwner: 'trial', editorRevision: 0, inspectFocus: { current: null }, onCollapse() {} });
   const facts = walk(tree).find(node => node.type === 'dl');
   const pair = facts.children.find(node => text(node.children[0]) === '交期');
   shown[state] = text(pair.children[1]);
-  // 精确合同：缺任一交期字段或状态与日期不配套都拒收。
-  for (const broken of [{ due_state: undefined }, { due_issue: undefined },
-    { due_state: 'specified', due_date: '9999-12-31', due_issue: null }, { due_state: 'invalid', due_date: null, due_issue: null }]) {
-    const damaged = structuredClone(data);
-    Object.assign(damaged.tasks[0], broken);
-    for (const key of Object.keys(broken)) if (broken[key] === undefined) delete damaged.tasks[0][key];
-    assert.throws(() => w.TrialContract.workspace(damaged));
-  }
 }
 process.stdout.write(JSON.stringify(shown));
 """

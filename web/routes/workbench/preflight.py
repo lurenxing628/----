@@ -52,9 +52,8 @@ def evaluate_preflight_input_prepared(conn, input_ref: str, *, facts: "Preflight
     from core.services.workbench.run.preflight import PreflightService
 
     normalized, original = _preflight_binding(conn, input_ref)
-    prepared = PreflightService(conn, facts=facts).evaluate_prepared(normalized)
-    _require_current(original, prepared.fingerprint)
-    return prepared
+    _require_current(original, facts.fingerprint())
+    return PreflightService(conn).evaluate_prepared(normalized, facts=facts, fingerprint=original)
 
 
 def scheduling_preflight():

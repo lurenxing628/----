@@ -136,7 +136,7 @@ class ResourceTableFacts:
         """Index captured rows for single-state consumption without a full metric gate."""
         lookup_key = (name, key)
         if lookup_key not in self._raw_maps:
-            self.metrics._load([name])
+            self.metrics.load_facts([name])
             self._raw_maps[lookup_key] = {row[key]: row for row in self.metrics.facts[name]}
         return self._raw_maps[lookup_key]
 
@@ -154,14 +154,14 @@ class ResourceTableFacts:
     def mapped(self, name, key):
         lookup_key = (name, key)
         if lookup_key not in self._maps:
-            self.metrics._load([name])
+            self.metrics.load_facts([name])
             self._maps[lookup_key] = index_resource_rows(self.metrics.facts[name], key)
         return self._maps[lookup_key]
 
     def grouped(self, name, key):
         lookup_key = (name, key)
         if lookup_key not in self._groups:
-            self.metrics._load([name])
+            self.metrics.load_facts([name])
             grouped = defaultdict(list)
             for row in self.metrics.facts[name]:
                 grouped[row[key]].append(row)
@@ -186,7 +186,7 @@ class ResourceTableFacts:
         if self._dependency_counts is None or any(
             source not in self._dependency_counts for source in OP_TYPE_DEPENDENCIES.values()
         ):
-            return self.metrics.repo.op_type_dependencies(codes)
+            return self.metrics.op_type_dependencies(codes)
         return self._project_dependency_counts(codes, OP_TYPE_DEPENDENCIES)
 
     def shift_patterns(self, codes):
@@ -254,7 +254,7 @@ class ResourceTableFacts:
     def index(self, query, codes):
         rows, cells = {}, {}
         records = self.metrics.kind_records(query.kind)
-        statuses = None if query.kind == "op_type" else self.metrics._statuses(query.kind)
+        statuses = None if query.kind == "op_type" else self.metrics.kind_statuses(query.kind)
         for code in codes:
             identity = self.identity(query.kind, code)
             rows[code] = {"ref": identity.ref, "revision": identity.revision, "business_code": code}

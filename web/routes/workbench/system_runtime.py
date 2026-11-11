@@ -22,7 +22,6 @@ def health():
         "app": _APP_ID,
         "status": "ok",
         "contract_version": _CONTRACT_VERSION,
-        "ui_mode": str(current_app.config.get("APP_UI_MODE") or "unknown"),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     payload.update(runtime_identity(current_app))

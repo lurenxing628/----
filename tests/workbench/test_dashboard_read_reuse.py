@@ -9,14 +9,15 @@ import pytest
 from core.infrastructure.sqlite_udf import SQL_PARSE_FUNCTION, parse_dt_for_sql, register_schedule_time_sql_functions
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import DashboardAnalysisQuery
-from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_io import CalendarFacts, CapturedCalendarInputs, ProjectionLimit
 from core.services.capacity.plan_calendar_windows import project_resource_calendars
+from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.workbench.dashboard import downtime, execution
 from core.services.workbench.dashboard import facts as facts_module
 from core.services.workbench.dashboard.analysis import read_dashboard_analysis
 from core.services.workbench.dashboard.analysis_projection import project_dashboard_analysis
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
+from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_facts
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.plan.read_context import PlanReadContext
 from data.repositories.calendar_facts_repo import _DOWNTIMES_SQL, CalendarFactsRepository
@@ -248,7 +249,7 @@ def test_downtime_capture_avoids_temp_btree_and_unifies_admitted_resource_projec
             else:
                 reader.resource_states(["DM1"], ["DO1"], start, end)
             assert [(row["start_time"], row["end_time"]) for row in reader.rows["downtimes"]] == expected_sorted
-            engine = SnapshotCalendarEngine(reader.rows)
+            engine = CalendarEngine(calendar_inputs_from_facts(reader.rows))
             projected = {
                 (kind, key): item
                 for kind, key, _raw, item in project_resource_calendars(

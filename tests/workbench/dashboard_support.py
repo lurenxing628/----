@@ -5,15 +5,15 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from flask import Blueprint, Flask, g, jsonify
+from flask import Blueprint, Flask, g
 
 from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
 from core.models.workbench_dashboard import DashboardQuery
-from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.dashboard.commands import WorkbenchDashboardCommandService
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 from tests.workbench.execution_ledger_support import publish_official_plan
+from web.routes.workbench.commands import register_command_routes
 from web.routes.workbench.dashboard import register_dashboard_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 
@@ -124,12 +124,7 @@ def api(case, monkeypatch, *, connect_factory=connect):
     app = Flask(__name__)
     bp = Blueprint("workbench", __name__)
     register_dashboard_routes(bp)
-
-    @bp.get("/api/workbench/v1/commands/<request_key>")
-    def command_receipt(request_key):
-        result = WorkbenchCommandService(g.db).lookup(request_key)
-        return jsonify({"ok": True, "data": result, "state": "recorded" if result else "not_observed"})
-
+    register_command_routes(bp)
     app.register_blueprint(bp)
 
     @app.before_request

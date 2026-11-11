@@ -36,6 +36,7 @@ from data.repositories.operator_machine_repo import OperatorMachineRepository
 from data.repositories.workbench_resource_file_repo import WorkbenchResourceFileRepository
 
 from ..queries import WorkbenchResourceQueryService
+from ..scope import ResourceFactScope
 from .file_codec import read_relation_file
 
 #: 导入只认导出写出的中文，反查同一张表。
@@ -131,10 +132,8 @@ class WorkbenchRelationFileService:
         for key in REQUIRED[self.kind]:
             try:
                 raw = values.get(key)
-                code = resource_text(raw, key)
-                if raw != code:
-                    raise ValidationError("编号不能有首尾空格，请修正后重新导入。", field=key)
-                parsed[key] = code
+                resource_text(raw, key)
+                parsed[key] = raw
             except ValidationError as exc:
                 reject_action_row(row, exc.message, field=exc.field or key)
         # 文件里只有填了 \N 才会带上值为 None 的列；这两列在库里不能为空，留空才表示保持原样。
@@ -173,7 +172,12 @@ class WorkbenchRelationFileService:
             code = row["values"][key]
             raw = preparation.raw(entity, code)
             if raw is None:
-                reject_action_row(row, "系统里找不到这个编号，这一行没有导入。请先在基础资料里维护好再导入。", field=key)
+                message = (
+                    "编号不能有首尾空格，请修正后重新导入。"
+                    if code != code.strip()
+                    else "系统里找不到这个编号，这一行没有导入。请先在基础资料里维护好再导入。"
+                )
+                reject_action_row(row, message, field=key)
                 return
             identity = preparation.identity_by_code(entity, code)
             expected[entity] = {"record": raw, "identity": asdict(identity)}
@@ -310,27 +314,27 @@ class WorkbenchRelationFileService:
 
     # ---------- 导出 ----------
 
-    def preview_export(self, selection, *, request, selected_refs=None):
+    def preview_export(self, scope: ResourceFactScope, selection, *, request, selected_refs=None):
         """Export arguments holding the validated operator request (and any explicit refs), with their row count."""
         if not self.conn.in_transaction:
             raise RuntimeError("关系导出预览必须在已验证的查询快照事务中执行。")
         if selection == "selected":
             refs = resource_refs(selected_refs, allow_empty=True)
             codes = [identity.entity_key for identity in self.reader.resolve_refs(refs)]
-            return {"request": request, "selected_refs": refs}, len(self._links_for(codes))
+            return {"request": request, "selected_refs": refs}, len(self._links_for(scope, codes))
         effective = ResourcePageRequest(kind="operator") if selection == "all" else request
-        return {"request": effective}, len(self._links_for(self.reader.matching_keys(effective)))
+        return {"request": effective}, len(self._links_for(scope, scope.matching_keys(effective)))
 
-    def _links_for(self, codes) -> List[Dict[str, Any]]:
+    def _links_for(self, scope: ResourceFactScope, codes) -> List[Dict[str, Any]]:
         if not codes:
             return []
-        if self.reader._table_warmed:
-            grouped = self.reader._table_reader().grouped("authorizations", "operator_id")
+        if scope.table_warmed:
+            grouped = scope.table_facts().grouped("authorizations", "operator_id")
             return [link for code in sorted({x for x in codes if x}) for link in grouped[code]]
         return self.links.list_simple_rows_for_operators(codes)
 
-    def _rows_for(self, codes) -> List[Dict[str, Any]]:
-        links = self._links_for(codes)
+    def _rows_for(self, scope: ResourceFactScope, codes) -> List[Dict[str, Any]]:
+        links = self._links_for(scope, codes)
         if not links:
             return []
         rows = []
@@ -345,8 +349,8 @@ class WorkbenchRelationFileService:
                 "skill_level": EXPORT_LABELS["skill_level"][normalize_skill_level_stored(link["skill_level"])],
                 "is_primary": EXPORT_LABELS["is_primary"][normalize_yes_no_stored(link["is_primary"])],
             })
-        if self.reader._table_warmed:
-            metrics = self.reader._table_reader().metrics
+        if scope.table_warmed:
+            metrics = scope.table_facts().metrics
             operators = metrics.kind_records("operator")
             machines = metrics.kind_records("machine")
         else:
@@ -359,12 +363,12 @@ class WorkbenchRelationFileService:
             row["machine_label"] = machine["name"] if machine is not None else None
         return rows
 
-    def export_rows(self, *, request, selected_refs=None):
+    def export_rows(self, scope: ResourceFactScope, *, request, selected_refs=None):
         """在已验证的读快照里读完整份导出行；编码文件交给 write_relation_file，在读事务结束后做。"""
         if not self.conn.in_transaction:
             raise RuntimeError("关系导出必须在已验证的查询快照事务中执行。")
         if selected_refs is None:
-            codes = self.reader.matching_keys(request)
+            codes = scope.matching_keys(request)
         else:
             codes = [identity.entity_key for identity in self.reader.resolve_refs(selected_refs)]
-        return self._rows_for(codes)
+        return self._rows_for(scope, codes)

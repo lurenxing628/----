@@ -101,16 +101,19 @@ def node_contract(mode, raw, kind, *, body=None, preview=None, target=None, fmt=
     node = node_runtime()
     script = r"""
 const fs = require('fs'), vm = require('vm'), path = require('path'), assert = require('assert/strict');
+const { compile } = require(path.join(process.cwd(), 'scripts/workbench/compile.cjs'));
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const ctx = { console, window: null }; ctx.window = ctx; vm.createContext(ctx);
-for (const name of ['resource-contract.js', 'ResourceTableFilterModel.js', 'ResourceMaterialContract.js',
-  'ProcessContract.js', 'ProcessActionContract.js', 'ProcessFileContract.js'])
-  vm.runInContext(fs.readFileSync(path.join(input.root, 'frontend/workbench/app', name), 'utf8'), ctx);
-const F = ctx.APSProcessFiles, calls = [];
-ctx.APSResourceAPI = { create: () => Object.fromEntries(['query', 'execute', 'preview', 'download'].map(
-  method => [method, (...args) => calls.push({ method, args })])) };
-vm.runInContext(fs.readFileSync(path.join(input.root, 'frontend/workbench/app/ProcessAPI.js'), 'utf8'), ctx);
-const api = ctx.APSProcessAPI.create(), plain = value => JSON.parse(JSON.stringify(value));
+const files = ['resource-contract.js', 'ResourceTableFilterModel.js', 'ResourceMaterialContract.js',
+  'ProcessContract.js', 'ProcessActionContract.js', 'ProcessFileContract.js'];
+for (const out of compile({ sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(input.root, 'frontend/workbench/app', name), 'utf8') })) }).outputs)
+  vm.runInContext(out.code, ctx, { filename: out.path });
+const F = ctx.__wbRuntime.getModule('ProcessFileContract.js'), calls = [];
+ctx.__wbRuntime.setStub('resource-api.js', { create: () => Object.fromEntries(['query', 'execute', 'preview', 'download'].map(
+  method => [method, (...args) => calls.push({ method, args })])) });
+for (const out of compile({ sources: [{ path: 'ProcessAPI.js', code: fs.readFileSync(path.join(input.root, 'frontend/workbench/app/ProcessAPI.js'), 'utf8') }] }).outputs)
+  vm.runInContext(out.code, ctx, { filename: out.path });
+const api = ctx.__wbRuntime.getModule('ProcessAPI.js').create(), plain = value => JSON.parse(JSON.stringify(value));
 if (input.mode === 'export-body') {
   console.log(JSON.stringify(F.exportBody(input.body, input.body.selection, input.body.format)));
 } else if (input.mode === 'preview') {
@@ -124,7 +127,7 @@ if (input.mode === 'export-body') {
   assert.equal(calls[0].args[0], 'process-files/' + input.kind + '/export');
 } else {
   const intent = { kind: 'process_' + input.kind + '_import', action: 'confirm', ref: input.body.input.preview_ref };
-  F.receipt(input.raw, intent, input.kind, input.preview.data, input.target);
+  F.receipt(input.raw, intent, input.kind, input.target);
   assert(!('stage' in input.raw.data));
   assert(input.raw.data.rows.every(row => !('stage' in row)));
   api.command(intent.kind, intent.action, intent.ref, input.body);

@@ -7,7 +7,7 @@ from core.errors import AppError, ErrorCode
 from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution import ExecutionProjection
-from core.services.execution.ledger_reader import ExecutionLedgerReader
+from core.services.execution.ledger_reader import ExecutionLedgerReader, ExecutionLedgerReadScope
 from core.services.execution.projection import projection_resource_refs
 
 from .execution_ledger_guard import ledger_fact_changes
@@ -24,21 +24,19 @@ def _unavailable(reason, *, op_id=None):
 
 
 @contextmanager
-def ledger_read_snapshot(conn, *, ledger=None):
-    if ledger is not None and ledger.conn is not conn:
-        raise ValueError("Execution ledger must belong to the current connection")
-    ledger = ledger if ledger is not None else ExecutionLedgerReader(conn, current_plan_provider=current_execution_plan)
+def ledger_read_snapshot(conn):
+    reader = ExecutionLedgerReader(conn, current_plan_provider=current_execution_plan)
     with ExitStack() as stack:
         try:
-            stack.enter_context(ledger.read_snapshot())
+            scope = stack.enter_context(reader.read_snapshot())
         except WorkbenchCommandRejected as exc:
             raise _unavailable(exc.code) from exc
-        yield ledger
+        yield scope
 
 
-def _scope_tasks(ledger, scopes):
+def _scope_tasks(scope: ExecutionLedgerReadScope, scopes):
     by_identity = {}
-    rows = ledger.scope_task_rows(sorted({scope.schedule_id for scope in scopes}))
+    rows = scope.reader.scope_task_rows(scope, sorted({item.schedule_id for item in scopes}))
     for row in rows:
         key = tuple(row[:4])
         if key in by_identity:
@@ -52,16 +50,16 @@ def _scope_tasks(ledger, scopes):
             "unit_hours": unit_hours,
         }
     result = {}
-    for scope in scopes:
-        task = by_identity.get((scope.schedule_id, scope.schedule_version, scope.op_id, scope.batch_id))
+    for item in scopes:
+        task = by_identity.get((item.schedule_id, item.schedule_version, item.op_id, item.batch_id))
         if task is None:
-            raise _unavailable("execution_ledger_scope_missing", op_id=scope.op_id)
-        result[scope] = task
+            raise _unavailable("execution_ledger_scope_missing", op_id=item.op_id)
+        result[item] = task
     return result
 
 
-def _require_reported_operation_scopes(ledger):
-    row = ledger.reported_operation_without_schedule_row()
+def _require_reported_operation_scopes(scope: ExecutionLedgerReadScope):
+    row = scope.reader.reported_operation_without_schedule_row(scope)
     if row is not None:
         raise _unavailable("execution_ledger_report_scope_missing", op_id=int(row[0]))
 
@@ -79,10 +77,10 @@ def _supplied_projection_map(execution_projections, refs, plan):
     return result
 
 
-def _load_projections(ledger, refs, execution_projections):
-    plan = ledger._current_plan()
+def _load_projections(scope: ExecutionLedgerReadScope, refs, execution_projections):
+    plan = scope.reader.current_plan(scope)
     projections = _supplied_projection_map(execution_projections, refs, plan)
-    return projections, plan, ledger.revision_clock()["ledger_revision"]
+    return projections, plan, scope.reader.revision_clock(scope)["ledger_revision"]
 
 
 def _adapt_scope_facts(facts, tasks, projections, plan, ledger_revision, resources):
@@ -110,18 +108,18 @@ def _adapt_scope_facts(facts, tasks, projections, plan, ledger_revision, resourc
     return result
 
 
-def adapt_ledger_facts(ledger, facts, *, execution_projections):
+def adapt_ledger_facts(scope: ExecutionLedgerReadScope, facts, *, execution_projections):
     try:
-        _require_reported_operation_scopes(ledger)
+        _require_reported_operation_scopes(scope)
         if not facts:
             if execution_projections:
                 raise _unavailable("execution_ledger_projection_scope_mismatch")
             return facts
-        tasks = _scope_tasks(ledger, facts)
+        tasks = _scope_tasks(scope, facts)
         refs = list(dict.fromkeys(task["operation_ref"] for task in tasks.values()))
-        projections, plan, ledger_revision = _load_projections(ledger, refs, execution_projections)
+        projections, plan, ledger_revision = _load_projections(scope, refs, execution_projections)
         resource_refs = {ref for row in projections.values() for ref in projection_resource_refs(row)}
-        resources = {row["ref"]: row for row in ledger.resources(resource_refs)}
+        resources = {row["ref"]: row for row in scope.reader.resources(scope, resource_refs)}
         return _adapt_scope_facts(facts, tasks, projections, plan, ledger_revision, resources)
     except WorkbenchCommandRejected as exc:
         raise _unavailable(exc.code) from exc

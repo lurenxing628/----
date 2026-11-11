@@ -56,8 +56,8 @@ _VALUE_HINTS = {
     "machine_label": "导出时带出的设备名称，导入时不看这一列",
 }
 _ERROR_HINTS = {
-    "operator_code": "留空、有首尾空格、或这个工号在系统里找不到",
-    "machine_code": "留空、有首尾空格、这个编号找不到、或同一份文件里这对组合重复出现",
+    "operator_code": "留空，或这个工号在系统里找不到",
+    "machine_code": "留空、这个编号找不到，或同一份文件里这对组合重复出现",
     "skill_level": "填了初级 / 普通 / 熟练以外的词",
     "is_primary": "填了是 / 否以外的词，或同一个人有多行都填了是",
     "operator_label": "这一列不校验",

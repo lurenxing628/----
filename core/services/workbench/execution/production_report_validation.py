@@ -326,7 +326,7 @@ def _adopted_conflicts(before, after, current, revisions, source):
     return conflicts
 
 
-def execution_conflicts(ledger, facts, before, after, revisions, *, dependencies, protect_plan=True,
+def execution_conflicts(ledger, ledger_scope, facts, before, after, revisions, *, dependencies, protect_plan=True,
                         include_downstream_active=False, task_map=None):
     """Check final actual neighbours; corrections also retain adopted-plan protection."""
     operation = facts["operations"][before.operation_ref]
@@ -334,7 +334,13 @@ def execution_conflicts(ledger, facts, before, after, revisions, *, dependencies
     upstream = dependencies.projections(dependencies.relatives(operation, predecessors=True))
     downstream = dependencies.projections(refs)
     current = facts["current_tasks"].get(before.operation_ref)
-    plans = {} if not protect_plan else task_map if task_map is not None else ledger.task_map(refs, facts["plan"]["plan_ref"])
+    plans = (
+        {}
+        if not protect_plan
+        else task_map
+        if task_map is not None
+        else ledger.task_map(ledger_scope, refs, facts["plan"]["plan_ref"])
+    )
     conflicts = (_upstream_conflicts(after, upstream)
                  + _downstream_conflicts(before, after, downstream, plans)
                  + _adopted_conflicts(before, after, current, revisions, operation["source"]))
@@ -345,11 +351,11 @@ def execution_conflicts(ledger, facts, before, after, revisions, *, dependencies
     return conflicts
 
 
-def execution_conflict_details(ledger, facts, conflicts):
+def execution_conflict_details(ledger, ledger_scope, facts, conflicts):
     """Public identities, reasons and exact official arrangements for report rejection/preview."""
     refs = list(dict.fromkeys(item["operation_ref"] for item in conflicts))
-    operations = ledger.operation_rows(refs)
-    plans = ledger.task_map(refs, facts["plan"]["plan_ref"])
+    operations = ledger.operation_rows(ledger_scope, refs)
+    plans = ledger.task_map(ledger_scope, refs, facts["plan"]["plan_ref"])
     messages = {"upstream_time_conflict": "前道工序的实际完工时间与变更后保留的开工记录冲突",
                 "downstream_execution_exists": "后道工序已有开工或报工记录",
                 "downstream_requires_completion": "后道工序的执行或正式安排依赖本工序完工",

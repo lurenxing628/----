@@ -6,7 +6,7 @@ from typing import Optional
 
 @dataclass
 class BatchOperation:
-    """批次工序行；唯一生产构造边界 run_input_rows.operation_model 已校验全部字段。"""
+    """批次工序行模型；进入 build_algo_operations 前由 run_input_rows.operation_model 完成字段校验，已落库行复核可经 stored_algo_inputs.stored_batch_operation 按原值构造。"""
 
     id: int
     op_code: str

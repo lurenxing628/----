@@ -83,6 +83,9 @@ def test_scoped_actual_graph_keeps_full_plan_chain_and_hover_skips_report_reads(
     client = app_for(case).test_client()
     scope = dict(plan_ref=plan_ref, range_start='2026-09-09T12:00:00', range_end='2026-09-09T14:00:00')
     actual = read(client, ACTUAL, **scope)
+    batch_query = dict(plan_ref=plan_ref, batch_ids=['B2', 'B1'])
+    batched = read(client, ACTUAL, plan_ref=plan_ref, batch_ids=json.dumps(batch_query['batch_ids']))
+    assert batched['data']['scope']['batch_ids'] == ['B1', 'B2']
     graph = actual['data']['gantt_graph']
     assert actual['data']['task_count'] == 1 and actual['data']['items_complete'] is True
     assert graph['state'] == 'available' and graph['scope'] == 'full_plan'
@@ -90,36 +93,30 @@ def test_scoped_actual_graph_keeps_full_plan_chain_and_hover_skips_report_reads(
     assert 'critical_chain' not in actual['data']
     # The shipped frontend contract accepts the scoped response whose graph keeps the full-plan chain.
     assert run_current_js(r"""
-const C = h.runtime.ActualGanttContract;
+const C = h.module('ActualGanttContract.js'), ActualGanttWorkspace = h.module('ActualGanttWorkspace.jsx').default;
 assert.strictEqual(C.workspace(sourceData.payload, sourceData.query), sourceData.payload);
+assert.strictEqual(C.workspace(sourceData.batched, C.scope(sourceData.batchQuery)), sourceData.batched);
+for (const wrong of [
+  { plan_ref: sourceData.query.plan_ref },
+  { ...sourceData.query, range_start: '2026-09-09T08:00:00' },
+  { ...sourceData.query, plan_finish_date_from: '2026-09-09', plan_finish_date_to: '2026-09-09' },
+  { ...sourceData.query, resource_type: 'machine', resource_ref: sourceData.machineRef },
+  sourceData.batchQuery,
+]) assert.throws(() => C.workspace(sourceData.payload, wrong), /范围不完整/);
+for (const wrong of [
+  { plan_ref: sourceData.query.plan_ref, batch_ids: ['B1'] },
+  { plan_ref: sourceData.query.plan_ref, batch_ids: ['B2', 'B3'] },
+]) assert.throws(() => C.workspace(sourceData.batched, wrong), /范围不完整/);
 const payload = h.clone(sourceData.payload), item = payload.data.items[0], taskRef = item.task.task_ref;
 let reportNoReads = 0;
 const reports = Array.from({ length: 1000 }, (_, index) => {
   const ref = (index + 1).toString(16).padStart(48, '0'), no = 'RG-' + String(index + 1).padStart(4, '0');
-  return {
-    report_ref: ref,
-    get report_no() { reportNoReads++; return no; },
-    actual_start: item.task.start,
-    actual_end: item.task.end,
-    completed_quantity: 1,
-    effective_processing_hours: 0.1,
-    actual_machine_ref: item.task.machine_ref,
-    actual_operator_ref: item.task.operator_ref,
-    recorded_at: item.task.end,
-    correction_history: [],
-    remark: ''
-  };
+  return { report_ref: ref, get report_no() { reportNoReads++; return no; }, actual_start: item.task.start, actual_end: item.task.end,
+    completed_quantity: 1, effective_processing_hours: 0.1, actual_machine_ref: item.task.machine_ref,
+    actual_operator_ref: item.task.operator_ref, recorded_at: item.task.end, correction_history: [], remark: '' };
 });
-item.execution = {
-  ...item.execution,
-  execution_state: 'partial',
-  known_completed_quantity: 10,
-  remaining_quantity: 0,
-  confirmed_finish: null,
-  data_gaps: [{ report_ref: reports[0].report_ref, message: '待核对数量' }],
-  reports,
-  remaining_plan: null
-};
+item.execution = { ...item.execution, execution_state: 'partial', known_completed_quantity: 10, remaining_quantity: 0,
+  confirmed_finish: null, data_gaps: [{ report_ref: reports[0].report_ref, message: '待核对数量' }], reports, remaining_plan: null };
 const origUseMemo = h.runtime.React.useMemo, slots = [];
 let cursor = 0;
 const same = (a, b) => a && b && a.length === b.length && a.every((v, i) => v === b[i]);
@@ -132,13 +129,13 @@ try {
   const view = { mode: 'machine', query: '', selected: taskRef, report: null, late: 'all', collapsed: {}, onlySelected: false, details: true, chain: false };
   const baseStates = { 0: sourceData.query, 2: payload, 3: false, 4: null, 5: view };
   cursor = 0;
-  const firstTree = h.render(h.runtime.ActualGanttWorkspace, { initialContext: { plan_ref: sourceData.query.plan_ref, task_ref: taskRef }, onNavigate() {} },
+  const firstTree = h.render(ActualGanttWorkspace, { initialContext: { plan_ref: sourceData.query.plan_ref, task_ref: taskRef }, onNavigate() {} },
     { Content: { ...baseStates, 8: null, 11: null } });
   const selectNode = h.walk(firstTree).find(node => node.type === 'select' && node.props['aria-label'] === '选择报工详情');
   assert(selectNode && selectNode.children[1].length === 1000);
   const readsBeforeHover = reportNoReads;
   cursor = 0;
-  const hoverTree = h.render(h.runtime.ActualGanttWorkspace, { initialContext: { plan_ref: sourceData.query.plan_ref, task_ref: taskRef }, onNavigate() {} },
+  const hoverTree = h.render(ActualGanttWorkspace, { initialContext: { plan_ref: sourceData.query.plan_ref, task_ref: taskRef }, onNavigate() {} },
     { Content: { ...baseStates, 8: { item, report: reports[0], title: '报工提示', x: 180, y: 120 }, 11: [taskRef] } });
   assert.strictEqual(reportNoReads - readsBeforeHover, 0, 'Hovering with 1,000 reports and details open must read report_no 0 extra times');
   const selectAfter = h.walk(hoverTree).find(node => node.type === 'select' && node.props['aria-label'] === '选择报工详情');
@@ -147,7 +144,7 @@ try {
   h.runtime.React.useMemo = origUseMemo;
 }
 return true;
-""", {'payload': actual, 'query': scope})['result'] is True
+""", {'payload': actual, 'query': scope, 'batched': batched, 'batchQuery': batch_query, 'machineRef': case.ref('machine', 'M1')})['result'] is True
 
 
 def test_field_scoped_page_write_and_files_keep_same_snapshot(ledger_case, monkeypatch, record_property):
@@ -160,9 +157,9 @@ def test_field_scoped_page_write_and_files_keep_same_snapshot(ledger_case, monke
     scope = dict(plan_ref=plan_ref, range_start='2026-09-09T08:00:00', range_end='2026-09-09T14:00:00')
     original, calls = FieldWorkspaceService.cohort, []
 
-    def cohort(reader, values):
+    def cohort(reader, ws_scope, values):
         calls.append(values)
-        return original(reader, values)
+        return original(reader, ws_scope, values)
 
     with monkeypatch.context() as patch:
         patch.setattr(FieldWorkspaceService, 'cohort', cohort)
@@ -278,8 +275,8 @@ def test_internal_execution_cohort_uses_actual_endpoint_budget(ledger_case):
     case.conn.commit()
     before = all_rows(case.conn)
     reader = queries.WorkbenchPlanQueryService(case.conn)
-    with reader.read_snapshot():
-        data = reader.execution_workspace(PlanReadScope(plan_ref))
+    with reader.read_snapshot() as context:
+        data = reader.execution_workspace(context, PlanReadScope(plan_ref))
     assert data['task_count'] == 3 and data['tasks_complete'] is True
     client = app_for(case).test_client()
     field = client.get(FIELD + '/tasks', query_string=dict(plan_ref=plan_ref, size=1, page=2))
@@ -316,18 +313,18 @@ def test_actual_large_plan_applies_finish_batch_and_overlap_before_ledger(ledger
     case.conn.commit()
     case.path = case.conn.execute('PRAGMA database_list').fetchone()[2]
     plan_ref, projected, statements = case.plan_ref(2), [], []
-    enriched, enrich_rows = [], PlanReadContext._enrich_rows
+    enriched, enrich_rows = [], PlanReadContext.enrich_rows
 
     def enrich(context, entry, prepared):
         enriched.append(len(prepared))
         return enrich_rows(context, entry, prepared)
 
-    monkeypatch.setattr(PlanReadContext, "_enrich_rows", enrich)
+    monkeypatch.setattr(PlanReadContext, "enrich_rows", enrich)
     original = actual_gantt.ExecutionLedgerService.workspace_projection
 
-    def project(ledger, ref, tasks, *, include_history=True):
+    def project(ledger, ledger_scope, ref, tasks, *, include_history=True):
         projected.append(len(tasks))
-        return original(ledger, ref, tasks, include_history=include_history)
+        return original(ledger, ledger_scope, ref, tasks, include_history=include_history)
 
     monkeypatch.setattr(actual_gantt.ExecutionLedgerService, 'workspace_projection', project)
     monkeypatch.setattr(queries.WorkbenchPlanQueryService, 'execution_workspace',
@@ -395,10 +392,10 @@ def test_actual_export_skips_graph_and_keeps_workspace_snapshot_and_deviations(l
     plan_ref, _ = _three_tasks(case)
     service = actual_gantt.ActualGanttService(case.conn)
     scope = ActualGanttScope.parse({"plan_ref": plan_ref})
-    with service.read_snapshot():
-        full, full_state = service.workspace(scope, full_workspace=True)
-    with service.read_snapshot():
-        exported, export_state = service.workspace(scope, full_workspace=False)
+    with service.read_snapshot() as gantt_scope:
+        full, full_state = service.workspace(gantt_scope, scope, full_workspace=True)
+    with service.read_snapshot() as gantt_scope:
+        exported, export_state = service.workspace(gantt_scope, scope, full_workspace=False)
     assert full["gantt_graph"] is not None
     assert exported["gantt_graph"] is None and exported["calendar"] is None
     assert full_state == export_state

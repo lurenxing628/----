@@ -51,7 +51,7 @@ def trial_adoption_receipt(scenario_ref, request_key):
     if set(request.args) != {"data_context_ref"} or any(len(values) != 1 for _, values in request.args.lists()):
         reject("invalid_input", "查询采用结果的条件不完整、有多余项或重复项，请重新查询。", 400)
     result = _service().resolve_command(scenario_ref, request_key, data_context_ref=request.args["data_context_ref"])
-    return query_success(result, unbound_snapshot())
+    return json_response(result)
 
 
 def register_trial_adoption_routes(bp):

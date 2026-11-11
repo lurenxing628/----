@@ -8,12 +8,10 @@ def calendar_from_sources(sources, *, schema_version, identities, plan_ref, scop
     if sources is None:
         return None
     profiles = sources["profiles"]
-    shifts = {row["profile_id"]: {key: row[key] for key in ("profile_id", "anchor_date", "cycle_days", "status")}
-              for row in profiles if row["profile_id"] is not None}
     tables = {"SchemaVersion": schema_version, "WorkbenchCalendarDefaults": sources["defaults"],
               "WorkCalendar": sources["global"], "OperatorCalendar": sources["personal"],
               "WorkbenchOperatorProfiles": [{key: row[key] for key in ("operator_id", "shift_profile_id")} for row in profiles],
-              "WorkbenchShiftProfiles": list(shifts.values()), "WorkbenchShiftPatternDays": sources["patterns"],
+              "WorkbenchShiftProfiles": sources["shift_profiles"], "WorkbenchShiftPatternDays": sources["patterns"],
               "Machines": sources["machines"], "Operators": sources["operators"],
               "MachineDowntimes": sources["downtimes"],
               "WorkbenchEntityRefs": [{"kind": kind, "entity_key": key, "ref": ref, "active": 1}

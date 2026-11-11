@@ -6,7 +6,7 @@ from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_action import action_row, reject_action_row
 
-from .file_hours_values import HOURS_FIELDS, assertions, flat_hours, hours_values, row_key, supplied_values
+from .file_hours_values import HOURS_FIELDS, assertions, flat_hours, hours_values, row_key
 from .part_actions_facts import plain_part_action_facts as _plain
 from .projection import public_sequence, require_ref
 from .zero_hours import zero_confirmation_required
@@ -73,7 +73,7 @@ class HoursFilePreview:
         row = action_row(decoded["row"], action="update")
         row["errors"] = list(decoded["errors"])
         try:
-            values = supplied_values(decoded["values"])
+            values = decoded["values"]
             code, sequence = row_key(values)
             row.update(business_code=code, sequence=public_sequence(sequence))
             part_ref, operation = self.resolve(code, sequence)

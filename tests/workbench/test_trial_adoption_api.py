@@ -35,15 +35,23 @@ def test_real_http_preview_confirm_and_receipt(trial_case):
     assert response.status_code == 200, response.get_json()
     result = response.get_json()
     context = {"data_context_ref": preview["data_context_ref"]}
-    receipt_payload = client.get(path + "/adoption-commands/" + KEY, query_string=context).get_json()
-    assert receipt_payload["meta"]["snapshot_ref"] is None and "." not in receipt_payload["meta"]["as_of"]
-    receipt = receipt_payload["data"]
-    assert receipt["state"] == "committed" and receipt["receipt"]["receipt_ref"] == result["receipt_ref"]
+    receipt_resp = client.get(path + "/adoption-commands/" + KEY, query_string=context)
+    assert receipt_resp.status_code == 200 and receipt_resp.headers["Cache-Control"] == "no-store"
+    receipt = receipt_resp.get_json()
+    assert receipt == {
+        "state": "recorded",
+        "receipt": {**result, "replayed": True},
+        "may_be_in_flight": False,
+        "resolution": "recorded",
+        "data_context_ref": preview["data_context_ref"],
+    }
     statements = []
     before, changes = snapshot(case.conn), case.conn.total_changes
     case.conn.set_trace_callback(statements.append)
     try:
-        history, history_state = WorkbenchTrialAdoptionHistoryService(case.conn).read(saved["scenario_ref"])
+        history, history_state = WorkbenchTrialAdoptionHistoryService(case.conn).read(
+            saved["scenario_ref"], bind_snapshot=lambda _scope, content: content
+        )
     finally:
         case.conn.set_trace_callback(None)
     queries = [sql.upper() for sql in statements if sql.upper().startswith("SELECT")]
@@ -71,8 +79,14 @@ def test_real_http_preview_confirm_and_receipt(trial_case):
     assert set(summary["proof"]) == {"proof_version", "scenario_ref", "draft_ref", "scenario_revision", "baseline_ref", "baseline_version"}
     assert summary["proof"]["proof_version"] == "content_refs_v1"
     assert client.get(path + "/adopt").status_code == 405
-    unknown = client.get(path + "/adoption-commands/not-yet-seen-request", query_string=context).get_json()["data"]
-    assert unknown == {"state": "not_observed", "receipt": None, "may_be_in_flight": True, "can_retry_automatically": False}
+    unknown = client.get(path + "/adoption-commands/not-yet-seen-request", query_string=context).get_json()
+    assert unknown == {
+        "state": "not_observed",
+        "receipt": None,
+        "may_be_in_flight": True,
+        "resolution": "unresolved",
+        "data_context_ref": preview["data_context_ref"],
+    }
 
 
 def test_http_adoption_recovery_distinguishes_replaced_context_and_replays_receipt(trial_case, monkeypatch):
@@ -97,16 +111,26 @@ def test_http_adoption_recovery_distinguishes_replaced_context_and_replays_recei
         assert response.status_code == 400 and response.get_json()["error"]["code"] == "invalid_input"
     response = client.get(command_path, query_string={"data_context_ref": context})
     assert response.status_code == 200 and response.headers["Cache-Control"] == "no-store"
-    assert response.get_json()["data"] == {
-        "state": "not_observed", "receipt": None, "may_be_in_flight": True, "can_retry_automatically": False}
+    assert response.get_json() == {
+        "state": "not_observed",
+        "receipt": None,
+        "may_be_in_flight": True,
+        "resolution": "unresolved",
+        "data_context_ref": context,
+    }
     for target, query in (
         (command_path, {"data_context_ref": other_context}),
         (BASE + "f" * 48 + "/adoption-commands/" + KEY, {"data_context_ref": context}),
     ):
         response = client.get(target, query_string=query)
         assert response.status_code == 200
-        assert response.get_json()["data"] == {
-            "state": "not_observed", "receipt": None, "may_be_in_flight": False, "can_retry_automatically": False}
+        assert response.get_json() == {
+            "state": "not_observed",
+            "receipt": None,
+            "may_be_in_flight": False,
+            "resolution": "context_replaced",
+            "data_context_ref": context,
+        }
     assert snapshot(case.conn) == before
 
     adopted = client.post(path + "/adopt", json={"write_token": checked["write_context"]["write_token"],
@@ -123,11 +147,13 @@ def test_http_adoption_recovery_distinguishes_replaced_context_and_replays_recei
     response = client.get(command_path, query_string={"data_context_ref": other_context})
     assert response.status_code == 200 and response.headers["Cache-Control"] == "no-store"
     result = response.get_json()
-    assert result["ok"] is True and result["schema_version"] == 1
-    assert result["meta"]["snapshot_ref"] is None
-    assert set(result["data"]) == {"state", "receipt"} and result["data"]["state"] == "committed"
-    assert result["data"]["receipt"]["receipt_ref"] == adopted.get_json()["receipt_ref"]
-    assert result["data"]["receipt"]["replayed"] is True
+    assert result == {
+        "state": "recorded",
+        "receipt": {**adopted.get_json(), "replayed": True},
+        "may_be_in_flight": False,
+        "resolution": "recorded",
+        "data_context_ref": other_context,
+    }
     assert context_reads == []
 
 
@@ -359,9 +385,53 @@ def test_http_ack_unknown_points_to_original_scenario_and_key(trial_case):
     assert value["error"]["result_target"] == path + "/adoption-commands/" + KEY
     assert value["error"]["retryable"] is False
     receipt = client.get(value["error"]["result_target"],
-                         query_string={"data_context_ref": preview["data_context_ref"]}).get_json()["data"]
-    assert receipt["state"] == "committed" and receipt["receipt"]["data"]["scenario_ref"] == saved["scenario_ref"]
+                         query_string={"data_context_ref": preview["data_context_ref"]}).get_json()
+    assert receipt["state"] == "recorded" and receipt["may_be_in_flight"] is False and receipt["resolution"] == "recorded"
+    assert receipt["data_context_ref"] == preview["data_context_ref"]
+    assert receipt["receipt"]["data"]["scenario_ref"] == saved["scenario_ref"]
     assert case.conn.execute("SELECT COUNT(*) FROM ScheduleHistory").fetchone()[0] == 2
+
+
+def test_trial_adoption_history_stale_snapshot_short_circuits_without_decoding_scenario_rows(trial_case):
+    from web.routes.workbench.trial_adoption_history import register_trial_adoption_history_routes
+
+    case = trial_case
+    case.app.config["SECRET_KEY"] = "temporary-trial-adoption-history"
+    saved = saved_scenario(case)
+    client = api(case)
+    history_bp = Blueprint("trial_adoption_history_routes", __name__)
+    register_trial_adoption_history_routes(history_bp)
+    case.app.register_blueprint(history_bp)
+
+    statements = []
+
+    @case.app.before_request
+    def trace_db():
+        g.db.set_trace_callback(statements.append)
+
+    path = BASE + saved["scenario_ref"]
+    token = client.post(path + "/adopt-preview", json={}).get_json()["data"]["write_context"]["write_token"]
+    adopted = client.post(path + "/adopt", json={"write_token": token, "request_key": KEY, "input": INTENT})
+    assert adopted.status_code == 200
+
+    statements.clear()
+    first = client.get(path + "/adoption-history")
+    assert first.status_code == 200, first.get_json()
+    first_queries = [sql.upper() for sql in statements if sql.upper().startswith("SELECT")]
+    assert sum("FROM WORKBENCHTRIALSCENARIOS WHERE SCENARIO_REF=" in sql for sql in first_queries) == 1
+    assert sum("FROM WORKBENCHTRIALSCENARIOROWS WHERE SCENARIO_REF=" in sql for sql in first_queries) == 1
+    stale_snapshot_ref = first.get_json()["meta"]["snapshot_ref"]
+    assert stale_snapshot_ref
+
+    case.plan(3, [case.op_id])
+    case.conn.commit()
+
+    statements.clear()
+    stale = client.get(path + "/adoption-history", query_string={"snapshot_ref": stale_snapshot_ref, "page": "2"})
+    assert stale.status_code == 409
+    assert stale.get_json()["error"]["code"] == "snapshot_stale"
+    stale_queries = [sql.upper() for sql in statements if sql.upper().startswith("SELECT")]
+    assert sum("WORKBENCHTRIALSCENARIOROWS" in sql for sql in stale_queries) == 0
 
 
 @pytest.mark.parametrize("injected", [AppError(ErrorCode.DB_QUERY_ERROR, "注入的存储失败"), RuntimeError("注入的未预期失败")])

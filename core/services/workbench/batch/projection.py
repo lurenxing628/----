@@ -1,5 +1,7 @@
 """Public batch facts, never guessed scheduling or execution state."""
 
+from typing import Any, Dict, List, Mapping, Tuple
+
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.workbench_batch import FIELDS, MAX_INTEGER, PRIORITIES, READY, STATUSES
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -17,7 +19,7 @@ from core.shared.stored_dates import stored_date
 from core.shared.strict_parse import is_exact_finite_number, is_stored_number
 
 from .execution import batch_progress, copied_execution, operation_execution_fields
-from .facts import index_relations
+from .facts import delete_blocker, index_relations, unreferenced_blocker
 from .resource_choices import BatchResourceFacts
 
 
@@ -64,13 +66,66 @@ def batch_choices(facts, links):
     refs = _active_refs(facts)
     return {"parts": [{"ref": _entity_ref(refs, "part", row["part_no"]), "business_code": row["part_no"], "label": row["part_name"]}
                       for row in facts["Parts"]],
-            **{name: [{"ref": _entity_ref(refs, kind, row[key]), "business_code": row[key], "label": row["name"], "status": row.get("status")}
+            **{name: [{"ref": _entity_ref(refs, kind, row[key]), "business_code": row[key], "label": row["name"], "status": row["status"]}
                       for row in facts[table]]
                for name, kind, table, key in (("machines", "machine", "Machines", "machine_id"),
                                               ("operators", "operator", "Operators", "operator_id"),
                                               ("suppliers", "supplier", "Suppliers", "supplier_id"))},
             "authorizations": [{"machine_ref": _entity_ref(refs, "machine", mid), "operator_ref": _entity_ref(refs, "operator", oid)}
                                for oid, mid in sorted(links)]}
+
+
+_POLICY_UNREFERENCED_MESSAGES = {
+    "outsourcing": "已有外协发出或回厂登记，不能删除、重建或编辑工序，以免原登记无法继续核对回厂。",
+    "protected": "已有排产、报工或执行状态记录，暂不能删除、替换或编辑工序。",
+}
+_POLICY_DELETE_MESSAGES = {
+    "quantity_splits": "这个批次有数量拆分记录，需保留原批与子批以核对数量，不能删除。",
+    "materials": "批次还挂着物料需求，不能删除。请先清除这个批次的物料需求，再删除批次。",
+}
+
+
+def batch_action_policy(entity: Mapping[str, Any]) -> Tuple[List[str], Dict[str, bool], List[Dict[str, str]]]:
+    actions = ["batch.update", "batch.materials_update"]
+    blocked: List[Dict[str, str]] = []
+    relationships = entity["relationships"]
+    has_outsourcing = bool(relationships["outsourcing_reference_count"])
+    is_protected = entity["protected"]
+    ref_blocker = unreferenced_blocker(has_outsourcing=has_outsourcing, is_protected=is_protected)
+    if ref_blocker is None:
+        actions.extend(("batch.sync_confirm", "batch.operation_update"))
+        del_blocker = delete_blocker(
+            has_outsourcing=has_outsourcing,
+            is_protected=is_protected,
+            has_quantity_splits=bool(relationships["quantity_split_reference_count"]),
+            has_materials=bool(relationships["material_requirement_count"]),
+        )
+        if del_blocker is None:
+            actions.append("batch.delete")
+        else:
+            blocked.append({"action": "batch.delete", "message": _POLICY_DELETE_MESSAGES[del_blocker]})
+    else:
+        reason = _POLICY_UNREFERENCED_MESSAGES[ref_blocker]
+        for action in ("delete", "sync_confirm", "operation_update"):
+            blocked.append({"action": "batch." + action, "message": reason})
+    template = entity.get("template")
+    if ref_blocker is None and template is not None and not template["complete"]:
+        actions.remove("batch.sync_confirm")
+        blocked.append({
+            "action": "batch.sync_confirm",
+            "message": "；".join(row["message"].rstrip("。") for row in template["diagnostics"]) + "。",
+        })
+    capabilities = {
+        action: action in actions
+        for action in (
+            "batch.update",
+            "batch.materials_update",
+            "batch.delete",
+            "batch.sync_confirm",
+            "batch.operation_update",
+        )
+    }
+    return actions, capabilities, blocked
 
 
 class BatchProjection:
@@ -97,7 +152,12 @@ class BatchProjection:
         row = self.catalogs[kind].get(key)
         if row is None:
             return None
-        return {"ref": self.ref(kind, key), "business_code": key, "label": row["name"], "status": row.get("status")}
+        return {
+            "ref": self.ref(kind, key),
+            "business_code": key,
+            "label": row["name"],
+            "status": None if kind == "op_type" else row["status"],
+        }
 
     def internal_issues(self, row, numbers, issues):
         for key in ("setup_hours", "unit_hours"):
@@ -198,8 +258,28 @@ class BatchProjection:
     def entity(self, row):
         return self._entity(row, include_operations=True, ref=self.ref("batch", row["batch_id"]))
 
-    def summary(self, row):
-        return self._entity(row, include_operations=False, ref=self.ref("batch", row["batch_id"]))
+    def summary(self, row, *, header=None):
+        return self._entity(row, include_operations=False, ref=self.ref("batch", row["batch_id"]), header=header)
+
+    def batch_header(self, row, *, readiness=None):
+        part = self.parts.get(row["part_no"])
+        if part is None:
+            raise WorkbenchCommandRejected("storage_failure", "这个批次对应的零件已经不在了。请刷新重试；仍不行请联系维护人员。", 500)
+        issues = []
+        fields = {key: row[key] for key in FIELDS}
+        fields["quantity"] = numeric(row["quantity"], issues, "数量", integer=True)
+        for key in ("due_date", "ready_date"):
+            fields[key] = date_text(row[key], issues, "交期" if key == "due_date" else "齐套日期")
+        for key, allowed in (("priority", PRIORITIES), ("ready_status", READY), ("status", STATUSES)):
+            if row[key] not in allowed:
+                issues.append(issue("原优先级、齐套或状态标记不明确。"))
+        display_ready, material_issues = (
+            self.material_availability.readiness_state(row, self.material_day)
+            if readiness is None
+            else readiness
+        )
+        issues.extend(material_issues)
+        return part, fields, display_ready, issues
 
     def updated_entity(self, row, before):
         """只改批次自身字段（优先级、交期、备注）的预览：工序投影只看零件号和工序行，直接沿用 before 的工序。"""
@@ -223,12 +303,11 @@ class BatchProjection:
         return self._entity(created, include_operations=True, ref=None, operations=operations, relations=relations,
                             readiness=copied.readiness_state(created, self.material_day))
 
-    def _entity(self, row, *, include_operations, ref, operations=None, relations=None, readiness=None):
+    def _entity(self, row, *, include_operations, ref, operations=None, relations=None, readiness=None, header=None):
         facts = self.relations[row["batch_id"]] if relations is None else relations
-        issues = []
-        part = self.parts.get(row["part_no"])
-        if part is None:
-            raise WorkbenchCommandRejected("storage_failure", "这个批次对应的零件已经不在了。请刷新重试；仍不行请联系维护人员。", 500)
+        part, fields, display_ready, issues = (
+            self.batch_header(row, readiness=readiness) if header is None else header
+        )
         if operations is not None:
             ops = operations
         elif include_operations:
@@ -236,16 +315,6 @@ class BatchProjection:
         else:
             # 摘要只取件数和完工统计，不需要工序顺序。
             ops = [self.operation_summary(row, op) for op in facts["operations"]]
-        fields = {key: row[key] for key in FIELDS}
-        fields["quantity"] = numeric(row["quantity"], issues, "数量", integer=True)
-        for key in ("due_date", "ready_date"):
-            fields[key] = date_text(row[key], issues, "交期" if key == "due_date" else "齐套日期")
-        for key, allowed in (("priority", PRIORITIES), ("ready_status", READY), ("status", STATUSES)):
-            if row[key] not in allowed:
-                issues.append(issue("原优先级、齐套或状态标记不明确。"))
-        display_ready, material_issues = (self.material_availability.readiness_state(row, self.material_day)
-                                          if readiness is None else readiness)
-        issues.extend(material_issues)
         done, all_complete, status = batch_progress(ops, row["status"])
         if row["status"] == "completed" and (not ops or done != len(ops)):
             issues.append(issue("批次标着完成，但工序状态对不上，不能认定整批已完成。", "completion_inconsistent"))
@@ -267,10 +336,11 @@ class BatchProjection:
     def materials(self, batch):
         from core.models.workbench_batch_material import material_row_key, numbered_material_requirements
         availability = self.material_availability
+        materials = {row["material_id"]: row for row in self.facts["Materials"]}
         rows = []
         batch_ref = self.ref("batch", batch["batch_id"])
         for ordinal, row in numbered_material_requirements(self.relations[batch["batch_id"]]["materials"]):
-            material = self.catalogs["material"].get(row["material_id"])
+            material = materials.get(row["material_id"])
             issues = []
             rows.append({"row_key": material_row_key(batch_ref, ordinal),
                          "material_ref": self.ref("material", row["material_id"]), "business_code": row["material_id"],

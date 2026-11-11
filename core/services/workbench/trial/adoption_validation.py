@@ -1,11 +1,10 @@
 """Revalidate exact saved arrangements against current production in one snapshot."""
 
-from dataclasses import replace
+from __future__ import annotations
 
 from core.errors import AppError, ValidationError
 from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked, TrialAdoptionEvidence
@@ -13,66 +12,75 @@ from core.services.scheduler.execution.execution_ledger_adapter import ledger_re
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario, schedule_rows
-from core.services.workbench.run.candidate_adoption_storage import _require_official_baseline
-from core.services.workbench.run.candidate_adoption_validation import _require_official_scope, validate_adoption_payload
-from core.services.workbench.run.compute_validation import validate_candidate
+from core.services.workbench.run.candidate_adoption_constraints import bind_validated_schedule_outcome
+from core.services.workbench.run.candidate_adoption_storage import require_official_baseline
+from core.services.workbench.run.candidate_adoption_validation import require_official_scope
+from core.services.workbench.run.input import prepare_business_input
 from core.services.workbench.run.jobs_facts import run_execution_projections
 
-from .adoption_input import prepare_trial_adoption_input
 from .facts import live_context, saved_capture
 from .materials import run_window
 from .validation import TrialValidator
 
-_INPUT_UNPROVEN = ("scenario_constraint_unproven", "试调方案的排产输入没有通过核对，正式计划没有改变。请回到试调列表重新预检。")
+_INPUT_UNPROVEN = (
+    "scenario_constraint_unproven",
+    "试调方案的排产输入没有通过核对，正式计划没有改变。请回到试调列表重新预检。",
+)
 # 采用复核原样保留的安排：试调核对已按同一口径保护；仍对不上时说清楚原因，不让人反复重新预检。
 _INPUT_PROBLEMS = {
-    "protected_seed_changed": ("frozen_arrangement_changed",
-        "试调方案改动了正式采用要原样保留的安排（来源排产不重排时段里的原安排），正式计划没有改变。"
-        "请从当前正式计划重新发起试调；这些工序如要改排，请重新排产，并在排产检查里把不重排时段改短或不设。"),
-    "all_operations_frozen": ("scenario_nothing_to_adopt",
-        "试调方案里的工序都按来源排产的不重排时段原样保留，和当前正式计划一样，没有可以采用的调整，正式计划没有改变。"),
+    "all_operations_frozen": (
+        "scenario_nothing_to_adopt",
+        "试调方案里的工序都按来源排产的不重排时段原样保留，和当前正式计划一样，没有可以采用的调整，正式计划没有改变。",
+    ),
 }
 
 
 def validate_trial_adoption(conn, scenario_ref, *, data_context):
     try:
-        with candidate_read_snapshot(conn), ledger_read_snapshot(conn) as execution_service:
+        with candidate_read_snapshot(conn), ledger_read_snapshot(conn) as ledger:
             scenario = load_saved_scenario(conn, scenario_ref)
             saved, head, rows = scenario.saved, scenario.head, scenario.rows
             admission = head["admission"]
             capture = saved_capture(conn, admission)
-            live = live_context(conn, scenario.origin, capture, execution_service=execution_service,
-                                data_context=data_context)
+            live = live_context(
+                conn,
+                scenario.origin,
+                capture,
+                ledger=ledger,
+                data_context=data_context,
+            )
             _current_baseline(admission, live)
             _original_work(rows, live)
-            checked, settings, held, trial_intervals = _scenario_validation(conn, saved, admission, rows, live)
-            if checked["issues"]:
-                raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案没有通过当前的完整核对，正式计划没有改变。", checked["issues"])
-            projections = run_execution_projections(conn, settings, capture=capture,
-                existing=live["preflight_facts"].execution_projections.values(), service=execution_service)
-            _require_official_baseline(live["baseline"], projections)
-            prepared = prepare_trial_adoption_input(conn, settings, projections, live, held=held, capture=capture)
-            _complete_scope(rows, prepared)
-            # Pending stage work follows the run's end date; the saved rows keep their own span.
-            intervals_by_row = trial_intervals["current_by_row"]
-            prepared = replace(prepared, end_date_norm=_span_end(rows, intervals_by_row))
-            payload = validate_candidate(prepared, schedule_rows(rows, intervals_by_row))
-            if payload.scheduled_op_ids != prepared.schedule_output_allowed_op_ids:
-                raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案没有覆盖所选批次的全部工序，正式计划没有改变。")
-            _require_official_scope(prepared.latest_plan_rows, payload.scheduled_op_ids)
-            validate_adoption_payload(conn, prepared, payload)
-            proof = {"proof_version": "content_refs_v1", "scenario_ref": scenario_ref,
-                     "draft_ref": head["draft_ref"], "scenario_revision": head["scenario_revision"],
-                     "baseline_ref": live["baseline"]["plan_ref"], "baseline_version": live["baseline"]["version"]}
-            snapshot = {"proof": proof, "revisions": live["revisions"], "data_context_ref": live["data_context_ref"]}
-            return TrialAdoptionEvidence(scenario_ref, head["draft_ref"], live["baseline"], snapshot, prepared, payload,
-                                         run_window(admission), proof=proof)
+            validator = _scenario_validator(conn, saved, admission, rows, live)
+            evaluation = validator.evaluate_constraints(check_baseline=False)
+            if evaluation.issues:
+                raise TrialAdoptionBlocked(
+                    "scenario_constraint_unproven",
+                    "试调方案没有通过当前的完整核对，正式计划没有改变。",
+                    list(evaluation.issues),
+                )
+            return _build_trial_adoption_evidence(
+                conn,
+                scenario_ref=scenario_ref,
+                head=head,
+                admission=admission,
+                rows=rows,
+                capture=capture,
+                live=live,
+                ledger=ledger,
+                validator=validator,
+                evaluation=evaluation,
+            )
     except CandidateAdoptionBlocked as exc:
         if exc.code == "official_scope_not_covered":
-            raise TrialAdoptionBlocked(exc.code,
-                "试调方案没有覆盖当前正式计划的全部工序。请将相关批次一起排产后再试调。") from exc
+            raise TrialAdoptionBlocked(
+                exc.code,
+                "试调方案没有覆盖当前正式计划的全部工序。请将相关批次一起排产后再试调。",
+            ) from exc
         raise TrialAdoptionBlocked(
-            exc.code, "试调方案没有通过采用前的核对，正式计划没有改变。请回到试调列表重新预检。") from exc
+            exc.code,
+            "试调方案没有通过采用前的核对，正式计划没有改变。请回到试调列表重新预检。",
+        ) from exc
     except TrialAdoptionBlocked:
         raise
     except WorkbenchCommandRejected as exc:
@@ -82,8 +90,77 @@ def validate_trial_adoption(conn, scenario_ref, *, data_context):
         raise TrialAdoptionBlocked(exc.code, str(exc)) from exc
     except CandidateRunInputError as exc:
         raise TrialAdoptionBlocked(*_INPUT_PROBLEMS.get(exc.reason, _INPUT_UNPROVEN)) from exc
-    except (PieceAdoptionBlocked, ValidationError, AppError) as exc:
-        raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案的现场数据、编号或约束资料不完整，没有执行正式采用。") from exc
+    except (ValidationError, AppError) as exc:
+        raise TrialAdoptionBlocked(
+            "scenario_constraint_unproven",
+            "试调方案的现场数据、编号或约束资料不完整，没有执行正式采用。",
+        ) from exc
+
+
+def _build_trial_adoption_evidence(
+    conn,
+    *,
+    scenario_ref,
+    head,
+    admission,
+    rows,
+    capture,
+    live,
+    ledger,
+    validator,
+    evaluation,
+):
+    facts = live["preflight_facts"]
+    latest_plan_rows = facts.latest_plan_rows(live["baseline"]["version"] or 0)
+    projections = run_execution_projections(
+        validator.settings,
+        capture=capture,
+        existing=facts.execution_projections.values(),
+        ledger=ledger,
+        facts=facts,
+        latest_plan_rows=latest_plan_rows,
+    )
+    require_official_baseline(live["baseline"], projections)
+    prepared = prepare_business_input(
+        conn,
+        validator.settings,
+        projections,
+        facts=facts,
+        config_snapshot=facts.configuration(),
+        baseline=live["baseline"],
+        held=validator.held,
+        admitted_piece_scope=evaluation.piece_scope,
+        include_efforts=False,
+    )
+    _complete_scope(rows, prepared)
+    outcome = bind_validated_schedule_outcome(
+        prepared,
+        schedule_rows(rows, evaluation.resolved_intervals_by_row),
+        evaluation,
+    )
+    scheduled_op_ids = outcome.validated_payload.scheduled_op_ids
+    if scheduled_op_ids != prepared.allowed_op_ids:
+        raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案没有覆盖所选批次的全部工序，正式计划没有改变。")
+    require_official_scope(prepared.latest_plan_rows, scheduled_op_ids)
+    proof = {
+        "proof_version": "content_refs_v1",
+        "scenario_ref": scenario_ref,
+        "draft_ref": head["draft_ref"],
+        "scenario_revision": head["scenario_revision"],
+        "baseline_ref": live["baseline"]["plan_ref"],
+        "baseline_version": live["baseline"]["version"],
+    }
+    snapshot = {"proof": proof, "revisions": live["revisions"], "data_context_ref": live["data_context_ref"]}
+    return TrialAdoptionEvidence(
+        scenario_ref,
+        head["draft_ref"],
+        live["baseline"],
+        snapshot,
+        prepared,
+        outcome,
+        run_window(admission),
+        proof=proof,
+    )
 
 
 def _current_baseline(admission, live):
@@ -93,7 +170,7 @@ def _current_baseline(admission, live):
         raise TrialAdoptionBlocked("snapshot_stale", "建草稿之后现场数据变了，请重新核对这份试调方案。")
 
 
-def _scenario_validation(conn, saved, admission, rows, live):
+def _scenario_validator(conn, saved, admission, rows, live):
     mapping = {task["source_task_ref"]: task["task_ref"] for task in saved["tasks"]}
     issues = []
     for original in admission["base_issues"]:
@@ -102,9 +179,7 @@ def _scenario_validation(conn, saved, admission, rows, live):
             if item.get(key) in mapping:
                 item[key] = mapping[item[key]]
         issues.append(item)
-    validator = TrialValidator(conn, dict(admission, base_issues=issues), rows, live)
-    checked = validator.evaluate_saved(check_baseline=False)
-    return checked, validator.settings, validator.held, validator.trial_intervals
+    return TrialValidator(conn, dict(admission, base_issues=issues), rows, live)
 
 
 def _original_work(rows, live):
@@ -114,9 +189,11 @@ def _original_work(rows, live):
     refs = live["preflight_facts"].refs
     for row in rows:
         original = row["original"]
-        if (not same(original["operation"], ops.get(original["operation"]["id"]))
-                or not same(original["batch"], batches.get(original["batch"]["batch_id"]))
-                or refs.get(("batch", original["batch"]["batch_id"])) != original["batch_ref"]):
+        if (
+            not same(original["operation"], ops.get(original["operation"]["id"]))
+            or not same(original["batch"], batches.get(original["batch"]["batch_id"]))
+            or refs.get(("batch", original["batch"]["batch_id"])) != original["batch_ref"]
+        ):
             raise TrialAdoptionBlocked("scenario_work_changed", "试调方案里的工序、数量、工时或批次和当前资料不一致。")
         for kind in ("machine", "operator"):
             current = row["current"]
@@ -125,18 +202,16 @@ def _original_work(rows, live):
                 raise TrialAdoptionBlocked("scenario_resource_identity_changed", "试调方案中的设备或人员已删除或被替换。")
 
 
-def _span_end(rows, intervals_by_row):
-    return max(intervals_by_row[row["row_ref"]][1].date() for row in rows)
-
-
 def _complete_scope(rows, prepared):
     saved = {row["operation_ref"]: row for row in rows}
-    deferred = material_deferred_ids(prepared.dispositions, prepared.normalized_input)
+    deferred = material_deferred_ids(prepared.dispositions, prepared.settings)
     expected = [item for item in prepared.dispositions if item["op_id"] not in deferred]
     if set(saved) != {item["operation_ref"] for item in expected}:
         raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案未覆盖批次的全部工序，无法正式采用。")
     for item in expected:
         original = saved[item["operation_ref"]]["original"]
-        if (original["operation"]["id"] != item["op_id"]
-                or original["predecessor_operation_refs"] != item["predecessor_refs"]):
+        if (
+            original["operation"]["id"] != item["op_id"]
+            or original["predecessor_operation_refs"] != item["predecessor_refs"]
+        ):
             raise TrialAdoptionBlocked("scenario_dependency_changed", "试调方案里的工序或前后序和当前工艺不一致。")

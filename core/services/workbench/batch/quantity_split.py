@@ -11,8 +11,9 @@ from data.repositories.batch_material_repo import BatchMaterialRepository
 from data.repositories.batch_material_stage_repo import BatchMaterialStageRepository
 
 from .bulk import WorkbenchBatchBulkService
-from .facts import BatchFacts, index_relations, require_unreferenced
+from .facts import index_relations, require_unreferenced
 from .materials import WorkbenchBatchMaterialService
+from .scope import BatchFactScope
 from .service import WorkbenchBatchService, stored_batch_values
 
 
@@ -51,16 +52,16 @@ def _require_splittable_batch(batch, operations):
 
 
 class WorkbenchQuantitySplitService:
-    def __init__(self, conn, logger=None, reader=None):
+    def __init__(self, conn, logger=None):
         self.conn = conn
-        self.reader = reader if reader is not None else BatchFacts(conn, logger)
-        self.domain = WorkbenchBatchService(conn, logger, facts=self.reader)
+        self.domain = WorkbenchBatchService(conn, logger)
 
-    def plan_normalized(self, ref, payload):
-        return self._plan_normalized(ref, payload)[0]
+    def plan_normalized(self, scope: BatchFactScope, ref, payload):
+        return self._plan_normalized(scope, ref, payload)[0]
 
-    def _plan_normalized(self, ref, payload):
-        batch, facts = self.reader.batch(ref), self.reader.load()
+    def _plan_normalized(self, scope: BatchFactScope, ref, payload):
+        facts = scope.load()
+        batch = scope.batch(ref)
         relations = index_relations(facts)[batch["batch_id"]]
         require_unreferenced(relations)
         _require_splittable_batch(batch, relations["operations"])
@@ -70,7 +71,7 @@ class WorkbenchQuantitySplitService:
         count = payload["quantity"] if payload["quantity"] is not None else maximum
         if not 0 < count < original or count > maximum:
             raise WorkbenchCommandRejected("constraint_conflict", f"当前可开工 {maximum} 件，原批 {original} 件；拆分数量须大于 0、小于原批且不超过可开工数量。")
-        preparation = self.domain.preparation(facts)
+        preparation = self.domain.preparation(scope)
         code = WorkbenchBatchBulkService._copy_code(batch["batch_id"], preparation.used_codes, {})
         materials, source_rows, child_rows = [], [], []
         names = {row["material_id"]: row["name"] for row in facts["Materials"]}
@@ -100,7 +101,7 @@ class WorkbenchQuantitySplitService:
                 ready_date=max(filter(None, (ready_day, payload["as_of_date"]))),
             )
         writer = TemplateLineageWriter(self.conn)
-        prepared_instances = writer.prepare_instances(relations["operations"], facts=facts)
+        prepared_instances = writer.prepare_instances(relations["operations"], facts=facts, complete_facts=False)
         return (
             {"entity_ref": ref, "operation": "batch.split_confirm", "source_code": batch["batch_id"], "child_code": code,
              "original_quantity": original, "quantity": count, "remaining_quantity": original - count,
@@ -116,10 +117,10 @@ class WorkbenchQuantitySplitService:
             prepared_instances,
         )
 
-    def apply_normalized(self, ref, payload):
+    def apply_normalized(self, scope: BatchFactScope, ref, payload):
         if not self.conn.in_transaction:
             raise RuntimeError("Quantity split requires the workbench command transaction.")
-        plan, batch, source_operations, change, source_rows, child_rows, source_ready, writer, prepared = self._plan_normalized(ref, payload)
+        plan, batch, source_operations, change, source_rows, child_rows, source_ready, writer, prepared = self._plan_normalized(scope, ref, payload)
         code = change.business_code
         batch_outcome = self.domain.apply_prepared(change)
         mapping = {op["id"]: writer.copy_prepared_instance(code, ready)

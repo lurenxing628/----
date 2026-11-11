@@ -1,15 +1,12 @@
 """Atomic route-file domain operations, subordinate to the file coordinator.
 
-preview_rows consumes decoded rows and complete facts from the caller's one read
-snapshot. The coordinator binds the retained source, scope, target and all facts, then compares
-the entire AtomicActionPreview document again under BEGIN IMMEDIATE before
-calling apply_rows. Private row data carries only the selected write inputs.
+preview_rows consumes decoded rows and an explicit ProcessFactScope from the caller's
+read snapshot. The coordinator binds the retained source, scope, target and all facts,
+then compares the entire AtomicActionPreview document again under BEGIN IMMEDIATE
+before calling apply_rows. Private row data carries only the selected write inputs.
 Neither method owns the caller's commit, receipt, file token or public stage DTO.
 Affected part refs include unchanged rows for the coordinator's read refresh.
 """
-
-from contextlib import ExitStack
-from functools import lru_cache
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.workflow_state import record_confirmation
@@ -19,28 +16,25 @@ from .file_route_preview import RouteFilePreview, reject_duplicates
 from .group_defaults import default_suppliers
 from .part_actions import WorkbenchProcessPartActionService
 from .route_apply import apply_route, discard_groups
-from .route_facts import ProcessRouteFacts
 
 
 class ProcessRouteFileOperations:
     def __init__(self, conn, logger):
         self.conn, self.logger = conn, logger
-        self.facts = {}
 
-    def preview_rows(self, decoded_rows, facts, target_ref):
+    def preview_rows(self, decoded_rows, scope, target_ref):
         if not self.conn.in_transaction:
             raise RuntimeError("路线文件预检必须在调用方的完整事实快照事务中执行。")
-        self.facts = facts
-        indexed = ProcessRouteFacts(facts)
-        self.parts = indexed.parts
+        preview = RouteFilePreview(self.logger, scope, target_ref)
+        rows = [preview.row(source) for source in decoded_rows]
+        reject_duplicates(rows)
+        extra = {"affected_groups": preview.affected_groups(rows), "zero_review_required": False}
+        active_facts = preview.facts
+        self.parts = active_facts.parts
         # This command's cross-part group index; record_confirmation updates it row by row.
-        self.group_members = indexed.group_members
-        with ExitStack() as stack:
-            preview = RouteFilePreview(self.conn, self.logger, indexed, target_ref, stack)
-            rows = [preview.row(source) for source in decoded_rows]
-            reject_duplicates(rows)
-            extra = {"affected_groups": preview.affected_groups(rows), "zero_review_required": False}
-        self.current_identities = indexed.identities
+        self.group_members = active_facts.group_members
+        self.current_identities = active_facts.identities
+        self.references = active_facts.references
         return rows, extra
 
     def apply_rows(self, rows):
@@ -51,9 +45,13 @@ class ProcessRouteFileOperations:
             parts=self.parts,
             route_parsed="yes" if row["related"]["route"] is not None else "no")
             for row in rows if row["action"] == "create"}
-        @lru_cache(maxsize=1)
+        catalog = None
+
         def default_catalog():
-            return default_suppliers(self.facts["references"])
+            nonlocal catalog
+            if catalog is None:
+                catalog = default_suppliers(self.references)
+            return catalog
 
         results, affected_refs = [], set()
         for row in rows:

@@ -74,12 +74,15 @@ class WorkbenchResourceMetricsService:
         self.available_operators = defaultdict(set)
         self.available_suppliers = defaultdict(set)
 
-    def _load(self, names):
+    def load_facts(self, names):
         self.facts.update(self.repo.facts(sorted(set(names) - set(self.facts))))
+
+    def op_type_dependencies(self, codes):
+        return self.repo.op_type_dependencies(codes)
 
     def fingerprint_facts(self, kind):
         # Fingerprinting raw facts must not make another domain's validation a read gate.
-        self._load(READ_FACTS.get(kind, ()))
+        self.load_facts(READ_FACTS.get(kind, ()))
 
     @staticmethod
     def identity_kinds(kind):
@@ -87,14 +90,14 @@ class WorkbenchResourceMetricsService:
 
     def kind_records(self, kind):
         if kind not in self.records:
-            self._load([kind])
+            self.load_facts([kind])
             self.records[kind] = index_resource_rows(self.facts[kind], RESOURCE_KEYS[kind])
         return self.records[kind]
 
-    def _statuses(self, kind):
+    def kind_statuses(self, kind):
         if kind not in self.statuses:
             if kind in ("operator", "supplier"):
-                self._load([kind + "_profiles"])
+                self.load_facts([kind + "_profiles"])
                 self.profiles[kind] = index_resource_rows(self.facts[kind + "_profiles"], kind + "_id")
             self.statuses[kind] = {code: public_resource_status(kind, row["status"], self.profiles.get(kind, {}).get(code))
                                    for code, row in self.kind_records(kind).items()}
@@ -125,7 +128,7 @@ class WorkbenchResourceMetricsService:
             self._work_type(row["op_type_id"], "external")
 
     def _active_qualifications(self):
-        active = {code for code, status in self._statuses("operator").items() if status == "active"}
+        active = {code for code, status in self.kind_statuses("operator").items() if status == "active"}
         profiles = [{"operator_id": code, "profile_operator_id": code if code in self.profiles["operator"] else None,
                      "skills_declared": self.profiles["operator"].get(code, {}).get("skills_declared")}
                     for code in self.records["operator"]]
@@ -138,7 +141,7 @@ class WorkbenchResourceMetricsService:
     def _internal_capacity(self):
         if "internal" in self._computed:
             return
-        self._load(_INTERNAL)
+        self.load_facts(_INTERNAL)
         for kind in ("op_type", "machine", "operator"):
             self.kind_records(kind)
         self._validate_internal()
@@ -162,10 +165,10 @@ class WorkbenchResourceMetricsService:
     def _external_capacity(self):
         if "external" in self._computed:
             return
-        self._load(_EXTERNAL)
+        self.load_facts(_EXTERNAL)
         self.kind_records("op_type")
         self.kind_records("supplier")
-        self._statuses("supplier")
+        self.kind_statuses("supplier")
         self._validate_suppliers()
         for row in self.facts["capabilities"]:
             if self.statuses["supplier"][row["supplier_id"]] == "active":
@@ -173,7 +176,7 @@ class WorkbenchResourceMetricsService:
         self._computed.add("external")
 
     def op_type_records(self):
-        self._load(["op_type", "policies"])
+        self.load_facts(["op_type", "policies"])
         if "policies" not in self._computed:
             self.policies = index_resource_rows(self.facts["policies"], "op_type_id")
             self._computed.add("policies")
@@ -232,11 +235,11 @@ class WorkbenchResourceMetricsService:
         elif kind in ("operator", "supplier"):
             states += ("leave" if kind == "operator" else "pending_review",)
         counts: Dict[str, int] = dict.fromkeys(states, 0)
-        statuses = self._statuses(kind)
+        statuses = self.kind_statuses(kind)
         counts.update(Counter(statuses[code] for code in codes))
         counts["total"] = len(codes)
         if kind == "machine":
-            self._load(["groups", "machine_group"])
+            self.load_facts(["groups", "machine_group"])
             if not self.groups:
                 self.groups = index_resource_rows(self.facts["groups"], "machine_id")
             groups = self.kind_records("machine_group")
@@ -245,7 +248,7 @@ class WorkbenchResourceMetricsService:
                     _relation(self.groups[code]["group_id"], groups, "设备分组")
             counts["groups"] = len({self.groups[code]["group_id"] for code in codes if code in self.groups})
         elif kind == "operator":
-            self._load(["skills"])
+            self.load_facts(["skills"])
             counts["skills"] = sum(row["operator_id"] in codes for row in self.facts["skills"])
         return counts
 

@@ -6,6 +6,7 @@ from .calendar_files import register_calendar_file_routes
 from .calendars import register_calendar_routes
 from .calibration import register_calibration_routes
 from .calibration_adoption import register_calibration_adoption_routes
+from .commands import register_command_routes
 from .dashboard import register_dashboard_routes
 from .decision_history import register_decision_history_routes
 from .execution import register_execution_routes
@@ -39,6 +40,7 @@ from .trial_adoption import register_trial_adoption_routes
 from .trial_adoption_history import register_trial_adoption_history_routes
 
 register_material_routes(bp)
+register_command_routes(bp)
 register_resource_routes(bp)
 register_resource_relation_routes(bp)
 register_resource_table_routes(bp)

@@ -256,6 +256,7 @@ def test_whitespace_padded_resource_identities_stay_distinct_from_trimmed_siblin
     from core.algorithms.greedy.auto_assign import prepare_resource_candidates
     from core.errors import AppError
     from core.models.operation_execution_scope import EXECUTION_STATUS_COMPLETED
+    from core.models.workbench_run_compute import CandidateRunInputError
     from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
     from core.services.scheduler.graph.id_policy import display_id, make_machine_node_id
@@ -267,14 +268,12 @@ def test_whitespace_padded_resource_identities_stay_distinct_from_trimmed_siblin
     from core.services.scheduler.run.schedule_execution_guardrails import (
         build_execution_guardrails_from_projections,
     )
-    from core.services.scheduler.run.schedule_execution_persistence_guard import (
-        validate_execution_guard_before_persist,
-    )
     from core.services.scheduler.run.schedule_input_runtime_support import (
         prepare_runtime_seeds,
     )
     from core.services.scheduler.run.schedule_payload_contract import arrangement_row
     from core.services.workbench.facts.zero_duration import PointEventError, estimate_point_event
+    from core.services.workbench.run.compute_validation import validate_candidate
     from tests._support.algo_operations import make_algo_op, make_batch
 
     # 1. clean_resource_id / id_policy / OperationGraphNode / 点事件见证均保留 " M1 " 且将纯空白视作未分配
@@ -371,7 +370,6 @@ def test_whitespace_padded_resource_identities_stay_distinct_from_trimmed_siblin
     )
     guardrail_facts = SimpleNamespace(resource_execution={1: ({1: fact}, {1: {"op_id": 1}}, "snap-1")})
     _, completed_ids, seeds, _ = build_execution_guardrails_from_projections(
-        None,
         [op],
         prev_version=1,
         execution_projections=[],
@@ -385,13 +383,13 @@ def test_whitespace_padded_resource_identities_stay_distinct_from_trimmed_siblin
         prepare_runtime_seeds(
             sqlite3.connect(":memory:"),
             run_label="排产",
-            batches={"B001": make_batch(batch_id="B001")},
             operations=[op],
             algo_ops=[make_algo_op(id=1, op_code="B001_01", batch_id="B001", seq=1)],
             frozen_op_ids={1},
             freeze_seed_results=[{**seed, "machine_id": "M1"}],
             execution_completed_op_ids={1},
             execution_seed_results=[seed],
+            actual_group_intervals={},
             raise_schedule_empty_result_fn=lambda *_a, **_kw: None,
             validate_fixed_operator_qualifications_fn=lambda *_a, **_kw: None,
         )
@@ -399,22 +397,30 @@ def test_whitespace_padded_resource_identities_stay_distinct_from_trimmed_siblin
     assert conflict_exc.value.details["reason"] == "execution_seed_conflict"
 
     prepared_guard = SimpleNamespace(
-        execution_facts={1: fact},
-        execution_completed_op_ids={1},
-        algo_ops=[],
-        operations=[],
+        execution_guard=SimpleNamespace(
+            execution_facts={1: fact},
+            execution_completed_op_ids={1},
+        ),
+        seeds=SimpleNamespace(
+            seed_results=[seed],
+            frozen_op_ids={1},
+        ),
+        allowed_op_ids={1},
+        operations=[op],
+        missing_internal_resource_op_ids=set(),
+        operation_sources={1: "internal"},
+        start=_make_dt(0),
+        end_date=_make_dt(1).date(),
+        dispositions=[{"op_id": 1, "operation_ref": "op-ref-1", "predecessor_refs": []}],
+        algo_ops=[make_algo_op(id=1, op_code="B001_01", batch_id="B001", seq=1)],
     )
-    validate_execution_guard_before_persist(
-        prepared_guard,
-        validated_schedule_payload=SimpleNamespace(schedule_rows=[arrangement_row(seed)]),
-    )
-    with pytest.raises(AppError) as guard_exc:
-        validate_execution_guard_before_persist(
+    validate_candidate(prepared_guard, [arrangement_row(seed)])
+    with pytest.raises(CandidateRunInputError) as guard_exc:
+        validate_candidate(
             prepared_guard,
-            validated_schedule_payload=SimpleNamespace(schedule_rows=[arrangement_row({**seed, "machine_id": "M1"})]),
+            [arrangement_row({**seed, "machine_id": "M1"})],
         )
-    assert guard_exc.value.details is not None
-    assert guard_exc.value.details["reason"] == "execution_completed_resource_moved"
+    assert guard_exc.value.code == "protected_seed_changed"
 
     # 3. 图指标、二分图设备匹配与评估指标中 " M1 " 与 "M1" 计为 2 台不同设备
     graph_nodes = [

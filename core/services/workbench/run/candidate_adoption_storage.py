@@ -10,7 +10,7 @@ from core.services.workbench.facts.run_input_codec import execution_snapshots_ma
 from .jobs_facts import run_baseline, run_execution_projections
 
 
-def check_admission_current(conn, capture, *, current_capture, captured_facts):
+def check_admission_current(capture, *, current_capture, captured_facts, ledger):
     baseline = run_baseline(capture=current_capture)
     if not same(baseline, capture["baseline"]):
         raise WorkbenchCommandRejected("snapshot_stale", "排产时的正式计划已经变了，这次没有采用，正式计划没有改动。请重新做排产检查。")
@@ -23,15 +23,14 @@ def check_admission_current(conn, capture, *, current_capture, captured_facts):
     # 存档已在读取候选时准入；这里只与现场比对。
     if not current_capture.matches_admitted(captured_facts):
         raise WorkbenchCommandRejected("snapshot_stale", "排产之后，排产范围、报工记录、设备人员或班表有变化，这次没有采用，正式计划没有改动。请重新排产后再试。")
-    projections = run_execution_projections(conn, capture["input"], capture=current_capture,
-        service=current_capture.execution_service)
-    _require_official_baseline(baseline, projections)
+    projections = run_execution_projections(capture["input"], capture=current_capture, ledger=ledger)
+    require_official_baseline(baseline, projections)
     if not execution_snapshots_match(durable_value(projections), capture["execution"]):
         raise WorkbenchCommandRejected("snapshot_stale", "排产时记下的报工记录已经变了，这次没有采用，正式计划没有改动。请重新排产后再试。")
     return baseline, projections
 
 
-def _require_official_baseline(baseline, projections):
+def require_official_baseline(baseline, projections):
     if baseline["version"] is None:
         if any(row.plan_identity is not None for row in projections):
             raise CandidateAdoptionBlocked("empty_baseline_inconsistent", "系统里还没有正式计划，但报工记录上挂着计划编号，对不上，不能采用。请联系维护人员核对。")

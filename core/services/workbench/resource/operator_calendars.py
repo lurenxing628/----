@@ -24,8 +24,9 @@ from core.models.workbench_calendar import (
 )
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_operator_calendar import normalize_operator_calendar_input
-from core.services.scheduler.calendar.admin import CalendarNormalizationContext
-from core.services.scheduler.calendar.service import CalendarService
+from core.services.scheduler.calendar.admin import CalendarAdmin, CalendarNormalizationContext
+from core.services.scheduler.calendar.engine import CalendarEngine
+from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_connection
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 
 from .calendar_reading import CalendarProjection, effective_calendar_day, is_working_row
@@ -44,12 +45,26 @@ def _date_key(value: Any) -> str:
 
 class WorkbenchOperatorCalendarService:
     def __init__(self, conn, operator_code: str, logger=None, *, clock: Callable[[], datetime] = datetime.now,
-                 calendar_service: Optional[CalendarService] = None):
+                 calendar_admin: Optional[CalendarAdmin] = None):
         self.conn = conn
         self.operator_code = operator_code
+        self.logger = logger
         self._clock = clock
-        self._calendar = CalendarService(conn, logger=logger) if calendar_service is None else calendar_service
+        self._admin = CalendarAdmin(conn, logger=logger) if calendar_admin is None else calendar_admin
+        self._engine: Optional[CalendarEngine] = None
         self._query = WorkbenchCalendarQueryRepository(conn, logger=logger)
+
+    def _base_engine(self) -> CalendarEngine:
+        if self._engine is None:
+            self._engine = CalendarEngine(calendar_inputs_from_connection(self.conn, public_days=()))
+        return self._engine
+
+    def _normalization_context(self) -> CalendarNormalizationContext:
+        return CalendarNormalizationContext(
+            self.conn,
+            logger=self.logger,
+            period_reader=lambda: self._base_engine().default_periods(),
+        )
 
     @staticmethod
     def normalize(action: str, payload: Any) -> Dict[str, Any]:
@@ -101,7 +116,7 @@ class WorkbenchOperatorCalendarService:
         """月历和范围预览列出的一天：单独设置过的行经引擎缓存解码一次时段，月合计和 public_day 共用这一份。"""
         state = self._state(day, states)
         row = state["row"]
-        state["periods"] = None if row is None else self._calendar._engine.decoded_periods_for_json(row["periods_json"])
+        state["periods"] = None if row is None else self._base_engine().decoded_periods_for_json(row["periods_json"])
         return state
 
     def month(self, year: int, month: int) -> Dict[str, Any]:
@@ -114,7 +129,7 @@ class WorkbenchOperatorCalendarService:
         if not self.conn.in_transaction:
             raise RuntimeError("个人日历读取必须在快照事务中执行。")
         states = self.range_states(first.isoformat(), last.isoformat())
-        default_periods = self._calendar._engine.default_periods()
+        default_periods = self._base_engine().default_periods()
         days = []
         for offset in range(count):
             day = first + timedelta(days=offset)
@@ -183,7 +198,7 @@ class WorkbenchOperatorCalendarService:
             raise ValidationError("上班的日子必须填写工作时段。", field="periods")
         require_periods_when_rest_turns_work(before["date"], row, patch)
         payload.update(patch)
-        model = self._calendar._admin._build_operator_calendar_from_payload(payload, context=context)
+        model = self._admin.build_operator_calendar_from_payload(payload, context=context)
         effective_calendar_day(before["date"], model, projection=projection)
         return model
 
@@ -191,7 +206,7 @@ class WorkbenchOperatorCalendarService:
         if not self.conn.in_transaction or not in_transaction_context(self.conn):
             raise RuntimeError("个人日历写入必须由外层 WorkbenchCommandService 持有写事务。")
 
-    def _apply_checked(self, action, normalized_input, checked):
+    def apply_checked(self, action, normalized_input, checked):
         """The guard has already read and bound these facts under this command lock."""
         payload = normalized_input
         if action == "range_clear":
@@ -201,10 +216,10 @@ class WorkbenchOperatorCalendarService:
         return self._apply_day(action, payload, checked)
 
     def _apply_day(self, action, payload, before):
-        context = self._calendar.normalization_context()
+        context = self._normalization_context()
         try:
             after = (self._proposed(payload["fields"], before, context=context,
-                                    projection=CalendarProjection({}, engine=self._calendar._engine))
+                                    projection=CalendarProjection({}, engine=self._base_engine()))
                      if action == "upsert" else None)
         except ValidationError as exc:
             # 表单入口：领域规则报的中立字段名在这里映射成界面路径。
@@ -231,13 +246,13 @@ class WorkbenchOperatorCalendarService:
                 calendars.append(after)
                 if ref is None:
                     created.append(entity_key(self.operator_code, day))
-        repo = self._calendar._admin.operator_calendar_repo
+        repo = self._admin.operator_calendar_repo
         if calendars:
             repo.upsert_many(calendars)
         if deleted:
             repo.delete_many(deleted)
         if calendars or deleted:
-            self._calendar._engine.clear_policy_cache()
+            self._engine = None
         refs = self._query.created_refs("operator_calendar", created) if created else {}
         for outcome in results:
             if outcome.result == "committed" and outcome.data["calendar_ref"] is None:

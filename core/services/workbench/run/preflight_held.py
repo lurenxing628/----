@@ -23,9 +23,9 @@ from core.services.workbench.facts.table_cells import number_text
 from core.services.workbench.facts.zero_duration import PointEventError, estimate_point_event
 from core.shared.strict_parse import is_stored_number
 
-from .candidate_adoption_constraints import arrangement_problem, calendar_duration_conflict, external_holds_resources
 from .input_config import window_label
 from .input_runtime import downtime_overlap, held_arrangements, held_machine_downtimes
+from .schedule_row_constraints import arrangement_problem, calendar_duration_conflict, external_holds_resources
 
 if TYPE_CHECKING:
     from core.services.workbench.facts.preflight_checks import PreflightChecks
@@ -95,7 +95,7 @@ def _resource_problem(context: _Context, held: _Held, batch, raw):
 
 
 def _release_problem(context: _Context, held: _Held, batch, raw, code):
-    if code == "candidate_before_ready_date":
+    if code == "before_ready_date":
         return issue("locked_before_ready_date", f"{held.text}，但这批的齐套日期是 {batch['ready_date']}，比原安排晚。"
                      + _KEEP + held.action("到批次管理核对齐套日期"))
     _issues, day = context.checks.operation_readiness(batch, raw, context.settings)
@@ -251,7 +251,7 @@ def _seed_problem(context: _Context, held: _Held, op):
     batch = context.batches[op["batch_id"]]
     raw = dict(op, machine_id=seed["machine_id"], operator_id=seed["operator_id"])
     code = arrangement_problem(context.checks, batch, raw, seed["start_time"], context.settings)
-    if code == "candidate_resource_invalid":
+    if code == "resource_invalid":
         return _resource_problem(context, held, batch, raw)
     if code is not None:
         return _release_problem(context, held, batch, raw, code)
@@ -315,13 +315,26 @@ def held_arrangement_reasons(facts, checks, settings, version, batches, operatio
     by_id = {op["id"]: op for op in operations}
     try:
         seeds, meta, held_obj = _held(facts, settings, version, operations, held_ids, hold_window_bounds=hold_window_bounds)
+        if not seeds:
+            return [], _skipped_freeze(meta, batches), {}, held_obj
+        held_operators = (
+            {seed["operator_id"] for seed in seeds if seed["operator_id"] is not None}
+            | {op["operator_id"] for op in operations if op["operator_id"] is not None}
+        )
+        context = _Context(
+            checks,
+            facts.calendar(held_operators),
+            held_machine_downtimes(seeds, facts=facts),
+            settings,
+            batches,
+            operations,
+            _completed(facts, operations, projections),
+        )
+        blockers = _seed_blockers(facts, context, seeds, by_id, meta.get("hold_window"), cycles)
     except CandidateRunInputError as exc:
         return [facts.public_issue(item, by_id[item["op_id"]]) if item.get("op_id") in by_id else item for item in exc.issues], [], {}, None
     except AppError:
         return [_unreadable()], [], {}, None
-    context = _Context(checks, facts.calendar(), held_machine_downtimes(seeds, facts=facts), settings, batches, operations,
-                       _completed(facts, operations, projections))
-    blockers = _seed_blockers(facts, context, seeds, by_id, meta.get("hold_window"), cycles)
     # 合并外协组成员只在不在保留安排里时才由排产按实际周期派生、排产照常出结果；全都在保留安排里排产会直接停下。
     if held_ids <= {seed["op_id"] for seed in seeds}:
         blockers.append(_all_held())

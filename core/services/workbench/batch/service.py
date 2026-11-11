@@ -9,8 +9,10 @@ from core.models.batch import Batch
 from core.models.workbench_batch import normalize_batch_fields, public_ref, text
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from data.repositories.batch_repo import BatchRepository
+from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 
-from .facts import BatchFacts, index_relations, require_deletable, require_unreferenced
+from .facts import index_relations, require_deletable, require_unreferenced
+from .scope import BatchFactScope
 
 # 齐套状态不在这里：复制、拆分写入的齐套状态都是本次算出的内部值，不读原批次。
 _STORED_LABELS = {"fields.quantity": "数量", "fields.due_date": "交期", "fields.priority": "优先级",
@@ -45,28 +47,30 @@ class BatchChange:
 class BatchChangePreparation:
     """Current rows, identities and relations shared by every change before the first write."""
 
-    _reader: BatchFacts
+    scope: BatchFactScope
     facts: Any
 
-    def __init__(self, facts):
-        if isinstance(facts, BatchFacts):
-            self._reader = facts
-            self.facts = facts._pinned()
-            tables = self.facts if self.facts is not None else facts.entity_tables()
+    def __init__(self, scope: BatchFactScope):
+        self.scope = scope
+        self.facts = scope.current_facts()
+        if self.facts is None and scope.mode == "single_instance":
+            self.identities = {}
+            self.batches = {}
+            self.parts = {}
+            self.used_codes = set()
         else:
-            self.facts = facts
-            tables = facts
-        self.identities = {row["ref"]: row for row in tables["WorkbenchEntityRefs"] if row["active"]}
-        self.batches = {row["batch_id"]: row for row in tables["Batches"]}
-        self.parts = {row["part_no"]: row for row in tables["Parts"]}
-        self.used_codes = set(self.batches)
+            tables = self.facts if self.facts is not None else scope.entity_tables()
+            self.identities = {row["ref"]: row for row in tables["WorkbenchEntityRefs"] if row["active"]}
+            self.batches = {row["batch_id"]: row for row in tables["Batches"]}
+            self.parts = {row["part_no"]: row for row in tables["Parts"]}
+            self.used_codes = set(tables.get("batch_codes", self.batches))
         self._relations = None
 
     @property
     def relations(self):
         if self._relations is None:
             if self.facts is None:
-                self.facts = self._reader.load()
+                self.facts = self.scope.load()
             self._relations = index_relations(self.facts)
         return self._relations
 
@@ -81,6 +85,8 @@ class BatchChangePreparation:
         return key
 
     def batch(self, ref):
+        if self.scope.mode == "single_instance":
+            return self.scope.batch(ref)
         key = self.resolve(ref, "batch")
         row = self.batches.get(key)
         if row is None:
@@ -100,7 +106,7 @@ class BatchChangePreparation:
         code = batch["batch_id"]
         if action == "delete":
             require_deletable(self.relations[code])
-            self.used_codes.remove(code)
+            self.used_codes.discard(code)
             return BatchChange(action, code, ref, {})
         changes = {key: value for key, value in payload["fields"].items() if batch[key] != value}
         if "quantity" in changes or "ready_status" in changes:
@@ -139,13 +145,13 @@ class BatchChangePreparation:
 
 
 class WorkbenchBatchService:
-    def __init__(self, conn, logger=None, facts=None):
+    def __init__(self, conn, logger=None):
         self.conn = conn
-        self.facts = facts if facts is not None else BatchFacts(conn, logger)
+        self.identities = WorkbenchIdentityRepository(conn, logger=logger)
         self.repo = BatchRepository(conn, logger=logger)
 
-    def preparation(self, facts=None):
-        return BatchChangePreparation(self.facts if facts is None else facts)
+    def preparation(self, scope: BatchFactScope):
+        return BatchChangePreparation(scope)
 
     def apply_prepared_many(self, changes):
         if not self.conn.in_transaction:
@@ -161,7 +167,7 @@ class WorkbenchBatchService:
                 self.repo.delete(change.business_code)
             elif change.fields:
                 self.repo.update(change.business_code, change.fields)
-        identities = self.facts.identities.active_map("batch", created_codes) if created_codes else {}
+        identities = self.identities.active_map("batch", created_codes) if created_codes else {}
         outcomes = []
         for change in changes:
             ref = change.entity_ref

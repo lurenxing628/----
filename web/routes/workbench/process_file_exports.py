@@ -7,7 +7,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_actions import process_part_refs
 from core.models.workbench_process_file import check_format, file_columns, public_columns
 from core.models.workbench_process_table_query import ProcessTablePageRequest, wire_process_scope
-from core.services.workbench.process import queries as process_queries
+from core.services.workbench.process import scope as process_scope
 from core.services.workbench.process.file_codec import encode_process_file
 from core.services.workbench.process.file_export import (
     count_process_export_rows,
@@ -39,7 +39,7 @@ def _query_scope(body):
             raise WorkbenchCommandRejected("invalid_input", "当前零件编号不对，没有开始下载。请刷新详情后重新点「导出」。", 400)
         if body["scope"]:
             raise WorkbenchCommandRejected("invalid_input", "当前详情导出不需要其他筛选条件，没有开始下载。请直接点「导出」。", 400)
-        process_queries._check_part_ref(body["target_ref"])
+        process_scope.check_part_ref(body["target_ref"])
         query_scope = {"kind": "part", "entity_ref": body["target_ref"]}
     return page_request, query_scope
 
@@ -71,12 +71,12 @@ def process_file_export_preview(kind):
     page_request, query_scope = _query_scope(body)
     target_ref = body.get("target_ref")
     reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=target_ref)
-    with reader.read_snapshot() as state:
+    with reader.read_snapshot() as fact_scope:
         read_binding = resolve_read_snapshot(token)
-        snapshot = bind_read_snapshot(query_scope, state, token, binding=read_binding)
+        snapshot = bind_read_snapshot(query_scope, fact_scope.state_fingerprint(), token, binding=read_binding)
         refs, effective = _export_selection(body, page_request)
-        parts = select_export_parts(reader, refs, effective)
-        facts = reader.raw_facts()
+        parts = select_export_parts(fact_scope, refs, effective)
+        facts = fact_scope.raw_facts()
     # 读事务已结束：逐格试算导出只用读快照里的工艺资料。
     count = count_process_export_rows(kind, parts, facts, body["format"])
     scope = {} if target_ref is not None else wire_process_scope(effective)
@@ -97,10 +97,15 @@ def process_file_export(kind):
     if saved["kind"] != kind:
         raise WorkbenchCommandRejected("snapshot_stale", "预检结果属于另一类工艺文件，没有开始下载；系统没有替你换内容。请点「重新预检」。")
     reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=saved["target_ref"])
-    with reader.read_snapshot() as state:
-        snapshot = bind_read_snapshot(saved["query_scope"], state, saved["snapshot_ref"], binding=read_binding)
-        parts = select_export_parts(reader, saved["refs"], saved["request"])
-        facts = reader.raw_facts()
+    with reader.read_snapshot() as fact_scope:
+        snapshot = bind_read_snapshot(
+            saved["query_scope"],
+            fact_scope.state_fingerprint(),
+            saved["snapshot_ref"],
+            binding=read_binding,
+        )
+        parts = select_export_parts(fact_scope, saved["refs"], saved["request"])
+        facts = fact_scope.raw_facts()
     # 读事务已结束：文件只用读快照里的工艺资料生成，编码再久也不挡别人提交写入。
     download = encode_process_file(kind, process_export_rows(kind, parts, facts), saved["format"])
     response = file_response(download)

@@ -74,9 +74,9 @@ def plan_list():
     scope_dict = scope.scope()
     seek, token = _cursor(scope_dict)
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as revision:
-        snapshot = bind_read_snapshot(scope_dict, revision, token)
-        data, next_seek = reader.catalog_page(scope, seek)
+    with reader.read_snapshot(metadata_only=True) as context:
+        snapshot = bind_read_snapshot(scope_dict, context.plan_revision, token)
+        data, next_seek = reader.catalog_page(context, scope, seek)
         data["page"]["next_cursor"] = None
         if next_seek is not None:
             binding = {"scope": scope_dict, "snapshot_ref": snapshot["snapshot_ref"], "seek": next_seek}
@@ -91,11 +91,11 @@ def plan_workspace(plan_ref):
     token = request.args.get("snapshot_ref")
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
-        with reader.read_snapshot():
+        with reader.read_snapshot() as context:
             if token is not None:
-                scope_dict, state = reader.prebind_scope(scope)
+                scope_dict, state = reader.prebind_scope(context, scope)
                 snapshot = bind_read_snapshot(scope_dict, state, token)
-            data, state = reader.workspace(scope)
+            data, state = reader.workspace(context, scope)
     if token is None:
         snapshot = bind_read_snapshot(data["scope"], state, None)
     return _response(data, snapshot)
@@ -116,10 +116,10 @@ def plan_baseline(plan_ref):
     scope = PlanReadScope(plan_ref, request.args.get("range_start"), request.args.get("range_end"))
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
-        with reader.read_snapshot():
-            scope_dict, state = reader.prebind_scope(scope)
+        with reader.read_snapshot() as context:
+            scope_dict, state = reader.prebind_scope(context, scope)
             snapshot = bind_read_snapshot(scope_dict, state, token)
-            data, _, _ = reader.baseline_comparison(scope, page=page, size=size)
+            data, _, _ = reader.baseline_comparison(context, scope, page=page, size=size)
     return _response(data, snapshot)
 
 
@@ -138,10 +138,10 @@ def plan_tasks(plan_ref):
     scope = PlanReadScope(plan_ref, request.args.get("range_start"), request.args.get("range_end"))
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
-        with reader.read_snapshot():
-            scope_dict, state = reader.prebind_scope(scope)
+        with reader.read_snapshot() as context:
+            scope_dict, state = reader.prebind_scope(context, scope)
             snapshot = bind_read_snapshot(scope_dict, state, token)
-            data, _, _ = reader.tasks_page(scope, page=page, size=size)
+            data, _, _ = reader.tasks_page(context, scope, page=page, size=size)
     return _response(data, snapshot)
 
 
@@ -154,10 +154,10 @@ def plan_gantt_graph(plan_ref):
     scope = PlanReadScope(plan_ref, request.args.get("range_start"), request.args.get("range_end"))
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
-        with reader.read_snapshot():
-            scope_dict, state = reader.prebind_scope(scope)
+        with reader.read_snapshot() as context:
+            scope_dict, state = reader.prebind_scope(context, scope)
             snapshot = bind_read_snapshot(scope_dict, state, token)
-            data, _, _ = reader.gantt_graph(scope)
+            data, _, _ = reader.gantt_graph(context, scope)
     return _response(data, snapshot)
 
 
@@ -170,10 +170,10 @@ def plan_capacity(plan_ref):
     scope = PlanReadScope(plan_ref, request.args.get("range_start"), request.args.get("range_end"))
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
-        with reader.read_snapshot():
-            scope_dict, state = reader.prebind_scope(scope)
+        with reader.read_snapshot() as context:
+            scope_dict, state = reader.prebind_scope(context, scope)
             snapshot = bind_read_snapshot(scope_dict, state, token)
-            data, _, _ = reader.capacity_projections(scope)
+            data, _, _ = reader.capacity_projections(context, scope)
     return _response(data, snapshot)
 
 
@@ -186,10 +186,10 @@ def plan_export(plan_ref):
     scope = PlanReadScope(plan_ref, request.args.get("range_start"), request.args.get("range_end"))
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
-        with reader.read_snapshot():
-            scope_dict, state = reader.prebind_scope(scope)
+        with reader.read_snapshot() as context:
+            scope_dict, state = reader.prebind_scope(context, scope)
             snapshot = bind_read_snapshot(scope_dict, state, token)
-            data, _ = reader.export_workspace(scope)
+            data, _ = reader.export_workspace(context, scope)
     # 读事务和读额度都已释放：大小检查和生成文件只用已读出的计划，不再占着读锁。
     download = write_plan_export(data, snapshot, fmt)
     if len(download.content) > MAX_PLAN_RESPONSE_BYTES:

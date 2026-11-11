@@ -2,8 +2,8 @@
 回归测试：system 健康检查路由契约。
 
 验证点：
-1) `app.py` / `app_new_ui.py` 均暴露 `GET /system/health`。
-2) 返回 JSON 包含 app/status/contract_version/ui_mode/timestamp。
+1) `app.py` 暴露 `GET /system/health`。
+2) 返回 JSON 包含 app/status/contract_version/timestamp。
 3) 请求健康检查时不打开 `g.db`。
 4) `POST /system/runtime/shutdown` 仅允许本机 + 正确 token，且不打开数据库连接。
 5) `request_runtime_server_shutdown()` 返回 False 时应返回 503 + `shutdown_unavailable`。
@@ -14,7 +14,6 @@ from __future__ import annotations
 import importlib
 import json
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -36,7 +35,7 @@ def _load_module(name: str, monkeypatch):
     return importlib.import_module(name)
 
 
-def _assert_health(app, expected_ui_mode: str, factory_mod, monkeypatch) -> None:
+def _assert_health(app, factory_mod, monkeypatch) -> None:
     get_connection_calls = []
 
     def _fail_get_connection(*args, **kwargs):
@@ -60,8 +59,6 @@ def _assert_health(app, expected_ui_mode: str, factory_mod, monkeypatch) -> None
             raise RuntimeError(f"status 不正确：{payload!r}")
         if int(payload.get("contract_version") or 0) != 1:
             raise RuntimeError(f"contract_version 不正确：{payload!r}")
-        if str(payload.get("ui_mode") or "") != expected_ui_mode:
-            raise RuntimeError(f"ui_mode 不正确：{payload!r}")
         if not str(payload.get("timestamp") or "").strip():
             raise RuntimeError(f"timestamp 为空：{payload!r}")
 
@@ -141,18 +138,14 @@ def _assert_runtime_shutdown(app_mod, factory_mod, monkeypatch) -> None:
             raise RuntimeError("停机不可用分支不应打开数据库连接")
 
 
-@pytest.mark.parametrize(
-    "module_name,expected_ui_mode",
-    [("app", "default"), ("app_new_ui", "new_ui")],
-)
-def test_system_health_route(module_name, expected_ui_mode, prod_env, monkeypatch):
-    app_mod = _load_module(module_name, monkeypatch)
+def test_system_health_route(prod_env, monkeypatch):
+    app_mod = _load_module("app", monkeypatch)
+    assert not hasattr(app_mod, "app")
     factory_mod = importlib.import_module("web.bootstrap.factory")
-    _assert_health(app_mod.create_app(), expected_ui_mode, factory_mod, monkeypatch)
+    _assert_health(app_mod.create_app(), factory_mod, monkeypatch)
 
 
-@pytest.mark.parametrize("module_name", ["app", "app_new_ui"])
-def test_system_runtime_shutdown_route(module_name, prod_env, monkeypatch):
-    app_mod = _load_module(module_name, monkeypatch)
+def test_system_runtime_shutdown_route(prod_env, monkeypatch):
+    app_mod = _load_module("app", monkeypatch)
     factory_mod = importlib.import_module("web.bootstrap.factory")
     _assert_runtime_shutdown(app_mod, factory_mod, monkeypatch)

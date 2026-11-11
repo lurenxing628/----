@@ -1,15 +1,26 @@
-"""Prepare strictly scoped candidate input; never call the legacy run collector."""
+"""Prepare strictly scoped business input; solver resources are prepared separately."""
+
+from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field, replace
-from datetime import datetime
-from typing import Any, Dict, List, Sequence
+from dataclasses import dataclass, replace
+from datetime import date, datetime
+from typing import TYPE_CHECKING, AbstractSet, Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
+from core.algorithm_contracts.operation_effort import OperationEffort
+from core.algorithm_contracts.types import OpForScheduleAlgo
+from core.models.batch import Batch
+from core.models.batch_operation import BatchOperation
+from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 from core.models.workbench_execution import ExecutionProjection
 from core.models.workbench_preflight import local_date, normalize_preflight_input
-from core.services.scheduler.run.operation_effort import build_operation_efforts
 from core.services.scheduler.run.schedule_input_builder import build_algo_operations
-from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInput
+from core.services.scheduler.run.schedule_input_contracts import (
+    ExecutionGuardState,
+    SeedPreparation,
+    SolverInput,
+)
+from core.services.scheduler.run.schedule_input_seed_metadata import merged_actual_group_intervals
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.run_input_rows import (
     admitted_classification,
@@ -17,136 +28,254 @@ from core.services.workbench.facts.run_input_rows import (
     classify_rows,
     fail,
     operation_model,
+    preflight_classification,
     validate_single_chain,
 )
 
 from .input_config import candidate_config, hold_window
-from .input_effort import saved_seed_efforts
+from .input_effort import prepare_operation_efforts
 from .input_execution import execution_guards
-from .input_external import external_execution_cycles, verified_external_contexts
+from .input_external import execution_groups, external_execution_cycles, verified_external_contexts
 from .input_piece import input_piece_scope
-from .input_runtime import build_runtime
+from .input_runtime import prepare_seed_preparation
+
+if TYPE_CHECKING:
+    from core.models.workbench_piece_adoption import PieceAdoptionScope
+
+    from .preflight_facts import PreflightFacts
 
 _CLASSIFY_CURRENT = object()
 
 
-@dataclass
-class CandidateRunInput(ScheduleRunInput):
-    normalized_input: Dict[str, Any] = field(default_factory=dict)
-    dispositions: List[Dict[str, Any]] = field(default_factory=list)
-    preflight_facts: Any = None
-    latest_plan_rows: Dict[int, Any] = field(default_factory=dict)
-    piece_scope: Any = None
+@dataclass(frozen=True)
+class PreparedBusinessInput:
+    settings: Mapping[str, Any]
+    facts: PreflightFacts
+    normalized_batch_ids: List[str]
+    batches: Dict[str, Batch]
+    operations: List[BatchOperation]
+    algo_ops: List[OpForScheduleAlgo]
+    config: ScheduleConfigSnapshot
+    start: datetime
+    end_date: date
+    readiness_gate_enabled: bool
+    execution_guard: ExecutionGuardState
+    seeds: SeedPreparation
+    piece_scope: Optional[PieceAdoptionScope]
+    predecessors: Mapping[int, Sequence[int]]
+    dispositions: List[Dict[str, Any]]
+    baseline_version: int
+    latest_plan_rows: Mapping[int, Mapping[str, Any]]
+    allowed_op_ids: Set[int]
+    missing_internal_resource_op_ids: Set[int]
+    operation_sources: Dict[int, str]
+    operation_efforts: Sequence[OperationEffort]
+    t0: float
 
 
-def _projection_map(execution_projections, selected_refs):
-    result = {}
-    for projection in execution_projections:
-        if projection.operation_ref in result:
-            fail("execution_projection_duplicate", "同一道工序读到了多份报工记录，这次排产没有开始。请刷新重试；仍不行请联系维护人员。")
-        result[projection.operation_ref] = projection
-    if not set(selected_refs) <= set(result):
-        fail("execution_projection_missing", "有选中的工序读不到报工记录，这次排产没有开始。请重新做排产检查后再排。")
-    return result
+def prepare_solver_input(business: PreparedBusinessInput) -> SolverInput:
+    return SolverInput(
+        batches=business.batches,
+        algo_ops=business.algo_ops,
+        to_schedule=business.seeds.to_schedule,
+        config=business.config,
+        start=business.start,
+        end_date=business.end_date,
+        readiness_gate_enabled=business.readiness_gate_enabled,
+        seeds=business.seeds,
+        predecessors=business.predecessors,
+    )
 
 
-def prepare_candidate_run_input(conn, normalized_input: Dict[str, Any],
-                                execution_projections: Sequence[ExecutionProjection], *,
-                                facts, config_snapshot=None, baseline=None,
-                                for_adoption: bool = False, held=None,
-                                admitted_dispositions: Any = _CLASSIFY_CURRENT) -> CandidateRunInput:
-    """Read-only. Caller supplies AJ selected + all last-official execution scope.
-
-    facts is the caller's PreflightFacts bound to this transaction's capture;
-    execution_projections were validated when that caller read or restored them.
-    The worker owns the existing run lock and its admission/final revalidation.
-    This function neither acquires that lock nor accepts/publishes a run.
-    Adoption keeps input and seed validation but does not prepare solver resources.
-    The worker passes the admission's archived ``admitted_dispositions`` and never
-    reclassifies; admission and adoption classify the current facts.
-    """
-    settings = normalize_preflight_input(normalized_input)
+def prepare_business_input(
+    conn,
+    normalized_input: Mapping[str, Any],
+    execution_projections: Sequence[ExecutionProjection],
+    *,
+    facts: PreflightFacts,
+    config_snapshot: Optional[ScheduleConfigSnapshot] = None,
+    baseline: Optional[Mapping[str, Any]] = None,
+    held: Any = None,
+    preflight_rows: Optional[Sequence[Mapping[str, Any]]] = None,
+    admitted_dispositions: Any = _CLASSIFY_CURRENT,
+    admitted_piece_scope: Optional[PieceAdoptionScope] = None,
+    include_efforts: bool = True,
+) -> PreparedBusinessInput:
+    """Read-only business preparation. Caller supplies selected + last-official execution scope."""
+    settings = normalized_input if preflight_rows is not None else normalize_preflight_input(normalized_input)
     if not settings["batch_refs"]:
         fail("empty_scope", "请先勾选要排产的批次。")
     with candidate_read_snapshot(conn):
-        if facts.conn is not conn or not conn.in_transaction:
-            raise RuntimeError("Prepared input requires this transaction's own production facts")
-        with facts.execution_snapshot():
-            return _prepare_facts(conn, settings, facts, execution_projections, config_snapshot, baseline,
-                                  for_adoption=for_adoption, held=held, admitted=admitted_dispositions)
+        raw_batches, batches, operations, piece_scope, predecessors, base_config, cfg, prev_version = (
+            _prepare_scope_and_config(facts, settings, config_snapshot, baseline, admitted_piece_scope)
+        )
+        projections = {proj.operation_ref: proj for proj in execution_projections}
+        start = datetime.combine(local_date(settings["start_date"]), datetime.min.time())
+        guard, dispositions, mutable, guarded_ids, algo_ops, seeds = _prepare_execution_and_seeds(
+            conn, facts=facts, settings=settings, raw_batches=raw_batches, batches=batches,
+            operations=operations, projections=projections, prev_version=prev_version, start=start,
+            base_config=base_config, piece_scope=piece_scope, held=held, preflight_rows=preflight_rows,
+            admitted_dispositions=admitted_dispositions,
+        )
+        efforts = (
+            prepare_operation_efforts(
+                conn, facts=facts, operations=operations, batches=batches, algo_ops=algo_ops,
+                seeds=seeds, execution_facts=guard.execution_facts, projections=projections,
+            )
+            if include_efforts
+            else ()
+        )
+        return PreparedBusinessInput(
+            settings=settings, facts=facts,
+            normalized_batch_ids=[row["batch_id"] for row in raw_batches],
+            batches=batches, operations=operations, algo_ops=algo_ops, config=cfg, start=start,
+            end_date=local_date(settings["end_date"]),
+            readiness_gate_enabled=settings["ready_check"],
+            execution_guard=guard, seeds=seeds, piece_scope=piece_scope, predecessors=predecessors,
+            dispositions=dispositions, baseline_version=prev_version,
+            latest_plan_rows=facts.latest_plan_rows(prev_version),
+            allowed_op_ids={op.id for op in mutable} | guarded_ids,
+            missing_internal_resource_op_ids=_missing_internal_resources(mutable),
+            operation_sources={op.id: op.source for op in operations},
+            operation_efforts=efforts, t0=time.monotonic(),
+        )
 
 
-def _prepare_facts(conn, settings, facts, execution_projections,
-                   config_snapshot, baseline, *, for_adoption: bool, held, admitted=_CLASSIFY_CURRENT):
+def _prepare_scope_and_config(
+    facts: PreflightFacts,
+    settings: Mapping[str, Any],
+    config_snapshot: Optional[ScheduleConfigSnapshot],
+    baseline: Optional[Mapping[str, Any]],
+    admitted_piece_scope: Optional[PieceAdoptionScope],
+):
     raw_batches = facts.selected(settings["batch_refs"])
     batches = {row["batch_id"]: batch_model(row) for row in raw_batches}
-    raw_ops = [row for row in facts.tables["BatchOperations"] if row["batch_id"] in batches]
-    operations = [operation_model(row) for row in raw_ops]
-    projections = _projection_map(execution_projections, [facts.operation_ref(row) for row in raw_ops])
-    facts.execution_projections.update(projections)
-    return _prepare(conn, settings, facts, raw_batches, batches, operations, projections,
-                    config_snapshot=config_snapshot, baseline=baseline, for_adoption=for_adoption, held=held,
-                    admitted=admitted)
-
-
-def _prepare(conn, settings, facts, raw_batches, batches, operations, projections, *,
-             config_snapshot, baseline, for_adoption: bool, held, admitted):
-    piece_scope = input_piece_scope(operations, batches)
+    operations = [operation_model(row) for row in facts.tables["BatchOperations"] if row["batch_id"] in batches]
+    piece_scope = (
+        admitted_piece_scope if admitted_piece_scope is not None else input_piece_scope(operations, batches)
+    )
     if piece_scope is None:
         validate_single_chain(operations)
+    predecessors = (
+        {work.op_id: tuple(work.predecessor_op_ids) for work in piece_scope.operations}
+        if piece_scope is not None
+        else {}
+    )
     base_config = facts.configuration() if config_snapshot is None else config_snapshot
     cfg = candidate_config(settings, snapshot=base_config)
     if piece_scope is not None:
         cfg = replace(cfg, dispatch_mode="sgs")
-    prev_version = (max((row["version"] for row in facts.capture.table("ScheduleHistory")), default=0)
-                    if baseline is None else baseline["version"] or 0)
-    start = datetime.combine(local_date(settings["start_date"]), datetime.min.time())
-    guards = execution_guards(conn, facts, operations, batches, projections, prev_version, piece_scope=piece_scope)
-    execution_facts, completed, execution_seeds, snapshot = guards
-    cycles = external_execution_cycles(facts, batches, operations, execution_seeds, set(completed))
+    prev_version = (
+        max((row["version"] for row in facts.capture.table("ScheduleHistory")), default=0)
+        if baseline is None
+        else baseline["version"] or 0
+    )
+    return raw_batches, batches, operations, piece_scope, predecessors, base_config, cfg, prev_version
+
+
+def _prepare_execution_and_seeds(
+    conn,
+    *,
+    facts: PreflightFacts,
+    settings: Mapping[str, Any],
+    raw_batches: Sequence[Mapping[str, Any]],
+    batches: Dict[str, Batch],
+    operations: List[BatchOperation],
+    projections: Mapping[str, ExecutionProjection],
+    prev_version: int,
+    start: datetime,
+    base_config: Optional[ScheduleConfigSnapshot],
+    piece_scope: Optional[PieceAdoptionScope],
+    held: Any,
+    preflight_rows: Optional[Sequence[Mapping[str, Any]]],
+    admitted_dispositions: Any,
+) -> Tuple[ExecutionGuardState, List[Dict[str, Any]], List[BatchOperation], Set[int], List[OpForScheduleAlgo], SeedPreparation]:
+    execution_guard = execution_guards(
+        facts, operations, batches, projections, prev_version, piece_scope=piece_scope
+    )
+    completed = execution_guard.execution_completed_op_ids
+    execution_seeds = execution_guard.execution_seed_results
+    actual_group_intervals = merged_actual_group_intervals(
+        execution_groups(facts, batches, operations),
+        execution_seeds,
+    )
+    cycles = (
+        {
+            row["op_id"]: dict(row["external_execution_cycle"])
+            for row in preflight_rows
+            if "external_execution_cycle" in row and row["op_id"] not in completed
+        }
+        if preflight_rows is not None
+        else external_execution_cycles(facts, batches, operations, actual_group_intervals, completed)
+    )
     guarded_ids = set(completed) | set(cycles)
-    dispositions, mutable, releases = (
-        classify_rows(facts, settings, raw_batches, operations, projections,
-                      set(completed), piece_scope=piece_scope, external_cycles=cycles)
-        if admitted is _CLASSIFY_CURRENT else admitted_classification(operations, admitted, guarded_ids))
-    algo_ops, runtime_mutable = _algorithm_scope(facts, batches, operations, mutable, guarded_ids, cycles, releases)
-    calendar = facts.calendar()
-    runtime = build_runtime(
-        conn, cfg=cfg, prev_version=prev_version, start_dt=start, batches=batches, operations=operations,
-        mutable=runtime_mutable, algo_ops=algo_ops, completed_ids=completed,
-        execution_seeds=execution_seeds,
-        hold_window=hold_window(settings, snapshot=base_config)[0] if held is None else None,
-        facts=facts, piece_scope=piece_scope,
-        for_adoption=for_adoption, held=held,
-    )
-    frozen, seeds, freeze_meta, to_schedule, downtime_meta, pool_meta, downtime, pool, seed_version = runtime
-    missing_ids = _missing_internal_resources(mutable)
-    efforts = [] if for_adoption else build_operation_efforts(
-        operations=operations, batches=batches, algo_operations=algo_ops, operations_to_schedule=to_schedule,
-        seed_results=seeds, execution_facts=execution_facts,
-        execution_projections={op.id: projections[facts.operation_refs[op.id]] for op in operations},
-        saved_efforts=saved_seed_efforts(conn, facts, seeds, execution_facts),
-    )
-    return CandidateRunInput(
-        normalized_batch_ids=[row["batch_id"] for row in raw_batches], start_dt_norm=start,
-        end_date_norm=local_date(settings["end_date"]),
-        t0=time.monotonic(), cal_svc=calendar, cfg=cfg, readiness_gate_enabled=settings["ready_check"],
-        batches=batches, operations=operations, missing_internal_resource_op_ids=missing_ids,
-        algo_ops=algo_ops, prev_version=prev_version,
-        frozen_op_ids=frozen, seed_results=seeds, execution_facts=execution_facts,
-        execution_completed_op_ids=completed, execution_seed_results=execution_seeds,
-        execution_snapshot_revision=snapshot.revision,
-        execution_snapshot_op_ids=list(snapshot.op_ids), execution_snapshot_op_count=snapshot.op_count,
-        schedule_output_allowed_op_ids={op.id for op in mutable} | guarded_ids,
-        payload_validation_operations=operations, freeze_meta=freeze_meta,
-        algo_ops_to_schedule=to_schedule, downtime_meta=downtime_meta, resource_pool_meta=pool_meta,
-        downtime_map=downtime, resource_pool=pool, optimizer_seed_version=seed_version,
-        normalized_input=settings, dispositions=dispositions,
-        operation_efforts=efforts,
-        preflight_facts=facts,
-        latest_plan_rows=facts.latest_plan_rows(prev_version),
-        operation_sources={op.id: op.source for op in operations},
+    dispositions, mutable, releases = _resolve_dispositions(
+        facts,
+        settings,
+        raw_batches,
+        operations,
+        projections,
+        completed,
+        guarded_ids,
+        cycles,
         piece_scope=piece_scope,
+        preflight_rows=preflight_rows,
+        admitted_dispositions=admitted_dispositions,
+    )
+    algo_ops, runtime_mutable = _algorithm_scope(
+        facts, batches, operations, mutable, guarded_ids, cycles, releases
+    )
+    seeds = prepare_seed_preparation(
+        conn,
+        facts=facts,
+        prev_version=prev_version,
+        start_dt=start,
+        operations=operations,
+        mutable=runtime_mutable,
+        algo_ops=algo_ops,
+        completed_ids=completed,
+        execution_seeds=execution_seeds,
+        actual_group_intervals=actual_group_intervals,
+        hold_window=hold_window(settings, snapshot=base_config)[0] if held is None else None,
+        piece_scope=piece_scope,
+        held=held,
+    )
+    return execution_guard, dispositions, mutable, guarded_ids, algo_ops, seeds
+
+
+def _resolve_dispositions(
+    facts: PreflightFacts,
+    settings: Mapping[str, Any],
+    raw_batches: Sequence[Mapping[str, Any]],
+    operations: List[BatchOperation],
+    projections: Mapping[str, ExecutionProjection],
+    completed: AbstractSet[int],
+    guarded_ids: Set[int],
+    cycles: Mapping[int, Dict[str, Any]],
+    *,
+    piece_scope: Optional[PieceAdoptionScope],
+    preflight_rows: Optional[Sequence[Mapping[str, Any]]],
+    admitted_dispositions: Any,
+):
+    if admitted_dispositions is not _CLASSIFY_CURRENT:
+        return admitted_classification(operations, admitted_dispositions, guarded_ids)
+    if preflight_rows is not None:
+        return preflight_classification(
+            operations,
+            projections,
+            completed,
+            preflight_rows,
+            external_cycles=cycles,
+        )
+    return classify_rows(
+        facts,
+        settings,
+        raw_batches,
+        operations,
+        projections,
+        completed,
+        piece_scope=piece_scope,
+        external_cycles=cycles,
     )
 
 
@@ -167,3 +296,10 @@ def _algorithm_scope(facts, batches, operations, mutable, guarded_ids, cycles, r
 
 def _missing_internal_resources(operations):
     return {op.id for op in operations if op.source == "internal" and (op.machine_id is None or op.operator_id is None)}
+
+
+__all__ = [
+    "PreparedBusinessInput",
+    "prepare_business_input",
+    "prepare_solver_input",
+]

@@ -27,7 +27,6 @@ from core.services.workbench.facts.trial_origin import TrialOrigin
 from core.services.workbench.facts.zero_duration_evidence import point_basis
 from core.services.workbench.plan.projection import project_plan
 from core.services.workbench.plan.read_context import PlanReadContext
-from core.services.workbench.run.piece_adoption_trial import trial_piece_predecessors
 from core.shared.stored_dates import stored_date
 from data.repositories.workbench_trial_repo import new_ref
 
@@ -35,6 +34,7 @@ from .effort import recorded_operation_types, slot_operation_types
 from .execution_anchors import attach_execution_anchors, resolve_execution_anchors
 from .facts import LiveTables, ProductionFactsCapture, entity_maps, live_context
 from .materials import plan_material_policy
+from .piece_scope import trial_piece_scope
 
 
 def _arrangement(payload, refs, interval):
@@ -202,7 +202,7 @@ def _candidate(conn, ref):
         return result, extra, facts.tables["BatchOperations"], issues
 
 
-def prepare_base(conn, intent, *, execution_service, data_context):
+def prepare_base(conn, intent, *, ledger, data_context):
     key, ref = next(iter(intent["base"].items()))
     capture = ProductionFactsCapture(conn)
     rows, source, all_ops, issues = _plan(conn, ref, capture) if key == "plan_ref" else _candidate(conn, ref)
@@ -214,13 +214,13 @@ def prepare_base(conn, intent, *, execution_service, data_context):
     origin = TrialOrigin({"source": source, "facts": facts}, rows)
     issues.extend(_date_issues(rows))
     _predecessors(rows, all_ops, origin.refs_by_op_id, issues)
-    live = live_context(conn, origin, capture, execution_service=execution_service, data_context=data_context)
+    live = live_context(conn, origin, capture, ledger=ledger, data_context=data_context)
     admission = origin.admission = {
         "input": intent, "source": source, "facts": facts, "base_issues": issues,
         "baseline": live["baseline"], "execution": live["execution"],
     }
     _attach_original_context(rows, origin, live)
-    resolved_anchors = resolve_execution_anchors(conn, rows, live)
+    resolved_anchors = resolve_execution_anchors(rows, live)
     issues.extend(attach_execution_anchors(rows, *resolved_anchors))
     return admission, rows, live, resolved_anchors
 
@@ -270,7 +270,7 @@ def _predecessors(rows, all_ops, operation_refs, issues):
 
     if any(row["original"]["operation"]["piece_id"] is not None for row in rows):
         try:
-            predecessors = trial_piece_predecessors(rows, all_ops, operation_refs)
+            _, predecessors = trial_piece_scope(rows, all_ops, operation_refs)
         except PieceAdoptionBlocked as exc:
             issues.append(issue(exc.code, str(exc)))
             return

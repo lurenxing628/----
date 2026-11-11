@@ -15,7 +15,7 @@ from .adoption_baseline import read_adoption_source
 def official_point_work(conn, version, *, evidence=None, context=None):
     try:
         if evidence is None:
-            refs = context.references if context is not None else WorkbenchPlanIdentityRepository(conn)
+            refs = context.bindings if context is not None else WorkbenchPlanIdentityRepository(conn)
             plan_ref = refs.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
             history = context.history(version) if context is not None else WorkbenchPlanBaselineRepository(conn).get_history_result_summary(version)
             evidence = read_adoption_source(conn, plan_ref=plan_ref, version=version, history=history, context=context)

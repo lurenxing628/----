@@ -22,8 +22,8 @@ from tests.workbench.trial_support import service as trial_service
 
 def workspace(conn, ref):
     svc = WorkbenchPlanQueryService(conn)
-    with svc.read_snapshot():
-        return svc.workspace(PlanReadScope(ref))[0]
+    with svc.read_snapshot() as context:
+        return svc.workspace(context, PlanReadScope(ref))[0]
 
 
 def test_common_piece_chain_preserves_raw_source_saved_scene_and_receipts(trial_case):

@@ -115,8 +115,8 @@ def test_merged_group_ignores_retained_member_days_in_current_diagnostics(stage_
     assert success(api.client.get(path))["data"]["template"]["complete"]
     with api.database() as conn:
         overview = MasterOverviewService(conn)
-        with overview.read_snapshot():
-            route = next(row for row in overview.entities if row["domain"] == "route" and row["business_code"] == PART)
+        with overview.read_snapshot() as scope:
+            route = next(row for row in scope.entities if row["domain"] == "route" and row["business_code"] == PART)
             assert not route["issues"]
             retained = next(row for row in route["fields"] if "保留的逐序周期" in row["label"])
             assert retained["value"] == "old invalid cycle" and not retained["checked"]
@@ -177,8 +177,8 @@ def test_source_diagnostics_reject_supplier_and_group_drift(stage_api, change, e
     api.execute(change)
     with api.database() as conn:
         overview = MasterOverviewService(conn)
-        with overview.read_snapshot():
-            route = next(row for row in overview.entities if row["domain"] == "route" and row["business_code"] == PART)
+        with overview.read_snapshot() as scope:
+            route = next(row for row in scope.entities if row["domain"] == "route" and row["business_code"] == PART)
             assert any(row["rule"] == expected_rule for row in route["issues"])
     entity = api.detail()["data"]
     assert not entity["workflow"]["ready"]

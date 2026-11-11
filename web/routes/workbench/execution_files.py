@@ -44,11 +44,11 @@ def field_file_preview():
     files = FieldReportFileService(g.db, production=WorkbenchProductionReportService(g.db))
     reader = FieldWorkspaceService(g.db, ledger=files.production.ledger)
     with PLAN_READ_SLOTS.slot():
-        with reader.read_snapshot():
-            read_state = reader.prepare_read(scope)
+        with reader.read_snapshot() as ws_scope:
+            read_state = reader.prepare_read(ws_scope, scope)
             snapshot = bind_read_snapshot({'kind': 'field', **read_state.effective_scope}, read_state.state, token)
-            cohort, _ = reader.cohort(read_state)
-            preview, _ = files.prepare_source(source, cohort)
+            cohort, _ = reader.cohort(ws_scope, read_state)
+            preview, _ = files.prepare_source(ws_scope.ledger_scope, source, cohort)
     document = {
         'effective_scope': read_state.effective_scope,
         'read_state': fact_value(read_state.state),
@@ -76,16 +76,16 @@ def field_file_confirm():
     files = FieldReportFileService(g.db, production=service)
     reader = FieldWorkspaceService(g.db, ledger=service.ledger)
 
-    def load_items():
+    def load_items(ledger_scope):
         document, source = resolve_context(PREVIEW_NAMESPACE, ref, 'stale_write')
         if not document['can_confirm']:
             raise WorkbenchCommandRejected('stale_write', '预检结果已过期，报工还没有写入，也没有替换任何内容。请点「重新预检」。')
-        with reader.read_snapshot():
-            read_state = reader.prepare_read(document['effective_scope'])
+        with reader.read_snapshot_with_ledger(ledger_scope) as ws_scope:
+            read_state = reader.prepare_read(ws_scope, document['effective_scope'])
             if fact_value(read_state.state) != document['read_state']:
                 raise WorkbenchCommandRejected('stale_write', '预检之后报工记录有变化，报工还没有写入。请点「重新预检」。')
-            cohort, _ = reader.cohort(read_state)
-            checked, prepared = files.prepare_source(source, cohort)
+            cohort, _ = reader.cohort(ws_scope, read_state)
+            checked, prepared = files.prepare_source(ledger_scope, source, cohort)
         if not checked['can_confirm']:
             raise WorkbenchCommandRejected('stale_write', '预检之后报工记录有变化，报工还没有写入。请点「重新预检」。')
         return prepared
@@ -116,10 +116,10 @@ def download(template):
         raise WorkbenchCommandRejected('snapshot_required', messages.STALE, 400)
     reader = FieldWorkspaceService(g.db)
     with PLAN_READ_SLOTS.slot():
-        with reader.read_snapshot():
-            read_state = reader.prepare_read(normalize_scope(args))
+        with reader.read_snapshot() as ws_scope:
+            read_state = reader.prepare_read(ws_scope, normalize_scope(args))
             snapshot = bind_read_snapshot({'kind': 'field', **read_state.effective_scope}, read_state.state, token)
-            cohort, resource_codes = reader.cohort(read_state)
+            cohort, resource_codes = reader.cohort(ws_scope, read_state)
     # 读事务和读额度都已释放：XLSX 只用已读出的现场范围生成。
     content, count = FieldReportFileService.download(cohort, template, resource_codes=resource_codes)
     response = send_file(BytesIO(content), mimetype=MIME, as_attachment=True,

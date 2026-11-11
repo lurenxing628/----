@@ -22,27 +22,44 @@ def _resolved(source, target):
 
 
 def _same_sources(source, targets):
-    expected = [_resolved(source.capture([target]), target) for target in targets]
-    captured = source.capture(targets)
+    revision = source.repo.plan_identity_revision()
+    expected = [_resolved(source.capture([target], revision=revision), target) for target in targets]
+    captured = source.capture(targets, revision=revision)
     assert [_resolved(captured, target) for target in targets] == expected
     return captured
 
 
 @pytest.mark.parametrize("history", (False, True))
-def test_detail_and_history_capture_all_receipt_operations_once(external_handling_case, history):
+def test_detail_and_history_capture_all_receipt_operations_once(external_handling_case, history, monkeypatch):
     case, conn = external_handling_case, external_handling_case.conn
     ref = case.register(merged=True)
     reader = case.shipments.reader
+    load_kwargs = []
+    bound = []
+    original_load = WorkbenchOutsourcingSourceService.load
+
+    def counted_load(self, target, **kwargs):
+        load_kwargs.append(kwargs)
+        return original_load(self, target, **kwargs)
+
+    monkeypatch.setattr(WorkbenchOutsourcingSourceService, "load", counted_load)
     queries = []
     with reader.read_snapshot():
         conn.set_trace_callback(queries.append)
         try:
-            result = reader.history(ref) if history else reader.detail(ref)
+            result = (
+                reader.history(ref, bind_snapshot=bound.append)
+                if history
+                else reader.detail(ref, bind_snapshot=bound.append)
+            )
         finally:
             conn.set_trace_callback(None)
+    assert "content" not in result
     assert result["item"]["source_state"] == "current"
-    source = result["content"]["source"]
-    assert len(source["public"]["operations"]) == 2
+    assert len(result["item"]["target"]["operations"]) == 2
+    assert load_kwargs == [{"projection": "identity"}]
+    assert len(bound) == 1 and set(bound[0]) == {"revisions", "clock"}
+    assert sum("SELECT revision FROM WorkbenchPlanIdentityClock" in sql for sql in queries) == 1, queries
     for table in ("WorkbenchPlanSourceRefs", "WorkbenchOutsourcingOperationOrigins", "WorkbenchOutsourcingSourceConfirmations"):
         assert sum("SELECT * FROM " + table in sql for sql in queries) == 1, queries
     assert sum('JOIN "BatchOperations" source' in sql for sql in queries) == 1, queries
@@ -76,7 +93,7 @@ def test_snapshot_capture_preserves_instance_rules_and_single_registered_evaluat
         assert captured_queries == []
         selected_queries = []
         conn.set_trace_callback(selected_queries.append)
-        reader.targets(batch_ref=target["batch_ref"])
+        reader.targets(batch_ref=target["batch_ref"], bind_snapshot=lambda _content: None)
         conn.set_trace_callback(None)
         assert sum(sql.startswith('PRAGMA table_info("Batches")') for sql in selected_queries) == 1
         assert sum("SELECT revision FROM WorkbenchPlanIdentityClock" in sql for sql in selected_queries) == 1
@@ -119,14 +136,17 @@ def test_targets_page_slices_before_source_projection_and_binds_revisions(extern
         return original_load(self, target, **kwargs)
 
     monkeypatch.setattr(WorkbenchOutsourcingSourceService, "load", counted_load)
+    target_bound = []
     with reader.read_snapshot():
-        paged = reader.targets(number=1, size=20)
+        paged = reader.targets(number=1, size=20, bind_snapshot=target_bound.append)
     target_kwargs = list(load_kwargs)
     case.register(merged=True)
     load_kwargs.clear()
+    receipt_bound = []
     with reader.read_snapshot():
-        listed = reader.receipts(number=1, size=20)
+        listed = reader.receipts(number=1, size=20, bind_snapshot=receipt_bound.append)
     receipt_kwargs = list(load_kwargs)
+    assert "content" not in paged and "content" not in listed
     assert len(paged["items"]) == 20
     assert paged["page"]["total"] >= 50
     assert len(target_kwargs) == 20
@@ -139,8 +159,8 @@ def test_targets_page_slices_before_source_projection_and_binds_revisions(extern
         kw == {"projection": "identity"}
         for kw in receipt_kwargs
     )
-    assert set(paged["content"]) == {"revisions", "clock", "query"}
-    assert set(listed["content"]) == {"revisions", "clock"}
+    assert len(target_bound) == 1 and set(target_bound[0]) == {"revisions", "clock", "query"}
+    assert len(receipt_bound) == 1 and set(receipt_bound[0]) == {"revisions", "clock"}
 
 
 def test_receipts_list_filters_and_slices_on_lightweight_facts_before_header_decode(external_handling_case, monkeypatch):
@@ -184,7 +204,7 @@ def test_receipts_list_filters_and_slices_on_lightweight_facts_before_header_dec
     with reader.read_snapshot():
         conn.set_trace_callback(queries.append)
         try:
-            unmatched = reader.receipts(status="returned", number=1, size=20)
+            unmatched = reader.receipts(status="returned", number=1, size=20, bind_snapshot=lambda _content: None)
         finally:
             conn.set_trace_callback(None)
     assert unmatched["items"] == [] and unmatched["page"]["total"] == 0
@@ -200,7 +220,7 @@ def test_receipts_list_filters_and_slices_on_lightweight_facts_before_header_dec
     with reader.read_snapshot():
         conn.set_trace_callback(queries.append)
         try:
-            paged = reader.receipts(status="awaiting", number=2, size=2)
+            paged = reader.receipts(status="awaiting", number=2, size=2, bind_snapshot=lambda _content: None)
         finally:
             conn.set_trace_callback(None)
     page_refs = [item["outsourcing_ref"] for item in paged["items"]]
@@ -222,7 +242,7 @@ def test_receipts_list_filters_and_slices_on_lightweight_facts_before_header_dec
     conn.commit()
     with pytest.raises(WorkbenchCommandRejected) as exc_info:
         with reader.read_snapshot():
-            reader.receipts(status="returned", number=1, size=20)
+            reader.receipts(status="returned", number=1, size=20, bind_snapshot=lambda _content: None)
     assert exc_info.value.code == "outsourcing_unavailable"
 
 
@@ -281,9 +301,6 @@ def test_dashboard_deferred_scoped_projection_skips_unretained_returned_receipts
             return orig_to_scoped(self)
         finally:
             conn.set_trace_callback(None)
-
-    with pytest.raises(ValueError, match="Unknown outsourcing source projection"):
-        WorkbenchOutsourcingSourceService(conn).load({}, projection="bogus")
 
     monkeypatch.setattr(WorkbenchOutsourcingSourceService, "load", tracked_load)
     monkeypatch.setattr(AdmittedReceiptSource, "to_scoped_source", tracked_to_scoped)

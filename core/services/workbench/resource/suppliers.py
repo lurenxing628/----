@@ -13,6 +13,7 @@ from data.repositories.supplier_repo import SupplierRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_supplier_state_repo import WorkbenchSupplierStateRepository
 
+from .projection import resource_state_referenced
 from .states import ResourceChange
 
 
@@ -32,7 +33,7 @@ class WorkbenchSupplierService:
         code = payload["business_code"] if identity is None else identity.entity_key
         supplier = checked["supplier"] if checked is not None else {}
         if action == "delete":
-            if any(supplier["references"].values()):
+            if resource_state_referenced("supplier", checked):
                 raise WorkbenchCommandRejected("constraint_conflict", "这家供应商还被工序或外协组使用，请先解除这些关联。")
             return ResourceChange(action, code, identity, {}, {})
         if action == "create" and preparation.raw("supplier", code) is not None:

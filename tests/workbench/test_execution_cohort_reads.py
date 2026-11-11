@@ -13,6 +13,7 @@ def three_operations(case):
 
 def test_bounded_cohort_matches_single_load_with_revisions_voids_and_legacy(ledger_case, monkeypatch):
     from core.services.execution import ledger_reader
+    from core.services.execution.ledger_reader import project_loaded_facts
     from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 
     case = ledger_case
@@ -41,20 +42,21 @@ def test_bounded_cohort_matches_single_load_with_revisions_voids_and_legacy(ledg
     monkeypatch.setattr(WorkbenchExecutionRepository, "reports", reports)
     monkeypatch.setattr(case.ledger, "current_plan_provider", current)
     monkeypatch.setattr(ledger_reader, "MAX_OPERATIONS", 2)
-    with case.ledger.read_snapshot():
-        facts = case.ledger.load_many(refs + refs[:1], comparison_plan_ref=case.plan_ref(2))
-        projected = case.ledger.project_loaded(facts, contexts=False)
+    with case.ledger.read_snapshot() as scope:
+        facts = case.ledger.load_many(scope, refs + refs[:1], comparison_plan_ref=case.plan_ref(2))
+        projected = project_loaded_facts(facts)
         assert list(facts["operations"]) == refs
         assert [len(group) for group in reads] == [2, 1]
         assert len(clocks) == 1
-    workspace = case.ledger.workspace_projection(case.plan_ref(2), [
-        {"task_ref": case.task(2, op), "operation_ref": ref, "plan_ref": case.plan_ref(2)} for op, ref in zip(ids, refs)])
+    with case.ledger.read_snapshot() as scope:
+        workspace = case.ledger.workspace_projection(scope, case.plan_ref(2), [
+            {"task_ref": case.task(2, op), "operation_ref": ref, "plan_ref": case.plan_ref(2)} for op, ref in zip(ids, refs)])
     assert workspace["projections"] == [row.to_dict() for row in projected]
     assert [len(group) for group in reads[2:]] == [2, 1]
     monkeypatch.setattr(ledger_reader, "MAX_OPERATIONS", 10000)
-    with case.ledger.read_snapshot():
-        single = case.ledger.load(refs, comparison_plan_ref=case.plan_ref(2))
-        expected = case.ledger.project_loaded(single, contexts=False)
+    with case.ledger.read_snapshot() as scope:
+        single = case.ledger.load(scope, refs, comparison_plan_ref=case.plan_ref(2))
+        expected = project_loaded_facts(single)
     assert content_text(facts) == content_text(single)
     assert [row.to_dict() for row in projected] == [row.to_dict() for row in expected]
     assert len(projected[1].reports[0].correction_history) == 2
@@ -88,15 +90,15 @@ def test_large_cohort_reads_task_plan_once_and_keeps_requested_duplicate_guard(l
     monkeypatch.setattr(WorkbenchExecutionRepository, "cohort_task_rows", cohort)
     monkeypatch.setattr(WorkbenchExecutionRepository, "task_rows", directed)
     monkeypatch.setattr(ledger_reader, "MAX_OPERATIONS", 2)
-    with case.ledger.read_snapshot():
-        loaded = case.ledger.load_many(refs)
+    with case.ledger.read_snapshot() as scope:
+        loaded = case.ledger.load_many(scope, refs)
         assert set(loaded["current_tasks"]) == set(refs)
-        assert set(case.ledger._snapshot_task_maps[plan_ref]) == set(refs)
-        assert case.ledger.load_many(refs)["current_tasks"] == loaded["current_tasks"]
+        assert set(scope.task_maps[plan_ref]) == set(refs)
+        assert case.ledger.load_many(scope, refs)["current_tasks"] == loaded["current_tasks"]
         assert calls == {"cohort": [(refs, plan_ref)], "directed": []}
     # A small range keeps its directed read, and a fresh snapshot sees new facts.
-    with case.ledger.read_snapshot():
-        case.ledger.load_many(refs[:2])
+    with case.ledger.read_snapshot() as scope:
+        case.ledger.load_many(scope, refs[:2])
     assert calls["directed"] == [(refs[:2], plan_ref)]
 
 
@@ -118,13 +120,13 @@ def test_field_visible_finish_dates_narrow_before_ledger_and_keep_inclusive_days
     monkeypatch.setattr(WorkbenchExecutionRepository, "reports", reports)
     monkeypatch.setattr(ledger_reader, "MAX_OPERATIONS", 2)
     reader = FieldWorkspaceService(case.conn)
-    with reader.read_snapshot():
-        full, _ = reader.cohort(reader.prepare_read({}))
+    with reader.read_snapshot() as ws_scope:
+        full, _ = reader.cohort(ws_scope, reader.prepare_read(ws_scope, {}))
     assert full["summary"]["tasks"] == 3 and [len(group) for group in reads] == [2, 1]
     reads.clear()
     scope = {"plan_finish_date_from": "2026-01-01", "plan_finish_date_to": "2026-01-02", "state": "unreported"}
-    with reader.read_snapshot():
-        selected, _ = reader.cohort(reader.prepare_read(scope))
+    with reader.read_snapshot() as ws_scope:
+        selected, _ = reader.cohort(ws_scope, reader.prepare_read(ws_scope, scope))
     assert [task["planned_end"][:10] for task in selected["tasks"]] == ["2026-01-01", "2026-01-02"]
     assert selected["summary"]["tasks"] == selected["summary"]["state_scope_tasks"] == 2
     assert [len(group) for group in reads] == [2]
@@ -140,15 +142,15 @@ def test_field_page_constructs_report_dicts_only_for_sliced_page_tasks(ledger_ca
     for op_id in op_ids:
         case.command("create", case.task(2, op_id), case.values(1))
 
-    lazy_calls = []
+    report_row_calls = []
     to_dict_calls = []
-    orig_lazy = field_workspace._LazyReportDict.__init__
+    orig_report_rows = field_workspace.CohortTaskExecution.report_rows
     orig_to_dict = ExecutionProjection.to_dict
 
     monkeypatch.setattr(
-        field_workspace._LazyReportDict,
-        "__init__",
-        lambda self, *a, **kw: (lazy_calls.append(True), orig_lazy(self, *a, **kw))[1],
+        field_workspace.CohortTaskExecution,
+        "report_rows",
+        lambda self, *a, **kw: (report_row_calls.append(self.projection.operation_ref), orig_report_rows(self, *a, **kw))[1],
     )
     monkeypatch.setattr(
         ExecutionProjection,
@@ -157,11 +159,11 @@ def test_field_page_constructs_report_dicts_only_for_sliced_page_tasks(ledger_ca
     )
 
     reader = FieldWorkspaceService(case.conn)
-    with reader.read_snapshot():
-        cohort, _ = reader.cohort(reader.prepare_read({}))
+    with reader.read_snapshot() as ws_scope:
+        cohort, _ = reader.cohort(ws_scope, reader.prepare_read(ws_scope, {}))
     assert cohort["summary"]["tasks"] == 30 and cohort["summary"]["reports"] == 30
-    assert len(lazy_calls) == 0 and len(to_dict_calls) == 0
+    assert len(report_row_calls) == 0 and len(to_dict_calls) == 0
 
     paged = reader.page(cohort, 1, 1)
     assert len(paged["tasks"]) == 1
-    assert len(lazy_calls) == 0 and len(to_dict_calls) == 1
+    assert len(report_row_calls) == 0 and len(to_dict_calls) == 1

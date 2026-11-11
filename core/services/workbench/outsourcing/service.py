@@ -6,7 +6,7 @@ receipt, member drift, row caps) lives here; the repository only reads.
 
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Dict, Optional, TypedDict, cast
+from typing import Any, Dict, Literal, Optional, TypedDict, cast
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -74,9 +74,14 @@ class WorkbenchOutsourcingService:
             raise ValueError("Outsourcing time must be factory local")
         return now.replace(microsecond=0)
 
-    def _entry(self, ref, now):
-        header, latest = self.header(ref), self.latest(ref)
-        return self.entry_from_facts(header, latest, now, sources=self.sources.capture([header["target"]]))
+    def _bind_revisions(self, bind_snapshot, **extra):
+        content = {
+            "revisions": read_source_revisions(self.conn, OUTSOURCING_SOURCE_KEYS),
+            "clock": self.sources.repo.plan_identity_revision(),
+            **extra,
+        }
+        bind_snapshot(content)
+        return content
 
     def capture_receipts(self, batch_ref=None) -> Dict[str, CapturedReceiptFacts]:
         captured = self.repo.receipt_facts(self.refs(batch_ref))
@@ -84,10 +89,10 @@ class WorkbenchOutsourcingService:
             rows["header"] = self.header_from_row(rows["header"])
         return cast(Dict[str, CapturedReceiptFacts], captured)
 
-    def entry_from_facts(self, header, latest, now, *, sources, projection: str = "full"):
+    def entry_from_facts(
+        self, header, latest, now, *, sources, projection: Literal["identity", "deferred_scoped"]
+    ):
         """Resolve a receipt from header/latest already admitted in the caller's snapshot."""
-        if projection not in ("full", "identity", "deferred_scoped"):
-            raise ValueError(f"Unsupported receipt entry projection: {projection!r}")
         source, issues, state = None, [], "current"
         try:
             loaded = sources.load(header["target"], projection=projection)
@@ -105,25 +110,31 @@ class WorkbenchOutsourcingService:
         result["can_preview"] = state == "current"
         if projection == "identity":
             return result, None
-        if projection == "deferred_scoped":
-            return result, (source if state == "current" else None)
-        return result, {"header": header, "latest_fact_ref": latest["fact_ref"], "source": source, "issues": issues}
+        return result, (source if state == "current" else None)
 
-    def detail(self, ref, *, as_of=None):
+    def detail(self, ref, *, as_of=None, bind_snapshot):
         reference(ref)
         if not self.conn.in_transaction:
             raise RuntimeError("Outsourcing detail requires a caller-owned snapshot")
-        item, snapshot = self._entry(ref, as_of or self.now())
-        return {"item": item, "content": snapshot}
+        revision = self._bind_revisions(bind_snapshot)["clock"]
+        header, latest = self.header(ref), self.latest(ref)
+        item = self.entry_from_facts(
+            header,
+            latest,
+            as_of or self.now(),
+            sources=self.sources.capture([header["target"]], revision=revision),
+            projection="identity",
+        )[0]
+        return {"item": item}
 
-    def history(self, ref, *, number=1, size=20, as_of=None):
+    def history(self, ref, *, number=1, size=20, as_of=None, bind_snapshot):
         pagination(number, size)
-        result = self.detail(ref, as_of=as_of)
+        result = self.detail(ref, as_of=as_of, bind_snapshot=bind_snapshot)
         rows, paging = self.repo.history(ref, number, size)
         result["history"] = {"items": [fact(row) for row in rows], "page": paging}
         return result
 
-    def receipts(self, *, batch_ref=None, status="all", number=1, size=20, as_of=None):
+    def receipts(self, *, batch_ref=None, status="all", number=1, size=20, as_of=None, bind_snapshot):
         if batch_ref is not None:
             reference(batch_ref)
         if status not in ("all", "awaiting", "overdue", "returned"):
@@ -133,6 +144,7 @@ class WorkbenchOutsourcingService:
             raise RuntimeError("Outsourcing list requires a caller-owned snapshot")
         now = as_of or self.now()
         as_of_text = now.isoformat(timespec="seconds")
+        content = self._bind_revisions(bind_snapshot)
         matched = []
         for ref, raw_latest in self.repo.latest_facts(self.refs(batch_ref)).items():
             latest = self.latest_from_row(raw_latest)
@@ -147,23 +159,19 @@ class WorkbenchOutsourcingService:
         if page_items:
             raw_headers = self.repo.headers([ref for ref, _ in page_items])
             resolved_items = [(self.header_from_row(raw_headers[ref]), latest) for ref, latest in page_items]
-            sources = self.sources.capture([header["target"] for header, _ in resolved_items])
+            sources = self.sources.capture(
+                [header["target"] for header, _ in resolved_items], revision=content["clock"]
+            )
             rows = [
                 self.entry_from_facts(header, latest, now, sources=sources, projection="identity")[0]
                 for header, latest in resolved_items
             ]
-            clock = sources.repo.plan_identity_revision()
         else:
             rows = []
-            clock = self.sources.repo.plan_identity_revision()
-        content = {
-            "revisions": read_source_revisions(self.conn, OUTSOURCING_SOURCE_KEYS),
-            "clock": clock,
-        }
-        return {**paged, "items": rows, "content": content,
+        return {**paged, "items": rows,
                 "as_of": as_of_text, "tracking_basis": "manual_receipt_facts"}
 
-    def targets(self, *, batch_ref=None, query="", number=1, size=20):
+    def targets(self, *, batch_ref=None, query="", number=1, size=20, bind_snapshot):
         if batch_ref is not None:
             reference(batch_ref)
         if type(query) is not str or len(query) > 200 or "\x00" in query:
@@ -172,12 +180,15 @@ class WorkbenchOutsourcingService:
         pagination(number, size)
         if not self.conn.in_transaction:
             raise RuntimeError("Outsourcing targets require a caller-owned snapshot")
+        content = self._bind_revisions(bind_snapshot, query=query)
         target_rows, entities = self.sources.target_rows(batch_ref, query)
         paged = page(target_rows, number, size)
         page_rows = paged["items"]
-        sources = self.sources.capture([self.sources.target_from_row(row) for row in page_rows], entities=entities)
+        sources = self.sources.capture(
+            [self.sources.target_from_row(row) for row in page_rows],
+            entities=entities,
+            revision=content["clock"],
+        )
         rows = sources.load_target_rows(page_rows)
-        clock = sources.repo.plan_identity_revision()
-        revisions = read_source_revisions(self.conn, OUTSOURCING_SOURCE_KEYS)
-        return {**paged, "items": rows, "content": {"revisions": revisions, "clock": clock, "query": query},
+        return {**paged, "items": rows,
                 "grouping_basis": "explicit_receipt_membership", "dates_inferred": False}

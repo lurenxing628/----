@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from core.errors import ValidationError
+from core.shared.stored_dates import stored_date
 from core.shared.strict_parse import is_stored_number
 
 from ._helpers import RowLike
@@ -14,11 +15,36 @@ _SCOPE_LABELS = {"WorkCalendar": "工作日历", "OperatorCalendar": "个人日�
 def _parse_common_calendar_row(row: RowLike, scope: str) -> Dict[str, Any]:
     """Stored row -> model. Every column is required by the DDL; only periods own time, so no clock or hours here."""
     day = str(row["date"])
+    if stored_date(day) is None:
+        raise ValidationError(
+            f"{_SCOPE_LABELS[scope]}里有日期填得不对，请按 2026-09-13 这样改好。",
+            field="date",
+            details={"reason": "invalid_calendar_date", "table": scope},
+        )
     efficiency = row["efficiency"]
     if not is_stored_number(efficiency, positive=True):
         raise ValidationError(
             f"{_SCOPE_LABELS[scope]}里 {day} 的效率读不出来或不大于 0，请到{_SCOPE_LABELS[scope]}重新设置这一天。",
             field="efficiency",
+            details={"reason": "invalid_calendar_number", "table": scope, "field": "efficiency"},
+        )
+    if row["day_type"] not in ("workday", "weekend", "holiday"):
+        raise ValidationError(
+            f"{_SCOPE_LABELS[scope]}里有日期类型认不出来，请到{_SCOPE_LABELS[scope]}重新选工作日、周末或假期。",
+            field="day_type",
+            details={"reason": "invalid_calendar_state", "table": scope},
+        )
+    if row["allow_normal"] not in ("yes", "no") or row["allow_urgent"] not in ("yes", "no"):
+        raise ValidationError(
+            f"{_SCOPE_LABELS[scope]}里普通件或急件的许可认不出来，请到{_SCOPE_LABELS[scope]}重新设置。",
+            field="allow_normal",
+            details={"reason": "invalid_calendar_state", "table": scope},
+        )
+    if not isinstance(row["periods_json"], str):
+        raise ValidationError(
+            f"{_SCOPE_LABELS[scope]}里的工作时段读不出来或者填得不对，请到{_SCOPE_LABELS[scope]}重新设置。",
+            field="periods_json",
+            details={"reason": "invalid_calendar_shift", "table": scope, "field": "periods_json"},
         )
     return {
         "date": day,

@@ -15,15 +15,13 @@ the first actual save allocates a permanent reference through existing triggers.
 import re
 
 from flask import current_app, g, request
-from werkzeug.exceptions import HTTPException
 
-from core.errors import AppError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.facts.source_revisions import CALENDAR_SOURCE_KEYS, read_source_revisions
 from core.services.workbench.resource.calendars import WorkbenchCalendarService
-from web.api_responses import failure, json_response, query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint, read_endpoint
 from .calendar_defaults import register_calendar_defaults_routes
@@ -95,7 +93,7 @@ def calendar_day_command(action):
 
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=command, context_ref=subject, normalized_input=payload,
-        guard=guard, mutate=lambda state: domain._apply_checked(action, payload, state))
+        guard=guard, mutate=lambda state: domain.apply_checked(action, payload, state))
     return json_response(outcome)
 
 
@@ -137,7 +135,7 @@ def calendar_range_confirm():
 
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action="calendar.confirm", context_ref=ref, normalized_input=payload,
-        guard=guard, mutate=lambda preview: domain._apply_checked("confirm", payload, preview))
+        guard=guard, mutate=lambda preview: domain.apply_checked("confirm", payload, preview))
     release_preview(ref)
     return json_response(outcome)
 

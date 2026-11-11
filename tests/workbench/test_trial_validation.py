@@ -11,9 +11,12 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.workbench.batch.facts import BatchFacts
+from core.services.workbench.batch.scope import BatchFactScope
+from core.services.workbench.run import schedule_occupancy_constraints
 from core.services.workbench.run.preflight import PreflightService
+from core.services.workbench.run.schedule_occupancy_constraints import collect_occupancy_issues
 from core.services.workbench.trial import constraints, facts
-from core.services.workbench.trial.constraints import build_trial_intervals, resource_issues
+from core.services.workbench.trial.constraints import build_trial_intervals, prepare_outside_schedule_state
 from core.services.workbench.trial.occupancy import reported_archive
 from tests.workbench.run_compute_support import compute_run, prepare_run_input
 from tests.workbench.trial_adoption_support import INTENT
@@ -130,7 +133,7 @@ def _mixed_external_cycle(case):
             cursor = case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,"
                 "ext_group_id,setup_hours,unit_hours) VALUES ('P1',?,'T1','Turning','external','S1','G',0,0)", (seq,))
             template_rows.append({"id": cursor.lastrowid})
-        for prepared in writer.prepare_templates(template_rows, facts=BatchFacts(case.conn).load()):
+        for prepared in writer.prepare_templates(template_rows, facts=BatchFactScope(BatchFacts(case.conn)).load()):
             members.append(writer.copy_prepared_template('B1', prepared))
     case.batch('B2')
     movable = case.operation('B2', machine_id='M2', operator_id='O2')
@@ -155,7 +158,7 @@ def test_confirmed_merged_return_replaces_estimate_in_real_trial_adoption(trial_
     checked, _ = PreflightService(case.conn).evaluate(settings)
     assert checked['blockers'] == []
     prepared = prepare_run_input(case.conn, settings, case.projections('B2'))
-    assert prepared.normalized_batch_ids == ['B2'] and not prepared.execution_completed_op_ids
+    assert prepared.normalized_batch_ids == ['B2'] and not prepared.execution_guard.execution_completed_op_ids
     assert compute_run(case.conn, settings, case.projections('B2')).state == 'complete'
     retained = {table: list(case.conn.execute('SELECT * FROM ' + table)) for table in
                 ('WorkbenchProductionReports', 'WorkbenchProductionReportRevisions')}
@@ -182,13 +185,17 @@ def test_confirmed_merged_return_replaces_estimate_in_real_trial_adoption(trial_
         (datetime(2026, 9, 9, 11), datetime(2026, 9, 10, 11, 30))}
     ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
                             (str(members[1]),)).fetchone()[0]
-    projection = case.ledger.project_operations([ref])[0]
+    with case.ledger.read_snapshot() as scope:
+        projection = case.ledger.project_operations(scope, [ref])[0]
     assert projection.execution_state == 'unreported' and projection.confirmed_finish is None
     assert projection.known_completed_quantity == 0
     refreshed = prepare_run_input(case.conn, case.settings('B1', 'B2'), case.projections())
-    assert members[1] in refreshed.frozen_op_ids
-    assert members[0] in refreshed.execution_completed_op_ids and case.op_id in refreshed.execution_completed_op_ids
-    seeds = {seed['op_id']: (seed['start_time'], seed['end_time']) for seed in refreshed.seed_results}
+    assert members[1] in refreshed.seeds.frozen_op_ids
+    assert (
+        members[0] in refreshed.execution_guard.execution_completed_op_ids
+        and case.op_id in refreshed.execution_guard.execution_completed_op_ids
+    )
+    seeds = {seed['op_id']: (seed['start_time'], seed['end_time']) for seed in refreshed.seeds.seed_results}
     assert seeds[members[1]] == (datetime(2026, 9, 9, 11), datetime(2026, 9, 10, 11, 30))
     for table, old in retained.items():
         assert list(case.conn.execute('SELECT * FROM ' + table)) == old
@@ -241,8 +248,14 @@ def _live_issues(rows, others=(), schedule=(), *, execution_operations=None, ori
             ),
             "preflight_facts": SimpleNamespace(refs={("machine", "M1"): "MR1", ("operator", "O1"): "OR1"},
                                                operation_refs={op_id: ref for ref, op_id, _, _ in operations})}
-    return resource_issues(
-        rows, live, conn=None, trial_intervals=build_trial_intervals(rows, reported=live["execution_reported"])
+    reported = live["execution_reported"]
+    latest_schedule, outside_point_versions = prepare_outside_schedule_state(None, rows, live, reported)
+    return collect_occupancy_issues(
+        rows,
+        live,
+        trial_intervals=build_trial_intervals(rows, reported=reported),
+        latest_schedule=latest_schedule,
+        outside_point_versions=outside_point_versions,
     )
 
 
@@ -283,7 +296,7 @@ def test_moved_completed_row_real_production_only_reports_execution_overlap():
 
 def test_too_many_issues_counts_distinct_issues(monkeypatch):
     # 释放未知与时间无关，每行只计一次：同资源上一道未完工工序的多条报工不再把去重前的条数撑过上限。
-    monkeypatch.setattr(constraints, "_MAX_ISSUES", 10)
+    monkeypatch.setattr(schedule_occupancy_constraints, "MAX_OCCUPANCY_ISSUES", 10)
     started = _execution("partial", [_report("2026-09-08T08:00:00", "2026-09-08T09:00:00", 1)] * 3, "2026-09-08T08:00:00")
     rows = [_trial_row(str(hour), hour, (f"2026-09-09T{hour:02d}:00:00", f"2026-09-09T{hour:02d}:30:00"),
                        _execution("unreported")) for hour in range(8, 13)]
@@ -291,7 +304,7 @@ def test_too_many_issues_counts_distinct_issues(monkeypatch):
     assert [item["code"] for item in found] == ["execution_resource_release_unknown"] * 5
     assert {item["task_ref"] for item in found} == {row["task_ref"] for row in rows}
     # 真冲突仍拒绝：3 行在同一设备人员上互相重叠，去重后 6 条超过上限 3。
-    monkeypatch.setattr(constraints, "_MAX_ISSUES", 3)
+    monkeypatch.setattr(schedule_occupancy_constraints, "MAX_OCCUPANCY_ISSUES", 3)
     with pytest.raises(WorkbenchCommandRejected) as error:
         _live_issues([_trial_row(str(index), index, ("2026-09-09T08:00:00", "2026-09-09T11:00:00"),
                                  _execution("unreported")) for index in range(1, 4)])

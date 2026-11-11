@@ -3,7 +3,7 @@
 from flask import current_app, g
 
 from core.infrastructure.backup import maintenance_window
-from core.infrastructure.database import ensure_schema, get_connection
+from core.infrastructure.database import ensure_schema
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_system import RESTORE_DISABLED, object_fields
 from core.services.system.backup_restore import audit_backup_operation, run_backup_restore
@@ -40,12 +40,13 @@ def system_result(request_key):
     if row:
         return query_payload({"kind": "file_operation", "operation": records.public(row, True)})
     commands = WorkbenchCommandService(g.db, current_app.logger)
-    stored = commands.repo.get(request_key)
+    stored = commands.lookup(
+        request_key,
+        action="system.config.save",
+        conflict_message="这个操作编号已经用在其他操作上了，这次没有重复执行。请核对上次的结果。",
+    )
     if stored is not None:
-        # This endpoint is system-only, even if a caller provides another domain's key.
-        if stored["action"] != "system.config.save":
-            raise WorkbenchCommandRejected("entity_not_found", "暂无这次操作的结果。请稍后点「查询结果」再看，不要重复提交。", 404)
-        return query_payload({"kind": "config", "command": commands.repo.public_result(stored, replayed=True)})
+        return query_payload({"kind": "config", "command": stored})
     return query_payload({"kind": "not_recorded", "message": messages.pending("操作")})
 
 
@@ -75,11 +76,7 @@ def _restore_runner(manager, path):
 
 def _audit_file(result):
     # Restore audit connections are owned and tracked by the restore host.
-    conn = get_connection(current_app.config["DATABASE_PATH"])
-    try:
-        return audit_backup_operation(conn, current_app.logger, result)
-    finally:
-        conn.close()
+    return audit_backup_operation(g.db, current_app.logger, result)
 
 
 @system_endpoint
@@ -93,14 +90,14 @@ def system_file_action(action):
         # admitted requests: their existing maintenance/write work must finish.
         return _execute_file_action(action, body, service, commands)
     with maintenance_window(current_app.config["DATABASE_PATH"], logger=current_app.logger, action="workbench_file"):
-        if commands.repo.get(body["request_key"]) is not None:
+        if commands.has_receipt(body["request_key"]):
             raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号已经用在数据库维护上了，这次没有重复执行。请点「查询结果」核对上次的结果。")
         return _execute_file_action(action, body, service, commands)
 
 
 def _execute_file_action(action, body, service, commands):
     def guard():
-        if action == "restore" and commands.repo.get(body["request_key"]) is not None:
+        if action == "restore" and commands.has_receipt(body["request_key"]):
             raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号已经用在数据库维护上了，这次没有重复执行。请点「查询结果」核对上次的结果。")
         database = service.journal.database_scope
         if action == "create":

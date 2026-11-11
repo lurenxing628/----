@@ -150,7 +150,7 @@ def validated_correction_history(history):
         corrections.append({"revision_ref": row["revision_ref"], "previous_revision_ref": row["previous_revision_ref"],
                             "action": row["action"], "before": previous, "after": row["values"], "reason": row["reason"],
                             "local_operator": row["local_operator"], "declared_operator": row["declared_operator"],
-                            "recorded_at": row["revision_at"], "receipt_ref": row.get("receipt_ref")})
+                            "recorded_at": row["revision_at"], "receipt_ref": row["receipt_ref"]})
         previous = row["values"]
     return corrections
 

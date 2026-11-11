@@ -2,7 +2,8 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, cast
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Mapping, Optional, cast
 
 from core.errors import AppError, ValidationError
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
@@ -25,20 +26,32 @@ if TYPE_CHECKING:
     from core.services.workbench.facts.production_capture import ProductionFactsCapture
 
 
-@dataclass
+@dataclass(frozen=True)
 class PreparedPreflight:
     data: dict
     fingerprint: str
     settings: dict
-    capture: object
+    capture: Any
     preflight_facts: PreflightFacts
     config_snapshot: Optional["ScheduleConfigSnapshot"]
-    execution_projections: list
-    baseline: object = None
-    prepared_input: object = None
+    execution_projections: tuple
+    evaluation_rows: tuple
     config_error: Optional[ValidationError] = None
-    run_options: object = None
-    held_arrangements: object = None
+    run_options: Any = None
+    held_arrangements: Any = None
+
+
+def _freeze_evaluation_row(row: Mapping[str, Any]) -> Mapping[str, Any]:
+    frozen = {
+        **row,
+        "issues": tuple(MappingProxyType(dict(item)) for item in row["issues"]),
+        "predecessor_refs": tuple(row["predecessor_refs"]),
+        "execution": MappingProxyType(dict(row["execution"])),
+        "held": MappingProxyType(dict(row["held"])) if row["held"] is not None else None,
+    }
+    if "external_execution_cycle" in row:
+        frozen["external_execution_cycle"] = MappingProxyType(dict(row["external_execution_cycle"]))
+    return MappingProxyType(frozen)
 
 
 def task_row(operation_ref, batch, op, projection):
@@ -107,92 +120,97 @@ def batch_dependencies(batch, operations, rows):
 
 
 class PreflightService:
-    def __init__(self, conn, *, facts=None):
-        self._provided_facts = facts
-        self.facts = facts if facts is not None else PreflightFacts(conn)
+    def __init__(self, conn):
+        self.conn = conn
 
     def evaluate(self, value):
-        prepared = self.evaluate_prepared(value)
-        return prepared.data, prepared.fingerprint
-
-    def evaluate_prepared(self, value) -> PreparedPreflight:
         settings = normalize_preflight_input(value)
-        self.facts = self._provided_facts if self._provided_facts is not None else PreflightFacts(self.facts.conn)
-        with self.facts.snapshot() as fingerprint:
-            config, config_error = None, None
-            try:
-                config = self.facts.configuration()
-            except ValidationError as exc:
-                config_error = exc
-            options = run_options(settings, config) if config is not None else None
-            if options is not None:
-                settings = {**settings, "time_budget_seconds": options["time_budget_seconds"]}
-            batches = self.facts.selected(settings["batch_refs"])
-            selected_ids = {row["batch_id"] for row in batches}
-            operations = [row for row in self.facts.tables["BatchOperations"] if row["batch_id"] in selected_ids]
-            prepared_projections = []
-            projections = execution_projections(self.facts, operations, prepared=prepared_projections)
-            cycles, arrangement_reasons = self._external_cycles(batches, operations, projections)
-            checks = self.facts.checks()
-            grouped = defaultdict(list)
-            for op in operations:
-                grouped[op["batch_id"]].append(op)
-            rows, no_route, unready, dependency_reasons = [], [], [], []
-            for batch in batches:
-                ops = grouped[batch["batch_id"]]
-                if not ops:
-                    no_route.append(batch)
-                if checks.readiness(batch):
-                    unready.append({"batch_ref": batch["ref"], "batch_id": batch["batch_id"]})
-                batch_rows = []
-                for op in ops:
-                    operation_ref = self.facts.operation_ref(op)
-                    projection = projections[operation_ref]
-                    row = task_row(operation_ref, batch, op, projection)
-                    op_ready, release_day = ([], None) if op["id"] in cycles else checks.operation_readiness(batch, op, settings)
-                    row["material_ready_date"] = release_day if release_day != "1900-01-01" else None
-                    row["status"], row["issues"] = classify(checks, batch, op, projection, settings, op_ready,
-                                                          external_cycle=cycles.get(op["id"]))
-                    if op["id"] in cycles:
-                        row["external_execution_cycle"] = cycles[op["id"]]
-                    batch_rows.append(row)
-                dependency_reasons.extend(batch_dependencies(batch, ops, batch_rows))
-                rows.extend(batch_rows)
-            hold = (None, "default") if config_error is not None else hold_window(settings, snapshot=config)
-            held, notes, marks, held_obj = self._arrangement_reasons(
-                settings, batches, operations, rows, projections,
-                checks, cycles, hold_window_bounds=hold[0],
-            )
-            for row in rows:
-                row["held"] = marks.get(row["op_id"])
-            data = summarize(settings, batches, rows, no_route, unready,
-                             dependency_reasons + arrangement_reasons + held, notes,
-                             hold=hold)
-            data["run_options"] = options
-            return PreparedPreflight(
-                data, fingerprint, settings, self.facts.capture, self.facts,
-                config, prepared_projections, config_error=config_error, run_options=options,
-                held_arrangements=held_obj,
-            )
+        with PreflightFacts.open(self.conn) as facts:
+            prepared = self.evaluate_prepared(settings, facts=facts)
+            return prepared.data, prepared.fingerprint
 
-    def _external_cycles(self, batches, operations, projections):
+    def evaluate_prepared(
+        self, settings, *, facts: PreflightFacts, fingerprint: Optional[str] = None
+    ) -> PreparedPreflight:
+        effective_fingerprint = facts.fingerprint() if fingerprint is None else fingerprint
+        config, config_error = None, None
         try:
-            return preflight_external_cycles(self.facts, batches, operations, projections)
+            config = facts.configuration()
+        except ValidationError as exc:
+            config_error = exc
+        options = run_options(settings, config) if config is not None else None
+        if options is not None:
+            settings = {**settings, "time_budget_seconds": options["time_budget_seconds"]}
+        batches = facts.selected(settings["batch_refs"])
+        selected_ids = {row["batch_id"] for row in batches}
+        operations = [row for row in facts.tables["BatchOperations"] if row["batch_id"] in selected_ids]
+        prepared_projections = []
+        projections = execution_projections(facts, operations, prepared=prepared_projections)
+        cycles, arrangement_reasons = self._external_cycles(facts, batches, operations, projections)
+        checks = facts.checks()
+        grouped = defaultdict(list)
+        for op in operations:
+            grouped[op["batch_id"]].append(op)
+        rows, no_route, unready, dependency_reasons = [], [], [], []
+        for batch in batches:
+            ops = grouped[batch["batch_id"]]
+            if not ops:
+                no_route.append(batch)
+            if checks.readiness(batch):
+                unready.append({"batch_ref": batch["ref"], "batch_id": batch["batch_id"]})
+            batch_rows = []
+            for op in ops:
+                operation_ref = facts.operation_ref(op)
+                projection = projections[operation_ref]
+                row = task_row(operation_ref, batch, op, projection)
+                op_ready, release_day = ([], None) if op["id"] in cycles else checks.operation_readiness(batch, op, settings)
+                row["material_ready_date"] = release_day if release_day != "1900-01-01" else None
+                row["status"], row["issues"] = classify(checks, batch, op, projection, settings, op_ready,
+                                                      external_cycle=cycles.get(op["id"]))
+                if op["id"] in cycles:
+                    row["external_execution_cycle"] = cycles[op["id"]]
+                batch_rows.append(row)
+            dependency_reasons.extend(batch_dependencies(batch, ops, batch_rows))
+            rows.extend(batch_rows)
+        hold = (None, "default") if config_error is not None else hold_window(settings, snapshot=config)
+        held, notes, marks, held_obj = self._arrangement_reasons(
+            facts, settings, batches, operations, rows, projections,
+            checks, cycles, hold_window_bounds=hold[0],
+        )
+        for row in rows:
+            row["held"] = marks.get(row["op_id"])
+        data = summarize(settings, batches, rows, no_route, unready,
+                         dependency_reasons + arrangement_reasons + held, notes,
+                         hold=hold)
+        data["run_options"] = options
+        return PreparedPreflight(
+            data, effective_fingerprint, settings, facts.capture, facts,
+            config, tuple(prepared_projections),
+            tuple(_freeze_evaluation_row(row) for row in rows),
+            config_error=config_error, run_options=options,
+            held_arrangements=held_obj,
+        )
+
+    @staticmethod
+    def _external_cycles(facts: PreflightFacts, batches, operations, projections):
+        try:
+            return preflight_external_cycles(facts, batches, operations, projections)
         except AppError:
             # 周期核对不了是这次排产的阻断，不是报工台账没开通；具体原因（如外协报工带本厂资源）另行列出。
             return {}, [issue("external_execution_cycle_unproven", "合并外协组的实际周期无法核对，请检查现场记录和原安排后重新检查。")]
 
-    def _arrangement_reasons(self, settings, batches, operations, rows, projections, checks, cycles,
+    @staticmethod
+    def _arrangement_reasons(facts: PreflightFacts, settings, batches, operations, rows, projections, checks, cycles,
                              *, hold_window_bounds):
         """排产计算或采用才会发现、却在开始前就能看出的冲突：外协记录占了本厂资源，
         不重排时段保留的原安排按现在的资料已不成立。返回 (阻断原因, 提醒, {工序: 保留标记}, 保留安排结果)。"""
-        capture = cast("ProductionFactsCapture", self.facts.capture)
+        capture = cast("ProductionFactsCapture", facts.capture)
         version = max((row["version"] for row in capture.table("ScheduleHistory")), default=0)
-        reasons = external_resource_issues(self.facts, version)
+        reasons = external_resource_issues(facts, version)
         # 与排产计算查不重排时段的范围一致：这次要重排的工序，加上合并外协组按实际周期派生保留的成员。
         held_ids = {row["op_id"] for row in rows if row["status"] in ("eligible", "auto_assign_required")} | set(cycles)
         held, notes, marks, held_obj = held_arrangement_reasons(
-            self.facts, checks, settings, version, batches, operations,
+            facts, checks, settings, version, batches, operations,
             held_ids, cycles, projections, hold_window_bounds=hold_window_bounds,
         )
         return reasons + held, notes, marks, held_obj

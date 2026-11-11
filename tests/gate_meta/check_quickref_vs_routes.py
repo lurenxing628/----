@@ -12,8 +12,6 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple, cast
 
 from flask import Flask
 
-QUICKREF_VS_ROUTES_REPORT_REL = "evidence/QualityGate/quickref_vs_routes.md"
-
 
 def find_repo_root() -> str:
     # 自包含 marker-walk：本文件被门禁当独立脚本跑（python tests/gate_meta/check_quickref_vs_routes.py，
@@ -62,10 +60,7 @@ def _load_app_for_scan(repo_root: str) -> Tuple[Flask, str]:
     try:
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
-        app = getattr(module, "app", None)
-        if app is None:
-            raise RuntimeError("app.py 未导出 app")
-        return cast(Flask, app), module_name
+        return cast(Flask, module.create_app()), module_name
     except Exception:
         sys.modules.pop(module_name, None)
         raise
@@ -189,6 +184,8 @@ def main() -> int:
             if repo_root not in sys.path:
                 sys.path.insert(0, repo_root)
                 added_repo_root = True
+            from tools.quality_gate_shared import QUALITY_GATE_QUICKREF_VS_ROUTES_REL
+
             app, module_name = _load_app_for_scan(repo_root)
 
             rule_set = _collect_app_routes(app)
@@ -215,7 +212,7 @@ def main() -> int:
         undocumented_in_doc=undocumented_in_doc,
     )
 
-    out_path = Path(repo_root) / QUICKREF_VS_ROUTES_REPORT_REL
+    out_path = Path(repo_root) / QUALITY_GATE_QUICKREF_VS_ROUTES_REL.replace("\\", "/")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(report, encoding="utf-8")
     print(out_path.relative_to(repo_root).as_posix())

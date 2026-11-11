@@ -7,7 +7,6 @@ import pytest
 from core.models.workbench_plan_scope import PlanCatalogScope
 from core.services.workbench.plan.point_query import PlanMetadataRepository, PointPlanCatalogRepository
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
-from core.services.workbench.plan.read_context import PlanReadContext
 from tests.workbench.plan_read_support import plan_read_api  # noqa: F401
 
 
@@ -16,11 +15,9 @@ def _complete_capture_catalog(api, collection):
     with api.db() as conn:
         conn.execute("PRAGMA query_only=1")
         reader = WorkbenchPlanQueryService(conn)
-        with reader.read_snapshot():
-            context = PlanReadContext(conn, references=reader.references, entities=reader.entities)
-            with context.read_scope():
-                data, _ = reader._catalog_page(PlanCatalogScope(collection, 20), None, context)
-                return data["plans"]
+        with reader.read_snapshot() as context:
+            data, _ = reader.catalog_page(context, PlanCatalogScope(collection, 20), None)
+            return data["plans"]
 
 
 def test_catalog_streams_history_without_complete_capture(plan_api, monkeypatch):

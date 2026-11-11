@@ -94,8 +94,8 @@ def test_relation_export_in_read_snapshot_reuses_loaded_table_facts(resource_con
     statements = []
     conn.set_trace_callback(statements.append)
     try:
-        with reader.read_snapshot():
-            _, cold_count = service.preview_export("selected", request=ResourcePageRequest(kind="operator"),
+        with reader.read_snapshot() as scope:
+            _, cold_count = service.preview_export(scope, "selected", request=ResourcePageRequest(kind="operator"),
                                                    selected_refs=[operator.ref])
     finally:
         conn.set_trace_callback(None)
@@ -107,13 +107,13 @@ def test_relation_export_in_read_snapshot_reuses_loaded_table_facts(resource_con
 
     monkeypatch.setattr(service.links, "list_simple_rows_for_operators", unexpected)
     monkeypatch.setattr(service.repo, "raw_many", unexpected)
-    with reader.read_snapshot():
-        reader._table_reader()
-        args, count = service.preview_export("selected", request=ResourcePageRequest(kind="operator"),
-                                             selected_refs=[operator.ref])
-        rows = service.export_rows(**args)
-    assert count == 1 and len(rows) == 1
-    assert rows[0]["operator_code"] == "O1" and rows[0]["machine_code"] == "M1"
+    filtered_request = ResourcePageRequest(kind="operator", sort="skill_refs")
+    with reader.read_snapshot() as scope:
+        args, count = service.preview_export(scope, "filtered", request=filtered_request)
+    with reader.read_snapshot() as scope:
+        rows = service.export_rows(scope, **args)
+    assert count >= 1 and len(rows) == count
+    assert any(row["operator_code"] == "O1" and row["machine_code"] == "M1" for row in rows)
 
     app = Flask(__name__)
     app.config.update(TESTING=True, SECRET_KEY="relation-export-capacity")
@@ -150,9 +150,9 @@ def test_relation_export_in_read_snapshot_reuses_loaded_table_facts(resource_con
 
     projected, original_rows_for = [], module.WorkbenchRelationFileService._rows_for
 
-    def tracked_rows_for(self, codes):
+    def tracked_rows_for(self, scope, codes):
         projected.append(list(codes))
-        return original_rows_for(self, codes)
+        return original_rows_for(self, scope, codes)
 
     monkeypatch.setattr(module.WorkbenchRelationFileService, "_rows_for", tracked_rows_for)
     monkeypatch.setattr(file_writer, "XLSX_MAX_ROWS", 1)
@@ -235,3 +235,61 @@ def test_relation_import_rejects_null_marker_on_required_columns(resource_conn):
     row = preview["rows"][0]
     assert row["result"] == "rejected"
     assert [error["field"] for error in row["errors"]] == ["skill_level", "is_primary"]
+
+
+def test_relation_import_preserves_legacy_surrounding_whitespace_without_touching_trimmed_sibling(resource_conn):
+    conn = resource_conn
+    insert_row(conn, "Operators", {"operator_id": " O1 ", "name": "带空格人员"})
+    insert_row(conn, "Machines", {"machine_id": " M1 ", "name": "带空格设备", "op_type_id": "OT1"})
+    insert_row(conn, "OperatorMachine", {"operator_id": " O1 ", "machine_id": " M1 ",
+                                         "skill_level": "normal", "is_primary": "no"})
+    conn.commit()
+    trimmed_before = tuple(
+        conn.execute("SELECT skill_level, is_primary FROM OperatorMachine WHERE operator_id='O1' AND machine_id='M1'").fetchone()
+    )
+
+    service = module.WorkbenchRelationFileService(conn, "operator_machine")
+    with service.reader.read_snapshot() as scope:
+        args, count = service.preview_export(scope, "all", request=ResourcePageRequest(kind="operator"))
+        exported_rows = service.export_rows(scope, **args)
+    assert count == len(exported_rows) == 2
+    assert {(r["operator_code"], r["machine_code"]) for r in exported_rows} == {("O1", "M1"), (" O1 ", " M1 ")}
+
+    for fmt in ("csv", "xlsx"):
+        exported_file = write_relation_file("operator_machine", exported_rows, fmt)
+        roundtrip = service.preview_import(exported_file.content, file_format=fmt, mode="upsert").as_dict()
+        assert roundtrip["summary"] == {"new": 0, "update": 0, "unchanged": 2, "delete": 0, "rejected": 0}
+        assert [r["result"] for r in roundtrip["rows"]] == ["unchanged", "unchanged"]
+
+    update_content = file_bytes(
+        [(" O1 ", " M1 ", "熟练", "否")],
+        headers=("工号", "设备编号", "技能等级", "主操设备"),
+    )
+    update_preview = service.preview_import(update_content, file_format="csv", mode="upsert")
+    update_dict = update_preview.as_dict()
+    assert update_dict["summary"] == {"new": 0, "update": 1, "unchanged": 0, "delete": 0, "rejected": 0}
+    update_row, = update_dict["rows"]
+    assert update_row["result"] == "update"
+    assert update_row["business_code"] == " O1  /  M1 "
+    assert update_row["changes"] == {"skill_level": {"before": "normal", "after": "expert"}}
+    with service.tx.transaction():
+        outcome = service.confirm_import(update_preview)
+    assert outcome.result == "committed"
+    assert tuple(
+        conn.execute("SELECT skill_level, is_primary FROM OperatorMachine WHERE operator_id=' O1 ' AND machine_id=' M1 '").fetchone()
+    ) == ("expert", "no")
+    assert tuple(
+        conn.execute("SELECT skill_level, is_primary FROM OperatorMachine WHERE operator_id='O1' AND machine_id='M1'").fetchone()
+    ) == trimmed_before
+
+    missing_content = file_bytes(
+        [(" O-MISS ", " M1 ", "普通", "否"), (" O1 ", " M-MISS ", "普通", "否"), ("O-MISS", "M1", "普通", "否")],
+        headers=("工号", "设备编号", "技能等级", "主操设备"),
+    )
+    missing_preview = service.preview_import(missing_content, file_format="csv", mode="upsert").as_dict()
+    assert missing_preview["summary"]["rejected"] == 3
+    assert [(r["errors"][0]["field"], r["errors"][0]["message"]) for r in missing_preview["rows"]] == [
+        ("operator_code", "编号不能有首尾空格，请修正后重新导入。"),
+        ("machine_code", "编号不能有首尾空格，请修正后重新导入。"),
+        ("operator_code", "系统里找不到这个编号，这一行没有导入。请先在基础资料里维护好再导入。"),
+    ]

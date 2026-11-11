@@ -85,13 +85,15 @@ def browser_contract(mode, raw, request=None, *, intent=None, refs=None):
     node = node_runtime()
     script = """
 const fs = require('node:fs'), vm = require('node:vm');
+const { compile } = require('./scripts/workbench/compile.cjs');
 const input = JSON.parse(fs.readFileSync(0, 'utf8')), context = {};
 context.window = context; vm.createContext(context);
-for (const file of ['resource-contract.js', 'ResourceTableFilterModel.js', 'ResourceMaterialContract.js',
-                    'ProcessContract.js', 'ProcessActionContract.js'])
-  vm.runInContext(fs.readFileSync('frontend/workbench/app/' + file, 'utf8'), context, { filename: file });
+const files = ['resource-contract.js', 'ResourceTableFilterModel.js', 'ResourceMaterialContract.js',
+               'ProcessContract.js', 'ProcessActionContract.js'];
+for (const out of compile({ sources: files.map(file => ({ path: file, code: fs.readFileSync('frontend/workbench/app/' + file, 'utf8') })) }).outputs)
+  vm.runInContext(out.code, context, { filename: out.path });
 try {
-  const A = context.APSProcessActions;
+  const A = context.__wbRuntime.getModule('ProcessActionContract.js');
   if (input.mode === 'delete') A.deletePreview(input.raw, input.request);
   else A.receipt(input.raw, input.intent, input.refs);
 } catch (error) { throw new Error(String(error.message) + ' ' + JSON.stringify(error)); }

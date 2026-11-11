@@ -34,6 +34,14 @@ def validate_request_key(value: object) -> str:
     return value
 
 
+def _json_value(value: Any) -> Any:
+    if isinstance(value, (tuple, list)):
+        return [_json_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _json_value(item) for key, item in value.items()}
+    return value
+
+
 @dataclass(frozen=True)
 class WorkbenchCommandOutcome:
     result: str
@@ -41,9 +49,10 @@ class WorkbenchCommandOutcome:
     warnings: List[Dict[str, Any]] = field(default_factory=list)
     history_revision: Optional[int] = None
 
-    def payload(self) -> Dict[str, Any]:
+    def payload(self, *, normalize: bool = True) -> Dict[str, Any]:
         if self.result not in ("committed", "unchanged", "partial"):
             raise ValueError("普通数据库命令的结果状态无效。")
         if not isinstance(self.warnings, list):
             raise ValueError("命令警告必须是列表。")
-        return {"result": self.result, "data": self.data, "warnings": self.warnings}
+        data = _json_value(self.data) if normalize else self.data
+        return {"result": self.result, "data": data, "warnings": self.warnings}

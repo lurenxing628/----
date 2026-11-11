@@ -6,6 +6,7 @@ from core.infrastructure.schema_structure import SchemaStructure
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_calibration_adoption_schema import contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_process_route import normalize_route_preview_input
 from core.services.process.template_hours import ProcessTemplateHours
 from core.services.process.workflow_state import record_confirmation
 from core.services.workbench.process.file_codec import encode_process_file
@@ -19,7 +20,6 @@ from core.services.workbench.process.stage_apply import (
     prepare_source,
     source_catalog,
 )
-from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 from tests.workbench.calibration_adoption_support import INTENT, KEY, PREVIEW_INTENT, service, snapshot, token
 from tests.workbench.calibration_adoption_support import adoption_case as _adoption_case  # noqa: F401
@@ -132,21 +132,24 @@ def test_actual_work_type_change_clears_old_hours_without_lock(ready_adoption_ca
     adopt(case)
     case.conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T2','Milling')")
     case.conn.commit()
-    identities = WorkbenchIdentityRepository(case.conn)
     ref = case.ref('op_type', 'T2')
     with TransactionManager(case.conn).transaction(begin_immediate=True):
         old = current(case)
         facts = load_route_reference_facts(case.conn)
         if entry == 'source':
             changes = prepare_source({'operations': [
-                {'ref': old['ref'], 'op_type_ref': ref, 'source': 'internal', 'supplier_ref': None}]}, [old], identities,
+                {'ref': old['ref'], 'op_type_ref': ref, 'source': 'internal', 'supplier_ref': None}]}, [old], facts.identities,
                                      catalog=source_catalog(facts.references))
             apply_source(case.conn, changes, [old])
         else:
-            preview, _ = prepare_route(case.conn, None, {'route': {'mode': 'rows', 'rows': [{'seq': 1, 'op_type_name': 'Milling'}]}}, [old],
-                                       facts=facts)
+            preview, _ = prepare_route(
+                None,
+                [old],
+                facts=facts,
+                normalized=normalize_route_preview_input({'mode': 'rows', 'rows': [{'seq': 1, 'op_type_name': 'Milling'}]}),
+            )
             assert preview['can_confirm_route'], preview
-            assert apply_route(case.conn, {'part_no': 'P1', 'route_raw': None, 'route_parsed': 'no'}, [old], preview, identities,
+            assert apply_route(case.conn, {'part_no': 'P1', 'route_raw': None, 'route_parsed': 'no'}, [old], preview, facts.identities,
                                default_catalog_reader=lambda: default_suppliers(facts.references))
     new = current(case)
     assert new['id'] == old['id'] and new['ref'] == old['ref'] and new['revision'] > old['revision']

@@ -1,8 +1,7 @@
-"""守护 orchestrate_schedule_run 的工序依赖图循环处置策略：report 模式遇环只报 warning 并继续排产、on+block_on_cycle=yes 在分配版本号前抛 ValidationError(field=schedule_graph_cycle)、on+block_on_cycle=no 关闭图增强回退普通 SGS、networkx 缺失/构建等已知图错误按各自 reason 上报而非误判为循环、未知异常不得在排产前被吞掉。"""
+"""守护 run_candidate_comparison 的工序依赖图循环处置策略：report 模式遇环只报 warning 并继续排产、on+block_on_cycle=yes 在分配版本号前抛 ValidationError(field=schedule_graph_cycle)、on+block_on_cycle=no 关闭图增强回退普通 SGS、networkx 缺失/构建等已知图错误按各自 reason 上报而非误判为循环、未知异常不得在排产前被吞掉。"""
 
 from __future__ import annotations
 
-import time
 from dataclasses import replace
 from datetime import datetime, timedelta
 from functools import partial
@@ -17,26 +16,46 @@ from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.errors import ValidationError
 from core.models.batch import Batch
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
+from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.scheduler.run import schedule_candidate_runner
 from core.services.scheduler.run.optimizer.runtime import _default_runtime
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
 from core.services.scheduler.run.schedule_graph_report import prepare_schedule_graph_for_dispatch
-from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInput
-from core.services.scheduler.run.schedule_orchestrator import orchestrate_schedule_run
+from core.services.scheduler.run.schedule_input_contracts import (
+    SeedPreparation,
+    SolverInput,
+    SolverResources,
+)
 from core.services.scheduler.run.schedule_shared_optimizer import optimize_shared_schedule
-from tests._support.algo_operations import make_algo_op, make_batch_operation
+from tests._support.algo_operations import make_algo_op
 
 
 def _make_dt(hours: int) -> datetime:
     return datetime(2026, 1, 1, 8, 0, 0) + timedelta(hours=hours)
 
 
-def _schedule_input(mode: str, *, block_on_cycle: str) -> ScheduleRunInput:
+def _schedule_input(mode: str, *, block_on_cycle: str) -> SolverInput:
     operation = dict(id=1, op_code="OP-B001-010", batch_id="B001", seq=10, op_type_name="车削")
     algo_ops = [make_algo_op(**operation)]
-    operations = [make_batch_operation(**operation)]
-    return ScheduleRunInput(
-        cfg=ScheduleConfigSnapshot(
+    seeds = SeedPreparation(
+        frozen_op_ids=set(),
+        seed_results=[],
+        freeze_meta={
+            "loaded": True,
+            "freeze_enabled": False,
+            "freeze_days": 0,
+            "freeze_state": "disabled",
+            "freeze_applied": False,
+            "freeze_disabled_reason": "config_disabled",
+        },
+        to_schedule=list(algo_ops),
+        unscheduled_external_seed_by_op={},
+    )
+    return SolverInput(
+        batches={"B001": Batch(batch_id="B001", part_no="P001", quantity=1, due_date="2026-01-02")},
+        algo_ops=algo_ops,
+        to_schedule=list(algo_ops),
+        config=ScheduleConfigSnapshot(
             sort_strategy="priority_first",
             priority_weight=0.4,
             due_weight=0.5,
@@ -58,40 +77,21 @@ def _schedule_input(mode: str, *, block_on_cycle: str) -> ScheduleRunInput:
             graph_critical_weight=500,
             graph_impact_weight=10,
         ),
-        cal_svc=SimpleNamespace(),
+        start=datetime(2026, 1, 1, 8, 0, 0),
+        end_date=None,
         readiness_gate_enabled=True,
-        algo_ops=algo_ops,
-        algo_ops_to_schedule=list(algo_ops),
-        batches={"B001": Batch(batch_id="B001", part_no="P001", quantity=1, due_date="2026-01-02")},
-        start_dt_norm=datetime(2026, 1, 1, 8, 0, 0),
-        end_date_norm=None,
+        seeds=seeds,
+    )
+
+
+def _solver_resources() -> SolverResources:
+    return SolverResources(
+        calendar_engine=CalendarEngine(),
         downtime_map={},
-        seed_results=[],
         resource_pool={"machines_by_op_type": {}, "operators_by_machine": {}, "machines_by_operator": {}},
-        operations=operations,
-        schedule_output_allowed_op_ids={1},
-        payload_validation_operations=operations,
-        operation_sources={op.id: op.source for op in operations},
-        execution_snapshot_revision="rev-0",
-        execution_snapshot_op_ids=[1],
-        execution_snapshot_op_count=1,
-        normalized_batch_ids=["B001"],
-        freeze_meta={
-            "loaded": True,
-            "freeze_enabled": False,
-            "freeze_days": 0,
-            "freeze_state": "disabled",
-            "freeze_applied": False,
-            "freeze_disabled_reason": "config_disabled",
-        },
         downtime_meta={},
         resource_pool_meta={},
-        frozen_op_ids=set(),
-        t0=time.monotonic(),
         optimizer_seed_version=6,
-        prev_version=5,
-        missing_internal_resource_op_ids=set(),
-        execution_facts={}, execution_completed_op_ids=set(), execution_seed_results=[],
     )
 
 
@@ -150,26 +150,27 @@ def _cycle_graph_payload() -> Dict[str, Any]:
     }
 
 
-def _summary_from_ctx(*, ctx: Any, logger: Any = None) -> Dict[str, Any]:
-    algo: Dict[str, Any] = {"ok": 1, "used_params": dict(ctx.used_params)}
+def _summary_from_plan(plan: Any) -> Dict[str, Any]:
+    algo: Dict[str, Any] = {"ok": 1, "used_params": dict(plan.used_params)}
     result_summary_obj: Dict[str, Any] = {"algo": algo, "warnings": [], "errors": []}
-    if ctx.graph_analysis_public is not None:
-        algo["graph_analysis"] = dict(ctx.graph_analysis_public)
-    if ctx.graph_analysis_diagnostics is not None:
-        result_summary_obj["diagnostics"] = {"graph_analysis": dict(ctx.graph_analysis_diagnostics)}
+    if plan.graph_analysis_public is not None:
+        algo["graph_analysis"] = dict(plan.graph_analysis_public)
+    if plan.graph_analysis_diagnostics is not None:
+        result_summary_obj["diagnostics"] = {"graph_analysis": dict(plan.graph_analysis_diagnostics)}
     return result_summary_obj
 
 
-def _run_orchestrator(schedule_input: Any) -> Any:
+def _run_orchestrator(schedule_input: SolverInput) -> Any:
     return _run_orchestrator_with_decoder(schedule_input, decode_fn=lambda **_kwargs: _optimizer_outcome())
 
 
-def _run_orchestrator_with_decoder(schedule_input: Any, *, decode_fn: Any) -> Any:
+def _run_orchestrator_with_decoder(schedule_input: SolverInput, *, decode_fn: Any) -> Any:
     preparation = None
+    resources = _solver_resources()
 
-    def prepare_graph(inputs):
+    def prepare_graph(inputs: SolverInput, *, resource_pool: Any = None) -> Any:
         nonlocal preparation
-        preparation = prepare_schedule_graph_for_dispatch(inputs)
+        preparation = prepare_schedule_graph_for_dispatch(inputs, resource_pool=resource_pool)
         return preparation
 
     class ContractScheduler(GreedyScheduler):
@@ -183,16 +184,15 @@ def _run_orchestrator_with_decoder(schedule_input: Any, *, decode_fn: Any) -> An
             )
             return results, summary, used_strategy, dict(used_params, **dispatch)
 
-    compare = partial(run_candidate_comparison, prepare_graph_fn=prepare_graph)
     with pytest.MonkeyPatch.context() as runner_patch:
+        runner_patch.setattr(schedule_candidate_runner, "prepare_schedule_graph_for_dispatch", prepare_graph)
         runner_patch.setattr(schedule_candidate_runner, "optimize_shared_schedule", partial(
             optimize_shared_schedule, _runtime=replace(_default_runtime(), scheduler_factory=ContractScheduler)))
-        return orchestrate_schedule_run(
-            schedule_input=schedule_input,
-            version=7,
-            candidate_comparison_fn=compare,
-            build_result_summary_fn=_summary_from_ctx,
-            point_validator=lambda _row: None,
+        candidate_comparison = run_candidate_comparison(schedule_input, resources)
+        adopted_plan = candidate_comparison.selection.selected_plan
+        return SimpleNamespace(
+            result_summary_obj=_summary_from_plan(adopted_plan),
+            candidate_comparison=candidate_comparison,
         )
 
 
@@ -266,11 +266,14 @@ def test_on_mode_cycle_with_block_no_disables_graph_enhancement_and_keeps_old_sg
 
 def test_on_mode_improve_with_zero_score_weights_skips_graph_feature_prep_and_keeps_scheduling() -> None:
     schedule_input = _schedule_input("on", block_on_cycle="yes")
-    schedule_input.cfg = replace(
-        schedule_input.cfg,
-        algo_mode="improve",
-        graph_critical_weight=0,
-        graph_impact_weight=0,
+    schedule_input = replace(
+        schedule_input,
+        config=replace(
+            schedule_input.config,
+            algo_mode="improve",
+            graph_critical_weight=0,
+            graph_impact_weight=0,
+        ),
     )
 
     outcome = _run_orchestrator(schedule_input)

@@ -2,17 +2,14 @@
 
 from typing import Any, Dict, List, Set
 
-from core.algorithm_contracts.schedule_point_evidence import SchedulePointEvidence
 from core.algorithm_contracts.types import ScheduleResult
-from core.shared.local_datetime import parse_local_datetime as parse_dt
 
 
 def cache_seed_for_prefix(*, prefix, schedule_map, op_by_id, seed_tmp, point_validator):
     """零工时点事件按最终 seed 的来源口径取一次见证，随 seed 一起保存，下游直接使用。"""
     for oid in prefix:
         row = schedule_map[int(oid)]
-        parsed_times = row.get("_parsed_times")
-        start, end = parsed_times if parsed_times is not None else (parse_dt(row.get("start_time")), parse_dt(row.get("end_time")))
+        start, end = row["_parsed_times"]
         if not start or not end or end < start:
             return int(oid)
         seed = {"row": row, "start_time": start, "end_time": end}
@@ -22,10 +19,7 @@ def cache_seed_for_prefix(*, prefix, schedule_map, op_by_id, seed_tmp, point_val
             parsed = ScheduleResult(op_id=row["op_id"], op_code=op.op_code, batch_id=op.batch_id, seq=op.seq,
                                     machine_id=row["machine_id"], operator_id=row["operator_id"],
                                     start_time=start, end_time=end, source=op.source)
-            evidence = point_validator(parsed)
-            if type(evidence) is not SchedulePointEvidence or not evidence.matches(parsed):
-                return int(oid)
-            seed["point_evidence"] = evidence
+            seed["point_evidence"] = point_validator(parsed)
         seed_tmp[int(oid)] = seed
     return 0
 
@@ -37,8 +31,8 @@ def build_seed_results(frozen_op_ids: Set[int], *, op_by_id: Dict[int, Any],
         op, seed = op_by_id[oid], seed_tmp[oid]
         row, start, end = seed["row"], seed["start_time"], seed["end_time"]
         result = {"op_id": oid, "op_code": op.op_code, "batch_id": op.batch_id,
-                  "seq": op.seq, "machine_id": row.get("machine_id"),
-                  "operator_id": row.get("operator_id"), "start_time": start, "end_time": end,
+                  "seq": op.seq, "machine_id": row["machine_id"],
+                  "operator_id": row["operator_id"], "start_time": start, "end_time": end,
                   "source": op.source, "op_type_name": op.op_type_name,
                   "op_type_id": op.op_type_id, "seed_source": "freeze_window"}
         if start == end:

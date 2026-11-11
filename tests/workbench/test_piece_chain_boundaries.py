@@ -11,11 +11,14 @@ from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCom
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_compute import CandidateRunInputError
+from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.run import piece_adoption
-from core.services.workbench.run.candidate_adoption_validation import _require_official_scope
+from core.services.workbench.run.candidate_adoption_validation import require_official_scope
 from core.services.workbench.run.compute_validation import validate_candidate
+from core.services.workbench.run.input import prepare_solver_input
+from core.services.workbench.run.input_runtime import prepare_solver_resources
 from core.services.workbench.run.worker import WorkbenchRunWorker
-from tests.workbench.piece_adoption_support import START, checked_read_only, lower_input, payload, slot_payload, split
+from tests.workbench.piece_adoption_support import START, checked_read_only, lower_input, slot_payload, split
 from tests.workbench.piece_chain_support import piece_candidate, piece_layout
 from tests.workbench.piece_chain_support import trial_case as trial_case  # noqa: F401
 from tests.workbench.run_candidate_adoption_support import INTENT
@@ -84,7 +87,7 @@ def test_actual_insert_failure_rolls_back_whole_piece_adoption(trial_case):
         svc.adopt(ref, preview["write_context"]["write_token"], "ef-piece-rollback-0001", INTENT)
     assert snapshot(case.conn) == before
     assert not case.conn.in_transaction
-    assert svc.lookup(ref, "ef-piece-rollback-0001") is None
+    assert svc.commands.lookup("ef-piece-rollback-0001", action=svc._action, context_ref=ref) is None
 
 
 def test_closed_partial_piece_publication_keeps_adoption_and_protection_boundaries(trial_case):
@@ -100,50 +103,54 @@ def test_closed_partial_piece_publication_keeps_adoption_and_protection_boundari
     case.conn.commit()
     case.config(freeze_window_enabled="yes", freeze_window_days=1)
     prepared = lower_input(case)
-    assert prepared.frozen_op_ids == {common}
+    assert prepared.seeds.frozen_op_ids == {common}
     full = slot_payload(prepared)
     keep = {common, ids["item-A", 20], ids["item-A", 30], ids["item-B", 20]}
-    rows = [row for row in full.schedule_rows if row.op_id in keep]
-    known = payload(prepared, rows)
-    assert known.scheduled_op_ids < prepared.schedule_output_allowed_op_ids
+    rows = [row for row in full if row.op_id in keep]
+    assert {row.op_id for row in rows} < prepared.allowed_op_ids
+
+    with candidate_read_snapshot(case.conn):
+        calendar = prepare_solver_resources(prepared, prepare_solver_input(prepared)).calendar_engine
 
     def published(value):
         # Publication form: compute prepares the shared proof once, then checks each candidate.
         return lambda: piece_adoption.validate_piece_candidate(
-            case.conn, prepared=prepared, payload=value,
-            context=piece_adoption.prepare_piece_validation_context(case.conn, prepared))
+            case.conn,
+            prepared=prepared,
+            calendar=calendar,
+            payload=value,
+            context=piece_adoption.prepare_piece_validation_context(case.conn, prepared),
+        )
 
     def publish(candidate_rows):
-        return checked_read_only(case, published(payload(prepared, candidate_rows)))
+        return checked_read_only(case, published(candidate_rows))
 
     def reject(candidate_rows, reason):
         with pytest.raises(PieceAdoptionBlocked) as caught:
             publish(candidate_rows)
         assert caught.value.code == reason
 
-    checked_read_only(case, published(known))
+    checked_read_only(case, published(rows))
     with pytest.raises(PieceAdoptionBlocked) as caught:
         checked_read_only(case, lambda: piece_adoption.validate_piece_adoption(
-            case.conn, prepared=prepared, payload=known))
+            case.conn, prepared=prepared, payload=rows))
     assert caught.value.code == "piece_scope_incomplete"
     checked_read_only(case, published(full))
     with pytest.raises(CandidateAdoptionBlocked) as caught:
-        checked_read_only(case, lambda: _require_official_scope(prepared.latest_plan_rows, full.scheduled_op_ids))
+        checked_read_only(case, lambda: require_official_scope(prepared.latest_plan_rows, {row.op_id for row in full}))
     assert caught.value.code == "official_scope_not_covered"
 
     with pytest.raises(CandidateRunInputError) as caught:
-        validate_candidate(prepared, [row for row in rows if row.op_id != ids["item-A", 20]],
-                           prepared_payload=payload(prepared, [row for row in rows if row.op_id != ids["item-A", 20]]))
+        validate_candidate(prepared, [row for row in rows if row.op_id != ids["item-A", 20]])
     assert caught.value.code == "candidate_predecessor_missing"
     with pytest.raises(CandidateRunInputError) as caught:
-        validate_candidate(prepared, [row for row in rows if row.op_id != common],
-                           prepared_payload=payload(prepared, [row for row in rows if row.op_id != common]))
+        validate_candidate(prepared, [row for row in rows if row.op_id != common])
     assert caught.value.code == "protected_seed_changed"
     late = [replace(row, start_time=row.start_time + timedelta(days=30),
                     end_time=row.end_time + timedelta(days=30)) if row.op_id == ids["item-A", 30] else row
             for row in rows]
     with pytest.raises(CandidateRunInputError) as caught:
-        validate_candidate(prepared, late, prepared_payload=payload(prepared, late))
+        validate_candidate(prepared, late)
     assert caught.value.code == "candidate_outside_window"
     reject([replace(row, operator_id="O2") if row.op_id == ids["item-A", 20] else row
             for row in rows], "piece_resource_invalid")

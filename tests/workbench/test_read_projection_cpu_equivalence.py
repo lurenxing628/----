@@ -7,6 +7,7 @@ import pytest
 from core.infrastructure.sqlite_udf import parse_dt_for_sql
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_intervals import instant
+from core.services.execution.ledger_reader import project_loaded_facts
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline
 from core.services.workbench.facts.candidate_facts import GenerationFacts
@@ -50,15 +51,15 @@ def test_same_plan_load_keeps_partial_report_and_shared_current_comparison_rows(
     case.command("create", case.task(1, case.op_id), case.values(4))
     calls = _task_reads(monkeypatch)
     before = all_rows(case.conn)
-    with case.ledger.read_snapshot():
-        facts = case.ledger.load([_operation_ref(case)], comparison_plan_ref=plan_ref)
+    with case.ledger.read_snapshot() as scope:
+        facts = case.ledger.load(scope, [_operation_ref(case)], comparison_plan_ref=plan_ref)
         assert calls == [plan_ref]
         current, comparison = facts["current_tasks"], facts["comparison_tasks"]
         assert canonical_json(current) == canonical_json(comparison)
         assert current is comparison
         ref = next(iter(current))
         assert current[ref] is comparison[ref]
-        row = case.ledger.project_loaded(facts, contexts=False)[0]
+        row = project_loaded_facts(facts)[0]
         assert row.current_task_ref == row.comparison_task_ref == case.task(1, case.op_id)
         assert (row.known_completed_quantity, row.remaining_quantity, row.execution_state) == (4, 6, "partial")
     assert all_rows(case.conn) == before
@@ -71,8 +72,8 @@ def test_different_plan_load_keeps_both_historical_task_mappings(ledger_case, mo
     current = case.plan_ref(2)
     calls = _task_reads(monkeypatch)
     before = all_rows(case.conn)
-    with case.ledger.read_snapshot():
-        facts = case.ledger.load([_operation_ref(case)], comparison_plan_ref=old)
+    with case.ledger.read_snapshot() as scope:
+        facts = case.ledger.load(scope, [_operation_ref(case)], comparison_plan_ref=old)
         ref = next(iter(facts["operations"]))
         assert calls == [current, old]
         assert facts["current_tasks"][ref]["task_ref"] == case.task(2, case.op_id)
@@ -89,8 +90,8 @@ def test_ledger_snapshot_joins_an_open_transaction_instead_of_nesting_a_savepoin
     with TransactionManager(case.conn).transaction():
         case.conn.set_trace_callback(statements.append)
         try:
-            with case.ledger.read_snapshot():
-                facts = case.ledger.load_many([_operation_ref(case)])
+            with case.ledger.read_snapshot() as scope:
+                facts = case.ledger.load_many(scope, [_operation_ref(case)])
         finally:
             case.conn.set_trace_callback(None)
         assert case.conn.in_transaction
@@ -147,9 +148,10 @@ def test_cross_layer_schema_checks_share_leaf_contracts_in_one_snapshot(candidat
     lineage = TemplateLineageQuery(conn)
     with TransactionManager(conn).transaction():
         for _ in range(2):
-            assert lineage.read([])["available"] is True
+            assert lineage.read_partial([], current_by_ref={}, templates_by_ref={})["available"] is True
             identities.read_revision()
-            assert preflight_execution.execution_projections(PreflightFacts(conn), [], prepared=[]) == {}
+            with PreflightFacts.open(conn) as facts:
+                assert preflight_execution.execution_projections(facts, [], prepared=[]) == {}
         assert calls == {name: 2 for name, _ in checks}
 
 

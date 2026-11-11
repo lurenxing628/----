@@ -10,18 +10,11 @@ def current_piece_scope(conn, prepared):
 
 
 def _current_piece_scope(prepared):
-    ids = prepared.normalized_batch_ids
-    if not ids or len(ids) != len(set(ids)) or set(ids) != set(prepared.batches):
-        block("piece_scope_incomplete", "这次排产的批次范围为空或有重复，本次没有采用。请回「执行排产」重新排一次。")
-    facts = prepared.preflight_facts
+    facts = prepared.facts
     operations = prepared.operations
-    batch_refs = {batch_id: facts.refs.get(("batch", batch_id)) for batch_id in ids}
-    if any(ref is None for ref in batch_refs.values()):
-        block("piece_identity_changed", "有批次缺少唯一编号，本次没有采用。请刷新后重新排产。")
-    if not any(op.piece_id is not None for op in operations):
-        block("piece_scope_required", "本批工序现在没有分件，不能按分件采用。请回「执行排产」重新排一次。")
+    batch_refs = {batch_id: facts.refs["batch", batch_id] for batch_id in prepared.normalized_batch_ids}
     scope = prepared.piece_scope
-    if sorted(prepared.normalized_input["batch_refs"]) != sorted(batch_refs.values()):
+    if sorted(prepared.settings["batch_refs"]) != sorted(batch_refs.values()):
         block("piece_identity_changed", "排产时的批次范围和现在的不一致，本次没有采用。请回「执行排产」重新排一次。")
     refs = {op.id: facts.operation_refs[op.id] for op in operations}
     _dispositions(prepared, scope, refs, batch_refs)

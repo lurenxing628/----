@@ -15,6 +15,7 @@ from core.shared.strict_parse import is_stored_number
 from .preflight_dependencies import link_predecessors
 
 _BATCH_STATES = {"pending", "scheduled", "processing", "completed", "cancelled"}
+_NO_RELEASE_CODES = {"operation_skipped", "batch_closed", "zero_quantity", "material_after_window"}
 _SCHEDULED = ("eligible", "auto_assign_required")
 OPERATION_STATES = {"pending", "scheduled", "processing", "completed", "skipped"}
 
@@ -107,6 +108,57 @@ def classify_rows(facts, settings, raw_batches, operations, projections, guarded
         if op.id in cycles:
             rows[-1]["external_execution_cycle"] = cycles[op.id]
     _link_dispositions(rows, batches, piece_scope)
+    blocked = [row for row in rows if row["status"] == "blocked"]
+    if blocked:
+        raise CandidateRunInputError("input_blocked", "排产资料还有缺项，不能开始。请先补齐下方列出的项。", issues=blocked)
+    if not any(row["status"] in _SCHEDULED for row in rows) and not cycles:
+        raise CandidateRunInputError("no_eligible_operations", "选定范围内没有可排的工序。请调整范围后重试。", issues=rows)
+    mutable, releases = _mutable_scope(operations, rows)
+    return rows, mutable, releases
+
+
+def preflight_classification(operations, projections, guarded_ids, preflight_rows, *, external_cycles):
+    by_id = {row["op_id"]: row for row in preflight_rows}
+    cycles = external_cycles
+    rows = []
+    for op in operations:
+        source = by_id[op.id]
+        ref = source["operation_ref"]
+        if op.id in guarded_ids:
+            status = "protected"
+            reasons = [issue("actuals_preserved", "已开工工序保留原安排。")]
+            release = None
+        elif source["status"] == "protected" and (
+            op.id not in cycles or any(item["code"] == "actuals_preserved" for item in source["issues"])
+        ):
+            status = "blocked"
+            reasons = [issue("execution_protection_unresolved", "这道工序已经有报工记录，这次排产保不住它的原安排，排产没有开始。请把它移出排产范围。")]
+            release = None
+        else:
+            status = source["status"]
+            reasons = [dict(item) for item in source["issues"]]
+            release = (
+                None
+                if status in ("blocked", "protected")
+                or any(item["code"] in _NO_RELEASE_CODES for item in reasons)
+                else source["material_ready_date"]
+            )
+        row = {
+            "operation_ref": ref,
+            "op_id": op.id,
+            "batch_ref": source["batch_ref"],
+            "batch_id": op.batch_id,
+            "piece_id": op.piece_id,
+            "sequence": op.seq,
+            "status": status,
+            "issues": reasons,
+            "material_ready_date": release,
+            "predecessor_refs": list(source["predecessor_refs"]),
+            "execution": projections[ref].to_dict(),
+        }
+        if op.id in cycles:
+            row["external_execution_cycle"] = cycles[op.id]
+        rows.append(row)
     blocked = [row for row in rows if row["status"] == "blocked"]
     if blocked:
         raise CandidateRunInputError("input_blocked", "排产资料还有缺项，不能开始。请先补齐下方列出的项。", issues=blocked)

@@ -4,11 +4,10 @@ import getpass
 import threading
 from typing import Type
 
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 
 _ADOPTION_LOCK = threading.Lock()
 
@@ -34,7 +33,9 @@ class AdoptionCommandHost:
         self.commands = WorkbenchCommandService(conn)
 
     def _point_surface(self, evidence):
-        if not self.point_rendering_enabled and any(row.start_time == row.end_time for row in evidence.payload.schedule_rows):
+        if not self.point_rendering_enabled and any(
+            start == end for start, end in evidence.outcome.resolved_intervals.values()
+        ):
             raise self._blocked_error("point_rendering_not_connected", self._point_message)
 
     def _outer(self):
@@ -55,7 +56,7 @@ class AdoptionCommandHost:
 
     def _preview_result(self, context_ref, evidence, data_context_ref):
         return {"baseline": {"plan_ref": evidence.baseline["plan_ref"], "version": evidence.baseline["version"]},
-                "task_count": len(evidence.payload.schedule_rows), "scope_complete": True,
+                "task_count": len(evidence.outcome.validated_payload.schedule_rows), "scope_complete": True,
                 "validation": {"status": "valid", "can_adopt": True, "issues": []},
                 "write_context": self.context_factory(context_ref, [self._action], evidence.snapshot),
                 "data_context_ref": data_context_ref}
@@ -89,12 +90,10 @@ class AdoptionCommandHost:
             finally:
                 RUN_SCHEDULE_LOCK.release()
 
-    def _lookup(self, context_ref, request_key):
-        validate_request_key(request_key)
-        with candidate_read_snapshot(self.conn):
-            row = self.commands.repo.get(request_key)
-            if row is None:
-                return None
-            if (row["action"], row["context_ref"]) != (self._action, context_ref):
-                raise WorkbenchCommandRejected("request_key_conflict", self._conflict_message)
-            return self.commands.repo.public_result(row, replayed=True)
+    def _lookup_in_snapshot(self, context_ref, request_key):
+        return self.commands.lookup(
+            request_key,
+            action=self._action,
+            context_ref=context_ref,
+            conflict_message=self._conflict_message,
+        )

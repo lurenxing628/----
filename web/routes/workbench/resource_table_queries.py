@@ -82,13 +82,13 @@ def resource_table_query(kind):
 
 def _material_table_query(query: MaterialPageRequest, token):
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as state:
-        snapshot = bind_read_snapshot(query.scope(), state, token)
-        records, page = reader.page(query)
+    with reader.read_snapshot() as scope:
+        snapshot = bind_read_snapshot(query.scope(), scope.state_fingerprint(), token)
+        records, page = scope.page(query)
         if query.number > page["pages"]:
             raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
         entities = [_entity_with_context(record) for record in records]
-        metrics = reader.metrics(query)
+        metrics = scope.metrics(query)
         data = {"entities": entities, "page": page, "metrics": metrics,
                 "create_context": issue_write_context("material:create", ["material.create"], None)}
         return query_success(data, snapshot)
@@ -97,15 +97,15 @@ def _material_table_query(query: MaterialPageRequest, token):
 def _resource_table_query(query: ResourcePageRequest, token):
     kind = query.kind
     reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
-    with reader.read_snapshot() as state:
-        snapshot = bind_read_snapshot(query.scope(), state, token)
-        records, page = reader.page(query)
+    with reader.read_snapshot() as scope:
+        snapshot = bind_read_snapshot(query.scope(), scope.state_fingerprint(), token)
+        records, page = scope.page(query)
         if query.number > page["pages"]:
             raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
         entities = [_with_context(kind, record) for record in records]
         metrics = page.pop("metrics")
         data = {"entities": entities, "page": page, "metrics": metrics,
-                "create_context": issue_write_context(kind + ":create", [kind + ".create"], reader.create_snapshot())}
+                "create_context": issue_write_context(kind + ":create", [kind + ".create"], scope.create_snapshot())}
         return query_success(data, snapshot)
 
 
@@ -122,11 +122,12 @@ def _facet_query(kind, body, *, selection=False):
         raise WorkbenchCommandRejected("snapshot_stale", "列筛选的可选值已过期，筛选没有变化。请关掉后重新打开列筛选。")
     signature = {"kind": "resource_table_facets", "scope": toolbar_scope(query), "column": column, "query": search, "size": size}
     reader = _reader(kind)
-    with reader.read_snapshot() as state:
+    with reader.read_snapshot() as scope:
+        fingerprint = scope.state_fingerprint()
         if list_token is not None:
-            bind_read_snapshot(query.scope(), state, list_token)
-        snapshot = bind_read_snapshot(signature, state, facet_token)
-        data = reader.facet_selection(query, column, search) if selection else reader.facets(query, column, search, number, size)
+            bind_read_snapshot(query.scope(), fingerprint, list_token)
+        snapshot = bind_read_snapshot(signature, fingerprint, facet_token)
+        data = scope.facet_selection(query, column, search) if selection else scope.facets(query, column, search, number, size)
         return query_success(data, snapshot)
 
 

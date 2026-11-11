@@ -10,7 +10,7 @@ import pytest
 from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema, get_connection
 from core.models.schedule_config_runtime_fields import list_runtime_config_fields
-from core.services.scheduler.calendar.service import CalendarService
+from core.services.scheduler.calendar.admin import CalendarAdmin
 from core.services.scheduler.config.config_field_spec import list_config_fields
 from core.services.scheduler.config.config_snapshot import build_schedule_config_snapshot
 from data.repositories.config_repo import ConfigRepository
@@ -31,9 +31,9 @@ def _stored_snapshot(conn):
 def config_store(tmp_path):
     test_db = tmp_path / "aps_config_field_spec.db"
     ensure_schema(str(test_db), logger=None, schema_path=str(SCHEMA_PATH))
-    bootstrap_schedule_config(str(test_db), logger=_LOGGER)
     conn = get_connection(str(test_db))
     try:
+        bootstrap_schedule_config(conn, logger=_LOGGER)
         yield conn, ConfigRepository(conn), test_db
     finally:
         conn.close()
@@ -54,11 +54,11 @@ def test_config_snapshot_matches_registered_fields_and_defaults(config_store) ->
 
 
 def test_bootstrap_preserves_saved_configuration_across_restart(config_store) -> None:
-    conn, repo, database = config_store
+    conn, repo, _database = config_store
     repo.set_batch([("time_budget_seconds", "75", None)])
     conn.commit()
     rows_before = [tuple(row) for row in conn.execute("SELECT * FROM ScheduleConfig ORDER BY config_key")]
-    bootstrap_schedule_config(str(database), logger=_LOGGER)
+    bootstrap_schedule_config(conn, logger=_LOGGER)
     assert _stored_snapshot(conn).time_budget_seconds == 75
     assert [tuple(row) for row in conn.execute("SELECT * FROM ScheduleConfig ORDER BY config_key")] == rows_before
 
@@ -82,14 +82,16 @@ def test_calendar_reads_only_its_holiday_efficiency(config_store) -> None:
     statements = []
     conn.set_trace_callback(statements.append)
     try:
-        service = CalendarService(conn)
-        calendar = service._admin._build_work_calendar(
-            date_value="2026-10-01",
-            day_type="holiday",
-            periods=[{"start": "08:00", "end": "16:00", "day_offset": 0}],
-            context=service.normalization_context(),
+        admin = CalendarAdmin(conn)
+        calendar = admin.build_work_calendar_from_payload(
+            {
+                "date": "2026-10-01",
+                "day_type": "holiday",
+                "periods": [{"start": "08:00", "end": "16:00", "day_offset": 0}],
+            },
+            context=admin.normalization_context(),
         )
-        service._admin.repo.upsert_many([calendar])
+        admin.repo.upsert_many([calendar])
         conn.commit()
     finally:
         conn.set_trace_callback(None)
@@ -107,13 +109,15 @@ def test_calendar_rejects_missing_or_invalid_holiday_efficiency(config_store, ra
     else:
         repo.set_batch([("holiday_default_efficiency", raw_value, None)])
     conn.commit()
-    service = CalendarService(conn)
+    admin = CalendarAdmin(conn)
     with pytest.raises(ValidationError) as rejected:
-        service._admin._build_work_calendar(
-            date_value="2026-10-01",
-            day_type="holiday",
-            periods=[{"start": "08:00", "end": "16:00", "day_offset": 0}],
-            context=service.normalization_context(),
+        admin.build_work_calendar_from_payload(
+            {
+                "date": "2026-10-01",
+                "day_type": "holiday",
+                "periods": [{"start": "08:00", "end": "16:00", "day_offset": 0}],
+            },
+            context=admin.normalization_context(),
         )
     assert rejected.value.field == "holiday_default_efficiency"
     assert conn.execute("SELECT COUNT(*) FROM WorkCalendar").fetchone()[0] == 0

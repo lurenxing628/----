@@ -18,7 +18,7 @@ from tests.workbench.trial_adoption_support import INTENT, preview, saved_scenar
 from tests.workbench.trial_adoption_support import service as adoption_service
 from tests.workbench.trial_support import api, change, create, service
 from tests.workbench.trial_support import trial_case as trial_case
-from web.routes.workbench.materials import register_material_routes
+from web.routes.workbench.commands import register_command_routes
 
 
 def test_change_receipts_replay_original_full_history_through_every_public_reader(trial_case):
@@ -49,10 +49,17 @@ def test_change_receipts_replay_original_full_history_through_every_public_reade
 
     client = api(case)
     generic = Blueprint("trial_generic_receipts", __name__)
-    register_material_routes(generic)
+    register_command_routes(generic)
     case.app.register_blueprint(generic)
-    assert client.get("/api/workbench/v1/commands/trial-history-change-01").get_json() == dict(first, replayed=True)
-    assert client.get("/api/workbench/v1/trial/commands/trial-history-change-01").get_json()["data"]["receipt"] == dict(first, replayed=True)
+    expected_lookup = {
+        "state": "recorded",
+        "receipt": dict(first, replayed=True),
+        "may_be_in_flight": False,
+        "resolution": "recorded",
+    }
+    assert client.get("/api/workbench/v1/commands/trial-history-change-01").get_json() == expected_lookup
+    assert client.get("/api/workbench/v1/trial/commands/trial-history-change-01").get_json() == expected_lookup
+    assert client.get("/api/workbench/v1/trial/commands/trial-history-change-01?extra=1").status_code == 400
 
     # Permanent Changes and Receipts alone restore the result, even if the
     # original mutable workspace and its rows are no longer available.
@@ -135,7 +142,9 @@ def test_real_adoptions_batch_history_reads(trial_case, monkeypatch):
     statements.clear()
     case.conn.set_trace_callback(statements.append)
     try:
-        history, _ = WorkbenchTrialAdoptionHistoryService(case.conn).read(first_saved["scenario_ref"])
+        history, _ = WorkbenchTrialAdoptionHistoryService(case.conn).read(
+            first_saved["scenario_ref"], bind_snapshot=lambda _scope, content: content
+        )
     finally:
         case.conn.set_trace_callback(None)
     entry = history["items"][0]

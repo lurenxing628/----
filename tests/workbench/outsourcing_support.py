@@ -3,14 +3,14 @@
 from datetime import datetime
 
 import pytest
-from flask import Blueprint, Flask, g, jsonify
+from flask import Blueprint, Flask, g
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.models.workbench_outsourcing import raw_facts
-from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.outsourcing.commands import WorkbenchOutsourcingCommandService
 from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
 from tests._support.paths import REPO_ROOT
+from web.routes.workbench.commands import register_command_routes
 from web.routes.workbench.outsourcing import register_outsourcing_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 
@@ -63,7 +63,7 @@ class OutsourcingCase:
 
     def detail(self, ref):
         with self.reader.read_snapshot():
-            return self.reader.detail(ref)["item"]
+            return self.reader.detail(ref, bind_snapshot=lambda _content: None)["item"]
 
 
 @pytest.fixture(name="outsourcing_case")
@@ -101,11 +101,7 @@ def api(case, monkeypatch):
     app = Flask(__name__)
     bp = Blueprint("workbench", __name__)
     register_outsourcing_routes(bp)
-
-    @bp.route("/api/workbench/v1/commands/<request_key>")
-    def command_receipt(request_key):
-        return jsonify({"ok": True, "data": WorkbenchCommandService(g.db).lookup(request_key)})
-
+    register_command_routes(bp)
     app.register_blueprint(bp)
 
     @app.before_request

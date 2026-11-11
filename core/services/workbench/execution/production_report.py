@@ -5,6 +5,7 @@ import re
 
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_execution_input import reject
+from core.services.execution.ledger_reader import ExecutionLedgerReadScope
 from core.services.workbench.command_prefetch import run_prefetched, write_stamp
 from core.services.workbench.commands import WorkbenchCommandService
 from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository
@@ -20,12 +21,17 @@ class WorkbenchProductionReportService:
         self.actor_provider = actor_provider or getpass.getuser
         self.commands = WorkbenchCommandService(conn)
 
+    def _prepare_in_scope(self, ledger_scope: ExecutionLedgerReadScope, items, *, parsed_times):
+        actor = self.actor_provider()
+        if not isinstance(actor, str) or not actor.strip():
+            raise ValueError("Local application operator must be supplied by the server.")
+        return ReportBatchPreparation(
+            self.ledger, ledger_scope, items, actor, parsed_times=parsed_times
+        ).prepare()
+
     def _prepare(self, items, *, parsed_times):
-        with self.ledger.read_snapshot():
-            actor = self.actor_provider()
-            if not isinstance(actor, str) or not actor.strip():
-                raise ValueError("Local application operator must be supplied by the server.")
-            return ReportBatchPreparation(self.ledger, items, actor, parsed_times=parsed_times).prepare()
+        with self.ledger.read_snapshot() as ledger_scope:
+            return self._prepare_in_scope(ledger_scope, items, parsed_times=parsed_times)
 
     def preview(self, action, ref, payload):
         if action == "report_void":
@@ -39,9 +45,15 @@ class WorkbenchProductionReportService:
     def preview_batch(self, items):
         return self.prepare_batch(items).public()
 
-    def prepare_batch(self, items):
+    def prepare_batch_in_scope(self, ledger_scope: ExecutionLedgerReadScope, items):
         parsed_times = {}
-        return self._prepare(normalize_items(items, parsed_times=parsed_times), parsed_times=parsed_times)
+        return self._prepare_in_scope(
+            ledger_scope, normalize_items(items, parsed_times=parsed_times), parsed_times=parsed_times
+        )
+
+    def prepare_batch(self, items):
+        with self.ledger.read_snapshot() as ledger_scope:
+            return self.prepare_batch_in_scope(ledger_scope, items)
 
     def execute(self, action, ref, payload, *, request_key, validate_context):
         if action == "report_void":
@@ -83,12 +95,16 @@ class WorkbenchProductionReportService:
 
         def prefetch():
             with admission():
-                with self.ledger.read_snapshot():
-                    return load_items(), write_stamp(self.conn)
+                with self.ledger.read_snapshot() as ledger_scope:
+                    return load_items(ledger_scope), write_stamp(self.conn)
+
+        def reload_items():
+            with self.ledger.read_snapshot() as ledger_scope:
+                return load_items(ledger_scope)
 
         def command(prefetched):
             def guard():
-                prepared = prefetched.current(load_items)
+                prepared = prefetched.current(reload_items)
                 validate_context(preview_ref, "import_confirm", prepared.snapshot)
                 return prepared
 

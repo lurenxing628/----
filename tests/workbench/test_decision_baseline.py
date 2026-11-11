@@ -10,7 +10,9 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_batch_material import normalize_material_changes
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.workbench.batch.facts import BatchFacts
 from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
+from core.services.workbench.batch.scope import BatchFactScope
 from core.services.workbench.facts.adoption_baseline_sources import prepare_trial_adoption_facts
 from core.services.workbench.facts.candidate_facts import archived_table
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
@@ -216,7 +218,9 @@ def test_formal_deferred_ids_use_original_stage_source_independently_of_current_
     operation_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
                                       (str(second),)).fetchone()[0]
     with TransactionManager(case.conn).transaction():
-        WorkbenchBatchMaterialService(case.conn).apply_normalized(case.ref("batch", "B1"), normalize_material_changes({"removed_keys": [], "rows": [{
+        batch_ref = case.ref("batch", "B1")
+        scope = BatchFactScope(BatchFacts(case.conn), command=True, mode="single_instance", target_ref=batch_ref)
+        WorkbenchBatchMaterialService(case.conn).apply_normalized(scope, batch_ref, normalize_material_changes({"removed_keys": [], "rows": [{
             "row_key": None, "material_ref": case.ref("material", "STEEL"), "required_quantity": 3,
             "available_quantity": 0, "operation_ref": operation_ref, "arrivals": []}]}))
     _adopt(case, "stage", _expected_state="partial", material_strategy="stage")
@@ -527,8 +531,11 @@ def test_large_archived_sequences_sort_numerically_across_workspace_baseline_ref
         )
     case.conn.commit()
     with TransactionManager(case.conn).transaction():
+        batch_ref = case.ref("batch", "B1")
+        scope = BatchFactScope(BatchFacts(case.conn), command=True, mode="single_instance", target_ref=batch_ref)
         WorkbenchBatchMaterialService(case.conn).apply_normalized(
-            case.ref("batch", "B1"),
+            scope,
+            batch_ref,
             normalize_material_changes({"removed_keys": [], "rows": material_rows}),
         )
 

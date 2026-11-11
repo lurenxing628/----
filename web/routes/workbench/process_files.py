@@ -6,7 +6,7 @@ from core.models.workbench_action_values import UPSERT_IMPORT_MODES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_file import check_format, file_columns
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.process import queries as process_queries
+from core.services.workbench.process import scope as process_scope
 from core.services.workbench.process.files import WorkbenchProcessFileService, file_operation
 from web.api_responses import json_response, query_success
 
@@ -27,7 +27,7 @@ def _upload(kind):
         raise WorkbenchCommandRejected("invalid_input", "工艺文件只支持按图号增量导入，工艺资料没有改动。请换用正确的导入方式后点「开始预检」。", 400)
     target = form.get("target_ref")
     if target is not None:
-        process_queries._check_part_ref(target)
+        process_scope.check_part_ref(target)
     content = read_upload_file("文件超过本机允许的大小，一行都没有导入，也没有只导入前半部分。请缩小文件后重新选择，再点「开始预检」。")
     return content, fmt, mode, target
 

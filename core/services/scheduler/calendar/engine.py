@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import heapq
+from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from fractions import Fraction
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, NoReturn, Optional, Sequence, Tuple
 
 from core.algorithm_runtime.calendar_timing_memo import register_native_timing_calendar
+from core.algorithm_runtime.checkpoint_calendar import register_checkpoint_calendar
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models.calendar import OperatorCalendar, WorkCalendar
 from core.models.calendar_periods import (
@@ -14,11 +18,11 @@ from core.models.calendar_periods import (
 )
 from core.models.enums import BatchPriority, CalendarDayType, YesNo
 from core.shared.strict_parse import finite_float, is_non_finite_number
-from data.repositories import CalendarRepository, OperatorCalendarRepository
 
+from . import checkpoint_certificate
 from .day_policy import DayPolicy, priority_class
-from .defaults import read_default_periods
-from .operator_shift import OperatorShiftCalendar, ShiftFacts
+from .defaults import default_periods_from_row, validate_default_periods
+from .operator_shift import OperatorShiftCalendar
 from .period_offsets import offset_hours, period_offsets
 from .working_hours import WorkingHoursPrefix
 
@@ -43,62 +47,128 @@ def _native_date_isoformat(value: date) -> str:
     return value.isoformat()
 
 
+def overlay_overnight_tail_windows(
+    windows: Sequence[Tuple[datetime, datetime, Any, Any]],
+) -> List[Tuple[datetime, datetime, Any]]:
+    """Clip overlapping windows into disjoint (start, end, payload) segments.
+
+    Later entries in ``windows`` (today's policy) override earlier entries
+    (yesterday's overnight tail). Adjacent segments with the same ``merge_key``
+    are coalesced into one contiguous segment.
+    """
+    valid = [(start, end, key, payload) for start, end, key, payload in windows if start < end]
+    if len(valid) <= 1:
+        return [(start, end, payload) for start, end, _, payload in valid]
+    if all(
+        left[1] < right[0] or (left[1] == right[0] and left[2] != right[2])
+        for left, right in zip(valid, valid[1:])
+    ):
+        return [(start, end, payload) for start, end, _, payload in valid]
+
+    events = defaultdict(list)
+    for index, (start, end, _, _) in enumerate(valid):
+        events[start].append((index, True))
+        events[end].append((index, False))
+    live, heap, previous, chosen, result = set(), [], None, None, []
+    for at, changes in sorted(events.items()):
+        if previous is not None and previous < at and chosen is not None:
+            _, _, key, payload = valid[chosen]
+            if result and result[-1][1] == previous and result[-1][2] == key:
+                prev_start, _, _, prev_payload = result[-1]
+                result[-1] = (prev_start, at, key, prev_payload)
+            else:
+                result.append((previous, at, key, payload))
+        for index, active in changes:
+            if active:
+                live.add(index)
+                heapq.heappush(heap, -index)
+            else:
+                live.discard(index)
+        while heap and -heap[0] not in live:
+            heapq.heappop(heap)
+        chosen, previous = (-heap[0] if heap else None), at
+    return [(start, end, payload) for start, end, _, payload in result]
+
+
+@dataclass(frozen=True)
+class CalendarInputs:
+    defaults: Optional[Sequence[Dict[str, Any]]] = ()
+    public_days: Optional[Sequence[Dict[str, Any]]] = ()
+    personal_days: Optional[Sequence[Dict[str, Any]]] = ()
+    operator_profiles: Optional[Sequence[Dict[str, Any]]] = ()
+    shift_profiles: Optional[Sequence[Dict[str, Any]]] = ()
+    shift_patterns: Optional[Sequence[Dict[str, Any]]] = ()
+    decoded_periods: Optional[Mapping[str, List[Dict[str, Any]]]] = None
+
+
+_EMPTY_CALENDAR_INPUTS = CalendarInputs()
+
+
+class IncompleteCalendarSnapshotError(ValidationError):
+    def __init__(self, missing_fact: str, policy_date: str, operator_id: Optional[str] = None):
+        self.missing_fact = missing_fact
+        self.policy_date = policy_date
+        self.operator_id = operator_id
+        super().__init__(
+            f"保存的日历资料缺少 {missing_fact}。",
+            field=missing_fact,
+            details={
+                "missing_fact": missing_fact,
+                "policy_date": policy_date,
+                "operator_id": operator_id,
+            },
+        )
+
+
 class CalendarEngine:
     """
-    工作日历“引擎侧”能力（给排产算法使用）。
+    工作日历纯内存引擎（零数据库连接、零仓储依赖）。
 
     说明：
-    - 负责 DayPolicy 推导与时间推进（adjust/add/efficiency）
-    - 读取日历数据（WorkCalendar/OperatorCalendar）但不负责 CRUD/导入
+    - 负责 DayPolicy 推导、班次叠加与时间推进（adjust/add/efficiency/capacity）
+    - 显式区分缺表（None）与空表（()），按 (operator_id, date) 惰性解析
     """
 
-    def __init__(self, conn, logger=None, *, capture=None, shift_facts: Optional[ShiftFacts] = None,
-                 captured_global_rows=None):
-        self.conn = conn
-        self.logger = logger
-        self.capture = capture
-        self.repo = CalendarRepository(conn, logger=logger)
-        self.operator_calendar_repo = OperatorCalendarRepository(conn, logger=logger)
-        self.operator_shift_calendar = OperatorShiftCalendar(conn, logger=logger, capture=capture, facts=shift_facts)
-        self._captured_global_rows = (
-            dict(captured_global_rows) if captured_global_rows is not None
-            else None if capture is None
-            else {str(row["date"]): row for row in capture.business_table("WorkCalendar")}
+    def __init__(self, inputs: CalendarInputs = _EMPTY_CALENDAR_INPUTS):
+        self._inputs = inputs
+        self.operator_shift_calendar = OperatorShiftCalendar(
+            operator_profiles=inputs.operator_profiles,
+            shift_profiles=inputs.shift_profiles,
+            shift_patterns=inputs.shift_patterns,
         )
-        self._captured_personal_rows = (None if capture is None else {
-            (row["operator_id"], str(row["date"])): row for row in capture.business_table("OperatorCalendar")})
-        # 本引擎拥有一次请求/排产快照的日期与班次事实；维护入口统一清空派生缓存。
-        # 默认工作时段与它的规范化文本一起读入；None 表示本快照还没读。
+        self.shift_profiles = self.operator_shift_calendar.facts.profiles
+        self._default_rows = () if inputs.defaults is None else tuple(inputs.defaults)
+        self.global_rows: Mapping[str, Any] = (
+            {}
+            if inputs.public_days is None
+            else {str(row["date"]): row for row in inputs.public_days}
+        )
+        self.personal_rows = (
+            {}
+            if inputs.personal_days is None
+            else {(row["operator_id"], str(row["date"])): row for row in inputs.personal_days}
+        )
         self._default_facts: Optional[Tuple[List[Dict[str, Any]], str]] = None
         self._period_facts: Dict[str, tuple] = {}
-        self._decoded_periods: Dict[str, List[Dict[str, Any]]] = capture.decoded_periods if capture is not None else {}
+        self._decoded_periods: Dict[str, List[Dict[str, Any]]] = (
+            inputs.decoded_periods
+            if isinstance(inputs.decoded_periods, dict)
+            else dict(inputs.decoded_periods)
+            if inputs.decoded_periods is not None
+            else {}
+        )
         self._public_calendar_rows: Dict[str, Any] = {}
         self._operator_calendar_rows: Dict[str, Dict[str, Any]] = {}
         self._public_policy_cache: Dict[str, DayPolicy] = {}
         self._policy_cache: Dict[Tuple[str, str], DayPolicy] = {}
         self._policy_operator_keys: Dict[str, Dict[Tuple[str, str], None]] = {}
         self._segment_cache: Dict[str, Dict[date, tuple]] = {}
-        # 工作小时差按 (operator_id, 优先级类别) 维护逐日窗口前缀，与策略缓存同生命周期。
         self._working_hours_prefix: Dict[Tuple[str, str], WorkingHoursPrefix] = {}
+        self._decode_checkpoint_signature: Optional[Tuple[str, tuple]] = None
 
-    def clear_policy_cache(self) -> None:
-        """
-        清空 DayPolicy 缓存。
-
-        说明：缓存用于排产过程加速，但当 WorkCalendar/OperatorCalendar 被修改后，
-        必须清空缓存以保证“立即生效”（回归用例依赖该语义）。
-        """
-        self._default_facts = None
-        self._period_facts.clear()
-        self._decoded_periods.clear()
-        self._public_calendar_rows.clear()
-        self._operator_calendar_rows.clear()
-        self._public_policy_cache.clear()
-        self._policy_cache.clear()
-        self._policy_operator_keys.clear()
-        self._segment_cache.clear()
-        self._working_hours_prefix.clear()
-        self.operator_shift_calendar.clear_cache()
+    @property
+    def inputs(self) -> CalendarInputs:
+        return self._inputs
 
     def discard_operator_policy(self, operator_id: str) -> None:
         """Release one streamed person's policies; shared calendar/shift facts remain."""
@@ -112,6 +182,21 @@ class CalendarEngine:
         for priority in (_NORMAL_PRIORITY, "urgent"):
             self._working_hours_prefix.pop((op_id, priority), None)
         self.operator_shift_calendar.discard_operator(op_id)
+
+    def _missing(self, name: str, day: str, operator_id: Optional[str] = None) -> NoReturn:
+        raise IncompleteCalendarSnapshotError(name, day, operator_id)
+
+    def provenance(self, day: str, operator_id: Optional[str]) -> str:
+        if (operator_id, day) in self.personal_rows:
+            return "personal_calendar"
+        base = "work_calendar" if day in self.global_rows else "domain_default"
+        return base + "_operator_shift" if operator_id in self.shift_profiles else base
+
+    def certified_decode_checkpoint_snapshot(self) -> Tuple[str, tuple]:
+        """Business calendar contents, unchanged by ordinary policy-cache population."""
+        if self._decode_checkpoint_signature is None:
+            self._decode_checkpoint_signature = checkpoint_certificate.calendar_checkpoint_signature(self._inputs)
+        return self._decode_checkpoint_signature
 
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
@@ -127,16 +212,24 @@ class CalendarEngine:
     def default_period_facts(self) -> Tuple[List[Dict[str, Any]], str]:
         """默认工作时段及其规范化文本，本快照只读一次、只编码一次。"""
         if self._default_facts is None:
-            periods = self._read_default_periods()
+            row = next(iter(self._default_rows), None)
+            if row is None:
+                periods = default_periods_from_row(None)
+            else:
+                periods = validate_default_periods(self.decoded_periods_for_json(row["periods_json"]))
             periods_json = encode_periods(periods)
+            self._decoded_periods.setdefault(periods_json, periods)
             self._period_facts_for_json(periods_json, periods)
             self._default_facts = periods, periods_json
         return self._default_facts
 
-    def _read_default_periods(self) -> List[Dict[str, Any]]:
-        return read_default_periods(self.conn, capture=self.capture)
-
     def decoded_periods_for_json(self, periods_json: str) -> List[Dict[str, Any]]:
+        if not isinstance(periods_json, str):
+            raise ValidationError(
+                "工作日历里的工作时段读不出来或者填得不对，请到工作日历重新设置。",
+                field="periods_json",
+                details={"reason": "invalid_calendar_shift", "field": "periods_json"},
+            )
         if periods_json not in self._decoded_periods:
             self._decoded_periods[periods_json] = decode_periods(periods_json)
         return self._decoded_periods[periods_json]
@@ -167,6 +260,8 @@ class CalendarEngine:
                 remark="默认周末（未配置）",
             )
         else:
+            if self._inputs.defaults is None:
+                self._missing("WorkbenchCalendarDefaults", date_str)
             _, periods_json = self.default_period_facts()
             row = WorkCalendar(
                 date=date_str,
@@ -181,24 +276,30 @@ class CalendarEngine:
         return row
 
     def _resolve_calendar_row(self, date_str: str, op_id: Optional[str]) -> Any:
-        if op_id:
+        if op_id is not None:
+            if self._inputs.personal_days is None:
+                self._missing("OperatorCalendar", date_str, op_id)
             rows = self._operator_calendar_rows.setdefault(op_id, {})
             if date_str not in rows:
-                if self._captured_personal_rows is None:
-                    rows[date_str] = self.operator_calendar_repo.get(op_id, date_str)
-                else:
-                    raw = self._captured_personal_rows.get((op_id, date_str))
-                    rows[date_str] = OperatorCalendar.from_row(raw) if raw is not None else None
+                raw = self.personal_rows.get((op_id, date_str))
+                rows[date_str] = OperatorCalendar.from_row(raw) if raw is not None else None
             row_op = rows[date_str]
-            if row_op:
+            if row_op is not None:
                 return row_op
+            if self._inputs.operator_profiles is None:
+                self._missing("WorkbenchOperatorProfiles", date_str, op_id)
+            if op_id in self.shift_profiles:
+                if self._inputs.shift_profiles is None:
+                    self._missing("WorkbenchShiftProfiles", date_str, op_id)
+                if self._inputs.shift_patterns is None:
+                    self._missing("WorkbenchShiftPatternDays", date_str, op_id)
+        if self._inputs.public_days is None:
+            self._missing("WorkCalendar", date_str, op_id)
         if date_str not in self._public_calendar_rows:
-            if self._captured_global_rows is None:
-                row = self.repo.get(date_str)
-            else:
-                raw = self._captured_global_rows.get(date_str)
-                row = WorkCalendar.from_row(raw) if raw is not None else None
-            self._public_calendar_rows[date_str] = row if row else self._default_for_date(date_str)
+            raw = self.global_rows.get(date_str)
+            self._public_calendar_rows[date_str] = (
+                WorkCalendar.from_row(raw) if raw is not None else self._default_for_date(date_str)
+            )
         return self._public_calendar_rows[date_str]
 
     def _policy_for_date(self, date_str: str, operator_id: Optional[str] = None) -> DayPolicy:
@@ -306,10 +407,6 @@ class CalendarEngine:
             day += timedelta(days=1)
         return Fraction(num, den * _MICROSECONDS_PER_HOUR)
 
-    def capacity_hours_between(self, start: datetime, end: datetime, *, priority=None, operator_id=None) -> float:
-        """Efficiency-weighted capacity over the same disjoint pieces used by scheduling."""
-        return float(self.capacity_fraction_between(start, end, priority=priority, operator_id=operator_id))
-
     def _effective_segments(self, day: date, operator_id: Optional[str] = None) -> tuple:
         """Disjoint natural-day pieces; today's window overrides yesterday's tail."""
         op_id = self._normalize_text(operator_id) if operator_id is not None else None
@@ -318,18 +415,16 @@ class CalendarEngine:
             return cache[day]
         lo = datetime.combine(day, time.min)
         hi = datetime.max if day == date.max else lo + timedelta(days=1)
-        policies = [self._policy_for_date(day.isoformat(), operator_id=op_id)]
+        policies = []
         if day > date.min:
             policies.append(self._policy_for_date((day - timedelta(days=1)).isoformat(), operator_id=op_id))
-        windows = [(p, max(lo, start), min(hi, end)) for p in policies for start, end in p.work_windows()]
-        windows = [(p, start, end) for p, start, end in windows if start < end]
-        edges = sorted({point for _, start, end in windows for point in (start, end)})
-        segments = []
-        for start, end in zip(edges, edges[1:]):
-            owner = next((p for p, left, right in windows if left <= start < right), None)
-            if owner is not None:
-                segments.append((start, end, owner))
-        result = tuple(segments)
+        policies.append(self._policy_for_date(day.isoformat(), operator_id=op_id))
+        raw_windows = [
+            (max(lo, start), min(hi, end), p.date_str, p)
+            for p in policies
+            for start, end in p.work_windows()
+        ]
+        result = tuple(overlay_overnight_tail_windows(raw_windows))
         cache[day] = result
         return result
 
@@ -347,20 +442,6 @@ class CalendarEngine:
             cur = datetime.combine(cur.date() + timedelta(days=1), time.min)
         raise BusinessError(ErrorCode.CALENDAR_ERROR, "工作日历计算异常：循环次数过多，请检查日历配置。")
 
-    def add_working_hours(
-        self,
-        start: datetime,
-        hours: float,
-        priority: Optional[str] = None,
-        operator_id: Optional[str] = None,
-    ) -> datetime:
-        """
-        从 start 开始，按“工作时间窗口”累加指定工时，返回结束时间。
-        - 会自动跳过非工作日/非工作时段
-        - hours 支持小数
-        """
-        return self._add_hours(start, hours, priority, operator_id, efficiency_weighted=False)
-
     def add_effective_hours(
         self,
         start: datetime,
@@ -369,9 +450,6 @@ class CalendarEngine:
         operator_id: Optional[str] = None,
     ) -> datetime:
         """消耗有效加工工时；每个实际工作班段按其自己的效率折算。"""
-        return self._add_hours(start, hours, priority, operator_id, efficiency_weighted=True)
-
-    def _add_hours(self, start, hours, priority, operator_id, *, efficiency_weighted):
         if hours is None:
             raise ValidationError("缺少工时参数", field="hours")
         total = finite_float(hours)
@@ -390,7 +468,7 @@ class CalendarEngine:
             end_w, policy = next((end, policy) for left, end, policy in self._effective_segments(
                 cur.date(), operator_id) if left <= cur < end and policy.is_priority_allowed(priority))
             avail_us = (end_w - cur) // _ONE_MICROSECOND
-            en, ed = (policy.efficiency if efficiency_weighted else 1.0).as_integer_ratio()
+            en, ed = policy.efficiency.as_integer_ratio()
             step_us = max(1, _round_half_even_div(rem_n * ed, en * rem_d))
             if step_us <= avail_us:
                 return cur + timedelta(microseconds=step_us)
@@ -417,7 +495,7 @@ class CalendarEngine:
         """
         start 到 end 之间允许该优先级排产的工作小时数（end 早于 start 时为负）。
 
-        与 add_working_hours 同一套 DayPolicy 口径：不可排产日、不允许该优先级的日子贡献 0；
+        与 add_effective_hours 同一套 DayPolicy 口径：不可排产日、不允许该优先级的日子贡献 0；
         跨午夜班次按“班次开始日”归属，最多延伸到次日。
         """
         op_id = self._normalize_text(operator_id) if operator_id is not None else None
@@ -451,3 +529,4 @@ class CalendarEngine:
 
 # Subclasses that only change how calendar rows are resolved keep the engine's pure timing surface.
 register_native_timing_calendar(CalendarEngine)
+register_checkpoint_calendar(CalendarEngine, CalendarEngine.certified_decode_checkpoint_snapshot)

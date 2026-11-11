@@ -45,20 +45,24 @@ def _template_facts(facts, entities, *, target_ids=None):
     return result
 
 
-def _instance_facts(facts, entities):
-    batches = {row["batch_id"]: row for row in facts["Batches"]}
+def _instance_facts(tables, entities, operation_refs):
+    batches = {row["batch_id"]: row for row in tables["Batches"]}
     result = {}
-    for row in facts["BatchOperations"]:
+    for row in tables["BatchOperations"]:
         batch = batches.get(row["batch_id"])
         if batch is None:
             continue
         batch_ref = entities.get(("batch", batch["batch_id"]))
         part_ref = entities.get(("part", batch["part_no"]))
-        ref = facts["operation_refs"].get(row["id"])
+        ref = operation_refs.get(row["id"])
         if ref is not None:
             result[ref] = dict(row, operation_ref=ref, quantity=batch["quantity"],
                 batch_ref=batch_ref["ref"] if batch_ref else None, part_ref=part_ref["ref"] if part_ref else None)
     return result
+
+
+def instance_lineage_facts(tables, operation_refs):
+    return _instance_facts(tables, _entity_facts(tables), operation_refs)
 
 
 @dataclass(frozen=True)
@@ -109,12 +113,14 @@ class TemplateLineageWriter:
         self._record_new_origin(instance, template, prepared.encoded)
         return instance["id"]
 
-    def prepare_instances(self, rows, *, facts):
+    def prepare_instances(self, rows, *, facts, complete_facts: bool):
         """Capture source identities, contexts and lineage together, before any source write."""
-        rows = list(rows)
-        entities = _entity_facts(facts)
-        current = _instance_facts(facts, entities)
-        templates = _template_facts(facts, entities)
+        if complete_facts:
+            entities = _entity_facts(facts)
+            current = _instance_facts(facts, entities, facts["operation_refs"])
+        else:
+            entities = None
+            current = facts["template_lineage_capture"]["source_instances"]
         by_id = {row["id"]: row for row in current.values()}
         rows = [_instance_row(by_id.get(row["id"])) for row in rows]
         external_ids = {row["id"] for row in rows if row["source"] == "external"}
@@ -125,7 +131,12 @@ class TemplateLineageWriter:
             if set(contexts) != external_ids:
                 raise WorkbenchCommandRejected("external_context_missing", "原工序缺少外协周期记录，不能按当前模板猜着复制。请先核对原批次。")
         query = TemplateLineageQuery(self.conn, repo=self.repo)
-        lineage = query.read([row["operation_ref"] for row in rows], current=current, templates=templates)
+        if complete_facts:
+            operation_refs = [row["operation_ref"] for row in rows]
+            templates = _template_facts(facts, entities)
+            lineage = query.read_complete(operation_refs, current=current, templates=templates)
+        else:
+            lineage = query.read_captured(facts["template_lineage_capture"])
         prepared = []
         for row in rows:
             ref = row["operation_ref"]

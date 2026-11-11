@@ -135,7 +135,7 @@ def test_startup_captures_journal_once_and_wsgi_only_observes_memory(db_env, tmp
     payload = acquire_runtime_lock(scope, db_path=db_env)
     runtime = gate = None
     try:
-        app = factory.create_app_core(ui_mode="default")
+        app = factory.create_app_core()
         gate = app.extensions["workbench_request_lifecycle"]
         assert app.extensions["workbench_startup_maintenance_records"] == []
         runtime = install_run_lifecycle(SimpleNamespace(install_run_runtime=install_workbench_run_runtime),
@@ -213,7 +213,7 @@ def test_lifecycle_enters_recovery_without_recapturing_startup_journal(db_env, t
         if prepared:
             monkeypatch.setenv("APS_ENV", "production")
             monkeypatch.setenv("APS_SYSTEM_JOURNAL_DIR", str(directory))
-            app = factory.create_app_core(ui_mode="default")
+            app = factory.create_app_core()
             assert app.extensions[RECOVERY]
         state = {"payload": payload}
         deps = SimpleNamespace(install_run_runtime=lambda *args, **kwargs: pytest.fail("Recovery started a worker"))

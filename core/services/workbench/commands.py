@@ -16,6 +16,25 @@ from core.models.workbench_command import (
 )
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 
+_DEFAULT_CONFLICT_MESSAGE = "这个操作编号对应的内容和上次提交的不一样，请先核对上次的结果。"
+
+
+def command_lookup_payload(
+    receipt: Optional[Dict[str, Any]],
+    *,
+    may_be_in_flight: bool = True,
+    **extra: Any,
+) -> Dict[str, Any]:
+    if receipt is not None:
+        return {"state": "recorded", "receipt": receipt, "may_be_in_flight": False, "resolution": "recorded", **extra}
+    return {
+        "state": "not_observed",
+        "receipt": None,
+        "may_be_in_flight": may_be_in_flight,
+        "resolution": "unresolved" if may_be_in_flight else "context_replaced",
+        **extra,
+    }
+
 
 class WorkbenchCommandService:
     def __init__(self, conn, logger=None):
@@ -23,9 +42,28 @@ class WorkbenchCommandService:
         self.repo = WorkbenchCommandRepository(conn, logger=logger)
         self.tx = TransactionManager(conn)
 
-    def lookup(self, request_key: str) -> Optional[Dict[str, Any]]:
+    def lookup(
+        self,
+        request_key: str,
+        *,
+        action: Any = None,
+        context_ref: Optional[str] = None,
+        conflict_message: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         row = self.repo.get(validate_request_key(request_key))
-        return self.repo.public_result(row, replayed=True) if row else None
+        if row is None:
+            return None
+        message = conflict_message or _DEFAULT_CONFLICT_MESSAGE
+        if action is not None:
+            allowed = (action,) if isinstance(action, str) else tuple(action)
+            if row["action"] not in allowed:
+                raise WorkbenchCommandRejected("request_key_conflict", message)
+        if context_ref is not None and row["context_ref"] != context_ref:
+            raise WorkbenchCommandRejected("request_key_conflict", message)
+        return self.repo.public_result(row, replayed=True)
+
+    def has_receipt(self, request_key: str) -> bool:
+        return self.repo.exists(validate_request_key(request_key))
 
     def replay(self, *, request_key: str, action: object, context_ref: object, normalized_input: Any) -> Optional[Dict[str, Any]]:
         """Read-only: the committed result of this same intent, or None when none is observed.

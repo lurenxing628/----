@@ -64,8 +64,15 @@ def test_row_or_receipt_failure_rolls_back_whole_file(file_api, monkeypatch, kin
         error = uncertain_failure(file_api.file_post(kind, "confirm", body))
     assert len(calls) == (1 if failure == "receipt" else 2)
     assert file_api.snapshot() == before
-    missing = success(file_api.client.get(error["result_target"]))
-    assert missing["state"] == "not_recorded" and missing["may_be_in_flight"] is True
+    missing_resp = file_api.client.get(error["result_target"])
+    assert missing_resp.status_code == 200
+    missing = missing_resp.get_json()
+    assert (
+        missing["state"] == "not_observed"
+        and missing["resolution"] == "unresolved"
+        and missing["may_be_in_flight"] is True
+        and missing["receipt"] is None
+    )
     result = success(file_api.file_post(kind, "confirm", body))
     node_contract("receipt", result, kind, body=body, preview=preview)
 
@@ -83,7 +90,15 @@ def test_response_loss_recovers_actual_committed_receipt(file_api, monkeypatch, 
         patch.setattr(WorkbenchCommandService, "execute", lose_response)
         error = uncertain_failure(file_api.file_post(kind, "confirm", body))
     before = file_api.snapshot()
-    receipt = success(file_api.client.get(error["result_target"]))
+    recorded_resp = file_api.client.get(error["result_target"])
+    assert recorded_resp.status_code == 200
+    recorded = recorded_resp.get_json()
+    assert (
+        recorded["state"] == "recorded"
+        and recorded["resolution"] == "recorded"
+        and recorded["may_be_in_flight"] is False
+    )
+    receipt = recorded["receipt"]
     node_contract("receipt", receipt, kind, body=body, preview=preview)
     assert receipt["result"] == "committed" and receipt["replayed"] is True
     assert success(file_api.file_post(kind, "confirm", body)) == receipt
@@ -196,7 +211,7 @@ def test_detail_export_reuses_target_snapshot_across_unrelated_template_changes(
 
 
 def test_explicit_list_export_downloads_preflighted_refs_and_rechecks_the_snapshot(file_api, monkeypatch):
-    from core.services.workbench.process import queries as process_queries
+    from core.services.workbench.process import scope as process_scope
     from core.services.workbench.process.file_codec import decode_process_file
     from tests.workbench.process_stage_api_support import PART
     from web.routes.workbench import process_file_exports
@@ -204,7 +219,7 @@ def test_explicit_list_export_downloads_preflighted_refs_and_rechecks_the_snapsh
     body, _ = file_api.export_body(selection="explicit", refs=[file_api.ref()])
     preview = success(file_api.file_post("route", "export-preview", body))
     with monkeypatch.context() as patch:
-        for owner, name in ((process_file_exports, "_export_selection"), (process_queries, "_check_part_ref")):
+        for owner, name in ((process_file_exports, "_export_selection"), (process_scope, "check_part_ref")):
             patch.setattr(owner, name, lambda *args: pytest.fail("下载不该再准入预检已存的范围"))
         download = file_api.download("route", preview["data"]["export_ref"])
     assert download.status_code == 200, download.get_json()

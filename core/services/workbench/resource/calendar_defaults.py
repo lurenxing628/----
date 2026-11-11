@@ -26,7 +26,7 @@ class WorkbenchCalendarDefaultsService:
         periods = default_periods_from_row(row)
         return {"row": row, "periods": periods, "hours": period_hours(periods)}
 
-    def _apply_checked(self, payload, current):
+    def apply_checked(self, payload, current):
         if not self.conn.in_transaction or not in_transaction_context(self.conn):
             raise RuntimeError("Default calendar writes require a workbench command transaction.")
         periods = payload["periods"]

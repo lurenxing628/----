@@ -42,8 +42,8 @@ def test_single_update_reads_a_bounded_number_of_rows_and_keeps_name_uniqueness(
     assert not any("FROM Operators" in sql for sql, _amount in reads)
     assert not any("FROM Machines ORDER BY" in sql or "kind IN (" in sql for sql, _amount in reads)
     reads.clear()
-    with TransactionManager(conn).transaction():
-        assert reader.detail(identity.ref).identity.entity_key == identity.entity_key
+    with reader.read_snapshot(capture_fingerprint=False) as scope:
+        assert scope.detail(identity.ref).identity.entity_key == identity.entity_key
     assert sum("FROM WorkbenchEntityRefs WHERE active=1 AND ref IN (" in sql for sql, _amount in reads) == 1
     with TransactionManager(conn).transaction(), pytest.raises(BusinessError):
         reader = WorkbenchResourceQueryService(conn, "op_type")
@@ -200,7 +200,8 @@ def test_permission_capture_includes_complete_old_machine_states_before_removal(
     desired = ([{"machine_ref": replacement.ref, "skill_level": "normal", "is_primary": "yes"}]
                if replace else [])
     with TransactionManager(conn).transaction():
-        expected = service.preview(operator.ref, desired, preparation=reader.preparation())
+        with reader.read_snapshot() as scope:
+            expected = service.preview(operator.ref, desired, preparation=scope.table_preparation())
         actual = service.preview(operator.ref, desired)
         assert actual.as_dict() == expected.as_dict()
     with TransactionManager(conn).transaction():
@@ -223,9 +224,9 @@ def test_selected_relation_export_preview_and_bulk_create_avoid_unbounded_identi
     trace = []
     conn.set_trace_callback(trace.append)
     try:
-        with reader.read_snapshot():
+        with reader.read_snapshot() as scope:
             arguments, count = relation_files.preview_export(
-                "selected", request=ResourcePageRequest(kind="operator"), selected_refs=[operator.ref])
+                scope, "selected", request=ResourcePageRequest(kind="operator"), selected_refs=[operator.ref])
     finally:
         conn.set_trace_callback(None)
     selects = [sql for sql in trace if sql.lstrip().upper().startswith("SELECT")]

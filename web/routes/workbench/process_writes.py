@@ -42,10 +42,11 @@ def process_stage_preview(ref):
         domain = WorkbenchProcessMutationService(g.db, current_app.logger)
         normalized = domain.normalize(body["action"], body["input"])
         reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=ref)
-        with reader.read_snapshot() as state:
-            identity = reader.resolve(ref)
+        with reader.read_snapshot() as scope:
+            state = scope.state_fingerprint()
+            identity = scope.resolve(ref)
             bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, body["snapshot_ref"])
-            facts = reader.facts()
+            facts = scope.facts()
             checked = domain.checked_facts(identity, facts)
             _, _, operations, _, workflow = checked
             if workflow["route"]["state"] != "confirmed":
@@ -98,11 +99,12 @@ def process_stage_command(ref, action):
     reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=ref)
 
     def guard():
-        with reader.read_snapshot() as state:
-            identity = reader.resolve(ref)
+        with reader.read_snapshot() as scope:
+            state = scope.state_fingerprint()
+            identity = scope.resolve(ref)
             binding = state if action == "hours_confirm" else {"state": state, "input": reviewed_input(action, normalized)}
             validate_write_context(body["write_token"], ref, "process." + action, binding)
-            facts = reader.facts()
+            facts = scope.facts()
             checked = domain.checked_facts(identity, facts)
             return domain.prepare_checked(action, normalized, checked, facts=facts)
 

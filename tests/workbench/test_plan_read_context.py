@@ -51,15 +51,13 @@ def test_read_context_owns_capture_and_next_request_observes_change(plan_api, mo
         reader = queries.WorkbenchPlanQueryService(conn)
         statements, changes = [], conn.total_changes
         conn.set_trace_callback(statements.append)
-        with reader.read_snapshot():
-            context = PlanReadContext(conn, references=reader.references, entities=reader.entities)
-            with context.read_scope():
-                data, _ = reader.workspace(scope, context=context)
-                _, entry, _ = context.selected(ref)
-                rows = context.detail_rows(entry)
-                tasks, _ = context.projected_tasks(ref, rows, resources=context.resource_identities(rows))
-                assert data["task_count"] == 1 and len(rows) == len(tasks) == 2
-                assert data["tasks"][0] == tasks[0]
+        with reader.read_snapshot() as context:
+            data, _ = reader.workspace(context, scope)
+            _, entry, _ = context.selected(ref)
+            rows = context.detail_rows(entry)
+            tasks, _ = context.projected_tasks(ref, rows, resources=context.resource_identities(rows))
+            assert data["task_count"] == 1 and len(rows) == len(tasks) == 2
+            assert data["tasks"][0] == tasks[0]
         conn.set_trace_callback(None)
         assert conn.total_changes == changes
         assert captures["raw", 3] == captures["detail", 3] == 1
@@ -88,7 +86,7 @@ def test_read_context_owns_capture_and_next_request_observes_change(plan_api, mo
     changed = plan_api.read("/" + ref + "/workspace", range_start=NIGHT_START, range_end=NIGHT_END)
     assert changed["data"]["tasks"][0]["end"] == "2026-09-10T05:30:00"
     assert run_current_js(r"""
-const M = h.runtime.PlanGanttModel, taskFacts = M.prepareTasks(sourceData);
+const M = h.module('PlanGanttModel.js'), taskFacts = M.prepareTasks(sourceData);
 const occFacts = M.prepareOccupancy(sourceData, null, null, taskFacts.labels);
 assert.strictEqual(occFacts.labels, taskFacts.labels, 'Initial prepareOccupancy reuses baseLabels without cloning');
 const combined = M.combinePrepared(taskFacts, M.prepareBaseline(sourceData, taskFacts), occFacts);
@@ -150,8 +148,8 @@ def test_20k_saved_plan_is_selectable_and_one_day_reads_200_tasks_from_one_captu
         conn.execute("PRAGMA query_only=1")
         conn.set_trace_callback(execution_statements.append)
         reader = queries.WorkbenchPlanQueryService(conn)
-        with reader.read_snapshot():
-            execution = reader.execution_workspace(PlanReadScope(ref, **scope))
+        with reader.read_snapshot() as context:
+            execution = reader.execution_workspace(context, PlanReadScope(ref, **scope))
         assert execution["tasks"] == data["tasks"]
         assert execution["task_count"] == 200
         assert sum("BO.STATUS AS OP_STATUS" in sql.upper() for sql in execution_statements) == 1

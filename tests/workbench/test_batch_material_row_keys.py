@@ -3,6 +3,7 @@
 from core.services.workbench.batch.facts import BatchFacts
 from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
 from core.services.workbench.batch.projection import BatchProjection
+from core.services.workbench.batch.scope import BatchFactScope
 from tests.workbench.batch_support import assert_error, batch_database, detail, post, ref_for
 
 _batch_fixture = batch_database
@@ -27,12 +28,13 @@ def test_projection_and_proposal_share_ordinals_for_unordered_sparse_requirement
     _seed_requirements(client)
     ref = ref_for(client)
     reader = BatchFacts(client.batch_conn)
-    facts = reader.load()
+    scope = BatchFactScope(reader)
+    facts = scope.load()
     facts["BatchMaterials"] = list(reversed(facts["BatchMaterials"]))
     batch = next(row for row in facts["Batches"] if row["batch_id"] == "FREE-001")
     projected = BatchProjection(facts).materials(batch)["requirements"]
-    old, final = WorkbenchBatchMaterialService(client.batch_conn, reader=reader)._proposed(
-        ref, {"rows": [], "removed_keys": []}, batch, facts,
+    old, final = WorkbenchBatchMaterialService(client.batch_conn)._proposed(
+        scope, ref, {"rows": [], "removed_keys": []}, batch, facts,
     )
     expected = [ref + "0000000000000001", ref + "0000000000000002"]
     assert [row["row_key"] for row in projected] == list(old) == list(final) == expected

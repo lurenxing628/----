@@ -29,6 +29,16 @@ def _capture(case):
     return reader, sources
 
 
+def _captured_calendar(conn, facts):
+    row = facts.task_rows[0]
+    start, end = facts.task_intervals[row["schedule_id"]]
+    reader = CalendarFacts(conn, captured=facts.calendar_inputs)
+    reader.calendar((start.date() - timedelta(days=1)).isoformat(), end.date().isoformat(), [row["operator_id"]])
+    reader.resources([row["machine_id"]], [row["operator_id"]], [row["op_id"]],
+                     facts.pressure["time_scope"]["range_start"], facts.pressure["time_scope"]["range_end"])
+    return {"sources": reader.rows, "resources": None}
+
+
 def _large_plan(case):
     low = datetime(2026, 1, 5, 8)
     high = (low + timedelta(days=100)).replace(hour=16)
@@ -66,23 +76,20 @@ def test_over_40000_resource_dates_keep_complete_sources_and_current_resource_ca
     monkeypatch.setattr(calendar_capture, "calendar_from_sources", factory)
     reader, sources = _capture(case)
     facts = sources.facts
-    private = facts.raw["resource_pressure"]
-    calendar = private["calendar"]
+    assert "resource_pressure" not in facts.raw
     assert facts.pressure["resource_count"] == 402
-    assert calendar["state"] == facts.pressure["state"] == "available"
-    assert calendar["sources"] is not None and calendar["fact_count"] < 50000
-    assert len(calendar["sources"]["machines"]) == len(calendar["sources"]["operators"]) == 201
-    assert not private["constraints"] and "resources" not in facts.pressure
+    assert facts.pressure["calendar_state"] == facts.pressure["state"] == "available"
+    assert facts.pressure["issues"] == [] and "resources" not in facts.pressure
+    assert facts.pressure_metrics is not None
+    calendar_factory = facts.pressure_metrics.factory
+    assert calendar_factory is not None
+    assert len(calendar_factory.records["machine"]) == len(calendar_factory.records["operator"]) == 201
     assert len(calls) == 402 and set(calls.values()) == {1}
-    assert calendar["resources"] is None and private["occupancy"] is None
     # Analysis remains usable after the source snapshot closes. No current
     # SQL read is needed to recover capacity from this complete capture.
     case.conn.set_authorizer(lambda *_: 1)
     try:
         analysis = reader.analysis(sources, DashboardAnalysisQuery("pressure", size=100))
-        assert facts.pressure_metrics is not None
-        calendar_factory = facts.pressure_metrics.factory
-        assert calendar_factory is not None
         resource = analysis["resources"][0]
         kind, ref = resource["kind"], resource["resource_ref"]
         projected = dict(calendar_factory.iter_resources([{"kind": kind, "ref": ref,
@@ -106,7 +113,7 @@ def test_streamed_constraints_keep_qualification_type_calendar_and_downtime_issu
     codes = {item["code"] for item in facts.pressure["issues"]}
     assert {"assignment_outside_calendar", "assignment_machine_downtime", "assignment_not_authorized",
             "assignment_work_type_mismatch"} <= codes
-    assert all(ids == [case.op] for ids in facts.raw["resource_pressure"]["constraints"].values())
+    assert all(item["operation_count"] == 1 for item in facts.pressure["issues"])
     # Authorization and explicit skill qualification remain separate domain
     # checks, using the same captured source contract as the previous consumer.
     case.conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('DO1','DM1')")
@@ -128,10 +135,10 @@ def test_capture_retains_real_calendar_date_and_source_fact_limits(dashboard_cas
 
         monkeypatch.setattr(CalendarFacts, "resources", over_budget)
     _, sources = _capture(case)
-    calendar = sources.facts.raw["resource_pressure"]["calendar"]
-    assert calendar["sources"] is None and calendar["reason"] == failure
-    assert sources.facts.pressure["state"] == "unavailable"
-    assert {item["code"] for item in sources.facts.pressure["issues"]} == {"assignment_calendar_unavailable"}
+    facts = sources.facts
+    assert facts.pressure_metrics is not None and facts.pressure_metrics.factory is None
+    assert facts.pressure["state"] == facts.pressure["calendar_state"] == "unavailable"
+    assert {item["code"] for item in facts.pressure["issues"]} == {"assignment_calendar_unavailable"}
 
 
 def test_unstreamed_pressure_builds_one_index_and_repeats_identity_gaps(dashboard_case, monkeypatch):
@@ -150,8 +157,8 @@ def test_unstreamed_pressure_builds_one_index_and_repeats_identity_gaps(dashboar
     monkeypatch.setattr(CalendarFacts, "resources", over_budget)
     monkeypatch.setattr(calendar_capture, "ResourceTaskIndex", resource_task_index)
     reader, sources = _capture(case)
-    assert sources.facts.raw["resource_pressure"]["calendar"]["reason"] == "calendar_fact_limit"
-    assert sources.facts.pressure_metrics is not None
+    assert sources.facts.pressure["calendar_state"] == "unavailable"
+    assert sources.facts.pressure_metrics is not None and sources.facts.pressure_metrics.factory is None
     assert indexes == [] and sources.facts.pressure_metrics.summaries == {}
     first = reader.analysis(sources, DashboardAnalysisQuery("pressure", size=100))
     # Analysis projects the uncaptured cohort once; a later read reuses those
@@ -163,7 +170,7 @@ def test_unstreamed_pressure_builds_one_index_and_repeats_identity_gaps(dashboar
 
 def test_one_streamed_operator_window_supplies_both_priorities(dashboard_case):
     _, sources = _capture(dashboard_case)
-    calendar = sources.facts.raw["resource_pressure"]["calendar"]
+    calendar = _captured_calendar(dashboard_case.conn, sources.facts)
     scope = sources.facts.pressure["time_scope"]
     assert sources.facts.pressure_metrics is not None
     factory = sources.facts.pressure_metrics.factory
@@ -176,13 +183,16 @@ def test_one_streamed_operator_window_supplies_both_priorities(dashboard_case):
         return dict(factory.iter_resources([{"kind": kind, "ref": ref, "saved_id": key}],
             scope["range_start"], scope["range_end"]))[ref]
 
-    constraints = TaskConstraints(calendar, calendar_lookup=lookup)
+    constraints = TaskConstraints(calendar, calendar_lookup=lookup, point_calendar=factory.engine)
     row = sources.facts.task_rows[0]
     start, end = (datetime.fromisoformat(row[key]) for key in ("start_time", "end_time"))
     for priority in ("normal", "urgent", "critical", "normal"):
         constraints.check(dict(row, priority=priority), start, end, row_start=start, row_end=end)
     assert calls == [("operator", "DO1")]
-    assert constraints.private() == {"assignment_machine_downtime": [dashboard_case.op]}
+    assert [(item["code"], item["operation_count"]) for item in constraints.public()] == [
+        ("assignment_machine_downtime", 1)
+    ]
+    assert dict(constraints.issues) == {"assignment_machine_downtime": {dashboard_case.op}}
 
 
 @pytest.mark.parametrize("profile_status,is_rest", [("inactive", 0), ("active", 1)])
@@ -203,8 +213,11 @@ def test_point_event_calendar_catches_shift_validation_and_business_errors(dashb
     )
     case.conn.commit()
     _, sources = _capture(case)
-    calendar = sources.facts.raw["resource_pressure"]["calendar"]
-    constraints = TaskConstraints(calendar)
+    assert sources.facts.pressure_metrics is not None
+    factory = sources.facts.pressure_metrics.factory
+    assert factory is not None
+    calendar = _captured_calendar(case.conn, sources.facts)
+    constraints = TaskConstraints(calendar, point_calendar=factory.engine)
     row = dict(
         sources.facts.task_rows[0],
         _point_work={
@@ -215,7 +228,7 @@ def test_point_event_calendar_catches_shift_validation_and_business_errors(dashb
     )
     at = datetime.fromisoformat(row["start_time"])
     constraints.check(row, at, at, row_start=at, row_end=at)
-    assert "assignment_calendar_unavailable" in constraints.private()
+    assert "assignment_calendar_unavailable" in {item["code"] for item in constraints.public()}
 
 
 def test_dashboard_capture_consumes_selected_calendar_days_for_earlier_point_before_midnight(dashboard_case, monkeypatch):
@@ -255,3 +268,22 @@ def test_dashboard_capture_consumes_selected_calendar_days_for_earlier_point_bef
     monkeypatch.setattr(PlanReadContext, "calendar_selection", select_with_earlier_point)
     _capture(case)
     assert calendar_ranges == [("2026-09-08", "2026-09-09")]
+
+
+def test_explicit_none_point_calendar_marks_point_unavailable(dashboard_case):
+    case = dashboard_case
+    _, sources = _capture(case)
+    calendar = _captured_calendar(case.conn, sources.facts)
+    point_row = dict(
+        sources.facts.task_rows[0],
+        _point_work={
+            "operation": {"setup_hours": 0.0, "unit_hours": 0.0},
+            "batch": {"priority": "normal"},
+            "quantity": 1,
+        },
+    )
+    at = datetime.fromisoformat(point_row["start_time"])
+    explicit_none = TaskConstraints(calendar, point_calendar=None)
+    explicit_none.check(point_row, at, at, row_start=at, row_end=at)
+    assert explicit_none.point_calendar is None
+    assert "assignment_calendar_unavailable" in {item["code"] for item in explicit_none.public()}

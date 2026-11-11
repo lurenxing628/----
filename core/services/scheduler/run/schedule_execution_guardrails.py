@@ -139,12 +139,12 @@ def _build_execution_seed_results(
     return execution_seed_results
 
 
-def build_execution_guardrails_from_projections(conn, operations, *, prev_version, execution_projections, facts):
+def build_execution_guardrails_from_projections(operations, *, prev_version, execution_projections, facts):
     """Consume an explicit AJ snapshot without reloading or reaggregating reports."""
     if prev_version not in facts.resource_execution:
         facts.resource_execution[prev_version] = collect_resource_execution_facts(
-            conn, prev_version=prev_version, execution_projections=execution_projections, capture=facts.capture,
-            ledger=facts.execution_service)
+            prev_version=prev_version, execution_projections=execution_projections, capture=facts.capture,
+            ledger=facts.ledger)
     execution_facts, plan_rows, execution_snapshot = facts.resource_execution[prev_version]
     return _execution_guardrail_tuple(operations, execution_facts, execution_snapshot,
                                      plan_rows=plan_rows)

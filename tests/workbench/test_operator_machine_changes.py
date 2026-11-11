@@ -104,8 +104,8 @@ def test_permission_replacement_reuses_capture_and_rejects_stale_before_writing(
         desired.append({"machine_ref": machine.ref, "skill_level": skill, "is_primary": primary})
     reader = WorkbenchResourceQueryService(conn, "operator")
     service = WorkbenchOperatorMachinePermissions(conn)
-    with reader.read_snapshot():
-        preparation = reader.preparation()
+    with reader.read_snapshot() as scope:
+        preparation = scope.table_preparation()
         preparation.state("operator", "O1")
         preview = service.preview(ref, desired, preparation=preparation)
     written = _writes(monkeypatch)
@@ -174,20 +174,20 @@ def test_relation_export_uses_toolbar_scope_and_preserves_column_filters(resourc
     insert_row(conn, "OperatorMachine", {"operator_id": "O2", "machine_id": "M1", "skill_level": "normal", "is_primary": "no"})
     conn.commit()
     service, trace = WorkbenchRelationFileService(conn, "operator_machine"), []
-    with TransactionManager(conn).transaction():
+    with service.reader.read_snapshot(capture_fingerprint=False) as read_scope:
         conn.set_trace_callback(trace.append)
         try:
-            arguments, count = service.preview_export("filtered", request=resource_scope_request("operator", {"query": "Alpha"}))
-            rows = service.export_rows(**arguments)
+            arguments, count = service.preview_export(read_scope, "filtered", request=resource_scope_request("operator", {"query": "Alpha"}))
+            rows = service.export_rows(read_scope, **arguments)
         finally:
             conn.set_trace_callback(None)
     assert count == len(rows) == 1
     assert rows[0]["operator_code"] == "O1" and rows[0]["operator_label"] == "Alpha"
     assert not any(sql.startswith("SELECT * FROM Operators ORDER BY") for sql in trace)
     scope = {"column_filters": {"label": {"mode": "include", "values": [text_cell("Bravo").key]}}}
-    with TransactionManager(conn).transaction():
-        arguments, count = service.preview_export("filtered", request=resource_scope_request("operator", scope))
-        rows = service.export_rows(**arguments)
+    with service.reader.read_snapshot(capture_fingerprint=False) as read_scope:
+        arguments, count = service.preview_export(read_scope, "filtered", request=resource_scope_request("operator", scope))
+        rows = service.export_rows(read_scope, **arguments)
     assert count == len(rows) == 1
     assert rows[0]["operator_code"] == "O2" and rows[0]["operator_label"] == "Bravo"
 

@@ -48,23 +48,37 @@ def assert_frontend_run_queries(preview, run, lookup, *, input_ref, run_ref, req
         documents[name] = response.get_json()
     script = r"""
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
+const { compile } = require('./scripts/workbench/compile.cjs');
 const input = JSON.parse(fs.readFileSync(0, 'utf8')), window = {}, context = vm.createContext({window});
-for (const name of ['transport.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'RunJobAPI.js', 'RunAdoptionAPI.js']) {
-  vm.runInContext(fs.readFileSync('frontend/workbench/app/' + name, 'utf8'), context, {filename: name});
+const files = ['shared/network/transport.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'RunJobAPI.js', 'RunAdoptionAPI.js'];
+const base = '/api/workbench/v1/scheduling';
+for (const out of compile({ sources: files.map(name => ({ path: name, code: fs.readFileSync('frontend/workbench/app/' + name, 'utf8') })) }).outputs) {
+  if (out.path === 'RunJobAPI.js') {
+    // The real transport envelope check runs on each actual backend document; only the network is replaced.
+    const T = context.__wbRuntime.getModule('shared/network/transport.js'), envelope = T.envelope;
+    context.__wbRuntime.setStub('shared/network/transport.js', {
+      modes: T.modes,
+      envelope,
+      preview: async (path, body) => { assert.equal(path, base + '/runs/preview'); assert.equal(JSON.stringify(body), JSON.stringify({input_ref: input.input_ref})); return envelope(input.preview); },
+      read: async (path, query) => {
+        assert.equal(path, base + '/runs/' + input.run_ref);
+        assert.equal(JSON.stringify(query), '{}');
+        return envelope(input.run);
+      },
+      lookup: async (path, query) => {
+        assert.equal(path, base + '/requests/' + input.request_key);
+        assert.equal(JSON.stringify(query), JSON.stringify({data_context_ref: input.preview.data.data_context_ref}));
+        return input.lookup;
+      },
+    });
+  }
+  vm.runInContext(out.code, context, {filename: out.path});
 }
-// The real transport envelope check runs on each actual backend document; only the network is replaced.
-const T = window.APSWorkbenchTransport, base = '/api/workbench/v1/scheduling';
-T.preview = async (path, body) => { assert.equal(path, base + '/runs/preview'); assert.equal(JSON.stringify(body), JSON.stringify({input_ref: input.input_ref})); return T.envelope(input.preview); };
-T.read = async (path, query) => {
-  if (path === base + '/runs/' + input.run_ref) return T.envelope(input.run);
-  assert.equal(path, base + '/requests/' + input.request_key);
-  assert.equal(JSON.stringify(query), JSON.stringify({data_context_ref: input.preview.data.data_context_ref}));
-  return T.envelope(input.lookup);
-};
+const RunJobAPI = context.__wbRuntime.getModule('RunJobAPI.js');
 (async () => {
-  const preview = await window.RunJobAPI.preview(input.input_ref);
-  const run = await window.RunJobAPI.get(input.run_ref);
-  const found = await window.RunJobAPI.lookup({schema_version: 2, input_ref: input.input_ref, request_key: input.request_key,
+  const preview = await RunJobAPI.preview(input.input_ref);
+  const run = await RunJobAPI.get(input.run_ref);
+  const found = await RunJobAPI.lookup({schema_version: 2, input_ref: input.input_ref, request_key: input.request_key,
     run_ref: input.run_ref, data_context_ref: preview.data_context_ref});
   assert.equal(found.found, true);
   assert.equal(found.run.state, run.state);
@@ -143,8 +157,7 @@ def test_preferences_save_does_not_expire_existing_preflight_or_worker_facts(pf)
     with pf.application.app_context():
         pf.conn.execute("BEGIN")
         try:
-            facts = PreflightFacts(pf.conn)
-            with facts.snapshot(fingerprint=False):
+            with PreflightFacts.open(pf.conn) as facts:
                 prepared = evaluate_preflight_input_prepared(
                     pf.conn, checked.get_json()["data"]["input_ref"], facts=facts
                 )

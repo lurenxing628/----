@@ -2,10 +2,11 @@
 
 from datetime import date, timedelta
 
-from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLimit
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES, MAX_POLICY_CELLS
 from core.services.capacity.plan_calendar_windows import project_resource_calendars, unavailable
+from core.services.scheduler.calendar.engine import CalendarEngine
+from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_facts
 
 
 def resource_ids_from_groups(groups):
@@ -53,7 +54,7 @@ def _read_calendar_facts(reader, ids, first, last, start, end):
 
 def _project_resources(ids, facts, first, last, start, end):
     """Per-resource calendars: build the global projection on demand when a machine or unoverridden operator needs it."""
-    engine = SnapshotCalendarEngine(facts)
+    engine = CalendarEngine(calendar_inputs_from_facts(facts))
     return {
         (kind, key): item
         for kind, key, _raw, item in project_resource_calendars(engine, facts, ids, first, last, start, end)

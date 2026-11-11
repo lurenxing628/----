@@ -7,6 +7,7 @@ from core.models.workbench_trial import issue
 from core.services.workbench.facts.stored_algo_inputs import stored_batch_operation
 from core.services.workbench.run.input_config import candidate_config, hold_window, window_label
 from core.services.workbench.run.input_runtime import HeldArrangements, held_arrangements
+from core.services.workbench.run.schedule_row_constraints import HOLD_WINDOW_RERUN_NOTE
 
 from .materials import hold_settings
 
@@ -73,17 +74,8 @@ def frozen_issue(row, seed, *, changed):
         held, window_label(seed["hold_window"]))
     if changed:
         return issue("frozen_arrangement_changed", head + "；试调里的安排和它不同，不能正式采用。"
-                     "请从当前正式计划重新发起试调；" + _RERUN, row["task_ref"])
-    return issue("task_frozen", head + "，试调不能改它。" + _RERUN, row["task_ref"])
-
-
-_RERUN = "这道工序如要改排，请重新排产，并在排产检查里把不重排时段改短或不设。"
-
-
-def frozen_note(item, seed):
-    """按时段保留、试调不能改的工序上查出的问题：补一句为什么改不了、该怎么办。"""
-    return dict(item, message=item["message"] + "这道工序因来源排产的不重排时段（{}）要保持原安排，试调不能改，正式采用会被拦下。".format(
-        window_label(seed["hold_window"])) + _RERUN)
+                     "请从当前正式计划重新发起试调；" + HOLD_WINDOW_RERUN_NOTE, row["task_ref"])
+    return issue("task_frozen", head + "，试调不能改它。" + HOLD_WINDOW_RERUN_NOTE, row["task_ref"])
 
 
 def keeps_frozen(row, seed):

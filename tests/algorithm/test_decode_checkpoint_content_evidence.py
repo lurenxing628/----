@@ -19,7 +19,8 @@ from core.algorithms.greedy.dispatch.sgs_checkpoint_tail import DecodeTailReuse
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.errors import ValidationError
 from core.models.objective import target_objectives_for
-from core.services.scheduler.calendar.service import CalendarService
+from core.services.scheduler.calendar import checkpoint_certificate
+from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.scheduler.run.optimizer.graph import iterated_greedy as ig_module
 from core.services.scheduler.run.optimizer.graph.iterated_greedy_checkpoints import CheckpointStore
 from core.services.scheduler.run.optimizer.graph_ready_profiles import resolve_v2_profiles
@@ -27,7 +28,8 @@ from core.services.scheduler.run.optimizer.search_report import OptimizationSear
 from core.services.scheduler.run.optimizer.shared_archive import CandidateArchiveRef, SharedScheduleArchive
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
 from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession, decode_and_metrics
-from data.repositories.calendar_checkpoint_repo import CalendarCheckpointRepository
+from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_capture
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.busy_block_case import BASE, at, native_calendar
 from tests._support.schedule_decode import config_snapshot, production_decode
@@ -153,14 +155,12 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
             session.bind_observation(decoded.receipt, observation.entry_id, True, candidate=candidate)
             return observation.entry_id
 
-        metadata = []
-        metadata_statements = {"pragma main.data_version", "pragma main.schema_version",
-                               "pragma temp.schema_version", "pragma query_only"}
-        calendar.conn.set_trace_callback(lambda sql: metadata.append(sql)
-                                         if sql.strip().lower() in metadata_statements else None)
+        calendar._decode_checkpoint_signature = None
         with patch("core.services.scheduler.run.optimizer.shared_decode.compute_metrics", wraps=compute_metrics) as metrics, \
                 patch.object(native_preparation, "checkpoint_calendar_signature",
                              wraps=native_preparation.checkpoint_calendar_signature) as certificate, \
+                patch.object(checkpoint_certificate, "calendar_checkpoint_signature",
+                             wraps=checkpoint_certificate.calendar_checkpoint_signature) as signature_builder, \
                 patch.object(native_preparation, "input_value", wraps=native_preparation.input_value) as input_encoding:
             def calendar_encodings():
                 return sum(call.kwargs.get("field") == "calendar_signature" for call in input_encoding.call_args_list)
@@ -168,11 +168,11 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
             before_calls = scheduler._decode_invocations
             ordinary = decode()
             entry_id = observe(ordinary, 1)
-            assert certificate.call_count == calendar_encodings() == len(metadata) == 0
+            assert certificate.call_count == calendar_encodings() == signature_builder.call_count == 0
             original = decode(decode_checkpoints=DecodeCheckpointRequest([1, 2], first_capture.append))
             assert observe(original, 2) == entry_id
             assert len(first_capture) == 2 and metrics.call_count == 2
-            assert certificate.call_count == calendar_encodings() == 1 and len(metadata) == 4
+            assert certificate.call_count == calendar_encodings() == signature_builder.call_count == 1
             component = first_capture[0].signature[9]
             assert component == checkpoint.signature[9]
             assert component is session.native_preparation.checkpoint_calendar_component()
@@ -203,16 +203,15 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
             assert archive.entry(entry_id).first_found_elapsed_ms == first_found
             assert session.actual_decoder_calls == scheduler._decode_invocations - before_calls == 4
             assert session.new_decisions == session.reused_decisions == 1
-            assert certificate.call_count == calendar_encodings() == 1 and len(metadata) == 4
+            assert certificate.call_count == calendar_encodings() == signature_builder.call_count == 1
             assert all(item.signature[9] is component for item in recaptured_sink)
 
             next_owner = new_session(scheduler)
             assert next_owner.native_preparation is not session.native_preparation
             next_capture = []
             decode(owner=next_owner, decode_checkpoints=DecodeCheckpointRequest([1], next_capture.append))
-            assert certificate.call_count == calendar_encodings() == 2 and len(metadata) == 8
+            assert certificate.call_count == calendar_encodings() == 2 and signature_builder.call_count == 1
             assert next_capture[0].signature[9] == component
-        calendar.conn.set_trace_callback(None)
 
 
 def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(monkeypatch):
@@ -471,9 +470,9 @@ def test_calendar_content_cache_does_not_reuse_rolled_back_transaction(schema_co
         "VALUES ('2026-09-08','workday',1,'yes','yes','[{\"start\":\"08:00\",\"end\":\"16:00\",\"day_offset\":0}]')"
     )
     conn.commit()
-    calendar = CalendarService(conn)
-    original_reader = CalendarCheckpointRepository.calendar_signature_rows
-    with patch.object(CalendarCheckpointRepository, "calendar_signature_rows", autospec=True,
+    calendar = CalendarEngine(calendar_inputs_from_capture(ProductionFactsCapture(conn)))
+    original_reader = checkpoint_certificate.calendar_checkpoint_signature
+    with patch.object(checkpoint_certificate, "calendar_checkpoint_signature",
                       side_effect=original_reader) as reader:
         original = calendar.certified_decode_checkpoint_snapshot()
         assert original[0] == "calendar-business-v1" and isinstance(original[1], tuple)
@@ -482,20 +481,30 @@ def test_calendar_content_cache_does_not_reuse_rolled_back_transaction(schema_co
 
         conn.execute("BEGIN")
         conn.execute("UPDATE WorkCalendar SET efficiency=0.5 WHERE date='2026-09-08'")
-        changed = calendar.certified_decode_checkpoint_snapshot()
+        tx_calendar = CalendarEngine(calendar_inputs_from_capture(ProductionFactsCapture(conn)))
+        changed = tx_calendar.certified_decode_checkpoint_snapshot()
         before_rollback = conn.total_changes
         assert changed != original
+        assert calendar.certified_decode_checkpoint_snapshot() is original
         conn.rollback()
         conn.execute("BEGIN")
         assert conn.total_changes == before_rollback
-        assert calendar.certified_decode_checkpoint_snapshot() == original
+        rolled_back = CalendarEngine(calendar_inputs_from_capture(ProductionFactsCapture(conn)))
+        assert rolled_back.certified_decode_checkpoint_snapshot() == original
         assert reader.call_count == 3
         conn.rollback()
 
         conn.execute("PRAGMA query_only=ON")
-        readonly = calendar.certified_decode_checkpoint_snapshot()
-        assert readonly == original and calendar.certified_decode_checkpoint_snapshot() is readonly
+        readonly_calendar = CalendarEngine(calendar_inputs_from_capture(ProductionFactsCapture(conn)))
+        readonly = readonly_calendar.certified_decode_checkpoint_snapshot()
+        assert readonly == original and readonly_calendar.certified_decode_checkpoint_snapshot() is readonly
         assert reader.call_count == 4
+
+    broken = CalendarEngine(replace(calendar._inputs, public_days=None))
+    with pytest.raises(ValidationError) as caught:
+        broken.certified_decode_checkpoint_snapshot()
+    assert caught.value.field == "decode_checkpoint"
+    assert caught.value.details["reason"] == "decode_checkpoint_calendar_unavailable"
 
 
 def test_shared_preparation_reuses_seed_resource_hours_and_checkpoint_records():

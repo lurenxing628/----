@@ -21,13 +21,11 @@ def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, app
         raise RuntimeError("Official plan persistence requires the caller's write transaction")
     audit = dict(audit)
     action = audit.pop("action")
-    if not isinstance(action, str) or not action or not audit.get("source"):
-        raise ValueError("Official plan audit requires an action and source")
     history = ScheduleHistoryRepository(conn)
     version = history.allocate_next_version()
     # 锁定只标已开工、做完的工序（它们由报工记录保护）。因不重排时段保留的不锁：时段只管这一次排产
     # （另记在 material_policy 里，试调据此判断），否则一旦采用就钉死，以后填"不设"也放不开。
-    locked_ids = prepared.execution_completed_op_ids
+    locked_ids = prepared.execution_guard.execution_completed_op_ids
     rows = [{"op_id": row.op_id, "version": version, "machine_id": row.machine_id,
              "operator_id": row.operator_id, "start_time": row.start_time.isoformat(sep=" "),
              "end_time": row.end_time.isoformat(sep=" "),
@@ -39,8 +37,8 @@ def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, app
                  version=version, validation="valid", row_count=len(rows),
                  application_operator=application_operator,
                  adopted_at=datetime.now().isoformat(timespec="seconds"), is_simulation=False)
-    audit["material_policy"] = _material_policy(prepared.normalized_input, run_window)
-    audit["deferred_operation_ids"] = sorted(material_deferred_ids(prepared.dispositions, prepared.normalized_input))
+    audit["material_policy"] = _material_policy(prepared.settings, run_window)
+    audit["deferred_operation_ids"] = sorted(material_deferred_ids(prepared.dispositions, prepared.settings))
     # Append-only repositories compose with the caller's durable receipt transaction.
     history.create({"version": version, "strategy": "manual", "batch_count": len(prepared.batches),
                     "op_count": len(rows), "result_status": "success", "result_summary": canonical_json(audit),

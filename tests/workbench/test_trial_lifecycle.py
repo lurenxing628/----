@@ -170,7 +170,8 @@ def test_http_trial_command_with_lost_acknowledgement_points_to_its_receipt(tria
     value = response.get_json()
     assert value["committed"] == "unknown" and value["error"]["request_key"] == key and value["error"]["retryable"] is False
     assert value["error"]["result_target"] == "/api/workbench/v1/trial/commands/" + key
-    assert client.get(value["error"]["result_target"]).get_json()["data"]["state"] == "committed"
+    lookup_data = client.get(value["error"]["result_target"]).get_json()
+    assert lookup_data["state"] == "recorded" and lookup_data["may_be_in_flight"] is False and lookup_data["resolution"] == "recorded"
 
 
 def test_http_trial_reads_and_catalogs_prebind_snapshot_before_heavy_projections(trial_case, monkeypatch):
@@ -294,19 +295,32 @@ def test_trial_preview_and_live_validation_skip_full_archive_and_reuse_validated
         draft_ref, {"name": "Interval reuse scenario"}, draft["write_context"]["write_token"], "trial-save-interval-01"
     )["data"]
 
-    # Adoption validation threads validated current_by_row intervals into _span_end and schedule_rows.
-    span_calls = []
-    orig_span = adoption_validation._span_end
+    # Adoption validation parses trial intervals once and reuses current_by_row in schedule_rows.
+    from core.services.workbench.trial import validation
 
-    def checked_span(rows, intervals_by_row):
-        span_calls.append(len(intervals_by_row))
-        return orig_span(rows, intervals_by_row)
+    interval_builds = []
+    schedule_row_inputs = []
+    orig_build_intervals = validation.build_trial_intervals
+    orig_schedule_rows = adoption_validation.schedule_rows
+
+    def tracked_build_intervals(*args, **kwargs):
+        built = orig_build_intervals(*args, **kwargs)
+        interval_builds.append(built["current_by_row"])
+        return built
+
+    def tracked_schedule_rows(rows, intervals_by_row):
+        schedule_row_inputs.append(intervals_by_row)
+        return orig_schedule_rows(rows, intervals_by_row)
 
     with monkeypatch.context() as patch:
-        patch.setattr(adoption_validation, "_span_end", checked_span)
-        adoption_validation.validate_trial_adoption(case.conn, saved["scenario_ref"],
-                                                    data_context=data_context(case.conn))
-    assert span_calls and all(count > 0 for count in span_calls)
+        patch.setattr(validation, "build_trial_intervals", tracked_build_intervals)
+        patch.setattr(adoption_validation, "schedule_rows", tracked_schedule_rows)
+        evidence = adoption_validation.validate_trial_adoption(
+            case.conn, saved["scenario_ref"], data_context=data_context(case.conn)
+        )
+    assert len(interval_builds) == 1 and len(schedule_row_inputs) == 1
+    assert schedule_row_inputs[0] is interval_builds[0] and len(interval_builds[0]) > 0
+    assert len(evidence.outcome.validated_payload.schedule_rows) == len(interval_builds[0])
 
     # Advance a live table revision (e.g. part name change) so matches_archive is False (not None).
     case.conn.execute("UPDATE Parts SET part_name='Updated Part Name' WHERE part_no='P1'")

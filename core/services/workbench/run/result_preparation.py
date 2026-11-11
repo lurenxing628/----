@@ -15,7 +15,7 @@ def _candidate_tasks(payload, identities, computation):
         if row.op_id not in identities:
             raise ValueError("Candidate operation identity is missing")
         tasks.append({"row_ref": new_run_ref(), "operation_ref": identities[row.op_id],
-                      "payload": {**durable_value(row), "locked": row.op_id in computation.schedule_input.frozen_op_ids}})
+                      "payload": {**durable_value(row), "locked": row.op_id in computation.schedule_input.seeds.frozen_op_ids}})
     return tasks
 
 
@@ -29,9 +29,9 @@ def _prepare_candidate(candidate, computation, identities):
             scope = candidate.evaluations[candidate.objective_name]["scoring_scope"]
             value = numeric_score(value, components_known=scope["components_known"])
         artifact[item.name] = durable_value(value)
-    artifact["target_objectives"] = list(computation.orchestration.candidate_comparison.target_objectives)
+    artifact["target_objectives"] = list(computation.candidate_comparison.target_objectives)
     artifact["analysis_contract_version"] = "decision-preparation-v4"
-    payload = computation.candidate_payloads[candidate.candidate_key]
+    payload = computation.candidate_outcomes[candidate.candidate_key].validated_payload
     tasks = _candidate_tasks(payload, identities, computation)
     arrangement_fields = ("op_id", "machine_id", "operator_id", "start_time", "end_time", "source")
     # Permanent task rows own the arrangement. Keep only engine-specific trace
@@ -49,7 +49,7 @@ def _prepare_candidate(candidate, computation, identities):
 
 
 def _prepare_result_artifacts(computation, identities, *, run_ref, batch_refs):
-    comparison = computation.orchestration.candidate_comparison
+    comparison = computation.candidate_comparison
     candidates = [_prepare_candidate(candidate, computation, identities) for candidate in comparison.candidates]
     for row in candidates:
         artifact = row["artifact"]
@@ -62,18 +62,17 @@ def _prepare_result_artifacts(computation, identities, *, run_ref, batch_refs):
               "candidates": [{"candidate_ref": row["candidate_ref"], "label": row["label"], "status": row["status"],
                               "task_count": len(row["tasks"]), "selected": row["key"] == selected} for row in candidates],
               "selection": _selection_references(comparison.selection, candidates, identities=identities, batch_refs=batch_refs), "dispositions": durable_value(computation.dispositions),
-              "summary": durable_value(computation.orchestration.result_summary_obj)}
+              "summary": durable_value(computation.result_summary_obj)}
     process = comparison.unified_process
     result["unified_process"] = {**process, "scopes": {key: _scope_references(scope, identities, batch_refs)
         for key, scope in process["scopes"].items()}}
-    comparison_summary = (result["summary"].get("algo") or {}).get("candidate_comparison")
-    if comparison_summary is not None:
-        comparison_summary["selection"] = result["selection"]
-        for summary in comparison_summary.get("candidates", []):
-            summary["evaluations"] = {target: {**evaluation, "scoring_scope":
-                _scope_references(evaluation["scoring_scope"], identities, batch_refs)}
-                for target, evaluation in summary["evaluations"].items()}
-            summary["search_evidence_ref"] = {**summary["search_evidence_ref"], "run_ref": run_ref}
+    comparison_summary = result["summary"]["algo"]["candidate_comparison"]
+    comparison_summary["selection"] = result["selection"]
+    for summary in comparison_summary["candidates"]:
+        summary["evaluations"] = {target: {**evaluation, "scoring_scope":
+            _scope_references(evaluation["scoring_scope"], identities, batch_refs)}
+            for target, evaluation in summary["evaluations"].items()}
+        summary["search_evidence_ref"] = {**summary["search_evidence_ref"], "run_ref": run_ref}
     items, seen = [], set()
     for effort in computation.schedule_input.operation_efforts:
         if effort.op_id not in identities or effort.op_id in seen:
@@ -110,8 +109,9 @@ def prepare_run_result(computation, identities, *, run, capture, admission, fact
     packets = {}
     for candidate in candidates:
         candidate.update(run_ref=run["run_ref"], task_count=len(candidate["tasks"]))
-        payload = computation.candidate_payloads[candidate["key"]]
-        intervals = {task["row_ref"]: (row.start_time, row.end_time)
+        outcome = computation.candidate_outcomes[candidate["key"]]
+        payload = outcome.validated_payload
+        intervals = {task["row_ref"]: outcome.resolved_intervals[row.op_id]
                      for task, row in zip(candidate["tasks"], payload.schedule_rows)}
         packets[candidate["candidate_ref"]] = {"raw_tasks": candidate["tasks"], "intervals": intervals,
             "scheduled_op_ids": payload.scheduled_op_ids}

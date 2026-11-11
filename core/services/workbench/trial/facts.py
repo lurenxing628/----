@@ -4,6 +4,7 @@ from typing import Any, Dict, NamedTuple, Tuple
 
 from core.models.workbench_execution import ExecutionProjection
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reject
+from core.services.execution.ledger_reader import ExecutionLedgerReadScope
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.source_revisions import TRIAL_SOURCE_KEYS, read_source_revisions
 from core.services.workbench.run.jobs_facts import run_baseline
@@ -44,16 +45,15 @@ def facts_unchanged(admission, live):
     return live["capture"].matches_admitted(admission["facts"])
 
 
-def execution_facts(tables, selected_refs, *, operation_refs, service) -> TrialExecutionFacts:
+def execution_facts(tables, selected_refs, *, operation_refs, ledger: ExecutionLedgerReadScope) -> TrialExecutionFacts:
     refs = set(selected_refs)
     refs.update(operation_refs[row["op_id"]] for row in tables["Schedule"])
     for row in tables["WorkbenchProductionReports"]:
         refs.add(row["operation_ref"])
     if len(refs) > MAX_TRIAL_TASKS:
         reject("query_too_large", "试调及真实执行保护范围超过10000道工序，未遗漏范围外占用。", 413)
-    with service.read_snapshot():
-        loaded = service.load(sorted(refs))
-        values = service.project_loaded(loaded, include_history=False)
+    loaded = ledger.reader.load(ledger, sorted(refs))
+    values = ledger.reader.project_loaded(loaded, include_history=False)
     snapshots: Dict[str, Dict[str, Any]] = {}
     reported: Dict[str, ReportedExecution] = {}
     for row in values:
@@ -74,19 +74,17 @@ def saved_capture(conn, admission):
     return capture
 
 
-def live_context(conn, origin, capture, *, execution_service, data_context):
+def live_context(conn, origin, capture, *, ledger: ExecutionLedgerReadScope, data_context):
     """Live production plus the execution of the trial's whole operation scope.
 
     origin is the trial source's members, prepared once: the whole scope is origin.operation_refs.
     capture is this transaction's production capture: a new base's own, or ``saved_capture`` of a stored admission.
     """
     facts = {"tables": LiveTables(capture)}
-    capture.execution_service = execution_service
-    preflight = PreflightFacts(conn, capture=capture)
-    preflight.bind_capture(capture)
+    preflight = PreflightFacts(conn, ledger=ledger, capture=capture)
     exec_facts = execution_facts(
         facts["tables"], origin.operation_refs,
-        operation_refs=preflight.operation_refs, service=execution_service)
+        operation_refs=preflight.operation_refs, ledger=ledger)
     preflight.execution_projections.update((row.operation_ref, row) for row in exec_facts.projections)
     return {"facts": facts, "capture": capture, "execution": exec_facts.snapshots,
             "execution_reported": exec_facts.reported,

@@ -41,8 +41,8 @@ def process_create():
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
 
     def guard():
-        with reader.read_snapshot() as state:
-            validate_write_context(body["write_token"], "process:create", "process.create", state)
+        with reader.read_snapshot() as scope:
+            validate_write_context(body["write_token"], "process:create", "process.create", scope.state_fingerprint())
             return domain.prepare_create(payload)
 
     result = WorkbenchCommandService(g.db, current_app.logger).execute(
@@ -60,8 +60,8 @@ def process_bulk_preview():
         raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
     page_request, query_scope = collection_scope(body["scope"], body.get("page_size", 20))
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as state:
-        snapshot = bind_read_snapshot(query_scope, state, body["snapshot_ref"])
+    with reader.read_snapshot() as scope:
+        snapshot = bind_read_snapshot(query_scope, scope.state_fingerprint(), body["snapshot_ref"])
         preview = WorkbenchProcessPartActionService(g.db, current_app.logger).preview_delete(body["refs"], scope=page_request)
         result = action_preview(preview, "process_bulk.confirm", extra={
             "columns": [{"key": key, "label": label} for key, label in DELETE_COLUMNS]})

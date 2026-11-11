@@ -97,8 +97,8 @@ def matches(task, scope):
         searchable = [task['batch_id'], task['operation_label'], task['part_name'], task['piece_id'],
                       task['planned_machine_label'], task['planned_operator_label']]
         execution = task['execution']
-        labels = execution._labels
-        for report in execution._projection.reports:
+        labels = execution.labels
+        for report in execution.projection.reports:
             searchable.extend(
                 (
                     report.report_no,
@@ -124,11 +124,11 @@ def _matches_resource(task, scope):
     if not scope.get('resource_ref'):
         return True
     kind, ref = scope['resource_type'], scope['resource_ref']
-    projection = task['execution']._projection
+    projection = task['execution'].projection
     field = kind + '_ref'
     if task['planned_' + field] == ref:
         return True
-    if projection.remaining_plan and projection.remaining_plan.get(field) == ref:
-        return True
-    actual_attr = 'actual_' + field
-    return any(getattr(report, actual_attr) == ref for report in projection.reports)
+    return any(
+        (report.actual_machine_ref if kind == 'machine' else report.actual_operator_ref) == ref
+        for report in projection.reports
+    )

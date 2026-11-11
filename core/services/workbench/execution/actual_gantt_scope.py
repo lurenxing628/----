@@ -88,27 +88,20 @@ class ActualGanttScope:
 
 def matches_execution_resource(task, execution, kind, ref):
     field = kind + "_ref"
-    owners = [task]
-    if execution and execution["remaining_plan"]:
-        owners.append(execution["remaining_plan"])
-    values = [owner.get(field) for owner in owners]
-    if execution:
-        actual_field = "actual_" + field
-        values.extend(report.get(actual_field) for report in execution["reports"])
-    return ref in values
+    if task[field] == ref:
+        return True
+    actual_field = "actual_" + field
+    return any(report[actual_field] == ref for report in execution["reports"])
 
 
 def search_text(item, names):
     task, execution = item["task"], item["execution"]
-    terms = [task["batch_id"], str(task["sequence"]), task["process_label"], task.get("piece_id") or "",
+    terms = [task["batch_id"], str(task["sequence"]), task["process_label"], task["piece_id"] or "",
              names.get(task["machine_ref"], ""), names.get(task["operator_ref"], "")]
     if execution:
         for report in execution["reports"]:
             terms.extend([report["report_no"], names.get(report["actual_machine_ref"], ""),
                           names.get(report["actual_operator_ref"], "")])
-        remaining = execution["remaining_plan"]
-        if remaining:
-            terms.extend([names.get(remaining.get("machine_ref"), ""), names.get(remaining.get("operator_ref"), "")])
     return " ".join(terms).lower()
 
 

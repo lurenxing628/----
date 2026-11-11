@@ -6,8 +6,6 @@ from functools import partial
 from typing import Any, Dict, List, Set, Tuple
 
 from core.algorithm_contracts.types import ScheduleResult
-from core.errors import ValidationError
-from core.models.calendar_periods import decode_periods
 from core.services.scheduler.resource_pool_builder import (
     CapturedResourceFacts,
     build_resource_pool,
@@ -15,13 +13,13 @@ from core.services.scheduler.resource_pool_builder import (
     load_machine_downtimes,
 )
 from core.services.scheduler.run.freeze_window import build_freeze_window_seed
+from core.services.scheduler.run.schedule_input_contracts import SeedPreparation, SolverResources
 from core.services.scheduler.run.schedule_input_runtime_support import (
     _load_runtime_resource_inputs,
     prepare_runtime_seeds,
 )
 from core.services.workbench.facts.run_input_rows import fail
-from core.shared.stored_dates import stored_date, stored_local_iso_datetime
-from core.shared.strict_parse import is_stored_number
+from core.shared.stored_dates import stored_local_iso_datetime
 
 from .input_points import read_point_freeze_rows
 
@@ -46,7 +44,7 @@ def stored_point_validator(facts, version):
         nonlocal work
         if work is None:
             context = facts.official_source(version)
-            reader = context.get("point_work") if context is not None else None
+            reader = context["point_work"] if context is not None else None
             work = reader() if reader is not None else {}
         item = work.get(row.op_id)
         if item is None or not item["witness"].matches(row):
@@ -118,26 +116,6 @@ def held_arrangements(*, facts, prev_version, start_dt, reschedulable_operations
     return HeldArrangements(frozen, seeds, freeze_meta)
 
 
-def _validate_calendar_row(row, table, decoded_periods):
-    """存储行在进入排产前准入一次：工作时段是唯一的时间事实，起止与工时都由它现算，不另存、不另查。"""
-    if stored_date(row["date"]) is None:
-        fail("invalid_calendar_date", "工作日历里有日期填得不对，这次排产没有开始。请按 2026-09-13 这样改好。", table=table)
-    if not is_stored_number(row["efficiency"], positive=True):
-        fail("invalid_calendar_number", "工作日历里有效率读不出来，这次排产没有开始。请到工作日历补上。", table=table, field="efficiency")
-    if row["day_type"] not in ("workday", "weekend", "holiday"):
-        fail("invalid_calendar_state", "工作日历里有日期类型认不出来，这次排产没有开始。请到工作日历重新选工作日、周末或假期。", table=table)
-    if row["allow_normal"] not in ("yes", "no") or row["allow_urgent"] not in ("yes", "no"):
-        fail("invalid_calendar_state", "工作日历里普通件或急件的许可认不出来，这次排产没有开始。请到工作日历重新设置。", table=table)
-    raw_periods = row["periods_json"]
-    if type(raw_periods) is not str or raw_periods not in decoded_periods:
-        try:
-            decoded = decode_periods(raw_periods)
-        except ValidationError:
-            fail("invalid_calendar_shift", "工作日历里的工作时段读不出来或者填得不对，这次排产没有开始。请到工作日历重新设置。",
-                 table=table, field="periods_json")
-        decoded_periods[raw_periods] = decoded
-
-
 def _validate_downtime_row(row):
     if row["status"] not in ("active", "cancelled"):
         fail("invalid_downtime_state", "停机记录的状态认不出来，这次排产没有开始。请到工作日历核对停机记录。")
@@ -155,9 +133,6 @@ def runtime_resource_inputs(facts) -> RuntimeResourceInputs:
     """Prepare each stored runtime row once under its production capture owner."""
     capture = facts.capture
     if capture.runtime_resources is None:
-        for table in ("WorkCalendar", "OperatorCalendar"):
-            for row in capture.table(table):
-                _validate_calendar_row(row, table, capture.decoded_periods)
         downtimes: Dict[str, List[Tuple[datetime, datetime]]] = {}
         for row in capture.table("MachineDowntimes"):
             interval = _validate_downtime_row(row)
@@ -173,35 +148,80 @@ def runtime_resource_inputs(facts) -> RuntimeResourceInputs:
     return capture.runtime_resources
 
 
-def build_runtime(conn, *, facts, cfg, prev_version, start_dt, batches, operations, mutable, algo_ops,
-                  completed_ids, execution_seeds, hold_window, piece_scope,
-                  for_adoption: bool, held):
+def prepare_seed_preparation(
+    conn,
+    *,
+    facts,
+    prev_version,
+    start_dt,
+    operations,
+    mutable,
+    algo_ops,
+    completed_ids,
+    execution_seeds,
+    actual_group_intervals,
+    hold_window,
+    piece_scope,
+    held=None,
+) -> SeedPreparation:
     from .input_piece import validate_piece_seed_precedence
 
     seed_validator = partial(validate_piece_seed_precedence, scope=piece_scope) if piece_scope is not None else None
-    runtime = runtime_resource_inputs(facts)
-    resources = runtime.resources
+    resources = facts.capture.resource_facts()
     if held is None:
         held = held_arrangements(
             facts=facts, prev_version=prev_version, start_dt=start_dt,
             reschedulable_operations=mutable, hold_window=hold_window)
-    frozen, seeds, to_schedule = prepare_runtime_seeds(
-        conn, run_label="排产计算", batches=batches, operations=operations, algo_ops=algo_ops,
+    frozen, seeds, to_schedule, external_intervals = prepare_runtime_seeds(
+        conn, run_label="排产计算", operations=operations, algo_ops=algo_ops,
         frozen_op_ids=held.frozen_op_ids, freeze_seed_results=held.seed_results,
         execution_completed_op_ids=completed_ids,
         execution_seed_results=execution_seeds,
+        actual_group_intervals=actual_group_intervals,
         raise_schedule_empty_result_fn=lambda message, *, reason: fail(reason, message),
         validate_completed_seed_constraints_fn=seed_validator,
         validate_fixed_operator_qualifications_fn=resources.validate_fixed,
     )
-    if for_adoption:
-        return frozen, seeds, held.meta, [], {}, {}, {}, None, 0
+    return SeedPreparation(
+        frozen_op_ids=frozen,
+        seed_results=seeds,
+        freeze_meta=held.meta,
+        to_schedule=to_schedule,
+        unscheduled_external_seed_by_op=external_intervals,
+    )
+
+
+def prepare_solver_resources(business, solver_input) -> SolverResources:
+    runtime = runtime_resource_inputs(business.facts)
+    resources = runtime.resources
     downtime_meta, pool_meta, downtime, pool = _load_runtime_resource_inputs(
-        cfg=cfg, algo_ops=algo_ops, resource_pool_ops=to_schedule, start_dt_norm=start_dt,
+        cfg=business.config,
+        algo_ops=business.algo_ops,
+        resource_pool_ops=solver_input.to_schedule,
+        start_dt_norm=business.start,
         load_machine_downtimes_fn=partial(load_machine_downtimes, downtimes=runtime.downtimes),
         build_resource_pool_fn=partial(build_resource_pool, resource_facts=resources),
-        extend_downtime_map_for_resource_pool_fn=partial(extend_downtime_map_for_resource_pool,
-                                                         downtimes=runtime.downtimes),
+        extend_downtime_map_for_resource_pool_fn=partial(
+            extend_downtime_map_for_resource_pool, downtimes=runtime.downtimes
+        ),
     )
-    seed_version = max(int(prev_version) + 1, 1)
-    return frozen, seeds, held.meta, to_schedule, downtime_meta, pool_meta, downtime, pool, seed_version
+    operator_ids = frozenset(
+        item
+        for item in (
+            *(op.operator_id for op in business.operations),
+            *(op.operator_id for op in business.algo_ops),
+            *(seed["operator_id"] for seed in business.seeds.seed_results),
+            *(pool["machines_by_operator"] if pool else ()),
+        )
+        if item is not None
+    )
+    calendar_engine = business.facts.calendar(operator_ids)
+    seed_version = business.baseline_version + 1
+    return SolverResources(
+        calendar_engine=calendar_engine,
+        downtime_map=downtime,
+        resource_pool=pool,
+        downtime_meta=downtime_meta,
+        resource_pool_meta=pool_meta,
+        optimizer_seed_version=seed_version,
+    )

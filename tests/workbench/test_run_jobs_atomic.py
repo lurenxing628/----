@@ -115,7 +115,7 @@ def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
     from collections import Counter
 
     from core.services.material.stage_availability import MaterialAvailability
-    from core.services.scheduler.calendar.service import CalendarService
+    from core.services.scheduler.calendar.engine import CalendarEngine
     from core.services.scheduler.config import config_snapshot
     from core.services.scheduler.execution import execution_ledger_adapter
     from core.services.workbench.run import jobs
@@ -149,17 +149,17 @@ def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
     monkeypatch.setattr(WorkbenchRunRepository, "input_admitted", checked_input)
     table_reads, preparations, statements = Counter(), Counter(), []
     calendars, material_indexes = [], []
-    initialize_calendar, initialize_materials = CalendarService.__init__, MaterialAvailability.__init__
+    initialize_calendar, initialize_materials = CalendarEngine.__init__, MaterialAvailability.__init__
 
-    def calendar_once(calendar, conn, logger=None, *, capture=None):
-        calendars.append(capture)
-        initialize_calendar(calendar, conn, logger, capture=capture)
+    def calendar_once(calendar, inputs):
+        calendars.append(inputs)
+        initialize_calendar(calendar, inputs)
 
     def materials_once(availability, tables):
         material_indexes.append(availability)
         initialize_materials(availability, tables)
 
-    monkeypatch.setattr(CalendarService, "__init__", calendar_once)
+    monkeypatch.setattr(CalendarEngine, "__init__", calendar_once)
     monkeypatch.setattr(MaterialAvailability, "__init__", materials_once)
     capture_table = WorkbenchPreflightFactsRepository.capture_table
     def capture_once(repo, name):
@@ -179,7 +179,7 @@ def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
     assert accepted["replayed"] is False and input_checks == [ref]
     assert table_reads and set(table_reads.values()) == {1}
     assert preparations == {"GenerationFacts": 1, "build_schedule_config_snapshot": 1, "current_execution_plan": 1}
-    assert len(calendars) == len(material_indexes) == 1 and calendars[0] is not None
+    assert calendars == [] and len(material_indexes) == 1
     assert not any(sql.upper().startswith("SELECT") and "FROM WORKBENCHRUNJOBS" in sql.upper()
                    and any(field in sql.upper() for field in ("FACTS_JSON", "EXECUTION_JSON", "BASELINE_JSON"))
                    for sql in statements)
@@ -207,11 +207,12 @@ def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
     budget_ref, budget_token = case.intent(dict(case.settings(), time_budget_seconds=10))
     assert budget_ref != ref
     prepare_admission = jobs.WorkbenchRunService._prepare_admission
-    def actual_budget(svc, prepared, *args):
+    def actual_budget(svc, admission, *args):
+        prepared = admission.preflight
         assert prepared.config_snapshot.time_budget_seconds == 60
-        assert prepared.prepared_input.cfg.time_budget_seconds == prepared.run_options["time_budget_seconds"] == 10
-        assert prepared.prepared_input.cfg.graph_analysis_mode == prepared.run_options["graph_analysis_mode"] == "off"
-        return prepare_admission(svc, prepared, *args)
+        assert admission.business_input.config.time_budget_seconds == prepared.run_options["time_budget_seconds"] == 10
+        assert admission.business_input.config.graph_analysis_mode == prepared.run_options["graph_analysis_mode"] == "off"
+        return prepare_admission(svc, admission, *args)
     monkeypatch.setattr(jobs.WorkbenchRunService, "_prepare_admission", actual_budget)
     budget_run = service(case.conn).accept(budget_ref, budget_token, "run-request-00000003")
     assert budget_run["data"]["scope_summary"]["run_options"]["time_budget_seconds"] == 10
@@ -487,3 +488,40 @@ def test_run_api_500_logs_the_request_ref_shown_to_the_user(monkeypatch, caplog,
     record, = [item for item in caplog.records if item.getMessage().startswith(log_prefix)]
     assert record.getMessage() == log_prefix + " request_ref=" + error["request_ref"]
     assert record.exc_info[1] is failure
+
+
+def test_run_preview_admission_issues_do_not_mutate_preflight_blockers_and_block_accept(job_case):
+    from core.services.workbench.run.jobs import WorkbenchRunService
+    from tests.workbench.run_jobs_support import data_context
+    from web.routes.workbench.preflight import evaluate_preflight_input_prepared
+    from web.routes.workbench.write_context import issue_write_context, validate_write_context
+
+    case = job_case
+    case.config(time_budget_seconds="not-an-int")
+    ref = case.preflight()
+    observed = []
+
+    def tracking_resolver(conn, input_ref, *, facts):
+        prepared = evaluate_preflight_input_prepared(conn, input_ref, facts=facts)
+        observed.append(prepared)
+        return prepared
+
+    run_svc = WorkbenchRunService(
+        case.conn,
+        integration_enabled=True,
+        input_resolver=tracking_resolver,
+        context_factory=issue_write_context,
+        context_validator=validate_write_context,
+        clock=lambda: datetime(2026, 9, 10, 12),
+        data_context=data_context(case.conn),
+    )
+    preview = run_svc.preview(ref)
+    assert len(observed) == 1 and observed[0].data["blockers"] == []
+    assert preview["write_context"]["capabilities"]["scheduling.run"] is False
+    assert preview["write_context"]["write_token"] is None
+    assert preview["write_context"]["blocked_reasons"]
+
+    with pytest.raises(WorkbenchCommandRejected) as rejected:
+        run_svc.accept(ref, "unused-write-token", "run-request-admission-blocked-01")
+    assert rejected.value.code == "constraint_conflict"
+    assert len(observed) == 2 and observed[1].data["blockers"] == []

@@ -11,6 +11,7 @@ from core.models.workbench_execution_input import (
     reject,
     validate_actual_values,
 )
+from core.services.execution.ledger_reader import project_loaded_facts
 from core.services.execution.projection import materialize_operation_history
 from data.repositories.workbench_execution_report_repo import new_ref
 
@@ -77,8 +78,8 @@ def _new_row(item, operation_ref, task, *, actor, now, row_number) -> Dict[str, 
 
 
 class ReportBatchPreparation:
-    def __init__(self, ledger, items, actor, *, parsed_times: Dict[str, datetime]):
-        self.ledger, self.items, self.actor = ledger, items, actor
+    def __init__(self, ledger, ledger_scope, items, actor, *, parsed_times: Dict[str, datetime]):
+        self.ledger, self.ledger_scope, self.items, self.actor = ledger, ledger_scope, items, actor
         self.parsed_times = parsed_times
         self.conn = ledger.conn
         self.resources = ReportResourceValidator(self.conn)
@@ -108,7 +109,7 @@ class ReportBatchPreparation:
         self._resolve_rows()
         repo = self.ledger.repo
         refs = list(dict.fromkeys(row["operation_ref"] for row in self.resolved))
-        self.facts = self.ledger.load(refs)
+        self.facts = self.ledger.load(self.ledger_scope, refs)
         self.before = self.facts
         self.facts = dict(self.before, reports={ref: {number: list(history) for number, history in groups.items()}
                                                for ref, groups in self.before["reports"].items()})
@@ -127,7 +128,7 @@ class ReportBatchPreparation:
         self.now = now
         before = {
             row.operation_ref: row
-            for row in self.ledger.project_loaded(self.before, contexts=False, include_history=False)
+            for row in project_loaded_facts(self.before, include_history=False)
         }
         self.before_projections = before
         for index, (item, resolved) in enumerate(zip(self.items, self.resolved), 1):
@@ -140,7 +141,7 @@ class ReportBatchPreparation:
             self.ledger.project_operation(self.facts, ref, include_history=False) if ref in changed_ops else before[ref]
             for ref in self.facts["operations"]
         ]
-        dependencies = ReportDependencies(self.ledger, self.projections)
+        dependencies = ReportDependencies(self.ledger_scope, self.projections)
         facts_changed = {
             after.operation_ref: (
                 after.operation_ref in changed_ops and execution_facts_changed(before[after.operation_ref], after)
@@ -162,7 +163,7 @@ class ReportBatchPreparation:
             if facts_changed[after.operation_ref] and revisions_by_operation[after.operation_ref]
         )
         task_map = (
-            self.ledger.task_map(downstream_refs, self.facts["plan"]["plan_ref"])
+            self.ledger.task_map(self.ledger_scope, downstream_refs, self.facts["plan"]["plan_ref"])
             if downstream_refs
             else {}
         )
@@ -173,12 +174,29 @@ class ReportBatchPreparation:
                 validate_projection_change(before[after.operation_ref], after)
                 validate_merged_cycle(dependencies, self.facts["operations"][after.operation_ref], before[after.operation_ref],
                                       after, changed)
-                conflicts = (execution_conflicts(self.ledger, self.facts, before[after.operation_ref], after, revisions,
-                    dependencies=dependencies, protect_plan=bool(revisions), task_map=task_map)
-                    if facts_changed[after.operation_ref] else [])
+                conflicts = (
+                    execution_conflicts(
+                        self.ledger,
+                        self.ledger_scope,
+                        self.facts,
+                        before[after.operation_ref],
+                        after,
+                        revisions,
+                        dependencies=dependencies,
+                        protect_plan=bool(revisions),
+                        task_map=task_map,
+                    )
+                    if facts_changed[after.operation_ref]
+                    else []
+                )
                 if conflicts:
-                    raise ReportBatchRejected("constraint_conflict", "这次报工会影响前后道工序或已采用的排产安排。请先处理下面列出的影响。",
-                                              conflicts=execution_conflict_details(self.ledger, self.facts, conflicts))
+                    raise ReportBatchRejected(
+                        "constraint_conflict",
+                        "这次报工会影响前后道工序或已采用的排产安排。请先处理下面列出的影响。",
+                        conflicts=execution_conflict_details(
+                            self.ledger, self.ledger_scope, self.facts, conflicts
+                        ),
+                    )
             except WorkbenchCommandRejected as exc:
                 _reject_row(exc, max(row["row_number"] for row in self.rows if row["operation_ref"] == after.operation_ref))
         return self

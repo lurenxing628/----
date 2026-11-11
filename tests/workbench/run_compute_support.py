@@ -9,7 +9,7 @@ from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.run.compute import compute_candidate_run
-from core.services.workbench.run.input import prepare_candidate_run_input
+from core.services.workbench.run.input import prepare_business_input
 from core.services.workbench.run.preflight_facts import PreflightFacts
 from tests.workbench.execution_ledger_support import LedgerCase, all_rows
 from tests.workbench.identity_metadata_support import insert_row
@@ -43,7 +43,9 @@ class RunCase(LedgerCase):
             FROM WorkbenchPlanSourceRefs r JOIN BatchOperations bo ON CAST(bo.id AS TEXT)=r.source_key
             WHERE r.kind='operation' AND r.active=1 ORDER BY r.ref"""))
         refs = [row[0] for row in rows if not batch_ids or row[1] in batch_ids or row[2]]
-        return ExecutionLedgerService(self.conn, clock=lambda: datetime(2026, 9, 10, 12)).project_operations(refs)
+        ledger = ExecutionLedgerService(self.conn, clock=lambda: datetime(2026, 9, 10, 12))
+        with ledger.read_snapshot() as scope:
+            return ledger.project_operations(scope, refs)
 
     def config(self, **values):
         for key, value in values.items():
@@ -92,10 +94,8 @@ def compute_run(conn, settings, projections):
 
 def prepare_run_input(conn, settings, projections, **kwargs):
     """Production preparation form: caller-owned facts bound to one capture."""
-    with candidate_read_snapshot(conn):
-        facts = PreflightFacts(conn)
-        with facts.snapshot(fingerprint=False):
-            return prepare_candidate_run_input(conn, settings, projections, facts=facts, **kwargs)
+    with candidate_read_snapshot(conn), PreflightFacts.open(conn) as facts:
+        return prepare_business_input(conn, settings, projections, facts=facts, **kwargs)
 
 
 def unchanged(case, action):

@@ -7,7 +7,7 @@ from core.services.workbench.run.history import WorkbenchRunHistoryQueryService
 
 def candidate_catalog(conn):
     try:
-        data, _ = WorkbenchRunHistoryQueryService(conn).catalog(RunHistoryScope(size=20))
+        data = WorkbenchRunHistoryQueryService(conn).latest_catalog(RunHistoryScope(size=20))
     except WorkbenchCommandRejected as exc:
         if exc.code != "run_result_inconsistent":
             raise

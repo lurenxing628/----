@@ -30,10 +30,10 @@ def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime
     if not conn.in_transaction:
         raise RuntimeError("Calibration evidence requires a caller-owned SQLite snapshot.")
     as_of = clock()
-    facts_reader = CalibrationFacts(conn, as_of=as_of)
-    with facts_reader.read_snapshot():
+    facts_reader = CalibrationFacts(conn)
+    with facts_reader.read_snapshot() as ledger_scope:
         template = require_template(repo, template_ref)
-        facts = facts_reader.read(CalibrationQuery(part_ref=template["part_ref"]))
+        facts = facts_reader.read(ledger_scope, CalibrationQuery(part_ref=template["part_ref"]), as_of=as_of)
         row = next((row for row in facts["rows"] if row["template_operation_ref"] == template_ref), None)
         if row is None:
             raise WorkbenchCommandRejected("entity_not_found", "所选模板建议已失效，请刷新后重新选择。", 404)

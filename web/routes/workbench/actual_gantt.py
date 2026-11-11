@@ -29,11 +29,11 @@ def _read(scope, *, full_workspace):
     token = request.args.get("snapshot_ref")
     snapshot = None
     with PLAN_READ_SLOTS.slot():
-        with reader.read_snapshot():
+        with reader.read_snapshot() as gantt_scope:
             if token is not None:
-                scope_dict, state = reader.prebind_scope(scope)
+                scope_dict, state = reader.prebind_scope(gantt_scope, scope)
                 snapshot = bind_read_snapshot(scope_dict, state, token)
-            data, state = reader.workspace(scope, full_workspace=full_workspace)
+            data, state = reader.workspace(gantt_scope, scope, full_workspace=full_workspace)
     if snapshot is None:
         snapshot = bind_read_snapshot(scope.scope(), state, None)
     data = bind_axis_time(data, snapshot["as_of"])

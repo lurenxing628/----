@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from core.shared.local_datetime import parse_local_datetime as parse_dt
-
 
 def group_seed_operations_by_batch(seed_operations: List[Any]) -> Dict[str, List[Any]]:
     grouped: Dict[str, List[Any]] = {}
@@ -18,9 +16,7 @@ def window_anchors_by_batch(schedule_map: Dict[int, Dict[str, Any]],
     """{批次: {分件号（None 为不分件或共同工序）: 窗口里这一件最大的工序号}}。"""
     anchors: Dict[str, Dict[Optional[str], int]] = {}
     for oid in schedule_map.keys():
-        op0 = op_by_id.get(int(oid))
-        if not op0:
-            continue
+        op0 = op_by_id[int(oid)]
         pieces = anchors.setdefault(op0.batch_id, {})
         piece = op0.piece_id
         pieces[piece] = max(pieces.get(piece, 0), op0.seq)
@@ -51,11 +47,7 @@ def rows_in_window(start: datetime, end: datetime,
     """
     result = {}
     for oid, row in schedule_map.items():
-        parsed_times = row.get("_parsed_times")
-        if parsed_times is None:
-            parsed_times = (parse_dt(row.get("start_time")), parse_dt(row.get("end_time")))
-            row["_parsed_times"] = parsed_times
-        begin, finish = parsed_times
+        begin, finish = row["_parsed_times"]
         if not begin or not finish or begin < end and (finish > start or begin == finish >= start):
             result[oid] = row
     return result

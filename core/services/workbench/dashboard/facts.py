@@ -11,6 +11,7 @@ from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.capacity.plan_calendar_io import CapturedCalendarInputs
+from core.services.execution.ledger_reader import project_loaded_facts
 from core.services.workbench import messages
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.source_revisions import DASHBOARD_SOURCE_KEYS, read_source_revisions
@@ -130,9 +131,9 @@ class DashboardFacts:
     def project(self):
         """报工投影只用已读出的台账事实，可在读事务结束后做，不再碰数据库。"""
         if self._ledger is not None:
-            ledger, facts = self._ledger
+            facts = self._ledger
             self._ledger = None
-            self._project_execution(ledger, facts)
+            self._project_execution(facts)
         return self
 
     def _plan(self):
@@ -147,7 +148,7 @@ class DashboardFacts:
             return
         self.raw["Schedule"] = context.source_rows(version=version)
         try:
-            ref = context.references.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
+            ref = context.plan_ref(WorkbenchPlanLocator(version, "adopted"))
             _, entry, span = context.selected(ref)
             plan = project_plan(entry, ref)
             if not plan["is_current_official"]:
@@ -163,7 +164,7 @@ class DashboardFacts:
             self.task_intervals = context.datetime_intervals(entry)
             self.plan_state = "loaded"
             self._capture_calendar_inputs(resource_ids(original_rows, "machine"))
-            self.pressure, self.raw["resource_pressure"], self.pressure_metrics = capture_resource_pressure(
+            self.pressure, self.pressure_metrics = capture_resource_pressure(
                 self.conn, entry=entry, scope=scope, resources=resources, identities=resource_state, plan_span=span,
                 context=context, plan_tasks=(self.tasks, self.task_rows), captured_calendar=self.calendar_inputs)
         except WorkbenchPlanReferenceError:
@@ -182,20 +183,23 @@ class DashboardFacts:
         plan = cast(Dict[str, Any], self.plan)
         ledger = ExecutionLedgerService(self.conn)
         try:
-            facts = ledger.load_many([task["operation_ref"] for task in self.tasks], comparison_plan_ref=plan["plan_ref"])
+            with ledger.read_snapshot() as scope:
+                facts = ledger.load_many(
+                    scope, [task["operation_ref"] for task in self.tasks], comparison_plan_ref=plan["plan_ref"]
+                )
             self.raw["execution_operation_sources"] = {ref: row["source"] for ref, row in facts["operations"].items()}
             facts = {**facts, "operations": {ref: dict(row, source=read_source_type(row["source"]))
                                             for ref, row in facts["operations"].items()}}
-            self._ledger = ledger, facts
+            self._ledger = facts
         except WorkbenchCommandRejected as exc:
             self._execution_unavailable(exc)
 
-    def _project_execution(self, ledger, facts):
+    def _project_execution(self, facts):
         try:
             self.execution_facts = facts
             self.execution = {
                 row.operation_ref: row.to_dict()
-                for row in ledger.project_loaded(facts, contexts=False, include_history=False)
+                for row in project_loaded_facts(facts, include_history=False)
             }
             for task in self.tasks:
                 projection = self.execution[task["operation_ref"]]

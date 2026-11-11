@@ -85,11 +85,11 @@ def relation_export_preview(kind):
     )
     page_request, query_scope, snapshot_ref = scope_input("operator", body)
     reader = _reader()
-    with reader.read_snapshot() as fingerprint:
+    with reader.read_snapshot() as scope:
         read_binding = resolve_read_snapshot(snapshot_ref)
-        snapshot = bind_read_snapshot(query_scope, fingerprint, snapshot_ref, binding=read_binding)
+        snapshot = bind_read_snapshot(query_scope, scope.state_fingerprint(), snapshot_ref, binding=read_binding)
         service = WorkbenchRelationFileService(g.db, kind, current_app.logger, reader=reader)
-        arguments, count = service.preview_export(selection, request=page_request, selected_refs=body.get("refs"))
+        arguments, count = service.preview_export(scope, selection, request=page_request, selected_refs=body.get("refs"))
         identity = export_identity(arguments)
         document = {"kind": kind, "query_scope": query_scope,
                     "snapshot_ref": snapshot_ref, "arguments": arguments, "row_count": count}
@@ -109,10 +109,10 @@ def relation_export(kind):
         raise WorkbenchCommandRejected("snapshot_stale", "这次导出的编号属于另一类记录，没有开始下载。请刷新页面后重新点「导出」。")
     reader = _reader()
     service = WorkbenchRelationFileService(g.db, kind, current_app.logger, reader=reader)
-    with reader.read_snapshot() as fingerprint:
-        snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"], binding=read_binding)
+    with reader.read_snapshot() as scope:
+        snapshot = bind_read_snapshot(binding["query_scope"], scope.state_fingerprint(), binding["snapshot_ref"], binding=read_binding)
         check_capacity(binding["row_count"], fmt)
-        rows = service.export_rows(**binding["arguments"])
+        rows = service.export_rows(scope, **binding["arguments"])
     # 读事务已结束：生成 CSV/XLSX 只用已读出的行，不再挡别人提交写入。
     response = file_response(write_relation_file(kind, rows, fmt))
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]

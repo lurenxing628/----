@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Callable, Optional
 
 from core.models.workbench_execution_input import reject
-from core.services.execution.ledger_reader import ExecutionLedgerReader
+from core.services.execution.ledger_reader import ExecutionLedgerReader, ExecutionLedgerReadScope
 from core.services.execution.projection import projection_resource_refs
 from core.services.scheduler.execution.execution_plan_identity import current_execution_plan
 from core.services.workbench.facts.execution_projection import ExecutionContextFactory, attach_context
@@ -35,57 +35,55 @@ class ExecutionLedgerService(ExecutionLedgerReader):
             "voids": {ref: facts["voids"][ref] for ref in reports if ref in facts["voids"]},
         }
 
-    def project_loaded(self, facts, *, contexts=True, include_history: bool = True):
+    def project_loaded(self, facts, *, include_history: bool = True):
         projections = super().project_loaded(facts, include_history=include_history)
-        if not contexts or self.context_factory is None:
+        if self.context_factory is None:
             return projections
         return [attach_context(row, self.context_factory,
                                self.fact_snapshot(facts, row.operation_ref)) for row in projections]
 
-    def operation_workspace_projection(self, plan_ref, tasks, operation_ref):
-        with self.read_snapshot():
-            refs = [task["operation_ref"] for task in tasks]
-            facts = self.load_many(refs, comparison_plan_ref=plan_ref)
-            _check_workspace_tasks(tasks, facts, plan_ref)
-            for ref in facts["operations"]:
-                if ref != operation_ref:
-                    self.validate_operation_reports(facts, ref)
-            events_count = sum(
-                len(history)
-                for group in facts["reports"].values()
-                for report_ref, history in group.items()
-                if report_ref not in facts["voids"]
-            )
-            if operation_ref in facts["operations"]:
-                projected = self.project_operation(facts, operation_ref, include_history=True)
-                if self.context_factory is not None:
-                    projected = attach_context(
-                        projected, self.context_factory, self.fact_snapshot(facts, operation_ref)
-                    )
-                raw_resources = self.resources(projection_resource_refs(projected))
-                plain = [projected.to_dict()]
-                resources = {
-                    "machines": [row for row in raw_resources if row["kind"] == "machine"],
-                    "operators": [row for row in raw_resources if row["kind"] == "operator"],
-                }
-            else:
-                plain = []
-                resources = {"machines": [], "operators": []}
-            return (
-                {"available": True, "time_basis": "factory_local", "projections": plain, "resources": resources},
-                events_count,
-            )
-
-    def workspace_projection(self, plan_ref, tasks, *, include_history: bool = True):
-        with self.read_snapshot():
-            refs = [task["operation_ref"] for task in tasks]
-            facts = self.load_many(refs, comparison_plan_ref=plan_ref)
-            _check_workspace_tasks(tasks, facts, plan_ref)
-            projections = self.project_loaded(facts, include_history=include_history)
-            raw_resources = self.resources({ref for row in projections for ref in projection_resource_refs(row)})
+    def operation_workspace_projection(self, scope: ExecutionLedgerReadScope, plan_ref, tasks, operation_ref):
+        refs = [task["operation_ref"] for task in tasks]
+        facts = self.load_many(scope, refs, comparison_plan_ref=plan_ref)
+        _check_workspace_tasks(tasks, facts, plan_ref)
+        for ref in facts["operations"]:
+            if ref != operation_ref:
+                self.validate_operation_reports(facts, ref)
+        events_count = sum(
+            len(history)
+            for group in facts["reports"].values()
+            for report_ref, history in group.items()
+            if report_ref not in facts["voids"]
+        )
+        if operation_ref in facts["operations"]:
+            projected = self.project_operation(facts, operation_ref, include_history=True)
+            if self.context_factory is not None:
+                projected = attach_context(
+                    projected, self.context_factory, self.fact_snapshot(facts, operation_ref)
+                )
+            raw_resources = self.resources(scope, projection_resource_refs(projected))
+            plain = [projected.to_dict()]
             resources = {
                 "machines": [row for row in raw_resources if row["kind"] == "machine"],
                 "operators": [row for row in raw_resources if row["kind"] == "operator"],
             }
-            plain = [row.to_dict() for row in projections]
-            return {"available": True, "time_basis": "factory_local", "projections": plain, "resources": resources}
+        else:
+            plain = []
+            resources = {"machines": [], "operators": []}
+        return (
+            {"available": True, "time_basis": "factory_local", "projections": plain, "resources": resources},
+            events_count,
+        )
+
+    def workspace_projection(self, scope: ExecutionLedgerReadScope, plan_ref, tasks, *, include_history: bool = True):
+        refs = [task["operation_ref"] for task in tasks]
+        facts = self.load_many(scope, refs, comparison_plan_ref=plan_ref)
+        _check_workspace_tasks(tasks, facts, plan_ref)
+        projections = self.project_loaded(facts, include_history=include_history)
+        raw_resources = self.resources(scope, {ref for row in projections for ref in projection_resource_refs(row)})
+        resources = {
+            "machines": [row for row in raw_resources if row["kind"] == "machine"],
+            "operators": [row for row in raw_resources if row["kind"] == "operator"],
+        }
+        plain = [row.to_dict() for row in projections]
+        return {"available": True, "time_basis": "factory_local", "projections": plain, "resources": resources}

@@ -7,7 +7,7 @@ from flask import current_app, g, request
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_query import ResourcePageRequest, resource_kind
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.facts.source_revisions import RESOURCE_SOURCE_KEYS, read_source_revisions
+from core.services.workbench.resource.projection import resource_action_policy
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from web.api_responses import json_response, query_success
 
@@ -33,13 +33,10 @@ def _query(kind):
 
 def _with_context(kind, record):
     entity = dict(record.entity)
-    relations = entity["relationships"]
-    referenced = any(relations.get("counts", {}).values()) or relations.get("machine_count", 0) or relations.get("operator_count", 0)
-    actions = [kind + ".update"] + ([] if referenced else [kind + ".delete"])
+    actions, capabilities, blocked_reasons = resource_action_policy(kind, record.state)
     context = issue_write_context(record.identity.ref, actions, record.state)
-    context["capabilities"][kind + ".delete"] = not bool(referenced)
-    if referenced:
-        context["blocked_reasons"] = [{"action": kind + ".delete", "code": "constraint_conflict", "message": "这条记录还被其他资料用到，不能删除。请先处理用到它的资料，再删除。"}]
+    context["capabilities"] = capabilities
+    context["blocked_reasons"] = blocked_reasons
     entity["write_context"] = context
     return entity
 
@@ -48,12 +45,12 @@ def _with_context(kind, record):
 def resource_list(kind):
     reader = WorkbenchResourceQueryService(g.db, resource_kind(kind), current_app.logger)
     query = _query(kind)
-    with reader.read_snapshot() as state:
-        snapshot = bind_read_snapshot(query.scope(), state, request.args.get("snapshot_ref"))
-        records, page = reader.page(query)
+    with reader.read_snapshot() as scope:
+        snapshot = bind_read_snapshot(query.scope(), scope.state_fingerprint(), request.args.get("snapshot_ref"))
+        records, page = scope.page(query)
         metrics = page.pop("metrics")
         data = {"entities": [_with_context(kind, record) for record in records], "page": page, "metrics": metrics,
-                "create_context": issue_write_context(kind + ":create", [kind + ".create"], reader.create_snapshot())}
+                "create_context": issue_write_context(kind + ":create", [kind + ".create"], scope.create_snapshot())}
     return query_success(data, snapshot)
 
 
@@ -62,9 +59,9 @@ def resource_detail(kind, ref):
     if set(request.args) - {"snapshot_ref"} or len(request.args.getlist("snapshot_ref")) > 1:
         raise WorkbenchCommandRejected("invalid_input", "详情的查询条件不对，详情没有打开。请刷新页面后重新点开这一行。", 400)
     reader = WorkbenchResourceQueryService(g.db, resource_kind(kind), current_app.logger)
-    with reader.read_snapshot() as state:
-        snapshot = bind_read_snapshot({"kind": kind, "entity_ref": ref}, state, request.args.get("snapshot_ref"))
-        entity = _with_context(kind, reader.detail(ref))
+    with reader.read_snapshot() as scope:
+        snapshot = bind_read_snapshot({"kind": kind, "entity_ref": ref}, scope.state_fingerprint(), request.args.get("snapshot_ref"))
+        entity = _with_context(kind, scope.detail(ref))
     return query_success(entity, snapshot)
 
 
@@ -79,7 +76,7 @@ def resource_command(kind, action, ref=None):
     def guard():
         preparation = reader.preparation_for(action, normalized, ref=ref)
         if action == "create":
-            state = reader.create_snapshot()
+            state = reader.create_relations_snapshot()
             checked = None
         else:
             identity = preparation.identity(kind, ref)
@@ -98,9 +95,9 @@ def resource_summary():
     if request.args:
         raise WorkbenchCommandRejected("invalid_input", "这个汇总不需要其他条件。请刷新页面后重试。", 400)
     reader = WorkbenchResourceQueryService(g.db, "op_type", current_app.logger)
-    with reader.read_snapshot(capture_fingerprint=False):
-        data = reader.summary_projection()
-        snapshot = bind_read_snapshot({"kind": "resource_summary"}, read_source_revisions(g.db, RESOURCE_SOURCE_KEYS))
+    with reader.read_snapshot(capture_fingerprint=False) as scope:
+        data = scope.summary_projection()
+        snapshot = bind_read_snapshot({"kind": "resource_summary"}, scope.state_fingerprint())
     return query_success(data, snapshot)
 
 

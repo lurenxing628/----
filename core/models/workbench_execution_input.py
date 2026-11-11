@@ -9,12 +9,17 @@ from core.shared.strict_parse import ILLEGAL_XML_CHARS_RE, is_exact_non_negative
 
 REPORT_FIELDS = ("actual_start", "actual_end", "completed_quantity", "effective_processing_hours",
                  "actual_machine_ref", "actual_operator_ref", "remark")
+EXTERNAL_REQUIRED_FIELDS = REPORT_FIELDS[:4]
 REQUIRED_FIELDS = REPORT_FIELDS[:-1]
 MAX_OPERATIONS = 10000
 MAX_FACT_ROWS = 50000
 MAX_REPORT_BYTES = 16 * 1024 * 1024
 _REF_RE = re.compile(r"[0-9a-f]{48}")
 _FACTORY_TIME_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+
+
+def required_report_fields(source: str):
+    return EXTERNAL_REQUIRED_FIELDS if source == "external" else REQUIRED_FIELDS
 
 
 def reject(message: str, code: str = "invalid_input", status: int = 422) -> NoReturn:

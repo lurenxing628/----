@@ -6,6 +6,8 @@ from core.models.resource_capabilities import machine_type_index, supplier_capab
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 
+from .scope import BatchFactScope
+
 
 def operator_machine_links(facts):
     return {(row["operator_id"], row["machine_id"]) for row in facts["OperatorMachine"]}
@@ -15,8 +17,7 @@ class BatchResourceFacts:
     def __init__(self, facts):
         self.catalogs = {kind: {row[key]: row for row in facts[table]} for kind, table, key in (
             ("machine", "Machines", "machine_id"), ("operator", "Operators", "operator_id"),
-            ("supplier", "Suppliers", "supplier_id"), ("op_type", "OpTypes", "op_type_id"),
-            ("material", "Materials", "material_id"))}
+            ("supplier", "Suppliers", "supplier_id"), ("op_type", "OpTypes", "op_type_id"))}
         self.machine_types = machine_type_index(facts["Machines"], facts["MachineOpTypes"])
         self.links = operator_machine_links(facts)
         self.supplier_types = defaultdict(set)
@@ -89,8 +90,8 @@ class BatchResourceFacts:
         return "" if self.supplier_capable(code, op["op_type_id"]) else "未具备该工序工种能力"
 
 
-def operation_choices(reader, batch_ref, operation_ref, choices, resources, facts):
-    batch = reader.batch(batch_ref)
+def operation_choices(scope: BatchFactScope, batch_ref, operation_ref, choices, resources, facts):
+    batch = scope.batch(batch_ref)
     op = next((row for row in facts["BatchOperations"] if row["batch_id"] == batch["batch_id"]
                and facts["operation_refs"][row["id"]] == operation_ref), None)
     if op is None:

@@ -2,6 +2,7 @@
 
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.scheduler.run.operation_effort import build_operation_efforts
 from core.services.workbench.facts.operation_effort_evidence import saved_operation_efforts
 from core.services.workbench.facts.run_input_rows import fail
 
@@ -41,3 +42,16 @@ def saved_seed_efforts(conn, facts, seed_results, execution_facts):
             else:
                 result[op_id] = _missing("原样保留安排的实际需求账缺失；保留原安排，准备和加工分解列为缺项。")
     return result
+
+
+def prepare_operation_efforts(conn, *, facts, operations, batches, algo_ops, seeds, execution_facts, projections):
+    return build_operation_efforts(
+        operations=operations,
+        batches=batches,
+        algo_operations=algo_ops,
+        operations_to_schedule=seeds.to_schedule,
+        seed_results=seeds.seed_results,
+        execution_facts=execution_facts,
+        execution_projections={op.id: projections[facts.operation_refs[op.id]] for op in operations},
+        saved_efforts=saved_seed_efforts(conn, facts, seeds.seed_results, execution_facts),
+    )

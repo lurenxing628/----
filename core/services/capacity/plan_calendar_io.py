@@ -123,8 +123,18 @@ class CalendarFacts:
         self.select("global", self.repo.global_calendar, first, last)
         self.keyed("personal", self.repo.personal_calendar, operators, (first, last))
         self.keyed("profiles", self.repo.operator_profiles, operators)
-        profile_ids = {row["profile_id"] for row in self.rows["profiles"] if row["profile_id"] is not None}
-        self.keyed("patterns", self.repo.shift_patterns, profile_ids)
+        shift_profiles = {}
+        for row in self.rows["profiles"]:
+            profile_id = row["profile_id"]
+            if profile_id is not None and profile_id not in shift_profiles:
+                shift_profiles[profile_id] = {
+                    "profile_id": profile_id,
+                    "anchor_date": row["anchor_date"],
+                    "cycle_days": row["cycle_days"],
+                    "status": row["status"],
+                }
+        self.rows["shift_profiles"] = list(shift_profiles.values())
+        self.keyed("patterns", self.repo.shift_patterns, shift_profiles)
 
     def resources(self, machine_ids, operator_ids, operation_ids, start, end):
         self.keyed("machines", self.captured.machines if self.captured is not None else self.repo.machines, machine_ids)

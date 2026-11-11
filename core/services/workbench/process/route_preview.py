@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from contextlib import contextmanager
 from dataclasses import fields
 
 from core.models.op_type import OpType
@@ -146,23 +145,11 @@ def _append_operation_diagnostics(operations, diagnostics):
 
 
 class ProcessRoutePreviewService:
-    def __init__(self, conn, logger=None, *, facts):
-        self.conn, self.logger = conn, logger
-        self._batch = None
+    def __init__(self, logger=None, *, facts):
+        self.logger = logger
         self._facts = facts
-
-    @contextmanager
-    def reference_snapshot(self):
-        """Reuse reference reads only within the caller's existing transaction."""
-        if not self.conn.in_transaction:
-            raise RuntimeError("Batch route previews require a caller-owned read transaction.")
-        previous = self._batch
-        facts = self._reference_facts()
-        self._batch = {"facts": facts, "candidates": self._candidates(facts[0], facts[1]), "refs": ({}, {})}
-        try:
-            yield self
-        finally:
-            self._batch = previous
+        self._types, _capabilities, self._parse_context, self._suppliers = self._reference_facts()
+        self._candidates_by_name = self._candidates(self._types, _capabilities)
 
     def _reference_facts(self):
         references = self._facts.references
@@ -172,8 +159,10 @@ class ProcessRoutePreviewService:
         parser = RouteParser(types, capabilities, logger=self.logger)
         return types, capabilities, parser.build_parse_context(), {row["supplier_id"]: row for row in references["Suppliers"]}
 
-    def preview(self, body, *, normalized=None):
-        request = normalize_route_preview_input(body) if normalized is None else normalized
+    def preview(self, body):
+        return self.preview_normalized(normalize_route_preview_input(body))
+
+    def preview_normalized(self, request):
         diagnostics = list(request.diagnostics)
         rows, compact = _text_rows(request.route_raw, diagnostics) if request.mode == "text" else (request.rows, False)
         if request.mode == "rows":
@@ -190,13 +179,12 @@ class ProcessRoutePreviewService:
                 "counts": {"operations": len(operations), "recognized": recognized, "unknown": len(operations) - recognized}}
 
     def _interpret_operations(self, rows, diagnostics, compact):
-        assert self._batch is not None
-        types, _capabilities, context, suppliers = self._batch["facts"]
+        types, context, suppliers = self._types, self._parse_context, self._suppliers
+        candidates = self._candidates_by_name
         if compact:
             diagnostics.extend(route_diagnostic("ambiguous_numeric_name", message, sequence=seq)
                                for seq, message in compact_name_ambiguities(rows, context.numeric_names))
         op_refs, supplier_refs = self._route_refs(context, {name for _, name in rows})
-        candidates = self._batch["candidates"]
         for issue in context.supplier_global_issues:
             ot = types.get(issue.op_type_id)
             label = "工种“" + ot.name + "”" if ot else "供应商承接能力资料"
@@ -205,18 +193,12 @@ class ProcessRoutePreviewService:
                 for seq, name in sorted(rows, key=lambda row: row[0])]
 
     def _route_refs(self, context, names):
-        assert self._batch is not None
         op_ids = [context.op_types[name].op_type_id for name in names if name in context.op_types]
         sup_ids = [context.suppliers[name] for name in names
                    if name in context.suppliers and context.op_types[name].category == "external"]
-        cached_ops, cached_suppliers = self._batch["refs"]
-        op_keys = [op_id for op_id in op_ids if op_id not in cached_ops]
-        if op_keys:
-            cached_ops.update(_persisted_refs(self._facts.identities_by_kind["op_type"], op_keys))
-        sup_keys = [supplier_id for supplier_id in sup_ids if supplier_id not in cached_suppliers]
-        if sup_keys:
-            cached_suppliers.update(_persisted_refs(self._facts.identities_by_kind["supplier"], sup_keys))
-        return cached_ops, cached_suppliers
+        op_refs = _persisted_refs(self._facts.identities_by_kind["op_type"], op_ids)
+        supplier_refs = _persisted_refs(self._facts.identities_by_kind["supplier"], sup_ids)
+        return op_refs, supplier_refs
 
     @staticmethod
     def _candidates(types, capabilities):

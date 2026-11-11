@@ -1,38 +1,34 @@
 """Internal candidate computation artifacts, never a persisted RunResult.
 
-模型层只声明它对上游产物的结构性要求（Protocol），不反向引用服务层类型：
-服务层的 CandidateRunInput / ScheduleOrchestrationOutcome 以结构满足这两个协议。
+模型层声明计算与持久化结果所需的结构性契约（Protocol）与具名结果数据类：
+服务层的 PreparedBusinessInput 满足该协议。
 """
 
 from dataclasses import dataclass
 from typing import Any, Collection, Dict, List, Protocol
 
 
+class _FrozenSeeds(Protocol):
+    @property
+    def frozen_op_ids(self) -> Collection[int]: ...
+
+
 class FrozenScopeInput(Protocol):
     """持久化候选任务和分析依据所需的冻结范围、运行工时事实。"""
 
     @property
-    def frozen_op_ids(self) -> Collection[int]: ...
+    def seeds(self) -> _FrozenSeeds: ...
 
     @property
     def operation_efforts(self) -> Collection[Any]: ...
 
 
-class OrchestrationOutcome(Protocol):
-    """编排产物里持久化候选集时需要读的事实：候选对比与结果摘要。"""
-
-    @property
-    def candidate_comparison(self) -> Any: ...
-
-    @property
-    def result_summary_obj(self) -> Any: ...
-
-
 @dataclass(frozen=True)
 class CandidateRunComputation:
     schedule_input: FrozenScopeInput
-    orchestration: OrchestrationOutcome
-    candidate_payloads: Dict[str, Any]
+    candidate_comparison: Any
+    result_summary_obj: Dict[str, Any]
+    candidate_outcomes: Dict[str, Any]
     dispositions: List[Dict[str, Any]]
     state: str
 

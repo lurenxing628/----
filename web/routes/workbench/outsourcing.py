@@ -44,20 +44,27 @@ def _read(kind, ref=None):
     token = args.pop("snapshot_ref", None)
     scope = {"kind": kind, "outsourcing_ref": ref, "size": size, **args}
     now, binding = read_snapshot_time(token)
+    stale_message = "外协来源或登记内容有变化，还没有保存；系统没有偷偷用新数据。请点「刷新」后重新核对。"
+    snapshot = None
+
+    def bind(content):
+        nonlocal snapshot
+        snapshot = bind_read_snapshot(
+            scope, content, token, as_of=now, binding=binding, stale_message=stale_message,
+        )
+
     reader = WorkbenchOutsourcingService(g.db)
     with reader.read_snapshot():
         if kind == "targets":
-            data = reader.targets(number=number, size=size, **args)
+            data = reader.targets(number=number, size=size, bind_snapshot=bind, **args)
         elif kind == "receipts":
-            data = reader.receipts(number=number, size=size, as_of=now, **args)
+            data = reader.receipts(number=number, size=size, as_of=now, bind_snapshot=bind, **args)
         elif kind == "history":
-            data = reader.history(ref, number=number, size=size, as_of=now)
+            data = reader.history(ref, number=number, size=size, as_of=now, bind_snapshot=bind)
         else:
             if number != 1:
                 reject("单条外协登记没有分页。请直接查看这一条。", status=400)
-            data = reader.detail(ref, as_of=now)
-        snapshot = bind_read_snapshot(scope, data.pop("content"), token, as_of=now, binding=binding,
-            stale_message="外协来源或登记内容有变化，还没有保存；系统没有偷偷用新数据。请点「刷新」后重新核对。")
+            data = reader.detail(ref, as_of=now, bind_snapshot=bind)
     return query_success(data, snapshot, byte_limit=MAX_BYTES)
 
 

@@ -5,10 +5,10 @@ row caps, ref syntax) lives here; the repository only reads what is stored.
 """
 
 from contextlib import ExitStack, contextmanager
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from sqlite3 import Connection
-from typing import Any, Callable, Dict, Optional, cast
+from typing import Any, Callable, Dict, Optional
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_execution_input import MAX_FACT_ROWS, MAX_OPERATIONS, public_ref, reject
@@ -27,6 +27,64 @@ def _capped(read, refs, message):
     return result
 
 
+def project_loaded_operation(facts, ref, *, include_history: bool = True):
+    op = facts["operations"][ref]
+    voids = facts["voids"]
+    histories = facts["reports"].get(ref, {})
+    if set(facts["report_heads"].get(ref, ())) - set(histories):
+        reject("报工来源或更正记录损坏，请核对报工数据；仍不行请联系维护人员。", "storage_failure", 500)
+    reports = sorted(
+        (report_dto(rows, operation_ref=ref, report_ref=report_ref, include_history=include_history)
+         for report_ref, rows in histories.items()),
+        key=lambda row: (row.recorded_at, row.report_no),
+    )
+    voided = []
+    if voids:
+        if include_history:
+            voided = [
+                {
+                    "report": report.to_dict(),
+                    "void_fact": {key: value for key, value in voids[report.report_ref].items() if key != "request_key"},
+                }
+                for report in reports
+                if report.report_ref in voids
+            ]
+        reports = [report for report in reports if report.report_ref not in voids]
+    projection = project_execution(
+        op,
+        reports,
+        current_task=facts["current_tasks"].get(ref),
+        comparison_task=facts["comparison_tasks"].get(ref),
+        plan_identity=facts["plan"],
+    )
+    if voided:
+        projection = replace(projection, voided_reports=voided)
+    return projection
+
+
+def project_loaded_facts(facts, *, include_history: bool = True):
+    return [project_loaded_operation(facts, ref, include_history=include_history) for ref in facts["operations"]]
+
+
+@dataclass
+class ExecutionLedgerReadScope:
+    reader: "ExecutionLedgerReader"
+    clock: Dict[str, Any]
+    plan: Optional[dict] = None
+    plan_read: bool = False
+    operations: Dict[str, Any] = field(default_factory=dict)
+    task_maps: Dict[Any, Dict[str, Any]] = field(default_factory=dict)
+    resources: Dict[str, Any] = field(default_factory=dict)
+    comparison_plans: Dict[str, WorkbenchPlanLocator] = field(default_factory=dict)
+    facts: Dict[str, Any] = field(
+        default_factory=lambda: {"loaded": set(), "reports": {}, "report_heads": {}, "voids": {}, "scope_tasks": {}}
+    )
+
+    @property
+    def conn(self):
+        return self.reader.conn
+
+
 class ExecutionLedgerReader:
     def __init__(self, conn, *, current_plan_provider: Callable[[Connection], Optional[dict]],
                  clock: Optional[Callable[[], datetime]] = None):
@@ -34,87 +92,72 @@ class ExecutionLedgerReader:
         self.current_plan_provider = current_plan_provider
         self.clock = datetime.now if clock is None else clock
         self.repo = WorkbenchExecutionRepository(conn)
-        self._snapshot_clock = None
-        self._snapshot_plan = None
-        self._snapshot_plan_read = False
-        self._snapshot_operations = None
-        self._snapshot_task_maps = None
-        self._snapshot_resources = None
-        self._snapshot_comparison_plans = None
-        self._snapshot_facts = None
 
     # ---- judgement over repository facts ----
 
-    def revision_clock(self):
-        if self._snapshot_clock is not None:
-            return self._snapshot_clock
+    def read_clock(self):
         clock = self.repo.clock()
         if clock is None:
             reject("报工或计划状态资料缺失，请联系维护人员核对。", "execution_ledger_unavailable", 409)
         return clock
 
-    def seed_operations(self, rows):
-        stored = cast(Dict[str, Any], self._snapshot_operations)
-        stored.update((row["operation_ref"], row) for row in rows)
+    def revision_clock(self, scope: ExecutionLedgerReadScope):
+        return scope.clock
 
-    def operation_rows(self, refs):
+    def seed_operations(self, scope: ExecutionLedgerReadScope, rows):
+        scope.operations.update((row["operation_ref"], row) for row in rows)
+
+    def operation_rows(self, scope: ExecutionLedgerReadScope, refs):
         values = list(dict.fromkeys(public_ref(ref) for ref in refs))
-        return self._operation_rows(values)
+        return self._operation_rows(scope, values)
 
-    def _operation_rows(self, values):
+    def _operation_rows(self, scope: ExecutionLedgerReadScope, values):
         if len(values) > MAX_OPERATIONS:
             reject("执行工序超过单次10000条读取上限。", "query_too_large", 413)
-        stored = self._snapshot_operations
-        if stored is None:
-            result = self.repo.operation_rows(values)
-        else:
-            missing = [ref for ref in values if ref not in stored]
-            if missing:
-                stored.update(self.repo.operation_rows(missing))
-            result = {ref: stored[ref] for ref in values if ref in stored}
+        stored = scope.operations
+        missing = [ref for ref in values if ref not in stored]
+        if missing:
+            stored.update(self.repo.operation_rows(missing))
+        result = {ref: stored[ref] for ref in values if ref in stored}
         if len(result) != len(values):
             reject("工序关联资料缺失，请刷新重选；仍无法打开时请联系维护人员。", "entity_not_found", 404)
         return result
 
-    def task_map(self, operation_refs, plan_ref, *, cohort=False):
+    def task_map(self, scope: ExecutionLedgerReadScope, operation_refs, plan_ref, *, cohort=False):
         if plan_ref is None:
             return {}
         refs = list(operation_refs)
-        stored = None if self._snapshot_task_maps is None else self._snapshot_task_maps.setdefault(plan_ref, {})
-        missing = refs if stored is None else [ref for ref in refs if ref not in stored]
-        result = {}
+        stored = scope.task_maps.setdefault(plan_ref, {})
+        missing = [ref for ref in refs if ref not in stored]
         if missing:
+            result = {}
             rows = self.repo.cohort_task_rows(missing, plan_ref) if cohort else self.repo.task_rows(missing, plan_ref)
             for row in rows:
                 if row["operation_ref"] in result:
                     reject("同一份计划里这道工序出现了两条安排，系统没有继续读取，请联系维护人员核对数据。", "constraint_conflict", 409)
                 result[row["operation_ref"]] = row
-        if stored is None:
-            return result
-        stored.update((ref, result.get(ref)) for ref in missing)
+            stored.update((ref, result.get(ref)) for ref in missing)
         return {ref: stored[ref] for ref in refs if stored[ref] is not None}
 
-    def resources(self, refs):
+    def resources(self, scope: ExecutionLedgerReadScope, refs):
         refs = sorted(set(refs))
-        stored = self._snapshot_resources
-        if stored is None:
-            return self.repo.resources(refs)
+        stored = scope.resources
         missing = [ref for ref in refs if ref not in stored]
         if missing:
             found = {row["ref"]: row for row in self.repo.resources(missing)}
             stored.update((ref, found.get(ref)) for ref in missing)
         return [stored[ref] for ref in refs if stored[ref] is not None]
 
-    def scope_task_rows(self, schedule_ids):
+    def scope_task_rows(self, scope: ExecutionLedgerReadScope, schedule_ids):
         """Permanent scope bindings, reusing admitted official task mappings."""
-        stored = self._snapshot_facts["scope_tasks"] if self._snapshot_facts is not None else {}
+        stored = scope.facts["scope_tasks"]
         wanted = set(schedule_ids)
         pending = wanted.difference(stored)
-        if self._snapshot_task_maps is not None and pending:
-            bindings = cast(Dict[str, WorkbenchPlanLocator], self._snapshot_comparison_plans)
-            operations = cast(Dict[str, Dict[str, Any]], self._snapshot_operations)
-            current_ref = self._snapshot_plan["plan_ref"] if self._snapshot_plan else None
-            for plan_ref, tasks in self._snapshot_task_maps.items():
+        if pending:
+            bindings = scope.comparison_plans
+            operations = scope.operations
+            current_ref = scope.plan["plan_ref"] if scope.plan else None
+            for plan_ref, tasks in scope.task_maps.items():
                 locator = bindings.get(plan_ref)
                 if plan_ref != current_ref and (locator is None or locator.plan_role != "adopted"):
                     continue
@@ -140,24 +183,21 @@ class ExecutionLedgerReader:
             for row in ExecutionLedgerScopeRepository(self.conn).scope_task_rows(missing):
                 found[row[0]].append(row)
             stored.update(found)
-            if self._snapshot_task_maps is not None:
-                for rows in found.values():
-                    for row in rows:
-                        tasks = self._snapshot_task_maps.setdefault(row[6], {})
-                        task = {"task_ref": row[5], "plan_ref": row[6], "operation_ref": row[4],
-                            "op_id": row[2], "version": row[1], "identity_kind": "schedule_row",
-                            "identity_source_table": "schedule", "row_source_key": str(row[0]),
-                            "owner_key": str(row[1]), "schedule_id": row[0],
-                            **dict(zip(("start_time", "end_time", "machine_id", "operator_id", "lock_status"), row[8:]))}
-                        if tasks.get(row[4]) is not None and tasks[row[4]]["task_ref"] != row[5]:
-                            reject("同一份计划里这道工序出现了两条安排，系统没有继续读取，请联系维护人员核对数据。", "constraint_conflict", 409)
-                        tasks[row[4]] = task
+            for rows in found.values():
+                for row in rows:
+                    tasks = scope.task_maps.setdefault(row[6], {})
+                    task = {"task_ref": row[5], "plan_ref": row[6], "operation_ref": row[4],
+                        "op_id": row[2], "version": row[1], "identity_kind": "schedule_row",
+                        "identity_source_table": "schedule", "row_source_key": str(row[0]),
+                        "owner_key": str(row[1]), "schedule_id": row[0],
+                        **dict(zip(("start_time", "end_time", "machine_id", "operator_id", "lock_status"), row[8:]))}
+                    if tasks.get(row[4]) is not None and tasks[row[4]]["task_ref"] != row[5]:
+                        reject("同一份计划里这道工序出现了两条安排，系统没有继续读取，请联系维护人员核对数据。", "constraint_conflict", 409)
+                    tasks[row[4]] = task
         return [row for schedule_id in sorted(wanted) for row in stored[schedule_id]]
 
-    def reported_operation_without_schedule_row(self):
-        stored = self._snapshot_facts
-        if stored is None:
-            return ExecutionLedgerScopeRepository(self.conn).reported_operation_without_schedule_row()
+    def reported_operation_without_schedule_row(self, scope: ExecutionLedgerReadScope):
+        stored = scope.facts
         if "reported_scope" not in stored:
             stored["reported_scope"] = ExecutionLedgerScopeRepository(self.conn).reported_operation_without_schedule_row()
         return stored["reported_scope"]
@@ -171,46 +211,30 @@ class ExecutionLedgerReader:
     @contextmanager
     def read_snapshot(self):
         """One cached ledger view per read transaction; a caller's open transaction is joined, never nested."""
-        if self._snapshot_clock is not None:
-            yield
-            return
         with ExitStack() as owned:
             if not self.conn.in_transaction:
                 owned.enter_context(TransactionManager(self.conn).transaction())
-            self._snapshot_clock = self.revision_clock()
-            self._snapshot_plan, self._snapshot_plan_read = None, False
-            self._snapshot_operations, self._snapshot_task_maps, self._snapshot_resources = {}, {}, {}
-            self._snapshot_comparison_plans = {}
-            self._snapshot_facts = {"loaded": set(), "reports": {}, "report_heads": {}, "voids": {}, "scope_tasks": {}}
-            try:
-                yield
-            finally:
-                self._snapshot_clock = None
-                self._snapshot_plan, self._snapshot_plan_read = None, False
-                self._snapshot_operations = self._snapshot_task_maps = self._snapshot_resources = None
-                self._snapshot_comparison_plans = None
-                self._snapshot_facts = None
+            yield ExecutionLedgerReadScope(reader=self, clock=self.read_clock())
 
-    def _current_plan(self):
-        if self._snapshot_clock is None:
-            return self.current_plan_provider(self.conn)
-        if not self._snapshot_plan_read:
-            self._snapshot_plan = self.current_plan_provider(self.conn)
-            self._snapshot_plan_read = True
-        return self._snapshot_plan
+    def current_plan(self, scope: ExecutionLedgerReadScope):
+        if not scope.plan_read:
+            scope.plan = self.current_plan_provider(self.conn)
+            scope.plan_read = True
+        return scope.plan
 
-    def load(self, operation_refs, *, comparison_plan_ref=None, _admitted_refs=False):
+    def load(self, scope: ExecutionLedgerReadScope, operation_refs, *, comparison_plan_ref=None, _admitted_refs=False):
         """Private stored facts, not a public response or a second ledger."""
-        operations = self._operation_rows(operation_refs) if _admitted_refs else self.operation_rows(operation_refs)
-        plan = self._current_plan()
+        operations = (
+            self._operation_rows(scope, operation_refs)
+            if _admitted_refs
+            else self.operation_rows(scope, operation_refs)
+        )
+        plan = self.current_plan(scope)
         if comparison_plan_ref is not None and (plan is None or comparison_plan_ref != plan["plan_ref"]):
-            # Comparison plans are only read inside read_snapshot (load_many), which owns this admission map.
-            admitted = cast(Dict[str, WorkbenchPlanLocator], self._snapshot_comparison_plans)
+            admitted = scope.comparison_plans
             if comparison_plan_ref not in admitted:
                 admitted[comparison_plan_ref] = WorkbenchPlanIdentityRepository(self.conn).resolve_plan(comparison_plan_ref)
-        stored = self._snapshot_facts
-        if stored is None:
-            stored = {"loaded": set(), "reports": {}, "report_heads": {}, "voids": {}, "scope_tasks": {}}
+        stored = scope.facts
         missing = {ref: row for ref, row in operations.items() if ref not in stored["loaded"]}
         if missing:
             reports, report_heads, report_count = self.repo.reports(missing, MAX_FACT_ROWS)
@@ -230,15 +254,17 @@ class ExecutionLedgerReader:
                 or len(voids) > MAX_FACT_ROWS):
             reject("报工及历史记录超过读取上限，请缩小范围。", "query_too_large", 413)
         current_plan_ref = plan["plan_ref"] if plan else None
-        current_tasks = self.task_map(operations, current_plan_ref)
-        comparison_tasks = (current_tasks
-                            if comparison_plan_ref is not None and comparison_plan_ref == current_plan_ref
-                            else self.task_map(operations, comparison_plan_ref))
+        current_tasks = self.task_map(scope, operations, current_plan_ref)
+        comparison_tasks = (
+            current_tasks
+            if comparison_plan_ref is not None and comparison_plan_ref == current_plan_ref
+            else self.task_map(scope, operations, comparison_plan_ref)
+        )
         return {"operations": operations, "reports": reports, "report_heads": report_heads, "voids": voids,
                 "current_tasks": current_tasks, "comparison_tasks": comparison_tasks, "plan": plan,
-                "clock": self.revision_clock()}
+                "clock": scope.clock}
 
-    def load_many(self, operation_refs, *, comparison_plan_ref=None):
+    def load_many(self, scope: ExecutionLedgerReadScope, operation_refs, *, comparison_plan_ref=None):
         """Read a complete cohort in bounded batches under one ledger snapshot.
 
         The operation/fact limits apply to each repository read, not to a
@@ -247,22 +273,21 @@ class ExecutionLedgerReader:
         one admitted load.
         """
         refs = list(dict.fromkeys(public_ref(ref) for ref in operation_refs))
-        with self.read_snapshot():
-            if len(refs) <= MAX_OPERATIONS:
-                return self.load(refs, comparison_plan_ref=comparison_plan_ref, _admitted_refs=True)
-            # A SQL parameter chunk otherwise scans the same plan again.
-            # Keep only this cohort in the existing, request-local map;
-            # operation and report facts still use their bounded loads.
-            plan = self._current_plan()
-            for plan_ref in dict.fromkeys([plan["plan_ref"] if plan else None, comparison_plan_ref]):
-                self.task_map(refs, plan_ref, cohort=True)
-            result = self.load(refs[:MAX_OPERATIONS], comparison_plan_ref=comparison_plan_ref, _admitted_refs=True)
-            for start in range(MAX_OPERATIONS, len(refs), MAX_OPERATIONS):
-                batch = self.load(refs[start:start + MAX_OPERATIONS],
-                                  comparison_plan_ref=comparison_plan_ref, _admitted_refs=True)
-                for key in ("operations", "reports", "report_heads", "voids", "current_tasks", "comparison_tasks"):
-                    result[key].update(batch[key])
-            return result
+        if len(refs) <= MAX_OPERATIONS:
+            return self.load(scope, refs, comparison_plan_ref=comparison_plan_ref, _admitted_refs=True)
+        # A SQL parameter chunk otherwise scans the same plan again.
+        # Keep only this cohort in the existing, request-local map;
+        # operation and report facts still use their bounded loads.
+        plan = self.current_plan(scope)
+        for plan_ref in dict.fromkeys([plan["plan_ref"] if plan else None, comparison_plan_ref]):
+            self.task_map(scope, refs, plan_ref, cohort=True)
+        result = self.load(scope, refs[:MAX_OPERATIONS], comparison_plan_ref=comparison_plan_ref, _admitted_refs=True)
+        for start in range(MAX_OPERATIONS, len(refs), MAX_OPERATIONS):
+            batch = self.load(scope, refs[start:start + MAX_OPERATIONS],
+                              comparison_plan_ref=comparison_plan_ref, _admitted_refs=True)
+            for key in ("operations", "reports", "report_heads", "voids", "current_tasks", "comparison_tasks"):
+                result[key].update(batch[key])
+        return result
 
     def validate_operation_reports(self, facts, ref):
         histories = facts["reports"].get(ref, {})
@@ -272,29 +297,10 @@ class ExecutionLedgerReader:
             validate_history_chain(rows, operation_ref=ref, report_ref=report_ref)
 
     def project_operation(self, facts, ref, *, include_history: bool = True):
-        op = facts["operations"][ref]
-        voids = facts["voids"]
-        histories = facts["reports"].get(ref, {})
-        if set(facts["report_heads"].get(ref, ())) - set(histories):
-            reject("报工来源或更正记录损坏，请核对报工数据；仍不行请联系维护人员。", "storage_failure", 500)
-        reports = sorted((report_dto(rows, operation_ref=ref, report_ref=report_ref, include_history=include_history)
-                          for report_ref, rows in histories.items()), key=lambda row: (row.recorded_at, row.report_no))
-        voided = []
-        if voids:
-            if include_history:
-                voided = [{"report": report.to_dict(), "void_fact": {key: value for key, value in voids[report.report_ref].items()
-                           if key != "request_key"}} for report in reports if report.report_ref in voids]
-            reports = [report for report in reports if report.report_ref not in voids]
-        projection = project_execution(op, reports,
-            current_task=facts["current_tasks"].get(ref), comparison_task=facts["comparison_tasks"].get(ref),
-            plan_identity=facts["plan"])
-        if voided:
-            projection = replace(projection, voided_reports=voided)
-        return projection
+        return project_loaded_operation(facts, ref, include_history=include_history)
 
     def project_loaded(self, facts, *, include_history: bool = True):
         return [self.project_operation(facts, ref, include_history=include_history) for ref in facts["operations"]]
 
-    def project_operations(self, operation_refs):
-        with self.read_snapshot():
-            return self.project_loaded(self.load(operation_refs))
+    def project_operations(self, scope: ExecutionLedgerReadScope, operation_refs):
+        return self.project_loaded(self.load(scope, operation_refs))

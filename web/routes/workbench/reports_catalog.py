@@ -33,8 +33,9 @@ def _official(export):
     bound = {}
     # 与现场分析是同一份“整份正式计划 + 台账”重建，和看板、现场页一起排读额度。
     with PLAN_READ_SLOTS.slot():
-        with reader.read_snapshot():
+        with reader.read_snapshot() as plan_context:
             facts = reader.read(
+                plan_context,
                 scope,
                 bind_snapshot=lambda resolved_scope, fingerprint: bound.setdefault(
                     "snapshot",
@@ -84,9 +85,10 @@ def _catalog(kind, export=False):
     reader = WorkbenchReportFacts(g.db, current_app.logger)
     bound = {}
     with PLAN_READ_SLOTS.slot():
-        with reader.read_snapshot():
+        with reader.read_snapshot() as plan_context:
             facts = catalog_facts(
                 reader,
+                plan_context,
                 scope,
                 bind_snapshot=lambda resolved_scope, fingerprint: bound.setdefault(
                     "snapshot",

@@ -30,7 +30,8 @@ def test_receipt_insert_failure_rolls_back_candidate_adoption(candidate_case):
         service(case.conn).adopt(ref, token, KEY, INTENT)
     assert snapshot(case.conn) == before
     assert not case.conn.in_transaction
-    assert service(case.conn).lookup(ref, KEY) is None
+    svc = service(case.conn)
+    assert svc.commands.lookup(KEY, action=svc._action, context_ref=ref) is None
 
 
 def test_two_connections_concurrently_replay_one_adoption(candidate_case):
@@ -80,7 +81,7 @@ def test_adoption_reuses_one_capture_through_input_and_constraints(candidate_cas
     monkeypatch.setattr(ProductionFactsCapture, "__init__", capture_once)
     monkeypatch.setattr(WorkbenchPreflightFactsRepository, "capture_table", table_once)
     evidence = validate_adoption(case.conn, ref)
-    assert evidence.payload.scheduled_op_ids == {case.op_id}
+    assert evidence.outcome.validated_payload.scheduled_op_ids == {case.op_id}
     assert counts and set(counts.values()) == {1}
 
 
@@ -97,10 +98,14 @@ def test_adoption_command_resolution_keeps_live_pending_and_identifies_replaced_
         return current
 
     monkeypatch.setattr(adopter.data_context, "ref", context_ref)
-    state, pending = adopter.resolve_command(ref, KEY, run_ref=checked["run_ref"], data_context_ref=current)
-    assert state == "not_recorded"
-    assert pending["may_be_in_flight"] is True and pending["resolution"] == "unresolved"
-    assert pending["request_key"] == KEY and pending["data_context_ref"] == current
+    pending = adopter.resolve_command(ref, KEY, run_ref=checked["run_ref"], data_context_ref=current)
+    assert pending == {
+        "state": "not_observed",
+        "receipt": None,
+        "may_be_in_flight": True,
+        "resolution": "unresolved",
+        "data_context_ref": current,
+    }
     assert reads == [True]
     other = restored_context_ref("another-database", [])
     for candidate_ref, options in (
@@ -108,10 +113,14 @@ def test_adoption_command_resolution_keeps_live_pending_and_identifies_replaced_
         (ref, {"run_ref": "e" * 48, "data_context_ref": current}),
         (ref, {"data_context_ref": other}),
     ):
-        state, replaced = adopter.resolve_command(candidate_ref, KEY, **options)
-        assert state == "not_recorded" and replaced["result"] == "not_recorded"
-        assert replaced["may_be_in_flight"] is False and replaced["resolution"] == "context_replaced"
-        assert replaced["data_context_ref"] == current
+        replaced = adopter.resolve_command(candidate_ref, KEY, **options)
+        assert replaced == {
+            "state": "not_observed",
+            "receipt": None,
+            "may_be_in_flight": False,
+            "resolution": "context_replaced",
+            "data_context_ref": current,
+        }
     assert not case.conn.in_transaction
     # A bare 64-hex digest is not a data generation that production ever issued.
     for options in ({"run_ref": "invalid", "data_context_ref": current}, {"data_context_ref": "f" * 48},
@@ -162,9 +171,14 @@ def test_recorded_adoption_replays_before_reading_the_data_context(candidate_cas
     monkeypatch.setattr(adopter.data_context, "ref", unavailable_context)
     adopted = adopter.adopt(ref, checked["write_context"]["write_token"], KEY, INTENT)
     other = restored_context_ref("another-database", [])
-    state, replayed = adopter.resolve_command(ref, KEY, run_ref="e" * 48, data_context_ref=other)
-    assert state == "recorded" and replayed["replayed"] is True
-    assert replayed["receipt_ref"] == adopted["receipt_ref"]
+    resolved = adopter.resolve_command(ref, KEY, run_ref="e" * 48, data_context_ref=other)
+    assert resolved == {
+        "state": "recorded",
+        "receipt": {**adopted, "replayed": True},
+        "may_be_in_flight": False,
+        "resolution": "recorded",
+        "data_context_ref": other,
+    }
     assert adopter.adopt(ref, "", KEY, INTENT)["receipt_ref"] == adopted["receipt_ref"]
     with pytest.raises(WorkbenchCommandRejected) as exc:
         adopter.resolve_command("f" * 48, KEY, data_context_ref=other)
@@ -194,10 +208,22 @@ def test_candidate_adoption_resolution_route_is_read_only_and_not_cached(candida
                           query_string={"run_ref": checked["run_ref"], "data_context_ref": checked["data_context_ref"]})
     assert response.status_code == 200, response.get_data(as_text=True)
     assert response.headers["Cache-Control"] == "no-store"
-    assert response.get_json()["resolution"] == "unresolved"
+    assert response.get_json() == {
+        "state": "not_observed",
+        "receipt": None,
+        "may_be_in_flight": True,
+        "resolution": "unresolved",
+        "data_context_ref": checked["data_context_ref"],
+    }
     replaced = client.get(BASE + "f" * 48 + "/adoption-commands/" + KEY,
                           query_string={"data_context_ref": checked["data_context_ref"]})
-    assert replaced.status_code == 200 and replaced.get_json()["resolution"] == "context_replaced"
+    assert replaced.status_code == 200 and replaced.get_json() == {
+        "state": "not_observed",
+        "receipt": None,
+        "may_be_in_flight": False,
+        "resolution": "context_replaced",
+        "data_context_ref": checked["data_context_ref"],
+    }
     for query in ({}, {"run_ref": checked["run_ref"]}, {"data_context_ref": "a" * 64}):
         rejected = client.get(BASE + ref + "/adoption-commands/" + KEY, query_string=query)
         assert rejected.status_code == 400 and rejected.get_json()["error"]["code"] == "invalid_input"
@@ -262,3 +288,57 @@ def test_archive_column_order_corruption_is_rejected_at_admission_boundary(candi
     assert checked["validation"]["can_adopt"] is False
     assert [row["code"] for row in checked["validation"]["issues"]] == ["candidate_artifact_invalid"]
     assert snapshot(case.conn) == before
+
+
+def test_http_candidate_adopt_binds_adoption_command_result_target_on_lost_ack(candidate_case):
+    from flask import g, request
+
+    from tests.workbench.trial_support import CommitFailureConnection
+    from tests.workbench.trial_support import connect as trial_connect
+
+    case = candidate_case
+    ref = candidate(case)
+    client = api(case, connection_factory=lambda path: trial_connect(path, factory=CommitFailureConnection))
+
+    @case.app.before_request
+    def lose_ack():
+        if request.method == "POST" and request.path.endswith("/adopt"):
+            g.db.fail_commit = g.db.acknowledge_only = True
+
+    invalid_ref_resp = client.post(
+        BASE + "not-a-valid-ref/adopt",
+        json={"write_token": "unused", "request_key": KEY, "input": INTENT},
+    )
+    assert invalid_ref_resp.status_code == 400
+    invalid_payload = invalid_ref_resp.get_json()
+    assert invalid_payload["committed"] is False
+    assert "result_target" not in invalid_payload["error"]
+
+    preview_data = client.post(BASE + ref + "/adopt-preview", json={}).get_json()["data"]
+    response = client.post(
+        BASE + ref + "/adopt",
+        json={
+            "write_token": preview_data["write_context"]["write_token"],
+            "request_key": KEY,
+            "input": INTENT,
+        },
+    )
+    assert response.status_code == 500
+    value = response.get_json()
+    expected_target = BASE + ref + "/adoption-commands/" + KEY
+    assert value["committed"] == "unknown"
+    assert value["error"]["request_key"] == KEY
+    assert value["error"]["result_target"] == expected_target
+    assert value["error"]["retryable"] is False
+
+    resolved = client.get(
+        value["error"]["result_target"],
+        query_string={
+            "run_ref": preview_data["run_ref"],
+            "data_context_ref": preview_data["data_context_ref"],
+        },
+    )
+    assert resolved.status_code == 200
+    receipt = resolved.get_json()
+    assert receipt["state"] == "recorded" and receipt["may_be_in_flight"] is False and receipt["resolution"] == "recorded"
+    assert receipt["receipt"]["data"]["candidate_ref"] == ref

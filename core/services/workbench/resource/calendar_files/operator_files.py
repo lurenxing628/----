@@ -42,7 +42,8 @@ from core.models.workbench_resource_action import (
 from core.models.workbench_resource_file_source import PreparedImportSource
 from core.models.workbench_resource_input import resource_text
 from core.models.workbench_resource_query import ResourcePageRequest
-from core.services.scheduler.calendar.service import CalendarService
+from core.services.scheduler.calendar.admin import CalendarAdmin
+from core.services.scheduler.calendar.engine import CalendarEngine
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 from data.repositories.workbench_resource_file_repo import WorkbenchResourceFileRepository
 
@@ -63,12 +64,14 @@ class WorkbenchOperatorCalendarFileService:
         self.repo = WorkbenchResourceFileRepository(conn, logger)
         self.tx = TransactionManager(conn)
         self._calendars: Dict[str, WorkbenchOperatorCalendarService] = {}
-        self._domain_calendar = CalendarService(conn, logger=logger)
+        self._calendar_admin = CalendarAdmin(conn, logger=logger)
+        self._engine = CalendarEngine()
 
     def _calendar(self, operator_code: str) -> WorkbenchOperatorCalendarService:
         if operator_code not in self._calendars:
             self._calendars[operator_code] = WorkbenchOperatorCalendarService(
-                self.conn, operator_code, self.logger, calendar_service=self._domain_calendar
+                self.conn, operator_code, self.logger,
+                calendar_admin=self._calendar_admin,
             )
         return self._calendars[operator_code]
 
@@ -90,7 +93,7 @@ class WorkbenchOperatorCalendarFileService:
     def _preview_import(self, prepared: PreparedImportSource):
         request = prepared.request()
         source, notices = prepared.parsed()
-        context = self._domain_calendar.normalization_context()
+        context = self._calendar_admin.normalization_context()
         rows = self._build_rows(source, context=context)
         calendars = {row["row"]: row.pop("calendar") for row in rows if "calendar" in row}
         return AtomicActionPreview.build(
@@ -102,7 +105,7 @@ class WorkbenchOperatorCalendarFileService:
         self._reject_duplicate_pairs(rows)
         self._resolve_operators(rows)
         states = self._load_states(rows)
-        projection = CalendarProjection({}, engine=self._domain_calendar._engine)
+        projection = CalendarProjection({}, engine=self._engine)
         for row in rows:
             if not row_blocked(row):
                 self._classify(row, states, context=context, projection=projection)
@@ -155,10 +158,8 @@ class WorkbenchOperatorCalendarFileService:
 
     @staticmethod
     def _code(raw: Any, key: str) -> str:
-        code = cast(str, resource_text(raw, key))
-        if raw != code:
-            raise ValidationError("工号不能有首尾空格，请修正后重新导入。", field=key)
-        return code
+        resource_text(raw, key)
+        return cast(str, raw)
 
     @staticmethod
     def _efficiency(raw: Any, key: str) -> float:
@@ -198,10 +199,14 @@ class WorkbenchOperatorCalendarFileService:
             code = row["values"]["operator_code"]
             raw = loaded.get(code)
             if raw is None:
-                reject_action_row(row, "系统里找不到这个工号，这一行没有导入。请先在人员资料里维护好再导入。",
-                                  field="operator_code")
+                message = (
+                    "工号不能有首尾空格，请修正后重新导入。"
+                    if code != code.strip()
+                    else "系统里找不到这个工号，这一行没有导入。请先在人员资料里维护好再导入。"
+                )
+                reject_action_row(row, message, field="operator_code")
                 continue
-            if not any(item["active"] == 1 for item in histories.get(code, ())):
+            if not any(item["active"] == 1 for item in histories[code]):
                 raise WorkbenchCommandRejected(
                     "storage_failure",
                     "这条资源在资料里查不到编号，这一行没有导入，资料也没有被改动。请到资料总览核对后重试。",
@@ -293,7 +298,7 @@ class WorkbenchOperatorCalendarFileService:
         self._add_notes(row, after)
 
     def _periods(self, row: Dict[str, Any]):
-        return self._domain_calendar._engine.decoded_periods_for_json(row["periods_json"])
+        return self._engine.decoded_periods_for_json(row["periods_json"])
 
     def _add_notes(self, row, after) -> None:
         # 不写入的行不提醒、也不要求确认，与全局日历文件和关系文件同一口径。
@@ -327,8 +332,7 @@ class WorkbenchOperatorCalendarFileService:
         body = preview.check_current(current)
         calendars = [models[row["row"]] for row in body["rows"] if row["result"] != "unchanged"]
         if calendars:
-            self._domain_calendar._admin.operator_calendar_repo.upsert_many(calendars)
-            self._domain_calendar._engine.clear_policy_cache()
+            self._calendar_admin.operator_calendar_repo.upsert_many(calendars)
         results = [{"row": row["row"], "business_code": row["business_code"],
                     "result": "unchanged" if row["result"] == "unchanged" else "committed"}
                    for row in body["rows"]]
@@ -343,7 +347,8 @@ class WorkbenchOperatorCalendarFileService:
         reader = self._reader()
         if selected_refs is not None:
             return [identity.entity_key for identity in reader.resolve_refs(selected_refs)]
-        return reader.matching_keys(ResourcePageRequest(kind="operator"))
+        with reader.read_snapshot(capture_fingerprint=False) as scope:
+            return scope.matching_keys(ResourcePageRequest(kind="operator"))
 
     def _rows_for(self, start_date: str, end_date: str, codes: List[str]):
         """只导出这段时间里单独设置过的日期；没设置过的天按班次或全局日历走，不出现在文件里。"""

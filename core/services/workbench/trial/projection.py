@@ -29,8 +29,18 @@ def tasks_projection(rows, draft_ref, checked, live, protection, *, trial_interv
     by_operation = {row["operation_ref"]: row["task_ref"] for row in rows}
     by_task = _task_issue_index(checked["issues"])
     current_by_row = trial_intervals["current_by_row"]
+    original_points_by_row = trial_intervals["original_points_by_row"]
     return [
-        _task_projection(row, draft_ref, by_operation, protection, by_task, live, current_by_row=current_by_row)
+        _task_projection(
+            row,
+            draft_ref,
+            by_operation,
+            protection,
+            by_task,
+            live,
+            current_by_row=current_by_row,
+            original_points_by_row=original_points_by_row,
+        )
         for row in rows
     ]
 
@@ -44,10 +54,20 @@ def _task_issue_index(issues):
     return by_task
 
 
-def _task_projection(row, draft_ref, by_operation, protected_rows, by_task, live, *, current_by_row):
+def _task_projection(
+    row,
+    draft_ref,
+    by_operation,
+    protected_rows,
+    by_task,
+    live,
+    *,
+    current_by_row,
+    original_points_by_row,
+):
     original, current = row["original"], row["current"]
     op, batch = original["operation"], original["batch"]
-    hours, duration_reason = _hours(original)
+    hours, duration_reason = _hours(original, point_proven=row["row_ref"] in original_points_by_row)
     blocked = protected_rows.check(row)
     editable = blocked is None and duration_reason is None
     task = {"task_ref": row["task_ref"], "row_ref": row["row_ref"], "draft_ref": draft_ref,
@@ -84,9 +104,9 @@ def _task_projection(row, draft_ref, by_operation, protected_rows, by_task, live
     return task
 
 
-def _hours(original):
+def _hours(original, *, point_proven):
     try:
-        return original_duration(original), None
+        return original_duration(original, point_proven=point_proven), None
     except WorkbenchCommandRejected as exc:
         op = original["operation"]
         return {"setup_hours": _public_value(op["setup_hours"]), "unit_hours": _public_value(op["unit_hours"]),

@@ -35,9 +35,33 @@ def test_receipt_write_failure_rolls_back_quota_audit_and_receipt(ready_adoption
     finally:
         conn.close()
     assert not case.conn.in_transaction
+    unknown_resp = case.client.post(
+        "/api/workbench/v1/calibration/" + case.template_ref + "/adopt",
+        json={"write_token": write_token, "request_key": KEY, "input": INTENT},
+    )
+    assert unknown_resp.status_code == 500
+    unknown_body = unknown_resp.get_json()
+    expected_target = "/api/workbench/v1/calibration/" + case.template_ref + "/adopt/receipts/" + KEY
+    assert unknown_body["committed"] == "unknown" and unknown_body["error"]["result_target"] == expected_target
+    missing_lookup = case.client.get(expected_target)
+    assert missing_lookup.status_code == 200
+    assert missing_lookup.get_json() == {
+        "state": "not_observed",
+        "receipt": None,
+        "may_be_in_flight": True,
+        "resolution": "unresolved",
+    }
     case.conn.execute("DROP TRIGGER co_test_failure")
     result = service(case.conn).confirm(case.template_ref, write_token, KEY, INTENT)
     assert result["result"] == "committed" and not result["replayed"]
+    recorded_lookup = case.client.get(expected_target)
+    assert recorded_lookup.status_code == 200
+    assert recorded_lookup.get_json() == {
+        "state": "recorded",
+        "receipt": {**result, "replayed": True},
+        "may_be_in_flight": False,
+        "resolution": "recorded",
+    }
 
 
 def test_competing_connections_reject_second_adoption_from_same_preview(ready_adoption_case):

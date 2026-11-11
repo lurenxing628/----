@@ -64,8 +64,8 @@ def test_fractional_chain_all_candidates_adopt_reopen_and_delivery(candidate_cas
             for field in ("start_time", "end_time"):
                 assert datetime.fromisoformat(stored[row["op_id"]][field]) == datetime.fromisoformat(row[field])
         reader = WorkbenchPlanQueryService(reopened)
-        with reader.read_snapshot():
-            public, _ = reader.workspace(PlanReadScope(plan["plan_ref"]))
+        with reader.read_snapshot() as context:
+            public, _ = reader.workspace(context, PlanReadScope(plan["plan_ref"]))
         assert sorted((row["start"], row["end"]) for row in public["tasks"]) == sorted(
             (row["start_time"], row["end_time"]) for row in expected)
         assert reopened.execute("PRAGMA integrity_check").fetchone()[0] == "ok"

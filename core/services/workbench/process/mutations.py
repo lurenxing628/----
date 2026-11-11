@@ -39,13 +39,9 @@ class PreparedProcessChange:
 class WorkbenchProcessMutationService:
     def __init__(self, conn, logger=None):
         self.conn, self.logger = conn, logger
-        self._route_preview = None
 
     def normalize(self, action, input):
-        normalized = normalize_process_input(action, input)
-        if action == "route_confirm":
-            self._route_preview = normalize_route_preview_input(normalized["route"])
-        return normalized
+        return normalize_process_input(action, input)
 
     checked_facts = staticmethod(checked_process_facts)
 
@@ -95,7 +91,10 @@ class WorkbenchProcessMutationService:
             affected, auxiliary = [], None
         elif stage == "route":
             changes, sequences = prepare_route(
-                self.conn, self.logger, payload, operations, facts=route_facts, normalized=self._route_preview
+                self.logger,
+                operations,
+                facts=route_facts,
+                normalized=normalize_route_preview_input(payload["route"]),
             )
             affected, auxiliary = affected_group_rows(groups, operations, sequences), None
         else:

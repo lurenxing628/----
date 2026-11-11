@@ -110,20 +110,31 @@ def test_preview_drift_and_injected_second_write_rollback(batch_client, monkeypa
     before = state(client)
     changes = client.batch_conn.total_changes
     reader = WorkbenchBatchQueryService(client.batch_conn)
-    with reader.detached_read_snapshot() as old_fingerprint:
-        old = reader.detail(ref_for(client))
+    target_ref = ref_for(client)
+    with reader.facts.detached_read_snapshot(mode="single_template", target_ref=target_ref) as old_scope:
+        old_fingerprint = old_scope.fingerprint()
+        old = reader.detail(old_scope, target_ref)
         clock[0] = datetime(2026, 10, 8, 0, 0, 30)
-        pinned = reader.detail(ref_for(client))
-        assert reader.fingerprint() == old_fingerprint
+        pinned = reader.detail(old_scope, target_ref)
+        assert old_scope.fingerprint() == old_fingerprint
         assert old["display_ready_status"] == pinned["display_ready_status"] == pinned["materials"]["display_status"] == "no"
-    with reader.detached_read_snapshot() as new_fingerprint:
-        current = reader.detail(ref_for(client))
+    with reader.facts.detached_read_snapshot(mode="single_template", target_ref=target_ref) as new_scope:
+        new_fingerprint = new_scope.fingerprint()
+        current = reader.detail(new_scope, target_ref)
         assert new_fingerprint != old_fingerprint
         assert current["display_ready_status"] == current["materials"]["display_status"] == "yes"
-    assert_error(client.get(BASE, query_string=scope), "snapshot_stale", 409)
-    assert_error(client.post(BASE + "/selection", json=scope), "snapshot_stale", 409)
-    assert_error(client.post(BASE + "/export-preview", json={"selection": "filtered", "scope": scope}), "snapshot_stale", 409)
-    assert_error(client.get(BASE + "/export", query_string={"export_ref": exported["data"]["export_ref"]}), "snapshot_stale", 409)
+    from data.repositories.workbench_batch_facts_repo import WorkbenchBatchFactsRepository
+    stale_table_reads = []
+    with monkeypatch.context() as stale_patch:
+        stale_patch.setattr(WorkbenchBatchFactsRepository, "whole_tables", lambda _repo: stale_table_reads.append("whole"))
+        stale_patch.setattr(WorkbenchBatchFactsRepository, "single_batch_tables", lambda *_a, **_kw: stale_table_reads.append("single"))
+        stale_patch.setattr(WorkbenchBatchFactsRepository, "closure_batch_tables", lambda *_a, **_kw: stale_table_reads.append("closure"))
+        stale_patch.setattr(WorkbenchBatchFactsRepository, "filtered_batch_tables", lambda *_a, **_kw: stale_table_reads.append("filtered"))
+        assert_error(client.get(BASE, query_string=scope), "snapshot_stale", 409)
+        assert_error(client.post(BASE + "/selection", json=scope), "snapshot_stale", 409)
+        assert_error(client.post(BASE + "/export-preview", json={"selection": "filtered", "scope": scope}), "snapshot_stale", 409)
+        assert_error(client.get(BASE + "/export", query_string={"export_ref": exported["data"]["export_ref"]}), "snapshot_stale", 409)
+    assert stale_table_reads == []
     fresh = list_data(client, query="FREE-001", ready_status="yes")
     assert fresh["data"]["page"]["total"] == 1 and fresh["meta"]["as_of"] == "2026-10-08T00:00:30"
     assert state(client) == before and client.batch_conn.total_changes == changes
@@ -139,17 +150,17 @@ def test_command_facts_reuse_without_version_probe_and_reload_after_write(batch_
     conn.set_trace_callback(trace.append)
     try:
         with TransactionManager(conn).transaction(begin_immediate=True):
-            with reader.command_snapshot():
-                first, second = reader.load(), reader.load()
+            with reader.command_snapshot() as scope:
+                first, second = scope.load(), scope.load()
                 assert first["Batches"] is second["Batches"]
-                assert reader.batch(ref)["remark"] == "keep-hidden"
-                old_index = reader._lookups["Batches"]
+                assert scope.batch(ref)["remark"] == "keep-hidden"
+                old_index = scope.lookups["Batches"]
                 conn.execute("UPDATE Batches SET remark='command-current' WHERE batch_id='FREE-001'")
-                changed = reader.load()
+                changed = scope.load()
                 assert changed["Batches"] is not first["Batches"]
-                assert reader.batch(ref)["remark"] == "command-current"
-                assert reader._lookups["Batches"] is not old_index
-            assert reader._facts is reader._stamp is None and not reader._lookups
+                assert scope.batch(ref)["remark"] == "command-current"
+                assert scope.lookups["Batches"] is not old_index
+            assert not hasattr(reader, "active_scope") and scope.current_facts() is None and not scope.lookups
     finally:
         conn.set_trace_callback(None)
     probes = sum("PRAGMA DATA_VERSION" in sql.upper() for sql in trace)
@@ -163,6 +174,7 @@ def test_plan_counts_protect_batches_without_binding_plan_contents(batch_client)
     from core.models.workbench_command import WorkbenchCommandRejected
     from core.services.workbench.batch.facts import BatchFacts, index_relations, require_unreferenced
     from core.services.workbench.batch.projection import BatchProjection
+    from core.services.workbench.batch.scope import BatchFactScope
     from data.repositories.workbench_batch_facts_repo import WorkbenchBatchFactsRepository
 
     conn = batch_client.batch_conn
@@ -173,7 +185,7 @@ def test_plan_counts_protect_batches_without_binding_plan_contents(batch_client)
     reader, trace = BatchFacts(conn), []
     conn.set_trace_callback(trace.append)
     try:
-        facts = reader.load()
+        facts = BatchFactScope(reader).load()
     finally:
         conn.set_trace_callback(None)
     assert facts['plan_reference_counts'][op_id] == 2
@@ -186,13 +198,13 @@ def test_plan_counts_protect_batches_without_binding_plan_contents(batch_client)
         require_unreferenced(relations)
     assert not any('SELECT * FROM "Schedule"' in sql or
                    'SELECT * FROM WorkbenchPlanSourceRefs' in sql for sql in trace)
-    before = reader.fingerprint()
+    before = BatchFactScope(reader).fingerprint()
     conn.execute("UPDATE Schedule SET start_time='2026-09-09 08:30:00' WHERE version=6 AND op_id=?", (op_id,))
     conn.commit()
-    assert reader.fingerprint() == before
+    assert BatchFactScope(reader).fingerprint() == before
     conn.execute("DELETE FROM Schedule WHERE version=6 AND op_id=?", (op_id,))
     conn.commit()
-    assert reader.fingerprint() != before
+    assert BatchFactScope(reader).fingerprint() != before
     assert WorkbenchBatchFactsRepository(conn).plan_reference_counts()[op_id] == 1
 
 
@@ -222,7 +234,7 @@ def test_batch_creation_choices_read_only_base_catalogs(batch_client):
     assert all(any('"' + table + '"' in sql for table in (
         "Parts", "Machines", "Operators", "Suppliers", "OperatorMachine", "WorkbenchEntityRefs")) for sql in reads)
     reader = WorkbenchBatchQueryService(conn)
-    assert reader.choices() == choices
+    assert reader.choices_catalog() == choices
     assert conn.total_changes == changes
 
 
@@ -316,6 +328,14 @@ def test_choices_offer_a_new_authorized_pair_that_operation_update_commits(batch
     response = post(client, 'operation_update', {'operation_ref': operation_ref, 'fields': {
         'machine_ref': ref_for(client, 'machine', 'M2'), 'operator_ref': ref_for(client, 'operator', 'O2')}}, key='new-authorized-pair-001')
     assert response.status_code == 200 and response.get_json()['result'] == 'committed', response.get_json()
+    rejected = post(
+        client,
+        'operation_update',
+        {'operation_ref': operation_ref, 'fields': {'supplier_ref': ref_for(client, 'supplier', 'S1')}},
+        key='internal-supplier-rejected-001',
+    )
+    assert_error(rejected, 'invalid_input', 422)
+    assert conn.execute("SELECT supplier_id FROM BatchOperations WHERE batch_id='FREE-001'").fetchone()[0] is None
 
 
 def test_bulk_and_import_prepare_all_changes_before_writing(batch_client, monkeypatch):
@@ -329,7 +349,8 @@ def test_bulk_and_import_prepare_all_changes_before_writing(batch_client, monkey
     client, conn = batch_client, batch_client.batch_conn
     original_read, original_update = WorkbenchBatchFactsRepository.whole_tables, BatchRepository.update
     original_entity_read = WorkbenchBatchFactsRepository.entity_tables
-    reads, entity_reads, writes = [], [], []
+    original_scoped_entity_read = WorkbenchBatchFactsRepository.scoped_entity_tables
+    reads, entity_reads, scoped_entity_reads, writes = [], [], [], []
 
     def capture(repo):
         assert not writes
@@ -341,29 +362,49 @@ def test_bulk_and_import_prepare_all_changes_before_writing(batch_client, monkey
         entity_reads.append(True)
         return original_entity_read(repo)
 
+    def capture_scoped_entities(repo, target_refs):
+        assert not writes
+        scoped_entity_reads.append(tuple(target_refs))
+        return original_scoped_entity_read(repo, target_refs)
+
     def update(repo, code, changes):
         writes.append(code)
         return original_update(repo, code, changes)
 
     monkeypatch.setattr(WorkbenchBatchFactsRepository, 'whole_tables', capture)
     monkeypatch.setattr(WorkbenchBatchFactsRepository, 'entity_tables', capture_entities)
+    monkeypatch.setattr(WorkbenchBatchFactsRepository, 'scoped_entity_tables', capture_scoped_entities)
     monkeypatch.setattr(BatchRepository, 'update', update)
     refs = [ref_for(client), ref_for(client, key='B1')]
     reader = BatchFacts(conn)
     with TransactionManager(conn).transaction(begin_immediate=True):
-        with reader.command_snapshot():
-            result = WorkbenchBatchBulkService(conn, reader=reader).apply_normalized(
-                {'action': 'update', 'refs': sorted(refs), 'patch': {'remark': 'prepared-bulk'}})
-    assert result.result == 'committed' and len(reads) == 0 and len(entity_reads) == 1 and set(writes) == {'FREE-001', 'B1'}
+        with reader.command_snapshot(mode='batch_closure', target_refs=tuple(sorted(refs))) as scope:
+            result = WorkbenchBatchBulkService(conn).apply_normalized(
+                scope, {'action': 'update', 'refs': sorted(refs), 'patch': {'remark': 'prepared-bulk'}})
+    assert (
+        result.result == 'committed'
+        and len(reads) == 0
+        and len(entity_reads) == 0
+        and len(scoped_entity_reads) == 1
+        and set(writes) == {'FREE-001', 'B1'}
+    )
     reads.clear()
     entity_reads.clear()
+    scoped_entity_reads.clear()
     writes.clear()
     document = {'operation': 'batch.import_confirm', 'can_confirm': True, 'deleted': [], 'mode': 'overwrite', 'warnings': [],
                 'rows': [{'action': 'update', 'entity_ref': ref, 'input': {'fields': {'remark': 'prepared-import'}}} for ref in refs]}
     with TransactionManager(conn).transaction(begin_immediate=True):
-        with reader.command_snapshot():
-            result = WorkbenchBatchFileService(conn, reader=reader).apply(document)
+        with reader.command_snapshot() as scope:
+            result = WorkbenchBatchFileService(conn).apply(scope, document)
     assert result.result == 'committed' and len(reads) == 0 and len(entity_reads) == 1 and set(writes) == {'FREE-001', 'B1'}
+    reads.clear()
+    entity_reads.clear()
+    scoped_entity_reads.clear()
+    writes.clear()
+    single_resp = post(client, 'update', {'fields': {'remark': 'single-instance-direct'}}, key='single-no-entity-tables-01')
+    assert single_resp.status_code == 200 and single_resp.get_json()['result'] == 'committed'
+    assert reads == [] and entity_reads == [] and scoped_entity_reads == [] and writes == ['FREE-001']
 
 
 def test_sync_confirm_applies_templates_without_rebuilding_preview(batch_client, monkeypatch):
@@ -389,7 +430,9 @@ def test_sync_confirm_applies_templates_without_rebuilding_preview(batch_client,
 def test_legacy_batch_sync_rejects_cross_part_external_group(batch_client):
     from core.infrastructure.transaction import TransactionManager
     from core.models.workbench_command import WorkbenchCommandRejected
+    from core.services.workbench.batch.facts import BatchFacts
     from core.services.workbench.batch.operations import WorkbenchBatchOperationService
+    from core.services.workbench.batch.scope import BatchFactScope
     from tests.workbench.identity_metadata_support import insert_row
 
     client, conn = batch_client, batch_client.batch_conn
@@ -414,7 +457,9 @@ def test_legacy_batch_sync_rejects_cross_part_external_group(batch_client):
     assert "的外协组被其他零件引用" in rejected["error"]["message"]
     with TransactionManager(conn).transaction(begin_immediate=True):
         try:
-            WorkbenchBatchOperationService(conn).sync_normalized(ref_for(client))
+            target_ref = ref_for(client)
+            scope = BatchFactScope(BatchFacts(conn), command=True, mode="single_template", target_ref=target_ref)
+            WorkbenchBatchOperationService(conn).sync_normalized(scope, target_ref)
         except WorkbenchCommandRejected as exc:
             assert exc.code == "constraint_conflict" and "的外协组被其他零件引用" in str(exc)
         else:
@@ -446,7 +491,12 @@ def test_quantity_split_with_bound_material_returns_the_created_batch_reference(
     assert child_ref == ref_for(client, key='FREE-002')
     assert outcome['quantity'] == 2 and outcome['remaining_quantity'] == 3
     receipt = client.get('/api/workbench/v1/commands/batch-split-bound-confirm-01')
-    assert receipt.status_code == 200 and receipt.get_json()['data'] == outcome
+    receipt_json = receipt.get_json()
+    assert receipt.status_code == 200
+    assert receipt_json["state"] == "recorded"
+    assert receipt_json["may_be_in_flight"] is False
+    assert receipt_json["resolution"] == "recorded"
+    assert receipt_json["receipt"]["data"] == outcome
     child, source = detail(client, child_ref)['data'], detail(client)['data']
     assert child['fields']['quantity'] == 2 and source['fields']['quantity'] == 3
     requirement = child['materials']['requirements'][0]
@@ -808,8 +858,10 @@ def test_production_decltypes_connection_preserves_raw_batch_dates_end_to_end(tm
 
 def test_batch_import_preserves_legacy_spaced_codes_in_overwrite_and_replace_and_rejects_spaced_new_codes(batch_client):
     from core.infrastructure.transaction import TransactionManager
+    from core.services.workbench.batch.facts import BatchFacts
     from core.services.workbench.batch.file_codec import write_batch_file
     from core.services.workbench.batch.files import WorkbenchBatchFileService
+    from core.services.workbench.batch.scope import BatchFactScope
     from tests.workbench.identity_metadata_support import insert_row
 
     _client, conn = batch_client, batch_client.batch_conn
@@ -832,6 +884,7 @@ def test_batch_import_preserves_legacy_spaced_codes_in_overwrite_and_replace_and
     )
     conn.commit()
     service = WorkbenchBatchFileService(conn)
+    facts_reader = BatchFacts(conn)
 
     # 1) 不存在的带空格批次号或带空格图号必须被拒绝，不串改无空格兄弟
     bad_xlsx = write_batch_file(
@@ -841,7 +894,7 @@ def test_batch_import_preserves_legacy_spaced_codes_in_overwrite_and_replace_and
             ["B-GOOD", " P-NONE ", 5, "2026-10-20", "普通", "齐套", "", "", "待排", "齐套"],
         ]
     )
-    bad_preview = service.preview("overwrite", service.read(bad_xlsx, "overwrite"))
+    bad_preview = service.preview(BatchFactScope(facts_reader), "overwrite", service.read(bad_xlsx, "overwrite"))
     assert bad_preview["can_confirm"] is False
     assert bad_preview["rows"][0]["business_code"] == " B1 "
     assert bad_preview["rows"][0]["action"] == "update"
@@ -853,11 +906,13 @@ def test_batch_import_preserves_legacy_spaced_codes_in_overwrite_and_replace_and
     overwrite_xlsx = write_batch_file(
         [[" B1 ", " P1 ", 12, "2026-10-20", "普通", "齐套", "", "updated-spaced", "待排", "齐套"]]
     )
-    overwrite_doc = service.preview("overwrite", service.read(overwrite_xlsx, "overwrite"))
+    overwrite_doc = service.preview(
+        BatchFactScope(facts_reader), "overwrite", service.read(overwrite_xlsx, "overwrite")
+    )
     assert overwrite_doc["can_confirm"] is True, overwrite_doc
     with TransactionManager(conn).transaction(begin_immediate=True):
-        with service.reader.command_snapshot():
-            outcome = service.apply(overwrite_doc)
+        with facts_reader.command_snapshot() as scope:
+            outcome = service.apply(scope, overwrite_doc)
     assert outcome.result == "committed"
     quantities = dict(
         conn.execute("SELECT batch_id, quantity FROM Batches WHERE batch_id IN ('B1', ' B1 ')").fetchall()
@@ -875,12 +930,14 @@ def test_batch_import_preserves_legacy_spaced_codes_in_overwrite_and_replace_and
             [" B1 ", " P1 ", 15, "2026-10-20", "急件", "齐套", "", "spaced-replaced", "待排", "齐套"],
         ]
     )
-    replace_doc = service.preview("replace", service.read(replace_xlsx, "replace"))
+    replace_doc = service.preview(
+        BatchFactScope(facts_reader), "replace", service.read(replace_xlsx, "replace")
+    )
     assert replace_doc["can_confirm"] is True, replace_doc
     assert [row["input"]["business_code"] for row in replace_doc["rows"]] == ["B1", " B1 "]
     with TransactionManager(conn).transaction(begin_immediate=True):
-        with service.reader.command_snapshot():
-            replace_outcome = service.apply(replace_doc)
+        with facts_reader.command_snapshot() as scope:
+            replace_outcome = service.apply(scope, replace_doc)
     assert replace_outcome.result == "committed"
     replaced = {
         row["batch_id"]: (row["part_no"], row["quantity"], row["remark"])
@@ -890,3 +947,269 @@ def test_batch_import_preserves_legacy_spaced_codes_in_overwrite_and_replace_and
         "B1": ("P1", 8, "trimmed-replaced"),
         " B1 ": (" P1 ", 15, "spaced-replaced"),
     }
+
+
+def test_single_delete_route_minimal_closure_bulk_delete_isolation_replay_and_protection_priority(
+    batch_client, monkeypatch
+):
+    import time
+
+    from data.repositories.workbench_batch_facts_repo import WorkbenchBatchFactsRepository
+    from tests.workbench.identity_metadata_support import insert_row
+    from web import public_token_registry
+
+    client, conn = batch_client, batch_client.batch_conn
+    for code in ("DEL-SINGLE", "DEL-BULK", "UNRELATED-HEAVY"):
+        insert_row(
+            conn,
+            "Batches",
+            dict(
+                batch_id=code,
+                part_no="P1",
+                part_name="part",
+                quantity=4,
+                due_date="2026-10-20",
+                priority="normal",
+                status="pending",
+                ready_status="yes",
+                ready_date=None,
+                remark=None,
+            ),
+        )
+    conn.commit()
+    single_ref = ref_for(client, key="DEL-SINGLE")
+    bulk_ref = ref_for(client, key="DEL-BULK")
+
+    # 1) Public route POST /api/workbench/v1/entities/batch/<ref>/delete uses single_instance closure (no whole/entity scan).
+    single_det = detail(client, single_ref)["data"]
+    assert single_det["write_context"]["capabilities"]["batch.delete"] is True
+    with monkeypatch.context() as bounded:
+        bounded.setattr(
+            WorkbenchBatchFactsRepository,
+            "whole_tables",
+            lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("whole_tables forbidden on single delete")),
+        )
+        bounded.setattr(
+            WorkbenchBatchFactsRepository,
+            "entity_tables",
+            lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("entity_tables forbidden on single delete")),
+        )
+        del_resp = client.post(
+            BASE + "/" + single_ref + "/delete",
+            json=body(single_det["write_context"], {}, "single-delete-route-0001"),
+        )
+    assert del_resp.status_code == 200 and del_resp.get_json()["result"] == "committed"
+    assert_error(client.get(BASE + "/" + single_ref), "entity_not_found", 404)
+
+    # 2) Selected export + bulk-preview(delete) + bulk-confirm(delete) use batch_closure without scanning unrelated batches.
+    snap_ref = list_data(client, query="DEL-BULK")["meta"]["snapshot_ref"]
+    scoped_calls = []
+    original_closure = WorkbenchBatchFactsRepository.closure_batch_tables
+
+    def record_closure(repo, target_refs):
+        tables = original_closure(repo, target_refs)
+        scoped_calls.append([row["batch_id"] for row in tables["Batches"]])
+        return tables
+
+    now = [time.time()]
+    monkeypatch.setattr(public_token_registry.time, "time", lambda: now[0])
+    with monkeypatch.context() as closure_guard:
+        closure_guard.setattr(
+            WorkbenchBatchFactsRepository,
+            "whole_tables",
+            lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("whole_tables forbidden on scoped delete/export")),
+        )
+        closure_guard.setattr(
+            WorkbenchBatchFactsRepository,
+            "entity_tables",
+            lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("entity_tables forbidden on scoped delete/export")),
+        )
+        closure_guard.setattr(
+            WorkbenchBatchFactsRepository,
+            "filtered_batch_tables",
+            lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("filtered_batch_tables forbidden on scoped delete/export")),
+        )
+        closure_guard.setattr(WorkbenchBatchFactsRepository, "closure_batch_tables", record_closure)
+
+        exp_prev = client.post(
+            BASE + "/export-preview",
+            json={
+                "selection": "selected",
+                "scope": {"query": "DEL-BULK", "snapshot_ref": snap_ref},
+                "refs": [bulk_ref],
+            },
+        )
+        assert exp_prev.status_code == 200, exp_prev.get_json()
+        exp_dl = client.get(BASE + "/export", query_string={"export_ref": exp_prev.get_json()["data"]["export_ref"]})
+        assert exp_dl.status_code == 200 and exp_dl.headers["X-Workbench-Row-Count"] == "1"
+
+        bulk_del_prev_resp = client.post(
+            BASE + "/bulk-preview",
+            json={
+                "scope": {"query": "DEL-BULK"},
+                "snapshot_ref": snap_ref,
+                "input": {"action": "delete", "refs": [bulk_ref], "patch": {}},
+            },
+        )
+        assert bulk_del_prev_resp.status_code == 200, bulk_del_prev_resp.get_json()
+        bulk_del_prev = bulk_del_prev_resp.get_json()["data"]
+        bulk_del_confirm = confirm(client, bulk_del_prev, key="bulk-delete-closure-replay-01")
+        assert bulk_del_confirm.status_code == 200, bulk_del_confirm.get_json()
+    assert scoped_calls == [["DEL-BULK"], ["DEL-BULK"], ["DEL-BULK"], ["DEL-BULK"]]
+    assert all("UNRELATED-HEAVY" not in batch_ids for batch_ids in scoped_calls)
+
+    # 3) Idempotent replay in batch_confirm runs BEFORE load_preview expiry check.
+    now[0] += 1200
+    replayed = confirm(client, bulk_del_prev, key="bulk-delete-closure-replay-01")
+    assert replayed.status_code == 200 and replayed.get_json()["replayed"] is True
+    expired_new = confirm(client, bulk_del_prev, key="bulk-delete-expired-fresh-01")
+    assert_error(expired_new, "stale_write", 409)
+
+    # 4) Unified protection priority (layered bottom-up so every higher blocker overrides all lower ones):
+    #    materials -> quantity_splits -> protected -> outsourcing.
+    from data.repositories.batch_material_stage_repo import BatchMaterialStageRepository
+
+    target_ref = ref_for(client)
+    op_id = conn.execute("SELECT id FROM BatchOperations WHERE batch_id='FREE-001'").fetchone()[0]
+
+    def assert_delete_blocked(expected_cmd_sub, expected_policy_sub):
+        det = detail(client, target_ref)["data"]
+        wc = det["write_context"]
+        assert wc["capabilities"]["batch.delete"] is False
+        reasons = [r["message"] for r in wc["blocked_reasons"] if r["action"] == "batch.delete"]
+        assert len(reasons) == 1 and expected_policy_sub in reasons[0]
+        snap = list_data(client)["meta"]["snapshot_ref"]
+        bulk_rej = client.post(
+            BASE + "/bulk-preview",
+            json={"scope": {}, "snapshot_ref": snap, "input": {"action": "delete", "refs": [target_ref], "patch": {}}},
+        )
+        err = assert_error(bulk_rej, "constraint_conflict", 409)
+        assert expected_cmd_sub in err["error"]["message"]
+
+    conn.execute("UPDATE Materials SET status='active' WHERE material_id='MAT1'")
+    conn.execute(
+        "INSERT INTO BatchMaterials(batch_id,material_id,required_qty,available_qty,ready_status) "
+        "VALUES ('FREE-001','MAT1',5,0,'no')"
+    )
+    conn.commit()
+    assert_delete_blocked("挂着物料需求", "挂着物料需求")
+
+    BatchMaterialStageRepository(conn).record_split("FREE-001", "UNRELATED-HEAVY", 5, 1, "2026-10-08")
+    conn.commit()
+    assert_delete_blocked("数量拆分记录", "数量拆分记录")
+
+    conn.execute(
+        "INSERT INTO Schedule(op_id,start_time,end_time,version) VALUES (?,'2026-09-09 08:00:00','2026-09-09 09:00:00',9)",
+        (op_id,),
+    )
+    conn.commit()
+    assert_delete_blocked("已经进了计划", "已有排产、报工或执行状态记录")
+
+    conn.execute(
+        "INSERT INTO WorkbenchOutsourcingReceipts("
+        "outsourcing_ref,target_kind,batch_ref,supplier_ref,origin_json,identity_json,created_at"
+        ") VALUES (?,'single',?,?,'{}','{}','2026-10-01T08:00:00')",
+        ("c" * 48, target_ref, ref_for(client, "supplier", "S1")),
+    )
+    conn.commit()
+    assert_delete_blocked("外协发出或回厂登记", "外协发出或回厂登记")
+
+
+def test_chunked_rowid_union_reads_integer_pk_tables_identically_in_list_and_bulk_preview(
+    batch_client, monkeypatch
+):
+    from core.models.workbench_batch_query import batch_scope
+    from data.repositories import workbench_batch_facts_repo
+    from data.repositories.workbench_batch_facts_repo import WorkbenchBatchFactsRepository
+    from tests.workbench.identity_metadata_support import insert_row
+
+    client, conn = batch_client, batch_client.batch_conn
+    conn.execute("UPDATE Materials SET status='active' WHERE material_id='MAT1'")
+    insert_row(conn, "Materials", dict(material_id="MAT2", name="aluminum", unit="kg", status="active"))
+    insert_row(
+        conn,
+        "BatchOperations",
+        dict(
+            op_code="FREE-001_02",
+            batch_id="FREE-001",
+            seq=2,
+            op_type_id="OT1",
+            op_type_name="turning",
+            source="internal",
+            setup_hours=0,
+            unit_hours=1,
+            status="pending",
+        ),
+    )
+    conn.commit()
+
+    source_ref = ref_for(client)
+    op_refs = [op["ref"] for op in detail(client, source_ref)["data"]["operations"]]
+    assert len(op_refs) == 2
+    mat_resp = post(
+        client,
+        "materials_update",
+        {
+            "removed_keys": [],
+            "rows": [
+                {
+                    "row_key": None,
+                    "material_ref": ref_for(client, "material", "MAT1"),
+                    "operation_ref": op_refs[0],
+                    "required_quantity": 10,
+                    "available_quantity": 4,
+                    "arrivals": [{"arrival_date": "2026-10-08", "quantity": 6}],
+                },
+                {
+                    "row_key": None,
+                    "material_ref": ref_for(client, "material", "MAT2"),
+                    "operation_ref": op_refs[1],
+                    "required_quantity": 8,
+                    "available_quantity": 2,
+                    "arrivals": [{"arrival_date": "2026-10-09", "quantity": 6}],
+                },
+            ],
+        },
+        key="chunked-rowid-materials-001",
+        ref=source_ref,
+    )
+    assert mat_resp.status_code == 200, mat_resp.get_json()
+
+    refs = sorted([source_ref, ref_for(client, key="B1")])
+    query = batch_scope({})
+    repo = WorkbenchBatchFactsRepository(conn)
+    baseline_filtered = repo.filtered_batch_tables(query)
+    baseline_closure = repo.closure_batch_tables(refs)
+    assert len(baseline_filtered["BatchOperations"]) == 3
+    assert len(baseline_filtered["BatchMaterials"]) == 3
+    assert len(baseline_filtered["BatchMaterialStages"]) == 2
+    assert len(baseline_closure["BatchMaterialStages"]) == 2
+
+    baseline_list = list_data(client)["data"]
+    baseline_preview = preview(client, "update", refs=refs, patch={"remark": "chunked-check"})
+
+    monkeypatch.setattr(workbench_batch_facts_repo, "QUERY_PARAM_CHUNK", 1)
+
+    assert repo.filtered_batch_tables(query) == baseline_filtered
+    assert repo.closure_batch_tables(refs) == baseline_closure
+
+    chunked_list = list_data(client)["data"]
+    assert [
+        {k: v for k, v in row.items() if k != "write_context"} for row in chunked_list["entities"]
+    ] == [
+        {k: v for k, v in row.items() if k != "write_context"} for row in baseline_list["entities"]
+    ]
+    assert chunked_list["page"] == baseline_list["page"]
+    assert chunked_list["metrics"] == baseline_list["metrics"]
+
+    chunked_preview = preview(client, "update", refs=refs, patch={"remark": "chunked-check"})
+    assert chunked_preview["count"] == baseline_preview["count"] == 2
+    assert chunked_preview["commit_policy"] == baseline_preview["commit_policy"]
+    assert [
+        {**row, "before": {k: v for k, v in row["before"].items() if k != "write_context"}}
+        for row in chunked_preview["rows"]
+    ] == [
+        {**row, "before": {k: v for k, v in row["before"].items() if k != "write_context"}}
+        for row in baseline_preview["rows"]
+    ]
+

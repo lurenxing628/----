@@ -12,6 +12,17 @@ _PART_SCOPE = """WITH target_part AS (
     WHERE part_no IN (SELECT part_no FROM target_part) AND ext_group_id IS NOT NULL
 ) """
 
+_SCOPED_SUPPLIERS = _PART_SCOPE + """, scoped_suppliers AS (
+    SELECT supplier_id FROM PartOperations
+    WHERE supplier_id IS NOT NULL
+      AND (part_no IN (SELECT part_no FROM target_part)
+           OR ext_group_id IN (SELECT group_id FROM related_groups))
+    UNION
+    SELECT supplier_id FROM ExternalGroups
+    WHERE supplier_id IS NOT NULL
+      AND group_id IN (SELECT group_id FROM related_groups)
+) """
+
 
 class WorkbenchProcessQueryRepository(BaseRepository):
     def __init__(self, conn, logger=None, *, part_ref=None):
@@ -78,14 +89,12 @@ class WorkbenchProcessQueryRepository(BaseRepository):
             for table in ("WorkbenchProcessWorkflow", "WorkbenchProcessOperationConfirmations")
         }
 
-    def supplier_references(self, supplier_ids):
-        ids = tuple(dict.fromkeys(supplier_ids))
-        if not ids:
-            return {"Suppliers": [], "WorkbenchSupplierProfiles": [], "WorkbenchSupplierOpTypes": []}
-        placeholders = ",".join("?" for _ in ids)
+    def supplier_references(self):
         return {
             table: self.fetchall(
-                f'SELECT * FROM "{table}" WHERE supplier_id IN ({placeholders}) ORDER BY rowid', ids
+                _SCOPED_SUPPLIERS
+                + f'SELECT * FROM "{table}" WHERE supplier_id IN (SELECT supplier_id FROM scoped_suppliers) ORDER BY rowid',
+                (self.part_ref,),
             )
             for table in ("Suppliers", "WorkbenchSupplierProfiles", "WorkbenchSupplierOpTypes")
         }

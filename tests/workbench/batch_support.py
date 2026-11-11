@@ -16,7 +16,7 @@ def batch_database(schema_conn):
 
 def create_batch_client(schema_conn):
     from web.routes.workbench.batches import register_batch_routes
-    from web.routes.workbench.materials import command_receipt
+    from web.routes.workbench.commands import register_command_routes
 
     seed_resources(schema_conn, relations=True)
     schema_conn.execute("UPDATE Machines SET status='active' WHERE machine_id='M1'")
@@ -30,7 +30,7 @@ def create_batch_client(schema_conn):
     app.config.update(TESTING=True, SECRET_KEY="batch-fixture-only")
     bp = Blueprint("workbench", __name__)
     register_batch_routes(bp)
-    bp.add_url_rule("/api/workbench/v1/commands/<request_key>", view_func=command_receipt)
+    register_command_routes(bp)
     app.register_blueprint(bp)
 
     @app.before_request

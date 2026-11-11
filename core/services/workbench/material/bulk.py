@@ -29,7 +29,7 @@ from core.models.workbench_material_file import (
 )
 from data.repositories.workbench_material_file_repo import WorkbenchMaterialFileRepository
 
-from .service import WorkbenchMaterialService
+from .service import WorkbenchMaterialService, material_action_policy
 
 
 def full_material_snapshot(captured, identity):
@@ -75,8 +75,9 @@ class WorkbenchMaterialBulkService:
             return row
         row["business_code"] = identity.entity_key
         row["expected"] = full_material_snapshot(captured, identity)
-        if row["expected"]["requirements"]:
-            reject_row(row, "这个物料还挂在批次的物料需求上，不能删除。", field="entity_ref", code="constraint_conflict")
+        _, capabilities, blocked = material_action_policy(row["expected"]["material"]["requirement_count"])
+        if not capabilities["material.delete"]:
+            reject_row(row, blocked[0]["message"], field="entity_ref", code=blocked[0]["code"])
         else:
             row["result"] = "delete"
         return row
@@ -86,7 +87,14 @@ class WorkbenchMaterialBulkService:
             raise RuntimeError("批量删除必须在外层工作台写事务中执行。")
         current, rows = self._prepare_delete(preview.as_dict()["request"])
         preview.check_current(current)
-        prepared = [self.adapter.prepare_checked("delete", row["input"], row["expected"]) for row in rows]
+        prepared = [
+            self.adapter.prepare_checked(
+                "delete",
+                row["input"],
+                {**row["expected"], "identity": WorkbenchEntityIdentity(**row["expected"]["identity"])},
+            )
+            for row in rows
+        ]
         outcomes = self.adapter.apply_prepared_many(prepared)
         results = [{"row": row["row"], "result": outcome.result, **outcome.data}
                    for row, outcome in zip(rows, outcomes)]

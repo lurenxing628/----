@@ -9,6 +9,7 @@ from dataclasses import asdict
 
 from flask import current_app, g, request
 
+from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.facts.source_revisions import (
@@ -69,7 +70,7 @@ def _month_binding(resource_state, month):
 def operator_calendar_month(ref):
     values = _month_input()
     reader = _reader()
-    with reader.read_snapshot(capture_fingerprint=False):
+    with TransactionManager(g.db).transaction():
         identity, resource_state = _operator_state(reader, ref)
         revisions = read_source_revisions(g.db, OPERATOR_CALENDAR_SOURCE_KEYS)
         snapshot = bind_read_snapshot({"kind": "operator_calendar", "ref": ref, **values},
@@ -124,7 +125,7 @@ def operator_calendar_command(ref, action):
 
     def mutate(checked):
         service, checked_state = checked
-        return service._apply_checked(action, payload, checked_state)
+        return service.apply_checked(action, payload, checked_state)
 
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=ACTIONS[action], context_ref=ref,
@@ -138,8 +139,8 @@ def operator_calendar_command(ref, action):
 def operator_calendar_range_preview(ref):
     body = json_body({"input"})
     reader = _reader()
-    # 只借 read_snapshot 的读事务；这次的快照要绑这段日期的个人日历内容，不是整份人员列表。
-    with reader.read_snapshot(capture_fingerprint=False):
+    # 在同一读事务内核对人员并绑定这段日期的个人日历快照。
+    with TransactionManager(g.db).transaction():
         identity, resource_state = _operator_state(reader, ref)
         revisions = read_source_revisions(g.db, OPERATOR_CALENDAR_SOURCE_KEYS)
         service = _service(identity.entity_key)
@@ -159,7 +160,7 @@ def operator_calendar_range_clear(ref):
 
     def mutate(checked):
         service, checked_state = checked
-        return service._apply_checked("range_clear", payload, checked_state)
+        return service.apply_checked("range_clear", payload, checked_state)
 
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=ACTIONS["range_clear"], context_ref=ref,

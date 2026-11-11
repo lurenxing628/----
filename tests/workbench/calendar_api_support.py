@@ -79,7 +79,7 @@ class CalendarApi:
 
 
 def seed_calendars(api):
-    from core.services.scheduler.calendar.service import CalendarService
+    from core.services.scheduler.calendar.admin import CalendarAdmin
 
     with api.db() as conn:
         conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('CAL-O','Calendar operator')")
@@ -90,21 +90,32 @@ def seed_calendars(api):
         )
         conn.execute("INSERT INTO WorkbenchOperatorProfiles(operator_id,shift_profile_id) VALUES ('CAL-O','CAL-SP')")
     with api.db() as conn:
-        calendar = CalendarService(conn)
+        calendar = CalendarAdmin(conn)
         context = calendar.normalization_context()
-        calendar._admin.repo.upsert_many([
-            calendar._admin._build_work_calendar(
-                date_value=NIGHT,
-                periods=[{"start": "22:30", "end": "06:30", "day_offset": 0}],
-                efficiency=0.875, allow_normal="no", allow_urgent="yes", remark="Original night",
+        calendar.repo.upsert_many([
+            calendar.build_work_calendar_from_payload(
+                {
+                    "date": NIGHT,
+                    "periods": [{"start": "22:30", "end": "06:30", "day_offset": 0}],
+                    "efficiency": 0.875,
+                    "allow_normal": "no",
+                    "allow_urgent": "yes",
+                    "remark": "Original night",
+                },
                 context=context,
             )
         ])
-        calendar._admin.operator_calendar_repo.upsert_many([
-            calendar._admin._build_operator_calendar(
-                operator_id="CAL-O", date_value=NIGHT,
-                periods=[{"start": "23:15", "end": "07:45", "day_offset": 0}],
-                efficiency=0.625, allow_normal="yes", allow_urgent="no", remark="Personal exception",
+        calendar.operator_calendar_repo.upsert_many([
+            calendar.build_operator_calendar_from_payload(
+                {
+                    "operator_id": "CAL-O",
+                    "date": NIGHT,
+                    "periods": [{"start": "23:15", "end": "07:45", "day_offset": 0}],
+                    "efficiency": 0.625,
+                    "allow_normal": "yes",
+                    "allow_urgent": "no",
+                    "remark": "Personal exception",
+                },
                 context=context,
             )
         ])

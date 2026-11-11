@@ -38,7 +38,7 @@ def system_api(db_env, tmp_path, monkeypatch):
     payload = acquire_runtime_lock(scope, db_path=db_env)
     runtime = gate = None
     try:
-        app = factory.create_app_core(ui_mode="default")
+        app = factory.create_app_core()
         app.config["TESTING"] = True
         gate = app.extensions["workbench_request_lifecycle"]
         runtime = install_workbench_run_runtime(app, runtime_lock=payload)

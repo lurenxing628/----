@@ -87,11 +87,12 @@ def _record_candidate_adoption_source(conn, version, rows, *, candidate_ref, run
     selected_ops = [r for r in op_rows if r["batch_id"] in batches]
     exec_op_refs = sorted({r["op_ref"] for r in op_rows if r["batch_id"] in batches or r["op_id"] in prev_op_ids})
     ledger_svc = ExecutionLedgerService(conn, clock=lambda: NOW)
-    projections = [
-        item
-        for start_idx in range(0, len(exec_op_refs), 5000)
-        for item in ledger_svc.project_operations(exec_op_refs[start_idx : start_idx + 5000])
-    ]
+    with ledger_svc.read_snapshot() as scope:
+        projections = [
+            item
+            for start_idx in range(0, len(exec_op_refs), 5000)
+            for item in ledger_svc.project_operations(scope, exec_op_refs[start_idx : start_idx + 5000])
+        ]
     conn.execute(
         "INSERT INTO WorkbenchRunJobs(run_ref,request_key,input_ref,normalized_input_json,facts_json,"
         "execution_json,baseline_json,accepted_at,started_at,finished_at,state,stage) "
@@ -284,18 +285,18 @@ class LedgerCase:
 
     def task_projection(self, task_ref):
         """按任务所属计划读出该工序的执行投影；生产只按工序批量读投影，没有按任务编号单读的入口。"""
-        with self.ledger.read_snapshot():
+        with self.ledger.read_snapshot() as scope:
             task = self.ledger.repo.task_headers([task_ref])[task_ref]
-            facts = self.ledger.load_many([task["operation_ref"]], comparison_plan_ref=task["plan_ref"])
+            facts = self.ledger.load_many(scope, [task["operation_ref"]], comparison_plan_ref=task["plan_ref"])
             return self.ledger.project_loaded(facts)[0]
 
     def report_projection(self, report_ref):
         """从所属工序的执行投影里取出这条报工；生产只按工序批量读投影，没有按报工单号单读的入口。"""
-        with self.ledger.read_snapshot():
+        with self.ledger.read_snapshot() as scope:
             header = self.ledger.report_header(report_ref=report_ref)
             assert header is not None
             operation_ref = header["operation_ref"]
-            projection = self.ledger.project_operations([operation_ref])[0]
+            projection = self.ledger.project_operations(scope, [operation_ref])[0]
         return next(report for report in projection.reports if report.report_ref == report_ref)
 
     def values(self, quantity=1, **patch):

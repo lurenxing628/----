@@ -40,7 +40,7 @@ def _seed_anchor(seed, refs):
             "message": "已完工，按实际开完工时间和资源固定。"}
 
 
-def execution_anchors(conn, rows, live):
+def execution_anchors(rows, live):
     if not _selected_has_actuals(rows, live):
         return {}
     version = live["baseline"]["version"]
@@ -52,7 +52,7 @@ def execution_anchors(conn, rows, live):
     batches = {row["batch_id"]: stored_batch(row) for row in facts.tables["Batches"]}
     groups = execution_groups(facts, batches, operations)
     _, completed, seeds, _ = build_execution_guardrails_from_projections(
-        conn, operations, prev_version=version, execution_projections=projections, facts=facts)
+        operations, prev_version=version, execution_projections=projections, facts=facts)
     refs = facts.refs
     result = _merged_group_anchors(groups, seeds, completed, refs)
     for seed in seeds:
@@ -61,7 +61,7 @@ def execution_anchors(conn, rows, live):
 
 
 def _merged_group_anchors(groups, seeds, actual_ids, refs):
-    periods = merged_actual_group_intervals(groups, seeds, actual_ids)
+    periods = merged_actual_group_intervals(groups, seeds)
     result = {}
     for op_id, group in groups.items():
         if op_id in actual_ids or group not in periods:
@@ -83,10 +83,10 @@ def anchor_issue(exc):
     return issue("execution_anchor_unproven", message)
 
 
-def resolve_execution_anchors(conn, rows, live):
+def resolve_execution_anchors(rows, live):
     """(anchors, problem)：已有报工但实际时间或资源核对不了时不固定任何安排，问题让草稿不能正式采用。"""
     try:
-        return execution_anchors(conn, rows, live), None
+        return execution_anchors(rows, live), None
     except (AppError, ValueError, KeyError) as exc:
         return {}, anchor_issue(exc)
 

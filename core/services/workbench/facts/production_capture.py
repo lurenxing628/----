@@ -90,10 +90,8 @@ class ProductionFactsCapture:
 
     def __init__(self, conn):
         self.conn = conn
-        self.execution_service: Any = None
         self.runtime_resources = None
         self.decoded_periods: Dict[str, List[Dict[str, Any]]] = {}
-        self.execution_facts = {}
         self.structure = SchemaStructure(conn)
         self.schema = [
             [kind, name, table, sql]

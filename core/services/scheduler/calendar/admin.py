@@ -19,7 +19,10 @@ from core.services.common.normalize import normalize_text
 from core.services.scheduler.config.config_field_spec import coerce_config_field
 from core.shared.strict_parse import parse_optional_float
 from data.repositories import CalendarRepository, OperatorCalendarRepository
+from data.repositories.calendar_defaults_repo import CalendarDefaultsRepository
 from data.repositories.config_repo import ConfigRepository
+
+from .defaults import default_periods_from_row
 
 
 class CalendarNormalizationContext:
@@ -54,6 +57,18 @@ class CalendarAdmin:
         self.logger = logger
         self.repo = CalendarRepository(conn, logger=logger)
         self.operator_calendar_repo = OperatorCalendarRepository(conn, logger=logger)
+
+    def normalization_context(self) -> CalendarNormalizationContext:
+        """One calendar-row normalization context; workday defaults are read at most once per context."""
+        periods: Optional[List[Dict[str, Any]]] = None
+
+        def read_once() -> List[Dict[str, Any]]:
+            nonlocal periods
+            if periods is None:
+                periods = default_periods_from_row(CalendarDefaultsRepository(self.conn).get())
+            return periods
+
+        return CalendarNormalizationContext(self.conn, logger=self.logger, period_reader=read_once)
 
     # -------------------------
     # 规范化与校验
@@ -124,30 +139,6 @@ class CalendarAdmin:
             "periods_json": encode_periods(periods),
         }
 
-    def _build_work_calendar(
-        self,
-        *,
-        date_value: Any,
-        day_type: Any = None,
-        efficiency: Any = None,
-        allow_normal: Any = None,
-        allow_urgent: Any = None,
-        remark: Any = None,
-        periods: Any = None,
-        context: CalendarNormalizationContext,
-    ) -> WorkCalendar:
-        fields = self._normalize_calendar_common_fields(
-            date_value=date_value,
-            day_type=day_type,
-            efficiency=efficiency,
-            allow_normal=allow_normal,
-            allow_urgent=allow_urgent,
-            remark=remark,
-            periods=periods,
-            context=context,
-        )
-        return WorkCalendar(**fields)
-
     @staticmethod
     def _payload_periods(payload):
         """Decode storage syntax; the common builder normalizes the periods once."""
@@ -156,13 +147,13 @@ class CalendarAdmin:
         raw = payload.get("periods_json")
         return None if raw is None else load_stored_periods(raw)
 
-    def _build_work_calendar_from_payload(
+    def build_work_calendar_from_payload(
         self,
         calendar_payload: Dict[str, Any],
         *,
         context: CalendarNormalizationContext,
     ) -> WorkCalendar:
-        return self._build_work_calendar(
+        fields = self._normalize_calendar_common_fields(
             date_value=calendar_payload.get("date"),
             day_type=calendar_payload.get("day_type"),
             efficiency=calendar_payload.get("efficiency"),
@@ -172,47 +163,24 @@ class CalendarAdmin:
             periods=self._payload_periods(calendar_payload),
             context=context,
         )
+        return WorkCalendar(**fields)
 
-    def _build_operator_calendar(
-        self,
-        *,
-        operator_id: Any,
-        date_value: Any,
-        day_type: Any = None,
-        efficiency: Any = None,
-        allow_normal: Any = None,
-        allow_urgent: Any = None,
-        remark: Any = None,
-        periods: Any = None,
-        context: CalendarNormalizationContext,
-    ) -> OperatorCalendar:
-        op_id = self._require_operator_id(operator_id)
-        fields = self._normalize_calendar_common_fields(
-            date_value=date_value,
-            day_type=day_type,
-            efficiency=efficiency,
-            allow_normal=allow_normal,
-            allow_urgent=allow_urgent,
-            remark=remark,
-            periods=periods,
-            context=context,
-        )
-        return OperatorCalendar(operator_id=op_id, **fields)
-
-    def _build_operator_calendar_from_payload(
+    def build_operator_calendar_from_payload(
         self,
         calendar_payload: Dict[str, Any],
         *,
         context: CalendarNormalizationContext,
     ) -> OperatorCalendar:
-        return self._build_operator_calendar(
-            operator_id=calendar_payload.get("operator_id"),
+        periods = self._payload_periods(calendar_payload)
+        op_id = self._require_operator_id(calendar_payload.get("operator_id"))
+        fields = self._normalize_calendar_common_fields(
             date_value=calendar_payload.get("date"),
             day_type=calendar_payload.get("day_type"),
             efficiency=calendar_payload.get("efficiency"),
             allow_normal=calendar_payload.get("allow_normal"),
             allow_urgent=calendar_payload.get("allow_urgent"),
             remark=calendar_payload.get("remark"),
-            periods=self._payload_periods(calendar_payload),
+            periods=periods,
             context=context,
         )
+        return OperatorCalendar(operator_id=op_id, **fields)

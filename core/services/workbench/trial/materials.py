@@ -1,10 +1,10 @@
 """Carry the chosen material policy into trial moves and adoption."""
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from core.models.scheduler_history_parser import ResultSummaryParseResult
 from core.models.workbench_preflight import stored_hold_window_valid
-from core.models.workbench_trial import issue, reject
+from core.models.workbench_trial import reject
 from core.shared.stored_dates import stored_date
 
 
@@ -120,13 +120,3 @@ def _window_classified(row, execution):
     # Anchored or reported work is protected (or refused) by the run input before any date check.
     return (row["original"].get("execution_anchor") is None
             and execution[row["operation_ref"]]["execution_state"] == "unreported")
-
-
-def material_issues(admission, checks, row):
-    policy = {**run_policy(admission), "end_date": row["current"]["end"][:10]}
-    original = row["original"]
-    problems, day = checks.operation_readiness(original["batch"], original["operation"], policy)
-    result = [issue(item["code"], item["message"], row["task_ref"]) for item in problems]
-    if day and datetime.fromisoformat(row["current"]["start"]) < datetime.fromisoformat(day):
-        result.append(issue("before_material_date", "安排早于本序物料到齐日期，请后移至 " + day + " 或之后。", row["task_ref"]))
-    return result

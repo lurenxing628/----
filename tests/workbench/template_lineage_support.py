@@ -9,6 +9,7 @@ from core.models.workbench_calibration import CalibrationQuery
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.scheduler.template_lineage_query import TemplateLineageQuery
 from core.services.workbench.batch.facts import BatchFacts
+from core.services.workbench.batch.scope import BatchFactScope
 from core.services.workbench.calibration.service import WorkbenchCalibrationService
 from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 from tests.workbench.execution_ledger_support import NOW, LedgerCase, current_database
@@ -60,7 +61,7 @@ def create(case, code="COPY-001", *, quantity=10):
     with TransactionManager(case.conn).transaction():
         case.conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES (?,'P1',?)", (code, quantity))
         writer = TemplateLineageWriter(case.conn)
-        facts = BatchFacts(case.conn).load()
+        facts = BatchFactScope(BatchFacts(case.conn)).load()
         rows = [row for row in facts["PartOperations"] if row["part_no"] == "P1" and row["status"] == "active"]
         for template in writer.prepare_templates(rows, facts=facts):
             writer.copy_prepared_template(code, template)
@@ -74,7 +75,7 @@ def origin(case, op_id):
 
 def lineage(case, op_id):
     ref = instance_for(case, op_id)["operation_ref"]
-    return TemplateLineageQuery(case.conn).read([ref])
+    return TemplateLineageQuery(case.conn).read_partial([ref], current_by_ref={}, templates_by_ref={})
 
 
 def completed(case, hours, *, prefix="COPY", version=2):
@@ -90,6 +91,6 @@ def completed(case, hours, *, prefix="COPY", version=2):
 
 
 def calibration(case):
-    service = WorkbenchCalibrationService(case.conn, as_of=NOW)
-    with service.read_snapshot():
-        return service.read(CalibrationQuery())
+    service = WorkbenchCalibrationService(case.conn)
+    with service.read_snapshot() as ledger_scope:
+        return service.read(ledger_scope, CalibrationQuery(), as_of=NOW)

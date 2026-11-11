@@ -1,43 +1,49 @@
 from __future__ import annotations
 
 from time import monotonic
-from typing import Any, Callable, Optional
+from typing import Optional, cast
 
 from .optimizer.search_budget import SearchBudget, SearchBudgetExhausted
 from .optimizer.shared_process import numeric_score, score_scope_payload
 from .schedule_candidate_plan import CandidateComparisonOutcome, CandidatePlan
 from .schedule_candidate_selection import BusinessObjectiveSelectionResult
-from .schedule_graph_report import prepare_schedule_graph_for_dispatch
-from .schedule_input_contracts import ScheduleRunInput
+from .schedule_graph_report import (
+    ScheduleGraphDispatchPreparation,
+    prepare_schedule_graph_for_dispatch,
+)
+from .schedule_input_contracts import SolverInput, SolverResources
 from .schedule_shared_optimizer import optimize_shared_schedule
 
 
 def run_candidate_comparison(
-    *, schedule_input: ScheduleRunInput,
-    prepare_graph_fn: Optional[Callable[[Any], Any]] = None,
+    solver_input: SolverInput,
+    resources: SolverResources,
 ) -> CandidateComparisonOutcome:
     """Publish the actual business representatives from one shared search archive."""
-    cfg = schedule_input.cfg
+    cfg = solver_input.config
     total_budget = float(cfg.time_budget_seconds)
     started = monotonic()
     deadline = started + total_budget
     budget = SearchBudget(clock=monotonic, started_at=started, deadline=deadline,
                           assigned_seconds=total_budget)
-    prepare_graph = prepare_graph_fn or prepare_schedule_graph_for_dispatch
-    preparation = None
+    preparation: Optional[ScheduleGraphDispatchPreparation] = None
 
     def graph_prepare():
         nonlocal preparation
-        preparation = prepare_graph(schedule_input)
+        preparation = prepare_schedule_graph_for_dispatch(
+            solver_input,
+            resource_pool=resources.resource_pool,
+        )
         return preparation
 
+    cal_svc = resources.calendar_engine
     shared = optimize_shared_schedule(
-        calendar_service=schedule_input.cal_svc, cfg=cfg,
-        algo_ops_to_schedule=schedule_input.algo_ops_to_schedule, batches=schedule_input.batches,
-        start_dt=schedule_input.start_dt_norm, end_date=schedule_input.end_date_norm,
-        downtime_map=schedule_input.downtime_map, seed_results=schedule_input.seed_results,
-        resource_pool=schedule_input.resource_pool, version=schedule_input.optimizer_seed_version,
-        readiness_gate_enabled=schedule_input.readiness_gate_enabled,
+        calendar_service=cal_svc, cfg=cfg,
+        algo_ops_to_schedule=solver_input.to_schedule, batches=solver_input.batches,
+        start_dt=solver_input.start, end_date=solver_input.end_date,
+        downtime_map=resources.downtime_map, seed_results=solver_input.seeds.seed_results,
+        resource_pool=resources.resource_pool, version=resources.optimizer_seed_version,
+        readiness_gate_enabled=solver_input.readiness_gate_enabled,
         graph_prepare=graph_prepare, search_budget=budget,
     )
     primary = shared.archive.primary_objective
@@ -51,7 +57,8 @@ def run_candidate_comparison(
         entry = shared.archive.entry(entry_id)
         candidate = _business_representative(
             shared, entry, sequence=len(candidates), primary=primary, targets=targets,
-            cfg=cfg, preparation=preparation, total_budget=total_budget)
+            cfg=cfg, preparation=cast(ScheduleGraphDispatchPreparation, preparation),
+            total_budget=total_budget)
         entries[entry_id] = candidate
         candidates.append(candidate)
     if not candidates:
@@ -102,8 +109,8 @@ def _business_representative(shared, entry, *, sequence, primary, targets, cfg, 
         graph_critical_weight=weights.get("critical_weight"), graph_impact_weight=weights.get("impact_weight"),
         graph_downstream_weight=weights.get("downstream_weight"),
         results=candidate["results"], summary=candidate["summary"], metrics=candidate["metrics"],
-        graph_analysis_public=preparation.graph_analysis_public if preparation is not None else None,
-        graph_analysis_diagnostics=preparation.graph_analysis_diagnostics if preparation is not None else None,
+        graph_analysis_public=preparation.graph_analysis_public,
+        graph_analysis_diagnostics=preparation.graph_analysis_diagnostics,
         # Every verified decode is observed before it can be selected, which merges its order (finish_observation).
         used_strategy=candidate["strategy"], used_params=params, best_order=candidate["order"],
         algo_mode=cfg.algo_mode, objective_name=primary,

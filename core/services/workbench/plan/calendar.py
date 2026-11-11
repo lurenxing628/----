@@ -14,7 +14,6 @@ Dense evaluation is capped at 3660 dates / 40000 resource-date cells / 50000 raw
 facts; sparse enormous spans return explicit unavailable, never a shortened range.
 """
 
-from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLimit
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES, MAX_POLICY_CELLS
 from core.services.capacity.plan_calendar_windows import (
@@ -23,6 +22,8 @@ from core.services.capacity.plan_calendar_windows import (
     public_projection,
     unavailable,
 )
+from core.services.scheduler.calendar.engine import CalendarEngine
+from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_facts
 
 from .calendar_context import public_resource, resource_ids
 
@@ -44,7 +45,7 @@ def _unavailable_result(scope, time_scope, code):
     dto = {"state": "unavailable", "plan_ref": scope.plan_ref, "time_scope": time_scope,
            "global": global_cal, "resources": None,
            "issues": global_cal["issues"], "windows_complete": False}
-    return dto, {"state": "unavailable", "reason": code, "sources": None, "resources": None}
+    return dto, {"state": "unavailable", "reason": code, "sources": None, "resources": None, "engine": None}
 
 
 def project_plan_calendar(conn, *, scope, resources, selected, include_windows: bool = True):
@@ -62,7 +63,7 @@ def project_plan_calendar(conn, *, scope, resources, selected, include_windows: 
         reader.resources(ids["machine"], ids["operator"], [row["op_id"] for row in rows], start, end)
     except ProjectionLimit as exc:
         return _unavailable_result(scope, time_scope, str(exc))
-    engine = SnapshotCalendarEngine(reader.rows)
+    engine = CalendarEngine(calendar_inputs_from_facts(reader.rows))
     global_calendar = policy_projection(engine, first, last, start, end)
     public, private = _resource_projections(engine, reader.rows, ids, (first, last, start, end), global_calendar, resources)
     states = [global_calendar["state"]] + [item["state"] for item in public]
@@ -81,5 +82,5 @@ def project_plan_calendar(conn, *, scope, resources, selected, include_windows: 
     dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope,
            "global": global_dto, "resources": public_dto, "issues": [],
            "windows_complete": windows_complete}
-    facts = {"state": state, "sources": reader.rows, "resources": private}
+    facts = {"state": state, "sources": reader.rows, "resources": private, "engine": engine}
     return dto, facts

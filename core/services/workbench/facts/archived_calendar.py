@@ -9,9 +9,7 @@ from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from datetime import date, timedelta
 
-from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_intervals import instant, union
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES
 from core.services.capacity.plan_calendar_windows import (
@@ -20,63 +18,15 @@ from core.services.capacity.plan_calendar_windows import (
     resource_record_unavailable,
     unavailable,
 )
+from core.services.scheduler.calendar.engine import CalendarEngine
 from core.shared.stored_dates import stored_local_iso_datetime
 
+from .calendar_inputs import calendar_inputs_from_archive_tables
 from .candidate_facts import archived_table
 from .resource_calendar import natural_days
 
 _MEASURES = ("available_hours", "effective_hours", "normal_available_hours", "normal_effective_hours",
              "urgent_available_hours", "urgent_effective_hours")
-
-
-class _SavedCalendarEngine(SnapshotCalendarEngine):
-    """Resolve absent saved tables at the policy that actually needs them.
-
-    A table missing from the saved snapshot only fails the dates and people whose
-    policy reads it (recorded in missing_policies); damaged calendar content is
-    deferred the same way by SnapshotCalendarEngine. All policy, shift and interval
-    math remain in the shared engine.
-    """
-
-    def __init__(self, tables):
-        self.tables = tables
-        self.missing_policies = {}
-        profiles = {row["profile_id"]: row for row in tables["WorkbenchShiftProfiles"] or []}
-        self.members = {row["operator_id"]: row for row in tables["WorkbenchOperatorProfiles"] or []}
-        selected = [{"operator_id": row["operator_id"], "shift_profile_id": row["shift_profile_id"],
-                     **profiles.get(row["shift_profile_id"], {"profile_id": None, "status": None,
-                                                            "anchor_date": None, "cycle_days": None})}
-                    for row in self.members.values() if row.get("shift_profile_id") is not None]
-        patterns = tables["WorkbenchShiftPatternDays"] or ()
-        super().__init__({"global": tables["WorkCalendar"] or [], "personal": tables["OperatorCalendar"] or [],
-                          "profiles": selected, "patterns": patterns,
-                          "defaults": tables["WorkbenchCalendarDefaults"] or []})
-
-    def _missing(self, name, day, operator_id=None):
-        self.missing_policies[(operator_id, day)] = name
-        raise ValidationError("保存的日历资料缺少 " + name + "。", field=name)
-
-    def _resolve_calendar_row(self, date_str, op_id):
-        if op_id is not None:
-            if self.tables["OperatorCalendar"] is None:
-                self._missing("OperatorCalendar", date_str, op_id)
-            if (op_id, date_str) in self.personal_rows:
-                return super()._resolve_calendar_row(date_str, op_id)
-            if self.tables["WorkbenchOperatorProfiles"] is None:
-                self._missing("WorkbenchOperatorProfiles", date_str, op_id)
-            member = self.members.get(op_id)
-            if member is not None and member.get("shift_profile_id") is not None:
-                for name in ("WorkbenchShiftProfiles", "WorkbenchShiftPatternDays"):
-                    if self.tables[name] is None:
-                        self._missing(name, date_str, op_id)
-        if self.tables["WorkCalendar"] is None:
-            self._missing("WorkCalendar", date_str, op_id)
-        return super()._resolve_calendar_row(date_str, op_id)
-
-    def _default_for_date(self, date_str):
-        if date.fromisoformat(date_str).weekday() < 5 and self.tables["WorkbenchCalendarDefaults"] is None:
-            self._missing("WorkbenchCalendarDefaults", date_str)
-        return super()._default_for_date(date_str)
 
 
 def _bounds(start, end):
@@ -203,7 +153,7 @@ class ArchivedCalendar:
         # 坏日期等日历内容错误由引擎留到读取那天再报；这里只剩保存表结构损坏（缺列 KeyError、取值类型不对 TypeError）
         # 让整份引擎不可用，下游逐日投影为 calendar_invalid、试调核对报 calendar_unproven。
         try:
-            self.engine = _SavedCalendarEngine(tables)
+            self.engine = CalendarEngine(calendar_inputs_from_archive_tables(tables))
         except (KeyError, TypeError):
             self.engine = None
         self._global_days = {}
@@ -222,7 +172,7 @@ class ArchivedCalendar:
                 self._tables[name] = archived_table(self.archive, name)
         return self._tables[name]
 
-    def _policy_day(self, low, high, operator_id=None, *, engine: _SavedCalendarEngine):
+    def _policy_day(self, low, high, operator_id=None, *, engine: CalendarEngine):
         key = (low, high)
         if operator_id is None and key in self._global_days:
             return self._global_days[key]
@@ -230,13 +180,13 @@ class ArchivedCalendar:
         shift_key = None
         if operator_id is not None:
             op_id = engine._normalize_text(operator_id)
-            member = engine.members.get(op_id)
+            profile = engine.shift_profiles.get(op_id)
             if (op_id == operator_id
-                    and engine.tables["OperatorCalendar"] is not None
-                    and engine.tables["WorkbenchOperatorProfiles"] is not None
-                    and all((who, day) not in engine.personal_rows
-                            for day in (first.isoformat(), low.date().isoformat()) for who in (op_id, None))):
-                profile_id = member.get("shift_profile_id") if member is not None else None
+                    and engine.inputs.personal_days is not None
+                    and engine.inputs.operator_profiles is not None
+                    and all((op_id, day) not in engine.personal_rows
+                            for day in (first.isoformat(), low.date().isoformat()))):
+                profile_id = profile["shift_profile_id"] if profile is not None else None
                 if profile_id is None:
                     return self._policy_day(low, high, engine=engine)
                 else:
@@ -244,14 +194,6 @@ class ArchivedCalendar:
                     if shift_key in self._shift_days:
                         return self._shift_days[shift_key]
         base = policy_projection(engine, first, low.date(), low, high, operator_id)
-        if base["state"] != "available":
-            for day in (first, low.date()):
-                name = engine.missing_policies.get((operator_id, day.isoformat()))
-                name = name or engine.missing_policies.get((None, day.isoformat()))
-                if name is not None:
-                    base = unavailable(base["basis"], "calendar_unavailable")
-                    base["issues"][0].update(missing_fact=name, policy_date=day.isoformat())
-                    break
         if operator_id is None:
             self._global_days[key] = base
         elif shift_key is not None:

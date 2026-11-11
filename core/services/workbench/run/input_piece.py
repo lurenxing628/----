@@ -46,12 +46,8 @@ def _reduce_seeded_ancestors(ancestors, seeds, groups):
     return tuple(kept)
 
 
-def validate_piece_seed_precedence(*, scope, groups, seed_results, execution_completed_op_ids):
+def validate_piece_seed_precedence(*, scope, groups, seed_results):
     seeds = {row["op_id"]: row for row in seed_results}
-    if len(seeds) != len(seed_results):
-        fail("piece_protected_seed_missing", "要保持原安排的工序出现了重复记录，这次排产没有开始。请刷新重试；仍不行请联系维护人员。")
-    if not execution_completed_op_ids <= set(seeds):
-        fail("piece_protected_seed_missing", "已完工的单件工序缺少准确的实际起止时间，这次排产没有开始。请到现场记录补齐后重试。")
     max_seed_seq_by_group = {}
     seed_count_by_group = {}
     group_seed_ops = {}

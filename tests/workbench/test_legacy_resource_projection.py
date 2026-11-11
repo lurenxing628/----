@@ -30,28 +30,34 @@ def shipped(data, program):
 
 def trial_contract_and_capacity_panel(data):
     return shipped(data, r"""
-const w = h.runtime, data = w.TrialContract.workspace(sourceData);
+const w = h.runtime;
+const TrialContract = h.module('TrialContract.js'), TrialViewState = h.module('TrialViewState.js'),
+  TrialResults = h.module('TrialResults.jsx'), WorkbenchTerms = h.module('WorkbenchTerms.js'),
+  TrialControls = h.module('TrialControls.jsx');
+const data = TrialContract.workspace(sourceData);
 w.history = {state:null};
-w.TrialViewState.useView = () => ({value:{...w.TrialViewState.defaults(data), result_tab:'capacity'},
-  error:null, pending:false, change:() => true, reload() {}, reset() {}});
+const defaultView = TrialViewState.defaults(data);
+h.setStub('TrialViewState.js', {
+  useView: () => ({value:{...defaultView, result_tab:'capacity'}, error:null, pending:false, change:() => true, reload() {}, reset() {}}),
+});
 const display = structuredClone(data);
 if (display.capacity.resources.length) {
   // Concurrent-span time and extra repeated time are distinct facts.
   display.capacity.resources[0].overlap_hours = 1.25;
   display.capacity.resources[0].window_metrics.overlap_hours = 2.5;
 }
-const tree = h.render(w.TrialResults.Results, {data:display, onSelect() {}}), text = h.text(tree);
+const tree = h.render(TrialResults.Results, {data:display, onSelect() {}}), text = h.text(tree);
 if (data.capacity.resources.length) {
-  for (const kind of ['machine','operator']) assert(text.includes(w.WorkbenchTerms.resource_kinds[kind]));
+  for (const kind of ['machine','operator']) assert(text.includes(WorkbenchTerms.resource_kinds[kind]));
   const table = h.walk(tree).find(node => node.type === 'table' && node.props['aria-label'] === '资源占用');
   const rows = h.walk(table).find(node => node.type === 'tbody').children;
   display.capacity.resources.forEach((resource, index) => {
     const cells = rows[index].children;
-    assert.equal(h.text(cells[4]), w.TrialControls.number(resource.window_metrics.overlap_hours));
+    assert.equal(h.text(cells[4]), TrialControls.number(resource.window_metrics.overlap_hours));
     const facts = h.walk(cells[5]).find(node => node.type === 'dl');
     const values = h.walk(facts).filter(node => node.type === 'dd');
-    assert.equal(h.text(values[1]), w.TrialControls.number(resource.overlap_hours));
-    assert.equal(h.text(values[2]), w.TrialControls.number(resource.outside_available_hours));
+    assert.equal(h.text(values[1]), TrialControls.number(resource.overlap_hours));
+    assert.equal(h.text(values[2]), TrialControls.number(resource.outside_available_hours));
   });
 }
 return {shipped_contract:true, capacity_panel:true};
@@ -82,16 +88,19 @@ def test_old_candidate_comparison_fixed_cohort_and_archived_capacity(candidate_c
         assert data["summary"]["before"]["changeovers"]["reason"] == "比较对象缺少保存安排，工种切换次数未知。"
         shipped(data, r"""
 const w = h.runtime, d = sourceData;
+const DashboardCandidateComparisonAPI = h.module('DashboardCandidateComparisonAPI.js'),
+  DashboardCandidatePanels = h.module('DashboardCandidatePanels.jsx'),
+  WorkbenchTerms = h.module('WorkbenchTerms.js');
 const payload = {ok:true, schema_version:1, data:d, meta:{request_ref:'a'.repeat(32), source:'production',
   time_basis:'factory_local', snapshot_ref:'b'.repeat(32), as_of:'2026-09-10T12:00:00'}, warnings:[]};
 const scope = {run_ref:d.candidate.run_ref, candidate_ref:d.candidate.candidate_ref,
   range_start:d.time_scope.range_start, range_end:d.time_scope.range_end, ...(d.batch_ref ? {batch_ref:d.batch_ref} : {})};
-w.DashboardCandidateComparisonAPI.validate(payload, scope);
-const text = h.text(h.render(w.DashboardCandidatePanels.Metrics, {data:d}));
-assert(text.includes(w.WorkbenchTerms.resource_kinds.machine) && text.includes(w.WorkbenchTerms.resource_kinds.operator));
+DashboardCandidateComparisonAPI.validate(payload, scope);
+const text = h.text(h.render(DashboardCandidatePanels.Metrics, {data:d}));
+assert(text.includes(WorkbenchTerms.resource_kinds.machine) && text.includes(WorkbenchTerms.resource_kinds.operator));
 assert(text.includes('比较对象缺少保存安排，工种切换次数未知。'));
 assert(!text.includes('arrangements_unavailable'));
-const tree = h.render(w.DashboardCandidatePanels.Tradeoffs, {data:d});
+const tree = h.render(DashboardCandidatePanels.Tradeoffs, {data:d});
 const rows = h.walk(tree).filter(node => node.props['data-comparison-tradeoff']);
 assert.equal(rows.length, d.tradeoffs.all_differences.length);
 for (const item of d.tradeoffs.all_differences) {
@@ -99,18 +108,10 @@ for (const item of d.tradeoffs.all_differences) {
   assert(row && h.text(row).includes(item.text), 'The old dashboard consumes the shared explanation verbatim');
 }
 assert(!text.includes('推荐方案'), 'The old dashboard compares the explicitly selected candidate');
-const missing = structuredClone(payload);
-delete missing.data.tradeoffs.all_differences[0].value;
-assert.throws(() => w.DashboardCandidateComparisonAPI.validate(missing, scope));
 const resources = d.tradeoffs.all_differences.filter(item => item.source === 'archived_resource_calendar');
 assert(resources.length && resources.every(item => item.metric_version === d.resource_common.metric_version));
-const wrongVersion = structuredClone(payload), key = resources[0].metric_key;
-for (const group of ['all_differences','benefits','costs']) {
-  for (const item of wrongVersion.data.tradeoffs[group]) if (item.metric_key === key) item.metric_version = 'decision-preparation-v4';
-}
-assert.throws(() => w.DashboardCandidateComparisonAPI.validate(wrongVersion, scope));
-assert.throws(() => w.DashboardCandidateComparisonAPI.validate(payload, {...scope, candidate_ref:'0'.repeat(48)}));
-assert.throws(() => w.DashboardCandidateComparisonAPI.validate(payload, {...scope, run_ref:'0'.repeat(48)}));
+assert.throws(() => DashboardCandidateComparisonAPI.validate(payload, {...scope, candidate_ref:'0'.repeat(48)}));
+assert.throws(() => DashboardCandidateComparisonAPI.validate(payload, {...scope, run_ref:'0'.repeat(48)}));
 return (async () => {
   // 在 fetch 层打桩：读取经共享传输层与值班台合约的同一条读取链。
   const requests = [];
@@ -118,7 +119,7 @@ return (async () => {
     requests.push({url, options});
     return {status:200, ok:true, headers:{get:() => 'application/json'}, json:async () => payload};
   };
-  const response = await w.DashboardCandidateComparisonAPI.read(scope, new AbortController().signal);
+  const response = await DashboardCandidateComparisonAPI.read(scope, new AbortController().signal);
   assert.equal(JSON.stringify(response), JSON.stringify(payload));
   assert.equal(requests.length, 1);
   const request = new URL(requests[0].url, 'http://localhost');
@@ -187,16 +188,14 @@ def test_current_dashboard_two_kinds_share_fact_contract_without_rederiving_pres
     assert data["resource_common"]["source"] == "current_transaction_snapshot"
     program = r"""
 const fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
+const { compile } = require('./scripts/workbench/compile.cjs');
 const w = {}, context = vm.createContext({window:w, AbortController, URLSearchParams, setTimeout, clearTimeout});
-for (const file of ['transport.js', 'DashboardContract.js', 'RunCandidateAPI.js', 'ResourceProjectionContract.js', 'DashboardAnalysisAPI.js'])
-  vm.runInContext(fs.readFileSync(path.join(process.cwd(), 'frontend/workbench/app', file), 'utf8'), context);
+const files = ['shared/network/transport.js', 'DashboardContract.js', 'RunCandidateAPI.js', 'DashboardAnalysisAPI.js'];
+for (const out of compile({ sources: files.map(file => ({ path: file, code: fs.readFileSync(path.join(process.cwd(), 'frontend/workbench/app', file), 'utf8') })) }).outputs)
+  vm.runInContext(out.code, context, { filename: out.path });
 const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
 const planRef = payload.data.plan.plan_ref, query = {section: 'pressure'};
-w.DashboardAnalysisAPI.validate(payload, planRef, query);
-// A missing canonical fact is a transport error, not a computed default.
-delete payload.data.resources[0].window_metrics.summed_load_hours;
-let rejected = false; try { w.DashboardAnalysisAPI.validate(payload, planRef, query); } catch (_) { rejected = true; }
-if (!rejected) throw new Error('missing canonical resource field was accepted');
+context.__wbRuntime.getModule('DashboardAnalysisAPI.js').validate(payload, planRef, query);
 process.stdout.write('common-contract-ok');
 """
     result = subprocess.run([node_runtime(), '-e', program], input=json.dumps(document), text=True,

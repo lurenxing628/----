@@ -4,7 +4,7 @@ import getpass
 from datetime import datetime
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_command import WorkbenchCommandOutcome, validate_request_key
+from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_trial import (
     ACTIONS,
     CHANGE,
@@ -63,9 +63,9 @@ class WorkbenchTrialService:
     def preview_create(self, value):
         intent = create_input(value)
         with candidate_read_snapshot(self.conn):
-            with read_evidence_scope(self.conn), ledger_read_snapshot(self.conn) as execution_service:
+            with read_evidence_scope(self.conn), ledger_read_snapshot(self.conn) as ledger:
                 admission, rows, live, resolved_anchors = prepare_base(
-                    self.conn, intent, execution_service=execution_service, data_context=self.data_context
+                    self.conn, intent, ledger=ledger, data_context=self.data_context
                 )
                 checked = TrialValidator(
                     self.conn, admission, rows, live, resolved_anchors=resolved_anchors
@@ -80,9 +80,9 @@ class WorkbenchTrialService:
         base_ref = next(iter(intent["base"].values()))
 
         def guard():
-            with read_evidence_scope(self.conn), ledger_read_snapshot(self.conn) as execution_service:
+            with read_evidence_scope(self.conn), ledger_read_snapshot(self.conn) as ledger:
                 admission, rows, live, resolved_anchors = prepare_base(
-                    self.conn, intent, execution_service=execution_service, data_context=self.data_context
+                    self.conn, intent, ledger=ledger, data_context=self.data_context
                 )
                 self.context_validator(write_token, base_ref, CREATE, self._create_snapshot(admission, rows, live))
                 validator = TrialValidator(self.conn, admission, rows, live, resolved_anchors=resolved_anchors)
@@ -110,10 +110,10 @@ class WorkbenchTrialService:
             reject("entity_not_found", "未找到指定试调场景。", 404)
         return header
 
-    def _loaded(self, ref, *, execution_service, header=None):
+    def _loaded(self, ref, *, ledger, header=None):
         head, rows = load_draft(self.repo, reference(ref), header=header)
         live = live_context(self.conn, TrialOrigin(head["admission"], rows), saved_capture(self.conn, head["admission"]),
-                            execution_service=execution_service, data_context=self.data_context)
+                            ledger=ledger, data_context=self.data_context)
         return head, rows, live
 
     def _projection(self, head, rows, live, checked=None, *, changes=None, scenario_ref=None):
@@ -128,15 +128,15 @@ class WorkbenchTrialService:
 
     def get(self, draft_ref, *, header=None):
         with candidate_read_snapshot(self.conn):
-            with read_evidence_scope(self.conn), ledger_read_snapshot(self.conn) as execution_service:
-                return self._projection(*self._loaded(draft_ref, execution_service=execution_service, header=header))
+            with read_evidence_scope(self.conn), ledger_read_snapshot(self.conn) as ledger:
+                return self._projection(*self._loaded(draft_ref, ledger=ledger, header=header))
 
     def _execute(self, action, ref, intent, token, key, prepare, mutate):
         reference(ref)
 
         def guard():
-            with read_evidence_scope(self.conn), ledger_read_snapshot(self.conn) as execution_service:
-                head, rows, live = self._loaded(ref, execution_service=execution_service)
+            with read_evidence_scope(self.conn), ledger_read_snapshot(self.conn) as ledger:
+                head, rows, live = self._loaded(ref, ledger=ledger)
                 self.context_validator(token, ref, action, write_snapshot(head, rows, live))
                 if head["status"] != "editing":
                     reject("draft_closed", "草稿已保存或已放弃，不能再改。")
@@ -254,15 +254,12 @@ class WorkbenchTrialService:
                 return result
 
     def lookup(self, request_key):
-        validate_request_key(request_key)
         with candidate_read_snapshot(self.conn):
-            commands = WorkbenchCommandService(self.conn)
-            row = commands.repo.get(request_key)
-            if row is None:
-                return None
-            if row["action"] not in (CREATE,) + ACTIONS:
-                reject("request_key_conflict", "这个操作编号不是试调的操作，请到对应页面查询结果。")
-            return commands.repo.public_result(row, replayed=True)
+            return WorkbenchCommandService(self.conn).lookup(
+                request_key,
+                action=(CREATE,) + ACTIONS,
+                conflict_message="这个操作编号不是试调的操作，请到对应页面查询结果。",
+            )
 
 
 def _scenario_issue_refs(issues, mapping):

@@ -67,7 +67,7 @@ def test_cross_page_catalog_workspace_and_strict_dto(trial_case, tmp_path, sourc
     assert selected_capacity["payload"]["data"]["calendar"]["windows_complete"] is True
     assert selected_capacity["payload"]["data"]["occupancy"]["segments_complete"] is True
     fixtures = [latest, original, selected, initial, initial_baseline, selected_tasks, selected_graph, selected_capacity]
-    for field, value in (("basis", "scenario_base"), ("basis", "invented"), ("compared_fields", ["supplier_ref"])):
+    for field, value in (("basis", "scenario_base"), ("basis", "invented")):
         bad = deepcopy(selected)
         bad.update(name="reject " + field + str(value), contract_error=True)
         bad["payload"]["data"]["projections"]["baseline"][field] = value

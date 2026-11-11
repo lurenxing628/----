@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, NoReturn, Optional
 
 from core.infrastructure.sqlite_udf import remember_receipt_outcome
@@ -30,6 +29,9 @@ class WorkbenchCommandRepository(BaseRepository):
     def get(self, request_key: str) -> Optional[Dict[str, Any]]:
         return self.fetchone("SELECT request_key, receipt_ref, action, context_ref, input_json, outcome_json FROM WorkbenchCommandReceipts WHERE request_key = ?", (request_key,))
 
+    def exists(self, request_key: str) -> bool:
+        return self.fetchone("SELECT 1 FROM WorkbenchCommandReceipts WHERE request_key = ?", (request_key,)) is not None
+
     def insert(self, *, request_key: str, receipt_ref: str, action: str, context_ref: str,
                input_json: str, outcome: WorkbenchCommandOutcome) -> Dict[str, Any]:
         payload, history = outcome.payload(), None
@@ -47,7 +49,7 @@ class WorkbenchCommandRepository(BaseRepository):
             self.execute("""INSERT INTO WorkbenchCommandReceipts
                 (request_key, receipt_ref, action, context_ref, input_json, outcome_json)
                 VALUES (?, ?, ?, ?, ?, ?)""", (request_key, receipt_ref, action, context_ref, input_json, outcome_json))
-        public = self._public_payload(json.loads(outcome_json), action, history=history)
+        public = self._public_payload(payload, action, history=history)
         return {"ok": True, **public, "receipt_ref": receipt_ref, "replayed": False}
 
     def _public_payload(self, payload, action, *, history=None):
@@ -67,5 +69,5 @@ class WorkbenchCommandRepository(BaseRepository):
                                 expected=dict)
         if set(data) != {"result", "data", "warnings"}:
             _corrupt_receipt()
-        outcome = self._public_payload(WorkbenchCommandOutcome(**data).payload(), row["action"])
+        outcome = self._public_payload(WorkbenchCommandOutcome(**data).payload(normalize=False), row["action"])
         return {"ok": True, **outcome, "receipt_ref": row["receipt_ref"], "replayed": replayed}

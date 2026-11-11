@@ -138,8 +138,6 @@ def optimize_shared_schedule(
         graph_preparation_calls = 1
         graph_ready_context = preparation.graph_ready_context
         graph_dispatch_mode_override = preparation.graph_dispatch_mode_override
-    if graph_dispatch_mode_override not in (None, "sgs"):
-        raise ValidationError("图派工模式覆盖只允许使用 sgs。", field="graph_dispatch_mode_override")
     piece = bool(graph_ready_context is not None and graph_ready_context.get("piece_scope"))
     if any(op.piece_id is not None for op in algo_ops_to_schedule) and not piece:
         raise ValidationError("分件排产需要真实工艺依赖图。", field="graph_ready_context")

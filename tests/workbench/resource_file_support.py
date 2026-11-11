@@ -93,6 +93,6 @@ def confirm(conn, kind, preview, *, command=None, key=None, guard=None):
 def exported(conn, kind, fmt, *, category=None):
     service, request = WorkbenchResourceFileService(conn, kind), resource_scope_request(kind, scope(category))
     # 和下载路由一样：读快照里只读行，事务结束后再生成文件。
-    with TransactionManager(conn).transaction():
-        rows = service.export_rows(fmt, request=request)
+    with service.reader.read_snapshot() as read_scope:
+        rows = service.export_rows(read_scope, fmt, request=request)
     return service.write_export(rows, fmt, request=request)

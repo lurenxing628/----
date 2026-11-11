@@ -11,6 +11,7 @@ from core.shared.local_datetime import format_local_datetime, parse_local_dateti
 from core.shared.strict_json import load_strict_json
 
 SQL_PARSE_FUNCTION = "aps_parse_dt"
+SQL_CASEFOLD_FUNCTION = "aps_casefold"
 NON_INPUT_RECEIPT_ACTIONS = (SCHEDULING_PREFERENCES_ACTION, "scheduling.run")
 NON_INPUT_RECEIPT_PREFIXES = ("trial.", "dashboard.")
 _REMEMBERED_RECEIPT_OUTCOME: ContextVar[Optional[Tuple[str, str]]] = ContextVar(
@@ -57,6 +58,10 @@ def receipt_revision_category(action: Any, outcome_json: Any) -> str:
 def parse_dt_for_sql(value: Any) -> Optional[str]:
     parsed = parse_local_datetime(value)
     return format_local_datetime(parsed) if parsed is not None else None
+
+
+def casefold_for_sql(value: Any) -> Optional[str]:
+    return value.casefold() if type(value) is str else None
 
 
 def require_dt_for_sql(value: Any, error_message: str) -> str:
@@ -110,6 +115,7 @@ def decode_interval_summary(value):
 def register_schedule_time_sql_functions(conn: sqlite3.Connection) -> None:
     for name, count, function in (
         (SQL_PARSE_FUNCTION, 1, parse_dt_for_sql),
+        (SQL_CASEFOLD_FUNCTION, 1, casefold_for_sql),
         ("aps_interval_admitted", 4, _interval_admitted),
         ("aps_receipt_revision_category", 2, receipt_revision_category),
     ):
@@ -123,7 +129,9 @@ def register_schedule_time_sql_functions(conn: sqlite3.Connection) -> None:
 __all__ = [
     "NON_INPUT_RECEIPT_ACTIONS",
     "NON_INPUT_RECEIPT_PREFIXES",
+    "SQL_CASEFOLD_FUNCTION",
     "SQL_PARSE_FUNCTION",
+    "casefold_for_sql",
     "decode_interval_summary",
     "parse_dt_for_sql",
     "receipt_revision_category",

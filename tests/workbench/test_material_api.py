@@ -126,6 +126,7 @@ def test_material_file_holds_one_batch_preparation_and_export_skips_write_snapsh
     from core.models.workbench_command import WorkbenchCommandUncertain
     from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
     from core.services.workbench.material.files import WorkbenchMaterialFileService
+    from core.services.workbench.material.queries import WorkbenchMaterialQueryService
     from data.repositories.material_repo import MaterialRepository
     from data.repositories.workbench_material_file_repo import WorkbenchMaterialFileRepository
     from tests.workbench.material_file_support import confirm_delete, confirm_import
@@ -160,11 +161,12 @@ def test_material_file_holds_one_batch_preparation_and_export_skips_write_snapsh
         calls.clear()
         result = confirm_import(conn, preview, key="material-prepared-rollback")
         assert len(calls) == 1 and result["result"] == "committed"
-        with service.reader.read_snapshot():
-            exported = service.export_rows("csv", request=MaterialPageRequest())
+        reader = WorkbenchMaterialQueryService(conn)
+        with reader.read_snapshot() as scope:
+            exported = service.export_rows(scope, "csv", request=MaterialPageRequest())
         assert [row["stock_qty"] for row in exported] == [10, 20]
         refs = [row[0] for row in conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind='material' AND active=1 ORDER BY entity_key")]
-        with service.reader.read_snapshot():
+        with reader.read_snapshot():
             delete = WorkbenchMaterialBulkService(conn).preview_delete(refs, scope=MaterialPageRequest())
         calls.clear()
         assert confirm_delete(conn, delete, key="material-prepared-delete")["data"]["deleted_count"] == 2
@@ -282,6 +284,25 @@ def test_material_update_delete_and_bulk_delete_by_ref_reuse_the_read_snapshot(a
         assert outcome["result"] == "committed" and outcome["data"]["deleted_count"] == 1
         remaining = dict(conn.execute("SELECT material_id, stock_qty FROM Materials").fetchall())
         assert remaining == {"MAT3": 11}
+        conn.execute("INSERT INTO Parts(part_no, part_name) VALUES ('P-MAT3', 'Part MAT3')")
+        conn.execute("INSERT INTO Batches(batch_id, part_no, part_name, quantity, due_date) VALUES ('B-MAT3', 'P-MAT3', 'Part MAT3', 1, '2026-12-01')")
+        conn.execute("INSERT INTO BatchMaterials(batch_id, material_id, required_qty) VALUES ('B-MAT3', 'MAT3', 1.0)")
+        conn.commit()
+        from core.models.workbench_command import WorkbenchCommandRejected
+        from core.services.workbench.material.service import WorkbenchMaterialService
+
+        referenced_record = WorkbenchMaterialQueryService(conn).detail(refs["MAT3"])
+        with pytest.raises(WorkbenchCommandRejected) as exc_info:
+            WorkbenchMaterialService(conn).prepare_checked("delete", {}, referenced_record.state)
+        assert exc_info.value.code == "constraint_conflict"
+        assert str(exc_info.value) == "这条物料已经被批次的物料需求用到，不能删除。请先处理相关批次的物料需求，再删除物料。"
+    referenced_ctx = _detail(app_client, refs["MAT3"])["write_context"]
+    assert referenced_ctx["capabilities"] == {"material.update": True, "material.delete": False}
+    assert referenced_ctx["blocked_reasons"] == [{
+        "action": "material.delete",
+        "code": "constraint_conflict",
+        "message": "这条物料已经被批次的物料需求用到，不能删除。请先处理相关批次的物料需求，再删除物料。",
+    }]
 
 
 def test_resource_and_material_input_rejects_nul_character_before_diff_filtering(app_client):

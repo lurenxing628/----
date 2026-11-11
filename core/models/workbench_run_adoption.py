@@ -20,7 +20,7 @@ class CandidateAdoptionEvidence:
     baseline: Dict[str, Any]
     snapshot: Dict[str, Any]
     prepared: Any
-    payload: Any
+    outcome: Any
     proof: Dict[str, Any]
 
 

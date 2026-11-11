@@ -171,13 +171,14 @@ def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(reso
         scopes.clear()
         with monkeypatch.context() as scoped:
             scoped.setattr(WorkbenchResourceQueryRepository, "scope_state", read_scope)
-            with reader.read_snapshot() as fingerprint:
+            with reader.read_snapshot() as scope:
+                fingerprint = scope.state_fingerprint()
                 rows, total = reader.repo.page(query)
-                expected = [reader.detail(row["ref"]) for row in rows]
+                expected = [scope.detail(row["ref"]) for row in rows]
                 scoped.setattr(WorkbenchResourceTableRepository, "assigned_counts", read_counts)
                 scoped.setattr(WorkbenchResourceMetricsRepository, "op_type_dependencies", read_type_counts)
                 scoped.setattr(WorkbenchResourceTableRepository, "page_relations", read_relations)
-                records, page = reader.page(query)
+                records, page = scope.page(query)
                 codes = tuple(row["business_code"] for row in rows)
                 assert records == expected
                 assert page["total"] == total
@@ -185,29 +186,29 @@ def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(reso
                 assert page["sort"] == [{"field": query.sort, "direction": query.direction}]
                 assert counts == type_counts == [] and scopes == [kind]
                 assert relations == ([('supplier', codes)] if kind == "supplier" else [])
-                assert reader.state_fingerprint() == fingerprint and scopes == [kind]
+                assert scope.state_fingerprint() == fingerprint and scopes == [kind]
                 if kind != "op_type":
-                    states = resource_table_states(reader._table_reader(), kind, codes)
+                    states = resource_table_states(scope.table_facts(), kind, codes)
                     assert {record.identity.entity_key: record.state for record in records} == states
                 if kind == "machine":
-                    advanced, _ = reader.page(ResourcePageRequest(kind, query="车床alpha", sort="group_ref", direction="desc"))
+                    advanced, _ = scope.page(ResourcePageRequest(kind, query="车床alpha", sort="group_ref", direction="desc"))
                     assert [record.identity.entity_key for record in advanced] == ["M1", "M2"]
-                    matched, _ = reader.page(ResourcePageRequest(kind, query="车床ALPHA", sort="label", direction="desc"))
+                    matched, _ = scope.page(ResourcePageRequest(kind, query="车床ALPHA", sort="label", direction="desc"))
                     assert matched == advanced
-                    unmatched, _ = reader.page(ResourcePageRequest(kind, query="ä"))
+                    unmatched, _ = scope.page(ResourcePageRequest(kind, query="ä"))
                     assert unmatched == [] and counts == [] and scopes == [kind]
                 if kind == "supplier":
-                    ascending, _ = reader.page(ResourcePageRequest(kind, sort="default_days"))
-                    descending, _ = reader.page(ResourcePageRequest(kind, sort="default_days", direction="desc"))
+                    ascending, _ = scope.page(ResourcePageRequest(kind, sort="default_days"))
+                    descending, _ = scope.page(ResourcePageRequest(kind, sort="default_days", direction="desc"))
                     assert [record.identity.entity_key for record in ascending] == ["S2", "S1"]
                     assert [record.identity.entity_key for record in descending] == ["S1", "S2"]
                 if kind in ("operator", "op_type"):
                     counts.clear()
                     relations.clear()
                     type_counts.clear()
-                    with reader.read_snapshot(capture_fingerprint=False) as inner_fingerprint:
-                        assert inner_fingerprint is None
-                        inner_records, inner_page = reader.page(query)
+                    with reader.read_snapshot(capture_fingerprint=False) as inner_scope:
+                        assert inner_scope.revisions is None
+                        inner_records, inner_page = inner_scope.page(query)
                         assert inner_records == expected and inner_page == page
                         assert counts == ([(kind, codes)] if kind == "operator" else [])
                         assert type_counts == ([codes] if kind == "op_type" else [])
@@ -216,7 +217,7 @@ def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(reso
                     counts.clear()
                     relations.clear()
                     type_counts.clear()
-                    restored, restored_page = reader.page(query)
+                    restored, restored_page = scope.page(query)
                     assert restored == expected and restored_page == page
                     assert counts == relations == type_counts == [] and scopes == [kind]
 

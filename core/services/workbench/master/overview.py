@@ -1,8 +1,12 @@
 """Eight-domain graph, table queries, exact lookup and complete CSV projection."""
 
+from __future__ import annotations
+
 import csv
 import io
 from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_master_overview import DOMAINS, STATUS, MasterOverviewScope, public_ref
@@ -45,34 +49,27 @@ def _matches_row(scope, row, needle):
     return any(needle in text(value).casefold() for value in searchable if value is not None)
 
 
-class MasterOverviewService:
-    def __init__(self, conn):
-        self.facts = MasterOverviewFacts(conn)
-        self.graph = None
-        self._overview = None
-        self.entities, self.issues = [], []
-        self.entity_by_key = {}
+@dataclass
+class MasterOverviewReadScope:
+    facts: Any
+    graph: MasterOverviewGraph
+    entities: List[Dict[str, Any]]
+    entity_by_key: Dict[Tuple[str, str], Dict[str, Any]]
+    issues: List[Dict[str, Any]]
+    _overview: Optional[Dict[str, Any]] = None
 
-    @contextmanager
-    def read_snapshot(self, *, bind_snapshot=None):
-        self._overview = None
-        with self.facts.read_snapshot(bind_snapshot=bind_snapshot) as as_of:
-            self.graph = MasterOverviewGraph(self.facts)
-            add_resources(self.graph)
-            add_process(self.graph)
-            add_calendar(self.graph)
-            resource_links(self.graph)
-            resource_profile_fields(self.graph)
-            batch_relations(self.graph)
-            self.entities = self.graph.finalize()
-            self.entity_by_key = {(row["domain"], row["ref"]): row for row in self.entities}
-            self.issues = [{**issue, "issue_count": entity["issue_count"], "relation_count": entity["relation_count"]}
-                           for entity in self.entities for issue in entity["issues"]]
-            yield as_of
+    @classmethod
+    def from_graph(cls, facts: Any, graph: MasterOverviewGraph) -> MasterOverviewReadScope:
+        entities = graph.finalize()
+        entity_by_key = {(row["domain"], row["ref"]): row for row in entities}
+        issues = [
+            {**issue, "issue_count": entity["issue_count"], "relation_count": entity["relation_count"]}
+            for entity in entities
+            for issue in entity["issues"]
+        ]
+        return cls(facts=facts, graph=graph, entities=entities, entity_by_key=entity_by_key, issues=issues)
 
     def overview(self):
-        if self.graph is None:
-            raise RuntimeError("Master overview requires an explicit read snapshot.")
         if self._overview is not None:
             return self._overview
         by_domain = {domain: [] for domain, _ in DOMAINS}
@@ -168,6 +165,23 @@ class MasterOverviewService:
         for row in rows:
             writer.writerow([_csv_cell(cell(row, key)) for key, _ in columns])
         return ("\ufeff" + output.getvalue()).encode("utf-8"), len(rows)
+
+
+class MasterOverviewService:
+    def __init__(self, conn):
+        self.facts = MasterOverviewFacts(conn)
+
+    @contextmanager
+    def read_snapshot(self, *, bind_snapshot=None) -> Iterator[MasterOverviewReadScope]:
+        with self.facts.read_snapshot(bind_snapshot=bind_snapshot) as fact_scope:
+            graph = MasterOverviewGraph(fact_scope)
+            add_resources(graph)
+            add_process(graph)
+            add_calendar(graph)
+            resource_links(graph)
+            resource_profile_fields(graph)
+            batch_relations(graph)
+            yield MasterOverviewReadScope.from_graph(fact_scope, graph)
 
 
 def _csv_cell(value):

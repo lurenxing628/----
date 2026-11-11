@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -172,7 +173,7 @@ def _load_previous_schedule_for_freeze(
             freeze_end_str=scope.freeze_end_str,
             schedule_rows_reader=schedule_rows_reader,
         )
-    except Exception as exc:
+    except (sqlite3.Error, ValueError) as exc:
         raise _freeze_unavailable() from exc
 
     if load_outcome.invalid_row_count > 0:
@@ -198,7 +199,7 @@ def _apply_freeze_prefixes(
         rows_in_window(scope.anchor_start, scope.anchor_end, schedule_map), scope.op_by_id)
 
     for bid, anchors in anchors_lookup.items():
-        prefix = prefix_op_ids_for_anchors(scope.seed_operations_by_batch.get(bid, []), anchors)
+        prefix = prefix_op_ids_for_anchors(scope.seed_operations_by_batch[bid], anchors)
         if any(oid not in schedule_map for oid in prefix):
             # 前道原安排不在冻结窗口里（窗口前还没报工，或者没排过）的批次整批不冻结、照常重排，
             # 由调用方事先提醒；窗口内读到的行本身没有坏，不整次拒绝。
@@ -227,9 +228,7 @@ def _finish_freeze_seed_result(
     if frozen_op_ids:
         freeze_meta["freeze_state"] = "active"
     else:
-        # 一个前缀都没冻住（如上一版窗内命中行全部对应 seq<=0 工序，被
-        # freeze_window_prefixes.window_anchors_by_batch 跳过，或前道不全的批次全被跳过）。补上
-        # reason，保住"disabled 必带可查原因"的诊断口径（audit 2026-07-20 A15）。
+        # 一个前缀都没冻住（如前道原安排不在冻结窗口里的批次全被跳过），补上 reason，保住"disabled 必带可查原因"的诊断口径。
         _set_freeze_disabled(freeze_meta, _FREEZE_DISABLED_NO_FREEZABLE_PREFIX)
     _set_freeze_applied(freeze_meta, frozen_op_ids)
     return frozen_op_ids, seed_results

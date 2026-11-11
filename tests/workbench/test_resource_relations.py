@@ -109,7 +109,9 @@ def test_relation_pages_reuse_captured_facts_and_keep_search_and_errors(resource
         assert by_code[padded]["ref"] != by_code[plain]["ref"]
 
     assert run_current_js(r"""
-const origUseMemo = h.runtime.React.useMemo, origUseQuery = h.runtime.APSResourceSession.useQuery, slots = [];
+const APSResourceSession = h.module('shared/session/query.js'),
+  ResourceControls = h.module('ResourceControls.jsx');
+const origUseMemo = h.runtime.React.useMemo, origUseQuery = APSResourceSession.useQuery, slots = [];
 let cursor = 0, originalReads = 0, entityMapCalls = 0;
 const same = (a, b) => a && b && a.length === b.length && a.every((v, i) => v === b[i]);
 h.runtime.React.useMemo = (fn, deps) => {
@@ -124,7 +126,7 @@ const entities = [
 ];
 entities.map = function (...args) { entityMapCalls++; return Array.prototype.map.apply(this, args); };
 const response = { meta: { snapshot_ref: h.reference(9) }, data: { entities, page: { number: 1, pages: 1, total: 2, size: 50 } } };
-h.runtime.APSResourceSession.useQuery = () => ({ result: response, loading: false, error: null, reload() {} });
+APSResourceSession.useQuery = () => ({ result: response, loading: false, error: null, reload() {} });
 const original = {
   relationships: {
     skill_refs: [refA, missingRef],
@@ -141,17 +143,17 @@ const props = {
 try {
   const knownState = {};
   cursor = 0;
-  h.render(h.runtime.ResourceControls.Choice, props, { Choice: { 0: '', 4: knownState } });
+  h.render(ResourceControls.Choice, props, { Choice: { 0: '', 4: knownState } });
   const readsBefore = originalReads, mapsBefore = entityMapCalls;
   for (const text of ['车', '车削', '车削精']) {
     cursor = 0;
-    h.render(h.runtime.ResourceControls.Choice, props, { Choice: { 0: text, 4: knownState } });
+    h.render(ResourceControls.Choice, props, { Choice: { 0: text, 4: knownState } });
   }
   assert.strictEqual(originalReads - readsBefore, 0, 'Choice search typing must not rebuild originalByRef');
   assert.strictEqual(entityMapCalls - mapsBefore, 0, 'Choice search typing must not rebuild options from response entities');
 } finally {
   h.runtime.React.useMemo = origUseMemo;
-  h.runtime.APSResourceSession.useQuery = origUseQuery;
+  APSResourceSession.useQuery = origUseQuery;
 }
 return true;
 """)["result"] is True

@@ -5,7 +5,9 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from core.services.scheduler.calendar.service import CalendarService
+from core.services.scheduler.calendar.engine import CalendarEngine
+from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_capture
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
 
 BASE = datetime(2026, 9, 8, 8)
 SCHEMA = (Path(__file__).resolve().parents[2] / "schema.sql").read_text(encoding="utf-8")
@@ -26,7 +28,7 @@ def day_row(day=0, **overrides):
 
 
 @contextmanager
-def native_calendar(rows=(), operator_rows=(), calendar_type=CalendarService):
+def native_calendar(rows=(), operator_rows=()):
     conn = sqlite3.connect(":memory:")
     try:
         conn.row_factory = sqlite3.Row
@@ -47,7 +49,7 @@ def native_calendar(rows=(), operator_rows=(), calendar_type=CalendarService):
         conn.commit()
         conn.execute("PRAGMA query_only = ON")
         before = conn.total_changes
-        yield calendar_type(conn)
+        yield CalendarEngine(calendar_inputs_from_capture(ProductionFactsCapture(conn)))
         assert conn.total_changes == before, "Scheduling wrote to the calendar fixture"
     finally:
         conn.close()

@@ -16,9 +16,10 @@ from core.services.scheduler.contracts.external_context import (
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from data.repositories.batch_operation_repo import BatchOperationRepository
 
-from .facts import BatchFacts, index_relations, require_unreferenced
+from .facts import index_relations, require_unreferenced
 from .projection import BatchProjection
 from .resource_choices import BatchResourceFacts
+from .scope import BatchFactScope
 from .template_preview import template_after, template_changes
 from .template_validation import template_status
 
@@ -33,10 +34,8 @@ class BatchOperationChange:
 
 
 class WorkbenchBatchOperationService:
-    def __init__(self, conn, logger=None, reader=None):
+    def __init__(self, conn):
         self.conn = conn
-        self.logger = logger
-        self.reader = reader if reader is not None else BatchFacts(conn, logger)
 
     @staticmethod
     def normalize_sync(payload):
@@ -54,8 +53,9 @@ class WorkbenchBatchOperationService:
             raise WorkbenchCommandRejected("constraint_conflict", "\n".join(row["message"] for row in status["diagnostics"]))
         return rows
 
-    def sync_preview_normalized(self, ref):
-        batch, facts = self.reader.batch(ref), self.reader.load()
+    def sync_preview_normalized(self, scope: BatchFactScope, ref):
+        facts = scope.load()
+        batch = scope.batch(ref)
         projection = BatchProjection(facts)
         rows = self._prepare_sync(batch, facts, relations=projection.relations[batch["batch_id"]], resources=projection.resources)
         before = projection.entity(batch)
@@ -64,10 +64,11 @@ class WorkbenchBatchOperationService:
                 "before": before["operations"], "after": after, **template_changes(before["operations"], after),
                 "warnings": [], "commit_policy": "atomic"}
 
-    def sync_normalized(self, ref):
+    def sync_normalized(self, scope: BatchFactScope, ref):
         if not self.conn.in_transaction:
             raise RuntimeError("工序同步必须由工作台命令事务持有。")
-        batch, facts = self.reader.batch(ref), self.reader.load()
+        facts = scope.load()
+        batch = scope.batch(ref)
         rows = self._prepare_sync(batch, facts, relations=index_relations(facts)[batch["batch_id"]], resources=BatchResourceFacts(facts))
         writer = TemplateLineageWriter(self.conn)
         prepared = writer.prepare_templates(rows, facts=facts)
@@ -76,11 +77,12 @@ class WorkbenchBatchOperationService:
             writer.copy_prepared_template(batch["batch_id"], row)
         return WorkbenchCommandOutcome("committed", {"entity_ref": ref, "business_code": batch["batch_id"], "operation_count": len(rows)})
 
-    def prepare_update(self, ref, payload):
+    def prepare_update(self, scope: BatchFactScope, ref, payload):
         """The command's normalized input and current facts produce the actual field changes."""
         if not self.conn.in_transaction:
             raise RuntimeError("工序编辑必须由工作台命令事务持有。")
-        batch, facts = self.reader.batch(ref), self.reader.load()
+        facts = scope.load()
+        batch = scope.batch(ref)
         relations = index_relations(facts)[batch["batch_id"]]
         require_unreferenced(relations)
         row = next((row for row in relations["operations"]
@@ -88,7 +90,7 @@ class WorkbenchBatchOperationService:
         if row is None:
             raise WorkbenchCommandRejected("entity_not_found", "工序已失效或不属于该批次，不能按序号猜测替换。", 404)
         internal = row["source"] == "internal"
-        changes = self._changes(row, payload["fields"], internal)
+        changes = self._changes(scope, row, payload["fields"], internal)
         actual_changes = {key: value for key, value in changes.items() if row[key] != value}
         desired = {**row, **actual_changes}
         self._validate(facts, batch, desired, internal, actual_changes, relations["operations"])
@@ -102,7 +104,8 @@ class WorkbenchBatchOperationService:
         return WorkbenchCommandOutcome("committed" if change.fields else "unchanged", {"entity_ref": change.entity_ref,
                                        "business_code": change.business_code, "operation_ref": change.operation_ref})
 
-    def _changes(self, row, fields, internal):
+    @staticmethod
+    def _changes(scope: BatchFactScope, row, fields, internal):
         allowed = ("machine_ref", "operator_ref", "setup_hours", "unit_hours") if internal else ("supplier_ref", "external_days")
         if row["source"] not in OPERATION_SOURCES or set(fields) - set(allowed):
             raise WorkbenchCommandRejected("invalid_input", "要改的项和这道工序的归属对不上：自制和外协能改的内容不一样。", 422)
@@ -110,7 +113,7 @@ class WorkbenchBatchOperationService:
         for key, value in fields.items():
             if key.endswith("_ref"):
                 kind = key[:-4]
-                changes[kind + "_id"] = self.reader.resolve(value, kind).entity_key if value is not None else None
+                changes[kind + "_id"] = scope.resolve(value, kind).entity_key if value is not None else None
             else:
                 changes["ext_days" if key == "external_days" else key] = value
         return changes

@@ -38,14 +38,14 @@ def adopted_versions(trial_case):
 
 def _workspace(case, plan):
     reader = WorkbenchPlanQueryService(case.conn)
-    with reader.read_snapshot():
-        return reader.workspace(PlanReadScope(plan["plan_ref"]))
+    with reader.read_snapshot() as context:
+        return reader.workspace(context, PlanReadScope(plan["plan_ref"]))
 
 
 def _baseline(case, plan):
     reader = WorkbenchPlanQueryService(case.conn)
-    with reader.read_snapshot():
-        return reader.baseline_comparison(PlanReadScope(plan["plan_ref"]))
+    with reader.read_snapshot() as context:
+        return reader.baseline_comparison(context, PlanReadScope(plan["plan_ref"]))
 
 
 def _track_sources(monkeypatch):
@@ -63,8 +63,7 @@ def _track_sources(monkeypatch):
 def test_candidate_and_trial_adoption_reuse_frozen_inputs_without_optimizer_preparation(trial_case, monkeypatch):
     from core.services.scheduler.resource_pool_builder import CapturedResourceFacts
     from core.services.scheduler.run import schedule_input_runtime_support as runtime_support
-    from core.services.workbench.run import input as run_input
-    from core.services.workbench.run import input_runtime
+    from core.services.workbench.run import input_effort, input_runtime
     from core.services.workbench.run.candidate_adoption_validation import validate_adoption
     from tests.workbench.run_candidate_adoption_support import candidate
     from tests.workbench.trial_adoption_support import saved_scenario
@@ -87,15 +86,13 @@ def test_candidate_and_trial_adoption_reuse_frozen_inputs_without_optimizer_prep
     before, changes = snapshot(case.conn), case.conn.total_changes
     optimizer = (
         (input_runtime, "_load_runtime_resource_inputs", input_runtime._load_runtime_resource_inputs),
-        (run_input, "build_operation_efforts", run_input.build_operation_efforts),
-        (run_input, "saved_seed_efforts", run_input.saved_seed_efforts),
+        (input_effort, "build_operation_efforts", input_effort.build_operation_efforts),
+        (input_effort, "saved_seed_efforts", input_effort.saved_seed_efforts),
     )
     checks = (
         (input_runtime, "_freeze_hold_window", input_runtime._freeze_hold_window),
-        (input_runtime, "_validate_calendar_row", input_runtime._validate_calendar_row),
         (input_runtime, "_validate_downtime_row", input_runtime._validate_downtime_row),
         (runtime_support, "_resolve_algo_ops_to_schedule", runtime_support._resolve_algo_ops_to_schedule),
-        (runtime_support, "_ensure_internal_runtime_hours", runtime_support._ensure_internal_runtime_hours),
     )
     calls = {}
     for module, name, original in optimizer + checks:
@@ -113,8 +110,8 @@ def test_candidate_and_trial_adoption_reuse_frozen_inputs_without_optimizer_prep
     monkeypatch.setattr(CapturedResourceFacts, "__init__", count_resource_init)
 
     evidence = validate_adoption(case.conn, ref)
-    assert evidence.prepared.frozen_op_ids == {case.op_id}
-    rows = {row.op_id: row for row in evidence.payload.schedule_rows}
+    assert evidence.prepared.seeds.frozen_op_ids == {case.op_id}
+    rows = {row.op_id: row for row in evidence.outcome.validated_payload.schedule_rows}
     assert rows[case.op_id].start_time == datetime(2026, 9, 9, 8)
     assert rows[case.op_id].end_time == datetime(2026, 9, 9, 11)
     assert rows[successor].start_time >= rows[case.op_id].end_time
@@ -128,7 +125,8 @@ def test_candidate_and_trial_adoption_reuse_frozen_inputs_without_optimizer_prep
     preview = trial_adoption_service(case.conn).preview(saved["scenario_ref"])
     assert preview["validation"]["can_adopt"], preview
     for _, name, _ in checks:
-        assert calls[name].call_count == 2, name
+        expected = 1 if name == "_validate_downtime_row" else 2
+        assert calls[name].call_count == expected, name
     assert len(resource_inits) == 1
     assert qualifications.call_count > candidate_qualifications
     for _, name, _ in optimizer:

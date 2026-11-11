@@ -89,12 +89,12 @@ def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_ca
     before = case.conn.total_changes
     resource_map_calls, original_maps = [], report_facts.WorkbenchReportFacts._resource_maps
 
-    def captured_resources(reader, rows):
+    def captured_resources(plan_context, rows):
         resource_map_calls.append(rows)
-        return original_maps(reader, rows)
+        return original_maps(plan_context, rows)
 
     with monkeypatch.context() as patch:
-        patch.setattr(report_facts.WorkbenchReportFacts, '_resource_maps', captured_resources)
+        patch.setattr(report_facts.WorkbenchReportFacts, '_resource_maps', staticmethod(captured_resources))
         first = client.get(url, query_string=dates)
     assert len(resource_map_calls) == 1
     assert first.status_code == 200, first.get_data(as_text=True)
@@ -145,13 +145,11 @@ def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_ca
     assert case.conn.total_changes == before
     export_scope['snapshot_ref'] = client.get(url, query_string=dates).get_json()['meta']['snapshot_ref']
     reader = plan_queries.WorkbenchPlanQueryService(case.conn)
-    with reader.read_snapshot():
-        context = PlanReadContext(case.conn, references=reader.references, entities=reader.entities)
-        with context.read_scope():
-            _, selected, _ = context.selected(case.plan_ref(2))
-            assert selected.can_view
-            with pytest.raises(WorkbenchCommandRejected) as rejection:
-                reader.workspace(PlanReadScope(case.plan_ref(2)), context=context)
+    with reader.read_snapshot() as context:
+        _, selected, _ = context.selected(case.plan_ref(2))
+        assert selected.can_view
+        with pytest.raises(WorkbenchCommandRejected) as rejection:
+            reader.workspace(context, PlanReadScope(case.plan_ref(2)))
     assert rejection.value.code == 'query_too_large'
     case.conn.execute("UPDATE Schedule SET end_time='2026-09-09 23:59:59.234567' WHERE version=2 AND op_id=?", (case.op_id,))
     case.conn.commit()
@@ -159,8 +157,8 @@ def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_ca
     assert stale.status_code == 409 and stale.get_json()['error']['code'] == 'snapshot_stale'
     reused = report_facts.WorkbenchReportFacts(case.conn)
     scope = ReportScope(**dates)
-    with reused.read_snapshot():
-        assert len(reused.read(scope)['rows']) == 1
+    with reused.read_snapshot() as plan_context:
+        assert len(reused.read(plan_context, scope, bind_snapshot=lambda _scope, _fp: None)['rows']) == 1
 
 def test_workbench_report_restores_second_page_once_and_keeps_export_binding(ledger_case, monkeypatch, record_property):
     from flask import Blueprint, Flask, g
@@ -183,9 +181,9 @@ def test_workbench_report_restores_second_page_once_and_keeps_export_binding(led
 
     original, calls = WorkbenchReportFacts.read, []
 
-    def captured(reader, scope, **kwargs):
+    def captured(reader, plan_context, scope, **kwargs):
         calls.append(scope)
-        return original(reader, scope, **kwargs)
+        return original(reader, plan_context, scope, **kwargs)
 
     client, url, query = app.test_client(), '/api/workbench/v1/analytics', {'page': 2, 'size': 10}
     before = case.conn.total_changes
@@ -250,9 +248,9 @@ def test_workbench_report_restores_second_page_once_and_keeps_export_binding(led
     case.conn.commit()
     catalog_calls, catalog_read = [], reports_catalog.catalog_facts
 
-    def captured_catalog(reader, scope, **kwargs):
+    def captured_catalog(reader, plan_context, scope, **kwargs):
         catalog_calls.append(scope)
-        return catalog_read(reader, scope, **kwargs)
+        return catalog_read(reader, plan_context, scope, **kwargs)
 
     catalog_url = '/api/workbench/v1/reports/utilization'
     from contextlib import contextmanager

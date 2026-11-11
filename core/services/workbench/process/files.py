@@ -43,15 +43,18 @@ class WorkbenchProcessFileService:
         decoded, notices = prepared.parsed()
         reader = (WorkbenchProcessQueryService(self.conn, self.logger, part_ref=target_ref)
                   if target_ref is not None else self.reader)
-        with reader.read_snapshot() as state:
+        with reader.read_snapshot() as scope:
             if target_ref is not None:
-                reader.identity_of(target_ref)
+                scope.identity_of(target_ref)
             domain = self._domain(kind)
-            facts = reader.raw_facts() if kind == "route" else reader.facts()
-            rows, extra = domain.preview_rows(decoded, facts, target_ref)
+            rows, extra = (
+                domain.preview_rows(decoded, scope, target_ref)
+                if kind == "route"
+                else domain.preview_rows(decoded, scope.facts(), target_ref)
+            )
             for row in rows:
                 row.setdefault("route_summary", None)
-            request.update(state=state, acknowledgements={
+            request.update(state=scope.state_fingerprint(), acknowledgements={
                 "discard_group_refs": sorted(group["ref"] for group in extra["affected_groups"]),
                 "zero_review_required": extra["zero_review_required"]})
             return AtomicActionPreview.build(file_operation(kind), request, rows, notices, source=prepared), extra, domain, rows

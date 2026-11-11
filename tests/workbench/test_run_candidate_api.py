@@ -49,8 +49,8 @@ def test_full_app_explicit_registration_only_temporary_connections(candidate_cas
         return original(path, *args, **kwargs)
 
     monkeypatch.setattr(sqlite3, "connect", guarded)
-    from web.bootstrap.entrypoint import create_app_with_mode
-    app = create_app_with_mode("default")
+    from web.bootstrap.entrypoint import create_app
+    app = create_app()
     bp = Blueprint("bl_full_app_candidates", __name__)
     register_run_candidate_routes(bp)
     app.register_blueprint(bp)

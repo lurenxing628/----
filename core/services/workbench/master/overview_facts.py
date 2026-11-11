@@ -1,8 +1,12 @@
 """SELECT-only raw collections; unavailable sources never become empty domains."""
 
+from __future__ import annotations
+
 import math
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import date, datetime
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_metadata_schema import RESOURCE_TABLES
@@ -44,66 +48,50 @@ def plain(value):
     return value
 
 
-class MasterOverviewFacts:
-    def __init__(self, conn):
-        self.conn = conn
-        self.repo = WorkbenchMasterQueryRepository(conn)
-        self.tables = {}
-        self.workflow = None
-        self.gaps = []
-        self.identities = {}
-        self._indexes = {}
-        self._groups = {}
-        self.material_day = None
-        self.present = set()
-        self.snapshot_state = None
-        self.template_source_facts = None
+@dataclass
+class MasterOverviewFactScope:
+    conn: Any
+    repo: WorkbenchMasterQueryRepository
+    as_of: str
+    material_day: str
+    present: Set[str]
+    snapshot_state: Dict[str, Any]
+    tables: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
+    workflow: Optional[Dict[str, Any]] = None
+    gaps: List[Dict[str, str]] = field(default_factory=list)
+    identities: Dict[Tuple[str, str], Dict[str, Any]] = field(default_factory=dict)
+    _indexes: Dict[Tuple[str, str], Dict[Any, Dict[str, Any]]] = field(default_factory=dict)
+    _groups: Dict[Tuple[str, str], Dict[Any, List[Dict[str, Any]]]] = field(default_factory=dict)
+    template_source_facts: Optional[TemplateSourceFacts] = None
 
-    def available(self, *tables):
+    def available(self, *tables: str) -> bool:
         return all(table in self.tables for table in tables)
 
-    def rows(self, table):
+    def rows(self, table: str) -> List[Dict[str, Any]]:
         return self.tables.get(table, [])
 
-    def index(self, table, key):
+    def index(self, table: str, key: str) -> Dict[Any, Dict[str, Any]]:
         cache_key = (table, key)
         if cache_key not in self._indexes:
             self._indexes[cache_key] = {row[key]: row for row in self.rows(table)}
         return self._indexes[cache_key]
 
-    def grouped(self, table, key):
+    def grouped(self, table: str, key: str) -> Dict[Any, List[Dict[str, Any]]]:
         cache_key = (table, key)
         if cache_key not in self._groups:
-            groups = {}
+            groups: Dict[Any, List[Dict[str, Any]]] = {}
             for row in self.rows(table):
                 groups.setdefault(row[key], []).append(row)
             self._groups[cache_key] = groups
         return self._groups[cache_key]
 
-    def ref(self, kind, key):
+    def ref(self, kind: str, key: Any) -> str:
         row = self.identities.get((kind, str(plain(key))))
         if row is None or not public_ref(row["ref"]):
             raise WorkbenchCommandRejected("storage_failure", "基础资料缺少有效的系统编号，请联系维护人员核对资料。", 500)
         return row["ref"]
 
-    def read_snapshot_state(self):
-        self.material_day = date.today().isoformat()
-        self.present = self.repo.present_tables()
-        revisions = (
-            read_source_revisions(self.conn, MASTER_OVERVIEW_SOURCE_KEYS)
-            if "WorkbenchSourceRevisions" in self.present
-            else {}
-        )
-        self.snapshot_state = {
-            "revisions": revisions,
-            "material_day": self.material_day,
-            "present": sorted(self.present),
-        }
-        return self.snapshot_state
-
-    def _load(self):
-        self.identities, self._indexes, self._groups = {}, {}, {}
-        self.gaps, self.workflow, self.template_source_facts = [], None, None
+    def _load(self) -> None:
         self.tables = self.repo.overview_tables(self.present)
         for name in TABLES:
             if name not in self.present:
@@ -144,12 +132,38 @@ class MasterOverviewFacts:
             self.gaps.append({"code": "workflow_unavailable", "source": "process.workflow_snapshot",
                               "message": "工艺确认的来源读不完整，已有路线、归属或 0 工时都不能当成人工确认过。"})
 
+
+class MasterOverviewFacts:
+    def __init__(self, conn):
+        self.conn = conn
+        self.repo = WorkbenchMasterQueryRepository(conn)
+
     @contextmanager
-    def read_snapshot(self, *, bind_snapshot=None):
+    def read_snapshot(self, *, bind_snapshot=None) -> Iterator[MasterOverviewFactScope]:
         with TransactionManager(self.conn).transaction():
-            as_of = datetime.now().isoformat(timespec="seconds")
-            state = self.read_snapshot_state()
+            now = datetime.now()
+            as_of = now.isoformat(timespec="seconds")
+            material_day = now.date().isoformat()
+            present = self.repo.present_tables()
+            revisions = (
+                read_source_revisions(self.conn, MASTER_OVERVIEW_SOURCE_KEYS)
+                if "WorkbenchSourceRevisions" in present
+                else {}
+            )
+            snapshot_state = {
+                "revisions": revisions,
+                "material_day": material_day,
+                "present": sorted(present),
+            }
             if bind_snapshot is not None:
-                bind_snapshot(state, as_of)
-            self._load()
-            yield as_of
+                bind_snapshot(snapshot_state, as_of)
+            scope = MasterOverviewFactScope(
+                conn=self.conn,
+                repo=self.repo,
+                as_of=as_of,
+                material_day=material_day,
+                present=present,
+                snapshot_state=snapshot_state,
+            )
+            scope._load()
+            yield scope

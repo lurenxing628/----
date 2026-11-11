@@ -26,7 +26,11 @@ class WorkbenchOutsourcingCommandService:
             header = self.reader.header(ref)
             previous = self.reader.latest(ref)
         target = header["target"] if header else payload["target"]
-        sources = self.reader.sources.capture([target], include_routes=header is None)
+        sources = self.reader.sources.capture(
+            [target],
+            include_routes=header is None,
+            revision=self.reader.sources.repo.plan_identity_revision(),
+        )
         source = sources.load(target, new_registration=header is None)
         if header and source["identity"] != header["identity"]:
             reject("原登记的工序或所属批次已变化，请刷新后重新登记。", "identity_drift", 409)

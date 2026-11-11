@@ -45,9 +45,13 @@ def process_facets(column, selection=False):
     if (selection or number > 1) and not token:
         raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as state:
-        snapshot = bind_read_snapshot(process_facet_scope(query, column, search, size), state, token)
-        table = reader.table()
+    with reader.read_snapshot() as fact_scope:
+        snapshot = bind_read_snapshot(
+            process_facet_scope(query, column, search, size),
+            fact_scope.state_fingerprint(),
+            token,
+        )
+        table = fact_scope.table()
         data = table.facet_selection(query, column, search) if selection else table.facets(query, column, search, number, size)
     return query_success(data, snapshot)
 

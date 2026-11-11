@@ -4,6 +4,7 @@ from collections import defaultdict
 
 from core.models.workbench_execution_input import MAX_OPERATIONS, reject
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
+from core.services.execution.ledger_reader import project_loaded_facts
 from core.services.scheduler.contracts.external_context import context_group_key, require_context
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.stored_algo_inputs import stored_batch_operation
@@ -53,9 +54,9 @@ def _reachable_from(graph, pending):
 
 
 class ReportDependencies:
-    def __init__(self, ledger, projections):
-        self.ledger = ledger
-        self.repo = WorkbenchReportValidationRepository(ledger.conn)
+    def __init__(self, ledger_scope, projections):
+        self.ledger_scope = ledger_scope
+        self.repo = WorkbenchReportValidationRepository(ledger_scope.conn)
         self.routes = {}
         self.projected = {row.operation_ref: row for row in projections}
         self.merged = {}
@@ -86,7 +87,7 @@ class ReportDependencies:
         external = {row["id"]: row for row in rows if row["source"] == "external"}
         if not external:
             return
-        for context in BatchExternalContextRepository(self.ledger.conn).for_operations(external):
+        for context in BatchExternalContextRepository(self.ledger_scope.conn).for_operations(external):
             if context["merge_mode"] != "merged":
                 continue
             op = external[context["operation_id"]]
@@ -150,9 +151,9 @@ class ReportDependencies:
         missing = list(dict.fromkeys(ref for ref in refs if ref not in self.projected))
         for start in range(0, len(missing), MAX_OPERATIONS):
             # Preview/command already owns the snapshot; dependency reads do not issue edit tokens.
-            rows = self.ledger.project_loaded(
-                self.ledger.load(missing[start:start + MAX_OPERATIONS]),
-                contexts=False,
+            reader = self.ledger_scope.reader
+            rows = project_loaded_facts(
+                reader.load(self.ledger_scope, missing[start:start + MAX_OPERATIONS]),
                 include_history=False,
             )
             self.projected.update((row.operation_ref, row) for row in rows)

@@ -13,7 +13,9 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_batch_material import normalize_material_changes
 from core.models.workbench_plan_scope import PlanReadScope
 from core.models.workbench_run_candidate import RunCandidateReadScope
+from core.services.workbench.batch.facts import BatchFacts
 from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
+from core.services.workbench.batch.scope import BatchFactScope
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from core.services.workbench.facts.delivery_projection import (
     delivery_batch_delta,
@@ -137,8 +139,8 @@ def test_unspecified_candidate_analysis_and_adopted_plan_share_projection(candid
     result = adopter.adopt(candidate, preview["write_context"]["write_token"], "delivery-unspecified-adopt", INTENT)
     plan_ref = result["data"]["official_plan"]["plan_ref"]
     reader = WorkbenchPlanQueryService(case.conn)
-    with reader.read_snapshot():
-        plan, _ = reader.workspace(PlanReadScope(plan_ref))
+    with reader.read_snapshot() as context:
+        plan, _ = reader.workspace(context, PlanReadScope(plan_ref))
     projection = plan["projections"]["delivery_risks"]
     assert projection["state"] == projection["summary"]["state"] == "not_applicable"
     assert projection["items"][0]["due_state"] == "unspecified"
@@ -179,7 +181,9 @@ def test_stage_adoption_keeps_deferred_operation_evidence(candidate_case):
     with TransactionManager(case.conn).transaction():
         for batch_id, operation_id in (("B1", second), ("B2", third)):
             operation_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1", (str(operation_id),)).fetchone()[0]
-            WorkbenchBatchMaterialService(case.conn).apply_normalized(case.ref("batch", batch_id), normalize_material_changes({"removed_keys": [], "rows": [{
+            batch_ref = case.ref("batch", batch_id)
+            scope = BatchFactScope(BatchFacts(case.conn), command=True, mode="single_instance", target_ref=batch_ref)
+            WorkbenchBatchMaterialService(case.conn).apply_normalized(scope, batch_ref, normalize_material_changes({"removed_keys": [], "rows": [{
                 "row_key": None, "material_ref": case.ref("material", "STEEL"), "required_quantity": 3,
                 "available_quantity": 0, "operation_ref": operation_ref, "arrivals": []}]}))
     _, refs = compute(case, case.settings(material_strategy="stage", batch_refs=[case.ref("batch", "B1"), case.ref("batch", "B2")]))
@@ -196,8 +200,8 @@ def test_stage_adoption_keeps_deferred_operation_evidence(candidate_case):
     audit = json.loads(case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (plan["version"],)).fetchone()[0])
     assert audit["deferred_operation_ids"] == [second, third]
     reader = WorkbenchPlanQueryService(case.conn)
-    with reader.read_snapshot():
-        data, _ = reader.workspace(PlanReadScope(plan["plan_ref"]))
+    with reader.read_snapshot() as context:
+        data, _ = reader.workspace(context, PlanReadScope(plan["plan_ref"]))
     items = data["projections"]["delivery_risks"]["items"]
     assert {batch["batch_id"] for batch in items} == {"B1", "B2"}
     assert all(batch["completion_state"] == "deferred" and batch["risk"] == "unknown" for batch in items)
@@ -213,8 +217,8 @@ def test_stage_adoption_keeps_deferred_operation_evidence(candidate_case):
     audit.pop("deferred_operation_ids")
     case.conn.execute("UPDATE ScheduleHistory SET result_summary=? WHERE version=?", (json.dumps(audit), plan["version"]))
     case.conn.commit()
-    with reader.read_snapshot():
-        data, _ = reader.workspace(PlanReadScope(plan["plan_ref"]))
+    with reader.read_snapshot() as context:
+        data, _ = reader.workspace(context, PlanReadScope(plan["plan_ref"]))
     assert [batch["batch_id"] for batch in data["projections"]["delivery_risks"]["items"]] == ["B1"]
     assert data["projections"]["delivery_risks"]["items"][0]["completion_state"] == "incomplete"
 
@@ -233,8 +237,8 @@ def test_plan_workspace_delivery_marks_blob_and_non_utf8_due_dates_invalid(candi
     for raw_due in (b"2026-10-13", b"\xff\xfe", "   ", "2026-10-13 12:30:00"):
         case.conn.execute("UPDATE Batches SET due_date=? WHERE batch_id='B1'", (raw_due,))
         case.conn.commit()
-        with reader.read_snapshot():
-            plan, _ = reader.workspace(PlanReadScope(plan_ref))
+        with reader.read_snapshot() as context:
+            plan, _ = reader.workspace(context, PlanReadScope(plan_ref))
         projection = plan["projections"]["delivery_risks"]
         item = projection["items"][0]
         assert (item["due_date"], item["due_state"], item["due_issue"], item["risk"], item["is_overdue"]) == (

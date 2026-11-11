@@ -9,10 +9,12 @@ from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F
 
 
 def _signature(outcome):
-    summary = outcome.orchestration.result_summary_obj
+    summary = outcome.result_summary_obj
     algo = summary["algo"]
+    selected_key = outcome.candidate_comparison.selection.selected_candidate_key
+    selected_payload = outcome.candidate_outcomes[selected_key].validated_payload
     return {
-        "rows": [asdict(row) for row in outcome.orchestration.validated_schedule_payload.schedule_rows],
+        "rows": [asdict(row) for row in selected_payload.schedule_rows],
         "counts": summary["counts"],
         "selected_batch_ids": summary["selected_batch_ids"],
         "freeze_window": algo["freeze_window"],
@@ -37,9 +39,9 @@ def test_graph_modes_preserve_current_candidate_contract(run_case, frozen):
 
     assert _signature(outcomes["report"]) == _signature(outcomes["off"])
     assert _signature(outcomes["on"]) == _signature(outcomes["off"])
-    assert "graph_analysis" not in outcomes["off"].orchestration.result_summary_obj["algo"]
+    assert "graph_analysis" not in outcomes["off"].result_summary_obj["algo"]
     for mode in ("report", "on"):
-        summary = outcomes[mode].orchestration.result_summary_obj
+        summary = outcomes[mode].result_summary_obj
         graph = summary["algo"]["graph_analysis"]
         assert graph["status"] == "available"
         assert graph["mode"] == mode
@@ -49,7 +51,7 @@ def test_graph_modes_preserve_current_candidate_contract(run_case, frozen):
         assert graph["reschedulable_unfrozen_op_count"] == 2 - int(frozen)
         assert graph["frozen_node_count"] == int(frozen)
         assert graph["seed_result_count"] == int(frozen)
-    diagnostics = outcomes["report"].orchestration.result_summary_obj["diagnostics"]["graph_analysis"]
+    diagnostics = outcomes["report"].result_summary_obj["diagnostics"]["graph_analysis"]
     assert diagnostics["node_metrics_sample"] == []
     assert diagnostics["node_metrics_count"] == 0
     assert diagnostics["node_metrics_status"] == "skipped_basic_report"
@@ -185,7 +187,7 @@ def test_piece_run_with_zero_graph_weights_disables_score_without_missing_node_m
     )
     case.conn.commit()
     outcome = compute_run(case.conn, case.settings("B1"), case.projections())
-    summary = outcome.orchestration.result_summary_obj
+    summary = outcome.result_summary_obj
     graph = summary["algo"]["graph_analysis"]
     diagnostics = summary["diagnostics"]["graph_analysis"]
     assert graph["status"] == "available"

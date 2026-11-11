@@ -3,7 +3,6 @@
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_commands import process_number
-from core.models.workbench_process_file import INT64_MAX
 
 from .part_actions_facts import plain_part_action_facts as _plain
 from .projection import public_sequence
@@ -11,16 +10,11 @@ from .projection import public_sequence
 HOURS_FIELDS = ("setup_hours", "unit_hours", "external_days", "group_total_days")
 
 
-def supplied_values(values):
-    # The codec omits empty cells. Also retain this contract for direct callers.
-    return {key: value for key, value in values.items() if value != ""}
-
-
 def row_key(values):
     code, sequence = values.get("business_code"), values.get("sequence")
     if type(code) is not str or not code.strip():
         raise ValidationError("图号必须填文本，不能留空。", field="business_code")
-    if type(sequence) is not int or not 1 <= sequence <= INT64_MAX:
+    if sequence is None:
         raise ValidationError("工序号必须是正整数。", field="sequence")
     return code, sequence
 
@@ -44,11 +38,7 @@ def assertions(values, operation, group):
     for field, previous in original.items():
         if field not in values:
             continue
-        value = values[field]
-        if field in ("group_start", "group_end") and value is not None:
-            if type(value) is not int or not 1 <= value <= INT64_MAX:
-                raise ValidationError("外协组起止序必须是正整数。", field=field)
-        if value != previous:
+        if values[field] != previous:
             raise ValidationError("这一列只用来核对原记录，改不了归属、工种或外协组范围。", field=field)
 
 

@@ -151,10 +151,10 @@ class WorkbenchOutsourcingSourceService:
     def __init__(self, conn, *, repo=None):
         self.repo = WorkbenchOutsourcingSourceRepository(conn) if repo is None else repo
 
-    def capture(self, targets, *, entities=(), include_routes=False):
+    def capture(self, targets, *, entities=(), include_routes=False, revision: int):
         """Resolve the same source rules from facts owned by this read snapshot."""
         return WorkbenchOutsourcingSourceService(None, repo=self.repo.capture(
-            targets, entities=entities, include_routes=include_routes))
+            targets, entities=entities, include_routes=include_routes, revision=revision))
 
     def memberships(self, operation_refs):
         """Existing receipt memberships of these operations, from this snapshot's captured facts."""
@@ -231,7 +231,7 @@ class WorkbenchOutsourcingSourceService:
         target,
         *,
         new_registration: bool = ...,
-        projection: str,
+        projection: Literal["full", "target_row", "identity", "deferred_scoped"] = ...,
     ) -> Union[Dict[str, Any], AdmittedReceiptSource]:
         ...
 
@@ -240,10 +240,8 @@ class WorkbenchOutsourcingSourceService:
         target,
         *,
         new_registration: bool = False,
-        projection: str = "full",
+        projection: Literal["full", "target_row", "identity", "deferred_scoped"] = "full",
     ) -> Union[Dict[str, Any], AdmittedReceiptSource]:
-        if projection not in ("full", "target_row", "identity", "deferred_scoped"):
-            raise ValueError(f"Unknown outsourcing source projection: {projection!r}")
         facts = self._captured()
         batch = self.entity(target["batch_ref"], "batch")
         supplier = self.entity(target["supplier_ref"], "supplier")

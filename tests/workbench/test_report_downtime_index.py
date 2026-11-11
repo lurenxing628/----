@@ -250,6 +250,7 @@ def test_report_preserves_raw_resource_id_without_stripping_non_empty_whitespace
             }
         ],
         "profiles": [],
+        "shift_profiles": [],
         "patterns": [],
         "machines": [{"machine_id": " M1 ", "status": "active"}],
         "operators": [{"operator_id": " OP1 ", "status": "active"}],
@@ -395,6 +396,7 @@ def test_global_calendar_is_built_lazily_zero_times_for_overridden_operators_and
             personal_row("OP1", "2026-10-17"),
         ],
         "profiles": [],
+        "shift_profiles": [],
         "patterns": [],
         "machines": [{"machine_id": "M-BAD-STATUS", "status": "retired"}],
         "operators": [{"operator_id": "OP1", "status": "active"}],
@@ -434,6 +436,7 @@ def test_global_calendar_is_built_lazily_zero_times_for_overridden_operators_and
             personal_row("OP1", "2026-10-17"),
         ],
         "profiles": [],
+        "shift_profiles": [],
         "patterns": [],
         "machines": [
             {"machine_id": "M1", "status": "active"},

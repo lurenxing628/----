@@ -48,13 +48,3 @@ def main_database_path(conn: sqlite3.Connection) -> str:
         if row[1] == "main":
             return str(row[2])
     raise LookupError("connection has no main database")
-
-
-def connection_snapshot_metadata(conn: sqlite3.Connection) -> Tuple[int, int, int, int]:
-    """(main.data_version, main.schema_version, temp.schema_version, query_only)。"""
-    return (
-        conn.execute("PRAGMA main.data_version").fetchone()[0],
-        conn.execute("PRAGMA main.schema_version").fetchone()[0],
-        conn.execute("PRAGMA temp.schema_version").fetchone()[0],
-        conn.execute("PRAGMA query_only").fetchone()[0],
-    )

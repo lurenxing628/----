@@ -12,7 +12,9 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.material import stage_availability
 from core.services.material.stage_availability import MaterialAvailability, covers_quantity
+from core.services.workbench.batch.facts import BatchFacts
 from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
+from core.services.workbench.batch.scope import BatchFactScope
 from core.services.workbench.run.preflight import PreflightService
 from tests.workbench.run_compute_support import compute_run, prepare_run_input, unchanged
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
@@ -24,7 +26,9 @@ def add_requirement(case, second, arrivals):
     case.conn.commit()
     operation_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1", (str(second),)).fetchone()[0]
     with TransactionManager(case.conn).transaction():
-        WorkbenchBatchMaterialService(case.conn).apply_normalized(case.ref("batch", "B1"), normalize_material_changes({"removed_keys": [], "rows": [{
+        batch_ref = case.ref("batch", "B1")
+        scope = BatchFactScope(BatchFacts(case.conn), command=True, mode="single_instance", target_ref=batch_ref)
+        WorkbenchBatchMaterialService(case.conn).apply_normalized(scope, batch_ref, normalize_material_changes({"removed_keys": [], "rows": [{
             "row_key": None, "material_ref": case.ref("material", "STEEL"), "required_quantity": 3,
             "available_quantity": 0, "operation_ref": operation_ref, "arrivals": arrivals}]}))
 
@@ -42,8 +46,8 @@ def test_stage_arrivals_wait_at_use_operation_in_all_real_candidates(run_case):
     settings = case.settings(material_strategy="stage")
     result = unchanged(case, lambda: compute_run(case.conn, settings, case.projections()))
     assert result.state == "complete"
-    for candidate in result.candidate_payloads.values():
-        rows = {row.op_id: row for row in candidate.schedule_rows}
+    for outcome in result.candidate_outcomes.values():
+        rows = {row.op_id: row for row in outcome.validated_payload.schedule_rows}
         assert rows[case.op_id].start_time == datetime(2026, 9, 9, 8, 30)
         assert rows[second].start_time == datetime(2026, 9, 11, 8, 30)
     strict = prepare_run_input(case.conn, case.settings(material_strategy="strict"), case.projections())

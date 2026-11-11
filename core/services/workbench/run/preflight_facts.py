@@ -1,10 +1,11 @@
 """Raw SQLite facts and complete content bound to an in-process read snapshot."""
 
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Iterator, Optional
 
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.execution.ledger_reader import ExecutionLedgerReadScope
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.source_revisions import PREFLIGHT_SOURCE_KEYS, read_source_revisions
@@ -18,67 +19,67 @@ class PreflightFacts:
     config_snapshot: Optional["ScheduleConfigSnapshot"]
     config_error: Optional["ValidationError"]
 
-    def __init__(self, conn, *, capture=None):
+    def __init__(self, conn, *, ledger: ExecutionLedgerReadScope, capture=None):
         self.conn = conn
-        self._shared_capture = capture
-        self.capture: Any = capture
-        self.execution_service = None
-        self.tables = {}
-        self.refs = {}
-        self.operation_refs = {}
+        self.ledger: ExecutionLedgerReadScope = ledger
+        self.capture: Any = capture if capture is not None else ProductionFactsCapture(conn)
+        self._fingerprint: Optional[str] = None
+        self._tables: Any = None
+        self._refs: Any = None
+        self._operation_refs: Any = None
         self.execution_projections = {}
         self.resource_execution = {}
         self.external_groups = {}
         self._checks = None
-        self._calendar = None
+        self._calendars: dict = {}
         self._official_sources, self._source_resolver = {}, None
         self._configuration_ready = False
         self.config_snapshot, self.config_error = None, None
-        self._snapshot_depth = 0
 
-    def _fingerprint(self) -> str:
-        return content_text(["preflight-v2", read_source_revisions(self.conn, PREFLIGHT_SOURCE_KEYS)])
-
+    @classmethod
     @contextmanager
-    def snapshot(self, *, fingerprint=True):
-        if self._snapshot_depth > 0:
-            yield self._fingerprint() if fingerprint else ""
-            return
-        with candidate_read_snapshot(self.conn):
-            capture = self._shared_capture if self._shared_capture is not None else ProductionFactsCapture(self.conn)
-            self.bind_capture(capture)
-            self._snapshot_depth += 1
-            try:
-                with self.execution_snapshot():
-                    yield self._fingerprint() if fingerprint else ""
-            finally:
-                self._snapshot_depth -= 1
-
-    @contextmanager
-    def execution_snapshot(self):
+    def open(cls, conn, *, capture=None) -> Iterator["PreflightFacts"]:
         from core.services.scheduler.execution.execution_ledger_adapter import ledger_read_snapshot
 
-        with ledger_read_snapshot(self.conn, ledger=self.execution_service) as ledger:
-            self.execution_service = ledger
-            self.capture.execution_service = ledger
-            yield ledger
+        with candidate_read_snapshot(conn), ledger_read_snapshot(conn) as ledger:
+            yield cls(conn, ledger=ledger, capture=capture)
 
-    def bind_capture(self, capture):
-        if self.capture is capture and self.tables:
-            return
-        self.execution_projections, self.resource_execution, self.external_groups = {}, {}, {}
-        self._checks = None
-        self._calendar = None
-        self._official_sources, self._source_resolver = {}, None
-        self._configuration_ready = False
-        self.config_snapshot, self.config_error = None, None
-        self.capture = capture
-        self.execution_service = capture.execution_service
-        self.tables = capture.repo.preflight_tables(capture)
-        self.refs = {(row["kind"], row["entity_key"]): row["ref"]
-                     for row in self.tables["WorkbenchEntityRefs"] if row["active"]}
-        self.operation_refs = {int(row["source_key"]): row["ref"] for row in self.tables["WorkbenchPlanSourceRefs"]
-                               if row["kind"] == "operation" and row["active"]}
+    def fingerprint(self) -> str:
+        if self._fingerprint is None:
+            self._fingerprint = content_text(
+                ["preflight-v2", read_source_revisions(self.conn, PREFLIGHT_SOURCE_KEYS)]
+            )
+        return self._fingerprint
+
+    def _ensure_tables(self):
+        if self._tables is None:
+            tables = self.capture.repo.preflight_tables(self.capture)
+            self._tables = tables
+            self._refs = {
+                (row["kind"], row["entity_key"]): row["ref"]
+                for row in tables["WorkbenchEntityRefs"]
+                if row["active"]
+            }
+            self._operation_refs = {
+                int(row["source_key"]): row["ref"]
+                for row in tables["WorkbenchPlanSourceRefs"]
+                if row["kind"] == "operation" and row["active"]
+            }
+
+    @property
+    def tables(self):
+        self._ensure_tables()
+        return self._tables
+
+    @property
+    def refs(self):
+        self._ensure_tables()
+        return self._refs
+
+    @property
+    def operation_refs(self):
+        self._ensure_tables()
+        return self._operation_refs
 
     def selected(self, refs):
         identities = {ref: key for (kind, key), ref in self.refs.items() if kind == "batch"}
@@ -109,12 +110,22 @@ class PreflightFacts:
             self._checks = PreflightChecks(self.tables)
         return self._checks
 
-    def calendar(self):
-        if self._calendar is None:
-            from core.services.scheduler.calendar.service import CalendarService
+    def calendar(self, operator_ids=None):
+        scoped = None if operator_ids is None else frozenset(item for item in operator_ids if item is not None)
+        engine = self._calendars.get(scoped)
+        if engine is None:
+            if scoped is not None:
+                if None in self._calendars:
+                    return self._calendars[None]
+                for existing_scope, existing_engine in self._calendars.items():
+                    if existing_scope is not None and scoped <= existing_scope:
+                        return existing_engine
+            from core.services.scheduler.calendar.engine import CalendarEngine
+            from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_capture
 
-            self._calendar = CalendarService(self.conn, capture=self.capture)
-        return self._calendar
+            inputs = calendar_inputs_from_capture(self.capture, operator_ids=scoped)
+            engine = self._calendars[scoped] = CalendarEngine(inputs)
+        return engine
 
     def configuration(self):
         if not self._configuration_ready:

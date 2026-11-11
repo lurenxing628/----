@@ -4,17 +4,16 @@ from core.errors import ValidationError
 from core.models.workbench_batch_file import COLUMNS
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 
-from .facts import BatchFacts
 from .file_codec import read_batch_file, write_batch_file
 from .file_preview import BatchImportPreview, file_values
+from .scope import BatchFactScope
 from .service import WorkbenchBatchService
 
 
 class WorkbenchBatchFileService:
-    def __init__(self, conn, logger=None, reader=None):
+    def __init__(self, conn, logger=None):
         self.conn = conn
-        self.reader = reader if reader is not None else BatchFacts(conn, logger)
-        self.domain = WorkbenchBatchService(conn, logger, facts=self.reader)
+        self.domain = WorkbenchBatchService(conn, logger)
 
     @staticmethod
     def read(content, mode):
@@ -26,9 +25,9 @@ class WorkbenchBatchFileService:
             raise ValidationError("文件里一行批次数据都没有，不能用空文件清除已有资料。", field="file")
         return parsed, warnings
 
-    def preview(self, mode, upload):
+    def preview(self, scope: BatchFactScope, mode, upload):
         parsed, warnings = upload
-        preview = BatchImportPreview(self.reader.load(), mode)
+        preview = BatchImportPreview(scope.load(), mode)
         rows = [preview.row(row) for row in parsed]
         deleted = preview.deleted()
         can_confirm = not any(row["errors"] for row in rows + deleted)
@@ -36,12 +35,12 @@ class WorkbenchBatchFileService:
                 "rows": rows, "deleted": deleted, "count": len(rows), "commit_policy": "atomic", "can_confirm": can_confirm,
                 "auto_generate_operations": False, "warnings": warnings}
 
-    def apply(self, document):
+    def apply(self, scope: BatchFactScope, document):
         if not self.conn.in_transaction:
             raise RuntimeError("批次文件确认必须由工作台命令事务持有。")
         if document["operation"] != "batch.import_confirm" or not document["can_confirm"]:
             raise WorkbenchCommandRejected("constraint_conflict", "预检里还有不能通过的行，系统一条批次都没有写入。")
-        preparation = self.domain.preparation()
+        preparation = self.domain.preparation(scope)
         deletions = [preparation.prepare("delete", {}, row["entity_ref"]) for row in document["deleted"]]
         changes = [(row, preparation.prepare(row["action"], row["input"], row["entity_ref"]))
                    for row in document["rows"] if row["action"] not in ("skipped", "unchanged")]

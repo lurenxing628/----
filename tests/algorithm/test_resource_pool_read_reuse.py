@@ -5,10 +5,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.models.workbench_run_compute import CandidateRunInputError
+from core.errors import ValidationError
 from core.services.personnel.operator_qualification import OperatorQualificationService
 from core.services.scheduler import resource_pool_builder
-from core.services.workbench.run.input_runtime import downtime_overlap, held_machine_downtimes, runtime_resource_inputs
+from core.services.workbench.run.input import prepare_solver_input
+from core.services.workbench.run.input_runtime import (
+    downtime_overlap,
+    held_machine_downtimes,
+    prepare_solver_resources,
+    runtime_resource_inputs,
+)
 from core.services.workbench.run.preflight import PreflightService
 from core.services.workbench.run.preflight_facts import PreflightFacts
 from tests._support.algo_operations import make_algo_op
@@ -29,9 +35,8 @@ def test_empty_downtime_is_read_once_when_extending_pool(schema_conn):
     meta = {}
     sql = []
     conn.set_trace_callback(sql.append)
-    facts = PreflightFacts(conn)
     try:
-        with facts.snapshot(fingerprint=False):
+        with PreflightFacts.open(conn) as facts:
             runtime = runtime_resource_inputs(facts)
             assert runtime_resource_inputs(facts) is runtime
             assert runtime.resources is facts.capture.resource_facts()
@@ -63,6 +68,25 @@ def test_empty_downtime_is_read_once_when_extending_pool(schema_conn):
 )
 def test_invalid_calendar_periods_reject_runtime_admission_without_polluting_capture(schema_conn, bad_periods):
     conn = schema_conn
+    conn.executemany("INSERT INTO Operators(operator_id, name) VALUES (?, ?)", [("O1", "O1"), ("O2", "O2")])
+    conn.execute(
+        "INSERT INTO OperatorCalendar(operator_id, date, day_type, efficiency, "
+        "allow_normal, allow_urgent, periods_json) "
+        "VALUES ('O2', '2026-10-14', 'workday', 1, 'yes', 'yes', ?)",
+        (bad_periods,),
+    )
+    conn.execute(
+        "INSERT INTO WorkCalendar(date, day_type, efficiency, "
+        "allow_normal, allow_urgent, periods_json) "
+        "VALUES ('2035-01-01', 'workday', 1, 'yes', 'yes', ?)",
+        (bad_periods,),
+    )
+    conn.commit()
+    with PreflightFacts.open(conn) as facts:
+        assert runtime_resource_inputs(facts) is facts.capture.runtime_resources
+        policy = facts.calendar(frozenset({"O1"})).policy_for_datetime(datetime(2026, 10, 14, 9))
+        assert policy.date_str == "2026-10-14"
+
     conn.execute(
         "INSERT INTO WorkCalendar(date, day_type, efficiency, "
         "allow_normal, allow_urgent, periods_json) "
@@ -70,19 +94,15 @@ def test_invalid_calendar_periods_reject_runtime_admission_without_polluting_cap
         (bad_periods,),
     )
     conn.commit()
-    facts = PreflightFacts(conn)
-    with facts.snapshot(fingerprint=False):
-        with pytest.raises(CandidateRunInputError) as exc:
-            runtime_resource_inputs(facts)
-        assert exc.value.reason == "invalid_calendar_shift"
-        assert facts.capture.runtime_resources is None
+    with PreflightFacts.open(conn) as facts:
+        with pytest.raises(ValidationError):
+            facts.calendar().policy_for_datetime(datetime(2026, 10, 14, 9))
         assert facts.capture.decoded_periods == {}
 
 
 def test_runtime_admission_and_calendar_engine_share_decoded_periods_once(schema_conn, monkeypatch):
     from core.models import calendar_periods
     from core.services.scheduler.calendar import engine as engine_module
-    from core.services.workbench.run import input_runtime
 
     conn = schema_conn
     shared_json = calendar_periods.encode_periods([{"start": "08:00", "end": "16:00", "day_offset": 0}])
@@ -100,11 +120,10 @@ def test_runtime_admission_and_calendar_engine_share_decoded_periods_once(schema
         decoded.append(raw)
         return real_decode(raw)
 
-    for module in (calendar_periods, input_runtime, engine_module):
+    for module in (calendar_periods, engine_module):
         monkeypatch.setattr(module, "decode_periods", counted_decode)
 
-    facts = PreflightFacts(conn)
-    with facts.snapshot(fingerprint=False):
+    with PreflightFacts.open(conn) as facts:
         runtime_resource_inputs(facts)
         first_policy = facts.calendar().policy_for_datetime(datetime(2026, 10, 14, 9))
         second_policy = facts.calendar().policy_for_datetime(datetime(2026, 10, 15, 9))
@@ -126,8 +145,7 @@ def test_padded_machine_downtime_stays_on_its_own_machine(schema_conn):
                       "source": "internal", "op_type_name": "T", "op_type_id": "T1", "seed_source": "freeze_window"}
                      for op_id, mid in ((1, " M1 "), (2, "M1")))
     stop = (datetime(2026, 10, 14, 9), datetime(2026, 10, 14, 10))
-    facts = PreflightFacts(conn)
-    with facts.snapshot(fingerprint=False):
+    with PreflightFacts.open(conn) as facts:
         assert runtime_resource_inputs(facts).downtimes == {" M1 ": [stop]}
         assert held_machine_downtimes([plain], facts=facts) == {"M1": []}
         downtimes = held_machine_downtimes([padded, plain], facts=facts)
@@ -180,8 +198,7 @@ def test_multi_work_type_pool_loads_qualifications_once_and_keeps_selection(sche
     conn.set_trace_callback(sql.append)
     meta = {}
     try:
-        facts = PreflightFacts(conn)
-        with facts.snapshot(fingerprint=False):
+        with PreflightFacts.open(conn) as facts:
             resources = runtime_resource_inputs(facts).resources
             resources.validate_fixed(conn, [make_algo_op(op_type_id="OT_B", machine_id="M_A", operator_id="O_SKILLED")])
             for _ in range(2):
@@ -213,8 +230,7 @@ def test_resource_pool_recognizes_chinese_primary_synonyms(schema_conn):
     conn.execute("UPDATE OperatorMachine SET is_primary='主操' WHERE operator_id='O_LEGACY' AND machine_id='M_A'")
     conn.execute("UPDATE OperatorMachine SET is_primary='主' WHERE operator_id='O_LEGACY' AND machine_id='M_B'")
     conn.commit()
-    facts = PreflightFacts(conn)
-    with facts.snapshot(fingerprint=False):
+    with PreflightFacts.open(conn) as facts:
         resources = runtime_resource_inputs(facts).resources
         pool = resource_pool_builder.build_resource_pool(
             cfg=SimpleNamespace(auto_assign_enabled="yes"),
@@ -248,8 +264,8 @@ def test_padded_resource_identities_pass_preflight_and_candidate_input(run_case)
     prepared_fixed = prepare_run_input(conn, fixed_settings, run_case.projections("B1"))
     assert prepared_fixed.operations[0].machine_id == " M1 "
     assert prepared_fixed.operations[0].operator_id == " O1 "
-    assert prepared_fixed.algo_ops_to_schedule[0].machine_id == " M1 "
-    assert prepared_fixed.algo_ops_to_schedule[0].operator_id == " O1 "
+    assert prepared_fixed.seeds.to_schedule[0].machine_id == " M1 "
+    assert prepared_fixed.seeds.to_schedule[0].operator_id == " O1 "
 
     conn.execute("UPDATE BatchOperations SET machine_id=NULL, operator_id=NULL WHERE id=?", (run_case.op_id,))
     conn.commit()
@@ -262,7 +278,8 @@ def test_padded_resource_identities_pass_preflight_and_candidate_input(run_case)
     assert preflight_auto["tasks"][0]["status"] == "auto_assign_required"
 
     prepared_auto = prepare_run_input(conn, auto_settings, run_case.projections("B1"))
-    pool = prepared_auto.resource_pool
+    with conn:
+        pool = prepare_solver_resources(prepared_auto, prepare_solver_input(prepared_auto)).resource_pool
     assert pool is not None
     assert " M1 " in pool["machines_by_op_type"]["T1"]
     assert pool["operators_by_machine"][" M1 "] == [" O1 "]

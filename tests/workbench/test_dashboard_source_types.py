@@ -17,6 +17,7 @@ from tests.workbench.dashboard_support import dashboard_case as dashboard_case  
 ROOT = "/api/workbench/v1/dashboard"
 FRONTEND_READ = r"""
 const fs = require('node:fs'), vm = require('node:vm');
+const { compile } = require('./scripts/workbench/compile.cjs');
 const {payload, query} = JSON.parse(fs.readFileSync(0, 'utf8'));
 // 在 fetch 层打桩：真实后端响应经共享传输层和领域合约的同一条读取链校验。
 const fetch = async () => ({
@@ -24,22 +25,28 @@ const fetch = async () => ({
 });
 const window = {}, context = vm.createContext({window, fetch, location: {origin: 'http://127.0.0.1'}, URL, DOMException,
   AbortController, URLSearchParams, setTimeout, clearTimeout});
-for (const name of ['WorkbenchTerms.js', 'transport.js', 'DashboardContract.js', 'RunCandidateAPI.js',
-                    'ResourceProjectionContract.js', 'DashboardAnalysisAPI.js']) {
-  vm.runInContext(fs.readFileSync('frontend/workbench/app/' + name, 'utf8'), context);
+const files = ['WorkbenchTerms.js', 'shared/network/transport.js', 'DashboardContract.js', 'RunCandidateAPI.js',
+               'DashboardAnalysisAPI.js'];
+for (const out of compile({ sources: files.map(name => ({ path: name, code: fs.readFileSync('frontend/workbench/app/' + name, 'utf8') })) }).outputs) {
+  vm.runInContext(out.code, context, { filename: out.path });
 }
-const reading = query === null ? window.DashboardContract.list({})
-  : window.DashboardAnalysisAPI.read(payload.data.plan.plan_ref, undefined, query);
+const DashboardContract = context.__wbRuntime.getModule('DashboardContract.js');
+const DashboardAnalysisAPI = context.__wbRuntime.getModule('DashboardAnalysisAPI.js');
+const reading = query === null ? DashboardContract.list({})
+  : DashboardAnalysisAPI.read(payload.data.plan.plan_ref, undefined, query);
 reading.then(value => process.stdout.write(JSON.stringify(value.data)))
   .catch(error => { console.error(error); process.exitCode = 1; });
 """
 PLAN_ACCEPT = r"""
 const fs = require('node:fs'), vm = require('node:vm');
+const { compile } = require('./scripts/workbench/compile.cjs');
 const contexts = JSON.parse(fs.readFileSync(0, 'utf8')), window = {}, context = vm.createContext({window});
-for (const name of ['resource-contract.js', 'PlanNavigation.js']) {
-  vm.runInContext(fs.readFileSync('frontend/workbench/app/' + name, 'utf8'), context);
+const files = ['resource-contract.js', 'PlanNavigation.js'];
+for (const out of compile({ sources: files.map(name => ({ path: name, code: fs.readFileSync('frontend/workbench/app/' + name, 'utf8') })) }).outputs) {
+  vm.runInContext(out.code, context, { filename: out.path });
 }
-contexts.forEach(value => window.APSPlanNavigation.accept(value));
+const APSPlanNavigation = context.__wbRuntime.getModule('PlanNavigation.js');
+contexts.forEach(value => APSPlanNavigation.accept(value));
 """
 
 
@@ -117,8 +124,8 @@ def test_risk_navigation_uses_destination_protocols(dashboard_case, monkeypatch)
     assert accepted.returncode == 0, accepted.stdout + accepted.stderr
     # The focus identities are the ones the formal plan workspace itself reads for the same plan.
     reader = WorkbenchPlanQueryService(dashboard_case.conn)
-    with reader.read_snapshot():
-        plan, _ = reader.workspace(PlanReadScope(plan_ref))
+    with reader.read_snapshot() as context:
+        plan, _ = reader.workspace(context, PlanReadScope(plan_ref))
     assert delivery["source"]["batch_ref"] in {row["batch_ref"] for row in plan["projections"]["delivery_risks"]["items"]}
     assert downtime["source"]["task_ref"] in {row["task_ref"] for row in plan["tasks"]}
 

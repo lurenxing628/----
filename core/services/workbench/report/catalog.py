@@ -35,8 +35,10 @@ CATALOG_CONTEXT = {
 }
 
 
-def catalog_facts(reader, scope, *, bind_snapshot=None):
-    _, plan, resolution, span = reader.current_plan_metadata(ReportScope(source=scope.source, plan_ref=scope.plan_ref))
+def catalog_facts(reader, plan_context, scope, *, bind_snapshot):
+    _, plan, resolution, span = reader.current_plan_metadata(
+        plan_context, ReportScope(source=scope.source, plan_ref=scope.plan_ref),
+    )
     scope_updates = {"plan_ref": plan["plan_ref"]}
     if scope.kind != "overdue":
         scope_updates["window_date_from"] = scope.window_date_from or span["start"][:10]
@@ -44,11 +46,10 @@ def catalog_facts(reader, scope, *, bind_snapshot=None):
     scope = replace(scope, **scope_updates)
     fingerprint = {
         "plan_ref": scope.plan_ref,
-        "plan_revision": reader.plans.references.read_revision(),
+        "plan_revision": plan_context.plan_revision,
         "revisions": read_source_revisions(reader.conn, REPORT_CATALOG_SOURCE_KEYS),
     }
-    if bind_snapshot is not None:
-        bind_snapshot(scope.scope(), fingerprint)
+    bind_snapshot(scope.scope(), fingerprint)
     engine = reader.engine
     if scope.kind == "overdue":
         raw = engine._fetch_overdue_base_rows_for_plan(resolution)
@@ -62,7 +63,7 @@ def catalog_facts(reader, scope, *, bind_snapshot=None):
     identities = {}
     for kind, rows in collections:
         keys = {str(row[kind + "_id"]) for row in rows}
-        mapping = reader.plans.entities.active_map(kind, sorted(keys))
+        mapping = plan_context.active_map(kind, sorted(keys))
         if set(mapping) != keys:
             raise WorkbenchCommandRejected("identity_missing", "这张报表里有批次或资源的编号读不到，报表没有生成。请到资料总览核对后再打开。")
         identities[kind] = {key: {"ref": value.ref, "revision": value.revision} for key, value in mapping.items()}

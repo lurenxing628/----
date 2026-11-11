@@ -25,9 +25,15 @@ class CalendarProjection(CalendarEngine):
 
     def __init__(self, rows: Mapping[str, CalendarRow], *, engine: CalendarEngine):
         self._source = engine
+        self._inputs = engine._inputs
+        self.operator_shift_calendar = engine.operator_shift_calendar
+        self.shift_profiles = engine.shift_profiles
+        self.personal_rows = engine.personal_rows
+        self._default_rows = engine._default_rows
+        self._default_facts = engine._default_facts
         self._period_facts = engine._period_facts
         self._decoded_periods = engine._decoded_periods
-        self._rows = rows
+        self.global_rows: Mapping[str, Any] = rows
         self._public_calendar_rows = {}
         self._operator_calendar_rows = {}
         self._public_policy_cache = {}
@@ -35,16 +41,19 @@ class CalendarProjection(CalendarEngine):
         self._policy_operator_keys = {}
         self._segment_cache = {}
         self._working_hours_prefix = {}
+        self._decode_checkpoint_signature = None
 
     def default_period_facts(self) -> Tuple[List[Dict[str, Any]], str]:
-        return self._source.default_period_facts()
+        if self._default_facts is None:
+            self._default_facts = self._source.default_period_facts()
+        return self._default_facts
 
     def with_rows(self, rows: Mapping[str, CalendarRow]) -> CalendarProjection:
         return CalendarProjection(rows, engine=self._source)
 
     def _resolve_calendar_row(self, date_str: str, op_id: Optional[str]) -> Union[WorkCalendar, OperatorCalendar]:
         # 用到哪天才解析哪天：月合计多读的次月 1 日即使存坏了，也只让合计未知，不牵连本月。
-        row = self._rows.get(date_str)
+        row = self.global_rows.get(date_str)
         return (
             (row if isinstance(row, (WorkCalendar, OperatorCalendar)) else WorkCalendar.from_row(row))
             if row is not None
@@ -55,7 +64,9 @@ class CalendarProjection(CalendarEngine):
 def effective_calendar_day(day: str, row: Optional[CalendarRow], *, projection: CalendarProjection) -> Dict[str, Any]:
     # Date-key policy is deliberate: midnight may still belong to yesterday's shift.
     try:
-        if (row is None and day not in projection._rows) or (day in projection._rows and projection._rows[day] is row):
+        if (row is None and day not in projection.global_rows) or (
+            day in projection.global_rows and projection.global_rows[day] is row
+        ):
             engine = projection
         else:
             engine = projection.with_rows({day: row} if row is not None else {})

@@ -1,9 +1,41 @@
 """Public entity fields are explicitly selected from private raw state."""
 
+from typing import Any, Dict, List, Mapping, Tuple
+
 from core.models.calendar_periods import shift_pattern_fields
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_resource_status import public_resource_status
 from core.services.personnel.operator_machine_normalizers import normalize_operator_machine_row
+
+
+def resource_state_referenced(kind: str, state: Mapping[str, Any]) -> bool:
+    if kind in ("machine_group", "shift_profile"):
+        return bool(state["members"])
+    if kind == "supplier":
+        return any(state["supplier"]["references"].values())
+    return any(state["dependencies"].values())
+
+
+def resource_action_policy(
+    kind: str, state: Mapping[str, Any]
+) -> Tuple[List[str], Dict[str, bool], List[Dict[str, str]]]:
+    referenced = resource_state_referenced(kind, state)
+    update_action = kind + ".update"
+    delete_action = kind + ".delete"
+    actions = [update_action] + ([] if referenced else [delete_action])
+    capabilities = {update_action: True, delete_action: not referenced}
+    blocked_reasons = (
+        [
+            {
+                "action": delete_action,
+                "code": "constraint_conflict",
+                "message": "这条记录还被其他资料用到，不能删除。请先处理用到它的资料，再删除。",
+            }
+        ]
+        if referenced
+        else []
+    )
+    return actions, capabilities, blocked_reasons
 
 
 def _related(value):

@@ -1,17 +1,52 @@
 """One saved scenario, one transactional official adoption and durable receipt."""
 
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_command import (
+    WorkbenchCommandOutcome,
+    WorkbenchCommandRejected,
+    validate_request_key,
+)
 from core.models.workbench_run_adoption import adoption_input
 from core.models.workbench_run_job import valid_data_context_ref
 from core.models.workbench_trial import reference
 from core.models.workbench_trial_adoption import ADOPT_ACTION, TrialAdoptionBlocked
+from core.services.workbench.commands import command_lookup_payload
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.messages import UNAVAILABLE
+from core.services.workbench.plan.official_persistence import persist_official_plan_in_tx
 from core.services.workbench.run.adoption_host import AdoptionCommandHost
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
-from .adoption_persistence import persist_trial_adoption_in_tx
 from .adoption_validation import validate_trial_adoption
+
+
+def _persist_trial_adoption_in_tx(conn, evidence, intent, request_key, *, application_operator):
+    audit = {
+        "source": "workbench_trial_adoption",
+        "action": "adopt_trial_scenario",
+        "request_key": request_key,
+        "scenario_ref": evidence.scenario_ref,
+        "draft_ref": evidence.draft_ref,
+        "proof": evidence.proof,
+        "reason": intent["reason"],
+        "declared_operator": intent["declared_operator"],
+    }
+    result = persist_official_plan_in_tx(
+        conn,
+        prepared=evidence.prepared,
+        payload=evidence.outcome.validated_payload,
+        baseline=evidence.baseline,
+        audit=audit,
+        application_operator=application_operator,
+        run_window=evidence.run_window,
+    )
+    result["official_plan"].update(
+        source_scenario_ref=evidence.scenario_ref,
+        source_draft_ref=evidence.draft_ref,
+    )
+    return WorkbenchCommandOutcome(
+        "committed",
+        {"scenario_ref": evidence.scenario_ref, "draft_ref": evidence.draft_ref, **result},
+    )
 
 
 class WorkbenchTrialAdoptionService(AdoptionCommandHost):
@@ -45,20 +80,21 @@ class WorkbenchTrialAdoptionService(AdoptionCommandHost):
         validate_request_key(request_key)
         intent = adoption_input(value)
         return self._execute_adoption(scenario_ref, write_token, request_key, intent,
-                                      validate=self._validate, persist=persist_trial_adoption_in_tx)
-
-    def lookup(self, scenario_ref, request_key):
-        reference(scenario_ref)
-        return self._lookup(scenario_ref, request_key)
+                                      validate=self._validate, persist=_persist_trial_adoption_in_tx)
 
     def resolve_command(self, scenario_ref, request_key, *, data_context_ref):
+        reference(scenario_ref)
         if not valid_data_context_ref(data_context_ref):
             raise WorkbenchCommandRejected("invalid_input", "这条待确认采用记录的数据来源编号无效，请核对本机保存的记录。", 400)
-        found = self.lookup(scenario_ref, request_key)
-        if found is not None:
-            return {"state": "committed", "receipt": found}
         with candidate_read_snapshot(self.conn):
+            found = self._lookup_in_snapshot(scenario_ref, request_key)
+            if found is not None:
+                return command_lookup_payload(found, data_context_ref=data_context_ref)
             exists = WorkbenchTrialRepository(self.conn).scenario_header(scenario_ref) is not None
-            may_be_in_flight = exists and self.data_context.ref() == data_context_ref
-        return {"state": "not_observed", "receipt": None, "may_be_in_flight": may_be_in_flight,
-                "can_retry_automatically": False}
+            current_context = self.data_context.ref()
+            may_be_in_flight = exists and current_context == data_context_ref
+        return command_lookup_payload(
+            None,
+            may_be_in_flight=may_be_in_flight,
+            data_context_ref=current_context,
+        )

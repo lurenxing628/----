@@ -29,12 +29,6 @@ def run_probe(tmp_path, fixtures=None):
             if entry.get("kind") == "baseline" and "expected" not in entry and isinstance(entry.get("payload"), dict) and isinstance(entry["payload"].get("data"), dict):
                 expected = json.loads(json.dumps(entry["payload"]))
                 expected["data"].pop("page", None)
-                ws_data = entry.get("workspace_data")
-                if isinstance(ws_data, dict) and isinstance(ws_data.get("tasks"), list):
-                    by_ref = {row["task_ref"]: row for row in ws_data["tasks"] if isinstance(row, dict) and "task_ref" in row}
-                    for row in expected["data"].get("items") or []:
-                        if row.get("after_in_scope") is True and isinstance(row.get("after"), dict) and set(row["after"]) == {"task_ref"}:
-                            row["after"] = by_ref.get(row["after"]["task_ref"], row["after"])
                 entry["expected"] = expected
             prepared.append(entry)
         payload = {"fixtures": prepared, "fixturesOnly": True}

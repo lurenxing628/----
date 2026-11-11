@@ -96,7 +96,7 @@ _ERROR_HINTS = {
         "shift_hours": "这一列不校验",
     },
     "operator_calendar": {
-        "operator_code": "留空、有首尾空格、或这个工号在系统里找不到",
+        "operator_code": "留空，或这个工号在系统里找不到",
         "date": "留空、不是真实日期、或同一个人同一个日期在文件里出现了两次",
         "day_type": "填了工作日和假期以外的词",
         "shift_start": "新增上班或从假期改成上班的日子没填工作时段，或者不是 09:00 这样的时刻",

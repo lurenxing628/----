@@ -1,12 +1,15 @@
 """Date-key policies projected to disjoint, priority-aware local windows."""
 
-import heapq
 import math
 from collections import defaultdict
 from datetime import datetime, time, timedelta
 from typing import Any, Dict, Optional
 
 from core.errors import ValidationError
+from core.services.scheduler.calendar.engine import (
+    IncompleteCalendarSnapshotError,
+    overlay_overnight_tail_windows,
+)
 from core.shared.strict_json import clone_json
 
 from .plan_calendar_intervals import (
@@ -32,28 +35,12 @@ def unavailable(basis, code) -> Dict[str, Any]:
 
 def _overlay(windows):
     """Today owns overlap with yesterday, matching policy_for_datetime precedence."""
-    events = defaultdict(list)
-    for index, row in enumerate(windows):
-        events[row["start"]].append((index, True))
-        events[row["end"]].append((index, False))
-    live, heap, previous, chosen, result = set(), [], None, None, []
-    for at, changes in sorted(events.items()):
-        if previous is not None and previous < at and chosen is not None:
-            row = dict(windows[chosen], start=previous, end=at)
-            if result and result[-1]["end"] == previous and result[-1]["policy_date"] == row["policy_date"]:
-                result[-1]["end"] = at
-            else:
-                result.append(row)
-        for index, active in changes:
-            if active:
-                live.add(index)
-                heapq.heappush(heap, -index)
-            else:
-                live.discard(index)
-        while heap and -heap[0] not in live:
-            heapq.heappop(heap)
-        chosen, previous = (-heap[0] if heap else None), at
-    return result
+    return [
+        row if (start, end) == (row["start"], row["end"]) else dict(row, start=start, end=end)
+        for start, end, row in overlay_overnight_tail_windows(
+            [(row["start"], row["end"], row["policy_date"], row) for row in windows]
+        )
+    ]
 
 
 def measures(windows, durations):
@@ -83,13 +70,13 @@ def policy_projection(engine, first_day, last_day, start, end, operator_id=None)
                                     "allow_normal": policy.is_priority_allowed("normal"),
                                     "allow_urgent": policy.is_priority_allowed("urgent"),
                                     "efficiency": policy.efficiency, "provenance": engine.provenance(day_str, operator_id)})
-        except (ValidationError, ValueError, TypeError, OverflowError):
-            failures.append(day)
+        except (ValidationError, ValueError, TypeError, OverflowError) as exc:
+            failures.append((day, exc))
         if day == last_day:
             break
         day += timedelta(days=1)
     windows = _overlay(windows)
-    for day in failures:
+    for day, exc in failures:
         low = max(start, datetime.combine(day, time.min))
         high = min(end, datetime.combine(day, time.min) + timedelta(days=2)) if day.toordinal() <= (
             datetime.max.date().toordinal() - 2) else end
@@ -99,6 +86,10 @@ def policy_projection(engine, first_day, last_day, start, end, operator_id=None)
                                     if row["policy_date"] > day.isoformat()])
         # Exact: whole microseconds over one divisor stay strictly ordered (1 µs ≫ float spacing).
         if low < high and overriding.hours_between(low, high) < interval_microseconds(low, high) / HOUR_MICROSECONDS:
+            if isinstance(exc, IncompleteCalendarSnapshotError):
+                result = unavailable(basis, "calendar_unavailable")
+                result["issues"][0].update(missing_fact=exc.missing_fact, policy_date=exc.policy_date)
+                return result
             result = unavailable(basis, "calendar_invalid")
             result["issues"][0]["policy_date"] = day.isoformat()
             return result

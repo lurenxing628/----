@@ -161,12 +161,12 @@ def test_held_adopted_point_carries_its_witness_into_runtime_seeds(trial_case):
               'end': (point + timedelta(hours=1)).isoformat(timespec='minutes')}
     result = compute_run(case.conn, case.settings(hold_window=window), case.projections())
     schedule_input: Any = result.schedule_input
-    assert schedule_input.frozen_op_ids == {case.op_id}
-    seed, = [row for row in schedule_input.seed_results if row['op_id'] == case.op_id]
+    assert schedule_input.seeds.frozen_op_ids == {case.op_id}
+    seed, = [row for row in schedule_input.seeds.seed_results if row['op_id'] == case.op_id]
     assert seed['seed_source'] == 'freeze_window' and seed['start_time'] == seed['end_time'] == point
     assert type(seed['_point_evidence']) is SchedulePointEvidence
     assert type(coerce_seed_result_item(seed, idx=0)) is PointSeedResult
-    for payload in result.candidate_payloads.values():
-        rows = {row.op_id: row for row in payload.schedule_rows}
+    for outcome in result.candidate_outcomes.values():
+        rows = {row.op_id: row for row in outcome.validated_payload.schedule_rows}
         assert rows[case.op_id].start_time == rows[case.op_id].end_time == point
         assert rows[successor].start_time >= point

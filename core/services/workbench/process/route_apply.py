@@ -13,10 +13,9 @@ from .route_choices import changed_route_sequences, preview_existing_route
 from .route_preview import ProcessRoutePreviewService
 
 
-def prepare_route(conn, logger, payload, operations, *, facts, normalized=None):
-    parser = ProcessRoutePreviewService(conn, logger, facts=facts)
-    with parser.reference_snapshot():
-        preview = parser.preview(payload["route"], normalized=normalized)
+def prepare_route(logger, operations, *, facts, normalized):
+    parser = ProcessRoutePreviewService(logger, facts=facts)
+    preview = parser.preview_normalized(normalized)
     from .route_choices import route_choice_context
 
     changed = changed_route_sequences({row["seq"]: row for row in operations}, preview["operations"])
@@ -51,13 +50,8 @@ def discard_groups(conn, part_no, affected):
         group_repo.delete_for_part(part_no, group["group_id"])
 
 
-def _suggested_key(identities, ref, kind):
-    if ref is None:
-        return None
-    identity = identities.get(ref)
-    if identity is None or not identity.active or identity.kind != kind:
-        raise WorkbenchCommandRejected("storage_failure", "预检给出的记录已失效。请刷新后重新预检。", 500)
-    return identity.entity_key
+def _suggested_key(identities, ref):
+    return None if ref is None else identities[ref].entity_key
 
 
 def _remove_absent_operations(op_repo, operations, incoming):
@@ -77,16 +71,16 @@ def _persist_route_operation(op_repo, part_no, row, old, replaced, identities):
             seq=row["sequence"],
             op_type_name=row["op_type_name"],
             source=row["source_suggestion"],
-            op_type_id=_suggested_key(identities, row["op_type_ref"], "op_type"),
-            supplier_id=_suggested_key(identities, row["supplier_ref"], "supplier"),
+            op_type_id=_suggested_key(identities, row["op_type_ref"]),
+            supplier_id=_suggested_key(identities, row["supplier_ref"]),
             ext_days=row["external_days"],
         )
         return True, row["source_suggestion"] == "external"
     if replaced:
         op_repo.update_fields_by_id(old["id"], {
             "op_type_name": row["op_type_name"], "status": "active", "source": row["source_suggestion"],
-            "op_type_id": _suggested_key(identities, row["op_type_ref"], "op_type"),
-            "supplier_id": _suggested_key(identities, row["supplier_ref"], "supplier"),
+            "op_type_id": _suggested_key(identities, row["op_type_ref"]),
+            "supplier_id": _suggested_key(identities, row["supplier_ref"]),
             "ext_days": row["external_days"], "setup_hours": None, "unit_hours": None,
         })
         return True, row["source_suggestion"] == "external"

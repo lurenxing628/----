@@ -45,12 +45,13 @@ def process_list():
     query = _list_query()
     token = request.args.get("snapshot_ref")
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as state:
+    with reader.read_snapshot() as scope:
+        state = scope.state_fingerprint()
         snapshot = bind_read_snapshot(query.scope(), state, token)
-        data = reader.page(query)
-        data["create_context"] = issue_write_context("process:create", ["process.create"], state)
+        data = scope.page(query)
         if query.number > data["page"]["pages"]:
             raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
+        data["create_context"] = issue_write_context("process:create", ["process.create"], state)
     return query_success(data, snapshot)
 
 
@@ -59,10 +60,11 @@ def process_detail(ref):
     if set(request.args) - {"snapshot_ref"} or len(request.args.getlist("snapshot_ref")) > 1:
         raise WorkbenchCommandRejected("invalid_input", "详情的查询条件不对，详情没有打开。请刷新页面后重新点开这一行。", 400)
     reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=ref)
-    with reader.read_snapshot() as state:
-        identity = reader.resolve(ref)
+    with reader.read_snapshot() as scope:
+        state = scope.state_fingerprint()
+        identity = scope.resolve(ref)
         snapshot = bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, request.args.get("snapshot_ref"))
-        data = reader.resolved_detail(identity)
+        data = scope.resolved_detail(identity)
         if data["workflow"]["source"]["state"] == "confirmed":
             data["write_context"] = issue_write_context(ref, ["process.hours_confirm"], state)
     return query_success(data, snapshot)
@@ -77,15 +79,16 @@ def process_route_preview(ref):
                 isinstance(row, dict) and type(row.get("seq")) is int and abs(row["seq"]) > (1 << 53) - 1 for row in body["rows"]):
             raise WorkbenchCommandRejected("invalid_input", "工序号太大，页面上填不准，路线没有保存；系统没有替你四舍五入。请改用整段路线文字录入。", 422)
         reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=ref)
-        with reader.read_snapshot() as state:
-            identity = reader.resolve(ref)
+        with reader.read_snapshot() as scope:
+            state = scope.state_fingerprint()
+            identity = scope.resolve(ref)
             if token is not None:
                 bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, token)
-            data, _, affected = reader.prepare_route(identity, body)
+            data, _, affected = scope.prepare_route(identity, body)
             data["affected_groups"] = []
             if data["can_confirm_route"]:
                 affected_refs = {row["ref"] for row in affected}
-                data["affected_groups"] = [row for row in reader.detail(ref)["external_groups"] if row["ref"] in affected_refs]
+                data["affected_groups"] = [row for row in scope.detail(ref)["external_groups"] if row["ref"] in affected_refs]
                 data["write_context"] = issue_write_context(ref, ["process.route_confirm"], {"state": state, "input": body})
             snapshot = bind_read_snapshot({"kind": "process_route_preview", "entity_ref": ref,
                                            "input_content": body}, state)

@@ -1,13 +1,45 @@
 """Read-only preview, then serialized revalidation and one durable adoption receipt."""
 
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_command import (
+    WorkbenchCommandOutcome,
+    WorkbenchCommandRejected,
+    validate_request_key,
+)
 from core.models.workbench_run_adoption import ADOPT_ACTION, CandidateAdoptionBlocked, adoption_input
 from core.models.workbench_run_job import valid_data_context_ref, validate_run_ref
+from core.services.workbench.commands import command_lookup_payload
 from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
+from core.services.workbench.plan.official_persistence import persist_official_plan_in_tx
 
 from .adoption_host import AdoptionCommandHost
-from .candidate_adoption_persistence import persist_adoption_in_tx
 from .candidate_adoption_validation import validate_adoption
+
+
+def _persist_adoption_in_tx(conn, evidence, intent, request_key, *, application_operator):
+    audit = {
+        "source": "workbench_candidate_adoption",
+        "action": "adopt_run_candidate",
+        "request_key": request_key,
+        "candidate_ref": evidence.candidate_ref,
+        "run_ref": evidence.run_ref,
+        "proof": evidence.proof,
+        "reason": intent["reason"],
+        "declared_operator": intent["declared_operator"],
+    }
+    data = persist_official_plan_in_tx(
+        conn,
+        prepared=evidence.prepared,
+        payload=evidence.outcome.validated_payload,
+        baseline=evidence.baseline,
+        audit=audit,
+        application_operator=application_operator,
+    )
+    data["official_plan"]["source_run_ref"] = evidence.run_ref
+    return WorkbenchCommandOutcome(
+        "committed",
+        {"candidate_ref": evidence.candidate_ref, "run_ref": evidence.run_ref, **data},
+    )
 
 
 class WorkbenchRunCandidateAdoptionService(AdoptionCommandHost):
@@ -39,33 +71,25 @@ class WorkbenchRunCandidateAdoptionService(AdoptionCommandHost):
         validate_request_key(request_key)
         intent = adoption_input(value)
         return self._execute_adoption(candidate_ref, write_token, request_key, intent,
-                                      validate=validate_adoption, persist=persist_adoption_in_tx)
-
-    def lookup(self, candidate_ref, request_key):
-        validate_run_ref(candidate_ref)
-        return self._lookup(candidate_ref, request_key)
+                                      validate=validate_adoption, persist=_persist_adoption_in_tx)
 
     def resolve_command(self, candidate_ref, request_key, *, data_context_ref, run_ref=None):
+        validate_run_ref(candidate_ref)
         if run_ref is not None:
             validate_run_ref(run_ref)
         if not valid_data_context_ref(data_context_ref):
             raise WorkbenchCommandRejected("invalid_input", "这条待确认采用记录的数据来源编号无效，请核对本机保存的记录。", 400)
-        receipt = self.lookup(candidate_ref, request_key)
-        if receipt is not None:
-            return "recorded", receipt
         store = CandidateStore(self.conn)
-        with store.snapshot():
+        with candidate_read_snapshot(self.conn):
+            receipt = self._lookup_in_snapshot(candidate_ref, request_key)
+            if receipt is not None:
+                return command_lookup_payload(receipt, data_context_ref=data_context_ref)
             saved_run_ref = store.repo.candidate_run_ref(candidate_ref)
             current_context = self.data_context.ref()
         replaced = (saved_run_ref is None or (run_ref is not None and saved_run_ref != run_ref)
                     or data_context_ref != current_context)
-        return "not_recorded", {
-            "ok": True, "result": "not_recorded", "request_key": request_key,
-            "may_be_in_flight": not replaced,
-            "resolution": "context_replaced" if replaced else "unresolved",
-            "data_context_ref": current_context,
-            "message": (
-                "这条待确认采用记录来自旧数据库或恢复前的历史状态，当前数据源里没有这项候选采用操作。可安全结束本机待确认记录，再对当前候选执行采用。"
-                if replaced else "尚未查到这次采用提交的处理结果；若请求仍在处理中，请稍后再次查询，避免重复提交。"
-            ),
-        }
+        return command_lookup_payload(
+            None,
+            may_be_in_flight=not replaced,
+            data_context_ref=current_context,
+        )

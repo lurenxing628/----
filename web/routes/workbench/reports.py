@@ -63,8 +63,9 @@ def _read(export=False, operation_ref=None):
     as_of, binding = read_snapshot_time(token)
     bound = {}
     with PLAN_READ_SLOTS.slot():
-        with reader.read_snapshot():
+        with reader.read_snapshot() as plan_context:
             facts = reader.read(
+                plan_context,
                 scope,
                 bind_snapshot=lambda resolved_scope, fingerprint: bound.setdefault(
                     "snapshot",

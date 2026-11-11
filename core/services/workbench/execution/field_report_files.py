@@ -5,7 +5,8 @@ from typing import Any, Dict, List, NamedTuple, Optional, Union
 
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_execution_input import REPORT_FIELDS, REQUIRED_FIELDS
+from core.models.workbench_execution_input import REPORT_FIELDS, required_report_fields
+from core.services.execution.ledger_reader import ExecutionLedgerReadScope
 from core.services.workbench.facts.execution_projection import (
     COMPLETION_BASIS_TEXT,
     DATA_QUALITY_TEXT,
@@ -32,7 +33,7 @@ def report_index(reports):
     by_no, by_excel_content = {}, {}
     for report in reports:
         by_no[report['report_no']] = report
-        if report.get('source') == 'excel' and report['report_no'].startswith('BG-X-'):
+        if report['source'] == 'excel' and report['report_no'].startswith('BG-X-'):
             by_excel_content.setdefault(content_text(_report_values(report)), []).append(report['report_no'])
     return ReportIndex(by_no, by_excel_content)
 
@@ -68,14 +69,14 @@ class FieldReportFileService:
             if row['errors']:
                 row['result'] = 'rejected'
                 continue
-            if all(value.get(key) in (None, '') for key in ('actual_start', 'actual_end', 'completed_quantity', 'effective_processing_hours')):
+            if all(value[key] in (None, '') for key in ('actual_start', 'actual_end', 'completed_quantity', 'effective_processing_hours')):
                 row['result'] = 'blank'
                 continue
             try:
                 task = matched_task(row, by_ref)
                 task_ref = task['task_ref']
                 if task_ref not in indexes:
-                    indexes[task_ref] = report_index(task['execution']['reports'])
+                    indexes[task_ref] = report_index(task['execution'].report_rows())
                 if resources is None and (value['machine_label'] or value['operator_label']):
                     resources = self._resource_index()
                 items.append(self._row_item(row, task_ref, indexes[task_ref], resources, source_ref))
@@ -109,17 +110,17 @@ class FieldReportFileService:
             raise WorkbenchCommandRejected('invalid_input', '已有多条内容相同的导入报工，请填写要核对的原报工编号。', 422)
         return matches[0] if matches else number
 
-    def prepare_source(self, source, cohort):
+    def prepare_source(self, ledger_scope: ExecutionLedgerReadScope, source, cohort):
         """Rebuild current business checks from the retained original file facts."""
-        return self.prepare_preview(cohort, source.parsed(), source_ref=source.source_ref)
+        return self.prepare_preview(ledger_scope, cohort, source.parsed(), source_ref=source.source_ref)
 
-    def prepare_preview(self, cohort, decoded, *, source_ref):
+    def prepare_preview(self, ledger_scope: ExecutionLedgerReadScope, cohort, decoded, *, source_ref):
         """Return the public preview and its private, already checked batch facts."""
         rows, items, positions = self._items(cohort['tasks'], decoded, source_ref=source_ref)
         check, preparation = None, None
         if not any(row['errors'] for row in rows):
             try:
-                check, preparation = self._checked_rows(items, rows, positions)
+                check, preparation = self._checked_rows(ledger_scope, items, rows, positions)
             except WorkbenchCommandRejected as exc:
                 self._preview_error(exc, rows, positions)
         rejected = sum(bool(row['errors']) for row in rows)
@@ -129,8 +130,8 @@ class FieldReportFileService:
         return {'rows': public, 'summary': summary, 'can_confirm': not rejected and bool(items), 'commit_policy': 'atomic',
                 'actual_source_ref': source_ref, 'scope': cohort['scope']}, preparation
 
-    def _checked_rows(self, items, rows, positions):
-        preparation = self.production.prepare_batch(items) if items else None
+    def _checked_rows(self, ledger_scope: ExecutionLedgerReadScope, items, rows, positions):
+        preparation = self.production.prepare_batch_in_scope(ledger_scope, items) if items else None
         checked = preparation.rows if preparation else []
         changed = len(preparation.appended) if preparation else 0
         mapped = dict(zip(positions, checked))
@@ -151,18 +152,11 @@ class FieldReportFileService:
         target['errors'].append({'row': original, 'message': str(exc), 'code': exc.code, 'conflicts': exc.conflicts})
 
     @staticmethod
-    def rows(cohort, template, *, resource_codes):
-        result = []
-        for task in cohort['tasks']:
-            p = task['execution']
-            if template and p['execution_state'] == 'complete':
-                continue
-            reports = p['reports']
-            if template:
-                reports = [row for row in reports if any(row[key] is None for key in REQUIRED_FIELDS)] or [None]
-            for report in reports:
-                result.append(FieldReportFileService._export_row(report, task, template, resource_codes))
-        return result
+    def _task_export_rows(task, reports, template, resource_codes):
+        if template:
+            required = required_report_fields(task['source'])
+            reports = [row for row in reports if any(row[key] is None for key in required)] or [None]
+        return [FieldReportFileService._export_row(report, task, template, resource_codes) for report in reports]
 
     @staticmethod
     def _export_row(report, task, template, codes):
@@ -177,18 +171,29 @@ class FieldReportFileService:
 
     @staticmethod
     def download(cohort, template, *, resource_codes):
-        rows = FieldReportFileService.rows(cohort, template, resource_codes=resource_codes)
         if template:
+            rows = [
+                row
+                for task in cohort['tasks']
+                if task['execution'].projection.execution_state != 'complete'
+                for row in FieldReportFileService._task_export_rows(
+                    task, task['execution'].report_rows(), True, resource_codes
+                )
+            ]
             return encode_reports(rows, summaries=(), metadata=()), len(rows)
+        rows = []
         summaries: List[List[Optional[Union[str, int, float]]]] = [['批次号', '工序', '应做数量', '累计完成', '剩余数量', '工序状态', '完成依据', '资料完整性']]
         metadata: List[List[Optional[Union[str, int, float]]]] = [['报工编号', '录入时间', '报工来源', '补齐及更正次数']]
         for task in cohort['tasks']:
-            p = task['execution']
-            summaries.append([task['batch_id'], task['operation_label'], p['target_quantity'], p['known_completed_quantity'],
-                              p['remaining_quantity'], EXECUTION_STATE_TEXT[p['execution_state']],
-                              COMPLETION_BASIS_TEXT.get(p['completion_basis']),
-                              DATA_QUALITY_TEXT[p['data_quality']]])
-            for report in p['reports']:
+            execution = task['execution']
+            p = execution.projection
+            summaries.append([task['batch_id'], task['operation_label'], p.target_quantity, p.known_completed_quantity,
+                              p.remaining_quantity, EXECUTION_STATE_TEXT[p.execution_state],
+                              COMPLETION_BASIS_TEXT.get(p.completion_basis),
+                              DATA_QUALITY_TEXT[p.data_quality]])
+            task_reports = execution.report_rows(include_history=True)
+            rows.extend(FieldReportFileService._task_export_rows(task, task_reports, False, resource_codes))
+            for report in task_reports:
                 corrections = sum(item['action'] in ('supplement', 'correct') for item in report['correction_history'])
                 metadata.append([report['report_no'], report['recorded_at'], 'Excel' if report['source'] == 'excel' else '手工', corrections])
         # 模板和导出都带说明表，两者的差别只剩要不要另外附汇总与录入信息。

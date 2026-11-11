@@ -66,19 +66,19 @@ def test_process_query_json_rejects_duplicate_keys_and_nonfinite_numbers_with_ro
 def test_delete_cross_page_explicit_refs_survive_sorted_filtered_scope_and_match_js_contract(
     collection_api, monkeypatch, record_property
 ):
-    from core.services.workbench.process.queries import WorkbenchProcessQueryService
+    from core.services.workbench.process.scope import ProcessFactScope
     from data.repositories.workbench_process_part_facts_repo import WorkbenchProcessPartFactsRepository
 
     api = collection_api
     codes = seed_table_rows(api, 43)
-    original, calls = WorkbenchProcessQueryService.page, []
+    original, calls = ProcessFactScope.page, []
 
-    def page(reader, query):
+    def page(scope, query):
         calls.append(query.number)
-        return original(reader, query)
+        return original(scope, query)
 
     with monkeypatch.context() as patch:
-        patch.setattr(WorkbenchProcessQueryService, "page", page)
+        patch.setattr(ProcessFactScope, "page", page)
         third = api.listing({"query": "TABLE-"}, size=20, page=3)
     assert calls == [3] and third["data"]["page"]["number"] == 3
     assert third["data"]["page"]["total"] == 43 and len(third["data"]["entities"]) == 3
@@ -157,6 +157,7 @@ def test_part_delete_confirm_refuses_a_preview_with_rejected_rows(collection_api
 
 def test_single_part_detail_prebinds_before_projection_and_tracks_shared_identity_revisions(collection_api, monkeypatch):
     from core.services.workbench.process.queries import WorkbenchProcessQueryService
+    from core.services.workbench.process.scope import ProcessFactScope
 
     api = collection_api
     with api.database() as conn:
@@ -191,7 +192,7 @@ def test_single_part_detail_prebinds_before_projection_and_tracks_shared_identit
     queries.clear()
     with monkeypatch.context() as patch:
         patch.setattr(
-            WorkbenchProcessQueryService,
+            ProcessFactScope,
             "resolved_detail",
             lambda *a, **kw: pytest.fail("Stale process_detail must reject before resolved_detail projection"),
         )
@@ -223,9 +224,10 @@ def test_single_part_detail_prebinds_before_projection_and_tracks_shared_identit
 def test_raw_facts_skip_workflow_enrichment_and_build_template_sources_once(collection_api, monkeypatch):
     from core.models.workbench_process_table_query import ProcessTablePageRequest
     from core.services.process import workflow_state
-    from core.services.workbench.process import queries as process_queries
+    from core.services.workbench.process import scope as process_scope
     from core.services.workbench.process.file_export import select_export_parts
     from core.services.workbench.process.queries import WorkbenchProcessQueryService
+    from core.services.workbench.process.scope import ProcessFactScope
 
     api = collection_api
     # raw_facts for explicit export and route export must not call workflow_snapshot.
@@ -233,12 +235,12 @@ def test_raw_facts_skip_workflow_enrichment_and_build_template_sources_once(coll
         reader = WorkbenchProcessQueryService(conn)
         with monkeypatch.context() as patch:
             patch.setattr(
-                process_queries,
+                process_scope,
                 "workflow_snapshot",
                 lambda *a, **kw: pytest.fail("Explicit export must use raw_facts without workflow_snapshot"),
             )
-            with reader.read_snapshot():
-                parts = select_export_parts(reader, [api.ref(code="PROC-001")], ProcessTablePageRequest())
+            with reader.read_snapshot() as scope:
+                parts = select_export_parts(scope, [api.ref(code="PROC-001")], ProcessTablePageRequest())
                 assert len(parts) == 1
 
         # Single-part resolved_detail constructs TemplateSourceFacts only once.
@@ -250,9 +252,9 @@ def test_raw_facts_skip_workflow_enrichment_and_build_template_sources_once(coll
             return orig_build(*args, **kwargs)
 
         with monkeypatch.context() as patch:
-            patch.setattr(process_queries, "build_template_source_facts", counted_build)
-            with reader.read_snapshot():
-                reader.detail(api.ref(code="PROC-001"))
+            patch.setattr(process_scope, "build_template_source_facts", counted_build)
+            with reader.read_snapshot() as scope:
+                scope.detail(api.ref(code="PROC-001"))
         assert len(source_calls) == 1
 
     # Pure text route-file preview/import (part_name / remark only, no route change) must not load supplier catalogs.
@@ -294,9 +296,9 @@ def test_raw_facts_skip_workflow_enrichment_and_build_template_sources_once(coll
     with monkeypatch.context() as patch:
         patch.setattr(WorkbenchProcessQueryService, "__init__", traced_reader_init)
         patch.setattr(
-            WorkbenchProcessQueryService,
+            ProcessFactScope,
             "raw_facts",
-            lambda *a, **kw: pytest.fail("process_create must not call reader.raw_facts()"),
+            lambda *a, **kw: pytest.fail("process_create must not call scope.raw_facts()"),
         )
         created_res = success(api.send("create", create_req))["data"]
         assert created_res["business_code"] == "API-NEW"
@@ -354,3 +356,46 @@ def test_route_file_import_preserves_legacy_spaced_part_without_touching_sibling
         ).fetchone()
         assert (spaced_row["part_name"], spaced_row["remark"]) == ("Spaced Renamed", "spaced-orig")
         assert sibling_row["part_name"] != "Spaced Renamed"
+
+
+def test_single_part_detail_handles_34000_soft_deleted_supplier_operations_without_sql_variable_limit(collection_api):
+    from core.services.workbench.process.queries import WorkbenchProcessQueryService
+
+    api = collection_api
+    count = 34000
+    with api.database() as conn:
+        conn.executemany(
+            "INSERT INTO Suppliers(supplier_id,name,default_days,status) VALUES (?,?,2.5,'active')",
+            [(f"HIST-SUP-{idx:05d}", f"Hist Supplier {idx:05d}") for idx in range(count)]
+            + [("UNRELATED-SUP", "Unrelated Supplier")],
+        )
+        conn.executemany(
+            "INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES (?,'PROC-EX')",
+            [(f"HIST-SUP-{idx:05d}",) for idx in range(count)] + [("UNRELATED-SUP",)],
+        )
+        conn.executemany(
+            "INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,ext_days,status) "
+            "VALUES ('PROC-001',?,'PROC-EX','热处理','external',?,2.5,'deleted')",
+            [(100 + idx, f"HIST-SUP-{idx:05d}") for idx in range(count)],
+        )
+        conn.commit()
+
+        ref = api.ref(code="PROC-001")
+        reader = WorkbenchProcessQueryService(conn, part_ref=ref)
+        scoped_suppliers = reader.repo.supplier_references()
+        assert len(scoped_suppliers["Suppliers"]) == 1 + count
+        assert all(row["supplier_id"] != "UNRELATED-SUP" for row in scoped_suppliers["Suppliers"])
+        with reader.read_snapshot() as scope:
+            detail = scope.detail(ref)
+
+    assert detail["business_code"] == "PROC-001"
+    assert len(detail["operations"]) == 3 + count
+    active_ops = [op for op in detail["operations"] if op["status"] == "active"]
+    deleted_ops = [op for op in detail["operations"] if op["status"] == "deleted"]
+    assert len(active_ops) == 3
+    assert len(deleted_ops) == count
+    assert deleted_ops[-1]["supplier_label"] == f"Hist Supplier {count - 1:05d}"
+    assert deleted_ops[-1]["issues"] == []
+
+    http_detail = success(api.client.get(f"/api/workbench/v1/entities/part/{ref}"))["data"]
+    assert len(http_detail["operations"]) == 3 + count

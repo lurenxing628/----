@@ -22,9 +22,16 @@ class RunHistoryStore:
         self.conn = conn
         self.repo = WorkbenchRunHistoryQueryRepository(conn)
 
-    def read(self, scope):
-        total = self.repo.count_jobs(scope)
-        run_count = total if scope.state == "all" and scope.accepted_from is None else self.repo.count_jobs()
+    def read_state(self):
+        run_count = self.repo.count_jobs()
+        return {
+            "read_contract_version": 1,
+            "run_count": run_count,
+            "active_runs": self.repo.active_jobs(),
+        }
+
+    def read_page(self, scope, *, run_count: int):
+        total = run_count if scope.state == "all" and scope.accepted_from is None else self.repo.count_jobs(scope)
         rows, byte_count = [], 0
         for head in self.repo.list_jobs(scope):
             for field in ("scope_json", "header_json"):
@@ -38,5 +45,4 @@ class RunHistoryStore:
             header = (read_model_json(head, "header_json")
                       if head["header_version"] is not None or head["header_json"] is not None else None)
             rows.append(public_run_head(head, admission, header))
-        state = {"read_contract_version": 1, "run_count": run_count, "active_runs": self.repo.active_jobs()}
-        return rows, total, state
+        return rows, total

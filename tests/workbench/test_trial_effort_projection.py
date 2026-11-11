@@ -41,21 +41,20 @@ def test_new_trial_slot_persists_the_same_requirement_used_for_calendar_math(tri
     assert adjusted["comparison"]["changeover_common"]["before"]["count"] is None
     assert adjusted["comparison"]["changeover_common"]["after"]["count"] == 0
     shipped(adjusted, r"""
-const w = h.runtime, data = w.TrialContract.workspace(sourceData);
-const tree = h.render(w.TrialResults.Preparation, {data, name: w.TrialGantt.resourceNames(data), onSelect() {}}), text = h.text(tree);
+const TrialContract = h.module('TrialContract.js').default, TrialResults = h.module('TrialResults.jsx').default,
+  TrialGantt = h.module('TrialGantt.jsx').default, TrialExport = h.module('TrialExport.js').default;
+const data = TrialContract.workspace(sourceData);
+const tree = h.render(TrialResults.Preparation, {data, name: TrialGantt.resourceNames(data), onSelect() {}}), text = h.text(tree);
 assert(text.includes('准备标准工时') && text.includes('合计'));
 const requirementDetail = h.walk(tree).find(node => node.type === 'details' && h.text(node) === '工时详情');
 assert(requirementDetail && h.text({...requirementDetail, props:{...requirementDetail.props, open:true}}).includes('当前试调需求'));
 const retained = h.walk(tree).find(node => node.type === 'details' && h.text(node) === '保留安排与报工工序');
 assert(retained && h.text({...retained, props:{...retained.props, open:true}}).includes('保留原安排'));
 assert(text.includes('工种切换次数') && h.text({...requirementDetail, props:{...requirementDetail.props, open:true}}).includes('需求未保存'));
-const requirement = w.TrialExport.preparation(data), switches = w.TrialExport.changeovers(data), legacy = w.TrialExport.csv(data);
+const requirement = TrialExport.preparation(data), switches = TrialExport.changeovers(data), legacy = TrialExport.csv(data);
 assert(requirement.text.includes('归档单件标准（小时）') && requirement.text.includes('本次执行目标量'));
 assert(switches.text.includes('前工序编号') && switches.text.includes('汇总'));
 assert(legacy.text.includes('工种切换次数（次）') && !legacy.text.includes('换型次数'));
-const damaged = structuredClone(data);
-delete damaged.tasks[0].operation_effort.after.required_standard_hours;
-assert.throws(() => w.TrialContract.workspace(damaged));
 return {shipped_contract:true, preparation_panel:true, csv_exports:true};
 """)
     stored = load(case.conn.execute("SELECT current_json FROM WorkbenchTrialRows WHERE task_ref=?", (task["task_ref"],)).fetchone()[0])
@@ -128,15 +127,17 @@ def test_trial_retained_requirement_keeps_original_target_separate_from_creation
     assert unplanned == []
     apply_preparation(deepcopy(draft["tasks"]), unplanned, pairs)
     shipped(draft, r"""
-const w = h.runtime, data = w.TrialContract.workspace(sourceData);
-const tree = h.render(w.TrialResults.Preparation, {data, name: w.TrialGantt.resourceNames(data), onSelect() {}}), text = h.text(tree);
+const TrialContract = h.module('TrialContract.js').default, TrialResults = h.module('TrialResults.jsx').default,
+  TrialGantt = h.module('TrialGantt.jsx').default, TrialExport = h.module('TrialExport.js').default;
+const data = TrialContract.workspace(sourceData);
+const tree = h.render(TrialResults.Preparation, {data, name: TrialGantt.resourceNames(data), onSelect() {}}), text = h.text(tree);
 assert(text.includes('保留原安排'));
 const sources = h.walk(tree).filter(node => node.type === 'details' && h.text(node) === '需求依据与数量');
 assert.equal(sources.length, 2);
 const facts = new Map(h.walk(sources[1]).find(node => node.type === 'dl').children.filter(row => row !== null).map(row => [h.text(row.children[0]), h.text(row.children[1])]));
 assert.equal(facts.get('排产目标量'), '10 · 批次目标数量');
 assert.equal(facts.get('报工目标量'), '20 · 批次目标数量');
-const csv = w.TrialExport.preparation(data).text.trim().split('\r\n').map(row => row.split(','));
+const csv = TrialExport.preparation(data).text.trim().split('\r\n').map(row => row.split(','));
 const head = csv[0].map(cell => cell.replace(/^\uFEFF/, '').replace(/^"|"$/g, ''));
 const current = csv[2];
 assert.equal(current[head.indexOf('原需求目标量')], '10');

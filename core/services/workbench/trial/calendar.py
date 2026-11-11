@@ -11,7 +11,7 @@ from core.services.workbench.facts.zero_duration_evidence import trial_point_evi
 from core.shared.strict_parse import is_stored_number
 
 
-def original_duration(original, *, effort=None):
+def original_duration(original, *, effort=None, point_proven):
     """Saved zero-hour work requires a frozen point witness."""
     op = original["operation"]
     if effort is None:
@@ -20,7 +20,7 @@ def original_duration(original, *, effort=None):
         return {"basis": "calendar_days", "days": effort.external_cycle_days, "total_hours": None, "quantity": None}
     quantity = effort.target_quantity
     total = effort.required_standard_hours
-    if total == 0:
+    if total == 0 and not point_proven:
         try:
             trial_point_evidence(original)
         except PointEventError:
@@ -32,36 +32,36 @@ def original_duration(original, *, effort=None):
 def new_slot_effort(original):
     """The same operation-local standard requirement the real trial slot consumes."""
     op, batch, execution = original["operation"], original["batch"], original["execution"]
-    remaining = execution.get("remaining_quantity") if execution else None
+    remaining = execution["remaining_quantity"]
     if op["source"] == "external":
-        result = external_operation_effort(stored_operation(op, original.get("external_group")), stored_batch(batch),
+        result = external_operation_effort(stored_operation(op, original["external_group"]), stored_batch(batch),
                                            remaining_quantity=remaining)
         if not is_stored_number(result.external_cycle_days, positive=True):
             reject("external_duration_unknown", "原外协周期缺失或无效，不能推测完工时间。", 422)
-        return replace(result, execution_target_quantity=execution.get("target_quantity") if execution else None,
-                       execution_quantity_basis=execution.get("target_basis", "unknown") if execution else "unknown")
+        return replace(result, execution_target_quantity=execution["target_quantity"],
+                       execution_quantity_basis=execution["target_basis"])
     if op["source"] != "internal":
         reject("duration_source_unknown", "这道工序的来源缺项，标准需求未知。", 422)
     if not is_stored_number(op["setup_hours"]) or not is_stored_number(op["unit_hours"]):
         reject("hours_missing", "原准备工时或单件工时缺失。", 422)
     _original_target(op, batch, execution)
     result = internal_operation_effort(stored_operation(op), stored_batch(batch), remaining_quantity=remaining)
-    return replace(result, execution_target_quantity=execution.get("target_quantity") if execution else None,
-                   execution_quantity_basis=execution.get("target_basis", "unknown") if execution else "unknown")
+    return replace(result, execution_target_quantity=execution["target_quantity"],
+                   execution_quantity_basis=execution["target_basis"])
+
 
 def _original_target(op, batch, execution):
-    quantity = execution.get("target_quantity") if execution else None
+    quantity = execution["target_quantity"]
     basis = "piece" if op["piece_id"] is not None else "batch"
     target = 1 if op["piece_id"] is not None else batch["quantity"]
-    if not is_stored_number(quantity, integer=True) or quantity != target or execution.get("target_basis") != basis:
+    if not is_stored_number(quantity, integer=True) or quantity != target or execution["target_basis"] != basis:
         reject("piece_quantity_unknown" if op["piece_id"] is not None else "quantity_unknown",
                "原分件或批次目标量缺失。", 422)
-    return quantity
 
 
-def estimate(engine, original, arrangement, *, start, effort=None):
+def estimate(engine, original, arrangement, *, start, effort=None, point_proven=False):
     """Estimate a slot with saved work and the snapshot-local calendar."""
-    duration = original_duration(original, effort=effort)
+    duration = original_duration(original, effort=effort, point_proven=point_proven)
     if duration["basis"] == "calendar_days":
         return start, engine.add_calendar_days(start, duration["days"])
     if arrangement["machine_ref"] is None or arrangement["operator_ref"] is None:

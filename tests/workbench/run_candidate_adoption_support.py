@@ -7,7 +7,7 @@ from tests.workbench.run_candidate_support import candidate_case as candidate_ca
 from tests.workbench.run_candidate_support import compute, connect
 from tests.workbench.run_jobs_support import data_context
 from tests.workbench.trial_adoption_support import assert_dashboard_task_appends
-from web.routes.workbench.materials import command_receipt
+from web.routes.workbench.commands import register_command_routes
 from web.routes.workbench.run_candidate_adoption import register_run_candidate_adoption_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 
@@ -62,7 +62,7 @@ def api(case, enabled=True, connection_factory=connect):
     case.app.config["WORKBENCH_CANDIDATE_ADOPTION_ENABLED"] = enabled
     bp = Blueprint("workbench", __name__)
     register_run_candidate_adoption_routes(bp)
-    bp.add_url_rule("/api/workbench/v1/commands/<request_key>", view_func=command_receipt, methods=["GET"])
+    register_command_routes(bp)
     case.app.register_blueprint(bp)
 
     @case.app.before_request

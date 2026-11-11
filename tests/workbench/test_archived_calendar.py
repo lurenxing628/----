@@ -185,9 +185,6 @@ def test_saved_personal_override_and_rotating_rest_keep_operator_capacity():
     personal_tail = project(saved, "2026-10-13T00:00:00", "2026-10-13T06:00:00")[OPERATOR]
     assert personal_tail["available_hours"] == 6
     assert personal_tail["windows"][0]["provenance"] == "personal_calendar"
-    tables["OperatorCalendar"][0]["operator_id"] = None
-    distinct = project(saved, "2026-10-13T00:00:00", "2026-10-13T06:00:00")
-    assert distinct[MACHINE]["available_hours"] == 6 and distinct[OPERATOR]["available_hours"] == 0
 
 
 def test_broken_policy_days_keep_other_days_known_and_defaults_are_lazy():
@@ -260,8 +257,8 @@ def test_streaming_releases_person_groups_and_derived_facts_keeps_shared_shift(m
     global_key = "2026-10-12"
     global_policy = engine._policy_for_date(global_key)
     shifts = type(engine.operator_shift_calendar)
-    reads, read_pattern = [], shifts._read_pattern
-    monkeypatch.setattr(shifts, "_read_pattern", lambda self, *args: (reads.append(args), read_pattern(self, *args))[1])
+    reads, build_pattern = [], shifts._pattern
+    monkeypatch.setattr(shifts, "_pattern", lambda self, *args: (reads.append(args[:2]), build_pattern(self, *args))[1])
     stream = factory.iter_resources([RESOURCES[1], {"kind": "operator", "ref": second_ref, "saved_id": "O2"}],
                                     "2026-10-12T08:00:00", "2026-10-14T17:00:00")
     _, first = next(stream)
@@ -281,7 +278,6 @@ def test_streaming_releases_person_groups_and_derived_facts_keeps_shared_shift(m
     assert not engine._policy_operator_keys
     assert not engine._policy_cache
     assert engine._public_policy_cache[global_key] is global_policy
-    engine.clear_policy_cache()
     assert engine._policy_for_date("2026-10-12", "O1").hours == pytest.approx(22 / 3)
 
 

@@ -1,21 +1,23 @@
 """Batch adapter for the unique ledger; no execution quantity arithmetic here."""
 
+from core.services.execution.ledger_reader import project_loaded_facts
 from core.services.execution.projection import project_execution
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 
 
 def load_execution(conn, operation_refs):
     """Read all ledger inputs inside the batch caller's read transaction."""
-    return {"facts": ExecutionLedgerService(conn).load_many(operation_refs)}
+    ledger = ExecutionLedgerService(conn)
+    with ledger.read_snapshot() as scope:
+        return {"facts": ledger.load_many(scope, operation_refs)}
 
 
 def project_execution_snapshot(raw):
     """The ledger projector consumes captured inputs and performs no SQL."""
-    ledger = ExecutionLedgerService(None)
-    # load_many 已拒绝缺失的工序，project_loaded 逐个投影载入的工序，这里不再重复核对集合。
+    # load_many 已拒绝缺失的工序，project_loaded_facts 逐个投影载入的工序，这里不再重复核对集合。
     projections = {
         row.operation_ref: row
-        for row in ledger.project_loaded(raw["facts"], contexts=False, include_history=False)
+        for row in project_loaded_facts(raw["facts"], include_history=False)
     }
     # BatchFacts already includes every projection; global plan/ledger clocks add no
     # batch fact and would invalidate it when an unrelated historical plan changes.
