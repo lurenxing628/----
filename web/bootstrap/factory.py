@@ -12,7 +12,7 @@ from flask import Flask, current_app, g, request
 from werkzeug.serving import ThreadedWSGIServer
 
 from core.infrastructure.backup import is_maintenance_window_active
-from core.infrastructure.database import ensure_schema, get_connection
+from core.infrastructure.database import ensure_schema_on_connection, get_connection
 from core.infrastructure.logging import AppLogger, safe_log
 from web.error_boundary import (
     render_error_template,
@@ -47,7 +47,7 @@ from .workbench_request_lifecycle import (
 from .workbench_request_lifecycle_wsgi import call_on_workbench_request_close
 from .workbench_system_restore_recovery import prepare_system_restore_startup
 
-# atexit 退出备份服务于不经 entrypoint 停机的宿主（模块导入 app.py、脚本直接 create_app）；
+# atexit 退出备份服务于不经 entrypoint 停机的宿主（如脚本直接调用 create_app）；
 # entrypoint 在停机 finally 里经 run_exit_backup_now 接管。去重避免 create_app_core() 多次调用重复注册。
 _EXIT_BACKUP_MANAGER = None
 _EXIT_BACKUP_REGISTERED = False
@@ -202,67 +202,7 @@ def _register_exit_backup(app: Flask) -> None:
         _EXIT_BACKUP_REGISTERED = True
 
 
-def create_app_core(
-    *,
-    ui_mode: str,
-) -> Flask:
-    cfg_class = resolve_config_class(_config_map)
-
-    base_dir = runtime_base_dir(anchor_file=_default_anchor_file())
-    static_dir = os.path.join(base_dir, "static")
-    templates_dir = os.path.join(base_dir, "templates")
-
-    app = Flask(__name__, static_folder=static_dir, template_folder=templates_dir)
-    app.json = StrictJSONProvider(app)
-    install_runtime_host(app, request_shutdown=request_runtime_server_shutdown)
-    app.config.from_object(cfg_class)
-    _apply_runtime_config(app, base_dir=base_dir)
-    app.config["APP_UI_MODE"] = ui_mode
-    if prepare_system_restore_startup(app):
-        return app
-    # 静态资源长缓存（配合 url_for('static', ...) 版本参数）；只在没配置时给默认值，配成 0 就是不缓存。
-    static_max_age = app.config["SEND_FILE_MAX_AGE_DEFAULT"]
-    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 43200 if static_max_age is None else int(static_max_age)
-    install_versioned_url_for(app, static_dir)
-
-    app_logger = AppLogger(
-        app_name=app.config.get("APP_NAME", "APS"),
-        log_dir=app.config["LOG_DIR"],
-        log_level=app.config.get("LOG_LEVEL", "INFO"),
-        max_bytes=app.config.get("LOG_MAX_BYTES", 10 * 1024 * 1024),
-        backup_count=app.config.get("LOG_BACKUP_COUNT", 5),
-    )
-    app.logger.handlers = app_logger.logger.handlers
-    app.logger.setLevel(app_logger.logger.level)
-
-    ensure_secret_key(app)
-    apply_session_cookie_hardening(app)
-
-    _ensure_runtime_dirs(app)
-
-    schema_path = os.path.abspath(os.path.join(base_dir, "schema.sql"))
-    schema_started = time.perf_counter()
-    launcher_log_warning(app.logger, "启动阶段 schema_begin pid=%s。", os.getpid(),
-                         cfg_log_dir=app.config["LOG_DIR"], logger_level="info")
-    ensure_schema(
-        app.config["DATABASE_PATH"],
-        app.logger,
-        schema_path=schema_path if os.path.exists(schema_path) else None,
-    )
-    launcher_log_warning(app.logger, "启动阶段 schema_complete pid=%s duration=%.3fs。",
-                         os.getpid(), time.perf_counter() - schema_started,
-                         cfg_log_dir=app.config["LOG_DIR"], logger_level="info")
-    bootstrap_schedule_config(app.config["DATABASE_PATH"], logger=app.logger)
-
-    plugin_status = bootstrap_plugins(
-        base_dir,
-        app.config["DATABASE_PATH"],
-        logger=app.logger,
-    )
-    app.config["PLUGIN_STATUS"] = plugin_status
-
-    install_workbench_request_lifecycle(app)
-
+def _register_request_db_hooks(app: Flask) -> None:
     @app.before_request
     def _open_db():
         g._aps_req_started = time.perf_counter()
@@ -315,8 +255,8 @@ def create_app_core(
             except Exception as exc:
                 _app_log_once(app, "close_db_failed", "warning", "数据库连接关闭失败，已按清理型尽力而为继续：%s", exc)
 
-    register_security_headers(app)
 
+def _register_after_request_hooks(app: Flask) -> None:
     @app.after_request
     def _schedule_idle_maintenance(resp):
         runtime = app.extensions.get("workbench_run_runtime")
@@ -348,13 +288,74 @@ def create_app_core(
                 app.logger.warning(f"慢请求: {request.method} {req_path} {total_ms}ms")
         return resp
 
+
+def create_app_core() -> Flask:
+    cfg_class = resolve_config_class(_config_map)
+
+    base_dir = runtime_base_dir(anchor_file=_default_anchor_file())
+    static_dir = os.path.join(base_dir, "static")
+    templates_dir = os.path.join(base_dir, "templates")
+
+    app = Flask(__name__, static_folder=static_dir, template_folder=templates_dir)
+    app.json = StrictJSONProvider(app)
+    install_runtime_host(app, request_shutdown=request_runtime_server_shutdown)
+    app.config.from_object(cfg_class)
+    _apply_runtime_config(app, base_dir=base_dir)
+    if prepare_system_restore_startup(app):
+        return app
+    # 静态资源长缓存（配合 url_for('static', ...) 版本参数）；只在没配置时给默认值，配成 0 就是不缓存。
+    static_max_age = app.config["SEND_FILE_MAX_AGE_DEFAULT"]
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 43200 if static_max_age is None else int(static_max_age)
+    install_versioned_url_for(app, static_dir)
+
+    app_logger = AppLogger(
+        app_name=app.config.get("APP_NAME", "APS"),
+        log_dir=app.config["LOG_DIR"],
+        log_level=app.config.get("LOG_LEVEL", "INFO"),
+        max_bytes=app.config.get("LOG_MAX_BYTES", 10 * 1024 * 1024),
+        backup_count=app.config.get("LOG_BACKUP_COUNT", 5),
+    )
+    app.logger.handlers = app_logger.logger.handlers
+    app.logger.setLevel(app_logger.logger.level)
+
+    ensure_secret_key(app)
+    apply_session_cookie_hardening(app)
+
+    _ensure_runtime_dirs(app)
+
+    schema_path = os.path.abspath(os.path.join(base_dir, "schema.sql"))
+    schema_started = time.perf_counter()
+    launcher_log_warning(app.logger, "启动阶段 schema_begin pid=%s。", os.getpid(),
+                         cfg_log_dir=app.config["LOG_DIR"], logger_level="info")
+    current_db_path = app.config["DATABASE_PATH"]
+    startup_conn = get_connection(current_db_path)
+    try:
+        ensure_schema_on_connection(
+            startup_conn,
+            app.logger,
+            schema_path=schema_path if os.path.exists(schema_path) else None,
+        )
+        launcher_log_warning(app.logger, "启动阶段 schema_complete pid=%s duration=%.3fs。",
+                             os.getpid(), time.perf_counter() - schema_started,
+                             cfg_log_dir=app.config["LOG_DIR"], logger_level="info")
+        bootstrap_schedule_config(startup_conn, app.logger)
+        plugin_status = bootstrap_plugins(
+            base_dir,
+            startup_conn,
+            logger=app.logger,
+        )
+        app.config["PLUGIN_STATUS"] = plugin_status
+    finally:
+        startup_conn.close()
+
+    install_workbench_request_lifecycle(app)
+    _register_request_db_hooks(app)
+    register_security_headers(app)
+    _register_after_request_hooks(app)
     register_error_handlers(app)
 
     _register_all_blueprints(app)
     _register_exit_backup(app)
 
-    if ui_mode == "new_ui":
-        app.logger.info("应用启动完成 (UI Test Mode)。")
-    else:
-        app.logger.info("应用启动完成。")
+    app.logger.info("应用启动完成。")
     return app

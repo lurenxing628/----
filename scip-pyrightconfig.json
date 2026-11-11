@@ -1,7 +1,6 @@
 {
   "include": [
     "app.py",
-    "app_new_ui.py",
     "config.py",
     "core",
     "data",

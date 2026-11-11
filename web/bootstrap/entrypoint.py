@@ -72,8 +72,8 @@ class EntryPointDeps:
     prepare_runtime_server: Callable[..., Any]
 
 
-def create_app_with_mode(ui_mode: str = "default") -> Flask:
-    return create_app_core(ui_mode=ui_mode)
+def create_app() -> Flask:
+    return create_app_core()
 
 
 def _parse_cli_args(argv):
@@ -84,11 +84,11 @@ def _parse_cli_args(argv):
     return parser.parse_known_args(argv)
 
 
-def _default_deps(ui_mode: str) -> EntryPointDeps:
+def _default_deps() -> EntryPointDeps:
     from .workbench_run_runtime import install_workbench_run_runtime
 
     return EntryPointDeps(
-        create_app=lambda: create_app_with_mode(ui_mode),
+        create_app=create_app,
         clear_launch_error=clear_launch_error,
         current_runtime_owner=current_runtime_owner,
         resolve_prelaunch_log_dir=resolve_prelaunch_log_dir,
@@ -165,7 +165,6 @@ def configure_runtime_contract(
         db_path=app.config.get("DATABASE_PATH"),
         shutdown_token=shutdown_token,
         instance_id=identity["instance_id"],
-        ui_mode=app.config["APP_UI_MODE"],
         log_dir=app.config.get("LOG_DIR"),
         backup_dir=app.config.get("BACKUP_DIR"),
         excel_template_dir=app.config.get("EXCEL_TEMPLATE_DIR"),
@@ -189,14 +188,13 @@ def _supervise_reloader() -> int:
 
 
 def app_main(
-    ui_mode: str = "default",
     *,
     anchor_file: str,
     argv=None,
     deps: Optional[EntryPointDeps] = None,
 ) -> int:
     if deps is None:
-        deps = _default_deps(ui_mode)
+        deps = _default_deps()
 
     args, _unknown = _parse_cli_args(argv or sys.argv[1:])
     runtime_stop = args.runtime_stop.strip()

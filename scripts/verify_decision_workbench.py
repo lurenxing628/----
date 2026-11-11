@@ -1244,7 +1244,7 @@ def delivery_fixtures(args):
 
 
 def serve(args):
-    from web.bootstrap.entrypoint import _default_deps, configure_runtime_contract, create_app_with_mode
+    from web.bootstrap.entrypoint import _default_deps, configure_runtime_contract, create_app
     from web.bootstrap.launcher_paths import current_runtime_owner
     from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock
     from web.bootstrap.runtime_server import create_runtime_server
@@ -1260,13 +1260,13 @@ def serve(args):
         raise RuntimeError("原实例数据库路径与隔离目录不同。")
     evidence = ROOT / "evidence" / "decision-comparison-loop" / root.name
     payload = acquire_runtime_lock(str(root), db_path=str(database))
-    deps = _default_deps("default")
+    deps = _default_deps()
     lock_state = {"payload": payload}
     atexit.register(release_runtime_after_jobs, deps, lock_state, str(root))
     runtime = app = server = None
     thread = None
     try:
-        app = create_app_with_mode("default")
+        app = create_app()
         if Path(app.config["DATABASE_PATH"]).resolve() != database or database == (ROOT / "db" / "aps.db").resolve():
             raise RuntimeError("应用数据库路径与本次隔离实例路径不同。")
         app.config["WORKBENCH_INSTANCE_LABEL"] = "决策验收 · 独立数据"

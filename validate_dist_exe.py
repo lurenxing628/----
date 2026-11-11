@@ -259,8 +259,6 @@ def _assert_health(base_url: str, timeout: float = 3.0) -> dict:
         contract_version = 0
     if contract_version != _EXPECTED_CONTRACT_VERSION:
         raise RuntimeError(f"健康检查契约版本不正确：{payload!r}")
-    if str(payload.get("ui_mode") or "") != "default":
-        raise RuntimeError(f"健康检查 ui_mode 不正确：{payload!r}")
     return payload
 
 

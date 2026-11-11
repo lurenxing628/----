@@ -169,7 +169,7 @@ def _distinct_lock_starts(monkeypatch):
 def _publish_claim(runtime_dir, logs, database, claim, instance_id):
     return contracts_mod.write_runtime_contract_file(
         str(runtime_dir), "127.0.0.1", 6322, db_path=str(database), shutdown_token="isolated-test-token",
-        instance_id=instance_id, ui_mode="new_ui", log_dir=str(logs), backup_dir=str(runtime_dir / "backups"),
+        instance_id=instance_id, log_dir=str(logs), backup_dir=str(runtime_dir / "backups"),
         excel_template_dir=str(runtime_dir / "templates"), owner=_OWNER, exe_path=sys.executable,
         chrome_profile_dir=default_chrome_profile_dir(str(runtime_dir)), logger=_LOGGER, expected_lock=claim,
     )
@@ -221,14 +221,14 @@ def test_shutdown_release_uses_original_three_identities_and_cleans_log_mirror(t
     configured_logs = tmp_path / "configured-logs"
     state: Dict[str, Any] = {}
 
-    deps = replace(entrypoint_mod._default_deps("default"), resolve_runtime_db_path=lambda directory: str(database))
+    deps = replace(entrypoint_mod._default_deps(), resolve_runtime_db_path=lambda directory: str(database))
     assert entrypoint_mod._acquire_runtime_lock_before_app(
         deps, runtime_dir=str(runtime_dir), lock_scope_target=str(runtime_dir), lock_scope_log_dir=None,
         runtime_owner=_OWNER, prelaunch_log_dir=str(logs), runtime_lock_state=state,
     ) is None
     app = Flask("original-exit")
     app.config.update(LOG_DIR=str(configured_logs), DATABASE_PATH=str(database), BACKUP_DIR=str(runtime_dir / "backups"),
-                      EXCEL_TEMPLATE_DIR=str(runtime_dir / "templates"), APP_UI_MODE="new_ui")
+                      EXCEL_TEMPLATE_DIR=str(runtime_dir / "templates"))
     assert entrypoint_mod._publish_runtime_contract(
         deps, app, runtime_dir=str(runtime_dir), host="127.0.0.1", port=6322,
         runtime_owner=_OWNER, lock_state=state,
@@ -457,7 +457,7 @@ def test_reloader_parent_process_only_supervises_without_runtime_side_effects(tm
     monkeypatch.setitem(reloader_mod.reloader_loops, "auto", _FakeParentReloader)
 
     deps = replace(
-        entrypoint_mod._default_deps("default"),
+        entrypoint_mod._default_deps(),
         resolve_startup_debug_flag=lambda: True,
         clear_launch_error=lambda *a, **k: side_effects.append("clear_launch_error"),
         acquire_runtime_lock=lambda *a, **k: side_effects.append("acquire_lock"),
@@ -550,7 +550,6 @@ def test_recovery_host_disables_runtime_reloader_even_in_debug_child(tmp_path: P
         LOG_DIR=str(log_dir),
         BACKUP_DIR=str(runtime_dir / "backups"),
         EXCEL_TEMPLATE_DIR=str(runtime_dir / "templates"),
-        APP_UI_MODE="default",
         WORKBENCH_SYSTEM_JOURNAL_DIR=str(tmp_path / "journal"),
     )
     configure_system_restore_recovery(app)
@@ -579,7 +578,7 @@ def test_recovery_host_disables_runtime_reloader_even_in_debug_child(tmp_path: P
             served.append("server_close")
 
     deps = replace(
-        entrypoint_mod._default_deps("default"),
+        entrypoint_mod._default_deps(),
         create_app=lambda: app,
         resolve_startup_debug_flag=lambda: True,
         should_use_runtime_reloader=lambda debug: True,
@@ -719,7 +718,6 @@ def test_reloader_child_file_change_triggers_ordered_cleanup_and_exit_3_then_nor
             LOG_DIR=str(log_dir),
             BACKUP_DIR=str(runtime_dir / "backups"),
             EXCEL_TEMPLATE_DIR=str(runtime_dir / "templates"),
-            APP_UI_MODE="default",
         )
         app.extensions["workbench_startup_maintenance_records"] = ()
 
@@ -730,7 +728,7 @@ def test_reloader_child_file_change_triggers_ordered_cleanup_and_exit_3_then_nor
         return app
 
     deps = replace(
-        entrypoint_mod._default_deps("default"),
+        entrypoint_mod._default_deps(),
         create_app=_make_app,
         install_run_runtime=lambda target_app, runtime_lock: _TrackedRuntime(str(db_path)),
         prepare_runtime_server=_prepare_and_track,

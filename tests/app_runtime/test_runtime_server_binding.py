@@ -173,7 +173,6 @@ def test_prepared_runtime_server_fallback_matches_published_contract_endpoint(tm
             LOG_DIR=str(log_dir),
             BACKUP_DIR=str(runtime_dir / "backups"),
             EXCEL_TEMPLATE_DIR=str(runtime_dir / "templates"),
-            APP_UI_MODE="new_ui",
         )
         app.extensions["workbench_startup_maintenance_records"] = ()
         monkeypatch.setattr(
@@ -208,7 +207,7 @@ def test_prepared_runtime_server_fallback_matches_published_contract_endpoint(tm
         from dataclasses import replace
 
         deps = replace(
-            entrypoint_mod._default_deps("new_ui"),
+            entrypoint_mod._default_deps(),
             create_app=lambda: app,
             install_run_runtime=lambda target_app, runtime_lock: _StubRuntime(str(db_path)),
             serve_runtime_app=_serve,
@@ -216,7 +215,7 @@ def test_prepared_runtime_server_fallback_matches_published_contract_endpoint(tm
             should_own_runtime_resources=lambda debug: True,
             should_use_runtime_reloader=lambda debug: False,
         )
-        rc = entrypoint_mod.app_main("new_ui", anchor_file=str(runtime_dir / "app.py"), argv=[], deps=deps)
+        rc = entrypoint_mod.app_main(anchor_file=str(runtime_dir / "app.py"), argv=[], deps=deps)
         assert rc == 0
         actual_host, actual_port = observed["server_address"]
         assert actual_host == "127.0.0.1"

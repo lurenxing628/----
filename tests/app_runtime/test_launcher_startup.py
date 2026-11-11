@@ -58,7 +58,7 @@ def health_server(tmp_path):
 
     app = Flask("launcher-runtime-contract")
     app.config.update(LOG_DIR=str(tmp_path / "logs"), BACKUP_DIR=str(tmp_path / "backups"),
-                      EXCEL_TEMPLATE_DIR=str(tmp_path / "templates"), APP_UI_MODE="new_ui")
+                      EXCEL_TEMPLATE_DIR=str(tmp_path / "templates"))
     app.add_url_rule("/system/health", view_func=health)
     client = Client(RuntimeHostStopTransport(app), Response)
     state = {"status": 200, "patch": {}}
@@ -90,7 +90,7 @@ def health_server(tmp_path):
             assert release_runtime_lock(str(tmp_path), expected_payload=previous)
         state["lock"] = acquire_runtime_lock(str(tmp_path), owner="LOCAL\\operator", db_path=str(database_path))
         configure_runtime_contract(app, str(tmp_path), "127.0.0.1", server.server_port, "LOCAL\\operator",
-                                   deps=_default_deps("new_ui"), runtime_lock=state["lock"])
+                                   deps=_default_deps(), runtime_lock=state["lock"])
         result = read_runtime_contract_result(str(tmp_path))
         assert result.ok
         state["contract"] = result.payload
@@ -471,3 +471,129 @@ def test_launcher_strict_bounded_integers_across_endpoint_contract_health_and_ch
         + "\r\n1234\r\n\ufeff5678\r\n"
     )
     assert _parse_chrome_pid_output(chrome_out) == [1234, 0xFFFFFFFF]
+
+
+def test_app_create_app_smoke(db_env, monkeypatch) -> None:
+    import importlib
+    import sys
+    from urllib.parse import unquote, urlparse
+
+    from core.infrastructure import database as database_mod
+    from tests._support.workbench_web_contract import boot_payload
+    from web.bootstrap import entrypoint, factory
+
+    monkeypatch.setenv("SECRET_KEY", "aps-smoke-app-key")
+    create_calls = []
+    original_create_app = entrypoint.create_app
+    monkeypatch.setattr(entrypoint, "create_app", lambda: (create_calls.append(1), original_create_app())[1])
+    db_connect_calls = []
+    original_get_connection = factory.get_connection
+    monkeypatch.setattr(
+        factory,
+        "get_connection",
+        lambda path: (db_connect_calls.append(path), original_get_connection(path))[1],
+    )
+    sqlite_connect_targets = []
+    original_sqlite_connect = database_mod.sqlite3.connect
+    monkeypatch.setattr(
+        database_mod.sqlite3,
+        "connect",
+        lambda database, *args, **kwargs: (
+            sqlite_connect_targets.append(str(database)),
+            original_sqlite_connect(database, *args, **kwargs),
+        )[1],
+    )
+    monkeypatch.delitem(sys.modules, "app", raising=False)
+    mod = importlib.import_module("app")
+    assert not hasattr(mod, "app")
+    assert create_calls == []
+    assert db_connect_calls == []
+    assert sqlite_connect_targets == []
+
+    app = mod.create_app()
+    expected_db = os.path.abspath(app.config["DATABASE_PATH"])
+    business_db_connects = [
+        target for target in sqlite_connect_targets
+        if target.strip() != ":memory:"
+        and os.path.abspath(unquote(urlparse(target).path) if target.startswith("file:") else target) == expected_db
+    ]
+    assert len(create_calls) == 1
+    assert len(db_connect_calls) == 1
+    assert len(business_db_connects) == 1
+
+    client = app.test_client()
+    root = client.get("/")
+    assert root.status_code == 302 and root.headers["Location"] == "/workbench"
+    boot = boot_payload(client.get(root.headers["Location"]))
+    assert boot["view"] == "dashboard" and "dashboard" in boot["enabled_views"]
+
+    r2 = client.get("/excel-demo/")
+    assert r2.status_code == 404
+
+
+@pytest.mark.parametrize(("configured", "expected"), [(None, 43200), (0, 0)])
+def test_static_cache_age_defaults_only_when_not_configured(db_env, monkeypatch, configured, expected) -> None:
+    from web.bootstrap import app_config
+    from web.bootstrap.entrypoint import create_app
+
+    monkeypatch.setenv("SECRET_KEY", "aps-static-cache-age-key")
+    monkeypatch.setattr(app_config.Config, "SEND_FILE_MAX_AGE_DEFAULT", configured, raising=False)
+    assert create_app().config["SEND_FILE_MAX_AGE_DEFAULT"] == expected
+
+
+def test_cold_start_defers_computation_and_excel_until_used(db_env, monkeypatch):
+    import sys
+
+    monkeypatch.setenv("APS_ENV", "production")
+    monkeypatch.setenv("SECRET_KEY", "cold-start-contract-key")
+    script = """
+import atexit, importlib, json, os, sqlite3, sys
+from pathlib import Path
+from urllib.parse import unquote, urlparse
+original_connect = sqlite3.connect
+root = Path(os.environ['APS_DB_PATH']).resolve().parent
+def connect(database, *args, **kwargs):
+    raw = os.fspath(database)
+    if raw != ':memory:':
+        path = unquote(urlparse(raw).path) if raw.startswith('file:') else raw
+        Path(path).resolve().relative_to(root)
+    return original_connect(database, *args, **kwargs)
+sqlite3.connect = connect
+mod = importlib.import_module('app')
+assert not hasattr(mod, 'app')
+app = mod.create_app()
+from web.bootstrap import factory
+from web.bootstrap.entrypoint import _default_deps
+from web.bootstrap.workbench_run_lifecycle import install_run_lifecycle, stop_run_runtime
+from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
+atexit.unregister(factory._run_exit_backup)
+scope = str(root / 'cold-start-lock')
+payload = acquire_runtime_lock(scope, db_path=str(root / Path(os.environ['APS_DB_PATH']).name))
+runtime = install_run_lifecycle(_default_deps(), app, {'payload': payload})
+try:
+    assert runtime.ready and app.extensions['workbench_system_restore_host'].status['operations_available']
+    for name in ('openpyxl', 'core.services.workbench.run.worker',
+                 'core.services.workbench.run.compute'):
+        assert name not in sys.modules, name
+    response = app.test_client().get('/api/workbench/v1/entities/batch/template', buffered=True)
+    assert response.status_code == 200 and response.data.startswith(b'PK')
+    response.close()
+    assert 'openpyxl' in sys.modules
+    from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
+    from core.services.workbench.run.worker import RUN_SCHEDULE_LOCK as worker_lock
+    from core.services.workbench.run.worker_recovery import RUN_SCHEDULE_LOCK as recovery_lock
+    from core.services.workbench.run.adoption_host import RUN_SCHEDULE_LOCK as adoption_lock
+    from web.bootstrap.workbench_system_restore import RUN_SCHEDULE_LOCK as restore_lock
+    assert all(lock is RUN_SCHEDULE_LOCK for lock in
+               (worker_lock, recovery_lock, adoption_lock, restore_lock))
+    print(json.dumps({'ready': runtime.ready, 'xlsx': response.status_code, 'shared_lock': True}))
+finally:
+    stop_run_runtime(runtime)
+    release_runtime_lock(scope, expected_payload=payload)
+"""
+    result = subprocess.run([sys.executable, "-c", script], cwd=str(ROOT),
+                            env=os.environ.copy(), text=True, capture_output=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout) == {"ready": True, "xlsx": 200, "shared_lock": True}
+    log = (Path(os.environ["APS_LOG_DIR"]) / "launcher.log").read_text(encoding="utf-8")
+    assert "python_entry" in log and "application_import_complete" in log and "schema_complete" in log

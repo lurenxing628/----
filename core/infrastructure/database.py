@@ -67,6 +67,7 @@ __all__ = [
     "MigrationContractError",
     "get_connection",
     "ensure_schema",
+    "ensure_schema_on_connection",
 ]
 
 
@@ -138,6 +139,44 @@ def _ensure_no_user_tables_db_can_bootstrap(
     )
 
 
+def ensure_schema_on_connection(
+    conn: sqlite3.Connection, logger=None, schema_path: Optional[str] = None, *, full_data: bool = False
+) -> None:
+    """在已打开的连接上确保数据库表结构存在且符合当前版本契约。"""
+    try:
+        sql = load_schema_sql(schema_path)
+
+        initial_version = _get_schema_version(conn)
+        _ensure_schema_version_not_newer(initial_version, supported_version=CURRENT_SCHEMA_VERSION)
+        if initial_version == CURRENT_SCHEMA_VERSION:
+            # One unchanged current-schema validation owns one transaction.
+            conn.execute("BEGIN")
+            _ensure_current_schema_contract(conn, schema_version=initial_version, schema_sql=sql, full_data=full_data)
+            current_version = initial_version
+        elif _has_no_user_tables(conn):
+            _ensure_no_user_tables_db_can_bootstrap(conn, initial_version, full_data=full_data)
+            conn.executescript(_build_schema_exec_script(sql))
+            current_version = _ensure_schema_version(conn, logger=logger, schema_sql=sql, full_data=full_data)
+            _ensure_schema_version_not_newer(current_version, supported_version=CURRENT_SCHEMA_VERSION)
+        elif initial_version <= 0:
+            current_version = _ensure_schema_version(conn, logger=logger, schema_sql=sql, full_data=full_data)
+            _ensure_schema_version_not_newer(current_version, supported_version=CURRENT_SCHEMA_VERSION)
+        else:
+            current_version = initial_version
+
+        if current_version < CURRENT_SCHEMA_VERSION:
+            err = _build_outdated_schema_version_error(current_version, supported_version=CURRENT_SCHEMA_VERSION)
+            fallback_log(logger, "error", str(err))
+            raise err
+
+        conn.commit()
+        fallback_log(logger, "info", "数据库结构检查完成（已确保所有表存在）。")
+    except Exception as init_exc:
+        # 失败尽最大努力回滚，避免半初始化状态
+        _rollback_failed_schema_initialization(conn, init_exc, logger=logger)
+        raise
+
+
 def ensure_schema(
     db_path: str, logger=None, schema_path: Optional[str] = None, *, full_data: bool = False
 ) -> None:
@@ -151,38 +190,12 @@ def ensure_schema(
 
     conn = get_connection(db_path)
     try:
-        try:
-            sql = load_schema_sql(schema_path)
-
-            initial_version = _get_schema_version(conn)
-            _ensure_schema_version_not_newer(initial_version, supported_version=CURRENT_SCHEMA_VERSION)
-            if initial_version == CURRENT_SCHEMA_VERSION:
-                # One unchanged current-schema validation owns one transaction.
-                conn.execute("BEGIN")
-                _ensure_current_schema_contract(conn, schema_version=initial_version, schema_sql=sql, full_data=full_data)
-                current_version = initial_version
-            elif _has_no_user_tables(conn):
-                _ensure_no_user_tables_db_can_bootstrap(conn, initial_version, full_data=full_data)
-                conn.executescript(_build_schema_exec_script(sql))
-                current_version = _ensure_schema_version(conn, logger=logger, schema_sql=sql, full_data=full_data)
-                _ensure_schema_version_not_newer(current_version, supported_version=CURRENT_SCHEMA_VERSION)
-            elif initial_version <= 0:
-                current_version = _ensure_schema_version(conn, logger=logger, schema_sql=sql, full_data=full_data)
-                _ensure_schema_version_not_newer(current_version, supported_version=CURRENT_SCHEMA_VERSION)
-            else:
-                current_version = initial_version
-
-            if current_version < CURRENT_SCHEMA_VERSION:
-                err = _build_outdated_schema_version_error(current_version, supported_version=CURRENT_SCHEMA_VERSION)
-                fallback_log(logger, "error", str(err))
-                raise err
-
-            conn.commit()
-            fallback_log(logger, "info", "数据库结构检查完成（已确保所有表存在）。")
-        except Exception as init_exc:
-            # 失败尽最大努力回滚，避免半初始化状态
-            _rollback_failed_schema_initialization(conn, init_exc, logger=logger)
-            raise
+        ensure_schema_on_connection(
+            conn,
+            logger=logger,
+            schema_path=schema_path,
+            full_data=full_data,
+        )
     finally:
         try:
             conn.close()

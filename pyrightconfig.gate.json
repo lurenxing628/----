@@ -1,7 +1,6 @@
 {
   "include": [
     "app.py",
-    "app_new_ui.py",
     "core",
     "data",
     "web"
@@ -27,8 +26,6 @@
     "templates_excel",
     "tools",
     "check_manual_layout.py",
-    "quick_ui_check.py",
-    "ui_v1_v2_check.py",
     "validate_dist_exe.py",
     "verify_manual_styles.py"
   ],

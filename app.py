@@ -46,15 +46,7 @@ def _entrypoint_module() -> Any:
 
 
 def create_app() -> Flask:
-    return _entrypoint_module().create_app_with_mode("default")
-
-
-if __name__ not in ("__main__", "__mp_main__"):
-    try:
-        app = create_app()
-    except Exception as exc:
-        _record_prelaunch_import_failure(exc)
-        raise RuntimeError(PRELAUNCH_PUBLIC_MESSAGE) from None
+    return _entrypoint_module().create_app()
 
 
 def main(argv=None, deps=None) -> int:
@@ -63,7 +55,7 @@ def main(argv=None, deps=None) -> int:
     except Exception as exc:
         _record_prelaunch_import_failure(exc)
         return 14
-    return int(entrypoint.app_main("default", anchor_file=__file__, argv=argv, deps=deps))
+    return int(entrypoint.app_main(anchor_file=__file__, argv=argv, deps=deps))
 
 
 if __name__ == "__main__":
