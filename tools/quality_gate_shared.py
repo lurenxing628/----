@@ -4,15 +4,14 @@ import glob
 import json
 import os
 import re
-import subprocess
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union, cast
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union, cast
 
 from tools.long_gate_schema import (
     PRIVATE_ENVIRONMENT_KEYS,
     PUBLIC_ENVIRONMENT_KEYS,
+    RUNTIME_FINGERPRINT_KEYS,
     SensitiveSourceError,
     canonical_content,
     content_equal,
@@ -21,7 +20,8 @@ from tools.long_gate_schema import (
 )
 from tools.test_registry import (
     QUALITY_GATE_REQUIRED_TESTS,
-    QUALITY_GATE_STARTUP_REGRESSION_ARGS,
+    iter_required_regression_common_scope_policy,
+    iter_required_regression_groups,
 )
 from tools.test_registry import (
     iter_required_tests as _registry_required_tests,
@@ -32,6 +32,7 @@ from tools.test_registry import (
 from tools.test_registry import (
     required_test_nodeid_matches as _registry_required_test_nodeid_matches,
 )
+from tools.test_registry_data import ESBUILD_SCOPES as _ESBUILD_GATE_SCOPES
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 LEDGER_PATH = os.path.join(REPO_ROOT, "开发文档", "技术债务治理台账.md")
@@ -77,6 +78,24 @@ QUALITY_GATE_QUICKREF_VS_ROUTES_REL = os.path.join(
     QUALITY_GATE_ROOT_REL,
     "quickref_vs_routes.md",
 )
+QUALITY_GATE_COLLECT_NODEIDS_REL = os.path.join(
+    QUALITY_GATE_LEGACY_ROOT_REL,
+    "collect_nodeids.v2.json",
+).replace("\\", "/")
+
+ENTRY_PYTEST_COLLECT_ALL = "pytest_collect_all"
+ENTRY_FULL_TEST_DEBT = "full_test_debt"
+ENTRY_RUFF_CHECK_FULL = "ruff_check_full"
+ENTRY_PYRIGHT_GATE_FULL = "pyright_gate_full"
+ENTRY_PYRIGHT_TOOLS_FULL = "pyright_tools_full"
+ENTRY_REQUIRED_REGRESSIONS = "required_regressions"
+ENTRY_DEBT_LEDGER_SYNC = "debt_ledger_sync"
+ENTRY_QUICKREF_VS_ROUTES = "quickref_vs_routes"
+ENTRY_IMPORT_CYCLES_PRODUCTION = "import_cycles_production"
+ENTRY_IMPORT_CYCLES_WITH_TESTS = "import_cycles_with_tests"
+ENTRY_VERSION_OR_ENV_PROBE = "version_or_env_probe"
+ENTRY_ROADMAP_YAML_VALIDATION = "roadmap_yaml_validation"
+ENTRY_PY38_SYNTAX_CHECK = "py38_syntax_check"
 # The retained suite is the complete suite: no marker-based exclusions or browser lane.
 FORMAL_FULL_TEST_PYTEST_ARGS = ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
 REQUIRED_BROWSER_ENV_OVERLAY = {
@@ -137,13 +156,16 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/quality_gate_operations.py",
     "tools/quality_gate_scan.py",
     "tools/quality_gate_shared.py",
-    "tools/scan_anti_regression_gate.py",
-    "tools/scan_aps_three_gap_py38_scope.py",
     "tools/scan_dead_code_islands.py",
     "tools/import_cycle_analysis.py",
     "tools/import_cycle_baseline.py",
     "tools/import_cycle_graph.py",
     "tools/scan_import_cycles.py",
+    "tools/boundary_baseline.py",
+    "tools/scan_sql_boundary.py",
+    "tools/scan_private_imports.py",
+    "tools/scan_dead_path_literals.py",
+    "tools/scan_over_defense.py",
     ".codestable/checkup/scripts/callgraph_call_sites.py",
     ".codestable/checkup/scripts/callgraph_dataflow.py",
     ".codestable/checkup/scripts/callgraph_extract.py",
@@ -164,20 +186,32 @@ QUALITY_GATE_TOOL_PATHS = [
     ".codestable/tools/_yaml_frontmatter.py",
     ".codestable/tools/search-yaml.py",
     ".codestable/tools/validate-yaml.py",
+    ".limcode/skills/aps-full-selftest/scripts/run_full_selftest.py",
     "tests/app_runtime/test_frontend_offline_static_assets.py",
+    "scripts/workbench/asset_sources.py",
+    "scripts/workbench/entry_bundle.py",
+    "scripts/workbench/vendor_react.py",
+    "scripts/workbench/build.py",
+    ".limcode/skills/aps-start-and-rerun-route/scripts/run_start_and_rerun_route.py",
 ]
 QUALITY_GATE_SOURCE_FILES = tuple(
     dict.fromkeys(
         (
             ".pre-commit-config.yaml",
             ".github/workflows/quality.yml",
-            ".limcode/skills/aps-full-selftest/scripts/run_full_selftest.py",
             "pyproject.toml",
             "开发文档/技术债务治理台账.md",
             QUALITY_GATE_PYRIGHT_GATE_CONFIG,
             QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
+            ".codestable/checkup/baseline.json",
+            ".codestable/checkup/data_policy_baseline.json",
+            ".codestable/checkup/dead_code_islands_baseline.json",
+            ".codestable/checkup/dead_path_literal_baseline.json",
             ".codestable/checkup/import_cycles_production_baseline.json",
             ".codestable/checkup/import_cycles_with_tests_baseline.json",
+            ".codestable/checkup/over_defense_baseline.json",
+            ".codestable/checkup/private_import_baseline.json",
+            ".codestable/checkup/sql_boundary_baseline.json",
             *QUALITY_GATE_TOOL_PATHS,
             *QUALITY_GATE_REQUIRED_TESTS,
             "tests/gate_meta/check_quickref_vs_routes.py",
@@ -290,8 +324,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/bootstrap/plugins.py",
         symbol="bootstrap_plugins",
-        line_start=113,
-        line_end=122,
+        line_start=80,
+        line_end=96,
         fallback_kind="observable_degrade",
     ),
     SilentFallbackSample(
@@ -379,15 +413,30 @@ def collect_startup_scope_files() -> List[str]:
     return collect_globbed_files(STARTUP_SCOPE_PATTERNS)
 
 
+_COMMAND_SPEC_METADATA_KEYS = (
+    "check_id",
+    "entry_type",
+    "proof_kind",
+    "reuse_policy",
+    "runner_handler",
+)
+
+
 def normalize_quality_gate_command(command: Mapping[str, Any]) -> Dict[str, Any]:
     """One complete command identity for execution, receipts, resume and cache comparison."""
-    return {
+    normalized: Dict[str, Any] = {
         "display": str(command.get("display") or "").strip(),
         "args": [str(arg) for arg in list(command.get("args") or [])],
         "capture_output": bool(command.get("capture_output")),
         "output_policy": _command_output_policy(command),
         "env_overlay": _normalize_env_overlay(command.get("env_overlay")),
     }
+    for key in _COMMAND_SPEC_METADATA_KEYS:
+        if key not in command:
+            continue
+        value = command.get(key)
+        normalized[key] = None if value is None else str(value).strip()
+    return normalized
 
 
 def _normalize_command_rows(commands: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -431,8 +480,6 @@ def _normalize_source_rows(gate_sources: Sequence[Dict[str, Any]]) -> List[Dict[
         normalized = {"path": str(row.get("path") or "").replace("\\", "/"), "exists": row.get("exists")}
         if "content_base64" in row:
             normalized["content_base64"] = row["content_base64"]
-        elif "sha256" in row:
-            normalized["sha256"] = str(row.get("sha256") or "")
         rows.append(normalized)
     rows.sort(key=lambda item: item["path"])
     return rows
@@ -468,46 +515,12 @@ def _normalize_collection_proof(collection_proof: Dict[str, Any]) -> Dict[str, A
     }
 
 
-def _normalize_command_receipt_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
-    reused_from_obj = payload.get("reused_from")
-    reused_from = dict(cast(Mapping[str, Any], reused_from_obj)) if isinstance(reused_from_obj, dict) else {}
-    receipt = {
-        "schema_version": int(payload.get("schema_version") or 0),
-        "run_id": str(payload.get("run_id") or "").strip(),
-        "command_index": int(payload.get("command_index") or 0),
-        "display": str(payload.get("display") or "").strip(),
-        "args": [str(arg) for arg in list(payload.get("args") or [])],
-        "capture_output": bool(payload.get("capture_output")),
-        "output_policy": str(payload.get("output_policy") or "").strip().lower(),
-        "env_overlay": _normalize_env_overlay(payload.get("env_overlay")),
-        "returncode": int(payload.get("returncode") or 0),
-        "stdout_log_path": str(payload.get("stdout_log_path") or "").replace("\\", "/"),
-        "stderr_log_path": str(payload.get("stderr_log_path") or "").replace("\\", "/"),
-        "execution_mode": str(payload.get("execution_mode") or "").strip(),
-        "reused_from": reused_from,
-        "timed_out": payload.get("timed_out"),
-        "interrupted": payload.get("interrupted"),
-        "partial_write": payload.get("partial_write"),
-    }
-    if receipt["schema_version"] in (2, 3):
-        receipt["stdout_sha256"] = str(payload.get("stdout_sha256") or "").strip()
-        receipt["stderr_sha256"] = str(payload.get("stderr_sha256") or "").strip()
-    else:
-        receipt["stdout_content"] = payload.get("stdout_content")
-        receipt["stderr_content"] = payload.get("stderr_content")
-    if receipt["schema_version"] == 2:
-        receipt["command_hash"] = str(payload.get("command_hash") or "").strip()
-    return receipt
-
-
 def _normalize_command_receipt_index(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for row in list(rows or []):
         normalized = {"path": str(row.get("path") or "").replace("\\", "/")}
         if "content" in row:
             normalized["content"] = json.loads(canonical_content(row["content"]))
-        elif "sha256" in row:
-            normalized["sha256"] = str(row.get("sha256") or "").strip()
         out.append(normalized)
     return out
 
@@ -526,34 +539,11 @@ def parse_pytest_collect_nodeids(output: str) -> List[str]:
     return nodeids
 
 
-def collect_current_pytest_nodeids(repo_root: Union[os.PathLike, str]) -> Tuple[bool, List[str], str, str, str]:
-    proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "--collect-only", "-q", "tests"],
-        cwd=os.fspath(repo_root),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=120,
-    )
-    stdout = str(proc.stdout or "")
-    stderr = str(proc.stderr or "")
-    if int(proc.returncode) != 0:
-        return False, [], stdout, stderr, "UNBOUND: current pytest collect failed"
-    return True, parse_pytest_collect_nodeids(stdout), stdout, stderr, ""
-
-
-def _resolve_quality_gate_command_args(command: Dict[str, Any]) -> List[str]:
-    args: List[str] = []
-    for index, raw_arg in enumerate(list(command.get("args") or [])):
-        arg = str(raw_arg)
-        args.append(sys.executable if index == 0 and arg == "python" else arg)
-    return args
-
-
 def _command_output_policy(command: Mapping[str, Any]) -> str:
-    policy = str(command.get("output_policy") or "exact").strip().lower()
-    return policy if policy in {"exact", "normalized"} else "exact"
+    policy = str(command.get("output_policy") or "").strip().lower() or "exact"
+    if policy not in {"exact", "normalized"}:
+        raise ValueError(f"Unsupported quality gate output_policy: {policy!r}")
+    return policy
 
 
 def _normalize_command_output_for_policy(text: str, *, policy: str) -> str:
@@ -574,103 +564,6 @@ def _normalize_command_output_for_policy(text: str, *, policy: str) -> str:
         output,
     )
     return "\n".join(line.rstrip() for line in output.splitlines()).strip() + ("\n" if output.strip() else "")
-
-
-def replay_quality_gate_command_plan(
-    repo_root: Union[os.PathLike, str],
-    commands: Sequence[Dict[str, Any]],
-    *,
-    timeout_s: int = 900,
-    compare_receipts: bool = True,
-    reusable_results: Optional[Mapping[int, Mapping[str, Any]]] = None,
-    validated_receipts: Optional[Mapping[int, Dict[str, Any]]] = None,
-    receipt_entries: Optional[Sequence[Dict[str, Any]]] = None,
-    run_id: Optional[str] = None,
-    resolve_reusable_result: Optional[Callable[[int], Optional[Mapping[str, Any]]]] = None,
-    on_command_executed: Optional[Callable[[], None]] = None,
-) -> Optional[str]:
-    normalized_commands = _normalize_command_rows(commands)
-    indexed_receipts = _normalize_command_receipt_index(receipt_entries or [])
-    if receipt_entries is not None and len(indexed_receipts) != len(normalized_commands):
-        return "UNBOUND: quality gate command receipts mismatch during replay"
-    expected_run_id = str(run_id or "").strip()
-    for index, command in enumerate(normalized_commands, start=1):
-        display = str(command.get("display") or "").strip()
-        receipt = None
-        if compare_receipts:
-            receipt_rel = build_quality_gate_receipt_rel_path(index, display)
-            if receipt_entries is not None:
-                receipt_entry = indexed_receipts[index - 1]
-            else:
-                receipt_payload = (validated_receipts or {}).get(index)
-                if receipt_payload is None:
-                    receipt_abs = os.path.join(os.fspath(repo_root), receipt_rel.replace("/", os.sep))
-                    if not os.path.isfile(receipt_abs):
-                        return "UNBOUND: quality gate command receipt missing during replay"
-                    try:
-                        receipt_payload = json.loads(read_text_file(receipt_abs))
-                    except Exception:
-                        return "UNBOUND: quality gate command receipt unreadable during replay"
-                receipt_entry = {"path": receipt_rel, "content": receipt_payload}
-            receipt_payload, load_error = _load_verified_quality_gate_receipt(
-                repo_root, receipt_entry, command, index=index,
-            )
-            if load_error:
-                return load_error + " during replay"
-            receipt = _normalize_command_receipt_payload(receipt_payload or {})
-            expected_run_id = expected_run_id or receipt["run_id"]
-            for error in (
-                _verify_receipt_header(receipt, index=index, run_id=expected_run_id),
-                _verify_receipt_command_fields(receipt, command, command),
-                _verify_receipt_execution_fields(receipt),
-            ):
-                if error:
-                    return error + " during replay"
-        env = os.environ.copy()
-        env.update(_normalize_env_overlay(command.get("env_overlay")))
-        cached = resolve_reusable_result(index) if resolve_reusable_result else (reusable_results or {}).get(index)
-        if cached is None:
-            proc = subprocess.run(
-                _resolve_quality_gate_command_args(command), cwd=os.fspath(repo_root), env=env,
-                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=int(timeout_s),
-            )
-            returncode, stdout, stderr = int(proc.returncode), str(proc.stdout or ""), str(proc.stderr or "")
-            if on_command_executed:
-                on_command_executed()
-        else:
-            returncode, stdout, stderr = int(cached["returncode"]), str(cached["stdout"]), str(cached["stderr"])
-        if returncode != 0:
-            return f"UNBOUND: quality gate command replay failed: {display}"
-        if receipt is not None:
-            output_error = _verify_receipt_output_content(
-                receipt, command, current_collect_stdout=stdout, current_collect_stderr=stderr,
-            )
-            if output_error:
-                return output_error + " during replay"
-            stdout_log_rel = str(receipt.get("stdout_log_path") or "").replace("\\", "/")
-            stderr_log_rel = str(receipt.get("stderr_log_path") or "").replace("\\", "/")
-            log_directory = os.path.realpath(os.path.join(os.fspath(repo_root), QUALITY_GATE_LOGS_DIR_REL))
-            for log_rel in (stdout_log_rel, stderr_log_rel):
-                log_abs = os.path.realpath(os.path.join(os.fspath(repo_root), log_rel.replace("/", os.sep)))
-                if not log_abs.startswith(log_directory + os.sep):
-                    return f"UNBOUND: quality gate command receipt log path mismatch during replay: {display}"
-                if not os.path.isfile(log_abs):
-                    return f"UNBOUND: quality gate command receipt log missing during replay: {display}"
-            policy = _command_output_policy(command)
-            if receipt.get("stdout_content") != _normalize_command_output_for_policy(stdout, policy=policy):
-                return f"UNBOUND: quality gate command receipt stdout replay mismatch: {display}"
-            if receipt.get("stderr_content") != _normalize_command_output_for_policy(stderr, policy=policy):
-                return f"UNBOUND: quality gate command receipt stderr replay mismatch: {display}"
-            try:
-                stdout_log_text = read_text_file(os.path.join(os.fspath(repo_root), stdout_log_rel.replace("/", os.sep)))
-                stderr_log_text = read_text_file(os.path.join(os.fspath(repo_root), stderr_log_rel.replace("/", os.sep)))
-            except Exception:
-                return f"UNBOUND: quality gate command receipt log unreadable during replay: {display}"
-            if receipt.get("stdout_content") != _normalize_command_output_for_policy(stdout_log_text, policy=policy):
-                return f"UNBOUND: quality gate command receipt stdout log mismatch during replay: {display}"
-            if receipt.get("stderr_content") != _normalize_command_output_for_policy(stderr_log_text, policy=policy):
-                return f"UNBOUND: quality gate command receipt stderr log mismatch during replay: {display}"
-    return None
 
 
 def iter_quality_gate_required_tests() -> List[str]:
@@ -703,57 +596,394 @@ def is_xfail_signal_report(report: Mapping[str, Any]) -> bool:
     return any(report[key] for key in _XFAIL_SIGNAL_REPORT_KEYS)
 
 
-def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
+@dataclass(frozen=True)
+class GateCheckSpec:
+    check_id: str
+    entry_type: str
+    display: str
+    args: Tuple[str, ...]
+    capture_output: bool = False
+    output_policy: str = "exact"
+    env_overlay: Tuple[Tuple[str, str], ...] = ()
+    input_file_scopes: Tuple[str, ...] = ()
+    config_file_scopes: Tuple[str, ...] = ()
+    tool_file_scopes: Tuple[str, ...] = ()
+    dependency_file_scopes: Tuple[str, ...] = ()
+    env_keys: Tuple[str, ...] = ()
+    output_result_files: Tuple[str, ...] = ()
+    proof_kind: Optional[str] = None
+    reuse_policy: str = "success"
+    runner_handler: str = "default"
+
+    @property
+    def reuse_allowed(self) -> bool:
+        return self.reuse_policy != "none"
+
+    def to_command_dict(self) -> Dict[str, Any]:
+        command: Dict[str, Any] = {
+            "check_id": self.check_id,
+            "entry_type": self.entry_type,
+            "display": self.display,
+            "args": list(self.args),
+            "capture_output": bool(self.capture_output),
+            "output_policy": self.output_policy,
+            "proof_kind": self.proof_kind,
+            "reuse_policy": self.reuse_policy,
+            "runner_handler": self.runner_handler,
+        }
+        if self.env_overlay:
+            command["env_overlay"] = dict(self.env_overlay)
+        return command
+
+
+_COMMON_DEPENDENCY_SCOPES = (
+    "requirements*.txt",
+    "requirements-dev*.txt",
+    "poetry.lock",
+    "uv.lock",
+    "Pipfile.lock",
+    "vendor/wheels/*.whl",
+)
+
+
+def _dedupe_tuple(items: Sequence[str]) -> Tuple[str, ...]:
+    return tuple(dict.fromkeys(items))
+
+
+def _load_pyright_config(repo_root: Optional[str], config_path: str) -> Dict[str, Any]:
+    root = os.path.abspath(repo_root or REPO_ROOT)
+    abs_path = os.path.join(root, str(config_path).replace("\\", "/").replace("/", os.sep))
+    with open(abs_path, encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict):
+        raise ValueError(f"Pyright config must be a JSON object: {config_path}")
+    return payload
+
+
+def _string_list(value: Any) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).replace("\\", "/").strip() for item in value if str(item).strip()]
+
+
+def _pyright_path_scopes(path: str) -> List[str]:
+    normalized = str(path or "").replace("\\", "/").strip().strip("/")
+    if not normalized:
+        return []
+    if any(char in normalized for char in "*?["):
+        return [normalized]
+    if normalized in {".", "./"}:
+        return []
+    if normalized.endswith(".py"):
+        return [normalized, normalized[:-3] + ".pyi"]
+    if normalized.endswith(".pyi"):
+        return [normalized]
+    return [f"{normalized}/**/*.py", f"{normalized}/**/*.pyi", f"{normalized}/**/py.typed"]
+
+
+def _pyright_extra_path_scopes(config: Mapping[str, Any]) -> List[str]:
+    extras: List[str] = []
+    extras.extend(_string_list(config.get("extraPaths")))
+    for environment in list(config.get("executionEnvironments") or []):
+        if isinstance(environment, dict):
+            extras.extend(_string_list(environment.get("extraPaths")))
+    scopes: List[str] = []
+    for extra in extras:
+        normalized = str(extra).replace("\\", "/").strip().strip("/")
+        if not normalized or normalized in {".", "./"}:
+            continue
+        if normalized.startswith(".venv") or "/site-packages" in normalized:
+            continue
+        scopes.extend(_pyright_path_scopes(normalized))
+    return scopes
+
+
+def _pyright_gate_input_scopes(repo_root: Optional[str]) -> Tuple[str, ...]:
+    config = _load_pyright_config(repo_root, QUALITY_GATE_PYRIGHT_GATE_CONFIG)
+    includes = _string_list(config.get("include"))
+    if not includes:
+        raise ValueError(f"Pyright config must declare non-empty include list: {QUALITY_GATE_PYRIGHT_GATE_CONFIG}")
+    scopes: List[str] = []
+    for include in includes:
+        scopes.extend(_pyright_path_scopes(include))
+    stub_path = str(config.get("stubPath") or "typings").replace("\\", "/").strip().strip("/")
+    if stub_path:
+        scopes.append(f"{stub_path}/**/*.pyi")
+    scopes.append("py.typed")
+    scopes.extend(_pyright_extra_path_scopes(config))
+    return _dedupe_tuple(scopes)
+
+
+def _registry_test_environment_keys() -> List[str]:
+    return sorted(
+        {
+            key
+            for group in iter_required_regression_groups()
+            for key in group["env_keys"]
+            if key not in RUNTIME_FINGERPRINT_KEYS
+        }
+    )
+
+
+def _required_regression_scopes() -> Tuple[Tuple[str, ...], Tuple[str, ...], Tuple[str, ...], Tuple[str, ...], Tuple[str, ...]]:
+    required_targets = iter_quality_gate_required_tests()
+    common_scope_policy = iter_required_regression_common_scope_policy()
+    group_rows = iter_required_regression_groups()
+    input_scopes = list(required_targets)
+    input_scopes.append(QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"))
+    input_scopes.extend(common_scope_policy["input_file_scopes"])
+    config_scopes = list(common_scope_policy["config_file_scopes"])
+    tool_scopes = list(common_scope_policy["tool_file_scopes"])
+    dependency_scopes = list(common_scope_policy["dependency_file_scopes"])
+    env_keys = list(common_scope_policy["env_keys"])
+    for group in group_rows:
+        input_scopes.extend(group["input_file_scopes"])
+        config_scopes.extend(group["config_file_scopes"])
+        tool_scopes.extend(group["tool_file_scopes"])
+        dependency_scopes.extend(group["dependency_file_scopes"])
+        env_keys.extend(group["env_keys"])
+    return (
+        _dedupe_tuple(input_scopes),
+        _dedupe_tuple(config_scopes),
+        _dedupe_tuple(tool_scopes),
+        _dedupe_tuple(dependency_scopes),
+        _dedupe_tuple(env_keys),
+    )
+
+
+def build_quality_gate_check_specs(
+    repo_root: Optional[str] = None,
+    *,
+    allow_dirty_worktree: bool = False,
+) -> List[GateCheckSpec]:
+    req_input, req_config, req_tool, req_dep, req_env = _required_regression_scopes()
+    full_debt_result_rel = QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/")
+    req_input_for_full_debt = tuple(item for item in req_input if item != full_debt_result_rel)
+    browser_overlay = tuple(sorted(REQUIRED_BROWSER_ENV_OVERLAY.items()))
+    full_debt_args: Tuple[str, ...] = (
+        ("python", "tools/check_full_test_debt.py", "--allow-dirty-worktree-proof", "--sharded", "--shard-count", "3")
+        if allow_dirty_worktree
+        else ("python", "tools/check_full_test_debt.py", "--sharded", "--shard-count", "3")
+    )
+    full_debt_display = (
+        "python tools/check_full_test_debt.py --sharded --shard-count 3 --allow-dirty-worktree-proof"
+        if allow_dirty_worktree
+        else "python tools/check_full_test_debt.py --sharded --shard-count 3"
+    )
+    import_cycle_base_inputs = (
+        "*.py",
+        "core/**/*.py",
+        "data/**/*.py",
+        "desktop/**/*.py",
+        "plugins/**/*.py",
+        "scripts/**/*.py",
+        "tools/**/*.py",
+        "web/**/*.py",
+    )
+    import_cycle_tools = (
+        "tools/import_cycle_analysis.py",
+        "tools/import_cycle_baseline.py",
+        "tools/import_cycle_graph.py",
+        "tools/scan_import_cycles.py",
+    )
+    import_cycle_env = (
+        "python_executable_realpath",
+        "python_version",
+        "platform",
+        "PYTHONPATH",
+        "PYTHONUTF8",
+        "PYTHONIOENCODING",
+    )
+    pyright_env = (
+        "python_executable_realpath",
+        "python_version",
+        "pyright_version",
+        "platform",
+        "PYTHONPATH",
+        "PYTHONUTF8",
+        "PYTHONIOENCODING",
+    )
+    tracked_roadmap_scopes = (
+        ".codestable/roadmap/aps-architecture-consolidation/*.md",
+        ".codestable/roadmap/aps-architecture-consolidation/*.yaml",
+        ".codestable/roadmap/foundation-boundary-governance/*.md",
+        ".codestable/roadmap/foundation-boundary-governance/*.yaml",
+    )
     return [
-        {
-            "display": "python -m ruff --version",
-            "args": ["python", "-m", "ruff", "--version"],
-            "capture_output": True,
-            "output_policy": "exact",
-        },
-        {
-            "display": "python -m pyright --version",
-            "args": ["python", "-m", "pyright", "--version"],
-            "capture_output": True,
-            "output_policy": "normalized",
-        },
-        {
-            "display": 'python -c "import radon"',
-            "args": ["python", "-c", "import radon"],
-            "capture_output": False,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python -m ruff check",
-            "args": ["python", "-m", "ruff", "check"],
-            "capture_output": False,
-            "output_policy": "normalized",
-        },
-        {
-            "display": IMPORT_CYCLE_PRODUCTION_DISPLAY,
-            "args": ["python", *IMPORT_CYCLE_PRODUCTION_ARGS],
-            "capture_output": True,
-            "output_policy": "normalized",
-        },
-        {
-            "display": IMPORT_CYCLE_WITH_TESTS_DISPLAY,
-            "args": ["python", *IMPORT_CYCLE_WITH_TESTS_ARGS],
-            "capture_output": True,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python -m pytest --collect-only -q tests",
-            "args": ["python", "-m", "pytest", "--collect-only", "-q", "tests"],
-            "capture_output": True,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items",
-            "args": [
+        GateCheckSpec(
+            check_id="ruff_version_probe",
+            entry_type=ENTRY_VERSION_OR_ENV_PROBE,
+            display="python -m ruff --version",
+            args=("python", "-m", "ruff", "--version"),
+            capture_output=True,
+            output_policy="exact",
+            reuse_policy="none",
+            runner_handler="ruff_version",
+        ),
+        GateCheckSpec(
+            check_id="pyright_version_probe",
+            entry_type=ENTRY_VERSION_OR_ENV_PROBE,
+            display="python -m pyright --version",
+            args=("python", "-m", "pyright", "--version"),
+            capture_output=True,
+            output_policy="normalized",
+            reuse_policy="none",
+            runner_handler="pyright_version",
+        ),
+        GateCheckSpec(
+            check_id="radon_import_probe",
+            entry_type=ENTRY_VERSION_OR_ENV_PROBE,
+            display='python -c "import radon"',
+            args=("python", "-c", "import radon"),
+            capture_output=False,
+            output_policy="normalized",
+            reuse_policy="none",
+            runner_handler="default",
+        ),
+        GateCheckSpec(
+            check_id=ENTRY_RUFF_CHECK_FULL,
+            entry_type=ENTRY_RUFF_CHECK_FULL,
+            display="python -m ruff check",
+            args=("python", "-m", "ruff", "check"),
+            capture_output=False,
+            output_policy="normalized",
+            input_file_scopes=(
+                "*.py",
+                ".codestable/tools/**/*.py",
+                "core/**/*.py",
+                "data/**/*.py",
+                "desktop/**/*.py",
+                "plugins/**/*.py",
+                "scripts/**/*.py",
+                "tests/**/*.py",
+                "tools/**/*.py",
+                "web/**/*.py",
+            ),
+            config_file_scopes=(
+                "pyproject.toml",
+                "ruff.toml",
+                ".ruff.toml",
+                "setup.cfg",
+                ".pre-commit-config.yaml",
+                ".gitignore",
+            ),
+            dependency_file_scopes=_COMMON_DEPENDENCY_SCOPES,
+            env_keys=(
+                "python_executable_realpath",
+                "python_version",
+                "ruff_version",
+                "platform",
+                "PYTHONPATH",
+                "PYTHONUTF8",
+                "PYTHONIOENCODING",
+            ),
+            output_result_files=(QUALITY_GATE_RUFF_CHECK_FULL_REL.replace("\\", "/"),),
+            proof_kind="static_check",
+            reuse_policy="success",
+            runner_handler="default",
+        ),
+        GateCheckSpec(
+            check_id=ENTRY_IMPORT_CYCLES_PRODUCTION,
+            entry_type=ENTRY_IMPORT_CYCLES_PRODUCTION,
+            display=IMPORT_CYCLE_PRODUCTION_DISPLAY,
+            args=("python", *IMPORT_CYCLE_PRODUCTION_ARGS),
+            capture_output=True,
+            output_policy="normalized",
+            input_file_scopes=(
+                *import_cycle_base_inputs,
+                ".codestable/checkup/import_cycles_production_baseline.json",
+            ),
+            config_file_scopes=(".codestable/checkup/import_cycles_production_baseline.json",),
+            tool_file_scopes=import_cycle_tools,
+            env_keys=import_cycle_env,
+            reuse_policy="success",
+            runner_handler="import_cycle_production",
+        ),
+        GateCheckSpec(
+            check_id=ENTRY_IMPORT_CYCLES_WITH_TESTS,
+            entry_type=ENTRY_IMPORT_CYCLES_WITH_TESTS,
+            display=IMPORT_CYCLE_WITH_TESTS_DISPLAY,
+            args=("python", *IMPORT_CYCLE_WITH_TESTS_ARGS),
+            capture_output=True,
+            output_policy="normalized",
+            input_file_scopes=(
+                *import_cycle_base_inputs,
+                "tests/**/*.py",
+                ".codestable/checkup/import_cycles_with_tests_baseline.json",
+            ),
+            config_file_scopes=(".codestable/checkup/import_cycles_with_tests_baseline.json",),
+            tool_file_scopes=import_cycle_tools,
+            env_keys=import_cycle_env,
+            reuse_policy="success",
+            runner_handler="import_cycle_with_tests",
+        ),
+        GateCheckSpec(
+            check_id=ENTRY_PYTEST_COLLECT_ALL,
+            entry_type=ENTRY_PYTEST_COLLECT_ALL,
+            display="python -m pytest --collect-only -q tests",
+            args=("python", "-m", "pytest", "--collect-only", "-q", "tests"),
+            capture_output=True,
+            output_policy="normalized",
+            input_file_scopes=_dedupe_tuple(
+                (
+                    "tests/**/*.py",
+                    "tests/**/conftest.py",
+                    "core/**/*.py",
+                    "web/**/*.py",
+                    "data/**/*.py",
+                    "plugins/**/*.py",
+                    "scripts/**/*.py",
+                    "*.py",
+                    "app.py",
+                    "schema.sql",
+                )
+            ),
+            config_file_scopes=(
+                "pytest.ini",
+                "pyproject.toml",
+                "setup.cfg",
+                "tox.ini",
+                "tools/quality_gate_shared.py",
+                "tools/test_debt_registry.py",
+                "tools/test_registry.py",
+                "scripts/run_quality_gate.py",
+                "开发文档/技术债务治理台账.md",
+            ),
+            tool_file_scopes=(
+                "tools/quality_gate_ledger.py",
+                "tools/test_registry*.py",
+            ),
+            dependency_file_scopes=_COMMON_DEPENDENCY_SCOPES,
+            env_keys=_dedupe_tuple(
+                (
+                    "python_executable_realpath",
+                    "python_version",
+                    "pytest_version",
+                    "pytest_plugin_distribution_versions",
+                    "platform",
+                    "PYTHONPATH",
+                    "PYTHONUTF8",
+                    "PYTHONIOENCODING",
+                    "PYTEST_ADDOPTS",
+                    "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+                    "PYTEST_PLUGINS",
+                    *_registry_test_environment_keys(),
+                )
+            ),
+            output_result_files=(QUALITY_GATE_COLLECT_NODEIDS_REL,),
+            proof_kind="collect_nodeids",
+            reuse_policy="success",
+            runner_handler="pytest_collect_all",
+        ),
+        GateCheckSpec(
+            check_id=ENTRY_ROADMAP_YAML_VALIDATION,
+            entry_type=ENTRY_ROADMAP_YAML_VALIDATION,
+            display="python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-architecture-consolidation/aps-architecture-consolidation-items.yaml --yaml-only --require roadmap --require created --require items",
+            args=(
                 "python",
                 ".codestable/tools/validate-yaml.py",
                 "--file",
-                ".codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml",
+                ".codestable/roadmap/aps-architecture-consolidation/aps-architecture-consolidation-items.yaml",
                 "--yaml-only",
                 "--require",
                 "roadmap",
@@ -761,82 +991,337 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
                 "created",
                 "--require",
                 "items",
-            ],
-            "capture_output": True,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tools/test_registry.py tools/test_registry_data.py tests/conftest.py tests/app_runtime/test_frontend_offline_static_assets.py",
-            "args": [
-                "python",
-                "tools/scan_py38plus_syntax.py",
-                "--fail-on-hit",
-                "scripts/run_quality_gate.py",
+            ),
+            capture_output=True,
+            output_policy="normalized",
+            reuse_policy="none",
+            runner_handler="default",
+        ),
+        GateCheckSpec(
+            check_id=ENTRY_PY38_SYNTAX_CHECK,
+            entry_type=ENTRY_PY38_SYNTAX_CHECK,
+            display="python tools/scan_py38plus_syntax.py --fail-on-hit",
+            args=("python", "tools/scan_py38plus_syntax.py", "--fail-on-hit"),
+            capture_output=True,
+            output_policy="normalized",
+            reuse_policy="none",
+            runner_handler="default",
+        ),
+        GateCheckSpec(
+            check_id=ENTRY_QUICKREF_VS_ROUTES,
+            entry_type=ENTRY_QUICKREF_VS_ROUTES,
+            display="python tests/gate_meta/check_quickref_vs_routes.py",
+            args=("python", "tests/gate_meta/check_quickref_vs_routes.py"),
+            capture_output=False,
+            output_policy="normalized",
+            input_file_scopes=(
+                "开发文档/系统速查表.md",
+                "app.py",
+                "schema.sql",
+                "core/**/*.py",
+                "data/**/*.py",
+                "plugins/**/*.py",
+                "web/**/*.py",
+                "templates/**/*.html",
+                "static/**/*",
+            ),
+            config_file_scopes=(
+                "pytest.ini",
+                "pyproject.toml",
+                "setup.cfg",
+                "tox.ini",
+                ".pre-commit-config.yaml",
+                ".gitignore",
                 "tools/quality_gate_shared.py",
-                "tools/scan_aps_three_gap_py38_scope.py",
+                "tools/long_gate_manifest.py",
+                "tools/long_gate_fingerprint.py",
+                "tools/long_gate_cache.py",
+                "tools/long_gate_schema.py",
+                "scripts/run_quality_gate.py",
+            ),
+            tool_file_scopes=("tests/gate_meta/check_quickref_vs_routes.py",),
+            dependency_file_scopes=_COMMON_DEPENDENCY_SCOPES,
+            env_keys=(
+                "python_executable_realpath",
+                "python_version",
+                "platform",
+                "APS_ENV",
+                "APS_DB_PATH",
+                "APS_LOG_DIR",
+                "APS_BACKUP_DIR",
+                "APS_EXCEL_TEMPLATE_DIR",
+                "PYTHONPATH",
+                "PYTHONDONTWRITEBYTECODE",
+                "PYTHONUTF8",
+                "PYTHONIOENCODING",
+            ),
+            output_result_files=(QUALITY_GATE_QUICKREF_VS_ROUTES_REL.replace("\\", "/"),),
+            reuse_policy="success",
+            runner_handler="default",
+        ),
+        GateCheckSpec(
+            check_id=ENTRY_PYRIGHT_GATE_FULL,
+            entry_type=ENTRY_PYRIGHT_GATE_FULL,
+            display=f"python -m pyright -p {QUALITY_GATE_PYRIGHT_GATE_CONFIG}",
+            args=("python", "-m", "pyright", "-p", QUALITY_GATE_PYRIGHT_GATE_CONFIG),
+            capture_output=False,
+            output_policy="normalized",
+            input_file_scopes=_pyright_gate_input_scopes(repo_root),
+            config_file_scopes=(
+                QUALITY_GATE_PYRIGHT_GATE_CONFIG,
+                "pyrightconfig.json",
+                "pyproject.toml",
+                "setup.cfg",
+            ),
+            dependency_file_scopes=_COMMON_DEPENDENCY_SCOPES,
+            env_keys=pyright_env,
+            output_result_files=(QUALITY_GATE_PYRIGHT_GATE_FULL_REL.replace("\\", "/"),),
+            proof_kind="static_check",
+            reuse_policy="success",
+            runner_handler="default",
+        ),
+        GateCheckSpec(
+            check_id=ENTRY_PYRIGHT_TOOLS_FULL,
+            entry_type=ENTRY_PYRIGHT_TOOLS_FULL,
+            display=f"python -m pyright -p {QUALITY_GATE_PYRIGHT_TOOLS_CONFIG}",
+            args=("python", "-m", "pyright", "-p", QUALITY_GATE_PYRIGHT_TOOLS_CONFIG),
+            capture_output=False,
+            output_policy="normalized",
+            input_file_scopes=_dedupe_tuple(
+                (
+                    *QUALITY_GATE_TOOL_PATHS,
+                    "tools/__init__.py",
+                    "web/bootstrap/**/*.py",
+                    "core/infrastructure/logging.py",
+                    "core/infrastructure/transaction.py",
+                    "typings/**/*.pyi",
+                    "py.typed",
+                )
+            ),
+            config_file_scopes=(
+                QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
+                QUALITY_GATE_PYRIGHT_GATE_CONFIG,
+                "pyrightconfig.json",
+                "pyproject.toml",
+                "setup.cfg",
+            ),
+            tool_file_scopes=_dedupe_tuple(QUALITY_GATE_TOOL_PATHS),
+            dependency_file_scopes=_COMMON_DEPENDENCY_SCOPES,
+            env_keys=pyright_env,
+            output_result_files=(QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL.replace("\\", "/"),),
+            proof_kind="static_check",
+            reuse_policy="success",
+            runner_handler="pyright_tools",
+        ),
+        GateCheckSpec(
+            check_id=ENTRY_DEBT_LEDGER_SYNC,
+            entry_type=ENTRY_DEBT_LEDGER_SYNC,
+            display="python scripts/sync_debt_ledger.py check",
+            args=("python", "scripts/sync_debt_ledger.py", "check"),
+            capture_output=False,
+            output_policy="normalized",
+            input_file_scopes=(
+                "开发文档/技术债务治理台账.md",
+                *tracked_roadmap_scopes,
+                "app.py",
+                "schema.sql",
+                "core/**/*.py",
+                "data/**/*.py",
+                "web/**/*.py",
+                "plugins/**/*.py",
+                "desktop/**/*.py",
+                "scripts/**/*.py",
+                "tools/**/*.py",
+                "tests/**/*.py",
+                "templates/**/*.html",
+                "static/**/*",
+                "docs/**/*.md",
+                "开发文档/**/*.md",
+            ),
+            config_file_scopes=(
+                "pyproject.toml",
+                "setup.cfg",
+                "pytest.ini",
+                "tox.ini",
+                ".pre-commit-config.yaml",
+                ".gitignore",
+                ".github/workflows/quality.yml",
+                QUALITY_GATE_PYRIGHT_GATE_CONFIG,
+                QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
+                "pyrightconfig.json",
+                ".codestable/roadmap/aps-architecture-consolidation/aps-architecture-consolidation-roadmap.md",
+                ".codestable/roadmap/aps-architecture-consolidation/aps-architecture-consolidation-items.yaml",
+            ),
+            tool_file_scopes=(
+                "scripts/sync_debt_ledger.py",
+                "tools/quality_gate_ledger.py",
+                "tools/quality_gate_operations.py",
+                "tools/quality_gate_scan.py",
+                "tools/quality_gate_entries.py",
+                "tools/quality_gate_shared.py",
+                "tools/architecture_scan_cache.py",
+                "tools/test_debt_registry.py",
                 "tools/test_registry.py",
-                "tools/test_registry_data.py",
-                "tests/conftest.py",
-                "tests/app_runtime/test_frontend_offline_static_assets.py",
-            ],
-            "capture_output": True,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python tests/gate_meta/check_quickref_vs_routes.py",
-            "args": ["python", "tests/gate_meta/check_quickref_vs_routes.py"],
-            "capture_output": False,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python tools/scan_anti_regression_gate.py --base-ref d4589d77",
-            "args": ["python", "tools/scan_anti_regression_gate.py", "--base-ref", "d4589d77"],
-            "capture_output": True,
-            "output_policy": "normalized",
-        },
-        {
-            "display": f"python -m pyright -p {QUALITY_GATE_PYRIGHT_GATE_CONFIG}",
-            "args": ["python", "-m", "pyright", "-p", QUALITY_GATE_PYRIGHT_GATE_CONFIG],
-            "capture_output": False,
-            "output_policy": "normalized",
-        },
-        {
-            "display": f"python -m pyright -p {QUALITY_GATE_PYRIGHT_TOOLS_CONFIG}",
-            "args": ["python", "-m", "pyright", "-p", QUALITY_GATE_PYRIGHT_TOOLS_CONFIG],
-            "capture_output": False,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77",
-            "args": [
-                "python",
-                "tools/scan_aps_three_gap_py38_scope.py",
-                "--base-ref",
-                "d4589d77",
-            ],
-            "capture_output": True,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python scripts/sync_debt_ledger.py check",
-            "args": ["python", "scripts/sync_debt_ledger.py", "check"],
-            "capture_output": False,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python tools/check_full_test_debt.py --sharded --shard-count 3",
-            "args": ["python", "tools/check_full_test_debt.py", "--sharded", "--shard-count", "3"],
-            "capture_output": True,
-            "output_policy": "exact",
-            "env_overlay": dict(REQUIRED_BROWSER_ENV_OVERLAY),
-        },
-        {
-            "display": "python tools/verify_required_regressions_from_full_test_debt.py",
-            "args": ["python", "tools/verify_required_regressions_from_full_test_debt.py"],
-            "capture_output": True,
-            "output_policy": "normalized",
-            "env_overlay": dict(REQUIRED_BROWSER_ENV_OVERLAY),
-        },
+                "tools/long_gate_manifest.py",
+                "tools/long_gate_fingerprint.py",
+                "tools/long_gate_cache.py",
+                "tools/long_gate_schema.py",
+                "tools/long_gate_paths.py",
+                "tools/long_gate_summary.py",
+                "scripts/run_quality_gate.py",
+            ),
+            dependency_file_scopes=_COMMON_DEPENDENCY_SCOPES,
+            env_keys=(
+                "python_executable_realpath",
+                "python_version",
+                "platform",
+                "architecture_scan_cache_metadata",
+                "git_executable_realpath",
+                "git_version",
+                "VIRTUAL_ENV",
+                "PYTHONHOME",
+                "PYTHONPATH",
+                "PYTHONDONTWRITEBYTECODE",
+                "PYTHONUTF8",
+                "PYTHONIOENCODING",
+                "LANG",
+                "CI",
+            ),
+            output_result_files=(QUALITY_GATE_DEBT_LEDGER_SYNC_REL.replace("\\", "/"),),
+            proof_kind="debt_ledger_sync",
+            reuse_policy="success",
+        ),
+        GateCheckSpec(
+            check_id=ENTRY_FULL_TEST_DEBT,
+            entry_type=ENTRY_FULL_TEST_DEBT,
+            display=full_debt_display,
+            args=full_debt_args,
+            capture_output=True,
+            output_policy="exact",
+            env_overlay=browser_overlay,
+            input_file_scopes=_dedupe_tuple(
+                (
+                    *req_input_for_full_debt,
+                    "tests/**/*.py",
+                    "tests/**/*.cjs",
+                    "tests/**/fixtures/*.json",
+                    "tests/**/conftest.py",
+                    "core/**/*.py",
+                    "web/**/*.py",
+                    "data/**/*.py",
+                    "plugins/**/*.py",
+                    "scripts/**/*.py",
+                    "scripts/workbench/*.cjs",
+                    "desktop/**/*.py",
+                    "app.py",
+                    "check_manual_layout.py",
+                    "schema.sql",
+                    "validate_dist_exe.py",
+                    "verify_manual_styles.py",
+                    "assets/**/*",
+                    "installer/**/*",
+                    "build_win7*.bat",
+                    "templates/**/*.html",
+                    "static/**/*",
+                    "frontend/workbench/app/**/*.js",
+                    "frontend/workbench/app/**/*.jsx",
+                    "tests/portable_sample/*.ps1",
+                    "packaging/win7/**/*",
+                    "packaging/win7/*.ps1",
+                    "packaging/win7/*.cmd",
+                    ".codex/hooks/**/*.py",
+                    ".codex/hooks.json",
+                    ".codestable/architecture/**/*.md",
+                    ".codestable/requirements/**/*.md",
+                    *tracked_roadmap_scopes,
+                    "docs/**/*.md",
+                    "docs/**/*.html",
+                    "docs/**/*.css",
+                    "docs/**/*.js",
+                    "evidence/README.md",
+                    "evidence/current/README.md",
+                    ".github/workflows/*.yml",
+                    ".gitignore",
+                    ".limcode/skills/**/*.md",
+                    ".limcode/skills/**/*.py",
+                    ".limcode/skills/**/*.ps1",
+                    "开发文档/**/*.md",
+                    QUALITY_GATE_COLLECT_NODEIDS_REL,
+                )
+            ),
+            config_file_scopes=(
+                "pytest.ini",
+                "pyproject.toml",
+                "setup.cfg",
+                "tox.ini",
+                "开发文档/技术债务治理台账.md",
+                "tools/check_full_test_debt.py",
+                "tools/collect_full_test_debt.py",
+                "tools/full_test_debt_shards.py",
+                "tools/test_debt_registry.py",
+                "tools/quality_gate_shared.py",
+                ".codestable/tools/**/*.py",
+                "scripts/run_quality_gate.py",
+            ),
+            tool_file_scopes=(
+                "tools/test_registry*.py",
+                "tools/generate_schema_sql.py",
+                "tools/resolve_iscc.ps1",
+                "tools/wufenchang_demo/**/*.py",
+                *_ESBUILD_GATE_SCOPES,
+            ),
+            dependency_file_scopes=(
+                *_COMMON_DEPENDENCY_SCOPES,
+                *_ESBUILD_GATE_SCOPES,
+            ),
+            env_keys=_dedupe_tuple(
+                (
+                    "python_executable_realpath",
+                    "python_version",
+                    "pytest_version",
+                    "pytest_plugin_distribution_versions",
+                    "platform",
+                    "git_executable_realpath",
+                    "git_version",
+                    "node_executable_realpath",
+                    "node_version",
+                    "powershell_executable_realpath",
+                    "powershell_version",
+                    "CI",
+                    "NODE_OPTIONS",
+                    "PYTHONPATH",
+                    "PYTHONUTF8",
+                    "PYTHONIOENCODING",
+                    "PYTEST_ADDOPTS",
+                    "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+                    "PYTEST_PLUGINS",
+                    *_registry_test_environment_keys(),
+                )
+            ),
+            output_result_files=(
+                QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"),
+                QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL.replace("\\", "/"),
+            ),
+            proof_kind="full_test_debt",
+            reuse_policy="success_or_failure",
+        ),
+        GateCheckSpec(
+            check_id=ENTRY_REQUIRED_REGRESSIONS,
+            entry_type=ENTRY_REQUIRED_REGRESSIONS,
+            display="python tools/verify_required_regressions_from_full_test_debt.py",
+            args=("python", "tools/verify_required_regressions_from_full_test_debt.py"),
+            capture_output=True,
+            output_policy="normalized",
+            env_overlay=browser_overlay,
+            input_file_scopes=req_input,
+            config_file_scopes=req_config,
+            tool_file_scopes=req_tool,
+            dependency_file_scopes=req_dep,
+            env_keys=req_env,
+            output_result_files=(QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"),),
+            proof_kind="required_regressions",
+            reuse_policy="success",
+        ),
     ]
 
 
@@ -858,29 +1343,31 @@ def build_quality_gate_command_receipt(
     stderr_log_path: str = "",
 ) -> Dict[str, Any]:
     normalized_command = _normalize_command_rows([command])[0]
-    output_policy = _command_output_policy(normalized_command)
-    return _normalize_command_receipt_payload(
-        {
-            "schema_version": QUALITY_GATE_PROOF_SCHEMA_VERSION,
-            "run_id": str(run_id or "").strip(),
-            "command_index": int(command_index or 0),
-            "display": normalized_command["display"],
-            "args": list(normalized_command["args"]),
-            "capture_output": bool(normalized_command["capture_output"]),
-            "output_policy": output_policy,
-            "env_overlay": dict(normalized_command.get("env_overlay") or {}),
-            "returncode": int(returncode),
-            "stdout_content": _normalize_command_output_for_policy(str(stdout or ""), policy=output_policy),
-            "stderr_content": _normalize_command_output_for_policy(str(stderr or ""), policy=output_policy),
-            "stdout_log_path": str(stdout_log_path or "").replace("\\", "/"),
-            "stderr_log_path": str(stderr_log_path or "").replace("\\", "/"),
-            "execution_mode": "executed",
-            "reused_from": {},
-            "timed_out": False,
-            "interrupted": False,
-            "partial_write": False,
-        }
-    )
+    output_policy = normalized_command["output_policy"]
+    receipt: Dict[str, Any] = {
+        "schema_version": int(QUALITY_GATE_PROOF_SCHEMA_VERSION),
+        "run_id": str(run_id or "").strip(),
+        "command_index": int(command_index or 0),
+        "display": normalized_command["display"],
+        "args": normalized_command["args"],
+        "capture_output": normalized_command["capture_output"],
+        "output_policy": output_policy,
+        "env_overlay": normalized_command["env_overlay"],
+        "returncode": int(returncode or 0),
+        "stdout_content": _normalize_command_output_for_policy(str(stdout or ""), policy=output_policy),
+        "stderr_content": _normalize_command_output_for_policy(str(stderr or ""), policy=output_policy),
+        "stdout_log_path": str(stdout_log_path or "").replace("\\", "/"),
+        "stderr_log_path": str(stderr_log_path or "").replace("\\", "/"),
+        "execution_mode": "executed",
+        "reused_from": {},
+        "timed_out": False,
+        "interrupted": False,
+        "partial_write": False,
+    }
+    for key in _COMMAND_SPEC_METADATA_KEYS:
+        if key in normalized_command:
+            receipt[key] = normalized_command[key]
+    return receipt
 
 
 def build_quality_gate_collection_proof(
@@ -951,52 +1438,7 @@ def apply_quality_gate_manifest_proof_fields(
         raise QualityGateError("Legacy quality gate source content is unavailable; execute a new run.")
     manifest["gate_sources"] = gate_sources
     manifest["schema_version"] = QUALITY_GATE_PROOF_SCHEMA_VERSION
-    for field in ("required_tests_hash", "commands_hash", "collection_proof_hash",
-                  "command_receipts_hash", "gate_sources_hash", "planned_commands_hash"):
-        manifest.pop(field, None)
     return manifest
-
-
-def _git_rev_parse_path(repo_root: str, *args: str, fallback: str) -> str:
-    proc = subprocess.run(
-        ["git", "rev-parse", *args],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-        errors="replace",
-        timeout=30,
-    )
-    raw_value = str(proc.stdout or "").strip()
-    if int(proc.returncode) == 0 and raw_value:
-        path_text = raw_value
-        if not os.path.isabs(path_text):
-            path_text = os.path.join(repo_root, path_text)
-        return os.path.realpath(path_text)
-    return os.path.realpath(fallback)
-
-
-def repo_identity(repo_root: Optional[Union[os.PathLike, str]] = None) -> Dict[str, str]:
-    root = os.path.abspath(os.fspath(repo_root) if repo_root is not None else REPO_ROOT)
-    return {
-        "checkout_root_realpath": _git_rev_parse_path(root, "--show-toplevel", fallback=root),
-        "git_common_dir_realpath": _git_rev_parse_path(root, "--git-common-dir", fallback=os.path.join(root, ".git")),
-    }
-
-
-def _verify_quality_gate_collection_proof(
-    manifest: Dict[str, Any],
-    *,
-    current_collect_nodeids: Sequence[str],
-    expected_required_tests: Sequence[str],
-) -> Optional[str]:
-    collection_proof = _normalize_collection_proof(manifest.get("collection_proof") or {})
-    expected_collection_proof = build_quality_gate_collection_proof(
-        current_collect_nodeids,
-        required_tests=expected_required_tests,
-    )
-    if not content_equal(collection_proof, expected_collection_proof):
-        return "UNBOUND: quality gate collection proof mismatch"
-    return None
 
 
 def _load_verified_quality_gate_receipt(
@@ -1006,13 +1448,13 @@ def _load_verified_quality_gate_receipt(
     *,
     index: int,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    if not isinstance(receipt_entry.get("content"), dict):
+        return None, "UNBOUND: quality gate command receipt content missing"
     receipt_path = str(receipt_entry.get("path") or "").replace("\\", "/")
-    has_content = isinstance(receipt_entry.get("content"), dict)
     expected_path = build_quality_gate_receipt_rel_path(index, str(command.get("display") or ""))
-    if has_content and receipt_path != expected_path:
+    if receipt_path != expected_path:
         return None, "UNBOUND: quality gate command receipt path mismatch"
-    directory = QUALITY_GATE_RECEIPTS_DIR_REL if has_content else os.path.join(QUALITY_GATE_LEGACY_ROOT_REL, "receipts")
-    allowed_directory = os.path.realpath(os.path.join(os.fspath(repo_root), directory))
+    allowed_directory = os.path.realpath(os.path.join(os.fspath(repo_root), QUALITY_GATE_RECEIPTS_DIR_REL))
     abs_path = os.path.realpath(os.path.join(os.fspath(repo_root), receipt_path.replace("/", os.sep)))
     if not receipt_path or not abs_path.startswith(allowed_directory + os.sep):
         return None, "UNBOUND: quality gate command receipt path mismatch"
@@ -1022,12 +1464,10 @@ def _load_verified_quality_gate_receipt(
         with open(abs_path, "rb") as handle:
             receipt_bytes = handle.read()
         payload = json.loads(receipt_bytes)
-    except Exception:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
         return None, "UNBOUND: quality gate command receipt unreadable"
     if not isinstance(payload, dict) or not payload:
         return None, "UNBOUND: quality gate command receipt unreadable"
-    if not has_content:
-        return payload, "UNBOUND: legacy quality gate command receipt content unavailable; execute a new run"
     if not content_equal(payload, receipt_entry["content"]):
         return None, "UNBOUND: quality gate command receipt content mismatch"
     return payload, None
@@ -1040,8 +1480,6 @@ def _verify_receipt_header(
     run_id: str,
 ) -> Optional[str]:
     schema_version = int(receipt.get("schema_version") or 0)
-    if schema_version in (2, 3):
-        return "UNBOUND: legacy quality gate command receipt content unavailable; execute a new run"
     if schema_version != QUALITY_GATE_PROOF_SCHEMA_VERSION:
         return "UNBOUND: quality gate command receipt schema_version mismatch"
     if str(receipt.get("run_id") or "").strip() != str(run_id or "").strip() or not str(run_id or "").strip():
@@ -1051,48 +1489,16 @@ def _verify_receipt_header(
     return None
 
 
-def _verify_receipt_command_fields(receipt: Dict[str, Any], command: Dict[str, Any], normalized_command: Dict[str, Any]) -> Optional[str]:
-    expected_values = (
-        ("display", str(command.get("display") or "").strip()),
-        ("args", [str(arg) for arg in list(command.get("args") or [])]),
-        ("capture_output", bool(command.get("capture_output"))),
-        ("output_policy", _command_output_policy(normalized_command)),
-        ("env_overlay", _normalize_env_overlay(command.get("env_overlay"))),
-    )
-    for key, expected_value in expected_values:
-        if not content_equal(receipt[key], expected_value):
-            return f"UNBOUND: quality gate command receipt {key} mismatch"
+def _verify_receipt_command_fields(receipt: Dict[str, Any], normalized_command: Dict[str, Any]) -> Optional[str]:
+    for key in ("display", "args", "capture_output", "output_policy", "env_overlay", *_COMMAND_SPEC_METADATA_KEYS):
+        if key in normalized_command or key in receipt:
+            if (
+                key not in receipt
+                or key not in normalized_command
+                or not content_equal(receipt.get(key), normalized_command[key])
+            ):
+                return f"UNBOUND: quality gate command receipt {key} mismatch"
     return None
-
-
-def _verify_receipt_output_content(
-    receipt: Dict[str, Any],
-    normalized_command: Dict[str, Any],
-    *,
-    current_collect_stdout: str,
-    current_collect_stderr: str,
-) -> Optional[str]:
-    if int(receipt["returncode"]) != 0:
-        return "UNBOUND: quality gate command receipt returncode mismatch"
-    for key in ("stdout_content", "stderr_content"):
-        if not isinstance(receipt.get(key), str):
-            return f"UNBOUND: quality gate command receipt {key.replace('_content', '')} content missing"
-    for key in ("stdout_log_path", "stderr_log_path"):
-        path = str(receipt.get(key) or "").replace("\\", "/")
-        if not path:
-            return f"UNBOUND: quality gate command receipt {key} missing"
-        if not path.startswith(QUALITY_GATE_LOGS_DIR_REL.replace("\\", "/") + "/"):
-            return f"UNBOUND: quality gate command receipt {key} mismatch"
-    collect_policy = _command_output_policy(normalized_command)
-    if _is_default_collect_command(normalized_command) and receipt.get("stdout_content") != _normalize_command_output_for_policy(current_collect_stdout, policy=collect_policy):
-        return "UNBOUND: quality gate collect receipt stdout content mismatch"
-    if _is_default_collect_command(normalized_command) and receipt.get("stderr_content") != _normalize_command_output_for_policy(current_collect_stderr, policy=collect_policy):
-        return "UNBOUND: quality gate collect receipt stderr content mismatch"
-    return None
-
-
-def _is_default_collect_command(normalized_command: Dict[str, Any]) -> bool:
-    return list(normalized_command.get("args") or []) == ["python", "-m", "pytest", "--collect-only", "-q", "tests"]
 
 
 def _verify_receipt_execution_fields(receipt: Dict[str, Any]) -> Optional[str]:
@@ -1121,340 +1527,6 @@ def _verify_receipt_execution_fields(receipt: Dict[str, Any]) -> Optional[str]:
         if not str(reused_from.get("run_id") or "").strip():
             return "UNBOUND: quality gate command receipt reused_from run_id missing"
     return None
-
-
-def _verify_quality_gate_receipt_payload(
-    receipt_payload: Dict[str, Any],
-    command: Dict[str, Any],
-    *,
-    index: int,
-    run_id: str,
-    current_collect_stdout: str,
-    current_collect_stderr: str,
-) -> Optional[str]:
-    receipt = _normalize_command_receipt_payload(receipt_payload)
-    normalized_command = _normalize_command_rows([command])[0]
-    for error in (
-        _verify_receipt_header(receipt, index=index, run_id=run_id),
-        _verify_receipt_command_fields(receipt, command, normalized_command),
-        _verify_receipt_output_content(
-            receipt,
-            normalized_command,
-            current_collect_stdout=current_collect_stdout,
-            current_collect_stderr=current_collect_stderr,
-        ),
-        _verify_receipt_execution_fields(receipt),
-    ):
-        if error:
-            return error
-    return None
-
-
-def _verify_quality_gate_command_receipts(
-    repo_root: Union[os.PathLike, str],
-    manifest: Dict[str, Any],
-    *,
-    expected_commands: Sequence[Dict[str, Any]],
-    run_id: str,
-    current_collect_stdout: str,
-    current_collect_stderr: str,
-    validated_receipts: Optional[Dict[int, Dict[str, Any]]] = None,
-) -> Optional[str]:
-    command_receipts = _normalize_command_receipt_index(manifest.get("command_receipts") or [])
-    if len(command_receipts) != len(expected_commands):
-        return "UNBOUND: quality gate command receipts mismatch"
-
-    for index, (receipt_entry, command) in enumerate(zip(command_receipts, expected_commands), start=1):
-        receipt_payload, load_error = _load_verified_quality_gate_receipt(
-            repo_root,
-            receipt_entry,
-            command,
-            index=index,
-        )
-        if load_error:
-            return load_error
-        payload_error = _verify_quality_gate_receipt_payload(
-            receipt_payload or {},
-            command,
-            index=index,
-            run_id=run_id,
-            current_collect_stdout=current_collect_stdout,
-            current_collect_stderr=current_collect_stderr,
-        )
-        if payload_error:
-            return payload_error
-        if validated_receipts is not None:
-            validated_receipts[index] = cast(Dict[str, Any], receipt_payload)
-    return None
-
-
-def _verify_manifest_header(
-    repo_root: Union[os.PathLike, str],
-    manifest: Dict[str, Any],
-    head_sha: str,
-) -> Tuple[Optional[str], str]:
-    current_identity = repo_identity(repo_root)
-    manifest_checkout_root = os.path.realpath(str(manifest.get("checkout_root_realpath") or "").strip())
-    manifest_git_common_dir = os.path.realpath(str(manifest.get("git_common_dir_realpath") or "").strip())
-    if manifest_checkout_root != current_identity["checkout_root_realpath"]:
-        return "UNBOUND: quality gate checkout root mismatch", ""
-    if manifest_git_common_dir != current_identity["git_common_dir_realpath"]:
-        return "UNBOUND: quality gate git common dir mismatch", ""
-    if str(manifest.get("status") or "").strip().lower() != "passed":
-        return f"UNBOUND: quality gate status={manifest.get('status') or 'unknown'}", ""
-    if manifest.get("schema_version") in (2, 3):
-        return "UNBOUND: legacy quality gate proof content unavailable; execute a new run", ""
-    if manifest.get("schema_version") != QUALITY_GATE_PROOF_SCHEMA_VERSION:
-        return "UNBOUND: quality gate schema_version mismatch", ""
-    run_id = str(manifest.get("run_id") or "").strip()
-    if not run_id:
-        return "UNBOUND: quality gate run_id missing", ""
-    if str(manifest.get("head_sha") or "").strip() != str(head_sha or "").strip():
-        return "UNBOUND: quality gate head_sha 不匹配", ""
-    return None, run_id
-
-
-def _verify_manifest_git_status(manifest: Dict[str, Any], git_status_lines: Sequence[str]) -> Optional[str]:
-    manifest_git_status_before = [
-        str(line).rstrip() for line in list(manifest.get("git_status_short_before") or []) if str(line).strip()
-    ]
-    manifest_git_status_after = [
-        str(line).rstrip() for line in list(manifest.get("git_status_short_after") or []) if str(line).strip()
-    ]
-    current_git_status = [str(line).rstrip() for line in list(git_status_lines or []) if str(line).strip()]
-    if bool(manifest.get("is_dirty_before")) or manifest_git_status_before:
-        return "UNBOUND: quality gate started dirty"
-    return _verify_manifest_clean_finish(manifest, manifest_git_status_after, current_git_status)
-
-
-def _verify_manifest_clean_finish(
-    manifest: Dict[str, Any],
-    manifest_git_status_after: Sequence[str],
-    current_git_status: Sequence[str],
-) -> Optional[str]:
-    if bool(manifest.get("tracked_drift_detected")):
-        return "UNBOUND: quality gate tracked drift detected"
-    if bool(manifest.get("is_dirty_after")) or manifest_git_status_after:
-        return "UNBOUND: quality gate finished dirty"
-    if list(manifest_git_status_after) != list(current_git_status):
-        return "UNBOUND: quality gate git status --short 不匹配"
-    return None
-
-
-def _verify_manifest_static_proof(manifest: Dict[str, Any]) -> Tuple[Optional[str], List[str], List[Dict[str, Any]]]:
-    if not content_equal(dict(manifest.get("proof_scope") or {}), dict(QUALITY_GATE_PROOF_SCOPE)):
-        return "UNBOUND: quality gate proof_scope mismatch", [], []
-
-    required_tests = _normalize_required_tests(manifest.get("required_tests") or [])
-    expected_required_tests = iter_quality_gate_required_tests()
-    if not content_equal(required_tests, expected_required_tests):
-        return "UNBOUND: quality gate required tests mismatch", [], []
-
-    commands = _normalize_command_rows(manifest.get("commands") or [])
-    expected_commands = _normalize_command_rows(build_quality_gate_command_plan())
-    if not content_equal(commands, expected_commands):
-        return "UNBOUND: quality gate commands mismatch", [], []
-    return None, expected_required_tests, expected_commands
-
-
-def _verify_manifest_collection_and_receipts(
-    repo_root: Union[os.PathLike, str],
-    manifest: Dict[str, Any],
-    *,
-    expected_required_tests: Sequence[str],
-    expected_commands: Sequence[Dict[str, Any]],
-    run_id: str,
-    validated_receipts: Optional[Dict[int, Dict[str, Any]]] = None,
-) -> Optional[str]:
-    collect_ok, current_collect_nodeids, current_collect_stdout, current_collect_stderr, collect_note = (
-        collect_current_pytest_nodeids(repo_root)
-    )
-    if not collect_ok:
-        return collect_note
-
-    collection_error = _verify_quality_gate_collection_proof(
-        manifest,
-        current_collect_nodeids=current_collect_nodeids,
-        expected_required_tests=expected_required_tests,
-    )
-    if collection_error:
-        return collection_error
-
-    receipt_error = _verify_quality_gate_command_receipts(
-        repo_root,
-        manifest,
-        expected_commands=expected_commands,
-        run_id=run_id,
-        current_collect_stdout=current_collect_stdout,
-        current_collect_stderr=current_collect_stderr,
-        validated_receipts=validated_receipts,
-    )
-    if receipt_error:
-        return receipt_error
-    return None
-
-
-def _verify_manifest_gate_sources(repo_root: Union[os.PathLike, str], manifest: Dict[str, Any]) -> Optional[str]:
-    gate_sources = _normalize_source_rows(manifest.get("gate_sources") or [])
-    if any(not isinstance(row.get("content_base64"), str) for row in gate_sources):
-        return "UNBOUND: legacy quality gate source content unavailable; execute a new run"
-    try:
-        expected_gate_sources = build_quality_gate_source_proof(repo_root)
-    except (QualityGateError, OSError) as exc:
-        return f"UNBOUND: current quality gate sources cannot be verified ({exc})"
-    if not content_equal(gate_sources, expected_gate_sources):
-        return "UNBOUND: quality gate gate sources mismatch"
-    if not all(bool(row.get("exists")) for row in gate_sources):
-        return "UNBOUND: quality gate gate sources missing"
-    return None
-
-
-def _reusable_quality_gate_results(repo_root, manifest, commands, receipts, *, command_index=None, phase=None):
-    """Reuse only successful evidence that still matches inputs, environment and this run's receipts."""
-    cache_dir = manifest.get("long_gate_cache_dir")
-    if not cache_dir:
-        return {}
-    from tools.long_gate_cache import evaluate_reuse, resolve_cache_dir
-    from tools.long_gate_fingerprint import FingerprintFileSnapshot, LongGateFingerprintError, fingerprint_entry
-    from tools.long_gate_manifest import build_manifest_from_quality_gate_plan
-    from tools.long_gate_schema import long_gate_cache_metadata
-
-    state = phase if phase is not None else {}
-    if not state:
-        try:
-            entries = build_manifest_from_quality_gate_plan(commands, repo_root=os.fspath(repo_root))["entries"]
-        except (OSError, ValueError):
-            return {}
-        state["entries"] = entries
-    results = {}
-    for index, entry in enumerate(state["entries"], start=1):
-        if command_index is not None and index != command_index:
-            continue
-        if not entry.get("reuse_allowed") or index not in receipts:
-            continue
-        try:
-            if "snapshot" not in state:
-                try:
-                    resolved_cache_dir = resolve_cache_dir(os.fspath(repo_root), str(cache_dir))
-                except (OSError, ValueError):
-                    return {}
-                state.update(
-                    cache_dir=resolved_cache_dir,
-                    metadata=long_gate_cache_metadata(os.fspath(repo_root), cache_dir=resolved_cache_dir),
-                    snapshot=FingerprintFileSnapshot(os.fspath(repo_root), strict=True),
-                )
-            fingerprint = fingerprint_entry(entry, os.fspath(repo_root), strict=True, file_snapshot=state["snapshot"])
-            evaluation = evaluate_reuse(
-                entry,
-                fingerprint,
-                repo_root=os.fspath(repo_root),
-                cache_dir=state["cache_dir"],
-                metadata=state["metadata"],
-            )
-        except (LongGateFingerprintError, SensitiveSourceError, QualityGateError, OSError):
-            continue
-        if evaluation["decision"]["decision"] != "reuse":
-            continue
-        receipt = receipts[index]
-        policy = _command_output_policy(commands[index - 1])
-        if receipt.get("schema_version") != QUALITY_GATE_PROOF_SCHEMA_VERSION:
-            continue
-        if any(receipt.get(stream + "_content") != _normalize_command_output_for_policy(evaluation[stream], policy=policy)
-               for stream in ("stdout", "stderr")):
-            continue
-        results[index] = {"returncode": 0, "stdout": evaluation["stdout"], "stderr": evaluation["stderr"]}
-    return results
-
-
-def _verify_manifest_replay(
-    repo_root: Union[os.PathLike, str],
-    expected_commands: Sequence[Dict[str, Any]],
-    *,
-    replay_commands: bool,
-    manifest: Optional[Dict[str, Any]] = None,
-    validated_receipts: Optional[Dict[int, Dict[str, Any]]] = None,
-) -> Optional[str]:
-    if not replay_commands:
-        return "STRUCTURAL_ONLY: quality gate command replay disabled"
-
-    # Consecutive reused commands share observations. A real command may change a
-    # later command's inputs or output proof, so it ends that observation phase.
-    phase: Dict[str, Any] = {}
-
-    def resolve_reusable_result(index: int) -> Optional[Mapping[str, Any]]:
-        results = _reusable_quality_gate_results(repo_root, manifest or {}, expected_commands,
-                                                validated_receipts or {}, command_index=index, phase=phase)
-        return results.get(index)
-
-    replay_error = replay_quality_gate_command_plan(repo_root, expected_commands, compare_receipts=True,
-                                                   validated_receipts=validated_receipts,
-                                                   receipt_entries=(manifest or {}).get("command_receipts"),
-                                                   run_id=str((manifest or {}).get("run_id") or ""),
-                                                   resolve_reusable_result=resolve_reusable_result,
-                                                   on_command_executed=phase.clear)
-    if replay_error:
-        return replay_error
-    post_replay_status = git_status_short_lines(repo_root)
-    if post_replay_status:
-        sample = ", ".join(post_replay_status[:5])
-        suffix = " ..." if len(post_replay_status) > 5 else ""
-        return f"UNBOUND: quality gate replay left dirty worktree: {sample}{suffix}"
-    return None
-
-
-def verify_quality_gate_manifest(
-    *,
-    repo_root: Union[os.PathLike, str],
-    manifest: Dict[str, Any],
-    head_sha: str,
-    git_status_lines: Sequence[str],
-    replay_commands: bool = True,
-) -> Tuple[bool, str]:
-    if not isinstance(manifest, dict):
-        return False, "UNBOUND: quality gate manifest 非法"
-
-    header_error, run_id = _verify_manifest_header(repo_root, manifest, head_sha)
-    if header_error:
-        return False, header_error
-    git_status_error = _verify_manifest_git_status(manifest, git_status_lines)
-    if git_status_error:
-        return False, git_status_error
-    static_error, expected_required_tests, expected_commands = _verify_manifest_static_proof(manifest)
-    if static_error:
-        return False, static_error
-    validated_receipts: Dict[int, Dict[str, Any]] = {}
-    collection_error = _verify_manifest_collection_and_receipts(
-        repo_root,
-        manifest,
-        expected_required_tests=expected_required_tests,
-        expected_commands=expected_commands,
-        run_id=run_id,
-        validated_receipts=validated_receipts,
-    )
-    if collection_error:
-        return False, collection_error
-    gate_source_error = _verify_manifest_gate_sources(repo_root, manifest)
-    if gate_source_error:
-        return False, gate_source_error
-    replay_error = _verify_manifest_replay(repo_root, expected_commands, replay_commands=replay_commands,
-                                          manifest=manifest, validated_receipts=validated_receipts)
-    if replay_error:
-        return False, replay_error
-    return True, "BOUND"
-
-
-def git_status_short_lines(repo_root: Union[os.PathLike, str]) -> List[str]:
-    completed = subprocess.run(
-        ["git", "status", "--short"],
-        cwd=str(repo_root),
-        text=True,
-        capture_output=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    if completed.returncode != 0:
-        return [f"!! git status --short failed: {str(completed.stderr or '').strip()}".rstrip()]
-    return [str(line).rstrip() for line in str(completed.stdout or "").splitlines() if str(line).strip()]
 
 
 def collect_quality_rule_files() -> List[str]:

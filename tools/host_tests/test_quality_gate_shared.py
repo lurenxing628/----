@@ -5,14 +5,19 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from scripts import run_quality_gate as runner
+from scripts.workbench import vendor_react
 from tools import benchmark_full_test_debt_shards as shard_tool
 from tools import quality_gate_shared as shared
 from tools import report_full_test_debt_durations as report_tool
-from tools.long_gate_schema import canonical_content
+from tools.long_gate_manifest import build_manifest_from_quality_gate_plan
+from tools.long_gate_schema import canonical_content, repo_identity
+from tools.test_registry import iter_required_regression_groups, validate_test_registry
 
 
 def _command(policy="exact"):
@@ -49,8 +54,6 @@ def test_schema4_binds_original_source_and_receipt_content(tmp_path, monkeypatch
     (tmp_path / "source.py").write_bytes(original)
     sources = shared.build_quality_gate_source_proof(tmp_path)
     assert sources == [{"path": "source.py", "exists": True, "content_base64": base64.b64encode(original).decode("ascii")}]
-    assert shared._verify_manifest_gate_sources(tmp_path, {"gate_sources": sources}) is None
-    assert shared._verify_manifest_gate_sources(tmp_path, {"gate_sources": [{**sources[0], "exists": 1}]}).endswith("gate sources mismatch")
 
     command = _command()
     receipt, entry = _receipt_files(tmp_path, command)
@@ -64,8 +67,6 @@ def test_schema4_binds_original_source_and_receipt_content(tmp_path, monkeypatch
     changed = {**receipt, "returncode": False}
     (tmp_path / entry["path"]).write_text(canonical_content(changed), encoding="utf-8")
     assert shared._load_verified_quality_gate_receipt(tmp_path, entry, command, index=1)[1].endswith("content mismatch")
-    (tmp_path / "source.py").write_bytes(b"other\x00\xff\n")
-    assert shared._verify_manifest_gate_sources(tmp_path, manifest).endswith("gate sources mismatch")
 
 
 def test_receipt_output_policy_sanitizes_and_checks_actual_logs(tmp_path, monkeypatch):
@@ -90,73 +91,150 @@ def test_receipt_output_policy_sanitizes_and_checks_actual_logs(tmp_path, monkey
         shared.normalize_quality_gate_command({**command, "env_overlay": {"SECRET_KEY": ""}})
     with pytest.raises(shared.QualityGateError, match="allowlist"):
         shared.normalize_quality_gate_command({**command, "env_overlay": {"TOKENIZERS_PARALLELISM": "false"}})
-
-    result = {1: {"returncode": 0, "stdout": "1 passed in 7.90s (token=false)\n" + secret + "\n", "stderr": ""}}
-    assert shared.replay_quality_gate_command_plan(
-        tmp_path, [command], receipt_entries=[entry], run_id="run-content", reusable_results=result,
-    ) is None
-    (tmp_path / receipt["stdout_log_path"]).write_text("different result\n", encoding="utf-8")
-    assert "stdout log mismatch" in shared.replay_quality_gate_command_plan(
-        tmp_path, [command], receipt_entries=[entry], run_id="run-content", reusable_results=result,
-    )
+    with pytest.raises(ValueError, match="Unsupported quality gate output_policy"):
+        shared.normalize_quality_gate_command({**command, "output_policy": "passthrough"})
 
 
-def test_legacy_hash_only_evidence_is_readable_without_new_verification(tmp_path, monkeypatch):
-    identity = {"checkout_root_realpath": str(tmp_path), "git_common_dir_realpath": str(tmp_path / ".git")}
-    monkeypatch.setattr(shared, "repo_identity", lambda _root: identity)
-    monkeypatch.setattr(shared, "collect_current_pytest_nodeids", lambda _root: pytest.fail("legacy proof must not collect"))
+def test_legacy_hash_only_evidence_is_rejected_without_content(tmp_path):
     command = _command()
-    legacy_directory = tmp_path / shared.QUALITY_GATE_LEGACY_ROOT_REL / "receipts"
-    legacy_directory.mkdir(parents=True)
-    for version in (2, 3):
-        legacy = {"schema_version": version, "stdout_sha256": "saved-stdout-proof", "stderr_sha256": "saved-stderr-proof"}
-        path = shared.QUALITY_GATE_LEGACY_ROOT_REL.replace("\\", "/") + f"/receipts/original-v{version}.json"
-        (tmp_path / path).write_text(json.dumps(legacy), encoding="utf-8")
-        payload, error = shared._load_verified_quality_gate_receipt(
-            tmp_path, {"path": path, "sha256": "saved-receipt-proof"}, command, index=1,
+    payload, error = shared._load_verified_quality_gate_receipt(
+        tmp_path, {"path": "evidence/QualityGate/receipts/original.json", "sha256": "saved-receipt-proof"}, command, index=1,
+    )
+    assert payload is None and error == "UNBOUND: quality gate command receipt content missing"
+    with pytest.raises(shared.QualityGateError, match="receipt content is unavailable"):
+        shared.apply_quality_gate_manifest_proof_fields(
+            {"command_receipts": [{"path": "evidence/QualityGate/receipts/original.json", "sha256": "saved-receipt-proof"}]},
+            repo_root=tmp_path,
         )
-        assert payload == legacy and "legacy" in error and "content unavailable" in error
-        normalized = shared._normalize_command_receipt_payload(legacy)
-        assert normalized["stdout_sha256"] == legacy["stdout_sha256"] and "stdout_content" not in normalized
-        bound, note = shared.verify_quality_gate_manifest(
-            repo_root=tmp_path, manifest={**identity, "schema_version": version, "status": "passed", "run_id": "old-run"},
-            head_sha="saved-head", git_status_lines=[],
-        )
-        assert bound is False and "legacy" in note
     with pytest.raises(shared.QualityGateError, match="source content is unavailable"):
         shared.apply_quality_gate_manifest_proof_fields(
             {"gate_sources": [{"path": "source.py", "exists": True, "sha256": "saved-source-proof"}]}, repo_root=tmp_path,
         )
 
 
-def test_replay_checks_run_index_path_and_preserves_execution_failures(tmp_path):
+def test_receipt_verification_primitives_check_index_path_and_execution_fields(tmp_path):
     command = _command()
     receipt, entry = _receipt_files(tmp_path, command)
-    assert shared.replay_quality_gate_command_plan(
-        tmp_path, [command], receipt_entries=[entry], run_id="run-content",
-    ) is None
-    assert "run_id mismatch" in shared.replay_quality_gate_command_plan(
-        tmp_path, [command], receipt_entries=[entry], run_id="another-run",
-    )
     assert "command_index mismatch" in shared._verify_receipt_header(receipt, index=2, run_id="run-content")
     assert "path mismatch" in shared._load_verified_quality_gate_receipt(
         tmp_path, {**entry, "path": entry["path"].replace("01_", "02_")}, command, index=1,
     )[1]
-    failure = {1: {"returncode": 7, "stdout": "", "stderr": "command failed"}}
-    assert "command replay failed" in shared.replay_quality_gate_command_plan(
-        tmp_path, [command], receipt_entries=[entry], run_id="run-content", reusable_results=failure,
-    )
     assert "incomplete execution" in shared._verify_receipt_execution_fields({**receipt, "interrupted": True})
-    raw_receipt, raw_entry = _receipt_files(tmp_path, command, "real output\r\n")
+    raw_receipt, _raw_entry = _receipt_files(tmp_path, command, "real output\r\n")
     assert shared.read_text_file(str(tmp_path / raw_receipt["stdout_log_path"])) == "real output\r\n"
-    raw_result = {1: {"returncode": 0, "stdout": "real output\r\n", "stderr": ""}}
-    assert shared.replay_quality_gate_command_plan(
-        tmp_path, [command], receipt_entries=[raw_entry], run_id="run-content", reusable_results=raw_result,
-    ) is None
-    assert "stdout replay mismatch" in shared.replay_quality_gate_command_plan(
-        tmp_path, [command], receipt_entries=[raw_entry], run_id="run-content",
-        reusable_results={1: {"returncode": 0, "stdout": "real output\n", "stderr": ""}},
+
+
+def test_gate_check_specs_and_registry_cover_all_production_sources(tmp_path):
+    specs = shared.build_quality_gate_check_specs()
+    dirty_specs = shared.build_quality_gate_check_specs(allow_dirty_worktree=True)
+    check_ids = [spec.check_id for spec in specs]
+    assert len(check_ids) == len(set(check_ids))
+    assert "py38_syntax_check" in check_ids
+    assert "roadmap_yaml_validation" in check_ids
+    clean_full = next(spec for spec in specs if spec.check_id == shared.ENTRY_FULL_TEST_DEBT)
+    dirty_full = next(spec for spec in dirty_specs if spec.check_id == shared.ENTRY_FULL_TEST_DEBT)
+    assert "--allow-dirty-worktree-proof" not in clean_full.args
+    assert "--allow-dirty-worktree-proof" in dirty_full.args
+    assert "APS_FULL_TEST_DEBT_SHARD_COUNT" not in clean_full.env_keys
+    assert clean_full.reuse_policy == "success_or_failure"
+    assert clean_full.reuse_allowed is True
+    assert {spec.check_id: spec.reuse_policy for spec in specs if not spec.reuse_allowed} == {
+        "ruff_version_probe": "none",
+        "pyright_version_probe": "none",
+        "radon_import_probe": "none",
+        shared.ENTRY_ROADMAP_YAML_VALIDATION: "none",
+        shared.ENTRY_PY38_SYNTAX_CHECK: "none",
+    }
+    assert {spec.check_id for spec in specs if spec.reuse_policy == "success_or_failure"} == {
+        shared.ENTRY_FULL_TEST_DEBT,
+    }
+    assert all(
+        spec.reuse_policy == "success" and spec.reuse_allowed
+        for spec in specs
+        if spec.reuse_allowed and spec.check_id != shared.ENTRY_FULL_TEST_DEBT
     )
+    manifest = build_manifest_from_quality_gate_plan(specs)
+    assert [entry["reuse_policy"] for entry in manifest["entries"]] == [spec.reuse_policy for spec in specs]
+    assert [entry["reuse_allowed"] for entry in manifest["entries"]] == [spec.reuse_allowed for spec in specs]
+    assert manifest["quality_gate_plan"] == [
+        shared.normalize_quality_gate_command(spec.to_command_dict()) for spec in specs
+    ]
+    base_cmd = shared.normalize_quality_gate_command(clean_full.to_command_dict())
+    assert {
+        key: base_cmd[key]
+        for key in ("check_id", "entry_type", "proof_kind", "reuse_policy", "runner_handler")
+    } == {
+        "check_id": clean_full.check_id,
+        "entry_type": clean_full.entry_type,
+        "proof_kind": clean_full.proof_kind,
+        "reuse_policy": clean_full.reuse_policy,
+        "runner_handler": clean_full.runner_handler,
+    }
+    base_receipt, _ = _receipt_files(tmp_path, clean_full.to_command_dict())
+    assert shared._verify_receipt_command_fields(base_receipt, base_cmd) is None
+    for field, mutated_value in (
+        ("check_id", "other_check_id"),
+        ("entry_type", "other_entry_type"),
+        ("proof_kind", "static_check"),
+        ("reuse_policy", "success"),
+        ("runner_handler", "pytest_collect_all"),
+    ):
+        mutated_spec = replace(clean_full, **{field: mutated_value})
+        mutated_cmd = shared.normalize_quality_gate_command(mutated_spec.to_command_dict())
+        assert mutated_cmd != base_cmd
+        assert f"{field} mismatch" in (shared._verify_receipt_command_fields(base_receipt, mutated_cmd) or "")
+    shared_type_specs = [
+        replace(clean_full, check_id="custom_check_alpha", entry_type="shared_kind"),
+        replace(clean_full, check_id="custom_check_beta", entry_type="shared_kind"),
+    ]
+    with pytest.raises(shared.QualityGateError, match="check_id: shared_kind"):
+        runner._prepare_long_gate_cache_decisions(
+            shared_type_specs,
+            cache_enabled=False,
+            cache_dir="evidence/QualityGate/long_gate",
+            force_rerun_entry_ids=["shared_kind"],
+        )
+    assert {spec.check_id: spec.proof_kind for spec in specs if spec.proof_kind is not None} == {
+        shared.ENTRY_RUFF_CHECK_FULL: "static_check",
+        shared.ENTRY_PYTEST_COLLECT_ALL: "collect_nodeids",
+        shared.ENTRY_PYRIGHT_GATE_FULL: "static_check",
+        shared.ENTRY_PYRIGHT_TOOLS_FULL: "static_check",
+        shared.ENTRY_DEBT_LEDGER_SYNC: "debt_ledger_sync",
+        shared.ENTRY_FULL_TEST_DEBT: "full_test_debt",
+        shared.ENTRY_REQUIRED_REGRESSIONS: "required_regressions",
+    }
+    expected_esbuild_scopes = {
+        "scripts/workbench/esbuild-manifest.json",
+        "scripts/workbench/*.cjs",
+        "scripts/workbench/*.py",
+        "vendor/node_modules/esbuild/package.json",
+        "vendor/node_modules/esbuild/lib/main.js",
+        "vendor/node_modules/esbuild/bin/esbuild",
+        "vendor/node_modules/@esbuild/*/package.json",
+        "vendor/node_modules/@esbuild/*/bin/esbuild*",
+        "vendor/node_modules/@esbuild/*/esbuild.exe",
+    }
+    assert expected_esbuild_scopes <= set(clean_full.tool_file_scopes)
+    assert expected_esbuild_scopes <= set(clean_full.dependency_file_scopes)
+    workbench_group = next(g for g in iter_required_regression_groups() if g["group_id"] == "workbench")
+    assert expected_esbuild_scopes <= set(workbench_group["tool_file_scopes"])
+    assert expected_esbuild_scopes <= set(workbench_group["dependency_file_scopes"])
+    verified_esbuild = vendor_react.verify_esbuild_vendor()
+    assert verified_esbuild["status"] == "verified"
+    assert verified_esbuild["version"] == "0.25.12"
+    coverage = validate_test_registry()
+    assert coverage["uncovered_sources"] == []
+    with pytest.raises(FileNotFoundError):
+        shared.build_quality_gate_check_specs(repo_root=str(tmp_path))
+    gate_cfg = tmp_path / shared.QUALITY_GATE_PYRIGHT_GATE_CONFIG
+    gate_cfg.write_text("[]", encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON object"):
+        shared.build_quality_gate_check_specs(repo_root=str(tmp_path))
+    gate_cfg.write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="include"):
+        shared.build_quality_gate_check_specs(repo_root=str(tmp_path))
+    with pytest.raises(RuntimeError, match="git rev-parse"):
+        repo_identity(str(tmp_path))
 
 
 FRESH_NODEID = "tests/new/test_fresh.py::test_fresh"
@@ -233,114 +311,3 @@ def test_direct_script_entries_bootstrap_outside_repo_root(analysis_repo, tmp_pa
         completed = subprocess.run(command, cwd=str(tmp_path), env=env, capture_output=True, text=True, check=False)
         assert completed.returncode == 0, completed.stderr
         assert expected in completed.stdout
-
-
-def test_verify_manifest_and_reusable_results_handle_sensitive_sources_and_propagate_defects(tmp_path, monkeypatch):
-    from tools import long_gate_fingerprint, long_gate_schema
-
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    secret = "shared-gate-secret-do-not-leak"
-    monkeypatch.setenv("SECRET_KEY", secret)
-
-    command = _command()
-    monkeypatch.setattr(shared, "QUALITY_GATE_SOURCE_FILES", ("source.py",))
-    monkeypatch.setattr(
-        shared,
-        "iter_quality_gate_required_tests",
-        lambda: ["tests/workbench/test_content_encoding.py"],
-    )
-    monkeypatch.setattr(shared, "build_quality_gate_command_plan", lambda: [command])
-    monkeypatch.setattr(
-        shared,
-        "collect_current_pytest_nodeids",
-        lambda _root: (
-            True,
-            ["tests/workbench/test_content_encoding.py::test_ok"],
-            "tests/workbench/test_content_encoding.py::test_ok\n",
-            "",
-            "",
-        ),
-    )
-
-    source_file = tmp_path / "source.py"
-    source_file.write_text("CLEAN = 1\n", encoding="utf-8")
-    (tmp_path / ".gitignore").write_text("evidence/\n", encoding="utf-8")
-    subprocess.run(["git", "config", "user.email", "gate@example.invalid"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Gate Fixture"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(["git", "add", ".gitignore", "source.py"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
-    receipt, entry = _receipt_files(tmp_path, command, run_id="head-1:run")
-    identity = shared.repo_identity(tmp_path)
-    manifest = shared.apply_quality_gate_manifest_proof_fields(
-        {
-            **identity,
-            "status": "passed",
-            "run_id": "head-1:run",
-            "head_sha": "head-1",
-            "git_status_short_before": [],
-            "git_status_short_after": [],
-            "is_dirty_before": False,
-            "is_dirty_after": False,
-            "tracked_drift_detected": False,
-            "required_tests": ["tests/workbench/test_content_encoding.py"],
-            "commands": [command],
-            "command_receipts": [entry],
-            "collection_proof": shared.build_quality_gate_collection_proof(
-                ["tests/workbench/test_content_encoding.py::test_ok"],
-                required_tests=["tests/workbench/test_content_encoding.py"],
-            ),
-            "gate_sources": shared.build_quality_gate_source_proof(tmp_path),
-        },
-        repo_root=tmp_path,
-    )
-    assert shared.verify_quality_gate_manifest(
-        repo_root=tmp_path, manifest=manifest, head_sha="head-1", git_status_lines=[], replay_commands=True
-    ) == (True, "BOUND")
-
-    source_file.write_text(f'LEAK = "{secret}"\n', encoding="utf-8")
-    direct_note = shared._verify_manifest_gate_sources(tmp_path, manifest)
-    assert direct_note is not None
-    assert direct_note.startswith("UNBOUND: current quality gate sources cannot be verified (")
-    assert "SECRET_KEY" in direct_note and secret not in direct_note
-    bound, verify_note = shared.verify_quality_gate_manifest(
-        repo_root=tmp_path, manifest=manifest, head_sha="head-1", git_status_lines=[], replay_commands=True
-    )
-    assert bound is False
-    assert verify_note == direct_note
-
-    ruff_cmd = {
-        "display": "python -m ruff check",
-        "args": ["python", "-m", "ruff", "check"],
-        "capture_output": False,
-        "output_policy": "normalized",
-    }
-    ruff_receipt, _ruff_entry = _receipt_files(tmp_path, ruff_cmd, stdout="", run_id="head-1:run")
-    receipts = {1: ruff_receipt}
-    assert shared._reusable_quality_gate_results(
-        tmp_path, {"long_gate_cache_dir": "../outside"}, [ruff_cmd], receipts
-    ) == {}
-
-    runner_script = tmp_path / "scripts" / "run_quality_gate.py"
-    runner_script.parent.mkdir(parents=True, exist_ok=True)
-    runner_script.write_text(f"# {secret}\n", encoding="utf-8")
-    cache_manifest = {"long_gate_cache_dir": "evidence/QualityGate/long_gate"}
-    assert shared._reusable_quality_gate_results(tmp_path, cache_manifest, [ruff_cmd], receipts) == {}
-
-    runner_script.write_text("# clean runner\n", encoding="utf-8")
-    (tmp_path / "pyproject.toml").write_text(f'secret = "{secret}"\n', encoding="utf-8")
-    assert shared._reusable_quality_gate_results(tmp_path, cache_manifest, [ruff_cmd], receipts) == {}
-
-    (tmp_path / "pyproject.toml").write_text("clean = true\n", encoding="utf-8")
-
-    def raise_internal_defect(*_args, **_kwargs):
-        raise ValueError("internal reuse defect")
-
-    with monkeypatch.context() as ctx:
-        ctx.setattr(long_gate_fingerprint, "fingerprint_entry", raise_internal_defect)
-        with pytest.raises(ValueError, match="internal reuse defect"):
-            shared._reusable_quality_gate_results(tmp_path, cache_manifest, [ruff_cmd], receipts)
-
-    with monkeypatch.context() as ctx:
-        ctx.setattr(long_gate_schema, "long_gate_cache_metadata", raise_internal_defect)
-        with pytest.raises(ValueError, match="internal reuse defect"):
-            shared._reusable_quality_gate_results(tmp_path, cache_manifest, [ruff_cmd], receipts)

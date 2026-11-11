@@ -32,7 +32,7 @@ from tools import quality_gate_shared  # noqa: E402
 from tools.test_debt_registry import validate_full_test_proof  # noqa: E402
 from tools.test_registry import (  # noqa: E402
     iter_required_tests,
-    validate_required_regression_group_coverage,
+    validate_test_registry,
 )
 
 CURRENT_FULL_TEST_DEBT_REL = quality_gate_shared.QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/")
@@ -86,40 +86,16 @@ def _required_nodeids_by_path(collected_nodeids: Sequence[str], required_paths: 
 def _group_rows_for_required_paths(
     required_paths: Sequence[str],
     *,
-    required_tests_were_explicit: bool,
     required_groups: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    if required_groups is None and required_tests_were_explicit:
-        source_groups: Optional[Sequence[Mapping[str, Any]]] = [
-            {
-                "group_id": "custom_required_regressions",
-                "label": "Custom required regressions",
-                "target_paths": list(required_paths),
-                "input_file_scopes": [],
-                "config_file_scopes": [],
-                "tool_file_scopes": [],
-                "dependency_file_scopes": [],
-                "env_keys": [],
-            }
-        ]
-    else:
-        source_groups = required_groups
-
-    coverage = validate_required_regression_group_coverage(
-        required_paths,
-        groups=source_groups,
-    )
-    problems: List[str] = []
-    if coverage["missing"]:
-        problems.append("missing=" + ", ".join(coverage["missing"]))
-    if coverage["unknown"]:
-        problems.append("unknown=" + ", ".join(coverage["unknown"]))
-    if coverage["duplicates"]:
-        duplicate_paths = [row["path"] for row in coverage["duplicates"]]
-        problems.append("duplicates=" + ", ".join(duplicate_paths))
-    if problems:
-        raise RequiredRegressionProofError("required regression group 覆盖不完整：" + "; ".join(problems))
-    return coverage
+    try:
+        return validate_test_registry(
+            REPO_ROOT,
+            required_paths=required_paths,
+            groups=required_groups,
+        )
+    except ValueError as exc:
+        raise RequiredRegressionProofError(str(exc)) from exc
 
 
 def verify_required_regressions_from_payload(
@@ -132,7 +108,6 @@ def verify_required_regressions_from_payload(
     payload_os_name = payload.get("os_name")
     if not isinstance(payload_os_name, str) or not payload_os_name:
         raise RequiredRegressionProofError("full-test-debt payload 缺少 os_name")
-    required_tests_were_explicit = required_tests is not None
     required_paths = (
         iter_required_tests(required_tests)
         if required_tests is not None
@@ -181,7 +156,6 @@ def verify_required_regressions_from_payload(
 
     group_coverage = _group_rows_for_required_paths(
         required_paths,
-        required_tests_were_explicit=required_tests_were_explicit,
         required_groups=required_groups,
     )
 

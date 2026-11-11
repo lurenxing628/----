@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import venv
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ from scripts import run_quality_gate as runner
 from tools import fast_static_precheck as precheck
 from tools import git_hook_cache as hooks
 from tools import git_hook_checks as checks
+from tools import long_gate_fingerprint as lg_fp
 from tools import quality_gate_shared as shared
 from tools.long_gate_schema import SensitiveSourceError, content_equal
 
@@ -51,7 +53,17 @@ def test_runner_binds_dirty_source_and_resume_receipt_to_original_content(tmp_pa
         "tests/test_a.py::test_a", "tests/test_b.py::test_b",
     ]
 
-    command = {"display": "host contract", "args": ["python", "host_check.py"], "capture_output": True}
+    spec = shared.GateCheckSpec(
+        check_id="host_contract",
+        entry_type=shared.ENTRY_VERSION_OR_ENV_PROBE,
+        display="host contract",
+        args=("python", "host_check.py"),
+        capture_output=True,
+        output_policy="exact",
+        reuse_policy="none",
+        runner_handler="default",
+    )
+    command = spec.to_command_dict()
     monkeypatch.setenv("SECRET_KEY", "fixture-private-only")
     result = {"stdout": "fixture-private-only\r\nchecked\n", "stderr": "", "returncode": 0}
     entry = runner._write_command_receipt(command, run_id="saved-run", index=1, result=result)
@@ -78,7 +90,7 @@ def test_runner_binds_dirty_source_and_resume_receipt_to_original_content(tmp_pa
     }
     resumed_commands, resumed_receipts, resumed_parsed = [], [], {}
     runner._run_quality_gate_command_plan(
-        [command],
+        [spec],
         run_id="resumed-run",
         commands=resumed_commands,
         command_receipts=resumed_receipts,
@@ -150,6 +162,23 @@ def test_hook_cache_and_daily_scope_compare_full_content_and_preserve_old_record
         if expected_probe_key is not None:
             assert after["extra"]["pytest_env"][expected_probe_key] == expected_probe_prefix
         assert not content_equal(before, after)
+
+    win_esbuild_rel = "vendor/node_modules/@esbuild/win32-x64/esbuild.exe"
+    win_esbuild = tmp_path / win_esbuild_rel
+    win_esbuild.parent.mkdir(parents=True, exist_ok=True)
+    win_esbuild.write_bytes(b"MZ\x00win32-esbuild-v1\xff")
+    manifest = runner.build_manifest_from_quality_gate_plan(
+        shared.build_quality_gate_check_specs(),
+        repo_root=str(tmp_path),
+    )
+    entries = {row["entry_id"]: row for row in manifest["entries"]}
+    for entry_id in (shared.ENTRY_FULL_TEST_DEBT, shared.ENTRY_REQUIRED_REGRESSIONS):
+        fp_v1 = runner.fingerprint_entry(entries[entry_id], str(tmp_path), strict=False)
+        win_esbuild.write_bytes(b"MZ\x00win32-esbuild-v2\xff")
+        fp_v2 = runner.fingerprint_entry(entries[entry_id], str(tmp_path), strict=False)
+        assert not content_equal(fp_v1, fp_v2)
+        win_esbuild.write_bytes(b"MZ\x00win32-esbuild-v1\xff")
+        assert content_equal(fp_v1, runner.fingerprint_entry(entries[entry_id], str(tmp_path), strict=False))
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX symlink venv probe regression")
@@ -258,7 +287,12 @@ def test_daily_gate_routes_boundary_baselines_to_matching_scanners_without_full_
         assert not scope.ruff_plan.all_files
         assert scope.ruff_plan.boundary_scanners == (expected_scanner,)
         payload = daily.daily_gate_scope_payload(scope)
-        assert payload["ruff"]["boundary_scanners"] == [expected_scanner]
+        assert payload["ruff"] == {
+            "target_paths": [],
+            "all_files": False,
+            "reason": scope.ruff_plan.reason,
+            "boundary_scanners": [expected_scanner],
+        }
         commands = daily._commands(scope.impact_plan.target_paths, scope.ruff_plan)
         assert [label for label, _cmd in commands] == [
             "block staged runtime artifacts",
@@ -359,7 +393,7 @@ def _native_hook_fixture(tmp_path):
     environment["APS_HOOK_TEST_STDIN"] = str(tmp_path / "legacy-stdin")
     environment["APS_HOOK_TEST_INPUT_PATH"] = str(tmp_path / "input-file-path")
     for relative in (
-        "tools/__init__.py", "tools/git_hook_checks.py", "tools/git_hook_cache.py",
+        "pyrightconfig.gate.json", "tools/__init__.py", "tools/git_hook_checks.py", "tools/git_hook_cache.py",
         "tools/git_hook_blocked_paths.py", "tools/long_gate_schema.py", "tools/long_gate_paths.py",
         "tools/long_gate_fingerprint.py", "tools/quality_gate_shared.py",
         "tools/install_git_hooks.py", "tools/native_pre_push.py", "tools/test_registry.py",
@@ -621,14 +655,7 @@ def test_optional_caches_degrade_when_secret_key_present_while_mandatory_proofs_
     runner_script = tmp_path / "scripts" / "run_quality_gate.py"
     runner_script.parent.mkdir(parents=True, exist_ok=True)
     runner_script.write_text(f"# {secret}\n", encoding="utf-8")
-    plan = [
-        {
-            "display": "python tools/check_full_test_debt.py --sharded --shard-count 3",
-            "args": ["python", "tools/check_full_test_debt.py", "--sharded", "--shard-count", "3"],
-            "capture_output": True,
-            "output_policy": "exact",
-        }
-    ]
+    plan = [spec for spec in shared.build_quality_gate_check_specs() if spec.check_id == shared.ENTRY_FULL_TEST_DEBT]
     summary_entries, runtime_entries = runner._prepare_long_gate_cache_decisions(
         plan, cache_enabled=True, cache_dir="evidence/QualityGate/long_gate"
     )
@@ -638,7 +665,7 @@ def test_optional_caches_degrade_when_secret_key_present_while_mandatory_proofs_
     assert summary_entries[0]["decision"] == "run"
     assert summary_entries[0]["reason"].startswith("cache metadata unavailable;")
     assert summary_entries[0]["fingerprint_error"]["failure_kind"] == "cache_metadata_unavailable"
-    rt_entry = runtime_entries[plan[0]["display"]]
+    rt_entry = runtime_entries[plan[0].check_id]
 
     # Refresh and write boundaries also catch sensitive sources and mark cache_unavailable without crashing.
     rt_entry["decision"] = {"decision": "run", "reason": "no previous success cache", "cache_unavailable": False}
@@ -732,14 +759,7 @@ def test_cache_boundaries_only_degrade_sensitive_sources_and_raise_other_value_e
         raise defect
 
     # Long-gate metadata: a non-sensitive ValueError is an internal defect, not "cache unavailable".
-    plan = [
-        {
-            "display": "python tools/check_full_test_debt.py --sharded --shard-count 3",
-            "args": ["python", "tools/check_full_test_debt.py", "--sharded", "--shard-count", "3"],
-            "capture_output": True,
-            "output_policy": "exact",
-        }
-    ]
+    plan = [spec for spec in shared.build_quality_gate_check_specs() if spec.check_id == shared.ENTRY_FULL_TEST_DEBT]
     monkeypatch.setattr(runner, "long_gate_cache_metadata", raise_defect)
     with pytest.raises(ValueError, match="internal cache defect"):
         runner._prepare_long_gate_cache_decisions(plan, cache_enabled=True, cache_dir="evidence/QualityGate/long_gate")
@@ -748,7 +768,12 @@ def test_cache_boundaries_only_degrade_sensitive_sources_and_raise_other_value_e
         runner._strict_long_gate_fingerprint({"entry_id": "full_test_debt"})
 
     # Long-gate writes: command content mismatch must surface instead of being recorded as cache unavailable.
-    entry = {**plan[0], "entry_id": "full_test_debt"}
+    entry = {
+        **plan[0].to_command_dict(),
+        "entry_id": "full_test_debt",
+        "proof_kind": "full_test_debt",
+        "reuse_policy": "success_or_failure",
+    }
     mismatched_fp = {"schema_version": 2, "components": {"command": {"display": "other"}}}
     runtime_entry = {
         "entry": dict(entry),
@@ -848,7 +873,7 @@ def test_git_nul_path_decoding_classifies_non_ascii_docs_and_code_with_quotepath
     assert checks._staged_paths() == ["开发文档/开发文档.md"]
     assert runner._current_impact_paths() == ["开发文档/开发文档.md"]
     doc_impact = runner.explain_long_gate_impact(
-        shared.build_quality_gate_command_plan(),
+        shared.build_quality_gate_check_specs(),
         runner._current_impact_paths(),
         repo_root=str(repo),
     )
@@ -882,7 +907,7 @@ def test_git_nul_path_decoding_classifies_non_ascii_docs_and_code_with_quotepath
     assert precheck.collect_changed_python_files(str(repo)).paths == ("core/algorithms/greedy/scheduler.py",)
     assert runner._current_impact_paths() == ["core/algorithms/greedy/scheduler.py"]
     code_impact = runner.explain_long_gate_impact(
-        shared.build_quality_gate_command_plan(),
+        shared.build_quality_gate_check_specs(),
         runner._current_impact_paths(),
         repo_root=str(repo),
     )
@@ -913,7 +938,7 @@ def test_git_nul_path_decoding_classifies_non_ascii_docs_and_code_with_quotepath
         assert checks._staged_paths() == [special_rel]
         assert runner._current_impact_paths() == [special_rel]
         special_impact = runner.explain_long_gate_impact(
-            shared.build_quality_gate_command_plan(),
+            shared.build_quality_gate_check_specs(),
             runner._current_impact_paths(),
             repo_root=str(repo),
         )
@@ -930,7 +955,7 @@ def test_cli_impact_paths_normalize_only_at_argument_boundary(capsys):
         "--long-gate-impact-path", " /tools/long_gate_cache.py/ ",
     ])
     assert args.long_gate_impact_path == [canonical, canonical, canonical]
-    plan = shared.build_quality_gate_command_plan()
+    plan = shared.build_quality_gate_check_specs()
 
     def affected(paths):
         impact = runner.explain_long_gate_impact(plan, paths, repo_root=runner.REPO_ROOT)
@@ -940,6 +965,10 @@ def test_cli_impact_paths_normalize_only_at_argument_boundary(capsys):
     assert expected
     assert affected(runner._dedupe_impact_paths(args.long_gate_impact_path)) == expected
     assert affected(["tools\\long_gate_cache.py"]) != expected
+    win_esbuild_rel = "vendor/node_modules/@esbuild/win32-x64/esbuild.exe"
+    assert affected([win_esbuild_rel]) == ["full_test_debt", "required_regressions"]
+    win_esbuild_impact = daily._build_impact_plan(daily.ChangedPathSet([win_esbuild_rel], True, "win32 esbuild"))
+    assert win_esbuild_impact.selected_group_ids == ["workbench"]
     with pytest.raises(SystemExit):
         runner._parse_args(["--long-gate-impact-explain", "--long-gate-impact-path", "./"])
     assert "not a repository-relative path" in capsys.readouterr().err
@@ -950,6 +979,7 @@ def test_dirty_sensitive_worktree_cli_exits_2_and_failed_cleanup_finalizes_manif
     repo = tmp_path / "gate_repo"
     (repo / "scripts").mkdir(parents=True)
     shutil.copyfile(source_root / "scripts" / "run_quality_gate.py", repo / "scripts" / "run_quality_gate.py")
+    shutil.copyfile(source_root / "pyrightconfig.gate.json", repo / "pyrightconfig.gate.json")
     (repo / ".gitignore").write_text("evidence/\n__pycache__/\n", encoding="utf-8")
 
     def git(*args):
@@ -993,21 +1023,23 @@ def test_dirty_sensitive_worktree_cli_exits_2_and_failed_cleanup_finalizes_manif
     monkeypatch.setattr(runner, "REPO_ROOT", str(repo))
     monkeypatch.setattr(runner, "REQUIRED_TEST_ARGS", [])
     monkeypatch.setattr(shared, "QUALITY_GATE_SOURCE_FILES", ())
-    failing_plan = [
-        {
-            "display": "python step-leaks-sensitive-file-and-fails",
-            "args": [
-                "python",
-                "-c",
-                "import os, pathlib, sys; "
-                "pathlib.Path('after_step_secret.env').write_text(os.environ['SECRET_KEY'], encoding='utf-8'); "
-                "sys.exit(1)",
-            ],
-            "capture_output": True,
-            "output_policy": "exact",
-        }
-    ]
-    monkeypatch.setattr(runner, "build_quality_gate_command_plan", lambda: failing_plan)
+    failing_spec = shared.GateCheckSpec(
+        check_id="failing_step",
+        entry_type=shared.ENTRY_VERSION_OR_ENV_PROBE,
+        display="python step-leaks-sensitive-file-and-fails",
+        args=(
+            "python",
+            "-c",
+            "import os, pathlib, sys; "
+            "pathlib.Path('after_step_secret.env').write_text(os.environ['SECRET_KEY'], encoding='utf-8'); "
+            "sys.exit(1)",
+        ),
+        capture_output=True,
+        output_policy="exact",
+        reuse_policy="none",
+        runner_handler="default",
+    )
+    monkeypatch.setattr(shared, "build_quality_gate_check_specs", lambda **_kw: [failing_spec])
 
     with pytest.raises(runner.QualityGateError, match="质量门禁第 1/1 步失败"):
         runner.main(["--require-clean-worktree", "--no-long-gate-cache"])
@@ -1042,36 +1074,22 @@ def test_long_gate_summary_write_failure_does_not_persist_new_success_cache(tmp_
     monkeypatch.setattr(runner, "REPO_ROOT", str(repo))
     monkeypatch.setattr(runner, "REQUIRED_TEST_ARGS", [])
     monkeypatch.setattr(shared, "QUALITY_GATE_SOURCE_FILES", ())
-    minimal_plan = [
-        {
-            "display": "python -m ruff --version",
-            "args": ["python", "-m", "ruff", "--version"],
-            "capture_output": True,
-            "output_policy": "exact",
-        },
-        {
-            "display": "python -m pyright --version",
-            "args": ["python", "-m", "pyright", "--version"],
-            "capture_output": True,
-            "output_policy": "exact",
-        },
-        {
-            "display": "python -m pytest --collect-only -q tests",
-            "args": ["python", "-m", "pytest", "--collect-only", "-q", "tests"],
-            "capture_output": True,
-            "output_policy": "exact",
-        },
+    all_specs = shared.build_quality_gate_check_specs()
+    minimal_specs = [
+        spec
+        for spec in all_specs
+        if spec.check_id in {"ruff_version_probe", "pyright_version_probe", shared.ENTRY_PYTEST_COLLECT_ALL}
     ]
-    outputs_by_display = {
-        "python -m ruff --version": "ruff 0.15.0\n",
-        "python -m pyright --version": "pyright 1.1.406\n",
-        "python -m pytest --collect-only -q tests": "tests/test_sample.py::test_ok\n\n1 test collected in 0.01s\n",
+    outputs_by_check_id = {
+        "ruff_version_probe": "ruff 0.15.0\n",
+        "pyright_version_probe": "pyright 1.1.406\n",
+        shared.ENTRY_PYTEST_COLLECT_ALL: "tests/test_sample.py::test_ok\n\n1 test collected in 0.01s\n",
     }
-    monkeypatch.setattr(runner, "build_quality_gate_command_plan", lambda: minimal_plan)
+    monkeypatch.setattr(shared, "build_quality_gate_check_specs", lambda **_kw: minimal_specs)
     monkeypatch.setattr(
         runner,
         "_run_command",
-        lambda display, _args, **_kw: {"returncode": 0, "stdout": outputs_by_display[display], "stderr": ""},
+        lambda check_id, _args, **_kw: {"returncode": 0, "stdout": outputs_by_check_id[check_id], "stderr": ""},
     )
 
     real_write_summary = runner.write_long_gate_summary
@@ -1092,3 +1110,419 @@ def test_long_gate_summary_write_failure_does_not_persist_new_success_cache(tmp_
     assert runner.main(["--require-clean-worktree", "--long-gate-cache"]) == 0
     assert (repo / "evidence/QualityGate/long_gate/results/pytest_collect_all.v2.success.json").is_file()
     assert (repo / "evidence/QualityGate/long_gate/logs/pytest_collect_all.v2.stdout.log").is_file()
+
+    # Custom check_id entries with proof_kind="full_test_debt" / "required_regressions" dispatch by proof_kind.
+    base_by_id = {spec.check_id: spec for spec in all_specs}
+    custom_full_spec = replace(base_by_id[shared.ENTRY_FULL_TEST_DEBT], check_id="custom_full_debt_probe")
+    custom_req_spec = replace(base_by_id[shared.ENTRY_REQUIRED_REGRESSIONS], check_id="custom_req_regressions_probe")
+    custom_manifest = runner.build_manifest_from_quality_gate_plan(
+        [custom_full_spec, custom_req_spec], repo_root=str(repo)
+    )
+    custom_entries = {row["entry_id"]: row for row in custom_manifest["entries"]}
+    assert shared.QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL in lg_fp._entry_file_scopes(
+        custom_entries["custom_req_regressions_probe"]
+    )
+    assert shared.QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL not in lg_fp._entry_file_scopes_for_fingerprint(
+        custom_entries["custom_req_regressions_probe"]
+    )
+    monkeypatch.setattr(
+        runner,
+        "_strict_long_gate_fingerprint",
+        lambda entry, **_kw: {"schema_version": 2, "components": {"command": entry["command"]}},
+    )
+    for custom_id, refresh_fn in (
+        ("custom_full_debt_probe", runner._refresh_full_test_debt_reuse_decision),
+        ("custom_req_regressions_probe", runner._refresh_required_regressions_reuse_decision),
+    ):
+        rt = {
+            "entry": dict(custom_entries[custom_id]),
+            "fingerprint": {},
+            "evaluation": {},
+            "decision": {"decision": "run", "reason": "stale initial decision", "cache_unavailable": False},
+            "summary_entry": {},
+        }
+        refresh_fn(rt, cache_dir="evidence/QualityGate/long_gate")
+        assert rt["fingerprint"] == {"schema_version": 2, "components": {"command": custom_entries[custom_id]["command"]}}
+        assert rt["decision"]["reason"] == "no previous success cache"
+
+
+def _load_full_selftest_module(monkeypatch):
+    monkeypatch.syspath_prepend(
+        str(Path(runner.REPO_ROOT) / ".limcode/skills/aps-full-selftest/scripts")
+    )
+    monkeypatch.delitem(sys.modules, "run_full_selftest", raising=False)
+    import run_full_selftest  # type: ignore[import-not-found]
+
+    return run_full_selftest
+
+
+def test_full_selftest_delegates_quality_gate_binding_to_common_runner(tmp_path, monkeypatch):
+    selftest_rel = ".limcode/skills/aps-full-selftest/scripts/run_full_selftest.py"
+    assert selftest_rel in shared.QUALITY_GATE_TOOL_PATHS
+    runner._assert_pyright_tools_config_matches_tool_paths()
+
+    selftest = _load_full_selftest_module(monkeypatch)
+    head_sha = "c" * 40
+    manifest_path = tmp_path / shared.QUALITY_GATE_MANIFEST_REL
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    binding_log = tmp_path / "evidence/FullSelfTest/logs/00_quality_gate_binding.log.txt"
+    calls = []
+
+    def fake_run_cmd(*, cmd, cwd, timeout_s):
+        calls.append((list(cmd), cwd, timeout_s))
+        return cmd_outcome["exit_code"], 0.25, cmd_outcome["output"], False
+
+    cmd_outcome = {"exit_code": 0, "output": "gate stdout\n"}
+    post_status = {"lines": []}
+    monkeypatch.setattr(selftest, "_run_cmd", fake_run_cmd)
+    monkeypatch.setattr(selftest, "_git_head_sha", lambda _root: head_sha)
+    monkeypatch.setattr(selftest, "_git_status_lines", lambda _root: list(post_status["lines"]))
+
+    dirty_step = selftest._quality_gate_binding_status(tmp_path, head_sha, [" M app.py"])
+    assert not dirty_step.effective_pass
+    assert calls == []
+    assert "工作区不干净" in dirty_step.note
+    assert " M app.py" in binding_log.read_text(encoding="utf-8")
+
+    expected_gate_cmd = [
+        selftest._project_python(tmp_path),
+        "scripts/run_quality_gate.py",
+        "--require-clean-worktree",
+        "--long-gate-cache",
+        "--no-resume",
+    ]
+    cmd_outcome = {"exit_code": 2, "output": "gate failed output"}
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": shared.QUALITY_GATE_PROOF_SCHEMA_VERSION,
+                "status": "failed",
+                "head_sha": head_sha,
+                "failure_kind": "ruff_failed",
+                "failure_message": "ruff check exited 1",
+            }
+        ),
+        encoding="utf-8",
+    )
+    failed_step = selftest._quality_gate_binding_status(tmp_path, head_sha, [])
+    assert not failed_step.effective_pass
+    assert failed_step.exit_code == 2
+    assert calls[-1] == (expected_gate_cmd, tmp_path, None)
+    assert "failure_kind=ruff_failed" in failed_step.note
+    assert "gate failed output" in binding_log.read_text(encoding="utf-8")
+
+    valid_manifest = {
+        "schema_version": shared.QUALITY_GATE_PROOF_SCHEMA_VERSION,
+        "status": "passed",
+        "head_sha": head_sha,
+        "is_dirty_before": False,
+        "is_dirty_after": False,
+        "tracked_drift_detected": False,
+    }
+    cmd_outcome = {"exit_code": 0, "output": "质量门禁通过"}
+    for invalid_override in (
+        {"schema_version": 3},
+        {"status": "passed_but_unbound"},
+        {"head_sha": "d" * 40},
+        {"is_dirty_after": True},
+        {"tracked_drift_detected": True},
+    ):
+        manifest_path.write_text(json.dumps({**valid_manifest, **invalid_override}), encoding="utf-8")
+        rejected_step = selftest._quality_gate_binding_status(tmp_path, head_sha, [])
+        assert not rejected_step.effective_pass
+
+    manifest_path.write_text(json.dumps(valid_manifest), encoding="utf-8")
+    post_status["lines"] = ["?? leaked.tmp"]
+    drifted_step = selftest._quality_gate_binding_status(tmp_path, head_sha, [])
+    assert not drifted_step.effective_pass
+    assert "运行后工作区不干净" in drifted_step.note
+
+    post_status["lines"] = []
+    calls.clear()
+    ok, results, report_rel = selftest.run_full_selftest(repo_root=tmp_path, fail_fast=False, step_timeout_s=120)
+    assert ok is True
+    assert [row.name for row in results] == ["quality_gate_binding", "pytest_tests"]
+    assert [row[0] for row in calls] == [
+        expected_gate_cmd,
+        [selftest._project_python(tmp_path), "-m", "pytest", "tests", "-q", "--tb=short"],
+    ]
+    assert calls[0][2] is None and calls[1][2] == 120
+    assert (tmp_path / report_rel).is_file()
+    assert "- 总执行耗时：" in (tmp_path / report_rel).read_text(encoding="utf-8")
+    assert "[BINDING] BOUND" in binding_log.read_text(encoding="utf-8")
+
+
+def test_quickref_vs_routes_output_path_matches_gate_spec_and_long_gate_cache(tmp_path, monkeypatch, capsys):
+    from flask import Flask
+
+    from tests.gate_meta import check_quickref_vs_routes as quickref_check
+    from tools import long_gate_cache
+
+    spec = next(
+        item
+        for item in shared.build_quality_gate_check_specs()
+        if item.check_id == shared.ENTRY_QUICKREF_VS_ROUTES
+    )
+    expected_rel = shared.QUALITY_GATE_QUICKREF_VS_ROUTES_REL.replace("\\", "/")
+    assert spec.output_result_files == (expected_rel,)
+
+    doc_dir = tmp_path / "开发文档"
+    doc_dir.mkdir(parents=True)
+    (doc_dir / "系统速查表.md").write_text("- `GET /api/ping`：健康检查\n", encoding="utf-8")
+
+    fake_app = Flask("quickref_contract")
+    fake_app.add_url_rule("/api/ping", "ping", lambda: "ok", methods=["GET"])
+
+    monkeypatch.setattr(quickref_check, "find_repo_root", lambda: str(tmp_path))
+    monkeypatch.setattr(quickref_check, "_load_app_for_scan", lambda _root: (fake_app, ""))
+
+    assert quickref_check.main() == 0
+    assert capsys.readouterr().out.splitlines() == [expected_rel, "OK"]
+    assert (tmp_path / expected_rel).is_file()
+
+    rows = long_gate_cache._read_output_files(str(tmp_path), spec.output_result_files)
+    assert [row["path"] for row in rows] == [expected_rel]
+    entry = next(
+        row
+        for row in runner.build_manifest_from_quality_gate_plan(
+            shared.build_quality_gate_check_specs(),
+            repo_root=str(tmp_path),
+        )["entries"]
+        if row["entry_id"] == shared.ENTRY_QUICKREF_VS_ROUTES
+    )
+    assert entry["output_result_files"] == [expected_rel]
+    long_gate_cache._assert_output_files_cover_declared_paths(
+        str(tmp_path),
+        entry,
+        rows,
+    )
+    assert (
+        long_gate_cache._output_files_cover_declared_paths(str(tmp_path), entry, {"output_files": []})
+        == f"previous output files missing required path: {expected_rel}"
+    )
+
+
+def test_provision_worktree_esbuild_vendor_skips_minimal_copies_cleanly_and_fails_offline_when_missing(
+    tmp_path, monkeypatch
+):
+    from scripts.workbench import vendor_react
+
+    source_root = Path(__file__).resolve().parents[2]
+    monkeypatch.setattr(
+        vendor_react,
+        "read_url",
+        lambda _url: (_ for _ in ()).throw(AssertionError("worktree provisioning must never touch network")),
+    )
+
+    # 1. Minimal fixture without scripts/workbench/esbuild-manifest.json skips silently.
+    minimal_wt = tmp_path / "minimal_worktree"
+    minimal_wt.mkdir()
+    checks._provision_worktree_esbuild_vendor(tmp_path / "nonexistent_host", minimal_wt)
+    assert not (minimal_wt / "vendor").exists()
+
+    # 2. Tracked manifest in a clean git worktree copies esbuild vendor, passes verify_esbuild_vendor,
+    #    and keeps `git status --porcelain` completely clean via .gitignore.
+    repo = tmp_path / "esbuild_wt_repo"
+    (repo / "scripts" / "workbench").mkdir(parents=True)
+    shutil.copyfile(source_root / ".gitignore", repo / ".gitignore")
+    shutil.copyfile(
+        source_root / "scripts" / "workbench" / "esbuild-manifest.json",
+        repo / "scripts" / "workbench" / "esbuild-manifest.json",
+    )
+    env = checks._quality_gate_env()
+
+    def git(cwd, *args):
+        res = subprocess.run(["git", *args], cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8")
+        assert res.returncode == 0, res.stderr
+        return res.stdout
+
+    git(repo, "init")
+    git(repo, "config", "user.email", "wt@example.invalid")
+    git(repo, "config", "user.name", "Worktree Tester")
+    git(repo, "add", ".gitignore", "scripts/workbench/esbuild-manifest.json")
+    git(repo, "commit", "-m", "Add esbuild manifest")
+    head_sha = git(repo, "rev-parse", "HEAD").strip()
+
+    worktree = tmp_path / "detached_wt"
+    git(repo, "worktree", "add", "--detach", str(worktree), head_sha)
+    try:
+        checks._provision_worktree_esbuild_vendor(source_root, worktree)
+        verified = vendor_react.verify_esbuild_vendor(
+            worktree,
+            manifest_path=worktree / "scripts/workbench/esbuild-manifest.json",
+        )
+        assert verified["status"] == "verified"
+        assert verified["version"] == vendor_react.ESBUILD_VERSION
+        assert git(worktree, "status", "--porcelain") == ""
+
+        # 3. Missing host vendor fails fast offline with clear remediation message.
+        missing_host = tmp_path / "empty_host"
+        missing_host.mkdir()
+        fresh_wt = tmp_path / "fresh_wt"
+        git(repo, "worktree", "add", "--detach", str(fresh_wt), head_sha)
+        try:
+            with pytest.raises(RuntimeError, match=r"vendor_react\.py --install-esbuild"):
+                checks._provision_worktree_esbuild_vendor(missing_host, fresh_wt)
+        finally:
+            git(repo, "worktree", "remove", "--force", str(fresh_wt))
+    finally:
+        git(repo, "worktree", "remove", "--force", str(worktree))
+
+    # 4. run_quality_gate catches RuntimeError from missing vendor, prints to stderr, returns 1, and cleans up worktree.
+    monkeypatch.setattr(checks, "REPO_ROOT", repo)
+    monkeypatch.setattr(checks, "_project_python_executable", lambda: sys.executable)
+    monkeypatch.setattr(
+        checks,
+        "_pre_push_input_for_hook",
+        lambda _stream=None: checks.PrePushInput(
+            [checks.PrePushRef("refs/heads/main", head_sha, "refs/heads/main", checks.ZERO_SHA)],
+            True,
+        ),
+    )
+    monkeypatch.setattr(checks, "_daily_scope_for_refs", lambda _refs, *, remote_name: {"changed_paths": []})
+    monkeypatch.setattr(
+        hooks,
+        "daily_gate_cache_key",
+        lambda *_a, **_kw: (_ for _ in ()).throw(hooks.HookCacheError("skip cache in unit test")),
+    )
+    err_buf = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", err_buf)
+    rc = checks.run_quality_gate(checks.argparse.Namespace(remote_name="origin", remote_url="origin", remote_ref=""))
+    assert rc == 1
+    assert "vendor_react.py --install-esbuild" in err_buf.getvalue()
+    assert git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
+
+
+def test_daily_gate_cache_invalidates_when_host_esbuild_vendor_tampered_or_removed(tmp_path, monkeypatch):
+    source_root = Path(__file__).resolve().parents[2]
+    repo = tmp_path / "esbuild_cache_repo"
+    (repo / "scripts" / "workbench").mkdir(parents=True)
+    shutil.copyfile(
+        source_root / "scripts" / "workbench" / "esbuild-manifest.json",
+        repo / "scripts" / "workbench" / "esbuild-manifest.json",
+    )
+    env = checks._quality_gate_env()
+    init_res = subprocess.run(["git", "init"], cwd=repo, env=env, capture_output=True, text=True, encoding="utf-8")
+    assert init_res.returncode == 0, init_res.stderr
+    checks._provision_worktree_esbuild_vendor(source_root, repo, environment=env)
+
+    monkeypatch.setattr(hooks, "REPO_ROOT", repo)
+    scope = daily.DailyGateScope(
+        daily.ChangedPathSet(["app.py"], True, "actual paths"),
+        daily.ImpactPlan(["tests/conftest.py"], ["domain"], False, "actual targets"),
+        daily.RuffPlan(["app.py"], False, "actual ruff targets"),
+    )
+    content = daily.daily_gate_scope_payload(scope)
+    ref_contexts = [
+        {"local_ref": "refs/heads/main", "local_sha": "a" * 40, "remote_ref": "refs/heads/main", "remote_sha": "b" * 40}
+    ]
+
+    key_ok = hooks.daily_gate_cache_key(
+        sys.executable, remote_name="origin", remote_ref="refs/heads/main", scope_payload=content, ref_contexts=ref_contexts
+    )
+    esbuild_meta = key_ok["extra"]["esbuild_vendor"]
+    assert esbuild_meta["required"] is True
+    assert esbuild_meta["verified"] is True
+    assert "files" in esbuild_meta and not any("sha" in k or "hash" in k for k in esbuild_meta)
+
+    hooks.write_pre_push_daily_cache(
+        sys.executable,
+        remote_name="origin",
+        remote_ref="refs/heads/main",
+        scope_payload=content,
+        ref_contexts=ref_contexts,
+        key_payload=key_ok,
+    )
+    assert hooks.pre_push_daily_cache_hit(
+        sys.executable, remote_name="origin", remote_ref="refs/heads/main", scope_payload=content, ref_contexts=ref_contexts
+    )
+
+    # Modifying esbuild core JS updates (size, mtime_ns) metadata and misses cache immediately.
+    main_js = repo / "vendor/node_modules/esbuild/lib/main.js"
+    original_main_js = main_js.read_bytes()
+    original_stat = main_js.stat()
+    tampered_main_js = (b"//" if not original_main_js.startswith(b"//") else b"/*") + original_main_js[2:]
+    main_js.write_bytes(tampered_main_js)
+    os.utime(main_js, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns + 1_000_000))
+    key_tampered = hooks.daily_gate_cache_key(
+        sys.executable, remote_name="origin", remote_ref="refs/heads/main", scope_payload=content, ref_contexts=ref_contexts
+    )
+    assert key_tampered["extra"]["esbuild_vendor"]["verified"] is True
+    assert key_tampered["extra"]["esbuild_vendor"]["files"] != esbuild_meta["files"]
+    assert not hooks.pre_push_daily_cache_hit(
+        sys.executable, remote_name="origin", remote_ref="refs/heads/main", scope_payload=content, ref_contexts=ref_contexts
+    )
+
+    main_js.write_bytes(original_main_js)
+    os.utime(main_js, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    assert hooks.pre_push_daily_cache_hit(
+        sys.executable, remote_name="origin", remote_ref="refs/heads/main", scope_payload=content, ref_contexts=ref_contexts
+    )
+
+    # Removing host esbuild vendor flips verified=False and invalidates cache immediately.
+    shutil.rmtree(repo / "vendor/node_modules/esbuild")
+    key_missing = hooks.daily_gate_cache_key(
+        sys.executable, remote_name="origin", remote_ref="refs/heads/main", scope_payload=content, ref_contexts=ref_contexts
+    )
+    assert key_missing["extra"]["esbuild_vendor"]["required"] is True
+    assert key_missing["extra"]["esbuild_vendor"]["verified"] is False
+    assert not hooks.pre_push_daily_cache_hit(
+        sys.executable, remote_name="origin", remote_ref="refs/heads/main", scope_payload=content, ref_contexts=ref_contexts
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX Rosetta node shim regression")
+def test_esbuild_platform_key_and_worktree_provision_follow_rosetta_node_arch(tmp_path):
+    from scripts.workbench import vendor_react
+
+    source_root = Path(__file__).resolve().parents[2]
+    shim_dir = tmp_path / "rosetta_bin"
+    shim_dir.mkdir()
+    rosetta_node = shim_dir / "node"
+    rosetta_node.write_text(
+        '#!/bin/sh\n'
+        'if [ "$1" = "--version" ]; then\n'
+        '  echo "v20.11.1"\n'
+        '  exit 0\n'
+        'fi\n'
+        'if [ "$1" = "-p" ]; then\n'
+        '  echo "darwin-x64"\n'
+        '  exit 0\n'
+        'fi\n'
+        'exit 1\n',
+        encoding="utf-8",
+    )
+    rosetta_node.chmod(0o755)
+    assert vendor_react.current_esbuild_platform_key(node_executable=rosetta_node) == "darwin-x64"
+
+    unsupported_node = shim_dir / "unsupported_node"
+    unsupported_node.write_text('#!/bin/sh\necho "freebsd-x64"\n', encoding="utf-8")
+    unsupported_node.chmod(0o755)
+    with pytest.raises(ValueError, match="Unsupported esbuild Node platform"):
+        vendor_react.current_esbuild_platform_key(node_executable=unsupported_node)
+
+    fake_host = tmp_path / "rosetta_host"
+    (fake_host / "vendor/node_modules").mkdir(parents=True)
+    shutil.copytree(source_root / "vendor/node_modules/esbuild", fake_host / "vendor/node_modules/esbuild")
+    x64_dir = fake_host / "vendor/node_modules/@esbuild/darwin-x64"
+    (x64_dir / "bin").mkdir(parents=True)
+    (x64_dir / "package.json").write_text(
+        json.dumps({"name": "@esbuild/darwin-x64", "version": vendor_react.ESBUILD_VERSION}),
+        encoding="utf-8",
+    )
+    x64_bin = x64_dir / "bin/esbuild"
+    x64_bin.write_text(f"#!/bin/sh\necho {vendor_react.ESBUILD_VERSION}\n", encoding="utf-8")
+    x64_bin.chmod(0o755)
+
+    worktree = tmp_path / "rosetta_worktree"
+    (worktree / "scripts/workbench").mkdir(parents=True)
+    shutil.copyfile(
+        source_root / "scripts/workbench/esbuild-manifest.json",
+        worktree / "scripts/workbench/esbuild-manifest.json",
+    )
+    gate_env = {**checks._quality_gate_env(), "WORKBENCH_NODE": str(rosetta_node)}
+    lg_fp._RUNTIME_FINGERPRINT_CACHE.clear()
+    checks._provision_worktree_esbuild_vendor(fake_host, worktree, environment=gate_env)
+
+    assert (worktree / "vendor/node_modules/@esbuild/darwin-x64/bin/esbuild").is_file()
+    assert not (worktree / "vendor/node_modules/@esbuild/darwin-arm64").exists()

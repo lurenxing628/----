@@ -172,6 +172,7 @@ def build_summary_entry(
         "index": int(index),
         "entry_id": str(entry.get("entry_id") or decision.get("entry_id") or ""),
         "entry_type": str(entry.get("entry_type") or ""),
+        "proof_kind": str(entry.get("proof_kind") or ""),
         "display": str(entry.get("display") or ""),
         "env_overlay_keys": [str(key) for key in list(entry.get("env_overlay_keys") or [])],
         "cache_status": str(entry.get("cache_status") or ""),

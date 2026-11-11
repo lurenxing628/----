@@ -12,8 +12,8 @@
 - 不计入：运行时产物目录（evidence/ db/ logs/ backups/ tmp/ dist/ build/
   user-data/ output/）、含空白或通配或格式占位的字符串、绝对路径与 URL。
   这些要么是运行时才生成，要么根本不是路径。
-- 也不计入只在本机存在的路径：本地工作流目录 .codestable/、.limcode/ 与本地生成的
-  全景图样式/脚本。pre-push 在干净 worktree 里跑本扫描，结果必须与主工作区一致。
+- 也不计入含按白名单局部忽略的本机历史归档目录（.codestable/、.limcode/，不纳入全仓字面量存在性扫描）
+  与本地生成的全景图样式/脚本。pre-push 在干净 worktree 里跑本扫描，结果必须与主工作区一致。
 - 条目键是 (源文件, 那条失效路径)，count 是出现次数。门禁元测试在临时目录里
   合成假仓库（core/services/example.py 之类）是正常做法，它们进基线当存量；
   基线只减不增，所以新删一个真文件必定报红。
@@ -40,8 +40,8 @@ SCAN_ROOTS = ("core", "web", "data", "tools", "scripts", "tests", "plugins")
 BASELINE_NOTE = "失效仓库路径字面量棘轮基线：删文件必须同步删掉引用它的字符串；条目只减不增，刷新走 --refresh。"
 
 #: 仓库顶层目录。首段不在这里的字符串不当成仓库路径，避免把 URL 片段、
-#: 包名、SQL 里的斜杠误判成路径。.codestable/ 与 .limcode/ 是 .git/info/exclude
-#: 里的本地工作流目录，pre-push 的干净 worktree 里没有，不能参与判定。
+#: 包名、SQL 里的斜杠误判成路径。.codestable/ 与 .limcode/ 含按白名单局部忽略的
+#: 本机历史归档目录，不纳入全仓字面量存在性扫描。
 REPO_TOP_DIRS = frozenset({
     "core", "web", "data", "tools", "scripts", "tests", "static", "templates",
     "frontend", "plugins", "installer", "assets", "docs", "开发文档",
@@ -84,8 +84,8 @@ def _iter_python_files(repo_root: str, roots: Sequence[str]) -> List[str]:
 
 def is_repo_path_literal(value: str) -> bool:
     # 注意别把 .github/ 当成相对路径前缀一起排掉，它是仓库顶层目录；
-    # 要排的只有 ./ 与 ../ 这两种写法。.codestable/ .limcode/ 是本地工作流目录，
-    # 靠 REPO_TOP_DIRS 不收录来排除。
+    # 要排的只有 ./ 与 ../ 这两种写法。.codestable/ .limcode/ 含按白名单局部忽略的
+    # 本机历史归档目录，不纳入全仓字面量存在性扫描，靠 REPO_TOP_DIRS 不收录来排除。
     if "/" not in value or value.startswith(("/", "http", "~", "./", "../")):
         return False
     if _NOT_A_PLAIN_PATH.search(value):
@@ -95,9 +95,9 @@ def is_repo_path_literal(value: str) -> bool:
     return value.split("/", 1)[0] in REPO_TOP_DIRS and bool(_EXTENSION.search(value))
 
 
-def scan_dead_path_literals_file(rel_path: str, source: str, exists) -> List[Dict[str, object]]:
+def scan_dead_path_literals_file(rel_path: str, source: str, exists) -> List[Dict[str, Any]]:
     tree = ast.parse(source, filename=rel_path)
-    hits: List[Dict[str, object]] = []
+    hits: List[Dict[str, Any]] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
             continue
@@ -107,11 +107,11 @@ def scan_dead_path_literals_file(rel_path: str, source: str, exists) -> List[Dic
     return hits
 
 
-def scan(repo_root: str = REPO_ROOT) -> Dict[str, object]:
+def scan(repo_root: str = REPO_ROOT) -> Dict[str, Any]:
     def exists(literal: str) -> bool:
         return os.path.exists(os.path.join(repo_root, literal))
 
-    entries: List[Dict[str, object]] = []
+    entries: List[Dict[str, Any]] = []
     files = _iter_python_files(repo_root, SCAN_ROOTS)
     for rel_path in files:
         with open(os.path.join(repo_root, rel_path), encoding="utf-8") as handle:

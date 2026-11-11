@@ -6,11 +6,12 @@ import argparse
 import fnmatch
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Sequence, TextIO, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, NamedTuple, Optional, Sequence, TextIO, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -256,9 +257,39 @@ def _daily_gate_command(executable: str, *, scope_file: str = "") -> List[str]:
     return command
 
 
+def _provision_worktree_esbuild_vendor(
+    source_root: Path, worktree: Path, *, environment: Optional[Mapping[str, str]] = None
+) -> None:
+    manifest_path = worktree / "scripts/workbench/esbuild-manifest.json"
+    if not manifest_path.is_file():
+        return
+    from scripts.workbench.vendor_react import verify_esbuild_vendor
+    from tools.long_gate_fingerprint import _resolve_node_executable
+
+    node_bin, _ = _resolve_node_executable(environment)
+    try:
+        verified = verify_esbuild_vendor(source_root, manifest_path=manifest_path, node_executable=node_bin)
+    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(
+            f"宿主缺少或损坏固定版本 esbuild vendor（{exc}）。"
+            "请先运行 `python scripts/workbench/vendor_react.py --install-esbuild` 后重试。"
+        ) from exc
+    for rel_dir in ("vendor/node_modules/esbuild", f"vendor/node_modules/@esbuild/{verified['platform']}"):
+        dest = worktree / rel_dir
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source_root / rel_dir, dest, dirs_exist_ok=True)
+    try:
+        verify_esbuild_vendor(
+            worktree, platform_key=verified["platform"], manifest_path=manifest_path, node_executable=node_bin
+        )
+    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(f"预置 worktree esbuild vendor 复核失败：{exc}") from exc
+
+
 def _run_target_daily_gate(executable: str, refs: Sequence[PrePushRef], *, remote_name: str) -> int:
     local_sha = refs[0].local_sha
     targets = ", ".join(sorted(dict.fromkeys(ref.remote_ref or ref.local_ref for ref in refs)))
+    gate_env = _quality_gate_env()
     with tempfile.TemporaryDirectory(prefix="aps-pre-push-target-") as target_dir:
         worktree = Path(target_dir) / "worktree"
         scope_file = Path(target_dir) / "scope.json"
@@ -267,10 +298,11 @@ def _run_target_daily_gate(executable: str, refs: Sequence[PrePushRef], *, remot
         )
         _run_git_bytes(["worktree", "add", "--detach", str(worktree), local_sha])
         try:
+            _provision_worktree_esbuild_vendor(REPO_ROOT, worktree, environment=gate_env)
             print(f"[git-hook] daily gate target: {targets} ({local_sha})", flush=True)
             returncode = int(subprocess.call(
                 _daily_gate_command(executable, scope_file=str(scope_file)),
-                cwd=str(worktree), env=_quality_gate_env(),
+                cwd=str(worktree), env=gate_env,
             ))
             if returncode:
                 print(f"[git-hook] daily gate failed: {targets} ({local_sha}), exit={returncode}", file=sys.stderr)
@@ -303,12 +335,8 @@ def run_quality_gate(args: argparse.Namespace) -> int:
             scope_payload=scope_payload, ref_contexts=ref_contexts,
         )
         if git_hook_cache.pre_push_daily_cache_hit(
-            executable,
-            remote_name=remote_name,
-            remote_ref=remote_ref,
-            scope_payload=scope_payload,
-            ref_contexts=ref_contexts,
-            key_payload=daily_cache_key,
+            executable, remote_name=remote_name, remote_ref=remote_ref,
+            scope_payload=scope_payload, ref_contexts=ref_contexts, key_payload=daily_cache_key,
         ):
             print(
                 "[git-hook-cache] pre-push daily gate: reuse passed cache for unchanged tree and impact scope",
@@ -324,22 +352,22 @@ def run_quality_gate(args: argparse.Namespace) -> int:
         for ref in refs:
             refs_by_sha.setdefault(ref.local_sha, []).append(ref)
         returncode = 0
-        for local_sha in sorted(refs_by_sha):
-            returncode = _run_target_daily_gate(executable, refs_by_sha[local_sha], remote_name=remote_name)
-            if returncode:
-                return returncode
+        try:
+            for local_sha in sorted(refs_by_sha):
+                returncode = _run_target_daily_gate(executable, refs_by_sha[local_sha], remote_name=remote_name)
+                if returncode:
+                    return returncode
+        except RuntimeError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
     else:
         command = _daily_gate_command(executable)
         returncode = subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
     if int(returncode) == 0 and daily_cache_key is not None:
         try:
             git_hook_cache.write_pre_push_daily_cache(
-                executable,
-                remote_name=remote_name,
-                remote_ref=remote_ref,
-                scope_payload=scope_payload,
-                ref_contexts=ref_contexts,
-                key_payload=daily_cache_key,
+                executable, remote_name=remote_name, remote_ref=remote_ref,
+                scope_payload=scope_payload, ref_contexts=ref_contexts, key_payload=daily_cache_key,
             )
         except git_hook_cache.HookCacheError as exc:
             print(f"[git-hook-cache] pre-push daily gate cache write skipped: {exc}", flush=True)

@@ -39,13 +39,6 @@ from tools.long_gate_fingerprint import (  # noqa: E402
     pytest_distribution_version,
 )
 from tools.long_gate_manifest import (  # noqa: E402
-    ENTRY_DEBT_LEDGER_SYNC,
-    ENTRY_FULL_TEST_DEBT,
-    ENTRY_PYRIGHT_GATE_FULL,
-    ENTRY_PYRIGHT_TOOLS_FULL,
-    ENTRY_PYTEST_COLLECT_ALL,
-    ENTRY_REQUIRED_REGRESSIONS,
-    ENTRY_RUFF_CHECK_FULL,
     build_manifest_from_quality_gate_plan,
     explain_long_gate_impact,
     normalize_repo_path,
@@ -56,6 +49,7 @@ from tools.long_gate_schema import (  # noqa: E402
     decode_nul_paths,
     long_gate_cache_metadata,
     read_file_content,
+    repo_identity,
 )
 from tools.long_gate_summary import (  # noqa: E402
     build_long_gate_summary,
@@ -80,10 +74,10 @@ from tools.quality_gate_shared import (  # noqa: E402
     QUALITY_GATE_REQUIRED_REGRESSIONS_REL,
     QUALITY_GATE_RUFF_CHECK_FULL_REL,
     QUALITY_GATE_TOOL_PATHS,
+    GateCheckSpec,
     QualityGateError,
     apply_quality_gate_manifest_proof_fields,
     build_quality_gate_collection_proof,
-    build_quality_gate_command_plan,
     build_quality_gate_command_receipt,
     build_quality_gate_receipt_rel_path,
     iter_quality_gate_required_tests,
@@ -100,9 +94,6 @@ REQUIRED_TEST_ARGS = list(iter_quality_gate_required_tests())
 PYRIGHT_REQUIRED_VERSION = (1, 1, 406)
 PYRIGHT_GATE_CONFIG = QUALITY_GATE_PYRIGHT_GATE_CONFIG
 PYRIGHT_TOOLS_CONFIG = QUALITY_GATE_PYRIGHT_TOOLS_CONFIG
-PYTEST_COLLECT_ALL_DISPLAY = "python -m pytest --collect-only -q tests"
-IMPORT_CYCLE_PRODUCTION_DISPLAY = quality_gate_shared.IMPORT_CYCLE_PRODUCTION_DISPLAY
-IMPORT_CYCLE_WITH_TESTS_DISPLAY = quality_gate_shared.IMPORT_CYCLE_WITH_TESTS_DISPLAY
 REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 5
 STATIC_CHECK_PROOF_SCHEMA_VERSION = 2
 DEBT_LEDGER_SYNC_PROOF_SCHEMA_VERSION = 2
@@ -167,7 +158,7 @@ def _safe_relpath(path: str, start: str) -> str:
 
 
 def _run_command(
-    _display: str,
+    check_id: str,
     args: Sequence[str],
     capture_output: bool = False,
     env_overlay: Optional[Mapping[str, str]] = None,
@@ -222,7 +213,7 @@ def _run_command(
     stdout = "".join(stdout_chunks)
     stderr = "".join(stderr_chunks)
     if capture_output:
-        if _display == PYTEST_COLLECT_ALL_DISPLAY:
+        if check_id == quality_gate_shared.ENTRY_PYTEST_COLLECT_ALL:
             if returncode == 0:
                 print(_format_collect_only_success(stdout), flush=True)
         elif stdout:
@@ -466,7 +457,7 @@ def _load_resume_receipt_payload(
     )
     if error:
         return None, error, {}
-    error = quality_gate_shared._verify_receipt_command_fields(payload, command, normalized_command)
+    error = quality_gate_shared._verify_receipt_command_fields(payload, normalized_command)
     if error:
         return None, error, {}
     if int(payload.get("returncode") or 0) == 0:
@@ -506,7 +497,7 @@ def _strict_long_gate_fingerprint(entry: Dict[str, Any], *, file_snapshot: Optio
 
 
 def _decide_resume_from_previous_failure(
-    command_plan: Sequence[Dict[str, Any]],
+    command_specs: Sequence[GateCheckSpec],
     *,
     current_head_sha: str,
     current_git_status_short: Sequence[str],
@@ -568,7 +559,7 @@ def _decide_resume_from_previous_failure(
     if not isinstance(previous_planned_commands, list):
         return ResumeDecision(False, "旧 manifest 没有完整命令计划，不能续跑")
 
-    current_planned_commands = [_command_identity(command) for command in command_plan]
+    current_planned_commands = [_command_identity(spec.to_command_dict()) for spec in command_specs]
     normalized_previous_plan = [
         _command_identity(command) for command in previous_planned_commands if isinstance(command, dict)
     ]
@@ -582,7 +573,8 @@ def _decide_resume_from_previous_failure(
     reusable_log_texts: List[Dict[str, str]] = []
     if not previous_receipts:
         return ResumeDecision(False, "旧 receipt 缺失：manifest 中没有 command_receipts")
-    for index, command in enumerate(command_plan, start=1):
+    for index, spec in enumerate(command_specs, start=1):
+        command = spec.to_command_dict()
         if index > len(previous_commands) or not isinstance(previous_commands[index - 1], dict):
             return ResumeDecision(False, f"旧 manifest.commands 缺少第 {index} 步，不能续跑")
         if not _commands_match(cast(Dict[str, Any], previous_commands[index - 1]), command):
@@ -610,7 +602,7 @@ def _decide_resume_from_previous_failure(
                 previous_failure_message=str(manifest.get("failure_message") or ""),
                 skip_count=skip_count,
                 start_command_index=index,
-                start_command_display=str(command.get("display") or ""),
+                start_command_display=spec.display,
                 reusable_receipts=tuple(dict(item) for item in reusable_receipts),
                 reusable_receipt_payloads=tuple(dict(item) for item in reusable_payloads),
                 reusable_log_texts=tuple(reusable_log_texts),
@@ -739,7 +731,7 @@ def _clear_full_test_debt_current_outputs_after_failure(runtime_entry: Optional[
     if not isinstance(runtime_entry, Mapping):
         return
     entry = dict(runtime_entry.get("entry") or {})
-    if str(entry.get("entry_id") or "") != ENTRY_FULL_TEST_DEBT:
+    if str(entry.get("proof_kind") or "") != "full_test_debt":
         return
     preserved_rel = _preserve_failed_full_test_debt_payload()
     _clear_quality_gate_full_test_debt_summary()
@@ -776,14 +768,14 @@ def _clear_stale_long_gate_output_files(
     for runtime_entry in list(runtime_entries.values()):
         entry = dict((runtime_entry or {}).get("entry") or {})
         decision = dict((runtime_entry or {}).get("decision") or {})
-        entry_id = str(entry.get("entry_id") or "")
+        proof_kind = str(entry.get("proof_kind") or "")
         if str(decision.get("decision") or "") == "reuse":
             continue
-        if entry_id == ENTRY_FULL_TEST_DEBT and preserve_full_test_debt_outputs:
+        if proof_kind == "full_test_debt" and preserve_full_test_debt_outputs:
             continue
         for rel_path in list(entry.get("output_result_files") or []):
             _remove_quality_gate_run_output_path(str(rel_path))
-        if entry_id == ENTRY_REQUIRED_REGRESSIONS:
+        if proof_kind == "required_regressions":
             _remove_quality_gate_run_output_path("evidence/QualityGate/required_regressions")
 
 
@@ -807,30 +799,11 @@ def _guard_test_tracked(rel_path: str) -> bool:
     return completed.returncode == 0
 
 
-def _git_rev_parse_path(*args: str) -> str:
-    completed = subprocess.run(
-        ["git", "rev-parse", *args],
-        cwd=REPO_ROOT,
-        text=True,
-        capture_output=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    raw_value = str(completed.stdout or "").strip()
-    if completed.returncode == 0 and raw_value:
-        path_text = raw_value
-        if not os.path.isabs(path_text):
-            path_text = os.path.join(REPO_ROOT, path_text)
-        return os.path.realpath(path_text)
-    detail = str(completed.stderr or completed.stdout or "").strip() or "git rev-parse failed"
-    raise QualityGateError(f"无法确认仓库身份：git rev-parse {' '.join(args)}: {detail}")
-
-
 def _repo_identity() -> Dict[str, str]:
-    return {
-        "checkout_root_realpath": _git_rev_parse_path("--show-toplevel"),
-        "git_common_dir_realpath": _git_rev_parse_path("--git-common-dir"),
-    }
+    try:
+        return repo_identity(REPO_ROOT)
+    except RuntimeError as exc:
+        raise QualityGateError(f"无法确认仓库身份：{exc}") from exc
 
 
 def _assert_guard_tests_ready(*, require_tracked: bool = True) -> None:
@@ -892,8 +865,8 @@ def _handle_checked_quality_gate_command(display: str, result: Dict[str, Any]) -
     return {}
 
 
-def _handle_collect_quality_gate_command(_display: str, result: Dict[str, Any]) -> Dict[str, Any]:
-    _assert_command_succeeded(PYTEST_COLLECT_ALL_DISPLAY, result)
+def _handle_collect_quality_gate_command(display: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    _assert_command_succeeded(display, result)
     collect_output = str(result.get("stdout") or "").strip()
     nodeids = _collect_nodeids_or_raise(collect_output)
     collected_paths = {nodeid.split("::", 1)[0].replace("\\", "/") for nodeid in nodeids}
@@ -909,17 +882,6 @@ def _handle_ruff_version_quality_gate_command(_display: str, result: Dict[str, A
 
 def _handle_pyright_version_quality_gate_command(_display: str, result: Dict[str, Any]) -> Dict[str, Any]:
     return {"pyright_version_output": _assert_pyright_version(result)}
-
-
-def _parse_pyright_json_summary(stdout: str) -> Dict[str, Any]:
-    try:
-        payload = json.loads(str(stdout or "{}"))
-    except json.JSONDecodeError as exc:
-        raise QualityGateError("无法解析 pyright JSON 输出") from exc
-    summary = payload.get("summary") if isinstance(payload, dict) else None
-    if not isinstance(summary, dict):
-        raise QualityGateError("pyright JSON 输出缺少 summary")
-    return summary
 
 
 def _load_pyright_tools_config_include() -> List[str]:
@@ -952,66 +914,35 @@ def _assert_pyright_tools_config_matches_tool_paths() -> None:
     )
 
 
-def _assert_pyright_tools_coverage() -> None:
-    _assert_pyright_tools_config_matches_tool_paths()
-    args = [
-        sys.executable,
-        "-m",
-        "pyright",
-        "-p",
-        PYRIGHT_TOOLS_CONFIG,
-        "--outputjson",
-    ]
-    completed = subprocess.run(
-        args,
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=120,
-    )
-    summary = _parse_pyright_json_summary(str(completed.stdout or ""))
-    files_analyzed = summary.get("filesAnalyzed")
-    expected_count = len(QUALITY_GATE_TOOL_PATHS)
-    if not isinstance(files_analyzed, int) or isinstance(files_analyzed, bool) or int(files_analyzed) < expected_count:
-        raise QualityGateError(
-            f"pyright tools 覆盖不足：预期至少分析 {expected_count} 个工具路径，实际 filesAnalyzed={files_analyzed}"
-        )
-    if int(completed.returncode) != 0:
-        detail = str(completed.stdout or "").strip()
-        stderr = str(completed.stderr or "").strip()
-        if stderr:
-            detail += "\n" + stderr
-        raise QualityGateError("pyright tools 覆盖自检失败：" + detail)
-
-
 def _handle_pyright_tools_quality_gate_command(display: str, result: Dict[str, Any]) -> Dict[str, Any]:
     _assert_command_succeeded(display, result)
-    if str(result.get("execution_mode") or "") == "reused_success_cache":
-        _assert_pyright_tools_config_matches_tool_paths()
-    else:
-        _assert_pyright_tools_coverage()
+    _assert_pyright_tools_config_matches_tool_paths()
     return {}
 
 
-def _handle_import_cycle_quality_gate_command(display: str, result: Dict[str, Any]) -> Dict[str, Any]:
+def _handle_import_cycle_production_quality_gate_command(display: str, result: Dict[str, Any]) -> Dict[str, Any]:
     _assert_command_succeeded(display, result)
-    proof_key = (
-        "import_cycle_with_tests_proof"
-        if display == IMPORT_CYCLE_WITH_TESTS_DISPLAY
-        else "import_cycle_production_proof"
-    )
-    return {proof_key: True}
+    return {"import_cycle_production_proof": True}
 
 
-def _should_prepare_long_gate_output_files(entry: Mapping[str, Any]) -> bool:
-    entry_id = str(entry.get("entry_id") or "")
-    return bool(entry.get("reuse_allowed")) or entry_id == ENTRY_DEBT_LEDGER_SYNC
+def _handle_import_cycle_with_tests_quality_gate_command(display: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    _assert_command_succeeded(display, result)
+    return {"import_cycle_with_tests_proof": True}
+
+
+RUNNER_HANDLERS: Dict[str, CommandResultHandler] = {
+    "default": _handle_checked_quality_gate_command,
+    "pytest_collect_all": _handle_collect_quality_gate_command,
+    "ruff_version": _handle_ruff_version_quality_gate_command,
+    "pyright_version": _handle_pyright_version_quality_gate_command,
+    "pyright_tools": _handle_pyright_tools_quality_gate_command,
+    "import_cycle_production": _handle_import_cycle_production_quality_gate_command,
+    "import_cycle_with_tests": _handle_import_cycle_with_tests_quality_gate_command,
+}
 
 
 def _run_quality_gate_command_plan(
-    command_plan: Sequence[Dict[str, Any]],
+    command_specs: Sequence[GateCheckSpec],
     *,
     run_id: str,
     commands: List[Dict[str, Any]],
@@ -1025,28 +956,19 @@ def _run_quality_gate_command_plan(
     long_gate_failure: Optional[Dict[str, Any]] = None,
     pending_long_gate_successes: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
-    command_result_handlers: Dict[str, CommandResultHandler] = {
-        str(command["display"]): _handle_checked_quality_gate_command for command in command_plan
-    }
-    command_result_handlers.update(
-        {
-            PYTEST_COLLECT_ALL_DISPLAY: _handle_collect_quality_gate_command,
-            "python -m ruff --version": _handle_ruff_version_quality_gate_command,
-            "python -m pyright --version": _handle_pyright_version_quality_gate_command,
-            f"python -m pyright -p {PYRIGHT_TOOLS_CONFIG}": _handle_pyright_tools_quality_gate_command,
-            IMPORT_CYCLE_PRODUCTION_DISPLAY: _handle_import_cycle_quality_gate_command,
-            IMPORT_CYCLE_WITH_TESTS_DISPLAY: _handle_import_cycle_quality_gate_command,
-        }
-    )
-    total = len(command_plan)
+    specs = list(command_specs)
+    normalized_plan = [spec.to_command_dict() for spec in specs]
+    total = len(specs)
     long_gate_entries = dict(long_gate_runtime_entries or {}) if long_gate_cache else {}
     skip_count = int(resume_decision.skip_count if resume_decision and resume_decision.enabled else 0)
     if skip_count > 0 and resume_decision is not None:
         reusable_receipts = resume_decision.reusable_receipts
         reusable_payloads = resume_decision.reusable_receipt_payloads
         reusable_log_texts = resume_decision.reusable_log_texts
-        for index, command in enumerate(command_plan[:skip_count], start=1):
-            display = str(command["display"])
+        for index, spec in enumerate(specs[:skip_count], start=1):
+            command = spec.to_command_dict()
+            display = spec.display
+            handler = RUNNER_HANDLERS[spec.runner_handler]
             print(f"==> 第 {index}/{total} 步：[resume-skip] {display}", flush=True)
             command_started_at = datetime.now().isoformat(timespec="seconds")
             start_perf = time.perf_counter()
@@ -1065,7 +987,7 @@ def _run_quality_gate_command_plan(
             receipt_entry = _write_command_receipt(command, run_id=run_id, index=index, result=result)
             command_receipts.append(receipt_entry)
             try:
-                parsed_command_results.update(command_result_handlers[display](display, result))
+                parsed_command_results.update(handler(display, result))
             except QualityGateError as exc:
                 _raise_command_failure(
                     index=index,
@@ -1076,13 +998,15 @@ def _run_quality_gate_command_plan(
                     detail=str(exc),
                 )
 
-    for zero_based_index, command in enumerate(command_plan[skip_count:], start=skip_count):
+    for zero_based_index, spec in enumerate(specs[skip_count:], start=skip_count):
         command_index = zero_based_index + 1
-        display = str(command["display"])
+        command = spec.to_command_dict()
+        display = spec.display
+        handler = RUNNER_HANDLERS[spec.runner_handler]
         print(f"==> 第 {command_index}/{total} 步开始：{display}", flush=True)
         command_started_at = datetime.now().isoformat(timespec="seconds")
         start_perf = time.perf_counter()
-        long_gate_runtime_entry = long_gate_entries.get(display)
+        long_gate_runtime_entry = long_gate_entries.get(spec.check_id)
         long_gate_entry = dict((long_gate_runtime_entry or {}).get("entry") or {})
         long_gate_fingerprint: Optional[Dict[str, Any]] = None
         if long_gate_runtime_entry is not None:
@@ -1125,7 +1049,7 @@ def _run_quality_gate_command_plan(
                     ],
                 )
                 try:
-                    parsed_command_results.update(command_result_handlers[display](display, result))
+                    parsed_command_results.update(handler(display, result))
                 except QualityGateError as exc:
                     if long_gate_failure is not None:
                         long_gate_failure.clear()
@@ -1208,10 +1132,10 @@ def _run_quality_gate_command_plan(
                 )
 
         raw_result = _run_command(
-            display,
-            _resolve_command_args(command),
-            capture_output=bool(command.get("capture_output")),
-            env_overlay=quality_gate_shared._normalize_env_overlay(command.get("env_overlay")),
+            spec.check_id,
+            _resolve_command_args(spec.args),
+            capture_output=bool(spec.capture_output),
+            env_overlay=dict(spec.env_overlay),
         )
         result = _coerce_command_result(raw_result)
         result.update(_write_command_output_logs(index=command_index, display=display, result=result))
@@ -1260,7 +1184,7 @@ def _run_quality_gate_command_plan(
                 result=result,
             )
         try:
-            parsed_command_results.update(command_result_handlers[display](display, result))
+            parsed_command_results.update(handler(display, result))
         except QualityGateError as exc:
             if long_gate_runtime_entry is not None and long_gate_failure is not None:
                 long_gate_failure.clear()
@@ -1293,7 +1217,7 @@ def _run_quality_gate_command_plan(
                 detail=str(exc),
             )
         output_file_paths: List[str] = []
-        if long_gate_runtime_entry is not None and _should_prepare_long_gate_output_files(long_gate_entry):
+        if long_gate_runtime_entry is not None:
             current_decision = dict(long_gate_runtime_entry.get("decision") or {})
             if _decision_cache_unavailable(current_decision):
                 print(
@@ -1332,7 +1256,7 @@ def _run_quality_gate_command_plan(
                         cache_dir=long_gate_cache_dir,
                         run_id=run_id,
                         command_index=command_index,
-                        command_plan=command_plan,
+                        command_plan=normalized_plan,
                         fingerprint=long_gate_fingerprint,
                     )
                     if bool(long_gate_entry.get("reuse_allowed")):
@@ -1362,47 +1286,37 @@ def _run_quality_gate_command_plan(
         print(f"==> 第 {command_index}/{total} 步结束：通过，耗时 {elapsed:.1f}s，receipt={receipt_entry['path']}", flush=True)
 
 
-def _assert_import_cycle_command_plan_contract(command_plan: Sequence[Dict[str, Any]]) -> bool:
-    displays = [str(command.get("display") or "") for command in command_plan]
-    cycle_displays = {IMPORT_CYCLE_PRODUCTION_DISPLAY, IMPORT_CYCLE_WITH_TESTS_DISPLAY}
-    is_formal_plan = "python -m ruff check" in displays or bool(cycle_displays & set(displays))
-    if not is_formal_plan:
-        return False
-    expected = {
-        IMPORT_CYCLE_PRODUCTION_DISPLAY: ["python", *quality_gate_shared.IMPORT_CYCLE_PRODUCTION_ARGS],
-        IMPORT_CYCLE_WITH_TESTS_DISPLAY: ["python", *quality_gate_shared.IMPORT_CYCLE_WITH_TESTS_ARGS],
-    }
-    for display, expected_args in expected.items():
-        rows = [command for command in command_plan if str(command.get("display") or "") == display]
-        if len(rows) != 1:
-            raise QualityGateError(f"shared command plan 必须且只能包含一条循环门禁命令：{display}")
-        row = rows[0]
-        if [str(arg) for arg in list(row.get("args") or [])] != expected_args:
-            raise QualityGateError(f"循环门禁命令 args 与正式合同不一致：{display}")
-        if not bool(row.get("capture_output")) or str(row.get("output_policy") or "") != "normalized":
-            raise QualityGateError(f"循环门禁命令输出证明合同不一致：{display}")
-    return True
-
-
 def _require_quality_gate_command_proofs(
+    command_specs: Sequence[GateCheckSpec],
     parsed_command_results: Dict[str, Any],
-    *,
-    require_import_cycle_proofs: bool,
 ) -> None:
+    check_ids = {spec.check_id for spec in command_specs}
     required_proofs = {
-        PYTEST_COLLECT_ALL_DISPLAY: parsed_command_results.get("collection_proof"),
-        "python -m ruff --version": parsed_command_results.get("ruff_version_output"),
-        "python -m pyright --version": parsed_command_results.get("pyright_version_output"),
+        quality_gate_shared.ENTRY_PYTEST_COLLECT_ALL: parsed_command_results.get("collection_proof"),
+        "ruff_version_probe": parsed_command_results.get("ruff_version_output"),
+        "pyright_version_probe": parsed_command_results.get("pyright_version_output"),
     }
-    cycle_proofs = {
-        IMPORT_CYCLE_PRODUCTION_DISPLAY: parsed_command_results.get("import_cycle_production_proof"),
-        IMPORT_CYCLE_WITH_TESTS_DISPLAY: parsed_command_results.get("import_cycle_with_tests_proof"),
-    }
-    if require_import_cycle_proofs:
-        required_proofs.update(cycle_proofs)
-    missing_display = next((display for display, value in required_proofs.items() if not value), "")
-    if missing_display:
-        raise QualityGateError(f"shared command plan 缺少必需证明命令或解析结果：{missing_display}")
+    cycle_check_ids = (
+        quality_gate_shared.ENTRY_IMPORT_CYCLES_PRODUCTION,
+        quality_gate_shared.ENTRY_IMPORT_CYCLES_WITH_TESTS,
+    )
+    if check_ids & {quality_gate_shared.ENTRY_RUFF_CHECK_FULL, *cycle_check_ids}:
+        missing_cycle_id = next((cid for cid in cycle_check_ids if cid not in check_ids), "")
+        if missing_cycle_id:
+            raise QualityGateError(f"shared command plan 缺少循环门禁检查：{missing_cycle_id}")
+        required_proofs.update(
+            {
+                quality_gate_shared.ENTRY_IMPORT_CYCLES_PRODUCTION: parsed_command_results.get(
+                    "import_cycle_production_proof"
+                ),
+                quality_gate_shared.ENTRY_IMPORT_CYCLES_WITH_TESTS: parsed_command_results.get(
+                    "import_cycle_with_tests_proof"
+                ),
+            }
+        )
+    missing_check = next((check_id for check_id, value in required_proofs.items() if not value), "")
+    if missing_check:
+        raise QualityGateError(f"shared command plan 缺少必需证明命令或解析结果：{missing_check}")
 
 
 def _state_paths() -> Dict[str, str]:
@@ -1650,10 +1564,6 @@ def _long_gate_success_log_row(result: Dict[str, Any], *, stream: str, rel_path:
             "content": text, "bytes": len(text.encode("utf-8"))}
 
 
-def _is_required_regressions_verifier_args(args: Sequence[str]) -> bool:
-    return list(args)[:2] == ["python", "tools/verify_required_regressions_from_full_test_debt.py"]
-
-
 def _build_long_gate_execution_proof(
     entry: Dict[str, Any], result: Dict[str, Any], *, schema_version: int, log_entry_id: str,
     run_id: str, command_index: int, command_plan: Sequence[Dict[str, Any]],
@@ -1718,19 +1628,17 @@ def _write_required_regressions_proof(
 ) -> List[str]:
     payload = _build_long_gate_execution_proof(
         entry, result, schema_version=REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION,
-        log_entry_id=ENTRY_REQUIRED_REGRESSIONS, run_id=run_id, command_index=command_index,
+        log_entry_id=str(entry.get("entry_id") or ""), run_id=run_id, command_index=command_index,
         command_plan=command_plan, fingerprint=fingerprint, cache_dir=cache_dir,
     )
-    args = payload["args"]
-    targets = list(args[4:]) if args[:4] == ["python", "-m", "pytest", "-q"] else list(iter_quality_gate_required_tests())
+    targets = list(iter_quality_gate_required_tests())
     payload.update(
         required_target_count=len(targets), test_count=len(targets),
         required_target_paths=targets,
         pytest_exit_code=payload["returncode"], verification_exit_code=payload["returncode"],
-        verification_method=("full_test_debt_payload_required_coverage" if _is_required_regressions_verifier_args(args)
-                             else "direct_pytest_required_targets"),
+        verification_method="full_test_debt_payload_required_coverage",
     )
-    return [_write_long_gate_topic_proof(QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"), payload)]
+    return [_write_long_gate_topic_proof(_long_gate_declared_output_paths(entry)[0], payload)]
 
 
 def _parse_debt_ledger_check_stdout(stdout: str) -> Dict[str, Any]:
@@ -1764,7 +1672,7 @@ def _write_debt_ledger_sync_proof(
     summary = _parse_debt_ledger_check_stdout(str(result.get("stdout") or ""))
     payload = _build_long_gate_execution_proof(
         entry, result, schema_version=DEBT_LEDGER_SYNC_PROOF_SCHEMA_VERSION,
-        log_entry_id=ENTRY_DEBT_LEDGER_SYNC, run_id=run_id, command_index=command_index,
+        log_entry_id=str(entry.get("entry_id") or ""), run_id=run_id, command_index=command_index,
         command_plan=command_plan, fingerprint=fingerprint, cache_dir=cache_dir,
     )
     payload.update(
@@ -1775,17 +1683,7 @@ def _write_debt_ledger_sync_proof(
             "oversize_count", "complexity_count", "silent_fallback_count", "test_debt_count", "accepted_risk_count")},
         samples=dict(summary.get("samples") or {}),
     )
-    return _write_long_gate_topic_proof(QUALITY_GATE_DEBT_LEDGER_SYNC_REL.replace("\\", "/"), payload)
-
-
-def _static_check_proof_rel_path(entry_id: str) -> str:
-    if entry_id == ENTRY_RUFF_CHECK_FULL:
-        return QUALITY_GATE_RUFF_CHECK_FULL_REL.replace("\\", "/")
-    if entry_id == ENTRY_PYRIGHT_GATE_FULL:
-        return QUALITY_GATE_PYRIGHT_GATE_FULL_REL.replace("\\", "/")
-    if entry_id == ENTRY_PYRIGHT_TOOLS_FULL:
-        return QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL.replace("\\", "/")
-    raise QualityGateError(f"未知 static long-gate entry：{entry_id}")
+    return _write_long_gate_topic_proof(_long_gate_declared_output_paths(entry)[0], payload)
 
 
 def _option_value(args: Sequence[str], option: str) -> str:
@@ -1809,16 +1707,17 @@ def _write_static_check_proof(
     cache_dir: str,
 ) -> str:
     entry_id = str(entry.get("entry_id") or "")
-    rel_path = _static_check_proof_rel_path(entry_id)
+    rel_path = _long_gate_declared_output_paths(entry)[0]
     payload = _build_long_gate_execution_proof(
         entry, result, schema_version=STATIC_CHECK_PROOF_SCHEMA_VERSION,
         log_entry_id=entry_id, run_id=run_id, command_index=command_index,
         command_plan=command_plan, fingerprint=fingerprint, cache_dir=cache_dir,
     )
     args = payload["args"]
-    paths = list(QUALITY_GATE_TOOL_PATHS) if entry_id == ENTRY_PYRIGHT_TOOLS_FULL else [
+    config_path = _option_value(args, "-p")
+    paths = list(QUALITY_GATE_TOOL_PATHS) if config_path == PYRIGHT_TOOLS_CONFIG else [
         path for path in QUALITY_GATE_TOOL_PATHS if path in args]
-    payload.update(config_path=_option_value(args, "-p"), tool_path_count=len(paths),
+    payload.update(config_path=config_path, tool_path_count=len(paths),
                    tool_paths=paths)
     return _write_long_gate_topic_proof(rel_path, payload)
 
@@ -1830,8 +1729,8 @@ def _full_test_debt_failure_cache_is_allowed(
 ) -> bool:
     if not long_gate_cache_write_success:
         return False
-    entry = dict(runtime_entry.get("entry") or {})
-    if str(entry.get("entry_id") or "") != ENTRY_FULL_TEST_DEBT:
+    entry = runtime_entry["entry"]
+    if entry["reuse_policy"] != "success_or_failure":
         return False
     decision = dict(runtime_entry.get("decision") or {})
     if _decision_cache_unavailable(decision):
@@ -1910,31 +1809,31 @@ def _prepare_long_gate_success_output_files(
     entry: Dict[str, Any],
     result: Dict[str, Any],
     *,
-    cache_dir: str = "evidence/QualityGate/long_gate",
-    run_id: str = "",
-    command_index: int = 0,
-    command_plan: Sequence[Dict[str, Any]] = (),
-    fingerprint: Optional[Dict[str, Any]] = None,
+    cache_dir: str,
+    run_id: str,
+    command_index: int,
+    command_plan: Sequence[Dict[str, Any]],
+    fingerprint: Dict[str, Any],
 ) -> List[str]:
-    entry_id = str(entry.get("entry_id") or "")
-    if entry_id == ENTRY_PYTEST_COLLECT_ALL:
+    proof_kind = entry.get("proof_kind")
+    if proof_kind == "collect_nodeids":
         collect_payload = build_collect_nodeids_payload(
             str(result.get("stdout") or ""),
             pytest_version=pytest_distribution_version(strict=True),
             collect_stdout_log_path=str(result.get("stdout_log_path") or ""),
         )
         return [write_collect_nodeids(collect_payload, repo_root=REPO_ROOT)]
-    if entry_id == ENTRY_REQUIRED_REGRESSIONS:
+    if proof_kind == "required_regressions":
         return _write_required_regressions_proof(
             entry,
             result,
             run_id=run_id,
             command_index=command_index,
             command_plan=command_plan,
-            fingerprint=dict(fingerprint or {}),
+            fingerprint=fingerprint,
             cache_dir=cache_dir,
         )
-    if entry_id == ENTRY_DEBT_LEDGER_SYNC:
+    if proof_kind == "debt_ledger_sync":
         return [
             _write_debt_ledger_sync_proof(
                 entry,
@@ -1942,11 +1841,11 @@ def _prepare_long_gate_success_output_files(
                 run_id=run_id,
                 command_index=command_index,
                 command_plan=command_plan,
-                fingerprint=dict(fingerprint or {}),
+                fingerprint=fingerprint,
                 cache_dir=cache_dir,
             )
         ]
-    if entry_id in {ENTRY_RUFF_CHECK_FULL, ENTRY_PYRIGHT_GATE_FULL, ENTRY_PYRIGHT_TOOLS_FULL}:
+    if proof_kind == "static_check":
         return [
             _write_static_check_proof(
                 entry,
@@ -1954,7 +1853,7 @@ def _prepare_long_gate_success_output_files(
                 run_id=run_id,
                 command_index=command_index,
                 command_plan=command_plan,
-                fingerprint=dict(fingerprint or {}),
+                fingerprint=fingerprint,
                 cache_dir=cache_dir,
             )
         ]
@@ -1962,7 +1861,7 @@ def _prepare_long_gate_success_output_files(
 
 
 def _fingerprint_for_success_cache(entry: Dict[str, Any], fingerprint: Dict[str, Any]) -> Dict[str, Any]:
-    if str(entry.get("entry_id") or "") in {ENTRY_FULL_TEST_DEBT, ENTRY_REQUIRED_REGRESSIONS}:
+    if entry.get("proof_kind") in {"full_test_debt", "required_regressions"}:
         return _strict_long_gate_fingerprint(entry)
     return dict(fingerprint)
 
@@ -1991,58 +1890,18 @@ def _should_preserve_full_test_debt_outputs(
     if not cache_enabled:
         return False
     entry = dict(runtime_entry.get("entry") or {})
-    if str(entry.get("entry_id") or "") != ENTRY_FULL_TEST_DEBT:
+    if str(entry.get("proof_kind") or "") != "full_test_debt":
         return False
     decision = dict(runtime_entry.get("decision") or {})
     if str(decision.get("decision") or "") == "reuse":
         return True
     if str(decision.get("reason") or "") != "collect nodeids proof is invalid":
         return False
-    return _long_gate_success_cache_exists(ENTRY_FULL_TEST_DEBT, cache_dir=cache_dir)
+    return _long_gate_success_cache_exists(str(entry.get("entry_id") or ""), cache_dir=cache_dir)
 
 
-def _resolve_command_args(command: Dict[str, Any]) -> List[str]:
-    args: List[str] = []
-    for idx, raw_arg in enumerate(list(command.get("args") or [])):
-        arg = str(raw_arg)
-        if idx == 0 and arg == "python":
-            args.append(sys.executable)
-            continue
-        args.append(arg)
-    return args
-
-
-def _runtime_entry_by_entry_id(
-    runtime_entries: Mapping[str, Dict[str, Any]],
-    entry_id: str,
-) -> Dict[str, Any]:
-    for runtime_entry in runtime_entries.values():
-        entry = dict((runtime_entry or {}).get("entry") or {})
-        if str(entry.get("entry_id") or "") == str(entry_id):
-            return dict(runtime_entry or {})
-    return {}
-
-
-def _command_plan_for_worktree_mode(
-    command_plan: Sequence[Dict[str, Any]],
-    *,
-    allow_dirty_worktree: bool,
-) -> List[Dict[str, Any]]:
-    if not allow_dirty_worktree:
-        return [dict(command) for command in command_plan]
-
-    checker_path = "/".join(["tools", "check_full_test_debt.py"])
-    out: List[Dict[str, Any]] = []
-    for command in command_plan:
-        args = [str(arg) for arg in list(command.get("args") or [])]
-        if args[:2] == ["python", checker_path]:
-            updated = dict(command)
-            updated["display"] = f"{str(command.get('display') or '').strip()} --allow-dirty-worktree-proof"
-            updated["args"] = [*args[:2], "--allow-dirty-worktree-proof", *args[2:]]
-            out.append(updated)
-            continue
-        out.append(dict(command))
-    return out
+def _resolve_command_args(raw_args: Sequence[str]) -> List[str]:
+    return [sys.executable if idx == 0 and arg == "python" else arg for idx, arg in enumerate(raw_args)]
 
 
 def _write_quality_gate_manifest(manifest: Dict[str, Any]) -> None:
@@ -2104,7 +1963,7 @@ def _base_quality_gate_manifest(
     git_status_short_before: Sequence[str],
     runtime_snapshot: Dict[str, Any],
     status: str,
-    command_plan: Sequence[Dict[str, Any]],
+    command_plan: Sequence[GateCheckSpec],
 ) -> Dict[str, Any]:
     manifest = {
         "status": str(status or "").strip() or "running",
@@ -2120,7 +1979,7 @@ def _base_quality_gate_manifest(
         "finished_at": None,
         "collection_proof": None,
         "required_tests": list(REQUIRED_TEST_ARGS),
-        "planned_commands": [_command_identity(command) for command in command_plan],
+        "planned_commands": [_command_identity(spec.to_command_dict()) for spec in command_plan],
         "commands": [],
         "gate_sources": [],
         "clean_worktree_excluded_paths": list(GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS),
@@ -2260,6 +2119,7 @@ def _disabled_long_gate_decision(entry: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "entry_id": str(entry.get("entry_id") or ""),
         "decision": "disabled",
+        "reuse_policy": "none",
         "reuse_allowed": False,
         "reason": "long gate cache is disabled for this run",
         "invalidated_by": [],
@@ -2290,6 +2150,7 @@ def _force_long_gate_decision(entry: Dict[str, Any], decision: Dict[str, Any], *
     return {
         "entry_id": str(entry.get("entry_id") or decision.get("entry_id") or ""),
         "decision": "run",
+        "reuse_policy": "none",
         "reuse_allowed": False,
         "reason": force_reason,
         "invalidated_by": invalidated_by,
@@ -2322,7 +2183,7 @@ def _mark_runtime_entry_cache_unavailable(
 
 def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cache_dir: str) -> None:
     entry = dict(runtime_entry.get("entry") or {})
-    if str(entry.get("entry_id") or "") != ENTRY_FULL_TEST_DEBT:
+    if str(entry.get("proof_kind") or "") != "full_test_debt":
         return
     current_decision = dict(runtime_entry.get("decision") or {})
     if not _full_test_debt_decision_can_refresh(current_decision):
@@ -2353,7 +2214,7 @@ def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cac
 
 def _refresh_required_regressions_reuse_decision(runtime_entry: Dict[str, Any], *, cache_dir: str) -> None:
     entry = dict(runtime_entry.get("entry") or {})
-    if str(entry.get("entry_id") or "") != ENTRY_REQUIRED_REGRESSIONS:
+    if str(entry.get("proof_kind") or "") != "required_regressions":
         return
     current_decision = dict(runtime_entry.get("decision") or {})
     if not _full_test_debt_decision_can_refresh(current_decision):
@@ -2395,7 +2256,7 @@ def _full_test_debt_decision_can_refresh(decision: Dict[str, Any]) -> bool:
 
 
 def _prepare_long_gate_cache_decisions(
-    command_plan: Sequence[Dict[str, Any]],
+    command_specs: Sequence[GateCheckSpec],
     *,
     cache_enabled: bool,
     cache_dir: str,
@@ -2406,16 +2267,17 @@ def _prepare_long_gate_cache_decisions(
     forced_entry_ids: Set[str] = {
         str(entry_id or "").strip() for entry_id in list(force_rerun_entry_ids or []) if str(entry_id or "").strip()
     }
-    manifest = build_manifest_from_quality_gate_plan(command_plan, repo_root=REPO_ROOT)
-    known_long_gate_entry_ids = {
-        str(entry.get("entry_id") or "")
-        for entry in list(manifest.get("entries") or [])
-        if bool(entry.get("reuse_allowed"))
-    }
-    unknown_forced = sorted(forced_entry_ids - known_long_gate_entry_ids)
+    manifest = build_manifest_from_quality_gate_plan(command_specs, repo_root=REPO_ROOT)
+    known_long_gate_check_ids: Set[str] = set()
+    for entry in manifest["entries"]:
+        if entry["reuse_allowed"]:
+            check_id = str(entry.get("check_id") or "").strip()
+            if check_id:
+                known_long_gate_check_ids.add(check_id)
+    unknown_forced = sorted(forced_entry_ids - known_long_gate_check_ids)
     if unknown_forced:
         raise QualityGateError(
-            "--long-gate-force-rerun 指定了未知的 long gate entry_id: " + ", ".join(unknown_forced)
+            "--long-gate-force-rerun 指定了未知的 long gate check_id: " + ", ".join(unknown_forced)
         )
     summary_entries: List[Dict[str, Any]] = []
     runtime_entries: Dict[str, Dict[str, Any]] = {}
@@ -2427,12 +2289,13 @@ def _prepare_long_gate_cache_decisions(
             metadata = long_gate_cache_metadata(REPO_ROOT, cache_dir=resolved_cache_dir)
         except SensitiveSourceError as exc:
             metadata_error = exc
-    for index, raw_entry in enumerate(list(manifest.get("entries") or []), start=1):
+    for index, raw_entry in enumerate(manifest["entries"], start=1):
         entry = dict(raw_entry)
-        if not bool(entry.get("reuse_allowed")):
+        if not entry["reuse_allowed"]:
             continue
         entry_id = str(entry.get("entry_id") or "")
-        force_requested = entry_id in forced_entry_ids
+        check_id = str(entry.get("check_id") or "").strip()
+        force_requested = bool(check_id and check_id in forced_entry_ids)
         fingerprint: Optional[Dict[str, Any]] = None
         evaluation: Optional[Dict[str, Any]] = None
         if not cache_enabled:
@@ -2470,7 +2333,7 @@ def _prepare_long_gate_cache_decisions(
         summary_entry = build_summary_entry(index=index, entry=entry, decision=decision)
         summary_entries.append(summary_entry)
         if cache_enabled:
-            runtime_entries[str(entry.get("display") or "")] = {
+            runtime_entries[str(entry["entry_id"])] = {
                 "entry": entry,
                 "fingerprint": fingerprint or {},
                 "evaluation": evaluation or {},
@@ -2583,8 +2446,8 @@ def _current_impact_paths() -> List[str]:
     return _dedupe_impact_paths(paths)
 
 
-def _print_long_gate_impact_explain(command_plan: Sequence[Dict[str, Any]], paths: Sequence[str]) -> None:
-    impact = explain_long_gate_impact(command_plan, paths, repo_root=REPO_ROOT)
+def _print_long_gate_impact_explain(command_specs: Sequence[GateCheckSpec], paths: Sequence[str]) -> None:
+    impact = explain_long_gate_impact(command_specs, paths, repo_root=REPO_ROOT)
     print(json.dumps(impact, ensure_ascii=False, sort_keys=True, indent=2), flush=True)
 
 
@@ -2595,13 +2458,10 @@ def _quality_gate_rel_exists(rel_path: str) -> bool:
 def _print_long_gate_cache_decision_hint(entry: Dict[str, Any]) -> None:
     if str(entry.get("decision") or "") != "run":
         return
-    entry_id = str(entry.get("entry_id") or "")
     reason = str(entry.get("reason") or "")
     if reason == "no previous success cache":
         print("  cache_state: missing", flush=True)
-    elif entry_id != ENTRY_FULL_TEST_DEBT:
-        return
-    if entry_id != ENTRY_FULL_TEST_DEBT:
+    if entry.get("proof_kind") != "full_test_debt":
         return
     direct_outputs = [
         rel_path
@@ -2749,18 +2609,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         from tools import fast_static_precheck
 
         return int(fast_static_precheck.main([]))
-    command_plan = _command_plan_for_worktree_mode(
-        build_quality_gate_command_plan(),
+    command_specs = quality_gate_shared.build_quality_gate_check_specs(
+        repo_root=REPO_ROOT,
         allow_dirty_worktree=bool(args.allow_dirty_worktree),
     )
-    require_import_cycle_proofs = False
     if bool(args.long_gate_impact_explain):
         impact_paths = (
             _dedupe_impact_paths(args.long_gate_impact_path)
             if args.long_gate_impact_path
             else _current_impact_paths()
         )
-        _print_long_gate_impact_explain(command_plan, impact_paths)
+        _print_long_gate_impact_explain(command_specs, impact_paths)
         return 0
     long_gate_cache_enabled = bool((args.long_gate_cache or args.long_gate_cache_explain) and not args.no_long_gate_cache)
     resolved_long_gate_cache_dir = "evidence/QualityGate/long_gate"
@@ -2771,7 +2630,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             raise QualityGateError(str(exc)) from exc
     if bool(args.long_gate_cache_explain):
         long_gate_summary_entries, _long_gate_runtime_entries = _prepare_long_gate_cache_decisions(
-            command_plan,
+            command_specs,
             cache_enabled=True,
             cache_dir=resolved_long_gate_cache_dir,
             force_rerun_entry_ids=list(args.long_gate_force_rerun or []),
@@ -2784,7 +2643,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     git_status_short_before = _git_status_lines()
     if bool(args.allow_dirty_worktree and not args.no_resume):
         resume_decision = _decide_resume_from_previous_failure(
-            command_plan,
+            command_specs,
             current_head_sha=head_sha,
             current_git_status_short=git_status_short_before,
         )
@@ -2794,7 +2653,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         resume_decision = ResumeDecision(False, "当前不是 allow-dirty-worktree 模式")
     if resume_decision.enabled:
         print(
-            f"提示：检测到上次质量门禁失败，本次从第 {resume_decision.start_command_index}/{len(command_plan)} "
+            f"提示：检测到上次质量门禁失败，本次从第 {resume_decision.start_command_index}/{len(command_specs)} "
             f"步继续：{resume_decision.start_command_display}",
             flush=True,
         )
@@ -2802,7 +2661,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"提示：未使用续跑：{resume_decision.reason}。本次完整重跑。", flush=True)
     effective_long_gate_cache_enabled = bool(long_gate_cache_enabled and not resume_decision.enabled)
     long_gate_summary_entries, long_gate_runtime_entries = _prepare_long_gate_cache_decisions(
-        command_plan,
+        command_specs,
         cache_enabled=effective_long_gate_cache_enabled,
         cache_dir=resolved_long_gate_cache_dir,
         force_rerun_entry_ids=list(args.long_gate_force_rerun or []) if effective_long_gate_cache_enabled else [],
@@ -2822,7 +2681,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     pending_long_gate_successes: List[Dict[str, Any]] = []
     failure_kind: Optional[str] = None
     git_status_short_after: Optional[List[str]] = None
-    full_test_debt_runtime_entry = _runtime_entry_by_entry_id(long_gate_runtime_entries, ENTRY_FULL_TEST_DEBT)
+    full_test_debt_runtime_entry = next(
+        (
+            dict(rt_entry)
+            for rt_entry in long_gate_runtime_entries.values()
+            if str(dict(rt_entry.get("entry") or {}).get("proof_kind") or "") == "full_test_debt"
+        ),
+        {},
+    )
     preserve_full_test_debt_outputs = _should_preserve_full_test_debt_outputs(
         full_test_debt_runtime_entry,
         cache_enabled=effective_long_gate_cache_enabled,
@@ -2835,7 +2701,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         git_status_short_before=git_status_short_before,
         runtime_snapshot=runtime_snapshot,
         status="running",
-        command_plan=command_plan,
+        command_plan=command_specs,
     )
     if effective_long_gate_cache_enabled:
         manifest["long_gate_cache_dir"] = resolved_long_gate_cache_dir
@@ -2855,7 +2721,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     try:
         try:
-            require_import_cycle_proofs = _assert_import_cycle_command_plan_contract(command_plan)
             if resume_decision.enabled:
                 _clear_quality_gate_run_outputs(
                     remove_manifest=False,
@@ -2897,7 +2762,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             raise
 
         _run_quality_gate_command_plan(
-            command_plan,
+            command_specs,
             run_id=run_id,
             commands=commands,
             command_receipts=command_receipts,
@@ -2916,8 +2781,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ruff_version_output = cast(Optional[str], parsed_command_results.get("ruff_version_output"))
         pyright_version_output = cast(Optional[str], parsed_command_results.get("pyright_version_output"))
         _require_quality_gate_command_proofs(
+            command_specs,
             parsed_command_results,
-            require_import_cycle_proofs=require_import_cycle_proofs,
         )
 
         git_status_short_after = _git_status_lines()

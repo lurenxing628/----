@@ -43,9 +43,9 @@ def _is_private_symbol(name: str) -> bool:
     return name.startswith("_") and not name.startswith("__")
 
 
-def scan_private_imports_file(rel_path: str, source: str) -> List[Dict[str, object]]:
+def scan_private_imports_file(rel_path: str, source: str) -> List[Dict[str, Any]]:
     tree = ast.parse(source, filename=rel_path)
-    hits: List[Dict[str, object]] = []
+    hits: List[Dict[str, Any]] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.ImportFrom):
             continue
@@ -63,8 +63,8 @@ def scan_private_imports_file(rel_path: str, source: str) -> List[Dict[str, obje
     return hits
 
 
-def scan(repo_root: str = REPO_ROOT) -> Dict[str, object]:
-    entries: List[Dict[str, object]] = []
+def scan(repo_root: str = REPO_ROOT) -> Dict[str, Any]:
+    entries: List[Dict[str, Any]] = []
     files = _iter_python_files(repo_root, SCAN_ROOTS)
     for rel_path in files:
         with open(os.path.join(repo_root, rel_path), encoding="utf-8") as handle:

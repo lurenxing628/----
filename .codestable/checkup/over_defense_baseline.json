@@ -8,7 +8,6 @@
     "plugins",
     "desktop",
     "app.py",
-    "app_new_ui.py",
     "frontend/workbench/app"
   ],
   "note": "反过度防御棘轮基线（内部反射字面量/参数进门覆盖/零引用与只被测试引用的函数/往外部对象写私有属性/前端 typeof command.reset）：条目只减不增，刷新走 --refresh。",

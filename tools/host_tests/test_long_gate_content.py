@@ -13,8 +13,9 @@ from unittest.mock import patch
 
 from tools import long_gate_cache as cache
 from tools import long_gate_fingerprint as fingerprint
+from tools import long_gate_schema as schema
 from tools.long_gate_collect import COLLECT_NODEIDS_REL, build_collect_nodeids_payload, write_collect_nodeids
-from tools.long_gate_manifest import build_manifest_from_quality_gate_plan
+from tools.long_gate_manifest import build_manifest_from_quality_gate_plan, load_local_quality_gate_receipts
 from tools.long_gate_schema import (
     PRIVATE_ENVIRONMENT_KEYS,
     PUBLIC_ENVIRONMENT_KEYS,
@@ -27,8 +28,9 @@ from tools.long_gate_schema import (
 from tools.long_gate_summary import build_long_gate_summary, build_summary_entry, write_long_gate_summary
 from tools.quality_gate_shared import (
     FORMAL_FULL_TEST_PYTEST_ARGS,
+    GateCheckSpec,
     QualityGateError,
-    build_quality_gate_command_plan,
+    build_quality_gate_check_specs,
     normalize_quality_gate_command,
 )
 from tools.verify_required_regressions_from_full_test_debt import (
@@ -53,8 +55,13 @@ class LongGateContentTests(unittest.TestCase):
             **self.command,
             "command": self.command,
             "entry_id": "host_content",
+            "proof_kind": None,
+            "reuse_policy": "success_or_failure",
             "reuse_allowed": True,
             "input_file_scopes": ["source.py"],
+            "config_file_scopes": [],
+            "tool_file_scopes": [],
+            "dependency_file_scopes": [],
             "env_keys": ["APS_ENV", "SECRET_KEY"],
             "output_result_files": ["result.bin"],
         }
@@ -62,6 +69,16 @@ class LongGateContentTests(unittest.TestCase):
         self.paths = patch.object(fingerprint, "_git_path_sources", return_value=({"source.py"}, set(), "available"))
         self.paths.start()
         self.addCleanup(self.paths.stop)
+        self.identity = patch.object(
+            schema,
+            "repo_identity",
+            side_effect=lambda repo_root: {
+                "checkout_root_realpath": os.path.realpath(str(repo_root)),
+                "git_common_dir_realpath": os.path.realpath(os.path.join(str(repo_root), ".git")),
+            },
+        )
+        self.identity.start()
+        self.addCleanup(self.identity.stop)
 
     def current(self, entry=None):
         return fingerprint.fingerprint_entry(entry or self.entry, str(self.root), strict=True)
@@ -185,10 +202,62 @@ class LongGateContentTests(unittest.TestCase):
         runtime_file.write_bytes(b'{"shutdown_token":"fixture-value"}')
         with self.assertRaises(ValueError):
             read_file_content(str(runtime_file))
-        manifest = build_manifest_from_quality_gate_plan([self.command], repo_root=str(self.root))
-        self.assertEqual(manifest["quality_gate_plan"], [self.command])
-        self.assertEqual(manifest["entries"][0]["command"], self.command)
+        spec = GateCheckSpec(
+            check_id="host_content",
+            entry_type="version_or_env_probe",
+            display="host check",
+            args=("python", "check.py"),
+            capture_output=True,
+            output_policy="exact",
+            reuse_policy="none",
+        )
+        manifest = build_manifest_from_quality_gate_plan([spec], repo_root=str(self.root))
+        expected_spec_command = normalize_quality_gate_command(spec.to_command_dict())
+        self.assertEqual(
+            expected_spec_command,
+            {
+                **self.command,
+                "check_id": "host_content",
+                "entry_type": "version_or_env_probe",
+                "proof_kind": None,
+                "reuse_policy": "none",
+                "runner_handler": "default",
+            },
+        )
+        self.assertEqual(manifest["quality_gate_plan"], [expected_spec_command])
+        self.assertEqual(manifest["entries"][0]["command"], expected_spec_command)
+        self.assertEqual(manifest["entries"][0]["reuse_policy"], "none")
+        self.assertFalse(manifest["entries"][0]["reuse_allowed"])
         self.assertNotIn("command_hash", manifest["entries"][0])
+        receipts_dir = self.root / "evidence" / "QualityGate" / "v4" / "receipts"
+        receipts_dir.mkdir(parents=True, exist_ok=True)
+        (receipts_dir / "01_matched.json").write_text(
+            json.dumps({"check_id": "host_content", "display": "renamed display", "duration_s": 1.25, "returncode": 0}),
+            encoding="utf-8",
+        )
+        (receipts_dir / "02_missing_id.json").write_text(
+            json.dumps({"display": "host check", "duration_s": 0.5, "returncode": 0}),
+            encoding="utf-8",
+        )
+        (receipts_dir / "03_unknown_id.json").write_text(
+            json.dumps({"check_id": "retired_check", "display": "host check", "duration_s": 0.5, "returncode": 0}),
+            encoding="utf-8",
+        )
+        loaded_receipts = load_local_quality_gate_receipts(str(self.root))
+        observed_manifest = build_manifest_from_quality_gate_plan(
+            [spec], receipts=loaded_receipts, repo_root=str(self.root)
+        )
+        self.assertEqual(
+            [row["check_id"] for row in observed_manifest["entries"][0]["local_receipts"]],
+            ["host_content"],
+        )
+        self.assertEqual(
+            observed_manifest["warnings"],
+            [
+                "receipt unreadable or missing check_id: evidence/QualityGate/v4/receipts/02_missing_id.json",
+                "local receipt check_id is not in current plan: retired_check",
+            ],
+        )
 
     def test_success_reuse_binds_source_command_logs_outputs_and_status(self):
         current = self.current()
@@ -237,6 +306,10 @@ class LongGateContentTests(unittest.TestCase):
         path, saved = self.saved("failure")
         self.assertEqual(
             cache.evaluate_failure_reuse(entry, current, repo_root=str(self.root))["decision"]["decision"], "cached_failure"
+        )
+        self.assertEqual(
+            cache.evaluate_failure_reuse({**entry, "reuse_policy": "success"}, current, repo_root=str(self.root))["decision"]["reason"],
+            "reuse is disabled for this entry",
         )
         self.assertEqual(saved["returncode"], 3)
         self.assertEqual(saved["run_id"], "original-run")
@@ -328,13 +401,24 @@ class LongGateContentTests(unittest.TestCase):
     def test_real_gate_entries_track_execution_inputs_and_ignore_bytecode(self):
         repo_root = Path(__file__).resolve().parents[2]
         execution_sources = {
-            relative: (repo_root / relative).read_bytes()
-            for relative in (
-                "tests/workbench/decision_comparison_contract.cjs",
-                "frontend/workbench/app/RunDecisionProcessChart.jsx",
-                "tests/workbench/fixtures/decision_candidate_baseline.json",
-                "scripts/workbench/ds-projection.cjs",
-            )
+            **{
+                relative: (repo_root / relative).read_bytes()
+                for relative in (
+                    "tests/workbench/decision_comparison_contract.cjs",
+                    "frontend/workbench/app/RunDecisionProcessChart.jsx",
+                    "tests/workbench/fixtures/decision_candidate_baseline.json",
+                    "scripts/workbench/compile.cjs",
+                    "scripts/workbench/esbuild-manifest.json",
+                    "vendor/node_modules/esbuild/package.json",
+                    "tools/generate_schema_sql.py",
+                    "tools/resolve_iscc.ps1",
+                    "tools/wufenchang_demo/blueprint.py",
+                    "packaging/win7/offline-manifest.json",
+                )
+            },
+            ".codex/hooks/guard_pre_tool_use.py": b"print('hook')\n",
+            "vendor/node_modules/@esbuild/win32-x64/esbuild.exe": b"MZ\x00win32-esbuild\n",
+            "vendor/wheels/networkx-3.1-py3-none-any.whl": b"PK\x03\x04wheel\n",
         }
         collect_sources = {
             relative: (repo_root / relative).read_bytes()
@@ -344,7 +428,7 @@ class LongGateContentTests(unittest.TestCase):
             path = self.root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(original)
-        manifest = build_manifest_from_quality_gate_plan(build_quality_gate_command_plan(), repo_root=str(self.root))
+        manifest = build_manifest_from_quality_gate_plan(build_quality_gate_check_specs(), repo_root=str(self.root))
         entries = {entry["entry_id"]: entry for entry in manifest["entries"]}
         full, collect = entries["full_test_debt"], entries["pytest_collect_all"]
         nodeid = "tests/workbench/test_ui_refinement_node_contracts.py::test_shared_ui_node_contract[workbench/decision_comparison_contract.cjs]"
@@ -411,8 +495,8 @@ class LongGateContentTests(unittest.TestCase):
         current = self.current()
         decision = cache.evaluate_reuse(self.entry, current, repo_root=str(self.root))["decision"]
         self.assertEqual(decision["decision"], "run")
-        self.assertEqual(decision["previous_result_path"], str(legacy.relative_to(self.root)))
-        self.assertIn("legacy", decision["reason"])
+        self.assertIsNone(decision["previous_result_path"])
+        self.assertEqual(decision["reason"], "no previous success cache")
         cache.commit_prepared_success_write(
             cache.prepare_success_write(self.entry, current, self.result, ["result.bin"], repo_root=str(self.root))
         )
@@ -475,7 +559,32 @@ class LongGateContentTests(unittest.TestCase):
             },
         }
         required_tests = ["tests/example.py"]
-        verified = verify_required_regressions_from_payload(full_payload, required_tests=required_tests)
+        required_groups = [
+            {
+                "group_id": "example",
+                "label": "Example required regressions",
+                "target_paths": required_tests,
+                "input_file_scopes": [
+                    "app.py",
+                    "schema.sql",
+                    "core/**/*.py",
+                    "data/**/*.py",
+                    "web/**/*.py",
+                    "plugins/**/*.py",
+                    "desktop/**/*.py",
+                    "frontend/workbench/app/**/*",
+                    "scripts/workbench/**/*",
+                    "templates/**/*.html",
+                    "static/workbench/**/*",
+                    "static/**/*",
+                ],
+            }
+        ]
+        verified = verify_required_regressions_from_payload(
+            full_payload,
+            required_tests=required_tests,
+            required_groups=required_groups,
+        )
         self.assertEqual(verified["required_target_paths"], required_tests)
         self.assertEqual(verified["required_nodeids"], payload["nodeids"])
         self.assertEqual(verified["required_reports"][payload["nodeids"][0]], [full_payload["reports"][0]])
@@ -483,13 +592,25 @@ class LongGateContentTests(unittest.TestCase):
         bad = copy.deepcopy(full_payload)
         bad["reports"][0]["xfail_marker_present"] = True
         with self.assertRaises(RequiredRegressionProofError):
-            verify_required_regressions_from_payload(bad, required_tests=required_tests)
+            verify_required_regressions_from_payload(
+                bad,
+                required_tests=required_tests,
+                required_groups=required_groups,
+            )
         with self.assertRaises(RequiredRegressionProofError):
-            verify_required_regressions_from_payload(full_payload, required_tests=["tests/missing.py"])
+            verify_required_regressions_from_payload(
+                full_payload,
+                required_tests=["tests/missing.py"],
+                required_groups=required_groups,
+            )
         setup_only = copy.deepcopy(full_payload)
         setup_only["reports"][0]["when"] = "setup"
         with self.assertRaisesRegex(QualityGateError, "终态报告"):
-            verify_required_regressions_from_payload(setup_only, required_tests=required_tests)
+            verify_required_regressions_from_payload(
+                setup_only,
+                required_tests=required_tests,
+                required_groups=required_groups,
+            )
 
     def test_node_resolution_and_fingerprint_skip_broken_path_node_and_bind_working_fallback(self):
         from tests._support.node_runtime_support import resolve_node_binary
@@ -647,6 +768,40 @@ class LongGateContentTests(unittest.TestCase):
             self.assertEqual(env_err.exception.details, {"failure_kind": "source_content_unavailable"})
             self.assertIsInstance(env_err.exception.__cause__, SensitiveSourceError)
             self.assertNotIn(secret, str(env_err.exception))
+
+    def test_load_local_quality_gate_receipts_classifies_truncated_utf8_as_unreadable(self):
+        receipts_dir = self.root / "evidence" / "QualityGate" / "v4" / "receipts"
+        receipts_dir.mkdir(parents=True, exist_ok=True)
+        (receipts_dir / "01_valid.json").write_text(
+            json.dumps({"check_id": "host_content", "display": "host check", "duration_s": 0.5, "returncode": 0}),
+            encoding="utf-8",
+        )
+        (receipts_dir / "02_truncated_utf8.json").write_bytes(
+            b'{"check_id":"host_content","display":"\xe4\xb8'
+        )
+        rows = load_local_quality_gate_receipts(str(self.root))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["check_id"], "host_content")
+        corrupt = rows[1]
+        self.assertEqual(corrupt["path"], "evidence/QualityGate/v4/receipts/02_truncated_utf8.json")
+        self.assertTrue(corrupt["load_error"].startswith("unreadable:"))
+        self.assertEqual(corrupt["check_id"], "")
+        self.assertTrue(corrupt["duration_unknown"])
+
+        spec = GateCheckSpec(
+            check_id="host_content",
+            entry_type="version_or_env_probe",
+            display="host check",
+            args=("python", "check.py"),
+            capture_output=True,
+            output_policy="exact",
+            reuse_policy="none",
+        )
+        manifest = build_manifest_from_quality_gate_plan([spec], receipts=rows, repo_root=str(self.root))
+        self.assertEqual(
+            manifest["warnings"],
+            ["receipt unreadable or missing check_id: evidence/QualityGate/v4/receipts/02_truncated_utf8.json"],
+        )
 
 
 if __name__ == "__main__":

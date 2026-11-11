@@ -1,7 +1,9 @@
 # APS 三个差距方向开发测试收口说明
 
-> 仅给开发和测试使用，不给用户看。
-> 本文会出现程序内部字段、表名、测试文件名和命令。用户说明请看 `static/docs/aps_three_gap_user_guide.md`。
+> [!NOTE]
+> **历史归档记录**：本文档记录 2026-06 历史“三个差距方向”治理过程与当时的文件/命令快照，不代表现行架构或门禁清单。其中提及的 `tools/scan_anti_regression_gate.py`、`tools/scan_aps_three_gap_py38_scope.py` 与 `d4589d77` 增量基线已随 `aps-architecture-consolidation`（`A4`）正式退役，并合并入 `tools/test_registry.py` 全量生产源文件覆盖检查与 `tools/scan_py38plus_syntax.py --fail-on-hit`；旧 `OperationExecutionEvents` 等经典页面模块亦已随工作台收口退役。现行门禁入口与开发基线以 `开发文档/README.md` 为准。
+
+仅给开发和测试使用，不给用户看。本文会出现程序内部字段、表名、测试文件名和命令。用户说明请看 `static/docs/aps_three_gap_user_guide.md`。
 
 最后更新：2026-06-04
 

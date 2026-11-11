@@ -18,6 +18,7 @@
 - [试调、联动重排与条件试算整体方案](../.codestable/roadmap/trial-scenario-planning/trial-scenario-planning-roadmap.md)：2026-10-13 留存，完整联动重排与条件试算路线图预留未启动（基础手动试调工作台已上线）。包含行业做法、现有基础、交互与计算设计、性能取舍、分阶段依赖和验收场景。
 - [APS 与项目管理系统的试调实践调研](../.codestable/compound/2026-10-13-explore-aps-trial-scenario-practices.md)：七款产品的具体机制、资源条件试算、共享资料边界及来源。
 - [统一优化与业务多方案重构设计](../.codestable/features/2026-10-13-unified-scheduling-optimization/unified-scheduling-optimization-design.md)：已落地实现。取消固定图档，保留最多三份有真实业务取舍的方案；涵盖最好结果共享、跨目标去重、总预算、速度质量验收及排产决策工作台衔接。
+- [APS 全局架构收敛设计与一次性迁移方案](../.codestable/roadmap/aps-architecture-consolidation/aps-architecture-consolidation-roadmap.md)：`A0`～`A5` 离线模块化单体架构收敛定稿与实施依据（`PreparedBusinessInput`、无连接 `CalendarEngine` + `CalendarAdmin`、单向 `workbench/trial -> workbench/run`、显式事实作用域与 7 条命令回执协议、前端 100% ESM + `esbuild`、单一 `app.py` 宿主入口、单一 `GateCheckSpec` 门禁，持久 Schema v45 与归档 JSON 零变更）。
 
 ### 当前排产实测
 
@@ -36,7 +37,7 @@ py -3.8 -m venv .venv
 说明：
 
 - `requirements.txt` 是程序运行依赖，`requirements-dev.txt` 是本地检查和托管门禁依赖，`requirements-optimizer-lite-win7.txt` 是图分析/候选方案增强需要的轻量优化依赖；新环境三份都要装。
-- 上述三份适用于开发检查环境。Win7 出包使用独立 `.venv-win7-build` 和带哈希的 `requirements-win7-build.txt`；离线材料下载、准备和绿色便携构建见 `../DELIVERY_WIN7.md`，不把开发检查工具装入构建环境。
+- 上述三份适用于开发检查环境。Win7 出包使用独立 `.venv-win7-build` 和锁定版本的 `requirements-win7-build.txt`；离线材料下载、准备和绿色便携构建见 `../DELIVERY_WIN7.md`，不把开发检查工具装入构建环境。
 - `PyYAML` 是 CodeStable YAML 工具的开发期依赖；缺失时工具只支持极简 Markdown frontmatter，不能校验 checklist / manifest 这类纯 YAML 文件。
 - `ruff` 版本口径固定为 `>=0.15,<0.16`。
 - 若未先在项目 `.venv` 中安装 `requirements.txt`、`requirements-dev.txt` 和 `requirements-optimizer-lite-win7.txt`，`.pre-commit-config.yaml` 中的 `ruff`、提交说明检查、推送前快门禁、图分析增强以及本地启动都可能无法正常运行。
@@ -60,9 +61,9 @@ hook 字段与返回协议见 [OpenAI Hooks 文档](https://learn.chatgpt.com/do
 
 这条命令是给日常开发用的快速检查。它先判断本次改动：只改 README、开发文档或 CodeStable 记录时，只做运行产物拦截和应用启动、离线静态资源两项冒烟；改了 Python 文件时，对还存在的改动文件跑 `ruff check`，并从登记表选择相关职责组；改了公共配置、门禁工具，或判断不出范围时，跑全仓 `ruff check` 和全部保留的 required 测试。
 
-只要跑了 `ruff check`，紧接着依次跑三个边界棘轮扫描器：`tools.scan_sql_boundary --rule all`（服务层不写 SQL、数据策略）、`tools.scan_private_imports`（禁跨模块导入私有符号）、`tools.scan_dead_path_literals`（失效仓库路径字面量），都带 `--fail-on-new --quiet-when-clean`。它们扫全仓、与 `.codestable/checkup/` 下各自的基线比较：出现新增或计数增加就失败；某条债务清掉后基线条目失效也会失败，这时用对应扫描器的 `--refresh` 收紧基线（基线只减不增，增长必须人工核对后加 `--allow-growth`）。这几份基线文件必须随提交跟踪，pre-push 的临时 worktree 里缺基线会直接报错。
+只要跑了 `ruff check`，紧接着依次跑三个快速边界棘轮扫描器：`tools.scan_sql_boundary --rule all`（服务层不写 SQL、仓储层不做业务裁决）、`tools.scan_private_imports`（禁跨模块导入私有符号）、`tools.scan_dead_path_literals`（失效仓库路径字面量），都带 `--fail-on-new --quiet-when-clean`；当改动涉及 `.codestable/checkup/` 下的循环依赖基线时，还会定向触发 `tools.scan_import_cycles`（含 `--include-tests`）。此外，仓库还维护反过度防御棘轮扫描器 `tools.scan_over_defense` 与疑似死代码孤岛扫描器 `tools.scan_dead_code_islands`（`--mode quick`）。这 6 个边界/孤岛扫描器均扫全仓并与 `.codestable/checkup/*_baseline.json` 比较：出现新增或计数增加就失败；某条债务清掉后基线条目失效也会失败，这时用对应扫描器的 `--refresh` 收紧基线（基线只减不增，增长必须人工核对后加 `--allow-growth`）。基线文件须随提交跟踪，pre-push 的临时 worktree 里缺基线会直接报错。
 
-所有选中的测试和尚未覆盖的冒烟节点合并为一次单进程 pytest。已经选中冒烟文件时直接复用该文件的执行，不重复跑节点，也不启动 xdist worker。日常入口由这一次 pytest 收集实际选中的目标；全仓收集证明仍由完整门禁负责。保留的工作台 UI Node 契约进入普通 pytest。
+所有选中的测试和尚未覆盖的冒烟节点合并为一次单进程 pytest。已经选中冒烟文件时直接复用该文件的执行，不重复跑节点，也不启动 xdist worker。日常入口由这一次 pytest 收集实际选中的目标；全仓收集证明仍由完整门禁负责。工作台前端的 21 项 UI Node `vm.Context` 契约（`tests/workbench/test_ui_refinement_node_contracts.py`，经宿主固定版本 `esbuild` 打包注入沙箱）已并入普通 pytest。
 
 pre-push 从 Git 原始输入识别待推送提交，在对应的临时 worktree 执行快门禁；成功缓存绑定目标 refs、影响范围、工具内容和环境。当前 checkout 的无关 README 修改或提交不触发同一目标重测。手工运行且未指定目标 refs 时，缓存仍要求当前工作区干净。
 
@@ -84,13 +85,12 @@ pre-push 从 Git 原始输入识别待推送提交，在对应的临时 worktree
 
 如果已经激活 `.venv`，也可以把上面的 `.venv\Scripts\python` 简写成 `python`。
 
-用途：统一串联下面这些检查，本地与托管只认这一条入口：
+用途：所有检查项在 `tools/quality_gate_shared.py` 中以单一 `GateCheckSpec`（`build_quality_gate_check_specs`）统一声明，直接驱动 runner、long-gate 缓存与回执证明（不再靠命令字符串逆向分类，单步不再双跑重复 `pyright` 子进程），本地与托管只认这一条入口：
 
-1. 收集测试清单，确认测试能被 pytest 发现。
-2. 运行 `.venv\Scripts\python tools/check_full_test_debt.py`，确认 full-test-debt 没有新增未登记失败。
-3. 检查 `ruff` 和 `pyright` 版本是不是仓库要求的版本。
-4. 跑 `radon` 导入检查、`ruff check`、主链 `pyright` 和工具脚本 `pyright`。
-5. 从上述完整 pytest 的实际结果验证 required 覆盖，跑治理台账检查与系统速查表一致性检查。启动链回归已纳入统一 required 清单，不再单独重跑；旧架构适应度 pytest 专项已退役。
+1. 检查 `ruff`、`pyright` 版本与 `radon` 导入，执行全仓 `ruff check` 以及生产/含测试两档 `tools.scan_import_cycles`。
+2. 收集测试清单（`pytest_collect_all`），校验路线图 YAML 与 `tools/scan_py38plus_syntax.py --fail-on-hit`（Python 3.8 语法兼容），并运行 `tests/gate_meta/check_quickref_vs_routes.py`（通过 `app.py:create_app()` 核对系统速查表与真实 Flask 路由注册表一致）。
+3. 跑主链 `pyright`（`pyrightconfig.gate.json`）与工具脚本 `pyright`（`pyrightconfig.tools.json`，并锁步校验其 `include` 列表与 `QUALITY_GATE_TOOL_PATHS` 顺序完全一致），运行 `scripts/sync_debt_ledger.py check` 治理台账核对。
+4. 运行 `.venv\Scripts\python tools/check_full_test_debt.py`（默认 3 分片），确认 full-test-debt 没有新增未登记失败，并从其运行结果直接核销 `required_regressions`（`tools/test_registry.py` 同时直接校验完整生产文件集均被 required 作用域覆盖；旧 `startup_runtime_regressions`、`architecture_fitness`、`scan_anti_regression_gate.py` 与 `scan_aps_three_gap_py38_scope.py` 已全部退役）。
 
 完整 pytest 直接运行 `tests` 中的全部保留用例，不再用 `-m "not perf"` 排除测试。旧重浏览器、性能基准、门禁元测试及旧浏览器工作台入口脚本均已删除；纯 Node UI 契约与 API/事务回归一起执行。
 
@@ -98,7 +98,7 @@ full-test-debt proof 证明当前没有未登记的 full pytest 失败，并且�
 
 long gate cache 是给长耗时完整门禁准备的本地成功缓存，需要显式传入 `--long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`quickref_vs_routes`、`import_cycles_production` 和 `import_cycles_with_tests`。旧 `startup_runtime_regressions` 和 `architecture_fitness` 专项 entry 已退役。
 
-完整门禁在同次缓存判定中共享源码快照与工具 metadata；实际命令执行后会重新取得需要刷新的输入证据。`aps-full-selftest` 核验同 HEAD 的干净证明时，可复用仍匹配输入、环境、日志、输出且与本次 receipt 一致的 long-gate 成功结果；缺少或变化的证据继续重放对应命令，未覆盖的独立步骤照常执行。禁用重放仍是 `STRUCTURAL_ONLY`，不能当作通过证明。
+完整门禁在同次缓存判定中共享源码快照与工具 metadata；实际命令执行后会重新取得需要刷新的输入证据。`aps-full-selftest` 前置绑定直接委托 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache --no-resume` 执行唯一共同门禁并核验生成的 `evidence/QualityGate/v4/quality_gate_manifest.json`（`schema_version == 4`、`status == "passed"`、同 `head_sha` 且运行前后工作区干净），与完整门禁共用同一套 long-gate v2 缓存判定，不再维护第二套 manifest 重放器。
 
 完整输入、输出和日志证据由 long-gate 结果缓存与 shared proof 保存；long-gate summary 只保存执行结果、计数、耗时、变更原因和文件引用。旧 `run-final-quality-gate-if-needed` 入口与 `run-final-quality-gate` 一样进入共同 runner，由同一套 long-gate 规则决定复用；原 `.git/aps-hook-cache` 中复制整套完整门禁证据的顶层缓存已退役，历史文件保留原位。
 
@@ -160,11 +160,11 @@ Python 3.8 兼容扫描把语法错误、立即求值的不兼容注解和运行
 - 唯一台账写入口 `.venv\Scripts\python scripts/sync_debt_ledger.py`；只有已经激活 `.venv` 后，才可以简写成 `python scripts/sync_debt_ledger.py`。
 - 治理数据唯一事实源 `./技术债务治理台账.md`。
 
-向 `SP03` 的直接交接点：
+历史交接存档（`SP02` → `SP03`，相关双轨模块现已退役）：
 
 - 启动链基线已冻结到治理台账，后续优先做真实治理，不再重复搭基础设施。
-- `web/ui_mode.py` 已按 `startup_guard` / `render_bridge` 分 scope 落账；其中 `render_bridge` 条目继续留给 `SP09`。
-- 文档一致性检查已具备阻断语义，后续只需保持实现与速查表同步。
+- 早期 `web/ui_mode.py`、`render_bridge`、`app_new_ui.py`、`start_new_ui.bat` 及 `ui_mode` 运行时字段现已全部退役，全仓收口为唯一生产宿主入口 `app.py`（`create_app()`）。
+- 文档一致性检查（`tests/gate_meta/check_quickref_vs_routes.py`）具备阻断语义，保持实现与速查表同步。
 
 ## Pyright 门禁补充
 
@@ -181,7 +181,7 @@ Python 3.8 兼容扫描把语法错误、立即求值的不兼容注解和运行
 - 推送前快门禁必须使用项目 `.venv` 里的 Python；如果项目 `.venv` 不存在，会直接失败，不会偷偷换成系统 Python，并且会强制使用 UTF-8 环境。本地 hook 不是可选检查，正常提交流程不要绕过它，绕过后不能当作已经通过本地提交检查。
 - `pyright` 不在提交前单独快跑，它由 `scripts/run_quality_gate.py` 和 CI 阻断。
 - `scripts/run_quality_gate.py` 包含全仓测试收集、`python tools/check_full_test_debt.py`、工具版本与依赖检查、`ruff check`、主链与工具脚本 `pyright`、import cycle 检查、Python 3.8 语法检查、必需回归结果复用、治理台账检查与速查表核对。
-- `pyrightconfig.gate.json` 覆盖 `app.py`、`app_new_ui.py`、`config.py`、`core/`、`data/`、`web/` 主链，类型检查目标固定为 Windows / Python 3.8，与产品目标一致。
+- `pyrightconfig.gate.json` 覆盖 `app.py`、`core/`、`data/`、`web/` 主链，类型检查目标固定为 Windows / Python 3.8，与产品目标一致。
 - `pyrightconfig.tools.json` 覆盖门禁和维护脚本，是 `pyright_tools_full` 的正式工具脚本门禁口径。
 - `pyrightconfig.json` 保留为全仓类型债务盘点入口，包含 `tests/` 等更宽范围，不直接作为本轮硬门禁。
 - 上面这些 Pyright 命令只适合定位问题，不能当成最终 clean proof。最终 clean proof 需要在干净工作区跑 `.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`，并且门禁结束后 `git status --short` 仍然没有输出。

@@ -113,23 +113,6 @@ def _load_json_object(path: str) -> Tuple[Optional[Dict[str, Any]], str]:
     return loaded, ""
 
 
-def _legacy_cache_decision(
-    repo_root: str, entry_id: str, cache_kind: str, cache_dir: str, current_fingerprint: Mapping[str, Any]
-) -> Optional[Dict[str, Any]]:
-    rel_path = _cache_child_rel(cache_dir, os.path.join(LONG_GATE_RESULTS_DIR_NAME, f"{entry_id}.{cache_kind}.json"))
-    previous, error = _load_json_object(_abs_from_rel(repo_root, rel_path))
-    if error == "missing":
-        return None
-    return _decision(
-        entry_id,
-        "run",
-        "legacy cache lacks original content; rerun required",
-        previous_completed_at=str((previous or {}).get("completed_at") or ""),
-        previous_result_path=rel_path,
-        current_fingerprint=current_fingerprint,
-    )
-
-
 def _decision(
     entry_id: str,
     decision: str,
@@ -584,7 +567,7 @@ def evaluate_reuse(
     environment_decision = _non_reusable_environment_decision(entry_id, current_fingerprint)
     if environment_decision:
         return _reuse_evaluation(environment_decision)
-    if not bool(entry.get("reuse_allowed")):
+    if entry["reuse_policy"] == "none":
         return _reuse_evaluation(
             _decision(entry_id, "run", "reuse is disabled for this entry", current_fingerprint=current_content)
         )
@@ -604,10 +587,8 @@ def evaluate_reuse(
     result_rel = _success_rel_path(entry_id, cache_dir=resolved_cache_dir)
     previous, load_error = _load_json_object(_abs_from_rel(root, result_rel))
     if load_error == "missing":
-        legacy_decision = _legacy_cache_decision(root, entry_id, "success", resolved_cache_dir, current_content)
         return _reuse_evaluation(
-            legacy_decision
-            or _decision(entry_id, "run", "no previous success cache", current_fingerprint=current_content)
+            _decision(entry_id, "run", "no previous success cache", current_fingerprint=current_content)
         )
     if previous is None:
         return _reuse_evaluation(_decision(entry_id, "run", load_error, current_fingerprint=current_content))
@@ -823,7 +804,7 @@ def evaluate_failure_reuse(
     environment_decision = _non_reusable_environment_decision(entry_id, current_fingerprint)
     if environment_decision:
         return _failure_reuse_evaluation(environment_decision)
-    if not bool(entry.get("reuse_allowed")):
+    if entry["reuse_policy"] != "success_or_failure":
         return _failure_reuse_evaluation(
             _decision(entry_id, "run", "reuse is disabled for this entry", current_fingerprint=current_content)
         )
@@ -841,10 +822,8 @@ def evaluate_failure_reuse(
     result_rel = _failure_rel_path(entry_id, cache_dir=resolved_cache_dir)
     previous, load_error = _load_json_object(_abs_from_rel(root, result_rel))
     if load_error == "missing":
-        legacy_decision = _legacy_cache_decision(root, entry_id, "failure", resolved_cache_dir, current_content)
         return _failure_reuse_evaluation(
-            legacy_decision
-            or _decision(entry_id, "run", "no previous failure cache", current_fingerprint=current_content)
+            _decision(entry_id, "run", "no previous failure cache", current_fingerprint=current_content)
         )
     if previous is None:
         return _failure_reuse_evaluation(_decision(entry_id, "run", load_error, current_fingerprint=current_content))

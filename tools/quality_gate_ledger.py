@@ -115,15 +115,11 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
         - 测试债务历史登记：__TEST_DEBT_COUNT__，当前 active xfail：__ACTIVE_TEST_DEBT_COUNT__
         - 接受风险：__RISK_COUNT__
 
-        ## SP04 人工补充记录
+        ## 现行架构与门禁边界说明
 
-        - 已核实 `web/routes/domains/scheduler/scheduler_batches.py`、`web/routes/domains/scheduler/scheduler_analysis.py`、`web/routes/system_history.py` 当前已统一改为通过 `g.services` 取查询服务，不再保留 SP04 初期的直接装配形态。
-        - `web/routes/domains/scheduler/scheduler_excel_batches.py` 中两处 `get_batch_row_validate_and_normalize(...)` 已完成去 `g.db` 首参改造；对应 helper 特批白名单已清空，不再作为阶段性残余保留。
-        - `scheduler_batch_detail.py` 的 `OperatorMachineQueryService` 与 `scheduler_excel_batches.py` 的 `ExcelService` 在切容器后会从 `logger=None` 变为 `g.app_logger`；结合当前实现，这应仅增加可观测性，不得改变查询结果、分页、预览结果或导入结果。
-        - `RequestServices` 已明确采用 `functools.cached_property` 做惰性构造与单请求缓存；构造成功才缓存，构造异常不写缓存属性，后续访问允许重试。
-        - 每个目标文件内的所有路由函数必须在所属批次内一次切换完成，禁止同一文件同时存在容器取用与直接装配两套方式。
-        - `system_backup.py`、`system_plugins.py`、`system_logs.py`、`system_utils.py` 中的 `SystemConfigService` 直接装配不在 SP04 两批目标内，但阶段 5 必须列账（`system_ui_mode.py` 已随 2026-06 双轨退役删除）。
-        - `tests/web_pages/test_request_services_contract.py`（已随旧路由层与 RequestServices 于 2026-09-18 删除；原 `regression_request_services_lazy_construction.py` / `regression_request_services_failure_propagation.py` 已于 P5.1 合并入此契约文件）属于 SP04 本批新建回归，执行验证命令时需与已有守卫区分。
+        - 本台账仅管辖超长文件（`oversize_allowlist`）、高圈复杂度（`complexity_allowlist`）、静默回退（`silent_fallback`）、全量测试债务（`test_debt`）与已接受风险（`accepted_risks`）五类受控登记。
+        - 分层与代码边界棘轮（SQL 边界与仓储策略 `tools/scan_sql_boundary.py`、跨模块私有导入 `tools/scan_private_imports.py`、失效仓库路径字面量 `tools/scan_dead_path_literals.py`、反过度防御信号 `tools/scan_over_defense.py`、循环依赖 `tools/scan_import_cycles.py`、疑似死代码孤岛 `tools/scan_dead_code_islands.py`）各自维护在 `.codestable/checkup/*_baseline.json`，不并入本台账结构块。
+        - 经典多页 HTML 路由、`RequestServices` 容器与旧双轨入口已退役；当前生产入口统一为 `app.py`（`create_app()`）与 `web/routes/workbench/`。
         - 本节是人工治理说明，不改变当前静默回退门禁分类口径。
 
         ## 受控结构块

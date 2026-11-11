@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 QUALITY_GATE_STARTUP_REGRESSION_ARGS = (
-    'tests/app_runtime/test_app_new_ui_create_app_smoke.py',
     'tests/app_runtime/test_frontend_offline_static_assets.py',
     'tests/app_runtime/test_launcher_startup.py',
     'tests/app_runtime/test_portable_runtime_paths.py',
@@ -185,12 +184,27 @@ QUALITY_GATE_REQUIRED_TESTS = (
 _TEST_ENV_KEYS = ("APS_ENV", "APS_DB_PATH", "APS_LOG_DIR", "APS_BACKUP_DIR", "APS_EXCEL_TEMPLATE_DIR", "SECRET_KEY")
 
 
-def _group(group_id, label, targets, scopes, env_keys=()):
+ESBUILD_SCOPES = (
+    'scripts/workbench/esbuild-manifest.json',
+    'scripts/workbench/*.cjs',
+    'scripts/workbench/*.py',
+    'vendor/node_modules/esbuild/package.json',
+    'vendor/node_modules/esbuild/lib/main.js',
+    'vendor/node_modules/esbuild/bin/esbuild',
+    'vendor/node_modules/@esbuild/*/package.json',
+    'vendor/node_modules/@esbuild/*/bin/esbuild*',
+    'vendor/node_modules/@esbuild/*/esbuild.exe',
+)
+
+
+def _group(group_id, label, targets, scopes, env_keys=(), tool_file_scopes=(), dependency_file_scopes=()):
     return {
         "group_id": group_id,
         "label": label,
         "target_paths": targets,
         "input_file_scopes": (*targets, *scopes),
+        "tool_file_scopes": tuple(tool_file_scopes),
+        "dependency_file_scopes": tuple(dependency_file_scopes),
         "env_keys": (*_TEST_ENV_KEYS, *env_keys),
     }
 
@@ -210,9 +224,6 @@ REQUIRED_REGRESSION_GROUPS = (
             'core/algorithms/**/*.py',
             'core/shared/local_datetime.py',
             'core/services/scheduler/**/*.py',
-            'core/services/batch/**/*.py',
-            'web/routes/scheduler*.py',
-            'web/viewmodels/scheduler*.py',
         ),
     ),
     _group(
@@ -223,12 +234,13 @@ REQUIRED_REGRESSION_GROUPS = (
             'core/services/workbench/**/*.py',
             'core/shared/local_datetime.py',
             'web/routes/workbench/**/*.py',
-            'web/viewmodels/workbench/**/*.py',
             'frontend/workbench/**/*',
             'templates/workbench/**/*.html',
             'static/workbench/**/*',
         ),
         env_keys=('WORKBENCH_NODE', 'NODE_PATH', 'NODE_OPTIONS', 'node_executable_realpath', 'node_version'),
+        tool_file_scopes=ESBUILD_SCOPES,
+        dependency_file_scopes=ESBUILD_SCOPES,
     ),
     _group(
         'runtime', 'Application startup, runtime identity, system pages, and host hooks', _RUNTIME_TESTS,
@@ -237,29 +249,36 @@ REQUIRED_REGRESSION_GROUPS = (
             '.codex/hooks/**/*.py',
             '.codex/hooks.json',
             'tests/web_pages/**/*.py',
+            'app.py',
+            'core/plugins/**/*.py',
             'web/**/*.py',
             'plugins/**/*.py',
             'desktop/**/*.py',
             'assets/**/*',
             'installer/**/*',
+            'packaging/win7/**/*',
             'build_win7*.bat',
             'templates/**/*.html',
             'static/**/*',
         ),
         env_keys=('APS_HOST', 'APS_PORT', 'APS_SHARED_DATA_ROOT', 'APS_STATIC_VERSION', 'WERKZEUG_RUN_MAIN', 'APS_TEST_POWERSHELL', 'PATH', 'powershell_executable_realpath', 'powershell_version'),
+        tool_file_scopes=('tools/resolve_iscc.ps1',),
+        dependency_file_scopes=('vendor/wheels/*.whl',),
     ),
     _group(
         'data_io', 'Configuration and atomic Excel imports', _DATA_IO_TESTS,
         (
             'tests/config/**/*.py',
             'tests/excel_data_io/**/*.py',
-            'config.py',
-            'core/services/config/**/*.py',
-            'core/services/excel/**/*.py',
-            'core/services/imports/**/*.py',
+            'core/models/schedule_config_runtime_*.py',
+            'core/services/scheduler/config/**/*.py',
+            'core/services/process/**/*.py',
+            'core/services/personnel/**/*.py',
+            'web/bootstrap/schedule_config.py',
             'data/**/*.py',
             'web/routes/**/*.py',
         ),
+        tool_file_scopes=('tools/wufenchang_demo/**/*.py',),
     ),
     _group(
         'domain', 'Models, migration, and execution transactions', _DOMAIN_TESTS,
@@ -268,19 +287,24 @@ REQUIRED_REGRESSION_GROUPS = (
             'tests/migration_db/**/*.py',
             'tests/models_domain/**/*.py',
             'tests/operation_execution/**/*.py',
+            'schema.sql',
+            'core/__init__.py',
+            'core/errors.py',
+            'core/shared/**/*.py',
             'core/services/**/*.py',
             'core/models/**/*.py',
             'core/infrastructure/**/*.py',
             'data/**/*.py',
             'web/routes/**/*.py',
         ),
+        tool_file_scopes=('tools/generate_schema_sql.py',),
     ),
     _group(
         'calendar', 'Calendar, freeze windows, and exit backup', _CALENDAR_TESTS,
         (
             'tests/calendar_maintenance/**/*.py',
             'core/services/scheduler/calendar/**/*.py',
-            'core/services/maintenance/**/*.py',
+            'core/services/system/maintenance/**/*.py',
             'core/services/common/**/*.py',
             'core/infrastructure/**/*.py',
             'data/**/*.py',
@@ -290,8 +314,8 @@ REQUIRED_REGRESSION_GROUPS = (
 
 REQUIRED_REGRESSION_COMMON_SCOPES = {
     "input_file_scopes": (
-        "tests/conftest.py", "conftest.py", "tests/_support/**/*.py",
-        "schema.sql", "app.py", "app_new_ui.py", "core/errors.py",
+        "tests/conftest.py", "tests/_support/**/*.py",
+        "schema.sql", "app.py", "core/__init__.py", "core/errors.py",
         "core/infrastructure/**/*.py", "core/services/common/**/*.py", "core/shared/**/*.py",
         "web/bootstrap/**/*.py",
     ),
@@ -300,7 +324,7 @@ REQUIRED_REGRESSION_COMMON_SCOPES = {
         "pyrightconfig*.json", ".pre-commit-config.yaml", ".github/workflows/*.yml",
     ),
     "tool_file_scopes": ("tools/**/*.py", "scripts/**/*.py", ".codestable/tools/**/*.py"),
-    "dependency_file_scopes": ("requirements*.txt", "poetry.lock", "uv.lock", "Pipfile.lock"),
+    "dependency_file_scopes": ("requirements*.txt", "poetry.lock", "uv.lock", "Pipfile.lock", "vendor/wheels/*.whl"),
     "env_keys": (
         "python_executable_realpath", "python_version", "pytest_version",
         "pytest_plugin_distribution_versions", "platform", "git_executable_realpath", "git_version",

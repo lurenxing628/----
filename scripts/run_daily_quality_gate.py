@@ -22,6 +22,11 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools.long_gate_schema import decode_nul_paths  # noqa: E402
+from tools.quality_gate_shared import (  # noqa: E402
+    ENTRY_IMPORT_CYCLES_PRODUCTION,
+    ENTRY_IMPORT_CYCLES_WITH_TESTS,
+    build_quality_gate_check_specs,
+)
 from tools.test_registry import (  # noqa: E402
     iter_required_regression_common_scope_policy,
     iter_required_regression_groups,
@@ -30,7 +35,7 @@ from tools.test_registry import (  # noqa: E402
 # Every daily run includes these two real application contracts. If an impact
 # target already includes their files, that execution also supplies the smoke proof.
 FOCUSED_PYTEST_NODEIDS: Tuple[str, ...] = (
-    "tests/app_runtime/test_app_new_ui_create_app_smoke.py::test_app_new_ui_create_app_smoke",
+    "tests/app_runtime/test_launcher_startup.py::test_app_create_app_smoke",
     "tests/app_runtime/test_frontend_offline_static_assets.py::test_frontend_static_assets_are_offline_local",
 )
 
@@ -76,13 +81,17 @@ BOUNDARY_SCANNERS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("private imports check", ("tools.scan_private_imports",)),
     ("dead path literals check", ("tools.scan_dead_path_literals",)),
 )
-IMPORT_CYCLE_SCANNERS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
-    ("import cycles check", ("tools.scan_import_cycles", "--fail-on-new-cycle", "--quiet-when-clean")),
-    (
-        "import cycles with tests check",
-        ("tools.scan_import_cycles", "--include-tests", "--fail-on-new-cycle", "--quiet-when-clean"),
-    ),
-)
+
+
+def _build_import_cycle_scanners() -> Tuple[Tuple[str, Tuple[str, ...]], ...]:
+    specs_by_id = {spec.check_id: spec for spec in build_quality_gate_check_specs()}
+    return (
+        ("import cycles check", specs_by_id[ENTRY_IMPORT_CYCLES_PRODUCTION].args[2:]),
+        ("import cycles with tests check", specs_by_id[ENTRY_IMPORT_CYCLES_WITH_TESTS].args[2:]),
+    )
+
+
+IMPORT_CYCLE_SCANNERS: Tuple[Tuple[str, Tuple[str, ...]], ...] = _build_import_cycle_scanners()
 BOUNDARY_BASELINE_TO_SCANNER: Dict[str, str] = {
     ".codestable/checkup/sql_boundary_baseline.json": "sql boundary check",
     ".codestable/checkup/data_policy_baseline.json": "sql boundary check",

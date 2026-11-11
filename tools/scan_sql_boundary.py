@@ -107,10 +107,10 @@ def _call_name(node: ast.Call) -> Optional[str]:
     return None
 
 
-def scan_sql_boundary_file(rel_path: str, source: str) -> List[Dict[str, object]]:
+def scan_sql_boundary_file(rel_path: str, source: str) -> List[Dict[str, Any]]:
     """返回该文件的命中列表：{kind, line}。解析失败直接抛错，门禁 fail closed。"""
     tree = ast.parse(source, filename=rel_path)
-    hits: List[Dict[str, object]] = []
+    hits: List[Dict[str, Any]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             name = _call_name(node)
@@ -150,7 +150,7 @@ def _identifier_param_hits(func: ast.AST, params: Set[str]) -> List[int]:
             if id(node) in nested:
                 continue
             leaves: List[ast.AST] = []
-            stack = [node]
+            stack: List[ast.AST] = [node]
             while stack:
                 current = stack.pop()
                 if isinstance(current, ast.BinOp):
@@ -181,9 +181,9 @@ def _identifier_param_hits(func: ast.AST, params: Set[str]) -> List[int]:
     return lines
 
 
-def scan_data_policy_file(rel_path: str, source: str) -> List[Dict[str, object]]:
+def scan_data_policy_file(rel_path: str, source: str) -> List[Dict[str, Any]]:
     tree = ast.parse(source, filename=rel_path)
-    hits: List[Dict[str, object]] = []
+    hits: List[Dict[str, Any]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             for alias in node.names:
@@ -221,7 +221,7 @@ def scan(rule: str, repo_root: str = REPO_ROOT) -> Dict[str, Any]:
         roots = DATA_POLICY_ROOTS
     else:
         raise ValueError(f"未知规则：{rule}")
-    entries: List[Dict[str, object]] = []
+    entries: List[Dict[str, Any]] = []
     for rel_path in files:
         hits = scanner(rel_path, _read(repo_root, rel_path))
         by_kind: Dict[str, List[int]] = {}

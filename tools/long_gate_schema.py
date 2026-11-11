@@ -4,6 +4,7 @@ import base64
 import json
 import math
 import os
+import subprocess
 from typing import Any, Dict, List, Mapping, Sequence
 
 from tools.long_gate_paths import LONG_GATE_CACHE_DIR_REL, real_repo_root
@@ -20,7 +21,6 @@ LONG_GATE_TOOLING_VERSION_PATHS = (
     "tools/long_gate_collect.py",
     "tools/long_gate_fingerprint.py",
     "tools/long_gate_manifest.py",
-    "tools/long_gate_manifest_environment.py",
     "tools/long_gate_paths.py",
     "tools/long_gate_schema.py",
     "tools/long_gate_summary.py",
@@ -67,6 +67,24 @@ PUBLIC_ENVIRONMENT_KEYS = frozenset(
     }
 )
 PRIVATE_ENVIRONMENT_KEYS = frozenset({"SECRET_KEY"})
+RUNTIME_FINGERPRINT_KEYS = frozenset(
+    {
+        "python_executable_realpath",
+        "python_version",
+        "pytest_version",
+        "pytest_plugin_distribution_versions",
+        "ruff_version",
+        "pyright_version",
+        "platform",
+        "node_executable_realpath",
+        "powershell_executable_realpath",
+        "powershell_version",
+        "git_executable_realpath",
+        "git_version",
+        "node_version",
+        "architecture_scan_cache_metadata",
+    }
+)
 SENSITIVE_SOURCE_BASENAMES = frozenset({"aps_secret_key.txt", "aps_runtime.json"})
 
 
@@ -205,15 +223,42 @@ def version_info_for_paths(repo_root: str, rel_paths: Sequence[str]) -> Dict[str
     return {"rows": rows, "untrusted_paths": untrusted}
 
 
-def long_gate_repo_identity(repo_root: str) -> Dict[str, str]:
-    from tools.quality_gate_shared import repo_identity
+def _git_rev_parse_path(repo_root: str, *args: str) -> str:
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", *args],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(f"git rev-parse {' '.join(args)} failed in {repo_root}: {exc}") from exc
+    raw_value = str(proc.stdout or "").strip()
+    if int(proc.returncode) == 0 and raw_value:
+        path_text = raw_value
+        if not os.path.isabs(path_text):
+            path_text = os.path.join(repo_root, path_text)
+        return os.path.realpath(path_text)
+    detail = str(proc.stderr or proc.stdout or "").strip() or "git rev-parse failed"
+    raise RuntimeError(f"git rev-parse {' '.join(args)} failed in {repo_root}: {detail}")
 
+
+def repo_identity(repo_root: str) -> Dict[str, str]:
+    root = real_repo_root(repo_root)
+    return {
+        "checkout_root_realpath": _git_rev_parse_path(root, "--show-toplevel"),
+        "git_common_dir_realpath": _git_rev_parse_path(root, "--git-common-dir"),
+    }
+
+
+def long_gate_repo_identity(repo_root: str) -> Dict[str, str]:
     identity = repo_identity(repo_root)
     return {
-        "repo_root_realpath": os.path.realpath(str(identity.get("checkout_root_realpath") or repo_root)),
-        "git_common_dir_realpath": os.path.realpath(
-            str(identity.get("git_common_dir_realpath") or os.path.join(repo_root, ".git"))
-        ),
+        "repo_root_realpath": identity["checkout_root_realpath"],
+        "git_common_dir_realpath": identity["git_common_dir_realpath"],
     }
 
 

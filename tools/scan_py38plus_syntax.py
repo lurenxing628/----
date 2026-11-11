@@ -54,13 +54,16 @@ NEW_SYNTAX_REFERENCE = (
 )
 
 SKIP_DIR_NAMES = {
+    ".codestable",
     ".git",
     ".hg",
+    ".limcode",
     ".mypy_cache",
     ".pytest_cache",
     ".ruff_cache",
     ".tox",
     ".venv",
+    ".venv-semantic",
     "__pycache__",
     "backups",
     "build",
@@ -70,6 +73,23 @@ SKIP_DIR_NAMES = {
     "node_modules",
     "venv",
 }
+
+DEFAULT_SCAN_PATHS: Tuple[str, ...] = (
+    "app.py",
+    "config.py",
+    "conftest.py",
+    "check_manual_layout.py",
+    "validate_dist_exe.py",
+    "verify_manual_styles.py",
+    "core",
+    "data",
+    "web",
+    "plugins",
+    "desktop",
+    "scripts",
+    "tools",
+    "tests",
+)
 
 # PEP 585 generic aliases that are easy to confuse with ordinary Python 3.8
 # syntax because expressions such as list[str] parse on 3.8 but are not
@@ -169,14 +189,15 @@ def _is_inside_root(abs_path: str, root: str) -> bool:
 
 
 def _should_skip_rel_path(rel_path: str) -> bool:
-    parts = [part for part in normalize_repo_path(rel_path).split("/") if part]
-    return any(part in SKIP_DIR_NAMES for part in parts)
+    normalized = normalize_repo_path(rel_path)
+    parts = [part for part in normalized.split("/") if part]
+    return any(part in SKIP_DIR_NAMES or part.startswith(".venv") for part in parts)
 
 
-def collect_python_files(root: str, paths: Sequence[str]) -> Tuple[str, ...]:
+def collect_python_files(root: str, paths: Sequence[str] = DEFAULT_SCAN_PATHS) -> Tuple[str, ...]:
     root_abs = os.path.abspath(root)
     collected: Set[str] = set()
-    requested = list(paths or ["."])
+    requested = list(paths or DEFAULT_SCAN_PATHS)
     for raw_path in requested:
         abs_path = os.path.abspath(os.path.join(root_abs, str(raw_path)))
         if not _is_inside_root(abs_path, root_abs):
@@ -651,7 +672,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="扫描仓库 Python 文件中 Python 3.8.10 不兼容的新语法和常见注解兼容风险。"
     )
-    parser.add_argument("paths", nargs="*", default=["."], help="要扫描的文件或目录，默认扫描仓库根目录。")
+    parser.add_argument(
+        "paths",
+        nargs="*",
+        default=list(DEFAULT_SCAN_PATHS),
+        help="要扫描的文件或目录，默认扫描全部产品与工具 Python 路径。",
+    )
     parser.add_argument("--root", default=REPO_ROOT, help="仓库根目录，默认自动取 tools/..。")
     parser.add_argument(
         "--syntax-only",

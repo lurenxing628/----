@@ -479,6 +479,37 @@ def _daily_pytest_environment(env: Optional[Mapping[str, str]] = None) -> Dict[s
     return values
 
 
+def _esbuild_vendor_cache_identity(environment: Mapping[str, str]) -> Dict[str, Any]:
+    manifest_path = REPO_ROOT / "scripts/workbench/esbuild-manifest.json"
+    if not manifest_path.is_file():
+        return {"required": False}
+    from scripts.workbench.vendor_react import verify_esbuild_vendor
+
+    node_bin, _ = _resolve_node_executable(environment)
+    try:
+        verified = verify_esbuild_vendor(REPO_ROOT, manifest_path=manifest_path, node_executable=node_bin)
+        files: Dict[str, List[int]] = {}
+        for rel_path in (
+            "scripts/workbench/esbuild-manifest.json",
+            verified["package_json"],
+            "vendor/node_modules/esbuild/lib/main.js",
+            "vendor/node_modules/esbuild/bin/esbuild",
+            verified["platform_package_json"],
+            verified["binary"],
+        ):
+            st = (REPO_ROOT / rel_path).stat()
+            files[rel_path] = [int(st.st_size), int(st.st_mtime_ns)]
+    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+        return {"required": True, "verified": False, "error": str(exc)}
+    return {
+        "required": True,
+        "verified": True,
+        "platform": verified["platform"],
+        "version": verified["version"],
+        "files": files,
+    }
+
+
 def daily_gate_cache_key(
     executable: str,
     *,
@@ -504,6 +535,7 @@ def daily_gate_cache_key(
             "ref_contexts": contexts,
             "pytest_env": _daily_pytest_environment(env),
             "pytest_plugins": _pytest_plugin_versions(executable, env),
+            "esbuild_vendor": _esbuild_vendor_cache_identity(env),
             **scope_extra,
         },
     )

@@ -129,11 +129,6 @@
       "count": 1
     },
     {
-      "path": "core/services/workbench/run/compute_graph.py",
-      "kind": "private_symbol",
-      "count": 1
-    },
-    {
       "path": "core/services/workbench/run/input_execution.py",
       "kind": "private_symbol",
       "count": 1
@@ -142,21 +137,6 @@
       "path": "core/services/workbench/run/input_runtime.py",
       "kind": "private_symbol",
       "count": 1
-    },
-    {
-      "path": "core/services/workbench/run/piece_adoption.py",
-      "kind": "private_symbol",
-      "count": 1
-    },
-    {
-      "path": "core/services/workbench/trial/adoption_input.py",
-      "kind": "private_symbol",
-      "count": 1
-    },
-    {
-      "path": "core/services/workbench/trial/adoption_validation.py",
-      "kind": "private_symbol",
-      "count": 2
     },
     {
       "path": "web/bootstrap/launcher_runtime_lock.py",

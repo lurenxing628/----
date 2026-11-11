@@ -37,7 +37,7 @@ from tools.boundary_baseline import run_ratchet_cli
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 RULE = "over_defense"
-PROD_ROOTS = ("core", "data", "web", "plugins", "desktop", "app.py", "app_new_ui.py")
+PROD_ROOTS = ("core", "data", "web", "plugins", "desktop", "app.py")
 TEST_ROOTS = ("tests",)
 TOOL_ROOTS = ("tools", "scripts")
 FRONTEND_ROOT = "frontend/workbench/app"

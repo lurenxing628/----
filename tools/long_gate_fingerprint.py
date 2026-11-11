@@ -17,6 +17,7 @@ from tools.long_gate_schema import (
     LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
     PRIVATE_ENVIRONMENT_KEYS,
     PUBLIC_ENVIRONMENT_KEYS,
+    RUNTIME_FINGERPRINT_KEYS,
     SensitiveSourceError,
     content_equal,
     decode_nul_paths,
@@ -25,6 +26,7 @@ from tools.long_gate_schema import (
 )
 from tools.quality_gate_shared import (
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
+    QualityGateError,
     normalize_quality_gate_command,
 )
 
@@ -32,24 +34,6 @@ _EXPECTED_COLLECT_NODEIDS_SCHEMA_VERSION = 2
 _CURRENT_FULL_TEST_DEBT_REL = QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/")
 _RUNTIME_FINGERPRINT_CACHE: Dict[Tuple[str, str, Tuple[Tuple[str, str], ...]], Any] = {}
 ENVIRONMENT_FINGERPRINT_SCHEMA_VERSION = 2
-RUNTIME_FINGERPRINT_KEYS = frozenset(
-    {
-        "python_executable_realpath",
-        "python_version",
-        "pytest_version",
-        "pytest_plugin_distribution_versions",
-        "ruff_version",
-        "pyright_version",
-        "platform",
-        "node_executable_realpath",
-        "powershell_executable_realpath",
-        "powershell_version",
-        "git_executable_realpath",
-        "git_version",
-        "node_version",
-        "architecture_scan_cache_metadata",
-    }
-)
 
 
 class LongGateFingerprintError(RuntimeError):
@@ -275,7 +259,7 @@ def fingerprint_files(
         raise ValueError("file snapshot belongs to a different fingerprint phase")
     tracked, untracked, git_source_status = snapshot.path_sources()
     rel_paths: Set[str] = set()
-    for scope in list(paths_or_patterns or []):
+    for scope in paths_or_patterns:
         rel_paths.update(snapshot.scope_paths(str(scope)))
 
     files = [snapshot.file_row(path) for path in sorted(rel_paths)]
@@ -580,7 +564,7 @@ def fingerprint_environment(
     )
     if unsupported:
         raise LongGateFingerprintError("environment keys require a public allowlist entry: " + ", ".join(unsupported))
-    key_list = [str(key) for key in list(keys or [])]
+    key_list = list(keys)
     node_resolution = (
         _resolve_node_executable(environment)
         if ("node_executable_realpath" in key_list or "node_version" in key_list)
@@ -610,19 +594,19 @@ def fingerprint_environment(
 def _entry_file_scopes(entry: Mapping[str, Any]) -> List[str]:
     scopes: List[str] = []
     for key in ("input_file_scopes", "config_file_scopes", "tool_file_scopes", "dependency_file_scopes"):
-        scopes.extend(str(item) for item in list(entry.get(key) or []))
+        scopes.extend(entry[key])
     return list(dict.fromkeys(scopes))
 
 
 def _entry_file_scopes_for_fingerprint(entry: Mapping[str, Any]) -> List[str]:
     scopes = _entry_file_scopes(entry)
-    if str(entry.get("entry_id") or "") == "required_regressions":
+    if entry["proof_kind"] == "required_regressions":
         return [scope for scope in scopes if scope.replace("\\", "/") != _CURRENT_FULL_TEST_DEBT_REL]
     return scopes
 
 
 def _entry_output_result_files(entry: Mapping[str, Any]) -> List[str]:
-    return list(dict.fromkeys(str(item).replace("\\", "/") for item in list(entry.get("output_result_files") or [])))
+    return list(dict.fromkeys(item.replace("\\", "/") for item in entry["output_result_files"]))
 
 
 def _collect_nodeids_component(repo_root: str) -> Dict[str, Any]:
@@ -712,15 +696,18 @@ def _required_full_test_debt_component(repo_root: str) -> Dict[str, Any]:
     }
     if not component["exists"]:
         return component
+    from tools.verify_required_regressions_from_full_test_debt import (
+        RequiredRegressionProofError,
+        verify_required_regressions_from_payload,
+    )
+
     try:
         with open(abs_path, encoding="utf-8") as handle:
             payload = json.load(handle)
         if not isinstance(payload, dict):
             raise ValueError("current_full_test_debt payload is not an object")
-        from tools.verify_required_regressions_from_full_test_debt import verify_required_regressions_from_payload
-
         verification = verify_required_regressions_from_payload(payload)
-    except Exception as exc:
+    except (OSError, ValueError, RequiredRegressionProofError, QualityGateError) as exc:
         component["error"] = str(exc)
         return component
     component.update({"validated": True, "verification": verification})
@@ -734,11 +721,11 @@ def fingerprint_entry(
     strict: bool = False,
     file_snapshot: Optional[FingerprintFileSnapshot] = None,
 ) -> Dict[str, Any]:
-    command_payload = normalize_quality_gate_command(entry)
+    command_payload = normalize_quality_gate_command(entry["command"])
     env_overlay = command_payload["env_overlay"]
     effective_environment = {str(key): str(value) for key, value in os.environ.items()}
     effective_environment.update(env_overlay)
-    env_keys = [str(key) for key in list(entry.get("env_keys") or [])]
+    env_keys = list(entry["env_keys"])
     components = {
         "command": command_payload,
         "files": fingerprint_files(
@@ -754,9 +741,10 @@ def fingerprint_entry(
             "paths": _entry_output_result_files(entry),
         },
     }
-    if str(entry.get("entry_id") or "") == "full_test_debt":
+    proof_kind = entry["proof_kind"]
+    if proof_kind == "full_test_debt":
         components["collect_nodeids"] = _collect_nodeids_component(repo_root)
-    if str(entry.get("entry_id") or "") == "required_regressions":
+    if proof_kind == "required_regressions":
         components["required_full_test_debt"] = _required_full_test_debt_component(repo_root)
     payload = {
         "schema_version": LONG_GATE_FINGERPRINT_SCHEMA_VERSION,

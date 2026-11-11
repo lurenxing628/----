@@ -1,22 +1,18 @@
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import glob
 import json
 import os
-import subprocess
 import sys
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools import quality_gate_shared
-from tools.long_gate_collect import COLLECT_NODEIDS_REL
-from tools.long_gate_manifest_environment import full_debt_environment_keys, registry_test_environment_keys
 from tools.long_gate_schema import (
     LONG_GATE_CACHE_SCHEMA_VERSION,
     LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
@@ -24,796 +20,63 @@ from tools.long_gate_schema import (
     LONG_GATE_RUNNER_VERSION_PATHS,
     LONG_GATE_TOOLING_VERSION_PATHS,
 )
-from tools.test_registry import (
-    iter_required_regression_common_scope_policy,
-    iter_required_regression_groups,
-)
+from tools.quality_gate_shared import GateCheckSpec
+from tools.test_registry import scope_matches_path as _scope_matches_path
 
 LONG_GATE_SCHEMA_VERSION = LONG_GATE_MANIFEST_SCHEMA_VERSION
-
-ENTRY_PYTEST_COLLECT_ALL = "pytest_collect_all"
-ENTRY_FULL_TEST_DEBT = "full_test_debt"
-ENTRY_RUFF_CHECK_FULL = "ruff_check_full"
-ENTRY_PYRIGHT_GATE_FULL = "pyright_gate_full"
-ENTRY_PYRIGHT_TOOLS_FULL = "pyright_tools_full"
-ENTRY_REQUIRED_REGRESSIONS = "required_regressions"
-ENTRY_DEBT_LEDGER_SYNC = "debt_ledger_sync"
-ENTRY_QUICKREF_VS_ROUTES = "quickref_vs_routes"
-ENTRY_IMPORT_CYCLES_PRODUCTION = "import_cycles_production"
-ENTRY_IMPORT_CYCLES_WITH_TESTS = "import_cycles_with_tests"
-ENTRY_VERSION_OR_ENV_PROBE = "version_or_env_probe"
-ENTRY_UNKNOWN = "unknown"
-
-_VERSION_PROBE_ENTRY_IDS = {
-    "python -m ruff --version": "ruff_version_probe",
-    "python -m pyright --version": "pyright_version_probe",
-    'python -c "import radon"': "radon_import_probe",
-}
-
-_CACHE_ENABLED_ENTRY_TYPES = {
-    ENTRY_PYTEST_COLLECT_ALL,
-    ENTRY_FULL_TEST_DEBT,
-    ENTRY_RUFF_CHECK_FULL,
-    ENTRY_PYRIGHT_GATE_FULL,
-    ENTRY_PYRIGHT_TOOLS_FULL,
-    ENTRY_REQUIRED_REGRESSIONS,
-    ENTRY_DEBT_LEDGER_SYNC,
-    ENTRY_QUICKREF_VS_ROUTES,
-    ENTRY_IMPORT_CYCLES_PRODUCTION,
-    ENTRY_IMPORT_CYCLES_WITH_TESTS,
-}
-
-
-def _normalize_args(args: Iterable[Any]) -> List[str]:
-    return [str(arg) for arg in list(args or [])]
-
 
 _normalize_command = quality_gate_shared.normalize_quality_gate_command
 
 
-def _pytest_q_targets(args: Sequence[str]) -> Optional[List[str]]:
-    normalized = _normalize_args(args)
-    if len(normalized) < 4:
-        return None
-    if normalized[:4] != ["python", "-m", "pytest", "-q"]:
-        return None
-    return list(normalized[4:])
-
-
-def _list_equal(left: Sequence[str], right: Sequence[str]) -> bool:
-    return [str(item) for item in left] == [str(item) for item in right]
-
-
 def _dedupe(items: Sequence[str]) -> List[str]:
-    return list(dict.fromkeys(str(item) for item in list(items or []) if str(item)))
+    return list(dict.fromkeys(items))
 
 
-def classify_quality_gate_command(command: Mapping[str, Any]) -> str:
-    normalized = _normalize_command(command)
-    display = normalized["display"]
-    args = normalized["args"]
-
-    if display == "python -m pytest --collect-only -q tests":
-        return ENTRY_PYTEST_COLLECT_ALL
-    if _list_equal(args[:2], ["python", "tools/check_full_test_debt.py"]):
-        return ENTRY_FULL_TEST_DEBT
-    if _list_equal(args[:2], ["python", "tools/verify_required_regressions_from_full_test_debt.py"]):
-        return ENTRY_REQUIRED_REGRESSIONS
-    if display in _VERSION_PROBE_ENTRY_IDS:
-        return ENTRY_VERSION_OR_ENV_PROBE
-    if display == quality_gate_shared.IMPORT_CYCLE_PRODUCTION_DISPLAY:
-        return ENTRY_IMPORT_CYCLES_PRODUCTION
-    if display == quality_gate_shared.IMPORT_CYCLE_WITH_TESTS_DISPLAY:
-        return ENTRY_IMPORT_CYCLES_WITH_TESTS
-    if display == "python -m ruff check":
-        return ENTRY_RUFF_CHECK_FULL
-    if _list_equal(args[:5], ["python", "-m", "pyright", "-p", quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_CONFIG]):
-        return ENTRY_PYRIGHT_GATE_FULL
-    if _list_equal(args[:5], ["python", "-m", "pyright", "-p", quality_gate_shared.QUALITY_GATE_PYRIGHT_TOOLS_CONFIG]):
-        return ENTRY_PYRIGHT_TOOLS_FULL
-    if _list_equal(args[:3], ["python", "-m", "pyright"]) and any(
-        path in args for path in quality_gate_shared.QUALITY_GATE_TOOL_PATHS
-    ):
-        return ENTRY_PYRIGHT_TOOLS_FULL
-    if display == "python scripts/sync_debt_ledger.py check":
-        return ENTRY_DEBT_LEDGER_SYNC
-    if display == "python tests/gate_meta/check_quickref_vs_routes.py":
-        return ENTRY_QUICKREF_VS_ROUTES
-
-    pytest_targets = _pytest_q_targets(args)
-    if pytest_targets is not None:
-        if _list_equal(pytest_targets, quality_gate_shared.iter_quality_gate_required_tests()):
-            return ENTRY_REQUIRED_REGRESSIONS
-
-    return ENTRY_UNKNOWN
-
-
-def _entry_id_for_command(entry_type: str, command: Mapping[str, Any], index: int) -> str:
-    display = str(command.get("display") or "").strip()
-    if entry_type == ENTRY_VERSION_OR_ENV_PROBE:
-        return _VERSION_PROBE_ENTRY_IDS.get(display, f"version_or_env_probe_{int(index):02d}")
-    if entry_type == ENTRY_UNKNOWN:
-        return f"unknown_{int(index):02d}"
-    return entry_type
-
-
-_DEFAULT_PYRIGHT_GATE_INCLUDES = ("app.py", "app_new_ui.py", "core", "data", "web")
-
-
-def _load_pyright_config(repo_root: Optional[str], config_path: str) -> Dict[str, Any]:
-    root = os.path.abspath(repo_root or quality_gate_shared.REPO_ROOT)
-    abs_path = os.path.join(root, str(config_path).replace("\\", "/").replace("/", os.sep))
-    try:
-        with open(abs_path, encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        return {}
-    if isinstance(payload, dict):
-        return dict(payload)
-    return {}
-
-
-def _string_list(value: Any) -> List[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item).replace("\\", "/").strip() for item in value if str(item).strip()]
-
-
-def _pyright_path_scopes(path: str) -> List[str]:
-    normalized = str(path or "").replace("\\", "/").strip().strip("/")
-    if not normalized:
-        return []
-    if any(char in normalized for char in "*?["):
-        return [normalized]
-    if normalized in {".", "./"}:
-        return []
-    if normalized.endswith(".py"):
-        return [normalized, normalized[:-3] + ".pyi"]
-    if normalized.endswith(".pyi"):
-        return [normalized]
-    return [f"{normalized}/**/*.py", f"{normalized}/**/*.pyi", f"{normalized}/**/py.typed"]
-
-
-def _pyright_extra_path_scopes(config: Mapping[str, Any]) -> List[str]:
-    extras: List[str] = []
-    extras.extend(_string_list(config.get("extraPaths")))
-    for environment in list(config.get("executionEnvironments") or []):
-        if isinstance(environment, dict):
-            extras.extend(_string_list(environment.get("extraPaths")))
-    scopes: List[str] = []
-    for extra in extras:
-        normalized = str(extra).replace("\\", "/").strip().strip("/")
-        if not normalized or normalized in {".", "./"}:
-            continue
-        if normalized.startswith(".venv") or "/site-packages" in normalized:
-            continue
-        scopes.extend(_pyright_path_scopes(normalized))
-    return scopes
-
-
-def _pyright_gate_input_scopes(repo_root: Optional[str]) -> List[str]:
-    config = _load_pyright_config(repo_root, quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_CONFIG)
-    includes = _string_list(config.get("include")) or list(_DEFAULT_PYRIGHT_GATE_INCLUDES)
-    scopes: List[str] = []
-    for include in includes:
-        scopes.extend(_pyright_path_scopes(include))
-    stub_path = str(config.get("stubPath") or "typings").replace("\\", "/").strip().strip("/")
-    if stub_path:
-        scopes.append(f"{stub_path}/**/*.pyi")
-    scopes.append("py.typed")
-    scopes.extend(_pyright_extra_path_scopes(config))
-    return _dedupe(scopes)
-
-
-def _scopes_for_entry(
-    entry_type: str,
-    command: Optional[Mapping[str, Any]] = None,
-    repo_root: Optional[str] = None,
-) -> Tuple[List[str], List[str], List[str], List[str], List[str], List[str]]:
-    input_scopes: List[str] = []
-    config_scopes: List[str] = []
-    tool_scopes: List[str] = []
-    dependency_scopes: List[str] = []
-    env_keys: List[str] = []
-    output_files: List[str] = []
-
-    if entry_type in {ENTRY_IMPORT_CYCLES_PRODUCTION, ENTRY_IMPORT_CYCLES_WITH_TESTS}:
-        input_scopes.extend(
-            [
-                "*.py",
-                "core/**/*.py",
-                "data/**/*.py",
-                "desktop/**/*.py",
-                "plugins/**/*.py",
-                "scripts/**/*.py",
-                "tools/**/*.py",
-                "web/**/*.py",
-            ]
-        )
-        if entry_type == ENTRY_IMPORT_CYCLES_WITH_TESTS:
-            input_scopes.append("tests/**/*.py")
-            baseline_path = ".codestable/checkup/import_cycles_with_tests_baseline.json"
-        else:
-            baseline_path = ".codestable/checkup/import_cycles_production_baseline.json"
-        input_scopes.append(baseline_path)
-        config_scopes.append(baseline_path)
-        tool_scopes.extend(
-            [
-                "tools/import_cycle_analysis.py",
-                "tools/import_cycle_baseline.py",
-                "tools/import_cycle_graph.py",
-                "tools/scan_import_cycles.py",
-            ]
-        )
-        env_keys.extend(
-            [
-                "python_executable_realpath",
-                "python_version",
-                "platform",
-                "PYTHONPATH",
-                "PYTHONUTF8",
-                "PYTHONIOENCODING",
-            ]
-        )
-    elif entry_type == ENTRY_RUFF_CHECK_FULL:
-        input_scopes.extend(
-            [
-                "*.py",
-                "audit/**/*.py",
-                ".codestable/tools/**/*.py",
-                "core/**/*.py",
-                "data/**/*.py",
-                "desktop/**/*.py",
-                "plugins/**/*.py",
-                "scripts/**/*.py",
-                "tests/**/*.py",
-                "tools/**/*.py",
-                "web/**/*.py",
-            ]
-        )
-        config_scopes.extend(
-            [
-                "pyproject.toml",
-                "ruff.toml",
-                ".ruff.toml",
-                "setup.cfg",
-                ".pre-commit-config.yaml",
-                ".gitignore",
-            ]
-        )
-        dependency_scopes.extend(
-            [
-                "requirements*.txt",
-                "requirements-dev*.txt",
-                "poetry.lock",
-                "uv.lock",
-                "Pipfile.lock",
-            ]
-        )
-        env_keys.extend(
-            [
-                "python_executable_realpath",
-                "python_version",
-                "ruff_version",
-                "platform",
-                "PYTHONPATH",
-                "PYTHONUTF8",
-                "PYTHONIOENCODING",
-            ]
-        )
-        output_files.append(quality_gate_shared.QUALITY_GATE_RUFF_CHECK_FULL_REL.replace("\\", "/"))
-    elif entry_type == ENTRY_PYRIGHT_GATE_FULL:
-        input_scopes.extend(_pyright_gate_input_scopes(repo_root))
-        config_scopes.extend(
-            [
-                quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_CONFIG,
-                "pyrightconfig.json",
-                "pyproject.toml",
-                "setup.cfg",
-            ]
-        )
-        dependency_scopes.extend(
-            [
-                "requirements*.txt",
-                "requirements-dev*.txt",
-                "poetry.lock",
-                "uv.lock",
-                "Pipfile.lock",
-            ]
-        )
-        env_keys.extend(
-            [
-                "python_executable_realpath",
-                "python_version",
-                "pyright_version",
-                "platform",
-                "PYTHONPATH",
-                "PYTHONUTF8",
-                "PYTHONIOENCODING",
-            ]
-        )
-        output_files.append(quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_FULL_REL.replace("\\", "/"))
-    elif entry_type == ENTRY_PYRIGHT_TOOLS_FULL:
-        input_scopes = list(quality_gate_shared.QUALITY_GATE_TOOL_PATHS)
-        input_scopes.extend(
-            [
-                "tools/__init__.py",
-                "web/bootstrap/**/*.py",
-                "core/infrastructure/logging.py",
-                "core/infrastructure/transaction.py",
-                "typings/**/*.pyi",
-                "py.typed",
-            ]
-        )
-        config_scopes.extend(
-            [
-                quality_gate_shared.QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
-                quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_CONFIG,
-                "pyrightconfig.json",
-                "pyproject.toml",
-                "setup.cfg",
-            ]
-        )
-        tool_scopes.extend(quality_gate_shared.QUALITY_GATE_TOOL_PATHS)
-        dependency_scopes.extend(
-            [
-                "requirements*.txt",
-                "requirements-dev*.txt",
-                "poetry.lock",
-                "uv.lock",
-                "Pipfile.lock",
-            ]
-        )
-        env_keys.extend(
-            [
-                "python_executable_realpath",
-                "python_version",
-                "pyright_version",
-                "platform",
-                "PYTHONPATH",
-                "PYTHONUTF8",
-                "PYTHONIOENCODING",
-            ]
-        )
-        output_files.append(quality_gate_shared.QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL.replace("\\", "/"))
-    elif entry_type == ENTRY_PYTEST_COLLECT_ALL:
-        input_scopes.extend(
-            [
-                "tests/**/*.py",
-                "tests/**/conftest.py",
-                "conftest.py",
-                "core/**/*.py",
-                "web/**/*.py",
-                "data/**/*.py",
-                "plugins/**/*.py",
-                "scripts/**/*.py",
-                "*.py",
-                "app.py",
-                "app_new_ui.py",
-                "schema.sql",
-            ]
-        )
-        config_scopes.extend(
-            [
-                "pytest.ini",
-                "pyproject.toml",
-                "setup.cfg",
-                "tox.ini",
-                "tools/quality_gate_shared.py",
-                "tools/test_debt_registry.py",
-                "tools/test_registry.py",
-                "scripts/run_quality_gate.py",
-                "开发文档/技术债务治理台账.md",
-            ]
-        )
-        tool_scopes.append("tools/quality_gate_ledger.py")
-        dependency_scopes.extend(
-            [
-                "requirements*.txt",
-                "requirements-dev*.txt",
-                "poetry.lock",
-                "uv.lock",
-                "Pipfile.lock",
-            ]
-        )
-        env_keys.extend(
-            [
-                "python_executable_realpath",
-                "python_version",
-                "pytest_version",
-                "pytest_plugin_distribution_versions",
-                "platform",
-                "PYTHONPATH",
-                "PYTHONUTF8",
-                "PYTHONIOENCODING",
-                "PYTEST_ADDOPTS",
-                "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
-                "PYTEST_PLUGINS",
-            ]
-        )
-        output_files = [COLLECT_NODEIDS_REL]
-    elif entry_type == ENTRY_REQUIRED_REGRESSIONS:
-        required_targets = _pytest_q_targets(_normalize_command(command or {}).get("args") or [])
-        if required_targets is None:
-            required_targets = quality_gate_shared.iter_quality_gate_required_tests()
-        common_scope_policy = iter_required_regression_common_scope_policy()
-        group_rows = iter_required_regression_groups()
-        input_scopes = list(required_targets)
-        input_scopes.append(quality_gate_shared.QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"))
-        input_scopes.extend(common_scope_policy["input_file_scopes"])
-        config_scopes = list(common_scope_policy["config_file_scopes"])
-        tool_scopes = list(common_scope_policy["tool_file_scopes"])
-        dependency_scopes = list(common_scope_policy["dependency_file_scopes"])
-        env_keys = list(common_scope_policy["env_keys"])
-        for group in group_rows:
-            input_scopes.extend(group["input_file_scopes"])
-            config_scopes.extend(group["config_file_scopes"])
-            tool_scopes.extend(group["tool_file_scopes"])
-            dependency_scopes.extend(group["dependency_file_scopes"])
-            env_keys.extend(group["env_keys"])
-        output_files.append(quality_gate_shared.QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"))
-    elif entry_type == ENTRY_QUICKREF_VS_ROUTES:
-        input_scopes.extend(
-            [
-                "开发文档/系统速查表.md",
-                "app.py",
-                "app_new_ui.py",
-                "schema.sql",
-                "core/**/*.py",
-                "data/**/*.py",
-                "plugins/**/*.py",
-                "web/**/*.py",
-                "templates/**/*.html",
-                "static/**/*",
-            ]
-        )
-        config_scopes.extend(
-            [
-                "pytest.ini",
-                "pyproject.toml",
-                "setup.cfg",
-                "tox.ini",
-                ".pre-commit-config.yaml",
-                ".gitignore",
-                "tools/quality_gate_shared.py",
-                "tools/long_gate_manifest.py",
-                "tools/long_gate_fingerprint.py",
-                "tools/long_gate_cache.py",
-                "tools/long_gate_schema.py",
-                "scripts/run_quality_gate.py",
-            ]
-        )
-        tool_scopes.extend(
-            [
-                "tests/gate_meta/check_quickref_vs_routes.py",
-            ]
-        )
-        dependency_scopes.extend(
-            [
-                "requirements*.txt",
-                "requirements-dev*.txt",
-                "poetry.lock",
-                "uv.lock",
-                "Pipfile.lock",
-            ]
-        )
-        env_keys.extend(
-            [
-                "python_executable_realpath",
-                "python_version",
-                "platform",
-                "APS_ENV",
-                "APS_DB_PATH",
-                "APS_LOG_DIR",
-                "APS_BACKUP_DIR",
-                "APS_EXCEL_TEMPLATE_DIR",
-                "PYTHONPATH",
-                "PYTHONDONTWRITEBYTECODE",
-                "PYTHONUTF8",
-                "PYTHONIOENCODING",
-            ]
-        )
-        output_files = [quality_gate_shared.QUALITY_GATE_QUICKREF_VS_ROUTES_REL.replace("\\", "/")]
-    elif entry_type == ENTRY_DEBT_LEDGER_SYNC:
-        input_scopes.extend(
-            [
-                "开发文档/技术债务治理台账.md",
-                ".codestable/roadmap/**/*.md",
-                ".codestable/roadmap/**/*.yaml",
-                ".codestable/features/**/*.md",
-                ".codestable/features/**/*.yaml",
-                "app.py",
-                "app_new_ui.py",
-                "schema.sql",
-                "core/**/*.py",
-                "data/**/*.py",
-                "web/**/*.py",
-                "plugins/**/*.py",
-                "desktop/**/*.py",
-                "scripts/**/*.py",
-                "tools/**/*.py",
-                "tests/**/*.py",
-                "templates/**/*.html",
-                "static/**/*",
-                "docs/**/*.md",
-                "audit/**/*.md",
-                "开发文档/**/*.md",
-            ]
-        )
-        config_scopes.extend(
-            [
-                "pyproject.toml",
-                "setup.cfg",
-                "pytest.ini",
-                "tox.ini",
-                ".pre-commit-config.yaml",
-                ".gitignore",
-                ".github/workflows/quality.yml",
-                quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_CONFIG,
-                quality_gate_shared.QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
-                "pyrightconfig.json",
-                ".codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-roadmap.md",
-                ".codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-items.yaml",
-            ]
-        )
-        tool_scopes.extend(
-            [
-                "scripts/sync_debt_ledger.py",
-                "tools/quality_gate_ledger.py",
-                "tools/quality_gate_operations.py",
-                "tools/quality_gate_scan.py",
-                "tools/quality_gate_entries.py",
-                "tools/quality_gate_shared.py",
-                "tools/architecture_scan_cache.py",
-                "tools/test_debt_registry.py",
-                "tools/test_registry.py",
-                "tools/long_gate_manifest.py",
-                "tools/long_gate_fingerprint.py",
-                "tools/long_gate_cache.py",
-                "tools/long_gate_schema.py",
-                "tools/long_gate_paths.py",
-                "tools/long_gate_summary.py",
-                "scripts/run_quality_gate.py",
-            ]
-        )
-        dependency_scopes.extend(
-            [
-                "requirements*.txt",
-                "requirements-dev*.txt",
-                "poetry.lock",
-                "uv.lock",
-                "Pipfile.lock",
-                "package.json",
-                "package-lock.json",
-            ]
-        )
-        env_keys.extend(
-            [
-                "python_executable_realpath",
-                "python_version",
-                "platform",
-                "architecture_scan_cache_metadata",
-                "git_executable_realpath",
-                "git_version",
-                "VIRTUAL_ENV",
-                "PYTHONHOME",
-                "PYTHONPATH",
-                "PYTHONDONTWRITEBYTECODE",
-                "PYTHONUTF8",
-                "PYTHONIOENCODING",
-                "LANG",
-                "CI",
-            ]
-        )
-        output_files.append(quality_gate_shared.QUALITY_GATE_DEBT_LEDGER_SYNC_REL.replace("\\", "/"))
-    elif entry_type == ENTRY_FULL_TEST_DEBT:
-        input_scopes.extend(
-            [
-                "tests/**/*.py",
-                "tests/**/*.cjs",
-                "tests/**/fixtures/*.json",
-                "tests/**/conftest.py",
-                "conftest.py",
-                "core/**/*.py",
-                "web/**/*.py",
-                "data/**/*.py",
-                "plugins/**/*.py",
-                "scripts/**/*.py",
-                "scripts/workbench/*.cjs",
-                "desktop/**/*.py",
-                "audit/**/*.py",
-                "app.py",
-                "app_new_ui.py",
-                "check_manual_layout.py",
-                "schema.sql",
-                "validate_dist_exe.py",
-                "verify_manual_styles.py",
-                "assets/**/*",
-                "installer/**/*",
-                "build_win7*.bat",
-                "templates/**/*.html",
-                "static/**/*",
-                "frontend/workbench/app/**/*.js",
-                "frontend/workbench/app/**/*.jsx",
-                "frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js",
-                "tests/portable_sample/*.ps1",
-                "packaging/win7/*.ps1",
-                "packaging/win7/*.cmd",
-                "audit/**/*.md",
-                ".codestable/architecture/**/*.md",
-                ".codestable/compound/**/*.md",
-                ".codestable/issues/**/*.md",
-                ".codestable/issues/**/*.yaml",
-                ".codestable/issues/**/*.yml",
-                ".codestable/requirements/**/*.md",
-                ".codestable/roadmap/**/*.md",
-                ".codestable/roadmap/**/*.yaml",
-                ".codestable/roadmap/**/*.yml",
-                "docs/**/*.md",
-                "docs/**/*.html",
-                "docs/**/*.css",
-                "docs/**/*.js",
-                "evidence/README.md",
-                "evidence/current/README.md",
-                ".github/workflows/*.yml",
-                ".gitignore",
-                ".limcode/skills/**/*",
-                ".limcode/plans/**/*",
-                "开发文档/**/*.md",
-                COLLECT_NODEIDS_REL,
-            ]
-        )
-        config_scopes.extend(
-            [
-                "pytest.ini",
-                "pyproject.toml",
-                "setup.cfg",
-                "tox.ini",
-                "开发文档/技术债务治理台账.md",
-                "tools/check_full_test_debt.py",
-                "tools/collect_full_test_debt.py",
-                "tools/full_test_debt_shards.py",
-                "tools/test_debt_registry.py",
-                "tools/quality_gate_shared.py",
-                ".codestable/tools/**/*.py",
-                "scripts/run_quality_gate.py",
-            ]
-        )
-        dependency_scopes.extend(
-            [
-                "requirements*.txt",
-                "requirements-dev*.txt",
-                "poetry.lock",
-                "uv.lock",
-                "Pipfile.lock",
-            ]
-        )
-        env_keys.extend(
-            [
-                "python_executable_realpath",
-                "python_version",
-                "pytest_version",
-                "pytest_plugin_distribution_versions",
-                "platform",
-                "git_executable_realpath",
-                "git_version",
-                "node_executable_realpath",
-                "node_version",
-                "powershell_executable_realpath",
-                "powershell_version",
-                "CI",
-                "NODE_OPTIONS",
-                "PYTHONPATH",
-                "PYTHONUTF8",
-                "PYTHONIOENCODING",
-                "PYTEST_ADDOPTS",
-                "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
-                "PYTEST_PLUGINS",
-            ]
-        )
-        output_files = [
-            quality_gate_shared.QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"),
-            quality_gate_shared.QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL.replace("\\", "/"),
-        ]
-
-    if entry_type in {ENTRY_PYTEST_COLLECT_ALL, ENTRY_FULL_TEST_DEBT}:
-        tool_scopes.extend(["tools/long_gate_manifest_environment.py", "tools/test_registry*.py"])
-        if entry_type == ENTRY_FULL_TEST_DEBT:
-            env_keys.extend(full_debt_environment_keys(_normalize_command(command or {})["args"]))
-        else:
-            env_keys.extend(registry_test_environment_keys())
-
-    return (
-        _dedupe(input_scopes),
-        _dedupe(config_scopes),
-        _dedupe(tool_scopes),
-        _dedupe(dependency_scopes),
-        _dedupe(env_keys),
-        _dedupe(output_files),
-    )
-
-
-def _build_entry(
-    command: Mapping[str, Any],
-    index: int,
-    *,
-    entry_type: Optional[str] = None,
-    repo_root: Optional[str] = None,
-) -> Dict[str, Any]:
-    normalized = _normalize_command(command)
-    resolved_entry_type = entry_type or classify_quality_gate_command(normalized)
-    input_scopes, config_scopes, tool_scopes, dependency_scopes, env_keys, output_files = _scopes_for_entry(
-        resolved_entry_type,
-        normalized,
-        repo_root=repo_root,
-    )
-    reuse_allowed = resolved_entry_type in _CACHE_ENABLED_ENTRY_TYPES
-    entry = {
+def _build_entry(spec: GateCheckSpec) -> Dict[str, Any]:
+    normalized = _normalize_command(spec.to_command_dict())
+    reuse_allowed = bool(spec.reuse_allowed)
+    return {
         "schema_version": LONG_GATE_SCHEMA_VERSION,
         "cache_schema_version": LONG_GATE_CACHE_SCHEMA_VERSION,
         "fingerprint_schema_version": LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
-        "entry_id": _entry_id_for_command(resolved_entry_type, normalized, index),
-        "entry_type": resolved_entry_type,
-        "command_name": normalized["display"],
-        "display": normalized["display"],
-        "args": list(normalized["args"]),
-        "capture_output": bool(normalized["capture_output"]),
+        "entry_id": spec.check_id,
+        "check_id": spec.check_id,
+        "entry_type": spec.entry_type,
+        "display": spec.display,
+        "args": list(spec.args),
+        "capture_output": bool(spec.capture_output),
         "output_policy": normalized["output_policy"],
-        "env_overlay": dict(normalized.get("env_overlay") or {}),
-        "env_overlay_keys": sorted((normalized.get("env_overlay") or {}).keys()),
+        "env_overlay": normalized["env_overlay"],
+        "env_overlay_keys": sorted(normalized["env_overlay"].keys()),
         "command": normalized,
-        "input_file_scopes": input_scopes,
-        "config_file_scopes": config_scopes,
-        "tool_file_scopes": tool_scopes,
-        "dependency_file_scopes": dependency_scopes,
-        "env_keys": env_keys,
-        "output_result_files": output_files,
+        "input_file_scopes": _dedupe(spec.input_file_scopes),
+        "config_file_scopes": _dedupe(spec.config_file_scopes),
+        "tool_file_scopes": _dedupe(spec.tool_file_scopes),
+        "dependency_file_scopes": _dedupe(spec.dependency_file_scopes),
+        "env_keys": _dedupe(spec.env_keys),
+        "output_result_files": _dedupe(spec.output_result_files),
+        "proof_kind": spec.proof_kind,
         "cache_status": "enabled" if reuse_allowed else "disabled",
+        "reuse_policy": spec.reuse_policy,
         "reuse_allowed": reuse_allowed,
+        "runner_handler": spec.runner_handler,
     }
-    return entry
-
-
-def _git_head_sha(repo_root: str) -> str:
-    try:
-        proc = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=10,
-        )
-    except Exception:
-        return ""
-    if int(proc.returncode) != 0:
-        return ""
-    return str(proc.stdout or "").strip()
 
 
 def build_manifest_from_quality_gate_plan(
-    command_plan: Sequence[Mapping[str, Any]],
+    command_specs: Sequence[GateCheckSpec],
     receipts: Optional[Sequence[Mapping[str, Any]]] = None,
     repo_root: Optional[str] = None,
 ) -> Dict[str, Any]:
     root = os.path.abspath(repo_root or quality_gate_shared.REPO_ROOT)
-    commands = [_normalize_command(command) for command in list(command_plan or [])]
+    entries = [_build_entry(spec) for spec in command_specs]
+    commands = [entry["command"] for entry in entries]
     manifest = {
         "schema_version": LONG_GATE_SCHEMA_VERSION,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "repo_root": root,
-        "head_sha": _git_head_sha(root),
         "quality_gate_plan": commands,
-        "entries": [
-            _build_entry(
-                command,
-                index,
-                entry_type=classify_quality_gate_command(command),
-                repo_root=root,
-            )
-            for index, command in enumerate(commands, start=1)
-        ],
+        "entries": entries,
         "warnings": [],
     }
     if receipts is not None:
@@ -827,14 +90,6 @@ def normalize_repo_path(path: str) -> str:
     while normalized.startswith("./"):
         normalized = normalized[2:]
     return normalized.strip("/")
-
-
-def _scope_matches_path(path: str, scope: str) -> bool:
-    if fnmatch.fnmatch(path, scope):
-        return True
-    if "**/" in scope and fnmatch.fnmatch(path, scope.replace("**/", "")):
-        return True
-    return False
 
 
 def _matches_for_scopes(paths: Sequence[str], scopes: Sequence[str]) -> List[Dict[str, str]]:
@@ -858,28 +113,27 @@ def _impact_reason(categories: Sequence[str], *, global_affected: bool) -> str:
 
 
 def explain_long_gate_impact(
-    command_plan: Sequence[Mapping[str, Any]],
+    command_specs: Sequence[GateCheckSpec],
     changed_paths: Sequence[str],
     *,
     repo_root: Optional[str] = None,
 ) -> Dict[str, Any]:
     root = os.path.abspath(repo_root or quality_gate_shared.REPO_ROOT)
     normalized_paths = _dedupe(changed_paths)
-    manifest = build_manifest_from_quality_gate_plan(command_plan, repo_root=root)
+    manifest = build_manifest_from_quality_gate_plan(command_specs, repo_root=root)
     global_scopes = list(LONG_GATE_RUNNER_VERSION_PATHS) + list(LONG_GATE_TOOLING_VERSION_PATHS)
     global_matches = _matches_for_scopes(normalized_paths, global_scopes)
     global_affected = bool(global_matches)
     entries: List[Dict[str, Any]] = []
-    for raw_entry in list(manifest.get("entries") or []):
-        entry = dict(raw_entry)
-        if not bool(entry.get("reuse_allowed")):
+    for entry in manifest["entries"]:
+        if not entry["reuse_allowed"]:
             continue
         matches_by_category = {
-            "input": _matches_for_scopes(normalized_paths, list(entry.get("input_file_scopes") or [])),
-            "config": _matches_for_scopes(normalized_paths, list(entry.get("config_file_scopes") or [])),
-            "tool": _matches_for_scopes(normalized_paths, list(entry.get("tool_file_scopes") or [])),
-            "dependency": _matches_for_scopes(normalized_paths, list(entry.get("dependency_file_scopes") or [])),
-            "output": _matches_for_scopes(normalized_paths, list(entry.get("output_result_files") or [])),
+            "input": _matches_for_scopes(normalized_paths, entry["input_file_scopes"]),
+            "config": _matches_for_scopes(normalized_paths, entry["config_file_scopes"]),
+            "tool": _matches_for_scopes(normalized_paths, entry["tool_file_scopes"]),
+            "dependency": _matches_for_scopes(normalized_paths, entry["dependency_file_scopes"]),
+            "output": _matches_for_scopes(normalized_paths, entry["output_result_files"]),
         }
         matched_categories = [
             category
@@ -891,11 +145,12 @@ def explain_long_gate_impact(
         affected = bool(global_affected or matched_categories)
         entries.append(
             {
-                "entry_id": str(entry.get("entry_id") or ""),
-                "entry_type": str(entry.get("entry_type") or ""),
-                "display": str(entry.get("display") or ""),
-                "cache_status": str(entry.get("cache_status") or ""),
-                "reuse_allowed": bool(entry.get("reuse_allowed")),
+                "entry_id": entry["entry_id"],
+                "entry_type": entry["entry_type"],
+                "display": entry["display"],
+                "cache_status": entry["cache_status"],
+                "reuse_policy": entry["reuse_policy"],
+                "reuse_allowed": entry["reuse_allowed"],
                 "affected": affected,
                 "reason": _impact_reason(matched_categories, global_affected=global_affected),
                 "global_runner_tooling_affected": global_affected,
@@ -920,7 +175,7 @@ def _load_json_file(path: str) -> Tuple[Optional[Dict[str, Any]], str]:
             loaded = json.load(handle)
     except json.JSONDecodeError as exc:
         return None, f"invalid JSON: {exc}"
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         return None, f"unreadable: {exc}"
     if not isinstance(loaded, dict):
         return None, "top-level value is not an object"
@@ -953,15 +208,25 @@ def load_local_quality_gate_receipts(repo_root: Optional[str] = None) -> List[Di
         payload, error = _load_json_file(abs_path)
         warnings: List[str] = []
         row: Dict[str, Any] = {"path": rel_path}
-        if error:
+        if error or payload is None:
             row.update(
-                {"load_error": error, "display": "", "command_index": 0, "duration_unknown": True, "warnings": warnings}
+                {
+                    "load_error": error,
+                    "check_id": "",
+                    "display": "",
+                    "command_index": 0,
+                    "duration_s": None,
+                    "duration_unknown": True,
+                    "duration_kind": "",
+                    "original_duration_s": None,
+                    "warnings": warnings,
+                }
             )
         else:
-            payload = payload or {}
             duration_s = _coerce_float(payload.get("duration_s"), field="duration_s", warnings=warnings)
             row.update(
                 {
+                    "check_id": str(payload.get("check_id") or "").strip(),
                     "display": str(payload.get("display") or "").strip(),
                     "command_index": _coerce_int(
                         payload.get("command_index"), field="command_index", warnings=warnings
@@ -984,51 +249,45 @@ def load_local_quality_gate_receipts(repo_root: Optional[str] = None) -> List[Di
 
 
 def _attach_receipt_observations(manifest: Dict[str, Any], receipts: Sequence[Mapping[str, Any]]) -> None:
-    entries_by_display = {str(entry.get("display") or ""): entry for entry in list(manifest.get("entries") or [])}
-    for receipt in list(receipts or []):
-        display = str(receipt.get("display") or "").strip()
-        if not display:
-            manifest.setdefault("warnings", []).append(
-                f"receipt unreadable or missing display: {receipt.get('path', '')}"
+    entries_by_id = {entry["entry_id"]: entry for entry in manifest["entries"]}
+    for receipt in receipts:
+        check_id = receipt["check_id"]
+        if not check_id:
+            manifest["warnings"].append(
+                f"receipt unreadable or missing check_id: {receipt['path']}"
             )
             continue
-        entry = entries_by_display.get(display)
+        entry = entries_by_id.get(check_id)
         if entry is None:
-            manifest.setdefault("warnings", []).append(f"local receipt command is not in current plan: {display}")
+            manifest["warnings"].append(f"local receipt check_id is not in current plan: {check_id}")
             continue
-        entry.setdefault("local_receipts", []).append(dict(receipt))
+        entry.setdefault("local_receipts", []).append(receipt)
 
 
 def _entry_label(entry: Mapping[str, Any]) -> str:
-    if str(entry.get("entry_type") or "") == ENTRY_UNKNOWN:
-        return "UNKNOWN"
     if bool(entry.get("reuse_allowed")):
         return "CACHE-ENABLED"
     return "PROBE"
 
 
 def _format_receipt_line(receipt: Mapping[str, Any]) -> str:
-    path = str(receipt.get("path") or "")
-    if receipt.get("duration_unknown"):
-        duration = "duration_unknown"
-    else:
-        duration = f"{float(receipt.get('duration_s') or 0.0):.3f}s"
-    duration_kind = str(receipt.get("duration_kind") or "").strip()
-    original_duration = receipt.get("original_duration_s")
+    path = receipt["path"]
+    duration = "duration_unknown" if receipt["duration_unknown"] else f"{receipt['duration_s']:.3f}s"
+    duration_kind = receipt["duration_kind"]
+    original_duration = receipt["original_duration_s"]
     if duration_kind and original_duration is not None:
-        duration = f"{duration}, kind={duration_kind}, original={float(original_duration):.3f}s"
+        duration = f"{duration}, kind={duration_kind}, original={original_duration:.3f}s"
     return f"    receipt: {path} ({duration})"
 
 
 def _format_receipt_warnings(receipt: Mapping[str, Any]) -> List[str]:
-    return [f"    warning: {item}" for item in list(receipt.get("warnings") or [])]
+    return [f"    warning: {item}" for item in receipt["warnings"]]
 
 
 def print_long_gate_manifest(manifest: Mapping[str, Any], *, include_local_receipts: bool = False) -> None:
     entries = list(manifest.get("entries") or [])
     print("Long gate manifest")
     print(f"schema_version: {manifest.get('schema_version')}")
-    print(f"head_sha: {manifest.get('head_sha') or 'unknown'}")
     print(f"commands: {len(entries)}")
     print("")
     for index, entry in enumerate(entries, start=1):
@@ -1073,10 +332,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if not bool(args.print_manifest):
         args.print_manifest = True
     receipts = load_local_quality_gate_receipts(args.repo_root) if bool(args.include_local_receipts) else None
-    command_plan = quality_gate_shared.build_quality_gate_command_plan()
-    manifest = build_manifest_from_quality_gate_plan(command_plan, receipts=receipts, repo_root=args.repo_root)
+    check_specs = quality_gate_shared.build_quality_gate_check_specs(repo_root=args.repo_root)
+    manifest = build_manifest_from_quality_gate_plan(check_specs, receipts=receipts, repo_root=args.repo_root)
     print_long_gate_manifest(manifest, include_local_receipts=bool(args.include_local_receipts))
     return 0
+
+
+__all__ = [
+    "LONG_GATE_SCHEMA_VERSION",
+    "_scope_matches_path",
+    "build_manifest_from_quality_gate_plan",
+    "explain_long_gate_impact",
+    "load_local_quality_gate_receipts",
+    "main",
+    "normalize_repo_path",
+    "print_long_gate_manifest",
+]
 
 
 if __name__ == "__main__":

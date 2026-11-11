@@ -17,8 +17,6 @@ jobs:
       - name: 检出仓库
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          # 防回潮门禁 test_live_repo_is_currently_clean 需 git diff 治理基线 d4589d77；
-          # 默认浅克隆 (depth=1) 取不到该老 commit 会 RuntimeError(bad revision)。
           fetch-depth: 0
 
       - name: 安装 Python 3.8
@@ -42,24 +40,24 @@ jobs:
         # 镜像真实 Win7 装机要求：缺它则默认配置下调度器会抛“请先安装…”守卫，门禁随之转红。
         run: python -m pip install -r requirements-optimizer-lite-win7.txt
 
+      - name: 缓存固定版本宿主 esbuild
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            vendor/node_modules/esbuild
+            vendor/node_modules/@esbuild/win32-x64
+          key: esbuild-vendor-${{ runner.os }}-${{ hashFiles('scripts/workbench/esbuild-manifest.json', 'scripts/workbench/vendor_react.py') }}
+
+      - name: 安装并校验固定版本宿主 esbuild
+        run: python scripts/workbench/vendor_react.py --install-esbuild
+
       - name: 恢复 long gate cache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             evidence/QualityGate/long_gate/
-            evidence/QualityGate/collect_nodeids.json
             evidence/QualityGate/v4/
             evidence/QualityGate/collect_nodeids.v2.json
-            evidence/QualityGate/current_full_test_debt.json
-            evidence/QualityGate/full_test_debt_summary.json
-            evidence/QualityGate/architecture_scan_cache.json
-            evidence/QualityGate/required_regressions.json
-            evidence/QualityGate/required_regressions/
-            evidence/QualityGate/debt_ledger_sync.json
-            evidence/QualityGate/ruff_check_full.json
-            evidence/QualityGate/pyright_gate_full.json
-            evidence/QualityGate/pyright_tools_full.json
-            evidence/QualityGate/quickref_vs_routes.md
           key: quality-long-gate-v2-${{ runner.os }}-py38-ref-${{ github.ref }}-commit-${{ github.sha }}-run-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             quality-long-gate-v2-${{ runner.os }}-py38-ref-${{ github.ref }}-
@@ -73,19 +71,8 @@ jobs:
         with:
           path: |
             evidence/QualityGate/long_gate/
-            evidence/QualityGate/collect_nodeids.json
             evidence/QualityGate/v4/
             evidence/QualityGate/collect_nodeids.v2.json
-            evidence/QualityGate/current_full_test_debt.json
-            evidence/QualityGate/full_test_debt_summary.json
-            evidence/QualityGate/architecture_scan_cache.json
-            evidence/QualityGate/required_regressions.json
-            evidence/QualityGate/required_regressions/
-            evidence/QualityGate/debt_ledger_sync.json
-            evidence/QualityGate/ruff_check_full.json
-            evidence/QualityGate/pyright_gate_full.json
-            evidence/QualityGate/pyright_tools_full.json
-            evidence/QualityGate/quickref_vs_routes.md
           key: quality-long-gate-v2-${{ runner.os }}-py38-ref-${{ github.ref }}-commit-${{ github.sha }}-run-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: 上传 quality gate evidence
