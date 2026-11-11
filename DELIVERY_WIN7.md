@@ -50,9 +50,9 @@ APS_Portable/
 
 先用 Python 3.8 或以上版本执行 `python scripts/prepare_win7_offline.py download`，再执行 `python scripts/prepare_win7_offline.py verify`。支持在 Windows / macOS / Linux 准备材料，下载不会安装或执行第三方程序。
 
-文件保存到 `offline/win7/`，包括 Python 3.8.10 x64 离线安装器、22 个运行及打包 wheel、ungoogled-chromium 109.0.5414.120-1.1 x64 ZIP。下载器通过 HTTPS 获取，校验清单相对路径和输出目录边界，逐文件检查普通文件、符号链接状态及清单记录的大小；已有文件通过检查后直接复用，检查失败时停止并保留原文件。完整版本、路径和来源见 [`packaging/win7/offline-manifest.json`](packaging/win7/offline-manifest.json)；其中保留的第三方发布摘要属于来源记录。
+文件保存到 `offline/win7/`，包括 Python 3.8.10 x64 离线安装器、22 个运行及打包 wheel、ungoogled-chromium 109.0.5414.120-1.1 x64 ZIP。下载器通过 HTTPS 获取，校验清单相对路径和输出目录边界，逐文件检查普通文件、符号链接状态及清单记录的大小；已有文件通过检查后直接复用，检查失败时停止并保留原文件。完整版本、路径和来源见 [`packaging/win7/offline-manifest.json`](packaging/win7/offline-manifest.json)。
 
-来源：[Python 官方发行页](https://www.python.org/downloads/release/python-3810/)、[PyInstaller 4.10 / PyPI](https://pypi.org/project/pyinstaller/4.10/)、[Chromium 发布仓库](https://github.com/ungoogled-software/ungoogled-chromium-windows/releases/tag/109.0.5414.120-1.1)及其[校验清单](https://raw.githubusercontent.com/ungoogled-software/ungoogled-chromium-binaries/master/config/platforms/windows/64bit/109.0.5414.120-1.ini)。运行依赖沿用当前项目版本，完整构建依赖固定在 `requirements-win7-build.txt`，仍须经 Win7 冷启动验收。
+来源：[Python 官方发行页](https://www.python.org/downloads/release/python-3810/)、[PyInstaller 4.10 / PyPI](https://pypi.org/project/pyinstaller/4.10/)、[Chromium 发布仓库](https://github.com/ungoogled-software/ungoogled-chromium-windows/releases/tag/109.0.5414.120-1.1)。运行依赖沿用当前项目版本，完整构建依赖固定在 `requirements-win7-build.txt`，仍须经 Win7 冷启动验收。
 
 将源码和整个 `offline/win7/` 一起带到现场，保持目录关系。大型第三方文件不进 Git；只拿 GitHub 源码不能离线打包。**这些是构建材料，不是已经完成的便携 EXE。**
 
@@ -64,9 +64,9 @@ APS_Portable/
 setup_win7_build.bat
 ```
 
-该命令核验全部材料，创建 `.venv-win7-build`，按哈希离线安装依赖，执行 `pip check`，把已核验浏览器 ZIP 放到 `tools/`。绿色构建入口会自动激活此环境。不要往这里安装 `requirements-dev.txt`；开发检查继续使用原有 `.venv`。
+该命令核验全部材料，创建 `.venv-win7-build`，离线安装锁定依赖，执行 `pip check`，把已核验浏览器 ZIP 放到 `tools/`。绿色构建入口会自动激活此环境。不要往这里安装 `requirements-dev.txt`；开发检查继续使用原有 `.venv`。
 
-手工维护时的安装命令：`python -m pip install --no-index --find-links offline\win7\wheels --require-hashes -r requirements-win7-build.txt`。
+手工维护时的安装命令：`python -m pip install --no-index --find-links offline\win7\wheels -r requirements-win7-build.txt`。
 
 - 浏览器源目录：`tools\Chrome.109.0.5414.120.x64\chrome.exe`，或离线 `tools\ungoogled-chromium_109*.zip`。
 - 默认图分析需要 `networkx==3.1`；`build_win7_onedir.bat` 会从 `vendor/wheels` 离线安装并核对版本。

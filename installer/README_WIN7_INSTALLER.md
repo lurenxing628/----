@@ -23,7 +23,7 @@
 离线安装依赖示例：
 
 ```bat
-python -m pip install --no-index --find-links offline\win7\wheels --require-hashes -r requirements-win7-build.txt
+python -m pip install --no-index --find-links offline\win7\wheels -r requirements-win7-build.txt
 ```
 
 ## 目录约定

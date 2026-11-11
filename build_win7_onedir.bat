@@ -40,16 +40,15 @@ if exist dist (
 
 rem 3) Build
 echo [build] Run PyInstaller (onedir)...
-echo [build] include vendor directory.
+echo [build] include vendor\wheels directory.
 python -m PyInstaller --noconfirm --clean --onedir --windowed ^
   --add-data "templates;templates" ^
   --add-data "static;static" ^
   --add-data "templates_excel;templates_excel" ^
   --add-data "plugins;plugins" ^
-  --add-data "vendor;vendor" ^
+  --add-data "vendor\wheels;vendor\wheels" ^
   --add-data "schema.sql;." ^
   --hidden-import networkx ^
-  --hidden-import core.services.scheduler.calendar.service ^
   --name "排产系统" ^
   app.py
 set "RC=%ERRORLEVEL%"

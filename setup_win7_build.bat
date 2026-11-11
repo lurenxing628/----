@@ -10,7 +10,7 @@ python scripts\prepare_win7_offline.py verify
 if errorlevel 1 goto :fail
 if not exist ".venv-win7-build\Scripts\python.exe" python -m venv .venv-win7-build
 if errorlevel 1 goto :fail
-".venv-win7-build\Scripts\python.exe" -m pip install --no-index --find-links offline\win7\wheels --require-hashes -r requirements-win7-build.txt
+".venv-win7-build\Scripts\python.exe" -m pip install --no-index --find-links offline\win7\wheels -r requirements-win7-build.txt
 if errorlevel 1 goto :fail
 ".venv-win7-build\Scripts\python.exe" scripts\check_win7_build.py
 if errorlevel 1 goto :fail
