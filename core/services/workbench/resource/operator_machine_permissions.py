@@ -1,27 +1,17 @@
 """Preview and atomically replace one operator's explicit machine permissions."""
 
 from core.errors import ValidationError
+from core.models.enums import SKILL_LEVEL_VALUES, YESNO_VALUES
 from core.models.operator_machine import OperatorMachine
 from core.models.workbench_action_values import AtomicActionPreview
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_action import resource_refs
-from core.services.personnel.operator_machine_normalizers import (
-    normalize_skill_level_stored,
-    normalize_yes_no_stored,
-)
 from core.services.personnel.operator_machine_service import OperatorMachineService
 
+from .projection import permission_rows
 from .queries import WorkbenchResourceQueryService
 
 OPERATION = "operator.machine_permissions"
-
-
-def permission_rows(state):
-    machines = {item["record"]["machine_id"]: item for item in state["authorized_machines"]}
-    return [{"machine_ref": machines[row["machine_id"]]["identity"]["ref"],
-             "business_code": row["machine_id"], "label": machines[row["machine_id"]]["record"]["name"],
-             "skill_level": row["skill_level"], "is_primary": row["is_primary"]}
-            for row in state["machine_authorizations"]]
 
 
 def _row_result(old, target):
@@ -66,7 +56,7 @@ class WorkbenchOperatorMachinePermissions:
         identity = preparation.identity("operator", operator_ref)
         before = preparation.state("operator", identity.entity_key)
         old_rows = {row["machine_ref"]: row for row in permission_rows(before)}
-        requested = self._normalize(permissions, old_rows)
+        requested = self._normalize(permissions)
         requested_by_ref = {row["machine_ref"]: row for row in requested}
         machines = self._machine_snapshots(preparation, sorted(set(old_rows) | set(requested_by_ref)))
         rows = [_permission_row(number, ref, machines[ref], old_rows.get(ref), requested_by_ref.get(ref))
@@ -86,24 +76,17 @@ class WorkbenchOperatorMachinePermissions:
         snapshots = preparation.states("machine", [identity.entity_key for identity in identities.values()])
         return {ref: snapshots[identity.entity_key] for ref, identity in identities.items()}
 
-    def _normalize(self, permissions, old):
+    @staticmethod
+    def _normalize(permissions):
+        """表单只收存储代号；主操是每台设备各自的属性，一个人可以有多台主操设备。"""
         if type(permissions) is not list:
             raise ValidationError("可操作设备必须是完整的关联列表。", field="machine_permissions")
         if any(type(row) is not dict or set(row) != {"machine_ref", "skill_level", "is_primary"} for row in permissions):
             raise ValidationError("每台设备需包含设备编号、技能等级和主操标记。", field="machine_permissions")
         resource_refs([row["machine_ref"] for row in permissions], allow_empty=True)
-        result = []
-        for row in permissions:
-            previous = old.get(row["machine_ref"], {})
-            for key, values in (("skill_level", ("beginner", "normal", "expert")), ("is_primary", ("yes", "no"))):
-                if row[key] not in values and (key not in previous or row[key] != previous[key]):
-                    raise ValidationError("请选择有效的技能等级和主操标记。", field="machine_permissions")
-            if row["skill_level"] not in ("beginner", "normal", "expert"):
-                normalize_skill_level_stored(row["skill_level"])
-            result.append(row)
-        if sum(normalize_yes_no_stored(row["is_primary"]) == "yes" for row in result) > 1:
-            raise ValidationError("同一人员只能设置一台主操设备。", field="machine_permissions")
-        return sorted(result, key=lambda row: row["machine_ref"])
+        if any(row["skill_level"] not in SKILL_LEVEL_VALUES or row["is_primary"] not in YESNO_VALUES for row in permissions):
+            raise ValidationError("请选择有效的技能等级和主操标记。", field="machine_permissions")
+        return sorted(permissions, key=lambda row: row["machine_ref"])
 
     def confirm(self, preview):
         if not self.conn.in_transaction:

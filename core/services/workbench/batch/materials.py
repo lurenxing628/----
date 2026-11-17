@@ -1,6 +1,7 @@
 """Maintain batch material requirements inside the guarded command transaction."""
 
 from collections import defaultdict
+from decimal import Decimal
 from typing import cast
 
 from core.models.enums import ReadyStatus
@@ -87,8 +88,8 @@ class WorkbenchBatchMaterialService:
             # 存量到料与排产读取同一口径：全部到料先校验（含齐套日之后的），坏日期或非正到料量直接拒绝。
             arrivals = [(arrival_day(item["arrival_date"]), quantity(item["quantity"], positive=True))
                         for item in row["arrivals"]]
-            available = quantity(available) + sum(amount for day, amount in arrivals if day <= material_day)
-            row["ready_status"] = ReadyStatus.YES.value if covers_quantity(available, quantity(required)) else ReadyStatus.NO.value
+            available = Decimal(str(available)) + sum(amount for day, amount in arrivals if day <= material_day)
+            row["ready_status"] = ReadyStatus.YES.value if covers_quantity(available, Decimal(str(required))) else ReadyStatus.NO.value
             flags.append((row["ready_status"] == ReadyStatus.YES.value, available > 0))
         if flags and all(flag[0] for flag in flags):
             return ReadyStatus.YES.value
@@ -99,8 +100,6 @@ class WorkbenchBatchMaterialService:
             raise RuntimeError("物料需求维护必须由工作台命令事务持有。")
         facts = scope.load()
         batch = scope.batch(ref)
-        if type(batch["quantity"]) is not int or batch["quantity"] < 0:
-            raise WorkbenchCommandRejected("constraint_conflict", "请先在批次基础信息中填好数量，再核对物料需求。")
         old, final = self._proposed(scope, ref, payload, batch, facts)
         ready = self._ready(final.values(), facts["material_day"])
         changed = bool(payload["removed_keys"])

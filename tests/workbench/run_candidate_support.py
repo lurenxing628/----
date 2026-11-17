@@ -1,9 +1,10 @@
 """BL-only fresh current-schema temporary databases and real engine fixtures."""
 
 import json
-import sqlite3
+import logging
 from contextlib import contextmanager
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,39 +13,37 @@ from flask import Blueprint, Flask, g
 
 from core.infrastructure.database import ensure_schema
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_schema_contract_issues
-from core.infrastructure.schema_declaration import load_schema_sql
-from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.services.workbench.facts.system_journal import system_journal_directory
 from core.services.workbench.run.worker import WorkbenchRunWorker
+from tests._support.sqlite_connection import open_test_connection
 from tests.workbench.run_jobs_support import JobCase
 from web.routes.workbench.run_candidates import register_run_candidate_routes
+from web.runtime_host import install_wall_clock
 
 BASE = "/api/workbench/v1/scheduling"
-PRIVATE = {"version", "op_id", "candidate_key", "raw", "facts_json", "artifact_json", "payload_json",
-           "machine_id", "operator_id", "supplier_id", "plan_ref", "task_ref", "source_key", "entity_key", "history"}
+PRIVATE = {"version", "op_id", "candidate_key", "raw", "facts_json", "revisions_json", "conditions_archive_json",
+           "artifact_json", "payload_json", "machine_id", "operator_id", "supplier_id", "plan_ref", "task_ref",
+           "source_key", "entity_key", "history"}
 
 
 def connect(path):
-    conn = sqlite3.connect(str(path))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys=ON")
-    register_schedule_time_sql_functions(conn)
-    return conn
+    return open_test_connection(path)
 
 
 @pytest.fixture(name="candidate_case")
 def candidate_case(tmp_path):
     path = tmp_path / "bl-candidates.sqlite"
-    ensure_schema(str(path), schema_path=str(Path(__file__).resolve().parents[2] / "schema.sql"))
+    ensure_schema(str(path), logging.getLogger(__name__), schema_path=str(Path(__file__).resolve().parents[2] / "schema.sql"))
     conn = connect(path)
     assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
-    assert current_schema_contract_issues(conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
+    assert current_schema_contract_issues(conn, schema_version=CURRENT_SCHEMA_VERSION) == []
     # Historical locked plans in this fixture were made for an explicit 08:00-16:00 shift.
     conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",
                  ('[{"start":"08:00","end":"16:00","day_offset":0}]',))
     conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
-    conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Original lathe','T1')")
+    conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('M1','Original lathe')")
+    conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M1','T1')")
     conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O1','Original operator')")
     conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('O1','M1')")
     conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('P1','Original part')")
@@ -54,9 +53,9 @@ def candidate_case(tmp_path):
     case.path = path
     case.batch("B1")
     case.op_id = case.operation()
-    case.config(algo_mode="greedy", time_budget_seconds=60,
-                ortools_enabled="no", freeze_window_enabled="no")
+    case.config(algo_mode="greedy", time_budget_seconds=60, freeze_window_enabled="no")
     case.app = Flask("bl-candidate-tests")
+    install_wall_clock(case.app, datetime.now)
     case.app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"] = system_journal_directory(str(path))
     with case.app.app_context():
         yield case
@@ -65,7 +64,7 @@ def candidate_case(tmp_path):
 
 def compute(case, settings=None):
     accepted = case.accept(settings=settings)
-    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
     return result["run_ref"], [row["candidate_ref"] for row in result["candidates"]]
 
 
@@ -110,7 +109,7 @@ def compute_two_objectives(case):
     ``min_changeover`` therefore select different archive entries.
     """
     case.conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T2','Milling')")
-    case.conn.executemany("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M1',?)", [("T1",), ("T2",)])
+    case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M1','T2')")
     case.conn.execute("UPDATE Batches SET quantity=1,due_date='2026-09-09' WHERE batch_id='B1'")
     case.conn.execute("UPDATE BatchOperations SET unit_hours=3 WHERE id=?", (case.op_id,))
     for code, kind, due in (("B2", "T2", "2026-09-09"), ("B3", "T1", "2026-09-10"), ("B4", "T2", "2026-09-10")):
@@ -177,18 +176,23 @@ def retained(conn):
         assert conn.total_changes == changes
 
 
-def candidate_artifact_view(artifact, tasks):
-    """Test/oracle view of arrangements; never rewrite the immutable archive."""
-    rows = [{key: value for key, value in task.items() if key != "locked"} for task in tasks]
-    artifact["validated_payload"] = {**artifact["validated_payload"], "schedule_rows": rows,
-        "assigned_by_op_id": {str(row["op_id"]): {key: row[key] for key in ("machine_id", "operator_id")}
-                              for row in rows if row["source"] == "internal"}}
-    artifact["results"] = [{**metadata, **row} for metadata, row in zip(artifact["results"], rows)]
-    return artifact
-
-
 def stored_candidate_artifact(conn, ref):
+    """A candidate's saved artifact beside its saved task rows, which alone hold the arrangement (D3-7)."""
     raw = conn.execute("SELECT artifact_json FROM WorkbenchRunCandidates WHERE candidate_ref=?", (ref,)).fetchone()[0]
-    tasks = [json.loads(row[0]) for row in conn.execute(
-        "SELECT payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=? ORDER BY ordinal", (ref,))]
-    return candidate_artifact_view(json.loads(raw), tasks)
+    tasks = [
+        {
+            "op_id": row["op_id"],
+            "source": row["source"],
+            "machine_id": row["machine_id"],
+            "operator_id": row["operator_id"],
+            "start_time": row["start_time"],
+            "end_time": row["end_time"],
+            "locked": bool(row["locked"]),
+        }
+        for row in conn.execute(
+            "SELECT op_id,source,machine_id,operator_id,start_time,end_time,locked "
+            "FROM WorkbenchRunCandidateTasks WHERE candidate_ref=? ORDER BY ordinal",
+            (ref,),
+        )
+    ]
+    return {"artifact": json.loads(raw), "tasks": tasks}

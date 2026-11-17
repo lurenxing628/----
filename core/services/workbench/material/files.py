@@ -72,9 +72,8 @@ class WorkbenchMaterialFileService:
         source, notices = prepared.parsed()
         rows = [self._coded_row(item) for item in source]
         captured = self.repo.capture(codes={row["business_code"] for row in rows if row["business_code"] is not None})
-        for row, item in zip(rows, source):
-            if row["business_code"] is not None:
-                self._import_row(row, item["values"], captured)
+        identities = [self._import_row(row, item["values"], captured) if row["business_code"] is not None else None
+                      for row, item in zip(rows, source)]
         duplicates = {}
         for row in rows:
             if row["business_code"] is not None:
@@ -84,7 +83,7 @@ class WorkbenchMaterialFileService:
                 numbers = ", ".join(str(row["row"]) for row in repeated)
                 for row in repeated:
                     reject_row(row, "同一编号在文件中重复，涉及行：" + numbers, code="duplicate_entry")
-        return MaterialPreview.build("material.import", request, rows, notices, source=prepared), rows
+        return MaterialPreview.build("material.import", request, rows, notices, source=prepared), list(zip(rows, identities))
 
     @staticmethod
     def _coded_row(source):
@@ -100,7 +99,9 @@ class WorkbenchMaterialFileService:
         return row
 
     def _import_row(self, row, values, captured):
+        """Fill the preview row; return the typed identity an update writes against (None for a new code)."""
         code = row["business_code"]
+        identity = None
         try:
             raw = captured["materials"].get(code)
             if raw is None and code != code.strip():
@@ -110,9 +111,8 @@ class WorkbenchMaterialFileService:
                 row["expected"] = {"identity": None, "material": None, "requirements": [],
                                    "identity_history": captured["identity_history"].get(code, [])}
             else:
-                identity = captured["identities"].get(raw["ref"])
-                identity = WorkbenchEntityIdentity(identity["ref"], identity["kind"], identity["entity_key"],
-                                                    identity["revision"], bool(identity["active"])) if identity else None
+                stored = captured["identities"].get(raw["ref"])
+                identity = WorkbenchEntityIdentity.from_row(stored) if stored else None
                 if identity is None:
                     raise WorkbenchCommandRejected("storage_failure", "这条物料缺少系统编号，请联系维护人员核对资料。", 500)
                 row["expected"] = full_material_snapshot(captured, identity)
@@ -121,6 +121,7 @@ class WorkbenchMaterialFileService:
                 self._classify(row, raw)
         except ValidationError as exc:
             reject_row(row, exc.message, field=exc.field or "input")
+        return identity
 
     @staticmethod
     def _normalize_values(action, code, values, raw):
@@ -161,26 +162,15 @@ class WorkbenchMaterialFileService:
     def confirm_import(self, preview):
         if not self.conn.in_transaction:
             raise RuntimeError("物料导入确认必须在外层工作台写事务中执行。")
-        current, rows = self._prepare_import(preview.source)
+        current, planned = self._prepare_import(preview.source)
         body = preview.check_current(current)
         changes = [
-            self.adapter.prepare_checked(
-                row["action"],
-                row["input"],
-                {
-                    **row["expected"],
-                    "identity": (
-                        None
-                        if row["expected"]["identity"] is None
-                        else WorkbenchEntityIdentity(**row["expected"]["identity"])
-                    ),
-                },
-            )
-            for row in rows
+            self.adapter.prepare_checked(row["action"], row["input"], {**row["expected"], "identity": identity})
+            for row, identity in planned
         ]
         outcomes = self.adapter.apply_prepared_many(changes)
         results = [{"row": row["row"], "result": outcome.result, **outcome.data}
-                   for row, outcome in zip(rows, outcomes)]
+                   for (row, _identity), outcome in zip(planned, outcomes)]
         result = "committed" if any(row["result"] == "committed" for row in results) else "unchanged"
         return WorkbenchCommandOutcome(result, {"rows": results, "summary": body["summary"]})
 

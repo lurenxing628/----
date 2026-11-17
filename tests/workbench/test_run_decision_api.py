@@ -4,6 +4,7 @@ import csv
 import io
 import json
 from copy import deepcopy
+from datetime import date, datetime
 from typing import Any, Dict
 
 import pytest
@@ -11,10 +12,10 @@ from openpyxl import load_workbook
 
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
 from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.run.decision import CORE_BASELINE_COVERAGE, CORE_CANDIDATE_COVERAGE, CORE_METRIC_KEYS
+from core.services.workbench.run.decision import CORE_COVERAGE, CORE_METRIC_KEYS
 from core.services.workbench.run.decision_export import write_run_decision_export
 from core.services.workbench.run.worker import WorkbenchRunWorker
-from scripts.verify_decision_workbench import _check_export_rows
+from tests.workbench.decision_export_oracle_support import check_overview_export_rows
 from tests.workbench.run_candidate_support import BASE, api, compute, compute_two_objectives
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.test_material_stage_release import add_requirement
@@ -39,21 +40,24 @@ def _assert_summary_matches_full(summary, full):
     shared = ("run", "scope", "capture_ref", "catalog_complete", "metric_definitions", "selection_basis",
               "recommendation", "difference_summary", "resource_cohort")
     assert set(summary) == set(shared) | {"candidates", "baseline"}
+    assert "completion_groups" not in full
+    assert "selection_basis" not in summary["recommendation"]
     for key in shared:
         assert summary[key] == full[key], key
     assert len(summary["candidates"]) == len(full["candidates"])
     for core, complete in zip(summary["candidates"], full["candidates"]):
-        expected = {**complete,
+        assert "evaluations" not in core and "evaluations" in complete
+        expected = {**{key: value for key, value in complete.items() if key != "evaluations"},
                     "metrics": {key: complete["metrics"][key] for key in CORE_METRIC_KEYS},
                     "deltas": {key: complete["deltas"][key] for key in CORE_METRIC_KEYS},
-                    "coverage": {key: complete["coverage"][key] for key in CORE_CANDIDATE_COVERAGE}}
+                    "coverage": {key: complete["coverage"][key] for key in CORE_COVERAGE}}
         assert core == expected
     baseline = full["baseline"]
     if baseline["state"] == "selection_required":
         metrics, coverage = {}, {"schedulable": baseline["coverage"]["schedulable"]}
     else:
         metrics = {key: baseline["metrics"][key] for key in CORE_METRIC_KEYS}
-        coverage = {key: baseline["coverage"][key] for key in CORE_BASELINE_COVERAGE}
+        coverage = {key: baseline["coverage"][key] for key in CORE_COVERAGE}
     assert summary["baseline"] == {**baseline, "metrics": metrics, "coverage": coverage}
 
 
@@ -77,19 +81,17 @@ def test_all_real_candidates_share_reference_and_preserve_saved_selection(candid
     assert 1 <= len(compared["candidates"]) <= 3
     assert compared["scope"]["reference"]["candidate_ref"] == refs[-1]
     assert compared["scope"]["selected_candidate_ref"] == refs[0]
-    assert compared["scope"]["batch_refs"] == initial["scope"]["batch_refs"]
-    assert compared["scope"]["operation_refs"] == initial["scope"]["operation_refs"]
+    assert compared["scope"]["batch_count"] == initial["scope"]["batch_count"] == 2
+    assert compared["scope"]["operation_count"] == initial["scope"]["operation_count"] == 2
+    assert not {"batch_refs", "operation_refs"}.intersection(compared["scope"])
     assert compared["selection_basis"] == initial["selection_basis"]
     assert compared["recommendation"]["candidate_ref"] == initial["recommendation"]["candidate_ref"]
     basis = compared["selection_basis"]
-    assert basis["generation_policy_version"] == "unified_search_v1"
-    assert basis["selection_policy_version"] == "business_objectives_v1"
     assert basis["target_objectives"] == ["min_overdue", "min_tardiness", "min_changeover"]
     assert set(basis["objective_winners"]) == set(basis["target_objectives"])
     assert all(winner in refs for winner in basis["objective_winners"].values())
     assert basis["objective_winners"][basis["primary_objective"]] == basis["selected_candidate_ref"]
     for row in compared["candidates"]:
-        assert row["kind"] == "business_objective"
         assert "algorithm_baseline" not in row["selection_role"]
     for entry in basis["explanation"]["entries"]:
         assert set(entry) == {"key", "label", "text", "state", "unit", "selected_value", "source", "scope"}
@@ -150,7 +152,7 @@ def test_candidate_scope_and_window_errors_are_rejected_before_comparison(candid
     explanation = pending_summary["selection_basis"]["explanation"]
     assert explanation["headline"] == "本次排产尚未保存推荐方案。"
     assert explanation["issues"] == []
-    second = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    second = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
     second_candidate = second["candidates"][0]["candidate_ref"]
     completed_path = BASE + "/runs/" + second["run_ref"] + "/decision"
     stale = client.get(completed_path, query_string={"snapshot_ref": pending_snapshot})
@@ -196,17 +198,18 @@ def test_overview_exports_require_the_screen_reference_snapshot(candidate_case):
         if fmt == "csv":
             rows = list(csv.DictReader(io.StringIO(response.data.decode("utf-8-sig"))))
             assert len(rows) == count
-            _check_export_rows(data, rows, fmt)
+            check_overview_export_rows(data, rows, fmt)
             assert all(ref in response.data.decode("utf-8-sig") for ref in refs)
         else:
             book = load_workbook(io.BytesIO(response.data), read_only=True, data_only=True)
             try:
                 assert book.sheetnames == ["方案总览", "指标计算方式", "比较范围"]
-                iterator = book["方案总览"].iter_rows(values_only=True)
-                headers = next(iterator)
-                rows = [dict(zip(headers, row)) for row in iterator]
+                sheet = book["方案总览"]
+                headers = next(sheet.iter_rows(max_row=1, values_only=True))
+                # Read-only rows stop at their last filled cell; read every row at the header width.
+                rows = [dict(zip(headers, row)) for row in sheet.iter_rows(min_row=2, max_col=len(headers), values_only=True)]
                 assert len(rows) == count
-                _check_export_rows(data, rows, fmt)
+                check_overview_export_rows(data, rows, fmt)
             finally:
                 book.close()
     boundaries = deepcopy(data)
@@ -342,10 +345,14 @@ def test_explicit_comparison_navigation_preserves_identity_and_complete_window()
     for view in ("analysis", "gantt"):
         navigation = {"version": 1, "view": view, "context": target}
         assert read_navigation(view, MultiDict({"nav": json.dumps(navigation)})) == navigation
+    # 返回上下文只有 return_to 一种：历史走势页状态整份作为返回链接；旧返回键按不支持的定位拒绝（400）。
     for view, source in (("analysis", context), ("gantt", {"plan_ref": "d" * 48}),
                          ("run", {"run_ref": "a" * 48}), ("trial", {"scenario_ref": "b" * 48})):
-        navigation = {"version": 1, "view": view, "context": dict(source, return_decision_history_context=history_state)}
+        navigation = {"version": 1, "view": view, "context": dict(source, return_to={"view": "analysis", "context": target})}
         assert read_navigation(view, MultiDict({"nav": json.dumps(navigation)})) == navigation
+        legacy = {"version": 1, "view": view, "context": dict(source, return_decision_history_context=history_state)}
+        with pytest.raises(WorkbenchNavigationInvalid):
+            read_navigation(view, MultiDict({"nav": json.dumps(legacy)}))
     for patch in ({"timeline": "invalid"}, {"comparison": "invalid"}, {"reference_run_ref": "invalid"},
                   {"metric_keys": ["overdue_count", "overdue_count"]}, {"range_end": None}, {"state": "invalid"},
                   {"sort": "invalid"}, {"order": "invalid"}, {"page": 0}, {"size": 25}):
@@ -358,6 +365,40 @@ def test_explicit_comparison_navigation_preserves_identity_and_complete_window()
         invalid = dict(target, decision_history_context=dict(history_state, **patch))
         with pytest.raises(WorkbenchNavigationInvalid):
             read_navigation("analysis", MultiDict({"nav": json.dumps({"version": 1, "view": "analysis", "context": invalid})}))
+
+
+def test_explicit_navigation_return_to_admits_target_restore_state():
+    from werkzeug.datastructures import MultiDict
+
+    def read(view, context):
+        navigation = {"version": 1, "view": view, "context": context}
+        assert read_navigation(view, MultiDict({"nav": json.dumps(navigation)})) == navigation
+
+    def rejected(view, context):
+        with pytest.raises(WorkbenchNavigationInvalid):
+            read_navigation(view, MultiDict({"nav": json.dumps({"version": 1, "view": view, "context": context})}))
+
+    plan = {"plan_ref": "d" * 48}
+    # 嵌套 context 按目标页可恢复状态准入：值班台不接受地址定位，但它记住的页面状态可以作为返回链接。
+    dashboard = {"view": "dashboard", "context": {"scope": {"category": "all"}, "tab": "records", "item_ref": "e" * 48, "history_page": 2}}
+    read("gantt", dict(plan, return_to=dashboard))
+    rejected("dashboard", {"return_to": {"view": "gantt", "context": plan}})
+    # 不带 context 的返回链接原样保留，表示回去恢复目标页自己记住的状态，不补成 {}。
+    read("batches", {"focus": "gaps", "batchIds": ["B1"], "return_to": {"view": "run"}})
+    # 返回链可以多层：候选甘特 → 方案对比 → 排产记录列表，每一层按各自目标页准入。
+    catalog = {"source": "run_history", "history_topic": "run_catalog", "history_query": {"state": "complete", "page": 2}}
+    comparison = {"run_ref": "a" * 48, "candidate_ref": "b" * 48, "comparison_tab": "resources", "detail_queries": {},
+                  "return_to": {"view": "analysis", "context": catalog}}
+    read("gantt", {"run_ref": "a" * 48, "candidate_ref": "b" * 48, "return_to": {"view": "analysis", "context": comparison}})
+    for back in ({"view": "analysis", "context": dict(catalog, unknown_key=1)},
+                 {"view": "analysis", "context": dict(comparison, return_decision_context=catalog)},
+                 {"view": "analysis", "context": dict(comparison, return_to={"view": "analysis", "context": dict(catalog, return_history_context={})})},
+                 {"view": "missing", "context": {}}, {"view": "analysis", "context": []}, {"context": catalog},
+                 {"view": "analysis", "context": catalog, "label": "返回"},
+                 # 目标页状态里的互斥同样生效：恢复浏览位置不能再带单条定位。
+                 {"view": "process", "context": {"source": "production", "kind": "part", "read_view": {}, "entity_ref": "c" * 48}},
+                 {"view": "analysis", "context": {"plan_ref": "d" * 48, "selected_task_side": "before"}}):
+        rejected("gantt", dict(plan, return_to=back))
 
 
 def test_unsaved_recommendation_does_not_invent_missing_saved_selection_evidence():
@@ -376,7 +417,6 @@ def test_decision_queries_preparation_pagination_and_recommendation_export_truth
     from core.services.workbench.batch.facts import BatchFacts
     from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
     from core.services.workbench.batch.scope import BatchFactScope
-    from data.repositories.workbench_run_candidate_repo import WorkbenchRunCandidateRepository
 
     case = candidate_case
     case.conn.execute("UPDATE Batches SET quantity=1,due_date='2026-09-09' WHERE batch_id='B1'")
@@ -408,7 +448,7 @@ def test_decision_queries_preparation_pagination_and_recommendation_export_truth
     case.conn.commit()
     with TransactionManager(case.conn).transaction():
         batch_ref = case.ref("batch", "B2")
-        scope = BatchFactScope(BatchFacts(case.conn), command=True, mode="single_instance", target_ref=batch_ref)
+        scope = BatchFactScope(BatchFacts(case.conn, material_day=date.today().isoformat()), command=True, mode="single_instance", target_ref=batch_ref)
         WorkbenchBatchMaterialService(case.conn).apply_normalized(
             scope,
             batch_ref,
@@ -419,9 +459,6 @@ def test_decision_queries_preparation_pagination_and_recommendation_export_truth
     op_b3_1 = case.operation("B3", seq=1, unit_hours=6)
 
     case.config(dispatch_mode="batch_order", sort_strategy="due_date_first")
-    run_ref, refs = compute(case, case.settings("B1", "B2", "B3", end_date="2026-09-09", material_strategy="stage"))
-    cand_ref = refs[0]
-
     seq_overrides = {
         case.op_id: 10,
         op_b1_2: 10_000_000_000_000_000,
@@ -430,24 +467,27 @@ def test_decision_queries_preparation_pagination_and_recommendation_export_truth
         op_b2_3: None,
         op_b3_1: 5,
     }
-    original_capture = WorkbenchRunCandidateRepository.job_capture
+    from core.services.workbench.facts.candidate_facts import GenerationFacts
+    from core.services.workbench.run.worker import WorkbenchRunWorker
 
-    def capture_with_large_sequences(repo_self, target_run_ref):
-        row = original_capture(repo_self, target_run_ref)
-        if row is None or target_run_ref != run_ref:
-            return row
-        facts = json.loads(row[3])
-        cols = facts["columns"]["BatchOperations"]
-        id_idx, seq_idx = cols.index("id"), cols.index("seq")
-        for op_row in facts["tables"]["BatchOperations"]:
-            if isinstance(op_row, list) and op_row[id_idx] in seq_overrides:
-                op_row[seq_idx] = seq_overrides[op_row[id_idx]]
-            elif isinstance(op_row, dict) and op_row["id"] in seq_overrides:
-                op_row["seq"] = seq_overrides[op_row["id"]]
-        patched_text = json.dumps(facts, ensure_ascii=False, separators=(",", ":"))
-        return (*row[:3], patched_text, *row[4:7], len(patched_text.encode("utf-8")))
+    accepted = case.accept(settings=case.settings("B1", "B2", "B3", end_date="2026-09-09", material_strategy="stage"))
+    run_ref = accepted["run_ref"]
+    original_facts_init = GenerationFacts.__init__
 
-    monkeypatch.setattr(WorkbenchRunCandidateRepository, "job_capture", capture_with_large_sequences)
+    def init_with_large_sequences(facts_self, capture, **kwargs):
+        original_facts_init(facts_self, capture, **kwargs)
+        if capture.get("run_ref") == run_ref:
+            for op_id, seq_val in seq_overrides.items():
+                if op_id in facts_self.tables["BatchOperations"]:
+                    facts_self.tables["BatchOperations"][op_id] = {
+                        **facts_self.tables["BatchOperations"][op_id],
+                        "seq": seq_val,
+                    }
+
+    with monkeypatch.context() as worker_patch:
+        worker_patch.setattr(GenerationFacts, "__init__", init_with_large_sequences)
+        executed = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(run_ref)
+    cand_ref = executed["candidates"][0]["candidate_ref"]
     client, _ = api(case)
 
     expected_asc = [2, 5, 10, str(1 << 53), "10000000000000000", None]

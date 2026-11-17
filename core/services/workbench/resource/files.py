@@ -17,7 +17,7 @@ from core.models.workbench_resource_file_source import PreparedImportSource
 from core.models.workbench_resource_input import resource_text
 from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.workbench.facts.file_codec import read_resource_file
-from core.services.workbench.facts.file_writer import check_capacity, write_resource_file
+from core.services.workbench.facts.file_writer import check_capacity
 from data.repositories.workbench_resource_file_repo import WorkbenchResourceFileRepository
 
 from .entities import WorkbenchResourceService
@@ -200,7 +200,7 @@ class WorkbenchResourceFileService:
         return {"request": effective}, len(matching)
 
     def export_rows(self, scope: ResourceFactScope, file_format, *, request, selected_refs=None):
-        """在已验证的读快照里读完整份导出行；编码文件交给 write_export，在读事务结束后做。"""
+        """在已验证的读快照里读完整份导出行；编码文件由调用方用 write_resource_file 在读事务结束后做。"""
         if not self.conn.in_transaction:
             raise RuntimeError("资源导出必须在已验证的查询快照事务中执行。")
         if selected_refs is None:
@@ -215,10 +215,6 @@ class WorkbenchResourceFileService:
             )
             identities = [preparation.identity(self.kind, ref) for ref in selected_refs]
         return list(self._export_rows(identities, preparation))
-
-    def write_export(self, rows, file_format, *, request):
-        """只用 export_rows 读出的行生成 CSV/XLSX，不再查库，可在读事务之外调用。"""
-        return write_resource_file(self.kind, rows, file_format, category=request.category)
 
     def _export_rows(self, identities, preparation):
         for identity in identities:

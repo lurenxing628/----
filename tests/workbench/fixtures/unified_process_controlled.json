@@ -35,19 +35,11 @@
     "run_ref": "000000000000000000000000000000000000000000000384",
     "capture_ref": "000000000000000000000000000000000000000000000384",
     "scope": {
-      "batch_refs": [
-        "000000000000000000000000000000000000000000000321",
-        "000000000000000000000000000000000000000000000322",
-        "000000000000000000000000000000000000000000000323"
-      ],
+      "batch_count": 3,
       "comparison_mode": "candidates",
       "delta_basis": "candidate_minus_reference",
       "metric_scope": "full_admission",
-      "operation_refs": [
-        "000000000000000000000000000000000000000000000001",
-        "000000000000000000000000000000000000000000000002",
-        "000000000000000000000000000000000000000000000003"
-      ],
+      "operation_count": 3,
       "range_end": "2026-10-15T00:00:00",
       "range_start": "2026-10-13T00:00:00",
       "reference": {
@@ -67,7 +59,6 @@
       },
       "resource_view": "selected_batches",
       "run_options": {
-        "generation_policy_version": "unified_search_v1",
         "primary_objective": "min_overdue",
         "target_objectives": [
           "min_overdue",
@@ -529,16 +520,8 @@
     },
     "scopes": {
       "1": {
-        "scheduled_operation_refs": [
-          "000000000000000000000000000000000000000000000001",
-          "000000000000000000000000000000000000000000000002",
-          "000000000000000000000000000000000000000000000003"
-        ],
-        "complete_batch_refs": [
-          "000000000000000000000000000000000000000000000321",
-          "000000000000000000000000000000000000000000000322",
-          "000000000000000000000000000000000000000000000323"
-        ],
+        "scheduled_operation_count": 3,
+        "complete_batch_count": 3,
         "objective_scope": "all_batches",
         "components_known": true,
         "is_complete": true
@@ -616,7 +599,6 @@
       "reason": null,
       "content_reused": false,
       "restored": false,
-      "evidence_updated": false,
       "initialized_objectives": [],
       "event_id": 2,
       "evaluations": {
@@ -835,19 +817,11 @@
     "run_ref": "000000000000000000000000000000000000000000000384",
     "capture_ref": "000000000000000000000000000000000000000000000384",
     "scope": {
-      "batch_refs": [
-        "000000000000000000000000000000000000000000000321",
-        "000000000000000000000000000000000000000000000322",
-        "000000000000000000000000000000000000000000000323"
-      ],
+      "batch_count": 3,
       "comparison_mode": "candidates",
       "delta_basis": "candidate_minus_reference",
       "metric_scope": "full_admission",
-      "operation_refs": [
-        "000000000000000000000000000000000000000000000001",
-        "000000000000000000000000000000000000000000000002",
-        "000000000000000000000000000000000000000000000003"
-      ],
+      "operation_count": 3,
       "range_end": "2026-10-15T00:00:00",
       "range_start": "2026-10-13T00:00:00",
       "reference": {
@@ -867,7 +841,6 @@
       },
       "resource_view": "selected_batches",
       "run_options": {
-        "generation_policy_version": "unified_search_v1",
         "primary_objective": "min_overdue",
         "target_objectives": [
           "min_overdue",
@@ -1298,16 +1271,8 @@
     },
     "scopes": {
       "1": {
-        "scheduled_operation_refs": [
-          "000000000000000000000000000000000000000000000001",
-          "000000000000000000000000000000000000000000000002",
-          "000000000000000000000000000000000000000000000003"
-        ],
-        "complete_batch_refs": [
-          "000000000000000000000000000000000000000000000321",
-          "000000000000000000000000000000000000000000000322",
-          "000000000000000000000000000000000000000000000323"
-        ],
+        "scheduled_operation_count": 3,
+        "complete_batch_count": 3,
         "objective_scope": "all_batches",
         "components_known": true,
         "is_complete": true
@@ -1385,7 +1350,6 @@
       "reason": null,
       "content_reused": false,
       "restored": false,
-      "evidence_updated": false,
       "initialized_objectives": [],
       "event_id": 2,
       "evaluations": {

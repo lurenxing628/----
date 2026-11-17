@@ -5,7 +5,6 @@ from core.models.workbench_trial import reject
 MAX_RECEIPTS = 1000
 MAX_DIRECTORY_BYTES = 8 * 1024 * 1024
 MAX_RECEIPT_BYTES = 64 * 1024
-MAX_SCENARIO_BYTES = 32 * 1024 * 1024
 
 
 def bound(size, limit, subject="历史内容"):
@@ -29,14 +28,3 @@ def adoption_receipts(repo, scenario_ref):
         bound(byte_count, MAX_DIRECTORY_BYTES, "采用结果列表")
         selected.append(item)
     return selected
-
-
-def history_audit_row(rows):
-    """One captured history body, or None when this version has no unique audit."""
-    if len(rows) != 1:
-        return None
-    raw = rows[0]["result_summary"]
-    if type(raw) is not str:
-        reject("adoption_history_invalid", "排产记录摘要的内容大小无效，请联系维护人员核对数据。")
-    bound(len(raw.encode("utf-8")), MAX_RECEIPT_BYTES, "排产记录摘要")
-    return rows[0]

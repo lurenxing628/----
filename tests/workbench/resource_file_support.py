@@ -6,10 +6,10 @@ from uuid import uuid4
 
 import openpyxl
 
-from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_resource_action import resource_scope_request
 from core.models.workbench_table_descriptor import INSTRUCTION_SHEET
 from core.services.workbench.commands import WorkbenchCommandService
+from core.services.workbench.facts.file_writer import write_resource_file
 from core.services.workbench.resource.bulk import WorkbenchResourceBulkService
 from core.services.workbench.resource.files import WorkbenchResourceFileService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
@@ -95,4 +95,4 @@ def exported(conn, kind, fmt, *, category=None):
     # 和下载路由一样：读快照里只读行，事务结束后再生成文件。
     with service.reader.read_snapshot() as read_scope:
         rows = service.export_rows(read_scope, fmt, request=request)
-    return service.write_export(rows, fmt, request=request)
+    return write_resource_file(kind, rows, fmt, category=request.category)

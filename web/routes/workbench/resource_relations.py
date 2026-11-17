@@ -9,13 +9,13 @@ from core.services.workbench.resource.relations import ResourceRelationRequest, 
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
-from .read_context import bind_read_snapshot
+from .read_context import bind_read_snapshot, read_snapshot_time
+from .request_json import single_value_arguments
 
 
 def _relation_query():
     allowed = {"relation", "query", "page", "size", "snapshot_ref"}
-    if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "关联查询的条件有重复或不支持的项，当前列表没有变化。请刷新页面后重新选择。", 400)
+    single_value_arguments(allowed, message="关联查询的条件有重复或不支持的项，当前列表没有变化。请刷新页面后重新选择。")
     values = {}
     for key, default in (("page", "1"), ("size", "20")):
         text = request.args.get(key, default)
@@ -32,12 +32,15 @@ def _relation_query():
 @api_endpoint
 def resource_relations(kind, ref):
     query = _relation_query()
+    token = request.args.get("snapshot_ref")
+    as_of, binding = read_snapshot_time(token)
     reader = WorkbenchResourceRelationService(g.db, current_app.logger)
     with reader.read_snapshot(
         kind,
         ref,
         query,
-        bind_snapshot=lambda fingerprint: bind_read_snapshot(query.scope(ref), fingerprint, request.args.get("snapshot_ref")),
+        bind_snapshot=lambda fingerprint: bind_read_snapshot(query.scope(ref), fingerprint, token, as_of=as_of,
+                                                             binding=binding),
     ) as (snapshot, data):
         return query_success(data, snapshot)
 

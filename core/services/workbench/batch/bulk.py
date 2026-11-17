@@ -2,9 +2,10 @@
 
 import re
 
-from core.models.workbench_batch import MAX_INTEGER, normalize_batch_input, object_fields, public_ref
+from core.models.workbench_batch import normalize_batch_input, object_fields, public_ref
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.services.scheduler.template_lineage import TemplateLineageWriter
+from core.shared.strict_parse import JS_SAFE_INT_MAX
 from data.repositories.batch_material_repo import BatchMaterialRepository
 
 from .projection import BatchProjection
@@ -105,7 +106,7 @@ class WorkbenchBatchBulkService:
         digits = len(match[1]) if match else 1
         serial = (int(match[1]) if match else 0) + 1
         following, visited = successors.setdefault((prefix, digits), {}), []
-        while serial <= MAX_INTEGER:
+        while serial <= JS_SAFE_INT_MAX:
             if serial in following:
                 visited.append(serial)
                 serial = following[serial]

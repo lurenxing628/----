@@ -2,6 +2,7 @@
 
 import sqlite3
 from collections import Counter
+from datetime import datetime
 
 from flask import Blueprint, g
 
@@ -16,12 +17,15 @@ from web.routes.workbench.write_context import issue_write_context, validate_wri
 INTENT = {"confirm": True, "reason": "Saved scenario approved", "declared_operator": "Declared planner"}
 KEY = "trial-adoption-request-0001"
 BASE = "/api/workbench/v1/trial/scenarios/"
+# Stored resource names readers do not show (``candidate_values.is_stored_text``): empty, a BLOB as a stored JSON
+# document holds it, or with NUL. The schema holds a resource name only as ``TEXT NOT NULL``.
+BAD_RESOURCE_NAMES = {"empty": "", "blob": {"$sqlite_blob": "TGF0aGU="}, "nul": "Lathe\x00 1"}
 
 
 def service(conn, enabled=True):
     return WorkbenchTrialAdoptionService(conn, integration_enabled=enabled,
         context_factory=issue_write_context, context_validator=validate_write_context,
-        data_context=data_context(conn))
+        data_context=data_context(conn), clock=datetime.now)
 
 
 def saved_scenario(case, value=None, *, changed=True, suffix="0001"):
@@ -65,11 +69,14 @@ def _appended_source_rows(before, after, table):
 
 
 def assert_dashboard_task_appends(before, after):
-    # v29 creates exactly two source mappings per new task, not handling history.
-    tasks = _appended_source_rows(before, after, "WorkbenchTaskRefs")
+    # v29+ creates exactly two source mappings per new Schedule task, not handling history.
+    tasks = _appended_source_rows(before, after, "Schedule")
     items = _appended_source_rows(before, after, "WorkbenchDashboardItems")
-    expected = Counter((("str", category), ("NoneType", None), row[1])
-                       for row in tasks for category in ("actual", "downtime"))
+    expected = Counter(
+        (("str", category), ("NoneType", None), row[3], ("NoneType", None))
+        for row in tasks
+        for category in ("actual", "downtime")
+    )
     actual = Counter(tuple(row[2:]) for row in items)
     assert actual == expected, "WorkbenchDashboardItems must map exactly the newly appended task refs"
     for row in items:
@@ -78,9 +85,36 @@ def assert_dashboard_task_appends(before, after):
         assert set(value) <= set("0123456789abcdef"), "dashboard item ref"
 
 
+def external_operation(case):
+    """An external heat treatment by supplier ``S1`` after the case's turning, on its own two-day cycle."""
+    from tests.workbench.identity_metadata_support import insert_row
+
+    case.conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('EXT','Heat treatment','external')")
+    case.conn.execute("INSERT INTO Suppliers(supplier_id,name) VALUES ('S1','Supplier')")
+    case.conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('S1','EXT')")
+    insert_row(case.conn, "ExternalGroups", dict(group_id="EG", part_no="P1", start_seq=2, end_seq=2,
+               merge_mode="separate", total_days=None, supplier_id="S1"))
+    insert_row(case.conn, "PartOperations", dict(part_no="P1", seq=2, op_type_id="EXT", op_type_name="Heat treatment",
+               source="external", supplier_id="S1", ext_group_id="EG", ext_days=2, setup_hours=None, unit_hours=None,
+               status="active"))
+    return case.operation(seq=2, op_type_id="EXT", op_type_name="Heat treatment", source="external",
+                          supplier_id="S1", machine_id=None, operator_id=None, setup_hours=None, unit_hours=None,
+                          ext_days=2)
+
+
 def full_plan(case):
+    from tests.workbench.execution_ledger_support import publish_official_plan
+
     second = case.operation(seq=2)
-    case.plan(1, [case.op_id, second], end="2026-09-09T11:00:00")
-    case.conn.execute("UPDATE Schedule SET start_time='2026-09-09T11:00:00',end_time='2026-09-09T11:45:00' WHERE op_id=?", (second,))
+    publish_official_plan(
+        case.conn,
+        1,
+        [
+            {"op_id": case.op_id, "machine_id": "M1", "operator_id": "O1",
+             "start_time": "2026-09-09T08:00:00", "end_time": "2026-09-09T11:00:00"},
+            {"op_id": second, "machine_id": "M1", "operator_id": "O1",
+             "start_time": "2026-09-09T11:00:00", "end_time": "2026-09-09T11:45:00"},
+        ],
+    )
     case.conn.commit()
     return {"base": {"plan_ref": case.plan_ref(1)}}, second

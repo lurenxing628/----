@@ -60,19 +60,19 @@ class WorkbenchMaterialBulkService:
         return preview
 
     def _prepare_delete(self, request):
+        """The preview rows and, beside each, the typed identity its confirmation writes against."""
         captured = self.repo.capture(refs=request["refs"])
-        rows = [self._delete_row(index, ref, captured) for index, ref in enumerate(request["refs"], 1)]
-        return MaterialPreview.build("material.bulk_delete", request, rows), rows
+        planned = [self._delete_row(index, ref, captured) for index, ref in enumerate(request["refs"], 1)]
+        return MaterialPreview.build("material.bulk_delete", request, [row for row, _identity in planned]), planned
 
     def _delete_row(self, number, ref, captured):
         row = preview_row(number, action="delete", normalized={})
         row["entity_ref"] = ref
-        identity = captured["identities"].get(ref)
-        identity = WorkbenchEntityIdentity(identity["ref"], identity["kind"], identity["entity_key"],
-                                            identity["revision"], bool(identity["active"])) if identity else None
+        raw = captured["identities"].get(ref)
+        identity = WorkbenchEntityIdentity.from_row(raw) if raw else None
         if identity is None or identity.kind != "material" or not identity.active:
             reject_row(row, "这条物料记录已失效，请重新选择。", field="entity_ref", code="entity_not_found")
-            return row
+            return row, None
         row["business_code"] = identity.entity_key
         row["expected"] = full_material_snapshot(captured, identity)
         _, capabilities, blocked = material_action_policy(row["expected"]["material"]["requirement_count"])
@@ -80,22 +80,18 @@ class WorkbenchMaterialBulkService:
             reject_row(row, blocked[0]["message"], field="entity_ref", code=blocked[0]["code"])
         else:
             row["result"] = "delete"
-        return row
+        return row, identity
 
     def confirm_delete(self, preview):
         if not self.conn.in_transaction:
             raise RuntimeError("批量删除必须在外层工作台写事务中执行。")
-        current, rows = self._prepare_delete(preview.as_dict()["request"])
+        current, planned = self._prepare_delete(preview.as_dict()["request"])
         preview.check_current(current)
         prepared = [
-            self.adapter.prepare_checked(
-                "delete",
-                row["input"],
-                {**row["expected"], "identity": WorkbenchEntityIdentity(**row["expected"]["identity"])},
-            )
-            for row in rows
+            self.adapter.prepare_checked("delete", row["input"], {**row["expected"], "identity": identity})
+            for row, identity in planned
         ]
         outcomes = self.adapter.apply_prepared_many(prepared)
         results = [{"row": row["row"], "result": outcome.result, **outcome.data}
-                   for row, outcome in zip(rows, outcomes)]
+                   for (row, _identity), outcome in zip(planned, outcomes)]
         return WorkbenchCommandOutcome("committed", {"rows": results, "deleted_count": len(results)})

@@ -1,14 +1,13 @@
 """Read-only dashboard comparisons from one immutable decision source."""
 
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
-from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_run_analysis import operation_change
 from core.models.workbench_run_baseline import RunBaselineComparison, baseline_reason
 from core.models.workbench_run_candidate import local_time, reject
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.delivery_projection import delivery_batch_delta, delivery_summary
 
-from .candidate_baseline import _in_time
+from .candidate_baseline import comparison_row_in_time
 from .candidate_metrics import changeovers, resource_comparison
 from .candidate_tradeoffs import candidate_tradeoffs
 from .decision_source import DecisionSource
@@ -30,8 +29,8 @@ def analysis_source(store, candidate_ref, *, range_start=None, range_end=None):
 
 
 def _comparison_interval(task, interval):
-    fields = ("row_ref", "start", "end", "source", "machine", "operator", "supplier", "locked", "data_gaps", "interval_comparable")
-    hours = (interval[1] - interval[0]).total_seconds() / 3600 if interval is not None else None
+    fields = ("row_ref", "start", "end", "source", "machine", "operator", "supplier", "locked", "data_gaps")
+    hours = (interval[1] - interval[0]).total_seconds() / 3600
     result = {**{key: task[key] for key in fields},
               "elapsed_hours": hours,
               "effective_processing_hours": None}
@@ -42,26 +41,24 @@ def _comparison_interval(task, interval):
 
 def comparison_rows(source):
     """Apply the candidate baseline comparison rule (RunBaselineComparison) on compact permanent-identity rows."""
-    old = source.analysis_groups("reference")
-    new = {row["operation_ref"]: row for row in source.analysis_tasks(source.selected_ref)}
+    old, new = source.operation_arrangements("reference"), source.operation_arrangements(source.selected_ref)
     old_intervals = source.task_intervals("reference")
     new_intervals = source.task_intervals(source.selected_ref)
     selected = source.operation_refs
     result = []
     for ref in sorted(selected | set(old) | set(new)):
-        task = new.get(ref)
+        task, previous = new.get(ref), old.get(ref)
         cand_span = new_intervals[task["row_ref"]] if task else None
-        old_rows = old.get(ref, ())
-        base_spans = [old_intervals[row["row_ref"]] for row in old_rows]
+        base_span = old_intervals[previous["row_ref"]] if previous else None
         # Execution annotations are not consumed by the arrangement metrics.
         labels = {"batch_ref": source.operation_batch_ref(ref), "execution_at_generation": None}
         result.append(RunBaselineComparison(
             ref, task["row_ref"] if task else None, labels,
             _comparison_interval(task, cand_span) if task else None,
-            [_comparison_interval(row, span) for row, span in zip(old_rows, base_spans)], ref in selected,
+            _comparison_interval(previous, base_span) if previous else None, ref in selected,
             "scheduled" if task else "skipped" if ref in source.deferred_refs else "unscheduled" if ref in selected else None,
             candidate_interval=cand_span,
-            baseline_intervals=base_spans,
+            baseline_interval=base_span,
         ).to_dict())
     return result
 
@@ -78,7 +75,7 @@ def comparison_metadata(source, rows, scope=None):
         visible = [
             row
             for row in visible
-            if _in_time(row, start, end, task_intervals=new_intervals, baseline_intervals=old_intervals)
+            if comparison_row_in_time(row, start, end, task_intervals=new_intervals, baseline_intervals=old_intervals)
         ]
     available = any(row["comparison_available"] for row in visible)
     reason = None if available else baseline_reason("no_comparable_operations" if captured else "no_admission_baseline")
@@ -171,7 +168,7 @@ def _time_scope(source):
 
 def read_candidate_comparison(conn, scope, *, bind_snapshot):
     store = CandidateStore(conn)
-    with store.snapshot(), read_evidence_scope(conn):
+    with store.snapshot():
         source = analysis_source(store, scope.candidate_ref, range_start=scope.range_start, range_end=scope.range_end)
         snapshot = bind_snapshot({**scope.scope(), **_time_scope(source), "kind": "dashboard-candidate-comparison"},
                                  analysis_state(source))

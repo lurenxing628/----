@@ -7,27 +7,27 @@ never records or refreshes process-stage confirmations.
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.template_hours import ProcessTemplateHours
+from core.services.process.workflow_state import reset_group_hours_confirmations
 from data.repositories.workbench_process_hours_repo import WorkbenchProcessHoursRepository
 
 from .file_hours_preview import HoursFilePreview
+from .scope import ProcessFactScope
 
 
 class ProcessHoursFileOperations:
     def __init__(self, conn, logger):
         self.conn, self.logger = conn, logger
         self.repo = WorkbenchProcessHoursRepository(conn, logger)
-        self.facts = {}
 
-    def preview_rows(self, decoded_rows, facts, target_ref):
-        self.facts = facts
-        rows, extra = HoursFilePreview(facts, target_ref).build(decoded_rows)
-        return rows, extra
+    def preview_rows(self, decoded_rows, scope: ProcessFactScope, target_ref):
+        self.facts = scope.facts()
+        return HoursFilePreview(self.facts, target_ref).build(decoded_rows)
 
     def apply_rows(self, rows):
         if not self.conn.in_transaction:
             raise RuntimeError("工时文件写入必须在外层 BEGIN IMMEDIATE 事务中执行。")
         hours = ProcessTemplateHours(self.conn)
-        current = {row["ref"]: row for row in self.facts["operations"]}
+        current = {row["ref"]: row for row in self.facts.raw.operations}
         groups = self._group_updates(rows)
         results, affected = [], set()
         for row in rows:
@@ -68,3 +68,4 @@ class ProcessHoursFileOperations:
                                             ref=group["ref"], revision=group["revision"])
         if count != 1:
             raise WorkbenchCommandRejected("stale_write", "预检时的工序或外协组已经变了，这批写入已经全部还原。请重新预检。")
+        reset_group_hours_confirmations(self.conn, [group["group_id"]])

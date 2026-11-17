@@ -64,6 +64,22 @@ def test_receipt_write_failure_rolls_back_quota_audit_and_receipt(ready_adoption
     }
 
 
+@pytest.mark.parametrize(("field", "value"), [("reason", "x" * 2001), ("declared_operator", " ")])
+def test_http_preview_and_confirm_point_at_the_same_reason_or_operator_field(ready_adoption_case, field, value):
+    case = ready_adoption_case
+    base = "/api/workbench/v1/calibration/" + case.template_ref
+    write_token = token(case)
+    before = snapshot(case.conn)
+    message = "请填写采用原因和经办人；原因最多 2000 字，经办人最多 100 字。"
+    for path, body in ((base + "/adopt-preview", {"input": {**PREVIEW_INTENT, field: value}}),
+                       (base + "/adopt", {"write_token": write_token, "request_key": KEY, "input": {**INTENT, field: value}})):
+        response = case.client.post(path, json=body)
+        assert response.status_code == 422, response.get_json()
+        error = response.get_json()["error"]
+        assert (error["code"], error["message"], error["fields"]) == ("invalid_input", message, [{"path": field, "message": message}])
+    assert snapshot(case.conn) == before
+
+
 def test_competing_connections_reject_second_adoption_from_same_preview(ready_adoption_case):
     case = ready_adoption_case
     write_token = token(case)
@@ -127,9 +143,10 @@ def test_adoption_keeps_raw_reports_once_and_binds_source_versions(ready_adoptio
         assert revision["source_ref"] == sample["sample_ref"]
         assert revision["report_revision_refs"] == sample["report_revision_refs"]
         assert revision["lineage"]["evidence_ref"] == sample["lineage_evidence_ref"]
-        assert revision["lineage"]["birth_event_id"] in revision["lineage"]["event_ids"]
+        assert revision["lineage"]["source_eligible"] is True
+        assert revision["lineage"]["instance_modified"] is False
+        assert not {"birth_event_id", "event_ids", "reports"}.intersection(revision["lineage"])
         assert not {"reports", "execution", "instance_snapshot"}.intersection(revision)
-        assert "reports" not in revision["lineage"]
         assert len(sample["reports"]) == 1
     assert all(set(row) == {"sample_ref", "sample_revision", "eligible", "exclusion_reasons"}
                for row in binding["source_revisions"])

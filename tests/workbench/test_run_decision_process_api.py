@@ -3,7 +3,6 @@
 import csv
 import io
 import json
-from types import SimpleNamespace
 
 import pytest
 from openpyxl import load_workbook
@@ -11,7 +10,11 @@ from openpyxl import load_workbook
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 from core.services.workbench.run import decision_process, decision_process_export
 from core.services.workbench.run.decision_process_export import UNIFIED_PROCESS_CSV_HEADERS
-from scripts.verify_decision_workbench import process_export_candidate_documents, process_export_expected
+from tests.workbench.decision_export_oracle_support import (
+    check_process_export_sheet,
+    collect_process_export_sources,
+    process_export_expected,
+)
 from tests.workbench.run_candidate_support import BASE, api, compute, retained
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.test_run_decision_api import decision_summary
@@ -96,7 +99,7 @@ def check_scope_exports(rows, scopes, fmt):
             exported_value(row, label, value, fmt)
 
 
-def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate_case, monkeypatch, tmp_path):
+def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate_case, monkeypatch):
     case = candidate_case
     case.config(algo_mode="improve", dispatch_mode="sgs", dispatch_rule="slack", time_budget_seconds=1, objective="min_overdue")
     run_ref, refs = compute(case)
@@ -132,7 +135,17 @@ def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate
         complete_times = [event["elapsed_ms"] for event in raw["events"] if event["event_type"] == "archive_observation"
                           and event["verified"] is True and raw["scopes"][event["scope_ref"]]["is_complete"] is True]
         assert data["summary"]["first_complete_elapsed_ms"] == min(complete_times)
-        assert data["scopes"] == raw["scopes"] and data["bridges"] == raw["bridges"]
+        expected_scopes = {
+            k: {
+                "scheduled_operation_count": len(v["scheduled_operation_refs"]),
+                "complete_batch_count": len(v["complete_batch_refs"]),
+                "objective_scope": v["objective_scope"],
+                "components_known": v["components_known"],
+                "is_complete": v["is_complete"],
+            }
+            for k, v in raw["scopes"].items()
+        }
+        assert data["scopes"] == expected_scopes and data["bridges"] == raw["bridges"]
         explicit = detail(client, run_ref, "process", **dict(query, objective=raw["primary_objective"], snapshot_ref=initial["meta"]["snapshot_ref"]))
         assert all(explicit["meta"][key] == initial["meta"][key] for key in ("snapshot_ref", "as_of"))
         assert explicit["data"] == data
@@ -265,23 +278,26 @@ def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate
                 exported_value(row, "最后真实评分改善（毫秒）", target["last_improvement_elapsed_ms"], "xlsx")
         assert sum(row["record_kind"] == "search_action" for row in all_rows) == len(raw["actions"])
         check_scope_exports(all_rows, raw["scopes"], "xlsx")
-        saved_candidates = process_export_candidate_documents(
-            SimpleNamespace(document=lambda url: client.get(url).get_json()),
-            {"run_ref": run_ref},
-            query,
-            overview,
-            tmp_path / "process-verify",
-            include_all_objectives=True,
-        )
-        assert [saved_candidates[0]["objectives"][objective]["actions"] for objective in raw["target_objectives"]] == [
+        sources = collect_process_export_sources(client, run_ref, query, overview, scope_members=raw["scopes"])
+        assert [sources["objectives"][objective]["actions"] for objective in raw["target_objectives"]] == [
             [action for action in raw["actions"] if action["search_objective"] == objective]
             for objective in raw["target_objectives"]
         ]
-        expected_export = process_export_expected({"data": overview["data"], "meta": first["meta"]}, saved_candidates)
+        expected_export = process_export_expected(overview, sources)
         assert [row["动作编号"] for row in expected_export["搜索动作"]] == [
             action["action_id"]
             for objective in raw["target_objectives"]
             for action in raw["actions"]
             if action["search_objective"] == objective
         ]
+        # The complete export of the default process view, bound to the screen snapshot, equals the oracle in all eight tables.
+        response = client.get(BASE + "/runs/" + run_ref + "/decision/export", query_string={
+            **query, "snapshot_ref": overview["meta"]["snapshot_ref"], "section": "all", "format": "xlsx"})
+        assert response.status_code == 200, response.get_json()
+        book = load_workbook(io.BytesIO(response.data), read_only=True, data_only=False)
+        try:
+            for title, rows in expected_export.items():
+                check_process_export_sheet(book[title], rows, title)
+        finally:
+            book.close()
         assert decision_summary(client, run_ref, **query)["data"]["selection_basis"] == overview["data"]["selection_basis"]

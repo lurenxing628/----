@@ -12,7 +12,7 @@ def subject_arrangements(tasks, operation_refs, *, task_intervals):
         if task["source"] != "internal" or task["operation_ref"] not in selected:
             continue
         interval = task_intervals[task["row_ref"]]
-        if interval is None or interval[0] != interval[1]:
+        if interval[0] != interval[1]:
             result.append(task)
     return result
 
@@ -31,9 +31,7 @@ def changeover_projection(tasks, *, start=None, end=None, work_available=True,
                 machine_label=machine["label"] if machine is not None else None,
                 operation_ref=task["operation_ref"], row_ref=task["row_ref"],
                 type_ref=task["process_type_ref"], type_label=task["process_type_label"],
-                start=interval[0] if interval is not None else None,
-                end=interval[1] if interval is not None else None,
-                source=task["source"], point_event=interval is not None and interval[0] == interval[1],
+                start=interval[0], end=interval[1], source=task["source"],
                 sort_key=(task["operation_ref"], task["row_ref"])))
     return project_changeover_events(
         arrangements, start=low, end=high, work_available=work_available, next_operation_refs=next_operation_refs)

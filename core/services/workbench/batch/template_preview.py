@@ -3,14 +3,12 @@
 import re
 from collections import defaultdict
 
-from core.models.workbench_batch import MAX_INTEGER
-from core.services.workbench.process.projection import public_sequence
-from core.shared.strict_parse import is_exact_finite_number
+from core.shared.strict_parse import JS_SAFE_INT_MAX, is_exact_finite_number, wire_sequence
 
 
 def _display_number(value):
-    # Non-applicable legacy fields stay untouched in storage and cannot break JSON.
-    return value if is_exact_finite_number(value) and abs(value) <= MAX_INTEGER else None
+    # Non-applicable legacy hours stay untouched in storage and cannot break JSON; cycles are typed by their table.
+    return value if is_exact_finite_number(value) and abs(value) <= JS_SAFE_INT_MAX else None
 
 
 def _sequence_order(value):
@@ -27,16 +25,15 @@ def template_after(rows, facts, projection):
     result = []
     for row in sorted(rows, key=lambda item: (item["seq"], item["id"])):
         group = groups.get(row["ext_group_id"])
-        result.append({"sequence": public_sequence(row["seq"]), "label": row["op_type_name"], "source": row["source"],
-                       "op_type_ref": projection.ref("op_type", row["op_type_id"]),
-                       "setup_hours": _display_number(row["setup_hours"]), "unit_hours": _display_number(row["unit_hours"]), "external_days": _display_number(row["ext_days"]),
+        # 模板行没有设备、人员：替换后的工序不带指定，资源与 *_ref 和批次工序同形。
+        result.append({"sequence": wire_sequence(row["seq"]), "piece_id": None, "label": row["op_type_name"], "source": row["source"],
+                       "setup_hours": _display_number(row["setup_hours"]), "unit_hours": _display_number(row["unit_hours"]), "external_days": row["ext_days"],
                        "external_group": {"ref": projection.ref("template_external_group", group["group_id"]),
-                                          "merge_mode": group["merge_mode"], "total_days": _display_number(group["total_days"]),
-                                          "start_sequence": public_sequence(group["start_seq"]),
-                                          "end_sequence": public_sequence(group["end_seq"])} if group else None,
-                       "machine_ref": None, "operator_ref": None,
-                       "supplier_ref": projection.ref("supplier", row["supplier_id"]),
-                       "supplier": projection.resource("supplier", row["supplier_id"])})
+                                          "merge_mode": group["merge_mode"], "total_days": group["total_days"],
+                                          "start_sequence": wire_sequence(group["start_seq"]),
+                                          "end_sequence": wire_sequence(group["end_seq"])} if group else None,
+                       **projection.operation_resources(machine=None, operator=None,
+                                                        supplier=row["supplier_id"], op_type=row["op_type_id"])})
     return result
 
 
@@ -48,7 +45,7 @@ def _compared_fields(current):
 
 def _group_key(row):
     group = row["external_group"]
-    return None if group is None else (group["ref"], row.get("piece_id"), group["start_sequence"],
+    return None if group is None else (group["ref"], row["piece_id"], group["start_sequence"],
         group["end_sequence"], group["merge_mode"], group["total_days"])
 
 

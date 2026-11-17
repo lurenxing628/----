@@ -3,10 +3,10 @@
 from typing import Any, Dict, cast
 
 from core.services.workbench.facts.decision_metrics import delivery_metric_values, metric_delta
-from core.services.workbench.facts.delivery_projection import delivery_batch_delta
+from core.services.workbench.facts.delivery_projection import delivery_batch_delta, known_delivery_batch_refs
 
 from .decision_completion import compact_common, compact_completion
-from .decision_impact import arrangement_view, drill_target, operation_delta
+from .decision_impact import drill_target, operation_delta
 from .decision_tradeoffs import aggregate_tradeoffs, tradeoff_entry
 
 RECOMMENDATION_VERSION = "decision-recommendation-v1"
@@ -21,8 +21,8 @@ def detail_drill(source, candidate_ref, tab, query):
             "comparison_tab": tab, "detail_query": query}
 
 
-def _support(source, candidate_ref, kind, ref, tab, query, *, tasks=None, operation_ref=None, batch_ref=None, before=False):
-    if tasks is None:
+def _support(source, candidate_ref, kind, ref, tab, query, *, task=None, operation_ref=None, batch_ref=None, before=False):
+    if task is None:
         drill = detail_drill(source, candidate_ref, tab, query)
     else:
         # operations excludes unavailable baselines before calling with before=True;
@@ -31,7 +31,7 @@ def _support(source, candidate_ref, kind, ref, tab, query, *, tasks=None, operat
             Dict[str, Any],
             drill_target(
                 source,
-                tasks=tasks,
+                tasks=[task],
                 batch_ref=batch_ref,
                 operation_ref=operation_ref,
                 before=before,
@@ -40,9 +40,7 @@ def _support(source, candidate_ref, kind, ref, tab, query, *, tasks=None, operat
         )
         if not before or source.comparison_mode == "admission_official":
             drill["candidate_ref"] = candidate_ref
-        drill.update(selected_candidate_ref=candidate_ref, resource_view=source.resource_view)
-        if len(tasks) == 1:
-            drill["selected_row_ref"] = tasks[0]["row_ref"]
+        drill.update(selected_candidate_ref=candidate_ref, resource_view=source.resource_view, selected_row_ref=task["row_ref"])
         drill.update(query)
     return {"kind": kind, "ref": ref, "candidate_ref": candidate_ref, "side": "reference" if before else "selected", "drill": drill}
 
@@ -76,21 +74,18 @@ class RecommendationSupport:
         if source.computation_key(key) == source.computation_key("reference"):
             return []
         if self._operations is None:
-            old, new = source.analysis_groups("reference"), source.analysis_groups(key)
+            old, new = source.operation_arrangements("reference"), source.operation_arrangements(key)
             self._operations = []
-            for ref in source.scope["operation_refs"]:
-                previous, current = old[ref], new[ref]
-                delta = operation_delta(arrangement_view(previous), arrangement_view(current),
+            for ref in source.admitted_operation_refs:
+                previous, current = old.get(ref), new.get(ref)
+                delta = operation_delta(previous, current,
                     task_intervals=source.task_intervals(key), reference_task_intervals=source.task_intervals("reference"))
-                known_change = any(kind not in ("unknown", "unchanged") for kind in delta["change_kinds"])
-                # The common operation-change metrics keep multiple segments in
-                # unknown coverage; they are not samples of a known adjustment.
-                if known_change and len(previous) <= 1 and len(current) <= 1:
-                    self._operations.append((ref, delta, current or previous, not current))
-        rows = [(ref, tasks, before) for ref, delta, tasks, before in self._operations
+                if any(kind not in ("unknown", "unchanged") for kind in delta["change_kinds"]):
+                    self._operations.append((ref, delta, current or previous, current is None))
+        rows = [(ref, task, before) for ref, delta, task, before in self._operations
                 if metric != "machine_change_count" or delta["machine_changed"] is True]
-        return [_support(source, key, "operation", ref, "operations", {}, tasks=tasks,
-                batch_ref=source.operation_batch_ref(ref), operation_ref=ref, before=before) for ref, tasks, before in rows[:3]]
+        return [_support(source, key, "operation", ref, "operations", {}, task=task,
+                batch_ref=source.operation_batch_ref(ref), operation_ref=ref, before=before) for ref, task, before in rows[:3]]
 
     def resources(self, definition, direction):
         source, key = self.source, self.key
@@ -142,7 +137,7 @@ class RecommendationSupport:
                     lookup = {task["row_ref"]: task for task in source.analysis_tasks(key)}
                     self._changeover_support = [_support(source, key, "changeover", row["next_row_ref"], "changeovers",
                         {"resource_ref": row["machine_ref"], "resource_kind": "machine"},
-                        tasks=[lookup[row["next_row_ref"]]], batch_ref=lookup[row["next_row_ref"]]["batch_ref"],
+                        task=lookup[row["next_row_ref"]], batch_ref=lookup[row["next_row_ref"]]["batch_ref"],
                         operation_ref=row["next_operation_ref"]) for row in events]
             values = self._changeover_support
         elif definition["source"] == "archived_resource_calendar":
@@ -160,20 +155,19 @@ def recommendation(source, candidates, definitions):
     selected = next((row for row in candidates if row["candidate_ref"] == basis["selected_candidate_ref"]), None)
     axes = {"algorithm": {"state": "selected" if selected else "unavailable", "reason_code": basis["reason_code"],
                           "evidence_state": basis["evidence_state"]},
-            "completion": {"search": selected["coverage"]["search"] if selected else None,
-                           "schedulable": selected["coverage"]["schedulable"] if selected else None, "delivery": None},
+            "completion": {"schedulable": selected["coverage"]["schedulable"] if selected else None, "delivery": None},
             "preflight": {"state": "not_checked", "source": "existing_adoption_preview"}}
     result = {"recommendation_version": RECOMMENDATION_VERSION, "state": "available" if selected else "unavailable",
               "candidate_ref": basis["selected_candidate_ref"], "viewed_candidate_ref": source.selected_ref,
               "recommendation_type": None, "headline": "本次排产尚未保存推荐方案。", "axes": axes,
-              "completion_scope": None, "reason_code": basis["reason_code"], "selection_basis": basis,
+              "completion_scope": None, "reason_code": basis["reason_code"],
               "benefits": [], "costs": [], "current_comparison": {"state": "unavailable", "candidate_ref": basis["selected_candidate_ref"],
                 "viewed_candidate_ref": source.selected_ref, "reference": source.baseline,
                 "benefits": [], "costs": [], "all_differences": [], "common_completed_delivery": None}}
     if selected is None:
         return result
     key, schedulable = selected["candidate_ref"], selected["coverage"]["schedulable"]
-    scope = source.completion.scope(key, schedulable)
+    scope = source.completion.scope(key)
     compact = compact_completion(scope, detail_drill(source, key, "preparation", {"work_scope": "remaining"}))
     complete = scope["state"] == "complete" and schedulable["state"] == "complete"
     deferred = schedulable["state"] == "complete" and bool(scope["deferred_batch_refs"]) and not (
@@ -192,7 +186,16 @@ def recommendation(source, candidates, definitions):
     headline = "推荐方案：" + label + ("；" + "；".join(facts) if facts else "；工序安排资料未保存") + "。"
     common = source.completion.common(key)
     pair, batch_refs = common["common_delivery"], common["common_completed_batch_refs"]
-    common_values = {side: delivery_metric_values(pair[side]) for side in ("before", "after")}
+    common_set = set(batch_refs)
+    common_values = {
+        side: delivery_metric_values(
+            pair[side],
+            covered_refs=known_delivery_batch_refs(
+                [row for row in source.completion.delivery(side_key) if row["batch_ref"] in common_set]
+            ),
+        )
+        for side, side_key in (("before", "reference"), ("after", key))
+    }
     support, entries = RecommendationSupport(source, key), []
     for definition in definitions:
         name, delta = definition["key"], selected["deltas"][definition["key"]]

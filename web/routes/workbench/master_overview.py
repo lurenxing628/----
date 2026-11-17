@@ -12,15 +12,15 @@ from core.services.workbench.master.overview import MasterOverviewService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
-from .read_context import bind_read_snapshot
+from .read_context import bind_read_snapshot, current_snapshot_time
+from .request_json import single_value_arguments
 
 BASE = "/api/workbench/v1/master-overview"
 
 
 def _request(extra=(), require_snapshot=False):
     allowed = {"scope", "snapshot_ref"} | set(extra)
-    if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        invalid("资料总览的查询条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。")
+    single_value_arguments(allowed, message="资料总览的查询条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。")
     scope = read_scope(request.args.get("scope", "{}"))
     token = request.args.get("snapshot_ref")
     if require_snapshot and not token:
@@ -42,6 +42,7 @@ def master_overview_list():
     reader = MasterOverviewService(g.db)
     bound = {}
     with reader.read_snapshot(
+        as_of=current_snapshot_time(),
         bind_snapshot=lambda state, as_of: bound.setdefault(
             "snapshot", bind_read_snapshot(scope.scope(), state, token, as_of=as_of)
         )
@@ -60,6 +61,7 @@ def master_overview_detail(domain, ref):
     reader = MasterOverviewService(g.db)
     bound = {}
     with reader.read_snapshot(
+        as_of=current_snapshot_time(),
         bind_snapshot=lambda state, as_of: bound.setdefault(
             "snapshot", bind_read_snapshot(scope.scope(), state, token, as_of=as_of)
         )
@@ -73,7 +75,8 @@ def master_overview_locate(domain, ref):
     scope, token = _request(require_snapshot=True)
     reader = MasterOverviewService(g.db)
     with reader.read_snapshot(
-        bind_snapshot=lambda state, as_of: bind_read_snapshot(scope.scope(), state, token, as_of=as_of)
+        as_of=current_snapshot_time(),
+        bind_snapshot=lambda state, as_of: bind_read_snapshot(scope.scope(), state, token, as_of=as_of),
     ) as view:
         target_scope, data = view.locate(scope, domain, ref)
         snapshot = bind_read_snapshot(target_scope.scope(), view.facts.snapshot_state, None, as_of=view.facts.as_of)
@@ -86,6 +89,7 @@ def master_overview_export():
     reader = MasterOverviewService(g.db)
     bound = {}
     with reader.read_snapshot(
+        as_of=current_snapshot_time(),
         bind_snapshot=lambda state, as_of: bound.setdefault(
             "snapshot", bind_read_snapshot(scope.scope(), state, token, as_of=as_of)
         )

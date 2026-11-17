@@ -7,8 +7,7 @@ from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 
 from .projection import project_external_days, project_group
 
-_SUGGESTION_ISSUES = frozenset(("unknown_op_type", "supplier_missing", "multiple_supplier_candidates",
-                               "external_days_missing_or_invalid", "invalid_op_type_category"))
+_SUGGESTION_ISSUES = frozenset(("unknown_op_type", "supplier_missing", "multiple_supplier_candidates"))
 
 
 def route_choice_context(operations, facts):

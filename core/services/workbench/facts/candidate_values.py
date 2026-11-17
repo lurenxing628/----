@@ -1,21 +1,13 @@
 """Strict stored-value parsing and small public projections."""
 
-from typing import Any, NoReturn, Type
+from typing import NoReturn
 
 from core.models.workbench_run_candidate import reject
-from core.shared.strict_json import load_strict_json
-from core.shared.strict_parse import is_exact_non_negative_number
+from core.shared.strict_parse import is_exact_non_negative_number, wire_int
 
 
 def corrupt() -> NoReturn:
     reject("candidate_artifact_invalid", "这次排产保存的结果缺失或不一致，请到「排产记录」核对；仍有问题请联系维护人员。", 500)
-
-
-def stored_json(value, expected: Type[Any] = dict) -> Any:
-    # Stored documents are TEXT; a BLOB is as corrupt as unreadable JSON.
-    if type(value) is not str:
-        corrupt()
-    return load_strict_json(value, on_malformed=corrupt, expected=expected)
 
 
 def gap(field, code="not_recorded"):
@@ -29,14 +21,16 @@ def gap(field, code="not_recorded"):
 def is_blob_metadata(value) -> bool:
     if type(value) is bytes:
         return True
-    return type(value) is dict and (
-        (set(value) == {"$sqlite_blob"} and type(value["$sqlite_blob"]) is str)
-        or (set(value) == {"sqlite_blob_base64"} and type(value["sqlite_blob_base64"]) is str)
-    )
+    return type(value) is dict and set(value) == {"$sqlite_blob"} and type(value["$sqlite_blob"]) is str
+
+
+def is_stored_text(value) -> bool:
+    """A stored text value readers show as it is: a non-empty string without NUL."""
+    return type(value) is str and value != "" and "\x00" not in value
 
 
 def text(value, field, gaps):
-    if type(value) is str and value and "\x00" not in value:
+    if is_stored_text(value):
         return value
     if value is None or value == "":
         code = "not_recorded"
@@ -50,7 +44,7 @@ def text(value, field, gaps):
 
 def number(value, field, gaps, *, integer=False):
     if (type(value) is int or not integer) and is_exact_non_negative_number(value):
-        return str(value) if type(value) is int and value > (1 << 53) - 1 else value
+        return wire_int(value) if type(value) is int else value
     gaps.append(gap(field, "not_recorded" if value is None else "invalid_stored_value"))
     return None
 

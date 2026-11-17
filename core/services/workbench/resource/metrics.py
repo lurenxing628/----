@@ -1,9 +1,9 @@
 """Static enabled-resource counts, not calendar capacity or scheduled utilization."""
 
 from collections import Counter, defaultdict
-from typing import Dict
+from typing import Any, Dict
 
-from core.models.resource_capabilities import OP_TYPE_CATEGORIES, machine_type_index, supports_source
+from core.models.resource_capabilities import machine_type_index, supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_status import public_resource_status
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
@@ -52,9 +52,7 @@ def index_resource_rows(rows, key):
     return result
 
 
-def _relation(value, records, label, *, nullable=False):
-    if value is None and nullable:
-        return
+def _relation(value, records, label):
     if value not in records:
         _invalid(label + "指向的记录已经不存在")
 
@@ -66,7 +64,7 @@ class WorkbenchResourceMetricsService:
         self.repo = WorkbenchResourceMetricsRepository(conn, logger=logger)
         self.facts = facts if facts is not None else {}
         self.records, self.profiles, self.statuses = {}, {}, {}
-        self.policies, self.groups = {}, {}
+        self.policies = {}
         self._computed = set()
         self._failed = {}
         self.linked_machines = defaultdict(set)
@@ -75,14 +73,9 @@ class WorkbenchResourceMetricsService:
         self.available_suppliers = defaultdict(set)
 
     def load_facts(self, names):
-        self.facts.update(self.repo.facts(sorted(set(names) - set(self.facts))))
-
-    def op_type_dependencies(self, codes):
-        return self.repo.op_type_dependencies(codes)
-
-    def fingerprint_facts(self, kind):
-        # Fingerprinting raw facts must not make another domain's validation a read gate.
-        self.load_facts(READ_FACTS.get(kind, ()))
+        missing = sorted(set(names) - set(self.facts))
+        if missing:
+            self.facts.update(self.repo.facts(missing))
 
     @staticmethod
     def identity_kinds(kind):
@@ -104,8 +97,6 @@ class WorkbenchResourceMetricsService:
         return self.statuses[kind]
 
     def _validate_internal(self):
-        for row in self.records["machine"].values():
-            self._work_type(row["op_type_id"], "internal", nullable=True)
         for row in self.facts["machine_capabilities"]:
             _relation(row["machine_id"], self.records["machine"], "设备加工能力")
             self._work_type(row["op_type_id"], "internal")
@@ -117,9 +108,9 @@ class WorkbenchResourceMetricsService:
         for row in self.facts["operator_profiles"]:
             _relation(row["operator_id"], self.records["operator"], "人员资格登记")
 
-    def _work_type(self, code, category, *, nullable=False):
-        _relation(code, self.records["op_type"], "资源工种关联", nullable=nullable)
-        if code is not None and not supports_source(self.records["op_type"][code]["category"], category):
+    def _work_type(self, code, category):
+        _relation(code, self.records["op_type"], "资源工种关联")
+        if not supports_source(self.records["op_type"][code]["category"], category):
             _invalid("资源关联的工种，自制或外协归属对不上")
 
     def _validate_suppliers(self):
@@ -208,54 +199,26 @@ class WorkbenchResourceMetricsService:
             return False
         return True
 
-    def metrics(self, kind, codes, *, scope="filtered"):
-        selected = set(codes)
-        if not selected.issubset(self.kind_records(kind)):
-            _invalid("统计范围和实际记录对不上")
-        if kind == "op_type":
-            counts = self._work_type_counts(selected)
-        else:
-            counts = self._status_counts(kind, selected)
-        issues = []
-        if kind == "op_type":
-            unavailable = {"internal": ["linked_machines", "available_operators", "without_machines"],
-                           "external": ["available_suppliers"]}
-            for category in ("internal", "external"):
-                if category in self._failed and any(
-                    supports_source(self.records[kind][code]["category"], category) for code in selected
-                ):
-                    issues.append({"code": "resource_availability_unavailable", "message": self._failed[category],
-                                   "unavailable_fields": unavailable[category]})
-        return {"scope": scope, "counts": counts, "basis": dict(_BASIS), "issues": issues}
+    def status_metrics(self, counts: Dict[str, int], *, scope: str = "filtered") -> Dict[str, Any]:
+        """SQL 按对外状态数出的 ``counts``（``status_counts``）配上统计口径。"""
+        return {"scope": scope, "counts": counts, "basis": dict(_BASIS), "issues": []}
 
-    def _status_counts(self, kind, codes):
-        states = ("active", "inactive")
-        if kind == "machine":
-            states += ("maintain",)
-        elif kind in ("operator", "supplier"):
-            states += ("leave" if kind == "operator" else "pending_review",)
-        counts: Dict[str, int] = dict.fromkeys(states, 0)
-        statuses = self.kind_statuses(kind)
-        counts.update(Counter(statuses[code] for code in codes))
-        counts["total"] = len(codes)
-        if kind == "machine":
-            self.load_facts(["groups", "machine_group"])
-            if not self.groups:
-                self.groups = index_resource_rows(self.facts["groups"], "machine_id")
-            groups = self.kind_records("machine_group")
-            for code in codes:
-                if code in self.groups:
-                    _relation(self.groups[code]["group_id"], groups, "设备分组")
-            counts["groups"] = len({self.groups[code]["group_id"] for code in codes if code in self.groups})
-        elif kind == "operator":
-            self.load_facts(["skills"])
-            counts["skills"] = sum(row["operator_id"] in codes for row in self.facts["skills"])
-        return counts
+    def op_type_metrics(self, codes, *, scope="filtered"):
+        """工种的能力计数要按资格规则在内存里算，不走 SQL 状态计数。"""
+        counts = self._work_type_counts(set(codes))
+        issues = []
+        unavailable = {"internal": ["linked_machines", "available_operators", "without_machines"],
+                       "external": ["available_suppliers"]}
+        for category in ("internal", "external"):
+            if category in self._failed and any(
+                supports_source(self.records["op_type"][code]["category"], category) for code in codes
+            ):
+                issues.append({"code": "resource_availability_unavailable", "message": self._failed[category],
+                               "unavailable_fields": unavailable[category]})
+        return {"scope": scope, "counts": counts, "basis": dict(_BASIS), "issues": issues}
 
     def _work_type_counts(self, codes):
         self.op_type_records()
-        if any(self.records["op_type"][code]["category"] not in OP_TYPE_CATEGORIES for code in codes):
-            _invalid("工种的自制或外协归属填得不对")
         internal = {code for code in codes if supports_source(self.records["op_type"][code]["category"], "internal")}
         external = {code for code in codes if supports_source(self.records["op_type"][code]["category"], "external")}
         counts = {"total": len(codes), "internal": len(internal), "external": len(external)}
@@ -272,24 +235,20 @@ class WorkbenchResourceMetricsService:
                 "without_machines": sum(not self.linked_machines[code] for code in codes)}
 
     def _policy_counts(self, external):
-        if any(code in self.policies and self.policies[code]["default_merge_mode"] not in ("merged", "separate") for code in external):
-            _invalid("工种的周期算法填得不对")
         modes = Counter(self.policies[code]["default_merge_mode"] if code in self.policies else "unset" for code in external)
         return {"merged": modes["merged"], "separate": modes["separate"], "merge_mode_unset": modes["unset"]}
 
-    def summary_metrics(self):
-        groups = {kind: self._summary_group(kind) for kind in RESOURCE_KEYS if kind != "op_type"}
+    def summary_metrics(self, status_counts):
+        """``status_counts``：各类资料整库按对外状态的 SQL 计数；工种按自制、外协各算一组能力计数。"""
+        groups = {kind: self.status_metrics(counts, scope="all") for kind, counts in status_counts.items()}
         for category in ("internal", "external"):
-            groups[category + "_op_type"] = self._summary_group("op_type", category)
+            groups[category + "_op_type"] = self._op_type_summary(category)
         return {"scope": "all", "groups": groups}
 
-    def _summary_group(self, kind, category=None):
+    def _op_type_summary(self, category):
         try:
-            records = self.kind_records(kind)
-            codes = (records if category is None else
-                     [code for code, row in records.items()
-                      if supports_source(row["category"], category) or row["category"] not in OP_TYPE_CATEGORIES])
-            return self.metrics(kind, codes, scope="all")
+            codes = [code for code, row in self.kind_records("op_type").items() if supports_source(row["category"], category)]
+            return self.op_type_metrics(codes, scope="all")
         except ResourceMetricFactsError as exc:
             return {"scope": "all", "counts": {}, "basis": dict(_BASIS),
                     "issues": [{"code": "resource_metrics_unavailable", "message": str(exc)}]}

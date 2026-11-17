@@ -15,13 +15,14 @@ from core.services.workbench.process.file_export import (
     select_export_parts,
 )
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from core.shared.key_sets import keys_conform
 from web.api_responses import query_success
 
-from .material_actions_context import opaque_ref
 from .process_action_context import EXPORT_SCOPE
 from .process_collections import collection_scope
 from .process_json import read_process_json
-from .read_context import bind_read_snapshot, resolve_read_snapshot
+from .read_context import rebind_read_snapshot, resolve_read_snapshot
+from .request_json import opaque_ref
 from .resource_action_context import (
     admit_export_selection,
     download_query,
@@ -30,6 +31,8 @@ from .resource_action_context import (
     resolve_context,
     retain_context,
 )
+
+_STALE_REF_MESSAGE = "这次操作的编号已失效，工艺资料没有改动。请关掉弹窗后重新打开。"
 
 
 def _query_scope(body):
@@ -63,17 +66,16 @@ def _export_selection(body, page_request):
 def process_file_export_preview(kind):
     file_columns(kind)
     body = read_process_json("工艺文件导出", 16 * 1024 * 1024)
-    required = {"format", "selection", "scope", "snapshot_ref", "page_size"}
-    if not required <= set(body) or set(body) - required - {"refs", "target_ref"}:
+    if not keys_conform(body, ("format", "selection", "scope", "snapshot_ref", "page_size"), ("refs", "target_ref")):
         raise WorkbenchCommandRejected("invalid_input", "导出范围不完整或有多余项，没有开始下载。请刷新页面后重新点「导出」。", 400)
     check_format(body["format"])
-    token = opaque_ref(body["snapshot_ref"])
+    token = opaque_ref(body["snapshot_ref"], _STALE_REF_MESSAGE)
     page_request, query_scope = _query_scope(body)
     target_ref = body.get("target_ref")
     reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=target_ref)
     with reader.read_snapshot() as fact_scope:
         read_binding = resolve_read_snapshot(token)
-        snapshot = bind_read_snapshot(query_scope, fact_scope.state_fingerprint(), token, binding=read_binding)
+        snapshot = rebind_read_snapshot(query_scope, fact_scope.state_fingerprint(), token, binding=read_binding)
         refs, effective = _export_selection(body, page_request)
         parts = select_export_parts(fact_scope, refs, effective)
         facts = fact_scope.raw_facts()
@@ -93,12 +95,12 @@ def process_file_export_preview(kind):
 def process_file_export(kind):
     file_columns(kind)
     download_query({"export_ref"})
-    saved, read_binding = resolve_context(EXPORT_SCOPE, opaque_ref(request.args["export_ref"]), "snapshot_stale")
+    saved, read_binding = resolve_context(EXPORT_SCOPE, opaque_ref(request.args["export_ref"], _STALE_REF_MESSAGE), "snapshot_stale")
     if saved["kind"] != kind:
         raise WorkbenchCommandRejected("snapshot_stale", "预检结果属于另一类工艺文件，没有开始下载；系统没有替你换内容。请点「重新预检」。")
     reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=saved["target_ref"])
     with reader.read_snapshot() as fact_scope:
-        snapshot = bind_read_snapshot(
+        snapshot = rebind_read_snapshot(
             saved["query_scope"],
             fact_scope.state_fingerprint(),
             saved["snapshot_ref"],

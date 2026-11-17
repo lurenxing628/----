@@ -1,19 +1,23 @@
 """AK-only Flask fixture, backed exclusively by pytest's temporary SQLite path."""
 
 import json
-import sqlite3
 import uuid
+from datetime import datetime
 from io import BytesIO
 
 import pytest
 from flask import Blueprint, Flask, g, request
 
-from tests.workbench.execution_ledger_support import ledger_case as _ledger_fixture
+from tests._support.sqlite_connection import open_test_connection
+from tests.workbench.execution_ledger_support import ledger_case as _ledger_fixture  # noqa: F401
 from web.routes.workbench.commands import register_command_routes
 from web.routes.workbench.execution import register_execution_routes
 from web.routes.workbench.resources import register_resource_routes
+from web.runtime_host import install_wall_clock
 
 BASE = '/api/workbench/v1/execution'
+# Field reads are POSTs; like GETs and previews they run on a query-only connection.
+READS = {'workbench.field_tasks', 'workbench.field_task', 'workbench.field_file_template', 'workbench.field_file_export'}
 
 
 def success(response):
@@ -25,6 +29,7 @@ def success(response):
 
 def make_app(path):
     app = Flask('ak-field-only')
+    install_wall_clock(app, datetime.now)
     app.config['TESTING'] = True
     statements = []
     bp = Blueprint('workbench', __name__)
@@ -35,13 +40,8 @@ def make_app(path):
 
     @app.before_request
     def database():
-        from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
-
-        g.db = sqlite3.connect(str(path))
-        g.db.row_factory = sqlite3.Row
-        g.db.execute('PRAGMA foreign_keys=ON')
-        register_schedule_time_sql_functions(g.db)
-        if request.method == 'GET' or request.path.endswith('/preview'):
+        g.db = open_test_connection(path)
+        if request.method == 'GET' or request.path.endswith('/preview') or request.endpoint in READS:
             g.db.execute('PRAGMA query_only=ON')
         g.db.set_trace_callback(statements.append)
 
@@ -61,7 +61,7 @@ class FieldAPI:
         self.client = self.app.test_client()
 
     def read(self, suffix='/tasks', **scope):
-        return success(self.client.get(BASE + suffix, query_string=scope))
+        return success(self.client.post(BASE + suffix, json=scope))
 
     def task(self, **scope):
         return self.read(**scope)['data']['tasks'][0]

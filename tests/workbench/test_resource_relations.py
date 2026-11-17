@@ -1,5 +1,7 @@
 """Relation paging and qualification use one captured set of database facts."""
 
+from datetime import datetime
+
 from flask import Blueprint, Flask, g
 
 from core.infrastructure.transaction import TransactionManager
@@ -10,6 +12,7 @@ from tests._support.gantt_current_js import run_current_js
 from tests.workbench.identity_metadata_support import insert_row
 from tests.workbench.resource_entity_support import identity_for, resource_database  # noqa: F401
 from web.routes.workbench.resource_relations import register_resource_relation_routes
+from web.runtime_host import install_wall_clock
 
 
 def test_relation_pages_reuse_captured_facts_and_keep_search_and_errors(resource_conn, monkeypatch):
@@ -23,6 +26,7 @@ def test_relation_pages_reuse_captured_facts_and_keep_search_and_errors(resource
     conn.commit()
 
     app = Flask(__name__)
+    install_wall_clock(app, datetime.now)
     app.config.update(TESTING=True, SECRET_KEY="resource-relation-fixture")
     bp = Blueprint("workbench", __name__)
     register_resource_relation_routes(bp)
@@ -79,8 +83,9 @@ def test_relation_pages_reuse_captured_facts_and_keep_search_and_errors(resource
     assert not any("WITH selected AS" in statement or "FROM OperatorSkill" in statement for statement in stale_sql)
 
     conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='OT1'")
-    insert_row(conn, "Machines", {"machine_id": " M1 ", "name": "padded-lathe", "op_type_id": "OT1",
+    insert_row(conn, "Machines", {"machine_id": " M1 ", "name": "padded-lathe",
                                   "category": "precision", "status": "active"})
+    insert_row(conn, "MachineOpTypes", {"machine_id": " M1 ", "op_type_id": "OT1"})
     insert_row(conn, "Operators", {"operator_id": " O1 ", "name": "padded-operator", "status": "active"})
     insert_row(conn, "OperatorMachine", {"operator_id": " O1 ", "machine_id": " M1 ",
                                          "skill_level": "expert", "is_primary": "yes"})
@@ -109,24 +114,17 @@ def test_relation_pages_reuse_captured_facts_and_keep_search_and_errors(resource
         assert by_code[padded]["ref"] != by_code[plain]["ref"]
 
     assert run_current_js(r"""
-const APSResourceSession = h.module('shared/session/query.js'),
-  ResourceControls = h.module('ResourceControls.jsx');
-const origUseMemo = h.runtime.React.useMemo, origUseQuery = APSResourceSession.useQuery, slots = [];
-let cursor = 0, originalReads = 0, entityMapCalls = 0;
-const same = (a, b) => a && b && a.length === b.length && a.every((v, i) => v === b[i]);
-h.runtime.React.useMemo = (fn, deps) => {
-  const i = cursor++;
-  if (!slots[i] || !same(slots[i].deps, deps)) slots[i] = { deps, value: fn() };
-  return slots[i].value;
-};
+const ResourceControls = h.module('ResourceControls.jsx');
+let originalReads = 0, entityMapCalls = 0;
 const refA = h.reference(1), refB = h.reference(2), missingRef = h.reference(3);
 const entities = [
   { ref: refA, label: '车削', status: null, fields: { category: 'internal' } },
   { ref: refB, label: '铣削', status: null, fields: { category: 'both' } }
 ];
 entities.map = function (...args) { entityMapCalls++; return Array.prototype.map.apply(this, args); };
-const response = { meta: { snapshot_ref: h.reference(9) }, data: { entities, page: { number: 1, pages: 1, total: 2, size: 50 } } };
-APSResourceSession.useQuery = () => ({ result: response, loading: false, error: null, reload() {} });
+// The choice list answers at the network; its body is this exact envelope, so option rebuilds stay countable on `entities`.
+const envelope = h.route.envelope({ entities, page: { number: 1, pages: 1, total: 2, size: 50 } });
+h.serve({ 'GET /api/workbench/v1/entities/op_type': () => Object.assign(h.route.json(envelope), { json: async () => envelope }) });
 const original = {
   relationships: {
     skill_refs: [refA, missingRef],
@@ -134,27 +132,22 @@ const original = {
   }
 };
 const props = {
-  adapter: {},
   field: { key: 'skill_refs', label: '可做工种', kind: 'op_type', category: 'internal', multiple: true },
   value: [refA, missingRef],
   original,
   onChange() {}
 };
-try {
-  const knownState = {};
-  cursor = 0;
-  h.render(ResourceControls.Choice, props, { Choice: { 0: '', 4: knownState } });
-  const readsBefore = originalReads, mapsBefore = entityMapCalls;
-  for (const text of ['车', '车削', '车削精']) {
-    cursor = 0;
-    h.render(ResourceControls.Choice, props, { Choice: { 0: text, 4: knownState } });
-  }
-  assert.strictEqual(originalReads - readsBefore, 0, 'Choice search typing must not rebuild originalByRef');
-  assert.strictEqual(entityMapCalls - mapsBefore, 0, 'Choice search typing must not rebuild options from response entities');
-} finally {
-  h.runtime.React.useMemo = origUseMemo;
-  APSResourceSession.useQuery = origUseQuery;
+const choice = h.mount(ResourceControls.Choice, props);
+let tree = await choice.settle();
+assert(h.text(tree).includes('铣削') && h.text(tree).includes('原关联工种'), 'The loaded options and the original relation are listed');
+const readsBefore = originalReads, mapsBefore = entityMapCalls;
+for (const text of ['车', '车削', '车削精']) {
+  h.walk(tree).find(node => node.type === 'input' && node.props['aria-label'] === '搜索可做工种').props.onChange({ target: { value: text } });
+  tree = choice.update();
+  assert.strictEqual(h.walk(tree).find(node => node.type === 'input' && node.props['aria-label'] === '搜索可做工种').props.value, text);
 }
+assert.strictEqual(originalReads - readsBefore, 0, 'Choice search typing must not rebuild originalByRef');
+assert.strictEqual(entityMapCalls - mapsBefore, 0, 'Choice search typing must not rebuild options from response entities');
 return true;
 """)["result"] is True
 
@@ -269,8 +262,11 @@ def test_padded_existing_resources_can_update_select_relations_and_delete_by_ref
         },
     )
     assert out_m.data == {"entity_ref": m1_pad.ref, "business_code": " M1 "}
-    m1_row = dict(conn.execute("SELECT name, status, remark, op_type_id FROM Machines WHERE machine_id=' M1 '").fetchone())
-    assert m1_row == {"name": "machine-padded-v2", "status": "maintain", "remark": "m1-pad-v2", "op_type_id": " OT_INT "}
+    m1_row = dict(conn.execute("SELECT name, status, remark FROM Machines WHERE machine_id=' M1 '").fetchone())
+    assert m1_row == {"name": "machine-padded-v2", "status": "maintain", "remark": "m1-pad-v2"}
+    assert [
+        row[0] for row in conn.execute("SELECT op_type_id FROM MachineOpTypes WHERE machine_id=' M1 '")
+    ] == [" OT_INT "]
     assert conn.execute(
         "SELECT group_id FROM WorkbenchMachineGroupMembers WHERE machine_id=' M1 '"
     ).fetchone()[0] == " G1 "

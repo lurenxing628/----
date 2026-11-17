@@ -26,17 +26,15 @@ def maybe_run_auto_backup(
     interval_minutes: int,
     db_path: str,
     backup_dir: str,
-    keep_days: int,
     job_key: str,
     logger,
     op_logger,
     is_due_fn: Callable[..., bool],
-    fmt_db_dt_fn: Callable[[datetime], str],
 ) -> Tuple[bool, bool]:
     if not is_due_fn(job_repo, job_key, now, interval_minutes):
         return False, False
 
-    mgr = BackupManager(db_path=db_path, backup_dir=backup_dir, keep_days=int(keep_days), logger=logger)
+    mgr = BackupManager(db_path=db_path, backup_dir=backup_dir, logger=logger)
     t0 = time.time()
     try:
         path = mgr.backup(suffix="auto")
@@ -89,7 +87,7 @@ def maybe_run_auto_backup(
             conn,
             job_repo=job_repo,
             job_key=job_key,
-            last_run_time=fmt_db_dt_fn(now),
+            last_run_time=now,
             last_run_detail=job_detail,
             logger=logger,
         )
@@ -100,8 +98,7 @@ def maybe_run_auto_backup(
         safe_log(
             logger,
             "error",
-            f"自动备份失败（job_key={job_key} db_path={db_path} backup_dir={backup_dir} "
-            f"keep_days={int(keep_days)}）：{e}\n{traceback.format_exc()}",
+            f"自动备份失败（job_key={job_key} db_path={db_path} backup_dir={backup_dir}）：{e}\n{traceback.format_exc()}",
         )
         time_cost_ms = int((time.time() - t0) * 1000)
         write_oplog(
@@ -121,7 +118,7 @@ def maybe_run_auto_backup(
             conn,
             job_repo=job_repo,
             job_key=job_key,
-            last_run_time=fmt_db_dt_fn(now),
+            last_run_time=now,
             last_run_detail=canonical_json({"error": str(e), "time_cost_ms": time_cost_ms}),
             logger=logger,
         )

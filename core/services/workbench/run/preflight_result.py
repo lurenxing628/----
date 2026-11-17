@@ -2,6 +2,7 @@
 
 from core.models.workbench_preflight import issue, preflight_window
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
+from core.shared.strict_parse import wire_sequence
 
 from .input_config import window_text
 
@@ -60,43 +61,47 @@ def adoption_warnings(settings, rows):
 
 
 def effective_config(settings, hold):
-    keys = ("ready_check", "missing_resource_policy", "completed_policy") + (
-        ("material_strategy",) if "material_strategy" in settings else ())
+    keys = ("ready_check", "missing_resource_policy", "completed_policy", "material_strategy")
     return {**{key: settings[key] for key in keys}, "hold_window": window_text(hold[0]), "hold_window_source": hold[1]}
 
 
 _INTERNAL_TASK_KEYS = ("op_id", "external_execution_cycle")
 
 
+def _public_issue(item):
+    if "predecessor_sequence" in item:
+        return {**item, "predecessor_sequence": wire_sequence(item["predecessor_sequence"])}
+    return item
+
+
 def _public_task_row(row):
     return {
         **{key: value for key, value in row.items() if key not in _INTERNAL_TASK_KEYS},
-        "issues": [dict(item) for item in row["issues"]],
-        "predecessor_refs": list(row["predecessor_refs"]),
-        "execution": dict(row["execution"]),
-        "held": dict(row["held"]) if row["held"] is not None else None,
+        "sequence": wire_sequence(row["sequence"]),
+        "issues": [_public_issue(item) for item in row["issues"]],
     }
 
 
-def summarize(settings, batches, rows, no_route, unready, dependency_reasons, notes, hold):
-    """hold 是本次不重排时段 ((开始, 结束) 或 None, 来源 explicit/default)，原样写进 effective_config。"""
+def summarize(settings, batches, rows, no_route, unready, dependency_reasons, notes, hold, *, dates):
+    """hold 是本次不重排时段 ((开始, 结束) 或 None, 来源 explicit/default)，原样写进 effective_config；
+    dates 是调用方从 settings 转换出的排产日期范围（run_dates）。"""
     counts = result_counts(batches, rows, no_route, unready)
     blockers = result_blockers(rows, no_route, counts)
     blockers.extend(dependency_reasons)
-    warnings = result_warnings(settings, counts) + adoption_warnings(settings, rows) + list(notes)
+    warnings = result_warnings(settings, counts) + adoption_warnings(settings, rows) + notes
     included_refs = {row["batch_ref"] for row in rows if row["status"] in ("eligible", "auto_assign_required")
                      or (row["status"] == "protected" and row.get("external_execution_cycle"))}
     public_tasks = [_public_task_row(row) for row in rows]
     included = [{"batch_ref": row["ref"], "batch_id": row["batch_id"]} for row in batches if row["ref"] in included_refs]
     excluded = [{"batch_ref": row["ref"], "batch_id": row["batch_id"], "reason": "这批没有可排的工序。具体原因见工序明细，或者这批还没生成工艺。"}
                 for row in batches if row["ref"] not in included_refs]
-    start, end = preflight_window(settings)
+    window_start, window_end = preflight_window(dates)
     return {"normalized_input": settings, "scope": {"source": "production", "batch_refs": settings["batch_refs"]},
             "included_batches": included, "excluded_batches": excluded, "tasks": public_tasks, "counts": counts,
             "eligible_tasks": counts["eligible_tasks"], "auto_assign_required": counts["auto_assign_required"],
             "skipped_tasks": counts["skipped_tasks"], "blockers": blockers, "warnings": warnings,
             "no_route_batches": [{"batch_ref": row["ref"], "batch_id": row["batch_id"]} for row in no_route],
             "unready_batches": unready, "effective_config": effective_config(settings, hold), "config_scope": "single_run",
-            "effective_start": start, "effective_end_exclusive": end, "effective_start_basis": "window_lower_bound_not_calendar_slot",
+            "effective_start": window_start, "effective_end_exclusive": window_end, "effective_start_basis": "window_lower_bound_not_calendar_slot",
             "calendar_check": "not_evaluated",
             "run_blocked": True, "run_blocked_reasons": [issue("schedule_not_computed", "尚未生成排产结果。")] + blockers}

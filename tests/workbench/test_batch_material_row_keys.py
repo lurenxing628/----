@@ -1,5 +1,9 @@
 """Batch ordinals agree across reads/writes and remain bound to their write snapshot."""
 
+from datetime import date
+
+import pytest
+
 from core.services.workbench.batch.facts import BatchFacts
 from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
 from core.services.workbench.batch.projection import BatchProjection
@@ -27,7 +31,7 @@ def test_projection_and_proposal_share_ordinals_for_unordered_sparse_requirement
     client = batch_client
     _seed_requirements(client)
     ref = ref_for(client)
-    reader = BatchFacts(client.batch_conn)
+    reader = BatchFacts(client.batch_conn, material_day=date.today().isoformat())
     scope = BatchFactScope(reader)
     facts = scope.load()
     facts["BatchMaterials"] = list(reversed(facts["BatchMaterials"]))
@@ -80,3 +84,30 @@ def test_reused_ordinal_rejects_old_snapshot_and_fresh_keys_modify_remove_the_ri
     assert _requirements(conn) == [(90019, "MAT3", 10.0, 4.0)]
     assert len(remaining) == 1 and remaining[0]["business_code"] == "MAT3"
     assert remaining[0]["row_key"] == ref + "0000000000000001"
+
+
+_NUMBER = "请输入有效的非负有限数字。"
+_ARRIVAL = {"arrival_date": "2026-10-01", "quantity": 1}
+
+
+@pytest.mark.parametrize(("patch", "path", "message"), [
+    ({"required_quantity": 0}, "rows.1.required_quantity", _NUMBER),
+    ({"available_quantity": -1}, "rows.1.available_quantity", _NUMBER),
+    ({"arrivals": [_ARRIVAL, {"arrival_date": "2026-09-01", "quantity": 0}]}, "rows.1.arrivals.1.quantity", _NUMBER),
+    ({"arrivals": [{"arrival_date": "2026-10-1", "quantity": 1}]}, "rows.1.arrivals.0.arrival_date", "排产日期范围必须填完整日期。"),
+    ({"arrivals": [_ARRIVAL] * 201}, "rows.1.arrivals", "每条需求最多登记 200 次到料。"),
+], ids=["required", "available", "arrival-quantity", "arrival-date", "arrival-count"])
+def test_material_update_rejection_points_at_the_submitted_row_and_arrival(batch_client, patch, path, message):
+    client = batch_client
+    _seed_requirements(client)
+    current = detail(client)["data"]
+    kept = current["materials"]["requirements"][0]
+    before = _requirements(client.batch_conn)
+    response = post(client, "materials_update", {"removed_keys": [], "rows": [
+        {"row_key": kept["row_key"], "material_ref": kept["material_ref"], "required_quantity": 10, "available_quantity": 2},
+        {"row_key": None, "material_ref": ref_for(client, "material", "MAT3"), "required_quantity": 5,
+         "available_quantity": 0, **patch},
+    ]}, context=current["write_context"], key="material-field-path-0001")
+    error = assert_error(response, "invalid_input", 422)["error"]
+    assert error["message"] == message and error["fields"] == [{"path": path, "message": message}]
+    assert _requirements(client.batch_conn) == before

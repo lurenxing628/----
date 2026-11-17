@@ -1,7 +1,6 @@
 """External file-operation records survive database replacement; reads never replay work."""
 
 import os
-import re
 import uuid
 from datetime import datetime
 from typing import Any, NoReturn
@@ -16,7 +15,7 @@ from core.models.workbench_command import (
     WorkbenchCommandRejected,
     validate_request_key,
 )
-from core.models.workbench_system import JOB_STATES, TERMINAL_STATES
+from core.models.workbench_system import JOB_STATES, TERMINAL_STATES, is_maintenance_job_ref
 from core.shared.strict_json import canonical_json, load_strict_json
 
 _RESTORE_TERMINALS = {
@@ -40,24 +39,16 @@ def file_content(path):
 
 
 def system_journal_directory(database_path):
-    # Bind the default to the database, not an installation/log/backup directory.
+    # The only journal location: it travels with the database (and user-data),
+    # never with an installation/log/backup directory, and keeps its history's
+    # identity after a move.
     return os.path.realpath(database_path) + ".system-journal"
 
 
 class SystemMaintenanceJournal:
     def __init__(self, directory, database_path):
-        if not directory or not os.path.isabs(directory):
-            raise WorkbenchCommandRejected("maintenance_unavailable", "还没有配置维护目录，备份和恢复暂时不能用。请先在系统维护页设置维护目录。", 503)
         self.directory = directory
-        database = os.path.normcase(os.path.realpath(database_path))
-        self._path_scope = database
-        # The default journal travels with user-data. Its existing history keeps
-        # the same identity after a move; a separately configured directory must
-        # still prove that it belongs to the currently configured database path.
-        self._follows_database = (
-            os.path.normcase(os.path.realpath(directory))
-            == database + ".system-journal"
-        )
+        self._path_scope = os.path.normcase(os.path.realpath(database_path))
         self._database_scope = None
         self._records = None
         self._entry_names = None
@@ -77,7 +68,7 @@ class SystemMaintenanceJournal:
         return records[0]["database_scope"] if records else self._path_scope
 
     def _path(self, job_ref):
-        if not isinstance(job_ref, str) or re.fullmatch(r"[a-f0-9]{32}", job_ref) is None:
+        if not is_maintenance_job_ref(job_ref):
             raise RuntimeError("维护操作编号不完整，须人工核查。")
         return os.path.join(self.directory, job_ref + ".json")
 
@@ -106,11 +97,10 @@ class SystemMaintenanceJournal:
                 or (self._database_scope is not None and not same(row["database_scope"], self._database_scope))
                 or row.get("state") not in JOB_STATES or not isinstance(row.get("history"), list)
                 or row.get("action") not in ("create", "delete", "restore")
-                or not re.fullmatch(r"[a-f0-9]{32}", str(row.get("job_ref", "")))):
+                or not is_maintenance_job_ref(row.get("job_ref"))):
             raise RuntimeError("维护记录不完整或不属于当前数据库，须人工核查。")
         validate_request_key(row.get("request_key"))
         if (not isinstance(row.get("database_path"), str) or not os.path.isabs(row["database_path"])
-                or not self._follows_database and not same(row["database_path"], self._path_scope)
                 or not isinstance(row.get("intent"), dict) or set(row["intent"]) != {"action", "input"}
                 or row["intent"]["action"] != row["action"]):
             raise RuntimeError("维护记录不完整或不属于当前数据库，须人工核查。")
@@ -201,10 +191,10 @@ class SystemMaintenanceJournal:
             raise WorkbenchCommandRejected("maintenance_unconfirmed", "维护记录读不出来，不能提交新的维护。请先查询原操作结果并联系维护人员。", 503) from exc
         return previous
 
-    def begin(self, request_key, action, intent, *, previous: Any = _NOT_CAPTURED):
+    def begin(self, request_key, action, intent, *, now: datetime, previous: Any = _NOT_CAPTURED):
         if previous is _NOT_CAPTURED:
             previous = self.admission(request_key)
-        original = {"action": action, "input": dict(intent)}
+        original = {"action": action, "input": intent}
         if previous:
             if previous["action"] != action:
                 raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号对应的是另一次维护，这次没有执行。请重新提交。")
@@ -217,13 +207,14 @@ class SystemMaintenanceJournal:
                "target": None, "protection": None, "audit_persisted": False,
                "source_verification": {"basis": "original_file_content_and_sqlite", "target": "not_checked",
                                        "protection": "not_checked", "sqlite_integrity": "not_checked"}}
-        self.record(row, "accepted")
+        self.record(row, "accepted", now=now)
         return row, False
 
-    def record(self, row, state, **values):
+    def record(self, row, state, *, now: datetime, **values):
+        """``now`` comes from the writer's clock; readers construct journals without one."""
         if state not in JOB_STATES:
             raise ValueError("未知维护状态。")
-        updated = {**row, **values, "state": state, "updated_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")}
+        updated = {**row, **values, "state": state, "updated_at": now.strftime("%Y-%m-%dT%H:%M:%S")}
         updated["history"] = row["history"] + [{"state": state, "time": updated["updated_at"]}]
         path = self._path(row["job_ref"])
         temporary = path + "." + uuid.uuid4().hex + ".tmp"
@@ -262,7 +253,7 @@ class SystemMaintenanceJournal:
                 "filename": row["target"]["filename"] if row["target"] else None,
                 "audit_persisted": row["audit_persisted"], "history": row["history"],
                 "result_source": "external_maintenance_journal",
-                "source_verification": dict(row["source_verification"]),
+                "source_verification": row["source_verification"],
                 "database_origin": row.get("database_origin", "unconfirmed"),
                 "restart_required": row.get("restart_required", False),
                 "restart_scope": "restoring_process" if row["action"] == "restore" else None,

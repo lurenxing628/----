@@ -191,10 +191,10 @@ class FieldReportFileService:
                               p.remaining_quantity, EXECUTION_STATE_TEXT[p.execution_state],
                               COMPLETION_BASIS_TEXT.get(p.completion_basis),
                               DATA_QUALITY_TEXT[p.data_quality]])
-            task_reports = execution.report_rows(include_history=True)
+            task_reports = execution.report_rows()
             rows.extend(FieldReportFileService._task_export_rows(task, task_reports, False, resource_codes))
             for report in task_reports:
-                corrections = sum(item['action'] in ('supplement', 'correct') for item in report['correction_history'])
+                corrections = report['revision_count'] - 1
                 metadata.append([report['report_no'], report['recorded_at'], 'Excel' if report['source'] == 'excel' else '手工', corrections])
         # 模板和导出都带说明表，两者的差别只剩要不要另外附汇总与录入信息。
         return encode_reports(rows, summaries=summaries, metadata=metadata), len(rows)

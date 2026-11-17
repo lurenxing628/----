@@ -12,8 +12,7 @@ from core.models.workbench_execution_input import (
     validate_actual_values,
 )
 from core.services.execution.ledger_reader import project_loaded_facts
-from core.services.execution.projection import materialize_operation_history
-from data.repositories.workbench_execution_report_repo import new_ref
+from core.shared.refs import new_ref
 
 from .production_report_dependencies import ReportDependencies
 from .production_report_validation import (
@@ -36,7 +35,7 @@ def _reject_row(error: WorkbenchCommandRejected, row_number: int) -> NoReturn:
         error.row_number = row_number
         raise error
     raise ReportBatchRejected(error.code, str(error), error.status, row_number=row_number,
-                              operation_refs=error.operation_refs, conflicts=error.conflicts) from error
+                              fields=error.fields, conflicts=error.conflicts) from error
 
 
 def normalize_items(items, *, parsed_times: Optional[Dict[str, datetime]] = None):
@@ -122,9 +121,9 @@ class ReportBatchPreparation:
         self.snapshot = {"input": self.items, "operations": [
             self.ledger.fact_snapshot(self.before, ref) for ref in sorted(refs)]}
 
-    def prepare(self):
+    def prepare(self, clock):
         self.resolve()
-        now = self.ledger.clock()
+        now = clock()
         self.now = now
         before = {
             row.operation_ref: row
@@ -264,16 +263,3 @@ class ReportBatchPreparation:
             if row["sequence"] == 1:
                 row["recorded_at"] = stamp
             row["revision_at"], row["local_operator"] = stamp, self.actor
-
-    def public(self):
-        projections = [
-            materialize_operation_history(
-                projection,
-                self.facts["reports"].get(projection.operation_ref, {}),
-                self.facts["voids"],
-            ).to_dict()
-            for projection in self.projections
-        ]
-        return {"rows": self.rows, "summary": {"total": len(self.rows), "changed": len(self.appended),
-                "unchanged": len(self.rows) - len(self.appended)}, "can_confirm": True, "snapshot": self.snapshot,
-                "projections": projections}

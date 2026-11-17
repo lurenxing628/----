@@ -42,7 +42,6 @@ class RunHistoryStore:
                     byte_count += size
             _bounded(byte_count, MAX_DIRECTORY_BYTES)
             admission = read_model_json(head, "scope_json")
-            header = (read_model_json(head, "header_json")
-                      if head["header_version"] is not None or head["header_json"] is not None else None)
+            header = read_model_json(head, "header_json") if head["header_json"] is not None else None
             rows.append(public_run_head(head, admission, header))
         return rows, total

@@ -11,7 +11,7 @@ from core.services.workbench import messages
 from core.shared.strict_json import canonical_json
 
 from .data_context import request_data_context
-from .read_context import bind_read_snapshot, drop_read_snapshot, resolve_read_snapshot
+from .read_context import bind_read_snapshot, drop_read_snapshot, rebind_read_snapshot, resolve_read_snapshot
 
 _EXTENSION = "workbench_system_log_snapshots_v1"
 _TTL_SECONDS = 900
@@ -50,7 +50,7 @@ def _bound_scope(scope):
     return {**scope, "data_context_ref": generation}
 
 
-def retain_log_snapshot(scope, rows, sources):
+def retain_log_snapshot(scope, rows, sources, *, as_of):
     data = {"rows": rows, "sources": sources}
     document = canonical_json(data)
     size = len(document.encode("utf-8"))
@@ -60,7 +60,7 @@ def retain_log_snapshot(scope, rows, sources):
     with _LOCK:
         # Issue after expiry and under the window lock, so no eviction releases a reused token before its window is kept.
         windows = _windows()
-        snapshot = bind_read_snapshot(bound_scope, document)
+        snapshot = bind_read_snapshot(bound_scope, document, as_of=as_of)
         if snapshot["snapshot_ref"] not in windows:
             while windows and (len(windows) >= _MAX_WINDOWS or sum(item.size_bytes for item in windows.values()) + size > _MAX_BYTES):
                 _drop_window(windows, min(windows, key=lambda token: windows[token].expires_at))
@@ -75,5 +75,5 @@ def resolve_log_snapshot(scope, token):
         window = _windows().get(token)
         if window is None:
             raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
-    snapshot = bind_read_snapshot(_bound_scope(scope), window.document, token)
+    snapshot = rebind_read_snapshot(_bound_scope(scope), window.document, token)
     return window.rows, window.sources, snapshot

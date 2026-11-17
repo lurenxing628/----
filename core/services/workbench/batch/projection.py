@@ -2,11 +2,10 @@
 
 from typing import Any, Dict, List, Mapping, Tuple
 
-from core.algorithm_contracts.value_domains import OPERATION_SOURCES
-from core.models.workbench_batch import FIELDS, MAX_INTEGER, PRIORITIES, READY, STATUSES
+from core.models.workbench_batch import FIELDS
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import operation_code
-from core.services.material.stage_availability import MaterialAvailability
+from core.services.material.stage_availability import MaterialReadiness
 from core.services.scheduler.contracts.external_context import (
     context_group_key,
     context_problem,
@@ -14,9 +13,8 @@ from core.services.scheduler.contracts.external_context import (
     member_index,
     merged_supplier_problem,
 )
-from core.services.workbench.process.projection import public_sequence
 from core.shared.stored_dates import stored_date
-from core.shared.strict_parse import is_exact_finite_number, is_stored_number
+from core.shared.strict_parse import JS_SAFE_INT_MAX, is_exact_finite_number, is_stored_number, wire_sequence
 
 from .execution import batch_progress, copied_execution, operation_execution_fields
 from .facts import delete_blocker, index_relations, unreferenced_blocker
@@ -136,12 +134,12 @@ class BatchProjection:
         self.refs = _active_refs(facts)
         self.catalogs = self.resources.catalogs
         self.material_day = facts["material_day"]
-        self.material_availability = MaterialAvailability(facts)
+        self.material_availability = MaterialReadiness.from_tables(facts)
+        self.material_stages = {row["requirement_id"]: row["operation_id"] for row in facts["BatchMaterialStages"]}
         self.relations = index_relations(facts) if relations is None else relations
         self.parts = {row["part_no"]: row for row in facts["Parts"]}
         self.external_contexts = {row["operation_id"]: row for row in facts["BatchExternalContexts"]}
         self.external_members = member_index(self.external_contexts, facts["BatchOperations"])
-        self.machine_types = self.resources.machine_types
 
     def ref(self, kind, key):
         return _entity_ref(self.refs, kind, key)
@@ -168,7 +166,7 @@ class BatchProjection:
             issues.append(issue("设备未补齐或不可用。"))
         if operator is None or operator["status"] != "active":
             issues.append(issue("人员未补齐或不在岗。"))
-        if machine and row["op_type_id"] not in self.machine_types.get(row["machine_id"], set()):
+        if machine and row["op_type_id"] not in self.resources.machine_types[row["machine_id"]]:
             issues.append(issue("设备与工序工种不匹配。"))
         issues.extend(self.resources.operator_issues(row["operator_id"], row["op_type_id"], row["machine_id"]))
 
@@ -176,33 +174,27 @@ class BatchProjection:
         issues = []
         if row["source"] == "internal":
             self.internal_issues(row, numbers, issues)
-        elif row["source"] == "external":
+        else:
             supplier = self.catalogs["supplier"].get(row["supplier_id"])
             if supplier is None or supplier["status"] != "active":
                 issues.append(issue("供应商未补齐或已停用。"))
             elif not self.resources.supplier_capable(row["supplier_id"], row["op_type_id"]):
                 issues.append(issue("这家供应商没有登记这道外协工序的能力。"))
             if group and group["merge_mode"] == "merged":
-                group["total_days"] = numeric(group["total_days"], issues, "整组周期", positive=True)
-                # 合并组按整段周期排产，成员保留的逐序旧周期不生效，不再当工时原值校验或展示。
+                # 合并组按整段周期排产（context_problem 已核过整组周期已填），成员保留的逐序旧周期不生效，不再展示。
                 numbers["ext_days"] = None
-            else:
-                numbers["ext_days"] = numeric(row["ext_days"], issues, "外协周期", positive=True)
-        else:
-            issues.append(issue("归属未明确。"))
+            elif row["ext_days"] is None:
+                # 外协周期的值域由表约束保证，只剩没填一种情况。
+                issues.append(issue("外协周期未填写。"))
         if row["op_type_id"] not in self.catalogs["op_type"]:
             issues.append(issue("工序工种未登记。"))
-        # Hidden hours of external operations remain raw in storage, not defaulted.
-        hidden_keys = (
-            ("ext_days",) if row["source"] == "internal"
-            else ("setup_hours", "unit_hours") if row["source"] == "external"
-            else ("setup_hours", "unit_hours", "ext_days")
-        )
-        for key in hidden_keys:
-            value = numbers[key]
-            if value is not None and (not is_exact_finite_number(value) or abs(value) > MAX_INTEGER):
-                issues.append(issue("工时或周期原值无效。"))
-                numbers[key] = None
+        if row["source"] != "internal":
+            # Hidden hours of external operations remain raw in storage, not defaulted.
+            for key in ("setup_hours", "unit_hours"):
+                value = numbers[key]
+                if value is not None and (not is_exact_finite_number(value) or abs(value) > JS_SAFE_INT_MAX):
+                    issues.append(issue("工时原值无效。"))
+                    numbers[key] = None
         return issues
 
     def _ledger(self, row):
@@ -217,8 +209,8 @@ class BatchProjection:
             if not problem:
                 group = group_from_context(context)
                 if include_details and group is not None:
-                    group["start_sequence"] = public_sequence(group["start_sequence"])
-                    group["end_sequence"] = public_sequence(group["end_sequence"])
+                    group["start_sequence"] = wire_sequence(group["start_sequence"])
+                    group["end_sequence"] = wire_sequence(group["end_sequence"])
         numbers = {key: row[key] for key in ("setup_hours", "unit_hours", "ext_days")}
         issues = self.operation_issues(row, group, numbers)
         if row["source"] == "external":
@@ -245,15 +237,20 @@ class BatchProjection:
         execution = copied_execution(copied, created["quantity"], self._ledger(row)[1].plan_identity)
         return self._operation(created, copied, False, None, execution)
 
+    def operation_resources(self, *, machine, operator, supplier, op_type):
+        """一道工序的四类资源与比较用的 *_ref。批次工序和模板替换后的行都由这里生成，两边同形。"""
+        resources = {kind: self.resource(kind, key) for kind, key in
+                     (("machine", machine), ("operator", operator), ("supplier", supplier), ("op_type", op_type))}
+        return {**{kind + "_ref": item["ref"] if item else None for kind, item in resources.items()}, "resources": resources}
+
     def _operation(self, batch, row, protected, ref, projection):
         group, numbers, execution, issues = self._operation_values(batch, row, projection, include_details=True)
-        resources = {kind: self.resource(kind, row[kind + "_id"]) for kind in ("machine", "operator", "supplier", "op_type")}
-        return {"ref": ref, "operation_ref": ref, "business_code": row["op_code"], "sequence": public_sequence(row["seq"]),
+        return {"ref": ref, "operation_ref": ref, "business_code": row["op_code"], "sequence": wire_sequence(row["seq"]),
                 "piece_id": row["piece_id"], "label": row["op_type_name"], "source": row["source"], **execution,
-                "setup_hours": numbers["setup_hours"], "unit_hours": numbers["unit_hours"],
-                "external_days": numbers["ext_days"], **{kind + "_ref": item["ref"] if item else None for kind, item in resources.items()},
-                "resources": resources, "external_group": group, "external_context_notice": None, "issues": issues,
-                "editable": not protected and row["status"] == "pending" and row["source"] in OPERATION_SOURCES}
+                "setup_hours": numbers["setup_hours"], "unit_hours": numbers["unit_hours"], "external_days": numbers["ext_days"],
+                **self.operation_resources(machine=row["machine_id"], operator=row["operator_id"],
+                                           supplier=row["supplier_id"], op_type=row["op_type_id"]),
+                "external_group": group, "issues": issues, "editable": not protected and row["status"] == "pending"}
 
     def entity(self, row):
         return self._entity(row, include_operations=True, ref=self.ref("batch", row["batch_id"]))
@@ -267,12 +264,8 @@ class BatchProjection:
             raise WorkbenchCommandRejected("storage_failure", "这个批次对应的零件已经不在了。请刷新重试；仍不行请联系维护人员。", 500)
         issues = []
         fields = {key: row[key] for key in FIELDS}
-        fields["quantity"] = numeric(row["quantity"], issues, "数量", integer=True)
         for key in ("due_date", "ready_date"):
             fields[key] = date_text(row[key], issues, "交期" if key == "due_date" else "齐套日期")
-        for key, allowed in (("priority", PRIORITIES), ("ready_status", READY), ("status", STATUSES)):
-            if row[key] not in allowed:
-                issues.append(issue("原优先级、齐套或状态标记不明确。"))
         display_ready, material_issues = (
             self.material_availability.readiness_state(row, self.material_day)
             if readiness is None
@@ -296,10 +289,10 @@ class BatchProjection:
         relations = {"operations": (), "materials": materials, "reports": (), "outsourcing_receipts": (),
                      "quantity_splits": (), "plan_reference_count": 0, "protected": False}
         # 复制出的需求行与提交后同口径：沿用需求量，到料量从 0 开始，未核对。
-        copied = MaterialAvailability({"BatchMaterials": [
+        copied = MaterialReadiness(requirements=[
             {"id": index, "batch_id": created["batch_id"], "material_id": row["material_id"],
              "required_qty": row["required_qty"], "available_qty": 0, "ready_status": "no"}
-            for index, row in enumerate(materials)]})
+            for index, row in enumerate(materials)], reviews=(), arrivals=())
         return self._entity(created, include_operations=True, ref=None, operations=operations, relations=relations,
                             readiness=copied.readiness_state(created, self.material_day))
 
@@ -348,7 +341,7 @@ class BatchProjection:
                          "required_quantity": numeric(row["required_qty"], issues, "需求数量", positive=True),
                          "available_quantity": numeric(row["available_qty"], issues, "到料数量"),
                          "ready_status": row["ready_status"], "issues": issues,
-                         "operation_ref": self.facts["operation_refs"].get(availability.stages.get(row["id"])),
+                         "operation_ref": self.facts["operation_refs"].get(self.material_stages.get(row["id"])),
                          "arrivals": [{"arrival_date": date_text(item["arrival_date"], issues, "到料日期"),
                                        "quantity": numeric(item["quantity"], issues, "分批到料数量", positive=True)}
                                       for item in availability.arrivals[row["id"]]]})

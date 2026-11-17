@@ -10,8 +10,8 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.common.excel_templates import sanitize_export_cell
 from core.services.report.exporters.xlsx import (
     SUMMARY_IDENTITY_LABELS,
-    _append_write_only_row,
     append_summary_row,
+    append_write_only_row,
     close_workbook,
 )
 from core.services.workbench.facts.execution_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT
@@ -108,11 +108,11 @@ def export_table(engine, data, rows, snapshot, format_name):
         sheet = workbook.create_sheet("范围与计算方式")
         _append_xlsx_metadata(sheet, data, snapshot)
         for key, value in data["summary"].items():
-            _append_write_only_row(sheet, [key, _value(value)])
+            append_write_only_row(sheet, [key, _value(value)])
         sheet = workbook.create_sheet("范围全部结果")
-        _append_write_only_row(sheet, [column["label"] for column in columns], is_header=True)
+        append_write_only_row(sheet, [column["label"] for column in columns], is_header=True)
         for row in values:
-            _append_write_only_row(sheet, row)
+            append_write_only_row(sheet, row)
         workbook.save(output)
         saved = True
         output.seek(0)

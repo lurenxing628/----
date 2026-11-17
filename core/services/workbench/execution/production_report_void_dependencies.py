@@ -2,8 +2,8 @@
 
 from typing import NoReturn
 
+from core.models.content import StoredJsonCorrupt, read_stored_json
 from core.models.workbench_execution_input import MAX_REPORT_BYTES, reject
-from core.shared.strict_json import load_strict_json
 from data.repositories.workbench_report_validation_repo import WorkbenchReportValidationRepository
 
 
@@ -18,12 +18,13 @@ def adopted_quota_impacts(conn, report_ref, operation_ref):
     total, impacts = 0, []
     for row in rows:
         text = row["evidence_json"]
-        if not isinstance(text, str):
-            _corrupt_evidence()
+        # 先累计字节再解码，超限的不解码；量之前要是文本，不是文本就是存储损坏，与解码失败同一种错误。
+        if type(text) is not str:
+            raise StoredJsonCorrupt()
         total += len(text.encode("utf-8"))
         if total > MAX_REPORT_BYTES:
             reject("关联的定额依据超过读取上限，未执行撤销。", "query_too_large", 413)
-        evidence = load_strict_json(text, on_malformed=_corrupt_evidence, expected=dict)
+        evidence = read_stored_json(text, dict)
         samples = evidence.get("samples")
         if not isinstance(samples, list) or any(not isinstance(sample, dict) or not isinstance(sample.get("report_refs"), list) for sample in samples):
             _corrupt_evidence()

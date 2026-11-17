@@ -6,9 +6,8 @@ from core.models.workbench_supplier import supplier_state
 
 
 def machine_write_state(identity, record, profile, dependencies, op_types, group):
-    primary = next((item for item in op_types if item["identity"]["entity_key"] == record["op_type_id"]), None)
     return {"identity": asdict(identity), "record": record, "profile": profile, "dependencies": dependencies,
-            "op_type": primary, "op_types": op_types, "group": group}
+            "op_types": op_types, "group": group}
 
 
 def operator_write_state(identity, record, profile, dependencies, skills, skill_types,

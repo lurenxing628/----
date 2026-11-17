@@ -1,20 +1,23 @@
 """One scheduler lock, short claim/result transactions, actual read-only computation."""
 
 from datetime import datetime
+from typing import Callable
 
 from core.errors import AppError
 from core.infrastructure.transaction import TransactionManager
+from core.models.content import read_stored_json
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF, validate_run_ref
+from core.models.workbench_run_receipt import FailedReceipt
 from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
-from core.services.workbench.facts.candidate_facts import GenerationFacts
-from core.services.workbench.facts.candidate_values import stored_json
-from core.services.workbench.facts.decision_read_model import build_failure_read_models
+from core.services.workbench.facts.candidate_facts import admit_generation_facts
+from core.services.workbench.facts.candidate_values import corrupt
 from core.services.workbench.facts.decision_read_models import decode_model, public_job_head
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_history_projection import (
     COMPUTATION_FAILED,
+    admitted_run_input,
     failure_message,
     hold_failure_message,
 )
@@ -25,6 +28,7 @@ from data.repositories.workbench_run_result_repo import WorkbenchRunResultReposi
 
 from .compute import compute_candidate_run
 from .result_preparation import prepare_run_result
+from .terminal import record_run_terminal, record_terminal_without_results
 from .worker_claim import claim_run
 from .worker_snapshot import computation_database
 
@@ -42,10 +46,46 @@ def failure_diagnostic(exc):
     return {"exception_type": type(exc).__name__, "message": str(exc)}
 
 
+def _check_facts(row, capture):
+    """Verify the run's recorded revisions and schema match this snapshot."""
+    recorded = read_stored_json(row["revisions_json"], dict)
+    try:
+        matched = capture.matches_recorded(recorded)
+    except ValueError:
+        corrupt()
+    if not matched:
+        raise WorkbenchCommandRejected("snapshot_stale", _FACTS_CHANGED)
+    return recorded
+
+
+def compute_owned_snapshot(snapshot, row, admission):
+    """Consume the caller's isolated database without copying it again; computation reads no clock."""
+    with candidate_read_snapshot(snapshot):
+        current_capture = ProductionFactsCapture(snapshot)
+        recorded = _check_facts(row, current_capture)
+        raw_execution = read_stored_json(row["execution_json"], list)
+        normalized_input = admitted_run_input(read_stored_json(row["normalized_input_json"], dict))
+        captured_facts = read_stored_json(row["conditions_archive_json"], dict)
+        projections = restore_execution_projections(raw_execution)
+        computation = compute_candidate_run(snapshot, normalized_input, projections, capture=current_capture,
+                                            dispositions=admission["dispositions"])
+        capture = {
+            "run_ref": row["run_ref"],
+            "input": normalized_input,
+            "execution": raw_execution,
+            "baseline": read_stored_json(row["baseline_json"], dict),
+            "revisions": recorded,
+            "facts": captured_facts,
+        }
+        facts = admit_generation_facts(capture)
+        identities = {op_id: ref for ref, op_id in facts.operations.items()}
+        return prepare_run_result(computation, identities, run=row, capture=capture, admission=admission, facts=facts)
+
+
 class WorkbenchRunWorker:
-    def __init__(self, conn, *, clock=None, compute_runner=None, app_error_message=None):
+    def __init__(self, conn, *, clock: Callable[[], datetime], compute_runner=None, app_error_message=None):
         self.conn = conn
-        self.clock = clock or datetime.now
+        self.clock = clock
         self.repo = WorkbenchRunRepository(conn)
         self.results = WorkbenchRunResultRepository(conn)
         self.compute_runner = compute_runner
@@ -54,13 +94,6 @@ class WorkbenchRunWorker:
 
     def _now(self):
         return self.clock().isoformat(timespec="microseconds")
-
-    def _check_facts(self, row, capture):
-        """Admit the run's saved archive at its first entry; it must still match this computation snapshot."""
-        captured_facts = stored_json(row["facts_json"])
-        if not capture.matches_archive(captured_facts):
-            raise WorkbenchCommandRejected("snapshot_stale", _FACTS_CHANGED)
-        return captured_facts
 
     def execute(self, run_ref, *, retry_original=None):
         validate_run_ref(run_ref)
@@ -88,40 +121,27 @@ class WorkbenchRunWorker:
         if self.compute_runner is not None:
             return self.compute_runner(self.conn, row, admission=admission)
         with computation_database(self.conn) as snapshot:
-            return self.compute_owned_snapshot(snapshot, row, admission)
-
-    def compute_owned_snapshot(self, snapshot, row, admission):
-        """Consume the caller's isolated database without copying it again."""
-        with candidate_read_snapshot(snapshot):
-            current_capture = ProductionFactsCapture(snapshot)
-            captured_facts = self._check_facts(row, current_capture)
-            # 与 CandidateStore.capture 读同一组排产原件，同一个严格读取器。
-            raw_execution = stored_json(row["execution_json"], list)
-            normalized_input = stored_json(row["normalized_input_json"])
-            projections = restore_execution_projections(raw_execution)
-            computation = compute_candidate_run(snapshot, normalized_input, projections, capture=current_capture,
-                                                dispositions=admission["dispositions"])
-            capture = {"input": normalized_input, "execution": raw_execution,
-                       "baseline": stored_json(row["baseline_json"]), "facts_text": row["facts_json"],
-                       "facts": captured_facts}
-            facts = GenerationFacts(capture)
-            identities = {op_id: ref for ref, op_id in facts.operations.items()}
-            return prepare_run_result(computation, identities, run=row, capture=capture, admission=admission, facts=facts)
+            return compute_owned_snapshot(snapshot, row, admission)
 
     def _persist(self, row, prepared, admission):
         candidates, result = prepared.candidates, prepared.result
         try:
             with TransactionManager(self.conn).transaction(begin_immediate=True):
-                # 计算时已准入并比对过整份存档；写库前只按它的来源版本和表结构复核现场有没有变。
-                if not ProductionFactsCapture(self.conn).matches_recorded(prepared.recorded_source):
-                    raise WorkbenchCommandRejected("snapshot_stale", _FACTS_CHANGED)
+                _check_facts(row, ProductionFactsCapture(self.conn))
                 current = self.repo.claim_head(row["run_ref"])
                 if current is None or current["state"] != "running" or current["executor_ref"] != PROCESS_EXECUTOR_REF:
                     raise RuntimeError("Run ownership changed before result persistence")
                 self.results.save(row["run_ref"], candidates)
-                self.repo.insert_prepared_decision_read_models(row["run_ref"], prepared.read_models["run_model"],
-                                                     prepared.read_models["candidate_models"])
-                written = self.repo.finish_prepared(row["run_ref"], result, self._now())
+                self.repo.insert_prepared_decision_read_models(
+                    row["run_ref"],
+                    prepared.read_models["run_model"],
+                    prepared.read_models["candidate_models"],
+                    side_batches=prepared.read_models["side_batches"],
+                    operation_catalog=prepared.read_models["operation_catalog"],
+                    side_operations=prepared.read_models["side_operations"],
+                    side_resources=prepared.read_models["side_resources"],
+                )
+                written = record_run_terminal(self.conn, row["run_ref"], result, prepared.result_body, self._now())
             return written
         except WorkbenchCommandRejected as exc:
             self._record_failure(row, exc, admission)
@@ -144,12 +164,9 @@ class WorkbenchRunWorker:
         return {"code": "candidate_computation_failed", "message": COMPUTATION_FAILED}
 
     def _record_failure(self, row, exc, admission):
-        result = {"state": "failed", "result_persisted": False, "candidates": [], "error": self._public_error(exc),
-                  "diagnostic": failure_diagnostic(exc)}
+        result = FailedReceipt("failed", self._public_error(exc), failure_diagnostic(exc))
         try:
             with TransactionManager(self.conn).transaction(begin_immediate=True):
-                models = build_failure_read_models(row, admission, result)
-                self.repo.insert_decision_read_models(row["run_ref"], models["run_model"], models["candidate_models"])
-                self.repo.finish(row["run_ref"], result, self._now())
+                record_terminal_without_results(self.conn, row, admission, result, self._now())
         except Exception as storage_exc:
             raise WorkbenchCommandUncertain(row["request_key"]) from storage_exc

@@ -12,10 +12,19 @@ def external_handling_case(external_case):
 
 
 def production_storage(conn):
-    return {name: value for name, value in storage(conn).items()
-            if not name.startswith("WorkbenchDashboardExternal") and name != "WorkbenchCommandReceipts"}
+    return {
+        name: value
+        for name, value in storage(conn).items()
+        if name != "WorkbenchCommandReceipts"
+    }
 
 
 def ledger_counts(conn):
-    return tuple(conn.execute("SELECT COUNT(*) FROM " + table).fetchone()[0] for table in (
-        "WorkbenchDashboardExternalStates", "WorkbenchDashboardExternalHistory", "WorkbenchCommandReceipts"))
+    return tuple(
+        conn.execute("SELECT COUNT(*) FROM " + table).fetchone()[0]
+        for table in (
+            "WorkbenchDashboardStates",
+            "WorkbenchDashboardHistory",
+            "WorkbenchCommandReceipts",
+        )
+    )

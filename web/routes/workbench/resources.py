@@ -12,14 +12,15 @@ from core.services.workbench.resource.queries import WorkbenchResourceQueryServi
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
-from .read_context import bind_read_snapshot
-from .write_context import command_body, issue_write_context, validate_write_context
+from .downtimes import register_downtime_routes
+from .read_context import bind_read_snapshot, current_snapshot_time, read_snapshot_time
+from .request_json import single_value_arguments
+from .write_context import entity_with_context, issue_write_context, subject_command_body, validate_write_context
 
 
 def _query(kind):
     allowed = {"query", "status", "category", "page", "size", "sort", "direction", "snapshot_ref"}
-    if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "列表的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
+    single_value_arguments(allowed, message="列表的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。")
     values = {}
     for key, default in (("page", "1"), ("size", "20")):
         text = request.args.get(key, default)
@@ -31,43 +32,41 @@ def _query(kind):
                                sort=request.args.get("sort", "business_code"), direction=request.args.get("direction", "asc"))
 
 
-def _with_context(kind, record):
-    entity = dict(record.entity)
-    actions, capabilities, blocked_reasons = resource_action_policy(kind, record.state)
-    context = issue_write_context(record.identity.ref, actions, record.state)
-    context["capabilities"] = capabilities
-    context["blocked_reasons"] = blocked_reasons
-    entity["write_context"] = context
-    return entity
+def resource_entity(kind, record):
+    return entity_with_context(record, resource_action_policy(kind, record.state), record.state)
 
 
 @api_endpoint
 def resource_list(kind):
     reader = WorkbenchResourceQueryService(g.db, resource_kind(kind), current_app.logger)
     query = _query(kind)
+    token = request.args.get("snapshot_ref")
+    as_of, binding = read_snapshot_time(token)
     with reader.read_snapshot() as scope:
-        snapshot = bind_read_snapshot(query.scope(), scope.state_fingerprint(), request.args.get("snapshot_ref"))
+        snapshot = bind_read_snapshot(query.scope(), scope.state_fingerprint(), token, as_of=as_of, binding=binding)
         records, page = scope.page(query)
         metrics = page.pop("metrics")
-        data = {"entities": [_with_context(kind, record) for record in records], "page": page, "metrics": metrics,
-                "create_context": issue_write_context(kind + ":create", [kind + ".create"], scope.create_snapshot())}
+        data = {"entities": [resource_entity(kind, record) for record in records], "page": page, "metrics": metrics,
+                "create_context": issue_write_context(kind + ":create", [kind + ".create"], reader.create_relations_snapshot())}
     return query_success(data, snapshot)
 
 
 @api_endpoint
 def resource_detail(kind, ref):
-    if set(request.args) - {"snapshot_ref"} or len(request.args.getlist("snapshot_ref")) > 1:
-        raise WorkbenchCommandRejected("invalid_input", "详情的查询条件不对，详情没有打开。请刷新页面后重新点开这一行。", 400)
+    single_value_arguments({"snapshot_ref"}, message="详情的查询条件不对，详情没有打开。请刷新页面后重新点开这一行。")
     reader = WorkbenchResourceQueryService(g.db, resource_kind(kind), current_app.logger)
+    token = request.args.get("snapshot_ref")
+    as_of, binding = read_snapshot_time(token)
     with reader.read_snapshot() as scope:
-        snapshot = bind_read_snapshot({"kind": kind, "entity_ref": ref}, scope.state_fingerprint(), request.args.get("snapshot_ref"))
-        entity = _with_context(kind, scope.detail(ref))
+        snapshot = bind_read_snapshot({"kind": kind, "entity_ref": ref}, scope.state_fingerprint(), token, as_of=as_of,
+                                      binding=binding)
+        entity = resource_entity(kind, scope.detail(ref))
     return query_success(entity, snapshot)
 
 
 @api_endpoint
 def resource_command(kind, action, ref=None):
-    body = command_body("资料")
+    body = subject_command_body("资料")
     reader = WorkbenchResourceQueryService(g.db, resource_kind(kind), current_app.logger)
     normalized = reader.domain.normalize_input(action, body["input"])
     subject = kind + ":create" if ref is None else ref
@@ -95,15 +94,14 @@ def resource_summary():
     if request.args:
         raise WorkbenchCommandRejected("invalid_input", "这个汇总不需要其他条件。请刷新页面后重试。", 400)
     reader = WorkbenchResourceQueryService(g.db, "op_type", current_app.logger)
+    as_of = current_snapshot_time()
     with reader.read_snapshot(capture_fingerprint=False) as scope:
-        data = scope.summary_projection()
-        snapshot = bind_read_snapshot({"kind": "resource_summary"}, scope.state_fingerprint())
+        data = scope.summary_projection(as_of)
+        snapshot = bind_read_snapshot({"kind": "resource_summary"}, scope.state_fingerprint(), as_of=as_of)
     return query_success(data, snapshot)
 
 
 def register_resource_routes(bp):
-    from .downtimes import register_downtime_routes
-
     register_downtime_routes(bp)
     bp.add_url_rule("/api/workbench/v1/entities/<kind>", view_func=resource_list, methods=["GET"])
     bp.add_url_rule("/api/workbench/v1/entities/<kind>/<ref>", view_func=resource_detail, methods=["GET"])

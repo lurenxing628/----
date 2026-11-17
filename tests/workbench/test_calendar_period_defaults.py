@@ -56,6 +56,39 @@ def test_default_periods_are_readonly_until_confirmed_and_persist_across_service
     assert_error(stale, "snapshot_stale")
 
 
+def test_unconfigured_weekend_saves_note_only_as_holiday(calendar_api):
+    saturday = "2026-09-12"
+    assert calendar_api.row(saturday) is None
+    saved = calendar_api.save({"note": "只改备注"}, day=saturday)
+    assert saved.status_code == 200, saved.get_data(as_text=True)
+    assert saved.get_json()["result"] == "committed"
+    # 默认周末按假期存：不上班，两个优先级都不可排产，备注是这次填的。
+    assert calendar_api.row(saturday) == {"date": saturday, "day_type": "holiday", "efficiency": 1.0,
+                                          "allow_normal": "no", "allow_urgent": "no", "remark": "只改备注",
+                                          "periods_json": "[]"}
+
+
 def test_range_preview_read_failure_reports_nothing_committed(calendar_api):
     deny_table_reads(calendar_api.client.application, "WorkCalendar")
     assert_read_failure(calendar_api.preview_response())
+
+
+def test_range_preview_takes_one_reading_of_the_app_clock_across_midnight(calendar_api):
+    from datetime import datetime, timedelta
+
+    from web.runtime_host import install_wall_clock
+
+    readings = []
+
+    def clock():
+        # Every reading moves one second on, crossing midnight after the first.
+        readings.append(datetime(2026, 10, 7, 23, 59, 59, 900000) + timedelta(seconds=len(readings)))
+        return readings[-1]
+
+    install_wall_clock(calendar_api.client.application, clock)
+    response = calendar_api.preview_response()
+    assert response.status_code == 200, response.get_data(as_text=True)
+    body = response.get_json()
+    assert len(readings) == 1
+    assert body["data"]["created_at"] == body["meta"]["as_of"] == "2026-10-07T23:59:59"
+    assert body["data"]["expires_at"] == "2026-10-08T00:14:59"

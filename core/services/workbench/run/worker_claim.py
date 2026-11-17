@@ -72,7 +72,7 @@ def capture_claim_retry_state(conn, run_ref):
     repo = WorkbenchRunRepository(conn)
     with TransactionManager(conn).transaction():
         row = repo.get(run_ref)
-        _require_unclaimed_row(repo, row)
+        _require_unclaimed_row(row)
         return {"job": row, "admission": _admission(conn, row)}
 
 
@@ -87,15 +87,14 @@ def _admission(conn, row):
     return receipt
 
 
-def _require_unclaimed_row(repo, row):
+def _require_unclaimed_row(row):
     if (row is None or row["state"] != "queued" or row["stage"] != "queued"
-            or any(row[key] is not None for key in ("executor_ref", "started_at", "finished_at", "error_json"))
-            or repo.receipt(row["run_ref"]) is not None or repo.has_candidates(row["run_ref"])):
+            or any(row[key] is not None for key in ("executor_ref", "started_at", "finished_at", "error_json"))):
         raise RuntimeError("Run claim retry evidence changed; reconciliation required")
 
 
 def _require_unchanged_unclaimed(repo, row, original):
-    _require_unclaimed_row(repo, row)
+    _require_unclaimed_row(row)
     if row != original["job"]:
         raise RuntimeError("Run claim retry evidence changed; reconciliation required")
     _admission(repo.conn, row)

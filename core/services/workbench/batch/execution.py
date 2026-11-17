@@ -9,7 +9,7 @@ def load_execution(conn, operation_refs):
     """Read all ledger inputs inside the batch caller's read transaction."""
     ledger = ExecutionLedgerService(conn)
     with ledger.read_snapshot() as scope:
-        return {"facts": ledger.load_many(scope, operation_refs)}
+        return {"facts": ledger.load_many(scope, operation_refs, include_history=False)}
 
 
 def project_execution_snapshot(raw):

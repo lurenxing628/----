@@ -5,7 +5,6 @@ pending previews, not persisted command receipts. Live previews are never evicte
 to make room for new ones; capacity failure asks the caller to finish/wait first.
 """
 
-from datetime import datetime
 from threading import RLock
 from typing import Dict
 
@@ -13,6 +12,8 @@ from flask import current_app
 
 from core.models.workbench_calendar import MAX_CALENDAR_RANGE_DAYS, CalendarRangePreview
 from core.models.workbench_command import WorkbenchCommandRejected
+
+from .read_context import current_snapshot_time
 
 _EXTENSION = "workbench_calendar_previews_v1"
 _LOCK = RLock()
@@ -25,11 +26,11 @@ def _store() -> Dict[str, CalendarRangePreview]:
 
 
 def retain_preview(preview: CalendarRangePreview) -> None:
-    now = datetime.now().isoformat(timespec="seconds")
+    """Register a new preview; expired ones are cleared as of its ``created_at``, its request's one clock reading."""
     with _LOCK:
         store = _store()
         for ref in list(store):
-            if store[ref].expires_at <= now:
+            if store[ref].expires_at <= preview.created_at:
                 del store[ref]
         if (len(store) >= _MAX_PREVIEWS
                 or sum(len(value.dates) for value in store.values()) + len(preview.dates) > _MAX_RETAINED_DAYS):
@@ -45,7 +46,7 @@ def resolve_preview(ref: str) -> CalendarRangePreview:
         preview = _store().get(ref)
         if preview is None:
             raise WorkbenchCommandRejected("snapshot_stale", "预览变更已过期，日历没有修改。请重新点「预览变更」。")
-        if preview.expires_at <= datetime.now().isoformat(timespec="seconds"):
+        if preview.expires_at <= current_snapshot_time().isoformat(timespec="seconds"):
             del _store()[ref]
             raise WorkbenchCommandRejected("stale_write", "预览变更已过期，日历没有修改。请重新点「预览变更」。")
         return preview

@@ -1,23 +1,21 @@
 """Interpret acceptance-time facts only; current replacement entities are irrelevant."""
 
+import base64
 from collections import defaultdict
 from collections.abc import Mapping
 from functools import cached_property
-from typing import Any, Callable, Dict, List, NoReturn
+from typing import Any, Callable, List, NoReturn, Tuple
 
-from core.infrastructure.schema_structure import declared_table_columns
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import reference
 
-from .candidate_values import corrupt, gap, is_blob_metadata, number, stored_json, text
+from .candidate_values import corrupt, gap, is_blob_metadata, number, text
 from .delivery_projection import parse_stored_due_date
-from .production_capture import (
-    archived_table_valid,
-    validate_production_archive,
-)
+from .production_capture import ArchivedTables, validate_production_archive
 
-_TABLES = {"Batches": "batch_id", "Parts": "part_no", "Machines": "machine_id",
-           "Operators": "operator_id", "Suppliers": "supplier_id", "OpTypes": "op_type_id"}
+# The key column each archived table besides ``BatchOperations`` is read by.
+TABLE_KEYS = {"Batches": "batch_id", "Parts": "part_no", "Machines": "machine_id",
+              "Operators": "operator_id", "Suppliers": "supplier_id", "OpTypes": "op_type_id"}
 
 
 def _stored_reference(value, on_corrupt: Callable[[], NoReturn]) -> str:
@@ -27,32 +25,6 @@ def _stored_reference(value, on_corrupt: Callable[[], NoReturn]) -> str:
         if on_corrupt is corrupt:
             raise
         on_corrupt()
-
-
-def archived_rows(archive, name) -> List[Dict[str, Any]]:
-    """One table of an admitted archive, each row named by the archive's own column order."""
-    columns = archive["columns"][name]
-    return [dict(zip(columns, row)) if type(row) is list else dict(row) for row in archive["tables"][name]]
-
-
-def archived_table(facts, name) -> List[Dict[str, Any]]:
-    """Admit and decode one table of a saved partial archive; a table it does not record is corrupt, never empty."""
-    if not isinstance(facts, Mapping):
-        corrupt()
-    schema, tables, columns_map = facts.get("schema"), facts.get("tables"), facts.get("columns")
-    if type(schema) is not list or type(tables) is not dict or not isinstance(columns_map, Mapping) or name not in tables:
-        corrupt()
-    ddl = [row[3] for row in schema
-           if type(row) is list and len(row) == 4 and row[0] == "table" and row[1] == name and row[2] == name]
-    if len(ddl) != 1 or not archived_table_valid(columns_map.get(name), tables[name]):
-        corrupt()
-    try:
-        declared_cols = declared_table_columns(name, ddl[0])
-    except ValueError:
-        corrupt()
-    if tuple(columns_map[name]) != declared_cols:
-        corrupt()
-    return archived_rows(facts, name)
 
 
 def index_rows(rows, key, *, on_corrupt: Callable[[], NoReturn] = corrupt):
@@ -78,10 +50,10 @@ def batch_operation_rows(rows, *, on_corrupt: Callable[[], NoReturn] = corrupt):
 
 
 def entity_ref_rows(rows, *, on_corrupt: Callable[[], NoReturn] = corrupt):
-    if rows is not None and type(rows) is not list:
+    if type(rows) is not list:
         on_corrupt()
     result = {}
-    for row in rows or []:
+    for row in rows:
         if type(row) is not dict:
             on_corrupt()
         if row.get("active") != 1:
@@ -100,10 +72,11 @@ def operation_ref_rows(rows, *, on_corrupt: Callable[[], NoReturn] = corrupt):
     for row in rows:
         if type(row) is not dict:
             on_corrupt()
-        if row.get("kind") != "operation" or row.get("active") != 1:
+        # 来源编号表只有工序一种、ref 是主键（建表约束与归档准入），只按是否仍有效筛选。
+        if row.get("active") != 1:
             continue
         ref, key = _stored_reference(row.get("ref"), on_corrupt), row.get("source_key")
-        if type(key) is not str or not key.isascii() or not key.isdigit() or str(int(key)) != key or ref in result:
+        if type(key) is not str or not key.isascii() or not key.isdigit() or str(int(key)) != key:
             on_corrupt()
         result[ref] = int(key)
     return result
@@ -118,38 +91,101 @@ def operation_refs_by_id(operations, *, on_corrupt: Callable[[], NoReturn] = cor
     return result
 
 
+def operation_type_identity(refs, op_types, type_id):
+    """An operation type's permanent ref and name in one set of facts (``refs`` keyed ``("op_type", id)``, ``op_types``
+    by id): every reader of an operation's type takes it from the operation through here. An operation without a type
+    (``BatchOperations.op_type_id`` is nullable) has neither. Any other type is registered: ``OpTypes`` is archived
+    whole with every active permanent ref, a type in use cannot be deleted and every type row keeps one active ref
+    (``wb_ref_op_type_*``); a missing one is a corrupt archive."""
+    if type_id is None:
+        return None, None
+    return refs[("op_type", type_id)], op_types[type_id]["name"]
+
+
+def require_arranged_type(operation):
+    """An operation a saved arrangement scheduled has a type: preflight blocks an untyped one (``op_type_missing``)
+    and a batch operation's type is fixed from its template copy, so an arranged one without a type is corrupt."""
+    if operation["op_type_id"] is None:
+        corrupt()
+
+
+def _raw_sql_value(value):
+    if isinstance(value, Mapping) and set(value) == {"$sqlite_blob"} and type(value["$sqlite_blob"]) is str:
+        return base64.b64decode(value["$sqlite_blob"], validate=True)
+    return value
+
+
+# The archived table of each resource kind an operation or arrangement assigns.
+RESOURCE_TABLES = {"machine": "Machines", "operator": "Operators", "supplier": "Suppliers"}
+
+
+def _archived_resource(facts: "GenerationFacts", kind, key):
+    """An operation's assigned resource (``BatchOperations`` keeps it nullable) as its ref and stored label."""
+    if key is None:
+        return None, None
+    return facts.entity_ref(kind, key), text(facts.related(RESOURCE_TABLES[kind], key)["name"], kind + ".label", [])
+
+
+def build_run_archive_rows(run_ref: str, facts: "GenerationFacts") -> Tuple[List[Tuple[Any, ...]], List[Tuple[Any, ...]]]:
+    """Build structured WorkbenchRunBatches and WorkbenchRunOperations tuples from an archive just captured."""
+    batches: List[Tuple[Any, ...]] = []
+    for batch_id in sorted(facts.tables["Batches"]):
+        batch = facts.tables["Batches"][batch_id]
+        part_no = batch["part_no"]
+        batches.append((
+            run_ref, facts.entity_ref("batch", batch_id), batch_id, part_no, facts.entity_ref("part", part_no),
+            batch["part_name"], batch["quantity"], _raw_sql_value(batch["due_date"]), batch["priority"],
+            batch["ready_status"], batch["ready_date"], batch["status"],
+        ))
+    operations: List[Tuple[Any, ...]] = []
+    for op_id in sorted(facts.tables["BatchOperations"]):
+        op = facts.tables["BatchOperations"][op_id]
+        batch_id = op["batch_id"]
+        op_type_ref, op_type_label = operation_type_identity(facts.entity_refs, facts.tables["OpTypes"], op["op_type_id"])
+        operations.append((
+            run_ref, facts.operation_refs[op_id], op_id, op["op_code"], batch_id, facts.entity_ref("batch", batch_id),
+            op["piece_id"], op["seq"], op["op_type_id"], op["op_type_name"], op_type_ref, op_type_label,
+            op["source"], op["setup_hours"], op["unit_hours"], op["ext_days"],
+            op["machine_id"], *_archived_resource(facts, "machine", op["machine_id"]),
+            op["operator_id"], *_archived_resource(facts, "operator", op["operator_id"]),
+            op["supplier_id"], *_archived_resource(facts, "supplier", op["supplier_id"]),
+            op["status"],
+        ))
+    return batches, operations
+
+
+def admit_generation_facts(capture) -> "GenerationFacts":
+    """The one admission of a stored generation capture, at its storage boundary: the production archive
+    (``validate_production_archive``) and the permanent refs its execution rows are keyed by. An archive this
+    process has just built is indexed as it is (``GenerationFacts``)."""
+    try:
+        validate_production_archive(capture["facts"])
+    except ValueError:
+        corrupt()
+    facts = GenerationFacts(capture)
+    for ref in facts.execution:
+        reference(ref, stored=True)
+    return facts
+
+
 class GenerationFacts:
     def __init__(self, capture):
-        """``capture["facts"]`` is an archive this process built or already admitted; a stored capture
-        carries only ``facts_text``, decoded and admitted here at its first entry."""
-        facts = capture.get("facts")
-        if facts is None:
-            facts = stored_json(capture["facts_text"])
-            try:
-                validate_production_archive(facts)
-            except ValueError:
-                corrupt()
+        """Index an admitted compact production archive's original tables and the capture's execution rows."""
+        facts = capture["facts"]
         self.archive = facts
-        self._decoded_tables = {}
-        self.tables = {"BatchOperations": batch_operation_rows(self.table("BatchOperations")),
-                       **{name: index_rows(self.table(name), key) for name, key in _TABLES.items()}}
+        self._tables = ArchivedTables(facts)
+        self.tables = {
+            "BatchOperations": batch_operation_rows(self.table("BatchOperations")),
+            **{name: index_rows(self.table(name), key) for name, key in TABLE_KEYS.items()},
+        }
         self.entity_refs = entity_ref_rows(self.table("WorkbenchEntityRefs"))
         self.operations = operation_ref_rows(self.table("WorkbenchPlanSourceRefs"))
         self.execution = index_rows(capture["execution"], "operation_ref")
         self._operation_labels = {}
-        for ref in self.execution:
-            reference(ref, stored=True)
 
     def table(self, name):
-        """Decode an immutable saved table once for all consumers of this source.
-
-        An archive recorded under a schema without this table is corrupt for its reader, never empty.
-        """
-        if name not in self._decoded_tables:
-            if name not in self.archive["tables"]:
-                corrupt()
-            self._decoded_tables[name] = archived_rows(self.archive, name)
-        return self._decoded_tables[name]
+        """An immutable saved table, decoded once for all consumers of this source."""
+        return self._tables[name]
 
     @cached_property
     def operations_by_batch(self):
@@ -166,47 +202,54 @@ class GenerationFacts:
     def operation_refs(self):
         return operation_refs_by_id(self.operations)
 
-    def operation_batch_ref(self, ref):
-        op_id = self.operations.get(ref)
-        op = self.tables["BatchOperations"].get(op_id) if op_id is not None else None
-        return self.entity_refs.get(("batch", op["batch_id"])) if op is not None else None
+    # The archive's relations, read only through these: ``ProductionFactsCapture.scoped_archive`` keeps, in one
+    # transaction, every operation of its batches with the batches and parts they belong to (foreign keys), the
+    # resource and type tables whole, the active ref of every kept operation (``wb_plan_operation_*``) and of every
+    # kept row (``wb_ref_*`` keeps one per row). A relation missing from a stored archive is a corrupt archive.
 
-    def operation(self, ref, payload, gaps):
+    def operation(self, ref, op_id=None):
+        """The archived operation ``ref`` names; a saved arrangement's ``op_id`` must be the one ``ref`` names."""
         key = self.operations.get(ref)
-        if key is None:
-            gaps.append(gap("operation", "source_missing"))
-            return {}
-        if payload is not None and (type(payload.get("op_id")) is not int or payload["op_id"] != key):
+        if key is None or op_id is not None and op_id != key:
             corrupt()
-        row = self.tables["BatchOperations"].get(key)
-        if row is None:
-            gaps.append(gap("operation", "source_missing"))
-        return row or {}
+        return self.related("BatchOperations", key)
 
-    def related(self, name, key, field, gaps):
-        if type(key) not in (str, int):
-            gaps.append(gap(field, "source_missing"))
-            return {}
+    def related(self, name, key):
+        """The archived ``name`` row an archived row refers to by ``key``."""
         row = self.tables[name].get(key)
         if row is None:
-            gaps.append(gap(field, "source_missing"))
-        return row or {}
+            corrupt()
+        return row
 
-    def base_operation_labels(self, ref, op, gaps):
-        """This operation's archived labels, built once per capture; the first build records its gaps in ``gaps``."""
+    def entity_ref(self, kind, key):
+        """The active permanent ref of an archived row."""
+        ref = self.entity_refs.get((kind, key))
+        if ref is None:
+            corrupt()
+        return ref
+
+    def batch_id(self, ref):
+        """The archived batch a permanent batch ref names."""
+        key = self.batch_ids_by_ref.get(ref)
+        if key is None:
+            corrupt()
+        return key
+
+    def operation_batch_ref(self, ref):
+        return self.entity_ref("batch", self.operation(ref)["batch_id"])
+
+    def base_operation_labels(self, ref, op):
+        """This archived operation's labels, built once per capture."""
         if ref not in self._operation_labels:
-            self._operation_labels[ref] = self._operation_labels_from(ref, op, gaps)
+            self._operation_labels[ref] = self._operation_labels_from(ref, op)
         return self._operation_labels[ref]
 
-    def _operation_labels_from(self, ref, op, gaps):
-        batch = self.related("Batches", op.get("batch_id"), "batch", gaps)
-        part = self.related("Parts", batch.get("part_no"), "part", gaps)
-        batch_key = op.get("batch_id")
-        batch_ref = self.entity_refs.get(("batch", batch_key)) if type(batch_key) is str else None
-        if batch_ref is None:
-            gaps.append(gap("batch_ref", "source_missing"))
-        piece_id = op.get("piece_id")
-        if piece_id is not None or "piece_id" not in op:
+    def _operation_labels_from(self, ref, op):
+        gaps = []
+        batch = self.related("Batches", op["batch_id"])
+        part = self.related("Parts", batch["part_no"])
+        piece_id = op["piece_id"]
+        if piece_id is not None:
             piece_id = text(piece_id, "piece_id", gaps)
         execution = self._execution_at_generation(ref, gaps)
         quantity = execution["target_quantity"] if execution is not None else None
@@ -214,16 +257,16 @@ class GenerationFacts:
                 or execution["target_basis"] != ("piece" if piece_id is not None else "batch")):
             quantity = None
             gaps.append(gap("quantity", "source_missing"))
-        result = {"operation_ref": ref, "batch_ref": batch_ref,
-                  "batch_label": text(batch.get("batch_id"), "batch_label", gaps),
-                  "part_label": text(part.get("part_name"), "part_label", gaps),
-                  "sequence": number(op.get("seq"), "sequence", gaps, integer=True),
-                  "process_label": text(op.get("op_type_name"), "process_label", gaps),
+        result = {"operation_ref": ref, "batch_ref": self.entity_ref("batch", op["batch_id"]),
+                  "batch_label": text(batch["batch_id"], "batch_label", gaps),
+                  "part_label": text(part["part_name"], "part_label", gaps),
+                  "sequence": number(op["seq"], "sequence", gaps, integer=True),
+                  "process_label": text(op["op_type_name"], "process_label", gaps),
                   "piece_id": piece_id, "quantity": quantity,
-                  "batch_quantity": number(batch.get("quantity"), "batch_quantity", gaps, integer=True),
-                  **_stored_date(batch.get("due_date"), "due_date", gaps),
+                  "batch_quantity": batch["quantity"],
+                  **_stored_date(batch["due_date"], "due_date", gaps),
                   "execution_at_generation": execution, "data_gaps": gaps}
-        result.update(self.operation_type_labels(op.get("op_type_id")))
+        result.update(self.operation_type_labels(op["op_type_id"]))
         return result
 
     def _execution_at_generation(self, ref, gaps):
@@ -243,9 +286,9 @@ class GenerationFacts:
         return values
 
     def operation_type_labels(self, type_id):
-        ref = self.entity_refs.get(("op_type", type_id)) if type(type_id) is str else None
-        label = self.tables["OpTypes"].get(type_id, {}).get("name") if type(type_id) is str else None
-        return {"process_type_ref": ref, "process_type_label": label if type(label) is str else None}
+        """An archived operation's type as task views and adoption snapshots carry it (``operation_type_identity``)."""
+        ref, label = operation_type_identity(self.entity_refs, self.tables["OpTypes"], type_id)
+        return {"process_type_ref": ref, "process_type_label": label}
 
 
 def _stored_date(value, field, gaps):

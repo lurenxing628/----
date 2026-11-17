@@ -47,4 +47,4 @@ def aggregate_tradeoffs(entries, definitions):
     has_actual = any(row["metric_key"] == "type_changeover_count" and row["direction"] in ("better", "worse") for row in entries)
     main = [row for row in eligible if not (has_actual and row["metric_key"] == "changeover_count")]
     return {"benefits": [row for row in main if row["direction"] == "better"][:3],
-            "costs": [row for row in main if row["direction"] == "worse"][:3], "all_differences": list(entries)}
+            "costs": [row for row in main if row["direction"] == "worse"][:3], "all_differences": entries}

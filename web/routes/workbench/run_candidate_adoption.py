@@ -1,14 +1,16 @@
 """Explicit coordinator registration only; ordinary candidate GETs stay read-only."""
 
-from flask import current_app, g, request
+from flask import current_app, g
 
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_run_job import validate_run_ref
+from core.shared.key_sets import keys_conform
 from web.api_responses import json_response, query_success
+from web.runtime_host import wall_clock
 
 from .api_responses import api_endpoint, read_endpoint
 from .data_context import request_data_context
-from .read_context import unbound_snapshot
+from .read_context import current_snapshot_time, unbound_snapshot
+from .request_json import BodyTexts, command_body, read_json_body, rejecter, single_value_arguments
 from .write_context import issue_write_context, validate_write_context
 
 
@@ -19,29 +21,26 @@ def _service():
         integration_enabled=current_app.config.get("WORKBENCH_CANDIDATE_ADOPTION_ENABLED") is True,
         point_rendering_enabled=current_app.config.get("WORKBENCH_POINT_RENDERING_ENABLED") is True,
         context_factory=issue_write_context, context_validator=validate_write_context,
-        data_context=request_data_context())
+        data_context=request_data_context(), clock=wall_clock(current_app))
 
 
-def _body(fields):
-    value = request.get_json()
-    if request.args or type(value) is not dict or set(value) != set(fields):
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，还没有采用。请刷新页面后重新点「确认正式采用」。", 400)
-    return value
+_REJECTED = "提交的内容不完整或有多余项，还没有采用。请刷新页面后重新点「确认正式采用」。"
+_BODY = BodyTexts(transport=_REJECTED, malformed=_REJECTED, incomplete=_REJECTED)
 
 
 @read_endpoint
 def run_candidate_adopt_preview(candidate_ref):
-    _body(())
+    if not keys_conform(read_json_body(_BODY), ()):
+        rejecter(_REJECTED)()
+    as_of = current_snapshot_time()
     data = _service().preview(candidate_ref)
-    return query_success(data, unbound_snapshot())
+    return query_success(data, unbound_snapshot(as_of))
 
 
 @api_endpoint
 def run_candidate_adopt(candidate_ref):
-    value = _body(("write_token", "request_key", "input"))
+    value = command_body(_BODY, stale="本页数据已过期，还没有采用。请刷新页面后重新点「确认正式采用」。")
     validate_run_ref(candidate_ref)
-    validate_request_key(value["request_key"])
-    g.workbench_request_key = value["request_key"]
     g.workbench_result_target = (
         "/api/workbench/v1/scheduling/candidates/" + candidate_ref + "/adoption-commands/" + value["request_key"]
     )
@@ -51,11 +50,10 @@ def run_candidate_adopt(candidate_ref):
 
 @api_endpoint
 def run_candidate_adoption_command(candidate_ref, request_key):
-    if ("data_context_ref" not in request.args or set(request.args) - {"run_ref", "data_context_ref"}
-            or any(len(values) != 1 for _, values in request.args.lists())):
-        raise WorkbenchCommandRejected("invalid_input", "查询采用结果的条件不完整、有多余项或重复项，请重新查询。", 400)
-    result = _service().resolve_command(candidate_ref, request_key, run_ref=request.args.get("run_ref"),
-                                        data_context_ref=request.args["data_context_ref"])
+    arguments = single_value_arguments({"run_ref", "data_context_ref"}, required={"data_context_ref"},
+                                       message="查询采用结果的条件不完整、有多余项或重复项，请重新查询。")
+    result = _service().resolve_command(candidate_ref, request_key, run_ref=arguments.get("run_ref"),
+                                        data_context_ref=arguments["data_context_ref"])
     return json_response(result)
 
 

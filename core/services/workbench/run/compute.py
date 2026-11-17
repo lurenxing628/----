@@ -1,7 +1,6 @@
 """In-memory candidate computation. No worker admission, version allocation or publish."""
 
 from core.infrastructure.connection_guards import is_query_only
-from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_run_compute import CandidateRunComputation
 from core.services.scheduler.contracts.schedule_summary_types import SummaryBuildContext
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
@@ -45,49 +44,48 @@ def _prepared_version(business):
 def _candidate_outcomes(conn, business, comparison, *, calendar, validation_context):
     outcomes = {}
     selected_key = comparison.selection.selected_candidate_key
-    with read_evidence_scope(conn):
-        if business.piece_scope is not None:
-            piece_context = {
-                **prepare_piece_validation_context(conn, business),
-                "validation_context": validation_context,
-            }
-            for candidate in comparison.candidates:
-                failure_details = (
-                    candidate.summary.failure_details
-                    if candidate.candidate_key == selected_key
-                    else ()
-                )
-                outcomes[candidate.candidate_key] = validate_piece_candidate(
-                    conn,
-                    prepared=business,
-                    calendar=calendar,
-                    payload=candidate.results,
-                    context=piece_context,
-                    failure_details=failure_details,
-                )
-        else:
-            shared_context = prepare_schedule_validation_context(
-                business,
-                validation_context=validation_context,
+    if business.piece_scope is not None:
+        piece_context = {
+            **prepare_piece_validation_context(conn, business),
+            "validation_context": validation_context,
+        }
+        for candidate in comparison.candidates:
+            failure_details = (
+                candidate.summary.failure_details
+                if candidate.candidate_key == selected_key
+                else ()
             )
-            for candidate in comparison.candidates:
-                failure_details = (
-                    candidate.summary.failure_details
-                    if candidate.candidate_key == selected_key
-                    else ()
-                )
-                outcome = evaluate_schedule_constraints(
-                    business,
-                    calendar,
-                    candidate.results,
-                    purpose="publication",
-                    context=shared_context,
-                    failure_details=failure_details,
-                )
-                if outcome.issues:
-                    first = outcome.issues[0]
-                    fail(first["code"], first["message"])
-                outcomes[candidate.candidate_key] = outcome
+            outcomes[candidate.candidate_key] = validate_piece_candidate(
+                conn,
+                prepared=business,
+                calendar=calendar,
+                payload=candidate.results,
+                context=piece_context,
+                failure_details=failure_details,
+            )
+    else:
+        shared_context = prepare_schedule_validation_context(
+            business,
+            validation_context=validation_context,
+        )
+        for candidate in comparison.candidates:
+            failure_details = (
+                candidate.summary.failure_details
+                if candidate.candidate_key == selected_key
+                else ()
+            )
+            outcome = evaluate_schedule_constraints(
+                business,
+                calendar,
+                candidate.results,
+                purpose="publication",
+                context=shared_context,
+                failure_details=failure_details,
+            )
+            if outcome.issues:
+                first = outcome.issues[0]
+                fail(first["code"], first["message"])
+            outcomes[candidate.candidate_key] = outcome
     return outcomes
 
 
@@ -130,8 +128,6 @@ def _build_result_summary(
         missing_internal_resource_op_ids=business.missing_internal_resource_op_ids,
         scheduled_op_ids=selected_payload.scheduled_op_ids,
         freeze_meta=business.seeds.freeze_meta,
-        downtime_meta=resources.downtime_meta,
-        resource_pool_meta=resources.resource_pool_meta,
         readiness_gate_enabled=business.readiness_gate_enabled,
         algo_stats=adopted_plan.algo_stats,
         graph_analysis_public=adopted_plan.graph_analysis_public,
@@ -140,7 +136,6 @@ def _build_result_summary(
         execution_snapshot_revision=business.execution_guard.execution_snapshot_revision,
         execution_snapshot_op_ids=list(business.execution_guard.execution_snapshot_op_ids),
         execution_snapshot_op_count=business.execution_guard.execution_snapshot_op_count,
-        simulate=True,
         t0=business.t0,
     )
     return build_result_summary(ctx=summary_ctx)

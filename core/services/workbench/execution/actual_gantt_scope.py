@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import NoReturn, Optional, Tuple
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_load_limits import MAX_WINDOW_BATCHES, too_many_batches
 from core.models.workbench_plan_scope import PlanReadScope, local_time, plan_reference
-from core.shared.strict_json import load_strict_json
 
 COHORT_KEYS = ("plan_ref", "source", "range_start", "range_end", "plan_finish_date_from",
                "plan_finish_date_to", "resource_type", "resource_ref", "batch_ids")
@@ -20,7 +20,7 @@ def invalid(message: str) -> NoReturn:
 
 def _date(value):
     if value is not None:
-        local_time(value + "T00:00:00")
+        local_time(value + "T00:00:00" if type(value) is str else value)
     return value
 
 
@@ -40,7 +40,9 @@ def _validate_resource(kind, ref):
 
 
 def _validate_batches(values):
-    if (type(values) is not tuple or len(values) > 10000
+    if type(values) is tuple and len(values) > MAX_WINDOW_BATCHES:
+        invalid(too_many_batches(MAX_WINDOW_BATCHES))
+    if (type(values) is not tuple
             or any(type(value) is not str or not value.strip() or len(value) > 200 for value in values)
             or len(set(values)) != len(values)):
         invalid("批次范围必须是明确且不重复的批次编号集合。")
@@ -76,11 +78,12 @@ class ActualGanttScope:
 
     @classmethod
     def parse(cls, values):
+        """``values`` is the cohort part of the POST body: only ``COHORT_KEYS``, each as JSON decoded it."""
         args = dict(values)
         if "batch_ids" in args:
-            batches = load_strict_json(args["batch_ids"], on_malformed=lambda: invalid("批次范围必须是 JSON 数组。"),
-                                       expected=list, on_unexpected=lambda: invalid("批次范围必须是数组。"))
-            args["batch_ids"] = tuple(batches)
+            if type(args["batch_ids"]) is not list:
+                invalid("批次范围必须是数组。")
+            args["batch_ids"] = tuple(args["batch_ids"])
         if "plan_ref" not in args:
             invalid("请先选择计划。")
         return cls(**args)

@@ -8,11 +8,11 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple
 
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
+from core.algorithm_runtime.operation_effort import internal_required_hours
 from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial import issue
 from core.services.personnel.operator_qualification import OperatorQualificationError
-from core.services.workbench.facts.zero_duration import internal_duration_hours
 from core.shared.stored_dates import stored_date, stored_day
 
 from .input_config import window_label
@@ -30,7 +30,7 @@ class PredecessorNode:
     key: Any
     op_id: int
     predecessor_keys: Sequence[Any]
-    span: Optional[Tuple[datetime, datetime]]
+    span: Tuple[datetime, datetime]
     cycle_token: Any
     merged_group_key: Optional[Tuple[Any, Any, Any]]
     task_ref: Optional[str] = None
@@ -56,6 +56,12 @@ def resource_gaps(
     return [], checks.fields(batch, op), checks.resources(op)
 
 
+def _late_material_day(material_day: Optional[str], start: datetime) -> Optional[str]:
+    # SQLite DECLTYPES returns date objects in the application; snapshots use ISO text.
+    # batch_model has already rejected invalid dates using the same parser.
+    return material_day if material_day and start < datetime.fromisoformat(material_day) else None
+
+
 def readiness_issues(
     checks: Any,
     batch: Any,
@@ -64,10 +70,24 @@ def readiness_issues(
     policy: Mapping[str, Any],
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     problems, material_day = checks.operation_readiness(batch, op, policy)
-    # SQLite DECLTYPES returns date objects in the application; snapshots use ISO text.
-    # batch_model has already rejected invalid dates using the same parser.
-    late_material_day = material_day if material_day and start < datetime.fromisoformat(material_day) else None
-    return problems, late_material_day
+    return problems, _late_material_day(material_day, start)
+
+
+def _readiness_code(
+    problems: Sequence[Mapping[str, Any]],
+    material_day: Optional[str],
+    batch: Mapping[str, Any],
+    start: datetime,
+    policy: Mapping[str, Any],
+) -> Optional[str]:
+    if problems:
+        return "material_not_ready"
+    if _late_material_day(material_day, start) is not None:
+        return "before_material"
+    ready_day = stored_date(batch["ready_date"])
+    if policy["ready_check"] and ready_day is not None and start < datetime.fromisoformat(ready_day):
+        return "before_ready_date"
+    return None
 
 
 def readiness_problem(
@@ -77,15 +97,21 @@ def readiness_problem(
     start: datetime,
     policy: Mapping[str, Any],
 ) -> Optional[str]:
-    problems, late_material_day = readiness_issues(checks, batch, op, start, policy)
-    if problems:
-        return "material_not_ready"
-    if late_material_day is not None:
-        return "before_material"
-    ready_day = stored_date(batch["ready_date"])
-    if policy["ready_check"] and ready_day is not None and start < datetime.fromisoformat(ready_day):
-        return "before_ready_date"
-    return None
+    problems, material_day = checks.operation_readiness(batch, op, policy)
+    return _readiness_code(problems, material_day, batch, start, policy)
+
+
+@dataclass(frozen=True)
+class ArrangementProblem:
+    """一条安排不成立的第一处原因，以及查出它的资料。
+
+    code 为 resource_invalid 时 gaps 是工序资料与设备人员资格的问题；其余原因码时 material_day
+    是本序物料到齐日（读不出到齐日为 None）。
+    """
+
+    code: str
+    gaps: Tuple[Dict[str, Any], ...]
+    material_day: Optional[str]
 
 
 def arrangement_problem(
@@ -94,16 +120,19 @@ def arrangement_problem(
     raw: Mapping[str, Any],
     start_time: datetime,
     settings: Mapping[str, Any],
-) -> Optional[str]:
+) -> Optional[ArrangementProblem]:
     """一条非实际安排按现在的资料还成不成立：工序资料和设备人员资格、物料到齐日、齐套日期。
 
-    batch、raw 是原始行，raw 的设备人员换成安排行自己的。返回第一处不成立的原因码，都成立返回 None。
-    候选采用逐行复核与排产检查核对不重排时段保留的原安排共用这一口径。
+    batch、raw 是原始行，raw 的设备人员换成安排行自己的。都成立返回 None。排产检查核对不重排时段保留的
+    原安排用这一口径；候选采用逐行复核在资料资格与物料齐套之间还要核执行和范围，自己组合 resource_gaps 与
+    readiness_problem。
     """
     _protected_gaps, field_gaps, res_gaps = resource_gaps(checks, batch, raw, protected_cycle=False)
     if field_gaps or res_gaps:
-        return "resource_invalid"
-    return readiness_problem(checks, batch, raw, start_time, settings)
+        return ArrangementProblem("resource_invalid", tuple(field_gaps + res_gaps), None)
+    problems, material_day = checks.operation_readiness(batch, raw, settings)
+    code = _readiness_code(problems, material_day, batch, start_time, settings)
+    return None if code is None else ArrangementProblem(code, (), material_day)
 
 
 def calendar_duration_conflict(
@@ -112,11 +141,8 @@ def calendar_duration_conflict(
     op: OpForScheduleAlgo,
     batch: Batch,
     machine_downtimes: Sequence[Any],
-    *,
-    quantity: Any,
 ) -> bool:
-    """按真实班次、效率、停机和工时从安排的开工时刻重算一遍；开完工对不上即冲突。"""
-    total = internal_duration_hours(op.setup_hours, op.unit_hours, quantity)
+    """按真实班次、效率、停机和工时从安排的开工时刻重算一遍；开完工对不上即冲突。工时与排产同一公式。"""
     estimate = estimate_internal_slot(
         calendar=calendar,
         op=op,
@@ -131,7 +157,7 @@ def calendar_duration_conflict(
         machine_downtimes=machine_downtimes,
         last_op_type_by_machine=None,
         abort_after=None,
-        total_hours_base=total,
+        total_hours_base=internal_required_hours(op, batch),
     )
     return estimate.start_time != row.start_time or estimate.end_time != row.end_time
 
@@ -170,14 +196,9 @@ def stored_operator_profile_valid(
 def machine_downtime_issues(
     downtime_index: DowntimeIndex, start: datetime, end: datetime, *, task_ref: str
 ) -> List[Dict[str, Any]]:
-    if downtime_index.invalid_interval:
-        raise ValueError("Invalid machine downtime interval")
-    issues: List[Dict[str, Any]] = []
-    if downtime_index.unknown_status:
-        issues.append(issue("downtime_state_unknown", "设备停机状态不明确。", task_ref))
     if downtime_index.overlaps(start, end):
-        issues.append(issue("machine_downtime", "目标安排与实际设备停机重叠。", task_ref))
-    return issues
+        return [issue("machine_downtime", "目标安排与实际设备停机重叠。", task_ref)]
+    return []
 
 
 def append_frozen_note(
@@ -205,7 +226,7 @@ def iter_predecessor_violations(
                 if pred_key not in outside_completed_ends:
                     yield PredecessorViolation("predecessor_missing", node.op_id, node.task_ref)
                     continue
-                if node.span is not None and outside_completed_ends[pred_key] > node.span[0]:
+                if outside_completed_ends[pred_key] > node.span[0]:
                     yield PredecessorViolation("precedence_violation", node.op_id, node.task_ref)
                 continue
             if node.merged_group_key is not None and node.merged_group_key == previous.merged_group_key:
@@ -214,7 +235,7 @@ def iter_predecessor_violations(
                         "merged_group_split", node.op_id, node.task_ref, previous.task_ref
                     )
                 continue
-            if previous.span is not None and node.span is not None and previous.span[1] > node.span[0]:
+            if previous.span[1] > node.span[0]:
                 yield PredecessorViolation(
                     "precedence_violation", node.op_id, node.task_ref, previous.task_ref
                 )
@@ -267,11 +288,9 @@ def _draft_row_time_issues(
     fixed_cycle = anchor is not None and anchor["basis"] == "merged_external_actuals"
     trial_intervals = context["trial_intervals"]
     found: List[Dict[str, Any]] = []
+    start, end = trial_intervals["current_by_op"][op_ref]
     try:
-        if op_ref in trial_intervals["current_errors_by_op"]:
-            raise trial_intervals["current_errors_by_op"][op_ref].with_traceback(None)
-        start, end = trial_intervals["current_by_op"][op_ref]
-        if effective_protected is None and calendar.engine is not None:
+        if effective_protected is None:
             point_proven = row["row_ref"] in trial_intervals["original_points_by_row"]
             est_start, est_end = context["estimate_fn"](row, start, point_proven)
             if start != est_start or end != est_end:
@@ -289,9 +308,12 @@ def _draft_row_time_issues(
                 machine_downtime_issues(calendar.downtime_index(current["machine_id"]), start, end, task_ref=ref)
             )
     except WorkbenchCommandRejected as exc:
+        # 工时估算的业务拒绝记成这一行的问题；停机、日历等存储损坏不是排得对不对，原样上抛成 500。
+        if exc.code == "storage_failure":
+            raise
         found.append(issue(exc.code, str(exc), ref))
     except (AppError, ValueError, TypeError, OverflowError):
-        found.append(issue("calendar_unproven", "原工时、真实班次、日期或停机数据无效，未用默认数补齐。", ref))
+        found.append(issue("calendar_unproven", "原工时、真实班次或日期无效，未用默认数补齐。", ref))
     return found
 
 
@@ -303,17 +325,11 @@ def evaluate_draft_row(
     found.extend(_draft_row_time_issues(calendar, row, context, effective_protected))
     if effective_protected is None:
         policy = {**context["material_policy_base"], "end_date": row["current"]["end"][:10]}
-        original, current_by_op = row["original"], context["trial_intervals"]["current_by_op"]
-        op_ref = row["operation_ref"]
-        if op_ref in current_by_op:
-            problems, late_material_day = readiness_issues(
-                context["checks"], original["batch"], original["operation"], current_by_op[op_ref][0], policy
-            )
-        else:
-            problems, _ = context["checks"].operation_readiness(
-                original["batch"], original["operation"], policy
-            )
-            late_material_day = None
+        original = row["original"]
+        problems, late_material_day = readiness_issues(
+            context["checks"], original["batch"], original["operation"],
+            context["trial_intervals"]["current_by_op"][row["operation_ref"]][0], policy,
+        )
         found.extend([issue(item["code"], item["message"], row["task_ref"]) for item in problems])
         if late_material_day is not None:
             found.append(
@@ -356,7 +372,7 @@ def collect_draft_predecessor_issues(
                 key=row["operation_ref"],
                 op_id=original["operation"]["id"],
                 predecessor_keys=pred_refs,
-                span=current_by_op.get(row["operation_ref"]),
+                span=current_by_op[row["operation_ref"]],
                 cycle_token=(current["start"], current["end"]),
                 merged_group_key=merged_key,
                 task_ref=row["task_ref"],

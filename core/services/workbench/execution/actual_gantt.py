@@ -7,25 +7,27 @@ from math import fsum
 from typing import Any, Dict, Iterator, Optional, Tuple, cast
 
 from core.models.content import content_text
+from core.models.hours import exact_hours_text
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_load_limits import MAX_WINDOW_REPORTS
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.execution.ledger_reader import ExecutionLedgerReadScope
 from core.services.workbench.facts.execution_values import execution_deviation
-from core.services.workbench.facts.gantt_graph import public_gantt_graph
+from core.services.workbench.facts.gantt_graph import project_scoped_gantt_graph
 from core.services.workbench.facts.source_revisions import EXECUTION_SOURCE_KEYS, read_source_revisions
 from core.services.workbench.plan.calendar import project_plan_calendar
 from core.services.workbench.plan.calendar_context import selected_context
-from core.services.workbench.plan.process_order import project_process_order
-from core.services.workbench.plan.projection import project_plan
+from core.services.workbench.plan.projection import project_plan, resource_directory, row_resource_entries
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.plan.read_context import PlanReadContext
-from core.services.workbench.plan.workspace_dto import resource_directory
+from core.shared.local_datetime import us_to_datetime
 
 from .actual_gantt_scope import matches_execution_resource
 from .ledger import ExecutionLedgerService
 
-MAX_ACTUAL_RESPONSE_BYTES = 32 * 1024 * 1024
-MAX_ACTUAL_REPORTS = 50000
+# 现场实际甘特的响应与 CSV 字节上限，单窗的 32 MiB 装不下，单独取值。满载实测（20000 道工序、50000 条报工）：
+# 整窗 JSON 107,527,091 B（约 102.5 MiB），CSV 51,346,701 B；按 1.25 倍余量取不小于它的 2 的幂，定为 256 MiB。
+MAX_ACTUAL_RESPONSE_BYTES = 256 * 1024 * 1024
 
 
 def bind_axis_time(data, as_of):
@@ -63,13 +65,7 @@ def _merge_resources(planned, actual):
     for kind, key in (("machine", "machines"), ("operator", "operators")):
         for row in actual[key]:
             public = {"kind": kind, "ref": row["ref"], "business_code": row["business_code"], "label": row["label"]}
-            previous = resources.get(row["ref"])
-            if previous is not None:
-                if previous["label"] is None and public["label"] == public["business_code"]:
-                    public["label"] = None
-                if previous != public:
-                    raise WorkbenchCommandRejected("projection_invalid", "计划与报工中的设备或人员名称不一致，请核对资料。")
-            resources[row["ref"]] = public
+            resources.setdefault(row["ref"], public)
     return [resources[key] for key in sorted(resources)]
 
 
@@ -79,9 +75,26 @@ def _items(tasks, projection):
     for task in tasks:
         execution = by_operation[task["operation_ref"]]
         items.append({"task": task, "execution": execution})
-    if sum(len(item["execution"]["reports"]) for item in items) > MAX_ACTUAL_REPORTS:
-        raise WorkbenchCommandRejected("query_too_large", "所选范围超过一次能读的 50000 条报工上限，系统没有返回截断后的记录。请缩小范围后重试。", 413)
+    if sum(len(item["execution"]["reports"]) for item in items) > MAX_WINDOW_REPORTS:
+        raise WorkbenchCommandRejected(
+            "query_too_large",
+            f"所选范围超过一次能读的 {MAX_WINDOW_REPORTS} 条报工上限，系统没有返回截断后的记录。请缩小范围后重试。",
+            413,
+        )
     return items
+
+
+def _add_exact_hours(items):
+    """Give each effective report its exact hours text for the browser's exact local group totals.
+
+    ``exact_hours_text`` encodes the admitted value, whose ``hours_text`` is the stored text, so this is the
+    stored exact amount in canonical form (the same path as ``sum_hours``); None stays unknown. The report
+    dicts are this read's own ``ExecutionProjection.to_dict`` output, shared with no cache.
+    """
+    for item in items:
+        for report in item["execution"]["reports"]:
+            hours = report["effective_processing_hours"]
+            report["effective_processing_hours_exact"] = None if hours is None else exact_hours_text(hours)
 
 
 def _span(plan_span, items):
@@ -160,38 +173,26 @@ class ActualGanttService:
 
     def _planned(self, scope, context: PlanReadContext, *, include_calendar):
         plan_scope = PlanReadScope(scope.plan_ref, scope.range_start, scope.range_end)
-        _, entry, span = context.selected(scope.plan_ref)
-        if scope.range_start is None and scope.plan_finish_date_from is not None:
-            dt_intervals = context.datetime_intervals(entry)
+        entry, span = context.selected(scope.plan_ref)
+        rows = context.scoped_rows(entry, plan_scope)
+        if scope.plan_finish_date_from is not None:
             finish_from = date.fromisoformat(scope.plan_finish_date_from)
             finish_to = date.fromisoformat(scope.plan_finish_date_to)
-            prepared = context.repo.prepared_rows(**context.query(entry))
-            rows = context.enrich_rows(entry, [row for row in prepared
-                if finish_from <= dt_intervals[row["id"]][1].date() <= finish_to])
-        else:
-            rows = context.scoped_rows(entry, plan_scope)
-            if scope.plan_finish_date_from is not None:
-                dt_intervals = context.datetime_intervals(entry)
-                finish_from = date.fromisoformat(scope.plan_finish_date_from)
-                finish_to = date.fromisoformat(scope.plan_finish_date_to)
-                rows = [row for row in rows if finish_from <=
-                        dt_intervals[row["schedule_id"]][1].date() <= finish_to]
+            rows = [row for row in rows if finish_from <= us_to_datetime(row["end_us"]).date() <= finish_to]
         if scope.batch_ids:
             batches = set(scope.batch_ids)
             rows = [row for row in rows if row["batch_id"] in batches]
         resources = context.resource_identities(rows)
-        tasks, task_facts = context.projected_tasks(scope.plan_ref, rows, resources=resources)
+        tasks = context.projected_tasks(scope.plan_ref, rows, resources=resources)
         calendar = None
         if include_calendar:
-            selected = selected_context(
-                plan_scope, rows, span, intervals=context.datetime_intervals(entry)
-            )
+            selected = selected_context(plan_scope, rows, span)
             calendar, _ = project_plan_calendar(self.conn, scope=plan_scope, resources=resources, selected=selected)
         return {"plan": project_plan(entry, scope.plan_ref), "plan_span": span, "tasks": tasks,
-                "resources": resource_directory(rows, resources, tasks=tasks, archived=task_facts["resource_directory"]),
+                "resources": resource_directory(row_resource_entries(rows, resources)),
                 "projections": {"calendar": calendar}}
 
-    def _execution(self, gantt_scope: ActualGanttReadScope, planned, scope, *, include_history):
+    def _execution(self, gantt_scope: ActualGanttReadScope, planned, scope):
         clock, availability = self._ledger_state(gantt_scope, scope)
         if clock is None:
             return None, [{"task": task, "execution": None} for task in planned["tasks"]], planned["resources"], availability
@@ -201,7 +202,7 @@ class ActualGanttService:
                 ledger_scope,
                 scope.plan_ref,
                 planned["tasks"],
-                include_history=include_history,
+                include_history=False,
             )
         except WorkbenchCommandRejected as exc:
             if exc.code == "query_too_large":
@@ -215,16 +216,19 @@ class ActualGanttService:
     def workspace(self, gantt_scope: ActualGanttReadScope, scope, *, full_workspace):
         context = gantt_scope.plan_context
         planned = self._planned(scope, context, include_calendar=full_workspace)
-        projection, items, resources, availability = self._execution(
-            gantt_scope, planned, scope, include_history=full_workspace
-        )
+        projection, items, resources, availability = self._execution(gantt_scope, planned, scope)
         if scope.resource_ref is not None:
             items = [item for item in items if matches_execution_resource(
                 item["task"], item["execution"], scope.resource_type, scope.resource_ref)]
         gantt_graph = None
         if full_workspace:
-            _, gantt_graph = project_process_order(self.conn, plan_ref=scope.plan_ref, context=context)
-            gantt_graph = public_gantt_graph(gantt_graph)
+            if projection is not None:
+                _add_exact_hours(items)
+            gantt_graph = project_scoped_gantt_graph(
+                context.gantt_graph(context.resolve(scope.plan_ref).version),
+                scope.batch_ids or None,
+                include_nodes=True,
+            )
         data = {"plan": planned["plan"], "scope": scope.scope(), "plan_span": planned["plan_span"],
                 "axis_span": _span(planned["plan_span"], items), "availability": availability,
                 "items": items, "task_count": len(items), "items_complete": True,

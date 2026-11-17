@@ -2,11 +2,11 @@
 
 import re
 
-from flask import g, request
+from flask import current_app, g, request
 
 from core.models.content import content_text
-from core.models.workbench_command import validate_request_key
-from core.models.workbench_trial import fields, reference, reject
+from core.models.workbench_command import SHAPE_REJECTED, validate_request_key
+from core.models.workbench_trial import reference, reject
 from core.models.workbench_trial_catalog import TrialCatalogScope
 from core.services.workbench import messages
 from core.services.workbench.commands import command_lookup_payload
@@ -14,10 +14,12 @@ from core.services.workbench.facts.run_input_readonly import candidate_read_snap
 from core.services.workbench.facts.source_revisions import TRIAL_SOURCE_KEYS, read_source_revisions
 from core.services.workbench.trial.catalog import WorkbenchTrialCatalogService
 from web.api_responses import json_response, query_success
+from web.runtime_host import wall_clock
 
 from .api_responses import api_endpoint, read_endpoint
 from .data_context import request_data_context
-from .read_context import bind_read_snapshot
+from .read_context import bind_read_snapshot, current_snapshot_time, read_snapshot_time
+from .request_json import BodyTexts, command_body, read_json_body, single_value_arguments
 from .write_context import issue_write_context, validate_write_context
 
 
@@ -29,39 +31,40 @@ def _service():
         context_factory=issue_write_context,
         context_validator=validate_write_context,
         data_context=request_data_context(),
+        clock=wall_clock(current_app),
     )
 
 
-def _body(command=False):
-    if request.args:
-        reject("invalid_input", "提交的内容格式不正确，试调还没有保存。请刷新页面后重新填写。", 400)
-    value = request.get_json()
-    if command:
-        fields(value, ("request_key", "write_token", "input"))
-        validate_request_key(value["request_key"])
-        g.workbench_request_key = value["request_key"]
-        g.workbench_result_target = "/api/workbench/v1/trial/commands/" + value["request_key"]
+_UNREADABLE = "提交的内容格式不正确，试调还没有保存。请刷新页面后重新填写。"
+_BODY = BodyTexts(transport=_UNREADABLE, malformed=_UNREADABLE, incomplete=SHAPE_REJECTED)
+
+
+def _command():
+    value = command_body(_BODY, stale="本页数据已过期，试调还没有保存。请刷新页面后重新填写。")
+    g.workbench_result_target = "/api/workbench/v1/trial/commands/" + value["request_key"]
     return value
 
 
 def _query(read, scope, *, data_context, precheck=None):
     allowed = {"snapshot_ref"}
-    if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        reject("invalid_input", messages.STALE, 400)
+    single_value_arguments(allowed, message=messages.STALE)
+    token = request.args.get("snapshot_ref")
+    as_of, binding = read_snapshot_time(token)
     with candidate_read_snapshot(g.db):
         checked = precheck() if precheck is not None else None
         state = {
             "revisions": read_source_revisions(g.db, TRIAL_SOURCE_KEYS),
             "data_context_ref": data_context.ref(),
         }
-        snapshot = bind_read_snapshot(scope, content_text(state), request.args.get("snapshot_ref"))
+        snapshot = bind_read_snapshot(scope, content_text(state), token, as_of=as_of, binding=binding)
         data = read(checked) if precheck is not None else read()
     return query_success(data, snapshot)
 
 
 @read_endpoint
 def trial_create_preview():
-    body = _body()
+    body = read_json_body(_BODY)
+    as_of = current_snapshot_time()
     service = _service()
     with candidate_read_snapshot(g.db):
         data = service.preview_create(body)
@@ -72,13 +75,14 @@ def trial_create_preview():
         snapshot = bind_read_snapshot(
             {"kind": "trial_create_preview", "scope": data["scope"]},
             content_text(state),
+            as_of=as_of,
         )
     return query_success(data, snapshot)
 
 
 @api_endpoint
 def trial_create():
-    value = _body(True)
+    value = _command()
     return json_response(_service().create(value["input"], value["write_token"], value["request_key"]))
 
 
@@ -96,19 +100,19 @@ def trial_read(draft_ref):
 
 @api_endpoint
 def trial_change(draft_ref):
-    value = _body(True)
+    value = _command()
     return json_response(_service().change(draft_ref, value["input"], value["write_token"], value["request_key"]))
 
 
 @api_endpoint
 def trial_save(draft_ref):
-    value = _body(True)
+    value = _command()
     return json_response(_service().save(draft_ref, value["input"], value["write_token"], value["request_key"]))
 
 
 @api_endpoint
 def trial_discard(draft_ref):
-    value = _body(True)
+    value = _command()
     return json_response(_service().discard(draft_ref, value["input"], value["write_token"], value["request_key"]))
 
 
@@ -134,8 +138,7 @@ def trial_receipt(request_key):
 
 def _catalog(collection):
     allowed = {"page", "size", "status", "base_kind", "base_ref", "snapshot_ref"}
-    if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        reject("invalid_input", "试调列表的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
+    single_value_arguments(allowed, message="试调列表的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。")
     numbers = {}
     for key, default in (("page", "1"), ("size", "20")):
         raw = request.args.get(key, default)
@@ -144,9 +147,11 @@ def _catalog(collection):
         numbers[key] = int(raw)
     scope = TrialCatalogScope(collection, status=request.args.get("status", "all"),
         base_kind=request.args.get("base_kind"), base_ref=request.args.get("base_ref"), **numbers)
+    token = request.args.get("snapshot_ref")
+    as_of, binding = read_snapshot_time(token)
     data, snapshot = WorkbenchTrialCatalogService(g.db).catalog(
         scope,
-        bind_snapshot=lambda content: bind_read_snapshot(scope.scope(), content, request.args.get("snapshot_ref")),
+        bind_snapshot=lambda content: bind_read_snapshot(scope.scope(), content, token, as_of=as_of, binding=binding),
     )
     return query_success(data, snapshot)
 

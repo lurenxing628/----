@@ -9,12 +9,14 @@ from openpyxl import load_workbook
 
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.decision_metrics import project_official_core_metrics
-from core.services.workbench.run.decision_queries import read_decision_details
+from core.services.workbench.run.decision_queries import decision_details, normalize_filters, read_decision_details
 from core.services.workbench.run.decision_source import DecisionSource
 from core.services.workbench.run.worker import WorkbenchRunWorker
+from tests.workbench.plan_catalog_support import update_schedule_rows
 from tests.workbench.run_candidate_adoption_support import INTENT, service
 from tests.workbench.run_candidate_support import BASE, api, compute
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
+from tests.workbench.run_decision_support import add_pair, operation_ref, representative_archive
 from tests.workbench.test_material_stage_release import add_requirement
 from tests.workbench.test_run_decision_api import _assert_summary_matches_full, decision, decision_summary
 
@@ -24,13 +26,6 @@ def detail(client, run_ref, section, **query):
     assert response.status_code == 200, response.get_json()
     assert response.headers["Cache-Control"] == "no-store"
     return response.get_json()
-
-
-def operation_ref(case, op_id):
-    return case.conn.execute(
-        "SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
-        (str(op_id),),
-    ).fetchone()[0]
 
 
 def many_batches(case):
@@ -58,13 +53,11 @@ def test_mixed_due_values_keep_nulls_last_and_permanent_ties_across_pages(candid
             CandidateStore(case.conn), run_ref,
             selected_candidate_ref=refs[-1], reference_candidate_ref=refs[-1],
         )
-        _ = batch_source.batch_impacts
-        from core.services.workbench.run.decision_impact import filter_options, operation_impacts
-        _ = filter_options(batch_source, "batches")
-        _ = filter_options(batch_source, "operations")
-        assert "facts" not in batch_source.__dict__
-        _ = operation_impacts(batch_source, batch_source.scope["operation_refs"][:20])
-        assert not batch_source._raw_tasks and not batch_source._projected
+        for section in ("batches", "operations"):
+            decision_details(batch_source, section, normalize_filters(section), all_rows=True)
+        # Both detail tabs page the saved comparison rows; neither reloads the archive or the candidate tasks.
+        assert batch_source._saved_run is None
+        assert not batch_source._validated and not batch_source._projected
     first = detail(client, run_ref, "batches", **query)
     assert first["data"]["candidate"]["candidate_ref"] == refs[-1]
     page = first["data"]["page"]
@@ -95,6 +88,8 @@ def test_mixed_due_values_keep_nulls_last_and_permanent_ties_across_pages(candid
     assert by_id["B26"]["due_state"] == "invalid" and by_id["B26"]["due_issue"] == "due_date_missing"
     assert by_id["B27"]["due_state"] == "invalid" and by_id["B27"]["due_issue"] == "due_date_missing"
     summary = wide["data"]["summary"]["after"]
+    assert wide["data"]["summary"]["common_completed_batch_count"] == 27
+    assert "common_completed_batch_refs" not in wide["data"]["summary"]
     assert (summary["due_eligible_count"], summary["excluded_due_count"], summary["invalid_due_count"]) == (24, 1, 2)
     assert summary["known_due_count"] == 24 and summary["unknown_due_count"] == 2
     assert summary["total_tardiness_hours"] is None and summary["known_tardiness_hours"] == 0
@@ -130,18 +125,27 @@ def test_operation_filters_preserve_identity_and_distinguish_material_deferral(c
     client, _ = api(case)
     query = {"selected_candidate_ref": selected, "reference_candidate_ref": reference}
     batch_ref, second_ref = case.ref("batch", batch), operation_ref(case, second_id)
-    batches = detail(client, run_ref, "batches", **dict(query, batch_ref=batch_ref))["data"]
+    batches_doc = detail(client, run_ref, "batches", **dict(query, batch_ref=batch_ref))
+    batches = batches_doc["data"]
     assert len(batches["items"]) == 1
     item = batches["items"][0]
     assert item["after"]["schedule_complete"] is False and item["after"]["planned_finish"] is None
     expected_state = "deferred" if mode == "stage" else "incomplete"
     assert item["after"]["completion_state"] == expected_state
-    assert item["deferred_operation_refs"] == ([second_ref] if mode == "stage" else [])
-    assert item["unplanned_operation_refs"] == ([] if mode == "stage" else [second_ref])
+    assert "deferred_operation_refs" not in item and "unplanned_operation_refs" not in item
     assert item["after"]["deferred_operation_count"] == (1 if mode == "stage" else 0)
     assert item["after"]["ordinary_unscheduled_operation_count"] == (0 if mode == "stage" else 1)
-    from core.services.workbench.facts import candidate_tasks
-    from core.services.workbench.run import decision_impact
+    batch_export = client.get(
+        BASE + "/runs/" + run_ref + "/decision/export",
+        query_string=dict(query, batch_ref=batch_ref, snapshot_ref=batches_doc["meta"]["snapshot_ref"],
+                          section="batches", format="csv"),
+    )
+    assert batch_export.status_code == 200, batch_export.get_json()
+    exported_batch = list(csv.DictReader(io.StringIO(batch_export.data.decode("utf-8-sig"))))[0]
+    expected_ref_cell = ("'" if second_ref.isdecimal() else "") + second_ref
+    assert exported_batch["所选缺料未安排工序编号"] == (expected_ref_cell if mode == "stage" else "")
+    assert exported_batch["所选其他未安排工序编号"] == ("" if mode == "stage" else expected_ref_cell)
+    from core.services.workbench.facts import candidate_read_source
 
     workspace = client.get(BASE + "/candidates/" + selected).get_json()["data"]
     unplanned = {row["operation_ref"]: row for row in workspace["unplanned_operations"]}
@@ -149,9 +153,9 @@ def test_operation_filters_preserve_identity_and_distinguish_material_deferral(c
     assert unplanned[second_ref]["status"] == ("skipped" if mode == "stage" else "unscheduled")
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(
-            candidate_tasks,
+            candidate_read_source,
             "unplanned_projection",
-            lambda *_: pytest.fail("operation_impacts must not call unplanned_projection"),
+            lambda *_: pytest.fail("decision details must not project unplanned operations"),
         )
         operations = detail(client, run_ref, "operations", **dict(query, batch_ref=batch_ref))["data"]
     missing = next(row for row in operations["items"] if row["operation_ref"] == second_ref)
@@ -185,25 +189,17 @@ def test_operation_filters_preserve_identity_and_distinguish_material_deferral(c
             case.operation(seq=seq)
         case.conn.commit()
         accepted = case.accept(key="impact-stage-paged-run", settings=case.settings(material_strategy="stage"))
-        paged_result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+        paged_result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
         paged_run_ref, paged_selected = paged_result["run_ref"], paged_result["candidates"][0]["candidate_ref"]
         paged_workspace = client.get(BASE + "/candidates/" + paged_selected).get_json()["data"]
         paged_unplanned = {row["operation_ref"]: row["reason"] for row in paged_workspace["unplanned_operations"]}
         assert len(paged_unplanned) == 22
-        reason_calls = []
-        original_reason = decision_impact.unplanned_reason
-
-        def count_reason(row):
-            reason_calls.append(row["operation_ref"])
-            return original_reason(row)
-
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr(
-                candidate_tasks,
+                candidate_read_source,
                 "unplanned_projection",
-                lambda *_: pytest.fail("operation_impacts must not call unplanned_projection"),
+                lambda *_: pytest.fail("decision details must not project unplanned operations"),
             )
-            patch.setattr(decision_impact, "unplanned_reason", count_reason)
             official_page = detail(
                 client,
                 paged_run_ref,
@@ -211,8 +207,6 @@ def test_operation_filters_preserve_identity_and_distinguish_material_deferral(c
                 comparison_mode="admission_official",
                 selected_candidate_ref=paged_selected,
             )
-            assert len(reason_calls) == 19
-            reason_calls.clear()
             first_page = detail(
                 client,
                 paged_run_ref,
@@ -221,7 +215,6 @@ def test_operation_filters_preserve_identity_and_distinguish_material_deferral(c
                 reference_candidate_ref=paged_selected,
                 change_kind="unknown",
             )
-            assert len(reason_calls) == 40
             token = first_page["meta"]["snapshot_ref"]
             second_page = detail(
                 client,
@@ -233,7 +226,6 @@ def test_operation_filters_preserve_identity_and_distinguish_material_deferral(c
                 page=2,
                 snapshot_ref=token,
             )
-            assert len(reason_calls) == 44
         arranged_ref = operation_ref(case, case.op_id)
         for row in official_page["data"]["items"]:
             assert row["before_state"] == {
@@ -296,7 +288,7 @@ def test_admission_official_details_and_gantt_keep_archived_facts_after_live_cha
                      ('[{"start":"07:15","end":"16:00","day_offset":0}]',))
     case.conn.commit()
     accepted = case.accept(key="impact-second-real-run")
-    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
     run_ref, selected = result["run_ref"], result["candidates"][0]["candidate_ref"]
     client, _ = api(case)
     query = {"comparison_mode": "admission_official", "selected_candidate_ref": selected}
@@ -320,8 +312,9 @@ def test_admission_official_details_and_gantt_keep_archived_facts_after_live_cha
     assert reference_drill["reference_view"] is True
     assert workspace["data"]["tasks"][0]["end"] == row["before"]["end"]
     assert all(workspace["data"]["capabilities"][name] is False for name in ("edit_draft", "adopt", "report_actual"))
-    case.conn.execute("UPDATE Schedule SET start_time='2026-09-12T08:00:00',end_time='2026-09-12T10:00:00' WHERE version=?",
-                      (official["version"],))
+    update_schedule_rows(
+        case.conn, official["version"], start_time="2026-09-12T08:00:00", end_time="2026-09-12T10:00:00"
+    )
     case.conn.execute("UPDATE Batches SET due_date='2026-09-01',quantity=9,part_name='Current batch part' WHERE batch_id='B1'")
     case.conn.execute("UPDATE Parts SET part_name='Current part' WHERE part_no='P1'")
     case.conn.execute("UPDATE Machines SET name='Current lathe' WHERE machine_id='M1'")
@@ -332,8 +325,9 @@ def test_admission_official_details_and_gantt_keep_archived_facts_after_live_cha
         reread = detail(client, run_ref, section, **dict(query, snapshot_ref=original["meta"]["snapshot_ref"]))
         assert reread["data"] == original["data"]
         assert reread["meta"]["snapshot_ref"] == original["meta"]["snapshot_ref"]
-    assert operation_ref(case, late_id) not in before["data"]["scope"]["operation_refs"]
-    assert case.ref("batch", "B-LATE") not in before["data"]["scope"]["batch_refs"]
+    assert operation_ref(case, late_id) not in {item["operation_ref"] for item in before["data"]["items"]}
+    assert before["data"]["scope"]["operation_count"] == 1 and before["data"]["scope"]["batch_count"] == 1
+    assert not {"operation_refs", "batch_refs"}.intersection(before["data"]["scope"])
     invalid_anchor = client.get(BASE + "/runs/" + run_ref + "/decision/batches", query_string=dict(query, selected_batch_ref=case.ref("batch", "B-LATE")))
     assert invalid_anchor.status_code == 404 and invalid_anchor.get_json()["error"]["code"] == "entity_not_found"
 
@@ -369,7 +363,8 @@ def test_absent_official_reference_preserves_selected_facts_and_null_differences
 
 def test_official_reference_uses_only_the_current_admission_scope(candidate_case):
     case = candidate_case
-    case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M2','Other lathe','T1')")
+    case.conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('M2','Other lathe')")
+    case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M2','T1')")
     case.conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O2','Other operator')")
     case.conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('O2','M2')")
     case.batch("B2", quantity=1)
@@ -390,15 +385,15 @@ def test_official_reference_uses_only_the_current_admission_scope(candidate_case
     assert (other["machine_id"], other["operator_id"]) == ("M2", "O2")
     assert (datetime.fromisoformat(other["end_time"]) - datetime.fromisoformat(other["start_time"])).total_seconds() == 6 * 3600
     accepted = case.accept(key="impact-scope-b1-only-run", settings=case.settings("B1"))
-    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
     run_ref, selected = result["run_ref"], result["candidates"][0]["candidate_ref"]
     client, _ = api(case)
     query = {"comparison_mode": "admission_official", "selected_candidate_ref": selected}
     overview = decision(client, run_ref, **query)["data"]
     _assert_summary_matches_full(decision_summary(client, run_ref, **query)["data"], overview)
     expected_refs = {operation_ref(case, case.op_id)}
-    assert set(overview["scope"]["operation_refs"]) == expected_refs
-    assert overview["scope"]["batch_refs"] == [case.ref("batch", "B1")]
+    assert overview["scope"]["operation_count"] == 1 and overview["scope"]["batch_count"] == 1
+    assert not {"operation_refs", "batch_refs"}.intersection(overview["scope"])
     assert overview["baseline"]["metrics"]["makespan_hours"]["value"] == 0.75
     candidate = next(row for row in overview["candidates"] if row["candidate_ref"] == selected)
     assert candidate["deltas"]["makespan_hours"]["value"] == 0
@@ -423,12 +418,10 @@ def test_official_reference_uses_only_the_current_admission_scope(candidate_case
     }
     source = DecisionSource(CandidateStore(case.conn), run_ref, comparison_mode="admission_official",
                             selected_candidate_ref=selected)
-    # An out-of-scope interval with unknown comparability must not invalidate the
-    # known in-scope interval, nor enlarge its span to the other batch's 50 hours.
+    # An out-of-scope arrangement must not enlarge the in-scope span to the other batch's 50 hours.
     tasks = [dict(row) for row in source.analysis_tasks("reference")]
     tasks.append({**tasks[0], "operation_ref": operation_ref(case, second_id),
-                  "end": (datetime.fromisoformat(tasks[0]["start"]) + timedelta(hours=50)).isoformat(),
-                  "interval_comparable": False})
+                  "end": (datetime.fromisoformat(tasks[0]["start"]) + timedelta(hours=50)).isoformat()})
     values, coverage = project_official_core_metrics(
         tasks,
         expected_refs,
@@ -495,16 +488,8 @@ def test_detail_snapshot_downloads_all_filtered_pages_and_preserves_cell_types(c
         if fmt == "xlsx":
             assert exported[0]["批次编号"].data_type == "s"
             assert exported[0]["数量"].data_type == "n" and exported[0]["数量"].value == 3
-    from collections import Counter
-
-    from core.services.workbench.run import decision_impact
-
-    effort_calls, task_calls = Counter(), []
-    original_effort, original_tasks = decision_impact.archived_standard_effort, DecisionSource.analysis_tasks
-
-    def count_effort(*args, **kwargs):
-        effort_calls["calls"] += 1
-        return original_effort(*args, **kwargs)
+    task_calls = []
+    original_tasks = DecisionSource.analysis_tasks
 
     def count_tasks(self, key):
         task_calls.append(self.computation_key(key))
@@ -513,10 +498,8 @@ def test_detail_snapshot_downloads_all_filtered_pages_and_preserves_cell_types(c
     operation_query = {"selected_candidate_ref": refs[0], "reference_candidate_ref": refs[0],
                        "resource_ref": candidate_case.ref("machine", "M1"), "sort": "sequence", "order": "asc"}
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(decision_impact, "archived_standard_effort", count_effort)
         patch.setattr(DecisionSource, "analysis_tasks", count_tasks)
         first_operations = detail(client, run_ref, "operations", **operation_query)
-    assert effort_calls["calls"] == 20
     assert set(task_calls) <= {refs[0], "reference"}
     operation_token = first_operations["meta"]["snapshot_ref"]
     next_operations = detail(client, run_ref, "operations", **dict(operation_query, page=2, snapshot_ref=operation_token))
@@ -559,8 +542,6 @@ def test_detail_snapshot_downloads_all_filtered_pages_and_preserves_cell_types(c
 
 
 def test_unselected_point_operation_resources_stay_in_filter_options_without_task_decode(candidate_case, monkeypatch):
-    from tests.workbench.test_run_decision_resource_api import add_pair, representative_archive
-
     case = candidate_case
     add_pair(case)
     case.conn.execute("UPDATE BatchOperations SET setup_hours=0,unit_hours=0 WHERE id=?", (case.op_id,))

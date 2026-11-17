@@ -7,6 +7,7 @@ import pytest
 from flask import Blueprint
 
 from tests.workbench.batch_support import create_batch_client, detail, post, ref_for
+from web.runtime_host import install_wall_clock
 
 BASE = "/api/workbench/v1/master-overview"
 SCOPE = {"domain": "material", "view": "entities"}
@@ -119,13 +120,7 @@ def test_overview_material_readiness_follows_arrival_day_and_quantity_review(ove
     assert fields["FREE-001 当前到料数量"] == 2
 
     tomorrow_noon = datetime.combine(tomorrow, datetime.min.time()).replace(hour=12)
-
-    class TomorrowDatetime(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return tomorrow_noon
-
-    monkeypatch.setattr(overview_facts, "datetime", TomorrowDatetime)
+    install_wall_clock(client.application, lambda: tomorrow_noon)
     stale_day = client.get(BASE + "/entities/material/" + entity["ref"], query_string={
         "scope": json.dumps(SCOPE), "snapshot_ref": result["meta"]["snapshot_ref"], "section": "issues"})
     assert stale_day.status_code == 409 and stale_day.get_json()["error"]["code"] == "snapshot_stale"
@@ -193,21 +188,76 @@ def test_bad_requirement_does_not_own_other_materials_pending_diagnosis(overview
     assert valid["issue_count"] == 0
 
 
+def test_bad_arrival_date_is_an_arrival_problem_not_corrupt_stock(overview_client):
+    # 到料日期列只有 NOT NULL，日期写法由读取侧齐套诊断判断；坏日期只算到料问题，需求量和已有库存仍是已知值。
+    conn = overview_client.batch_conn
+    conn.execute("INSERT INTO BatchMaterials(batch_id,material_id,required_qty,available_qty,ready_status) "
+                 "VALUES ('FREE-001','MAT1',10,2,'partial')")
+    conn.execute("INSERT INTO BatchMaterialReviews(requirement_id,batch_quantity) SELECT id,5 FROM BatchMaterials")
+    conn.execute("INSERT INTO BatchMaterialArrivals(requirement_id,arrival_date,quantity) SELECT id,'2026-02-30',3 FROM BatchMaterials")
+    conn.commit()
+
+    result, entity = _overview(overview_client)
+    fields = {row["label"]: row for row in _section(overview_client, result, entity, "fields")}
+    assert [fields["FREE-001 " + label]["state"] for label in ("需求数量", "已有到料数量")] == ["known", "known"]
+    assert fields["FREE-001 当前到料数量"]["value"] is None
+    assert fields["FREE-001 批次当前有效齐套"]["value"] == "待核对"
+    assert [row["rule"] for row in _section(overview_client, result, entity, "issues")] == ["batch_material.arrivals"]
+
+
 def test_material_display_diagnosis_does_not_make_later_stage_release_eager():
-    from core.services.material.stage_availability import MaterialAvailability
+    from core.services.material.stage_availability import MaterialReadiness, MaterialRelease
 
     batch = {"batch_id": "B1", "quantity": 5, "ready_status": "no"}
-    tables = {
-        "BatchMaterials": [{"id": 1, "batch_id": "B1", "required_qty": 5, "available_qty": 0, "ready_status": "no"}],
-        "BatchMaterialReviews": [{"requirement_id": 1, "batch_quantity": 5}],
-        "BatchMaterialStages": [{"requirement_id": 1, "operation_id": 2}],
-        "BatchOperations": [{"id": 2, "batch_id": "B1", "seq": 2, "piece_id": None}],
-        "BatchMaterialArrivals": [{"requirement_id": 1, "arrival_date": "bad-day", "quantity": 5}],
-    }
-    availability = MaterialAvailability(tables)
-    status, problems = availability.readiness_state(batch, date.today().isoformat())
+    readiness = MaterialReadiness(
+        requirements=[{"id": 1, "batch_id": "B1", "required_qty": 5, "available_qty": 0, "ready_status": "no"}],
+        reviews=[{"requirement_id": 1, "batch_quantity": 5}],
+        arrivals=[{"requirement_id": 1, "arrival_date": "bad-day", "quantity": 5}],
+    )
+    release = MaterialRelease(readiness, stages=[{"requirement_id": 1, "operation_id": 2}],
+                              operations=[{"id": 2, "batch_id": "B1", "seq": 2, "piece_id": None}], contexts=())
+    status, problems = readiness.readiness_state(batch, date.today().isoformat())
     assert status is None and [problem["code"] for problem in problems] == ["material_unknown"]
-    assert availability.operation_release(batch, {"seq": 1}, "stage") == "1900-01-01"
+    assert release.operation_release(batch, {"seq": 1}, "stage") == "1900-01-01"
+
+
+def _overview_entity(client, domain, code):
+    scope = json.dumps({"domain": domain, "view": "entities"})
+    response = client.get(BASE, query_string={"scope": scope})
+    assert response.status_code == 200, response.get_json()
+    result = response.get_json()
+    entity = next(row for row in result["data"]["rows"] if row["business_code"] == code)
+    sections = {}
+    for section in ("fields", "issues"):
+        detail = client.get(BASE + "/entities/" + domain + "/" + entity["ref"], query_string={
+            "scope": scope, "snapshot_ref": result["meta"]["snapshot_ref"], "section": section})
+        assert detail.status_code == 200, detail.get_json()
+        sections[section] = detail.get_json()["data"]["rows"]
+    fields = {row["label"]: row["value"] for row in sections["fields"]}
+    return entity["status"], fields, [row["rule"] for row in sections["issues"]]
+
+
+def test_overview_resource_states_use_the_shared_status_words_and_rule(overview_client):
+    # 资料总览与资源页同一套叫法；停用原因按同一条判定：只有请假、待复核单独成为状态，其余都算停用。
+    conn = overview_client.batch_conn
+    conn.executemany("INSERT INTO Operators(operator_id,name,status) VALUES (?,?,'inactive')",
+                     [("O-LEAVE", "on leave"), ("O-OFF", "left")])
+    conn.executemany("INSERT INTO WorkbenchOperatorProfiles(operator_id,inactive_reason) VALUES (?,?)",
+                     [("O-LEAVE", "leave"), ("O-OFF", "disabled")])
+    conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('OT-BOTH','both kinds','both')")
+    conn.commit()
+
+    status, fields, _ = _overview_entity(overview_client, "personnel", "O1")
+    assert fields["状态"] == "在岗" and "停用原因" not in fields and status != "inactive"
+    status, fields, rules = _overview_entity(overview_client, "personnel", "O-LEAVE")
+    assert (fields["状态"], fields["停用原因"], status) == ("停用", "请假", "attention") and "status.leave" in rules
+    status, fields, rules = _overview_entity(overview_client, "personnel", "O-OFF")
+    assert (fields["状态"], fields["停用原因"], status) == ("停用", "停用", "inactive")
+    assert not any(rule.startswith("status.") for rule in rules)
+    assert _overview_entity(overview_client, "equipment", "M1")[1]["状态"] == "可用"
+    assert _overview_entity(overview_client, "supplier", "S1")[1]["状态"] == "启用"
+    assert _overview_entity(overview_client, "material", "MAT1")[1]["状态"] == "启用"
+    assert _overview_entity(overview_client, "opType", "OT-BOTH")[1]["工种归属"] == "自制和外协都可"
 
 
 _OVERVIEW_FORMAT = "资料总览的查询条件格式不对，请刷新页面后重试。"

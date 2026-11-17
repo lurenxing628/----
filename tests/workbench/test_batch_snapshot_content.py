@@ -1,6 +1,7 @@
 """Batch snapshots bind unified source revisions and material evaluation day."""
 
 import json
+from datetime import datetime
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.content import content_text, unpacked
@@ -17,7 +18,7 @@ _batch_fixture = batch_database
 
 def test_batch_snapshot_binds_source_revisions_and_material_day_without_rescanning(batch_client):
     conn = batch_client.batch_conn
-    reader = WorkbenchBatchQueryService(conn)
+    reader = WorkbenchBatchQueryService(conn, as_of=datetime.now())
     with reader.facts.detached_read_snapshot() as scope:
         fingerprint = scope.fingerprint()
         facts = scope.load()
@@ -127,7 +128,7 @@ def test_single_batch_template_detail_scales_past_sqlite_variable_limit_and_reta
         op_repo.update_fields_by_id(active_op_id, {"ext_group_id": "EG-HIST"})
 
     batch_ref = ref_for(batch_client)
-    query_service = WorkbenchBatchQueryService(conn)
+    query_service = WorkbenchBatchQueryService(conn, as_of=datetime.now())
     with query_service.facts.detached_read_snapshot(mode="single_template", target_ref=batch_ref) as detail_scope:
         detail_entity = query_service.detail(detail_scope, batch_ref)
     assert detail_entity["business_code"] == "FREE-001"

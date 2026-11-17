@@ -14,6 +14,8 @@ apply_create and confirm_delete require the host's BEGIN IMMEDIATE transaction,
 which rolls back all writes if any check or mutation fails.
 """
 
+from typing import Any, Dict, cast
+
 from core.errors import BusinessError, ErrorCode
 from core.models.part import Part
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
@@ -21,7 +23,7 @@ from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_process_actions import PartDeletePreview, process_part_refs
 from core.models.workbench_process_table_query import wire_process_scope
 from core.models.workbench_resource_action import action_row, reject_action_row
-from core.services.process.workflow_state import start_workflow
+from core.services.process.workflow_state import project_part_workflow
 from data.repositories.part_repo import PartRepository
 from data.repositories.workbench_process_part_facts_repo import WorkbenchProcessPartFactsRepository
 
@@ -44,14 +46,16 @@ class WorkbenchProcessPartActionService:
         return Part(payload["business_code"], payload["label"], payload["route_raw"], route_parsed, payload["remark"])
 
     def apply_create(self, part):
-        """Persist the prepared initial fields, including an imported route state."""
+        """Persist the prepared initial fields, including an imported route state.
+
+        The new part is managed and has no operation yet; its ref comes from the Parts identity trigger.
+        """
         self._require_transaction()
-        PartRepository(self.conn).create(part)
-        try:
-            ref, workflow = start_workflow(self.conn, part.part_no)
-        except RuntimeError as exc:
-            raise WorkbenchCommandRejected("storage_failure", "工艺确认流程没有建立，这次没有保存零件。请刷新重试；仍不行请联系维护人员。", 500) from exc
-        return WorkbenchCommandOutcome("committed", {"entity_ref": ref, "business_code": part.part_no, "workflow": workflow})
+        repo = PartRepository(self.conn)
+        repo.create(part)
+        created = cast(Dict[str, Any], repo.part_with_ref(part.part_no))
+        return WorkbenchCommandOutcome("committed", {"entity_ref": created["ref"], "business_code": part.part_no,
+                                                     "workflow": project_part_workflow(created, False)})
 
     def preview_delete(self, refs, *, scope):
         self._require_transaction()
@@ -68,7 +72,7 @@ class WorkbenchProcessPartActionService:
         row = action_row(number, action="delete")
         row.update(entity_ref=ref, input={})
         raw = captured["identities"].get(ref)
-        identity = WorkbenchEntityIdentity(raw["ref"], raw["kind"], raw["entity_key"], raw["revision"], bool(raw["active"])) if raw else None
+        identity = WorkbenchEntityIdentity.from_row(raw) if raw else None
         if identity is None or identity.kind != "part" or not identity.active:
             reject_action_row(row, "零件已不存在，请返回列表重新选择。", field="entity_ref", code="entity_not_found")
             return row

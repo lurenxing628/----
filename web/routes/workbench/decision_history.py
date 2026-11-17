@@ -2,7 +2,7 @@
 
 from io import BytesIO
 
-from flask import g, request, send_file
+from flask import g, send_file
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_decision_history import QUERY_FIELDS
@@ -12,12 +12,11 @@ from web.api_responses import query_success
 from .api_responses import api_endpoint
 from .read_budget import PLAN_READ_SLOTS
 from .read_context import snapshot_binder
+from .request_json import single_value_arguments
 
 
 def _query(extra=()):
-    if set(request.args) - set(QUERY_FIELDS + extra) or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "历史筛选含重复或不支持的字段，请重新选择。", 422)
-    return dict(request.args)
+    return single_value_arguments(QUERY_FIELDS + extra, message="历史筛选含重复或不支持的字段，请重新选择。", status=422)
 
 
 @api_endpoint
@@ -54,7 +53,7 @@ def decision_history_export():
             section=section if fmt == "csv" else None,
             bind_snapshot=snapshot_binder(token),
         )
-    download = (write_decision_xlsx("history", data, snapshot, section) if fmt == "xlsx" else
+    download = (write_decision_xlsx(write_history_export, data, snapshot, section) if fmt == "xlsx" else
                 write_history_export(data, snapshot, fmt, section))
     response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,
                          download_name=download.filename, max_age=0)

@@ -3,7 +3,7 @@
 from typing import Any, Dict
 
 from core.models.enums import OperationRequirementRole, SourceType
-from core.shared.strict_json import clone_json
+from core.models.hours import public_hours, sum_hours
 
 PREPARATION_METRIC_VERSION = "decision-preparation-v4"
 PREPARATION_METRICS = (
@@ -23,6 +23,27 @@ ALLOCATIONS = ("new_schedule", "unplanned", "deferred", "retained", "execution",
 _GROUPS = {"pending": ("new_schedule", "unplanned", "deferred", "unknown"), "scheduled": ("new_schedule", "unknown"),
            "unplanned": ("unplanned",), "deferred": ("deferred",)}
 _ROLES = (OperationRequirementRole.RETAINED.value, OperationRequirementRole.EXECUTION.value, OperationRequirementRole.COMPLETED.value)
+_RUNTIME_ALLOCATIONS = (OperationRequirementRole.NEW_SCHEDULE.value,) + _ROLES
+
+
+def operation_allocation(runtime, *, arranged, source, deferred, available):
+    """Where one operation's work went on one side: the side's saved runtime requirement ``runtime`` (None when its
+    ledger records none), whether the side ``arranged`` the operation, and the operation's ``source`` there (the
+    runtime's, else its arrangement's).
+
+    The one allocation rule of the decision, candidate and trial views. Without a side to read (``available`` False)
+    the allocation is unknown. An unarranged operation is deferred when it waits for material (``deferred``) and
+    unplanned otherwise; an arranged one is external when its source is, otherwise the runtime's requirement role,
+    unknown without one.
+    """
+    if not available:
+        return "unknown"
+    if not arranged:
+        return "deferred" if deferred else "unplanned"
+    if source == SourceType.EXTERNAL.value:
+        return "external"
+    role = runtime["requirement_role"] if runtime is not None else None
+    return role if role in _RUNTIME_ALLOCATIONS else "unknown"
 
 
 def project_operation_effort(runtime, standard, *, allocation_state, source_available=True, source=None,
@@ -48,7 +69,7 @@ def project_operation_effort(runtime, standard, *, allocation_state, source_avai
         result = {field: runtime.get(field) for field in _FIELDS}
         result.update(execution_quantity_basis=execution["target_basis"],
                       execution_target_quantity=execution["target_quantity"], remaining_quantity=execution["remaining_quantity"])
-        result["data_gaps"] = [dict(gap) for gap in runtime.get("data_gaps", [])]
+        result["data_gaps"] = runtime["data_gaps"]
         unknown = sum(result[field] is None for field in ("setup_standard_hours", "processing_standard_hours", "required_standard_hours"))
         result["state"] = ("not_applicable" if result["source"] == SourceType.EXTERNAL.value else
                            "unavailable" if unknown == 3 else "partial" if unknown else "complete")
@@ -56,25 +77,26 @@ def project_operation_effort(runtime, standard, *, allocation_state, source_avai
         allocation_state = OperationRequirementRole.COMPLETED.value
     result.update(
         allocation_state=allocation_state,
-        evidence_source=clone_json(evidence_source),
-        standard=clone_json(standard),
+        evidence_source=evidence_source,
+        standard=standard,
     )
     return result
 
 
 def metric_summary(rows, field, *, available=True):
-    known = [row for row in rows if row.get(field) is not None]
-    subtotal = sum(row[field] for row in known)
-    total, unknown = len(rows), len(rows) - len(known)
+    """Exact standard hours of ``field`` over ``rows``; a row whose hours are None counts as unknown."""
+    hours = sum_hours(row[field] for row in rows)
+    total, unknown = len(rows), hours.unknown
+    subtotal = 0 if hours.known is None else public_hours(hours.known)
     state = ("unavailable" if not available or unknown == total and unknown else
              "partial" if unknown else "not_applicable" if not rows else "complete")
     reason = ({"code": "reference_required", "message": "此比较没有可用的基准需求。"} if not available else
               {"code": "runtime_requirement_missing", "message": "部分工序未分别保存准备和加工所需的标准工时；已保存的工时与原工时定额分别列出。"} if unknown else None)
     return {"value": None if unknown or not available else subtotal,
             "known_subtotal": subtotal if available else None, "state": state,
-            "known_count": len(known) if available else 0, "unknown_count": unknown if available else total, "total_count": total,
-            "scope": "full_admission", "metric_version": PREPARATION_METRIC_VERSION, "reason": reason,
-            "covered_operation_refs": sorted(row["operation_ref"] for row in known) if available else []}
+            "known_count": total - unknown if available else 0, "unknown_count": unknown if available else total, "total_count": total,
+            "scope": "full_admission", "metric_version": PREPARATION_METRIC_VERSION, "member_unit": "operation", "reason": reason,
+            "covered_operation_refs": sorted(row["operation_ref"] for row in rows if row[field] is not None) if available else []}
 
 
 def preparation_summary(rows, *, available=True, requirements_available=None):
@@ -123,11 +145,14 @@ def preparation_delta(selected, previous):
     return result
 
 
+_COVERAGE_FIELDS = ("covered_batch_refs", "covered_operation_refs", "covered_resource_refs")
+
+
 def public_preparation_metrics(values):
-    """Large operation coverage is represented once by the source's role groups."""
-    return {key: {name: value for name, value in item.items() if name != "covered_operation_refs"} for key, item in values.items()}
+    """Strip member reference lists at the public outlet; keep scalar member_unit."""
+    return {key: {name: value for name, value in item.items() if name not in _COVERAGE_FIELDS} for key, item in values.items()}
 
 
 def public_preparation_roles(roles):
-    return {role: {key: value if key == "count" else {field: number for field, number in value.items() if field != "covered_operation_refs"}
+    return {role: {key: value if key == "count" else {field: number for field, number in value.items() if field not in _COVERAGE_FIELDS}
                    for key, value in items.items()} for role, items in roles.items()}

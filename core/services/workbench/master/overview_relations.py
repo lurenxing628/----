@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from core.services.material.stage_availability import MaterialAvailability, covers_quantity
-from core.shared.strict_parse import is_exact_non_negative_number
+from core.services.material.stage_availability import MaterialReadiness, covers_quantity
 
 from .overview_graph import text
 
@@ -13,16 +12,10 @@ if TYPE_CHECKING:
     from .overview_graph import MasterOverviewGraph
 
 READY_TEXT = {"yes": "齐套", "no": "未齐套", "partial": "部分齐套"}
-MATERIAL_SOURCES = ("BatchMaterials", "BatchMaterialArrivals", "BatchMaterialReviews")
 
 
 def batch_relations(graph: MasterOverviewGraph):
     facts = graph.facts
-    if not facts.available("Batches", "BatchMaterials"):
-        for entity in graph.entities:
-            if entity["domain"] in ("part", "material"):
-                graph.unknown(entity, "批次物料关系", "Batches / BatchMaterials", relation=True)
-        return
     batches = {}
     for row in facts.rows("Batches"):
         ref = facts.ref("batch", row["batch_id"])
@@ -33,9 +26,9 @@ def batch_relations(graph: MasterOverviewGraph):
         if part:
             graph.link(part, batches[row["batch_id"]], "本零件的批次", "Batches.part_no")
     raw_batches = facts.index("Batches", "batch_id")
-    availability = MaterialAvailability(facts.tables) if facts.available(*MATERIAL_SOURCES) else None
+    availability = MaterialReadiness.from_tables(facts.tables)
     readiness = {key: availability.readiness_diagnostics(row, facts.material_day)
-                 for key, row in raw_batches.items()} if availability else {}
+                 for key, row in raw_batches.items()}
     for row in facts.rows("BatchMaterials"):
         material = graph.by_key.get(("material", row["material_id"]))
         batch = batches.get(row["batch_id"])
@@ -50,30 +43,24 @@ def batch_relations(graph: MasterOverviewGraph):
         graph.link(material, batch, "需求批次", "BatchMaterials.batch_id")
         part = graph.by_key.get(("part", raw_batches[row["batch_id"]]["part_no"]))
         graph.link(material, part, "需求批次对应零件", "BatchMaterials -> Batches.part_no", "批次需求物料")
-        _requirement_fields(graph, material, row, batch, availability, readiness.get(row["batch_id"]))
+        _requirement_fields(graph, material, row, batch, readiness[row["batch_id"]])
 
 
-def _requirement_fields(graph: MasterOverviewGraph, entity, row, batch, availability, readiness):
+def _requirement_fields(graph: MasterOverviewGraph, entity, row, batch, readiness):
     code = batch["business_code"]
     evidence_key = batch["ref"] + ":" + str(row["id"])
-    for key, label, positive in (("required_qty", "需求数量", True), ("available_qty", "已有到料数量", False)):
-        value = row[key]
-        graph.field(entity, code + " " + label, value, "BatchMaterials." + key, valid=is_exact_non_negative_number(value, positive=positive))
-        if availability is None and not is_exact_non_negative_number(value, positive=positive):
-            item = graph.issue(entity, "batch_material." + key, "批次" + label + "待核对",
-                               "批次 " + code + " 的" + label + "填的是" + text(value) + "。", action="核对批次物料需求", related_ref=evidence_key)
-            item["target"] = batch["target"]
-    graph.field(entity, code + " 原维护齐套标记", READY_TEXT.get(row["ready_status"], row["ready_status"]), "BatchMaterials.ready_status", required=False)
-    if availability is None:
-        graph.unknown(entity, code + " 当前有效齐套", " / ".join(MATERIAL_SOURCES))
-        return
     requirement = readiness["requirements"][row["id"]]
+    # Readiness names the stored column it could not admit; a bad arrival only fails "arrivals", never the stock.
+    invalid = {problem["field"] for problem in requirement["problems"]}
+    for key, label in (("required_qty", "需求数量"), ("available_qty", "已有到料数量")):
+        graph.field(entity, code + " " + label, row[key], "BatchMaterials." + key, valid=key not in invalid)
+    graph.field(entity, code + " 原维护齐套标记", READY_TEXT.get(row["ready_status"], row["ready_status"]), "BatchMaterials.ready_status", required=False)
     amount, required = requirement["available"], requirement["required"]
     graph.field(entity, code + " 当前到料数量", float(amount) if amount is not None else None,
                 "BatchMaterials.available_qty + BatchMaterialArrivals", required=False)
     state = readiness["status"]
     graph.field(entity, code + " 批次当前有效齐套", "待核对" if state is None else READY_TEXT.get(state, state),
-                "MaterialAvailability.readiness_state", required=False)
+                "MaterialReadiness.readiness_state", required=False)
     for problem in requirement["problems"] + readiness["batch_problems"]:
         rule = problem.get("field", problem["code"])
         item = graph.issue(entity, "batch_material." + rule, "批次物料依据待核对",
@@ -88,15 +75,10 @@ def _requirement_fields(graph: MasterOverviewGraph, entity, row, batch, availabi
 
 def resource_profile_fields(graph: MasterOverviewGraph):
     facts = graph.facts
-    available = facts.available("WorkbenchMachineGroups", "WorkbenchMachineGroupMembers")
-    if available:
-        groups = facts.index("WorkbenchMachineGroups", "group_id")
-        members = facts.index("WorkbenchMachineGroupMembers", "machine_id")
+    groups = facts.index("WorkbenchMachineGroups", "group_id")
+    members = facts.index("WorkbenchMachineGroupMembers", "machine_id")
     for row in facts.rows("Machines"):
         entity = graph.by_key[("equipment", row["machine_id"])]
-        if not available:
-            graph.unknown(entity, "设备组", "WorkbenchMachineGroups / WorkbenchMachineGroupMembers")
-            continue
         member = members.get(row["machine_id"])
         group = groups.get(member["group_id"]) if member else None
         graph.field(entity, "设备组", group["name"] if group else None,

@@ -48,7 +48,6 @@
           "view": true
         },
         "completeness": "partial",
-        "data_gaps": [],
         "label": "重点工序优先方案 3/3",
         "metric_scopes": {
           "delivery": "completed_batches_only",
@@ -109,11 +108,9 @@
             "value": 43.1
           }
         },
-        "persisted_status": "completed",
         "run_ref": "85c1b9b12f46a4ca6fa0cb88d6ffab94b858cab54f338ddb",
         "status": "partial",
         "task_count": 30,
-        "generation_policy_version": "unified_search_v1",
         "representative_objectives": [
           "min_overdue"
         ],
@@ -136,8 +133,8 @@
               0
             ],
             "scoring_scope": {
-              "scheduled_operation_refs": [],
-              "complete_batch_refs": [],
+              "scheduled_operation_count": 0,
+              "complete_batch_count": 0,
               "objective_scope": "all_batches",
               "components_known": true,
               "is_complete": true
@@ -171,7 +168,6 @@
         "report_actual": false,
         "view": true
       },
-      "data_gaps": [],
       "delivery_risks": {
         "basis": {
           "actual_completion": "not_evaluated",
@@ -200,7 +196,6 @@
             "due_date": "2026-10-16",
             "due_issue": null,
             "due_state": "specified",
-            "invalid_task_count": 0,
             "is_overdue": null,
             "issues": [
               "material_deferred"
@@ -235,17 +230,12 @@
         "summary": {
           "batch_count": 1,
           "complete_batch_count": 0,
-          "complete_batch_refs": [],
           "deferred_batch_count": 1,
-          "deferred_batch_refs": [
-            "4c0a10c4918965272b7248fb43c1b1f9d14fa2e3e988ccd1"
-          ],
           "due_eligible_count": 1,
           "due_evaluation_count": 1,
           "excluded_due_count": 0,
           "incomplete_batch_count": 1,
           "invalid_due_count": 0,
-          "known_batch_refs": [],
           "known_due_count": 0,
           "known_on_time_count": 0,
           "known_overdue_count": 0,
@@ -254,9 +244,6 @@
           "overdue_count": null,
           "state": "unavailable",
           "total_tardiness_hours": null,
-          "unknown_batch_refs": [
-            "4c0a10c4918965272b7248fb43c1b1f9d14fa2e3e988ccd1"
-          ],
           "unknown_count": 1,
           "unknown_due_count": 1
         }
@@ -687,7 +674,6 @@
           "mode_label": "快速计算",
           "strategy": "priority_first",
           "strategy_label": "优先级优先",
-          "generation_policy_version": "unified_search_v1",
           "representative_objectives": [
             "min_overdue"
           ],
@@ -710,8 +696,8 @@
                 0
               ],
               "scoring_scope": {
-                "scheduled_operation_refs": [],
-                "complete_batch_refs": [],
+                "scheduled_operation_count": 0,
+                "complete_batch_count": 0,
                 "objective_scope": "all_batches",
                 "components_known": true,
                 "is_complete": true
@@ -746,7 +732,6 @@
           "kind": "admission_official",
           "version": 1
         },
-        "data_gaps": [],
         "execution_basis": "captured_at_run_admission",
         "finished_at": "2026-10-13T07:21:31",
         "input": {

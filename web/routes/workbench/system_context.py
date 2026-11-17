@@ -9,20 +9,20 @@ from werkzeug.exceptions import HTTPException
 
 from core.errors import ValidationError
 from core.infrastructure.backup import MaintenanceWindowError
-from core.models.workbench_command import (
-    WorkbenchCommandRejected,
-    validate_request_key,
-)
-from core.models.workbench_system import object_fields
+from core.models.workbench_command import SHAPE_REJECTED, WorkbenchCommandRejected
 from core.services.workbench import messages
 from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
 from web.api_responses import failure, failure_payload, json_response, query_success
 from web.public_token_registry import issue_public_token, resolve_public_token
 
+from .api_responses import rejection_failure
 from .read_context import fact_value, unbound_snapshot
+from .request_json import BodyTexts, command_body, rejecter
 
 BASE = "/api/workbench/v1/system"
 SCOPE = "workbench-system-maintenance-v1"
+_UNREADABLE = "提交的内容格式不正确，数据没有改动。请刷新页面后重新填写。"
+_COMMAND = BodyTexts(transport=_UNREADABLE, malformed=_UNREADABLE, incomplete=SHAPE_REJECTED)
 
 
 def system_endpoint(function):
@@ -30,15 +30,16 @@ def system_endpoint(function):
     def wrapped(*args, **kwargs):
         try:
             response = current_app.make_response(function(*args, **kwargs))
-        except (WorkbenchCommandRejected, MaintenanceWindowError) as exc:
-            status = exc.status if isinstance(exc, WorkbenchCommandRejected) else 503
-            response = failure(exc.code, str(exc) if isinstance(exc, WorkbenchCommandRejected) else exc.message, status)
+        except WorkbenchCommandRejected as exc:
+            response = rejection_failure(exc)
+        except MaintenanceWindowError as exc:
+            response = failure(exc.code, exc.message, 503)
         except HTTPException as exc:
             response = failure("invalid_input", "提交的内容格式不正确，还没有保存。请刷新页面后重新填写。", exc.code or 400)
         except Exception:
             request_ref = uuid4().hex
             current_app.logger.exception("系统工作区请求失败 endpoint=%s request_ref=%s", request.endpoint, request_ref)
-            key = getattr(g, "system_request_key", None)
+            key = g.get("workbench_request_key")
             payload = failure_payload("storage_failure", messages.unknown("这次维护操作") if key else messages.FAILURE, 500,
                                       committed="unknown" if key else False, request_ref=request_ref)
             if key:
@@ -70,16 +71,13 @@ def resolve_context(kind, token, *, database=None):
     return payload["value"]
 
 
-def command_body():
-    if request.args or request.mimetype != "application/json":
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容格式不正确，数据没有改动。请刷新页面后重新填写。", 400)
-    body = object_fields(request.get_json(), ("request_key", "write_token", "input"))
-    validate_request_key(body["request_key"])
-    if not isinstance(body["write_token"], str):
-        raise WorkbenchCommandRejected("invalid_input", "本页数据已过期，数据没有改动。请刷新页面后重试。", 400)
+def system_command_body():
+    """A maintenance command: ``application/json`` only (no ``+json`` variants), its input an object."""
+    if request.mimetype != "application/json":
+        rejecter(_UNREADABLE)()
+    body = command_body(_COMMAND, stale="本页数据已过期，数据没有改动。请刷新页面后重试。")
     if type(body["input"]) is not dict:
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容格式不正确，数据没有改动。请刷新页面后重新填写。", 400)
-    g.system_request_key = body["request_key"]
+        rejecter(_UNREADABLE)()
     return body
 
 
@@ -87,5 +85,5 @@ def journal():
     return SystemMaintenanceJournal(current_app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"], current_app.config["DATABASE_PATH"])
 
 
-def query_payload(data):
-    return query_success(data, unbound_snapshot())
+def query_payload(data, as_of):
+    return query_success(data, unbound_snapshot(as_of))

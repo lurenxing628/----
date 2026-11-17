@@ -16,6 +16,6 @@ def calendar_from_sources(sources, *, schema_version, identities, plan_ref, scop
               "MachineDowntimes": sources["downtimes"],
               "WorkbenchEntityRefs": [{"kind": kind, "entity_key": key, "ref": ref, "active": 1}
                                        for kind in ("machine", "operator") for key, ref, _ in identities[kind]]}
-    return ArchivedCalendar({"tables": tables}, source_ref=plan_ref,
+    return ArchivedCalendar(tables, source_ref=plan_ref,
                             coverage={"start": scope["range_start"], "end": scope["range_end"]},
                             metadata_basis="current_transaction_snapshot")

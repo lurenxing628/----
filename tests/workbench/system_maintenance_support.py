@@ -3,6 +3,7 @@
 import logging
 import os
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from core.infrastructure.backup import BackupManager
 from core.infrastructure.database import ensure_schema
 from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
 from web.routes.workbench.system_routes import register_system_maintenance_routes
+from web.runtime_host import install_wall_clock
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = "/api/workbench/v1/system"
@@ -26,6 +28,7 @@ class SystemTestAPI:
             directory.mkdir(exist_ok=True)
         ensure_schema(str(self.database), logging.getLogger("system-tests"), schema_path=str(ROOT / "schema.sql"))
         self.app = Flask("system-maintenance-test")
+        install_wall_clock(self.app, datetime.now)
         self.app.config.update(TESTING=True, DATABASE_PATH=str(self.database), BACKUP_DIR=str(self.backups),
                                LOG_DIR=str(self.logs), BACKUP_KEEP_DAYS=7, WORKBENCH_SYSTEM_JOURNAL_DIR=str(self.journal_dir))
         bp = Blueprint("system_test", __name__)
@@ -59,7 +62,7 @@ class SystemTestAPI:
         return self.client.post(BASE + path, json={"request_key": key, "write_token": token, "input": input_value})
 
     def backup(self):
-        return BackupManager(str(self.database), str(self.backups)).backup(suffix="test")
+        return BackupManager(str(self.database), str(self.backups), logger=logging.getLogger("system-tests")).backup(suffix="test")
 
     def selected(self):
         return self.read("/backups")["data"]["rows"][0]

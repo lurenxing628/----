@@ -19,7 +19,8 @@ from web.api_responses import query_success
 from .api_responses import api_endpoint
 from .read_budget import PLAN_READ_SLOTS
 from .read_context import bind_read_snapshot, page_integer, read_snapshot_time
-from .reports import arguments, download_response
+from .report_request import arguments, download_response
+from .request_json import single_value_arguments
 
 
 def _official(export):
@@ -71,8 +72,7 @@ def _catalog(kind, export=False):
     allowed = {"source", "plan_ref", "window_date_from", "window_date_to", "query", "page", "size", "sort", "direction", "snapshot_ref"}
     if export:
         allowed.add("format")
-    if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "这张报表不支持这些筛选条件，当前筛选没有变化；系统没有把计划完工日期当成统计范围。请刷新页面后重新选择。", 400)
+    single_value_arguments(allowed, message="这张报表不支持这些筛选条件，当前筛选没有变化；系统没有把计划完工日期当成统计范围。请刷新页面后重新选择。")
     scope = ReportCatalogScope(kind, **{key: request.args[key] for key in ("source", "plan_ref", "window_date_from", "window_date_to", "query") if key in request.args})
     page = _catalog_page(kind)
     token = request.args.get("snapshot_ref")

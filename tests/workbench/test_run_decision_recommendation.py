@@ -4,16 +4,15 @@ import csv
 import io
 import json
 from copy import deepcopy
-from pathlib import Path
+from datetime import datetime
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from openpyxl import load_workbook
 
 from core.services.workbench.facts.decision_metrics import metric_definitions
 from core.services.workbench.facts.decision_selection_explanation import selection_explanation
-from core.services.workbench.facts.resource_intervals import task_interval
-from core.services.workbench.run.decision_impact import operation_changes
 from core.services.workbench.run.decision_recommendation import RecommendationSupport
 from core.services.workbench.run.decision_recommendation_export import (
     COMPLETION_HEADERS,
@@ -25,8 +24,9 @@ from core.services.workbench.run.decision_recommendation_export import (
 from core.services.workbench.run.decision_tradeoffs import aggregate_tradeoffs, tradeoff_entry
 from tests.workbench.run_candidate_support import BASE, api, compute
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
+from tests.workbench.run_decision_support import operation_ref
 from tests.workbench.test_run_decision_api import _assert_summary_matches_full, decision, decision_summary
-from tests.workbench.test_run_decision_impact_api import operation_ref
+from tests.workbench.test_run_decision_metrics import sql_operation_changes
 
 
 def test_tradeoffs_prioritize_business_groups_and_keep_all_differences_and_neutral_work():
@@ -101,7 +101,7 @@ def test_selection_explanation_reads_the_saved_business_selection():
     assert unknown["issues"] == [{"code": "score_components_unavailable", "message": "所选范围缺少完整评分分量。"}]
 
 
-def test_operation_supports_keep_known_changes_and_removed_reference_arrangements():
+def test_operation_supports_keep_known_changes_and_removed_reference_arrangements(candidate_case, tmp_path):
     from core.services.workbench.run.decision_source import DecisionSource
 
     def ref(number):
@@ -109,43 +109,33 @@ def test_operation_supports_keep_known_changes_and_removed_reference_arrangement
 
     run_ref, fixed_ref, viewed_ref, reference_ref, plan_ref, batch_ref = [ref(number) for number in range(1, 7)]
     operation_refs = {name: ref(index + 100) for index, name in enumerate(
-        ("both_none", "added", "removed", "old_multiple", "new_multiple", "machine_changed", "time_unknown"))}
+        ("both_none", "added", "removed", "machine_changed"))}
 
     def task(name, row, *, start="2026-09-09T08:00:00", end="2026-09-09T09:00:00", machine=7):
         return {"row_ref": ref(row), "operation_ref": operation_refs[name], "batch_ref": batch_ref,
                 "start": start, "end": end, "source": "internal", "machine": {"ref": ref(machine), "label": "设备"},
                 "operator": {"ref": ref(9), "label": "人员"}, "supplier": None, "locked": False,
-                "data_gaps": [], "interval_comparable": True}
+                "data_gaps": []}
 
-    before = {value: [] for value in operation_refs.values()}
-    after = {value: [] for value in operation_refs.values()}
-    after[operation_refs["added"]] = [task("added", 201)]
-    before[operation_refs["removed"]] = [task("removed", 202, start="2026-09-08T20:00:00", end="2026-09-08T21:00:00")]
-    before[operation_refs["old_multiple"]] = [task("old_multiple", 203, end="2026-09-09T08:30:00"),
-                                              task("old_multiple", 204, start="2026-09-09T08:30:00")]
-    after[operation_refs["old_multiple"]] = [task("old_multiple", 205)]
-    before[operation_refs["new_multiple"]] = [task("new_multiple", 206)]
-    after[operation_refs["new_multiple"]] = [task("new_multiple", 207, end="2026-09-09T08:30:00"),
-                                             task("new_multiple", 208, start="2026-09-09T08:30:00")]
-    before[operation_refs["machine_changed"]] = [task("machine_changed", 209)]
-    after[operation_refs["machine_changed"]] = [task("machine_changed", 210, machine=8)]
-    unknown = task("time_unknown", 211, start=None, end=None)
-    unknown.update(interval_comparable=False, data_gaps=[{"field": "start", "code": "source_missing"}])
-    before[operation_refs["time_unknown"]] = [unknown]
-    after[operation_refs["time_unknown"]] = [deepcopy(unknown)]
-    groups = {"reference": before, reference_ref: before, fixed_ref: after}
-    intervals = {key: {row["row_ref"]: task_interval(row) for rows in grouped.values() for row in rows}
-                 for key, grouped in groups.items()}
-    source = SimpleNamespace(
+    before = {operation_refs["removed"]: task("removed", 202, start="2026-09-08T20:00:00", end="2026-09-08T21:00:00"),
+              operation_refs["machine_changed"]: task("machine_changed", 209)}
+    after = {operation_refs["added"]: task("added", 201),
+             operation_refs["machine_changed"]: task("machine_changed", 210, machine=8)}
+    arrangements = {"reference": before, reference_ref: before, fixed_ref: after}
+    intervals = {key: {row["row_ref"]: (datetime.fromisoformat(row["start"]), datetime.fromisoformat(row["end"]))
+                       for row in arranged.values()}
+                 for key, arranged in arrangements.items()}
+    source: Any = SimpleNamespace(
         run={"run_ref": run_ref}, selected_ref=viewed_ref, reference_ref=reference_ref, comparison_mode="candidates",
         resource_view="selected_batches", baseline={"state": "available", "kind": "candidate", "candidate_ref": reference_ref},
-        scope={"operation_refs": list(operation_refs.values()), "batch_refs": [batch_ref],
+        admitted_operation_refs=list(operation_refs.values()), batch_refs=[batch_ref],
+        scope={"operation_count": len(operation_refs), "batch_count": 1,
                "range_start": "2026-09-09T08:00:00", "range_end": "2026-09-09T12:00:00"},
-        preparation=SimpleNamespace(groups=groups.__getitem__, labels={value: {"batch_ref": batch_ref} for value in operation_refs.values()}),
+        preparation=SimpleNamespace(labels={value: {"batch_ref": batch_ref} for value in operation_refs.values()}),
         task_intervals=lambda key: intervals[source.computation_key(key)],
     )
     source.computation_key = lambda key: DecisionSource.computation_key(source, key)
-    source.analysis_groups = lambda key: groups[source.computation_key(key)]
+    source.operation_arrangements = lambda key: arrangements[source.computation_key(key)]
     source.operation_batch_ref = lambda _ref: batch_ref
     supports = RecommendationSupport(source, fixed_ref)
     candidate_supports = supports.operations("changed_operation_count")
@@ -158,16 +148,16 @@ def test_operation_supports_keep_known_changes_and_removed_reference_arrangement
     assert removed["drill"]["selected_row_ref"] == ref(202) and removed["drill"]["operation_ref"] == operation_refs["removed"]
     assert removed["drill"]["range_start"] == "2026-09-08T20:00:00" and removed["drill"]["drill_range_adjusted"] is True
     assert "comparison_tab" not in removed["drill"] and "reference_view" not in removed["drill"]
-    unchanged_scope = {"selected_available": True, "deferred_refs": set(), "reference_deferred_refs": set()}
-    metrics = operation_changes(list(operation_refs.values()), True, reference_groups=before, selected_groups=after,
-                                task_intervals=intervals[fixed_ref], reference_task_intervals=intervals["reference"],
-                                **unchanged_scope)
+    before_rows, after_rows = list(before.values()), list(after.values())
+    changes, _ = sql_operation_changes(candidate_case, before_rows, after_rows, list(operation_refs.values()),
+                                       before_intervals=intervals["reference"], after_intervals=intervals[fixed_ref])
+    metrics = changes()
     assert metrics["changed_operation_count"]["value"] is None
-    assert metrics["changed_operation_count"]["known_subtotal"] == 3 and metrics["changed_operation_count"]["unknown_count"] == 4
-    assert metrics["machine_change_count"]["value"] is None
-    assert metrics["machine_change_count"]["known_subtotal"] == 1 and metrics["machine_change_count"]["unknown_count"] == 2
-    basis = {"generation_policy_version": "unified_search_v1", "selection_policy_version": "business_objectives_v1",
-             "primary_objective": "min_changeover", "target_objectives": ["min_changeover"],
+    # The operation arranged on neither side keeps its change unknown; every arranged pair is compared.
+    assert metrics["changed_operation_count"]["known_subtotal"] == 3 and metrics["changed_operation_count"]["unknown_count"] == 1
+    assert metrics["machine_change_count"]["value"] == metrics["machine_change_count"]["known_subtotal"] == 1
+    assert metrics["machine_change_count"]["unknown_count"] == 0
+    basis = {"primary_objective": "min_changeover", "target_objectives": ["min_changeover"],
              "selected_candidate_ref": fixed_ref, "objective_winners": {"min_changeover": fixed_ref},
              "objective_winner_reasons": {"min_changeover": None}, "objective_field_order": {"min_changeover": []},
              "selected_score": [], "reason_code": "primary_objective_best_found",
@@ -189,20 +179,20 @@ def test_operation_supports_keep_known_changes_and_removed_reference_arrangement
 
     source.reference_ref = fixed_ref
     source.baseline = {"state": "available", "kind": "candidate", "candidate_ref": fixed_ref}
-    group_reads = []
-    original_groups = source.analysis_groups
-    source.analysis_groups = lambda key: (group_reads.append(key), original_groups(key))[1]
+    arrangement_reads = []
+    original_arrangements = source.operation_arrangements
+    source.operation_arrangements = lambda key: (arrangement_reads.append(key), original_arrangements(key))[1]
     own_supports = RecommendationSupport(source, fixed_ref)
     assert own_supports.operations("changed_operation_count") == own_supports.operations("machine_change_count") == []
     own_entries = own_supports.entries(definition, {"value": None, "state": "unavailable", "direction": "neutral"})
-    assert group_reads == [] and own_supports._operations is None
+    assert arrangement_reads == [] and own_supports._operations is None
     assert len(own_entries) == 1 and own_entries[0]["kind"] == "collection"
     assert own_entries[0]["candidate_ref"] == own_entries[0]["drill"]["selected_candidate_ref"] == fixed_ref
     assert own_entries[0]["drill"]["reference_candidate_ref"] == fixed_ref
     assert own_entries[0]["drill"]["comparison_tab"] == "operations" and own_entries[0]["drill"]["detail_query"] == {}
-    same_metrics = operation_changes(list(operation_refs.values()), True, reference_groups=after, selected_groups=after,
-                                     task_intervals=intervals[fixed_ref], reference_task_intervals=intervals[fixed_ref],
-                                     **unchanged_scope)
+    same_changes, _ = sql_operation_changes(candidate_case, after_rows, after_rows, list(operation_refs.values()),
+                                            before_intervals=intervals[fixed_ref], after_intervals=intervals[fixed_ref])
+    same_metrics = same_changes()
     assert same_metrics["changed_operation_count"]["value"] is None
     assert same_metrics["changed_operation_count"]["unknown_count"] > 0
 
@@ -232,7 +222,7 @@ def test_operation_supports_keep_known_changes_and_removed_reference_arrangement
     assert zero_events[0]["drill"]["comparison_tab"] == "changeovers" and zero_events[0]["drill"]["detail_query"] == {}
     source.baseline["state"] = "absent"
     assert supports.operations("changed_operation_count") == supports.operations("machine_change_count") == []
-    Path("/tmp/decision-recommendation-removed-support.json").write_text(json.dumps({
+    (tmp_path / "decision-recommendation-removed-support.json").write_text(json.dumps({
         "synthetic": True, "scenario": "seven archived-operation arrangements; support DTOs produced by RecommendationSupport",
         "run_ref": run_ref, "fixed_candidate_ref": fixed_ref, "viewed_candidate_ref": viewed_ref,
         "reference_candidate_ref": reference_ref, "plan_ref": plan_ref, "batch_ref": batch_ref,
@@ -293,26 +283,26 @@ def test_recommendation_exports_include_complete_remaining_work_and_preserve_vie
     recommendation = data["recommendation"]
     assert data["selection_basis"]["explanation"]["headline"] == "在本次已安排工序和完整批次范围内，按“最少超期”推荐最佳方案。"
     assert saved["scoring_scope"]["is_complete"] is False and saved["scoring_scope"]["components_known"] is True
-    assert len(saved["scoring_scope"]["complete_batch_refs"]) == 1
+    assert saved["scoring_scope"]["complete_batch_count"] == 1 and "complete_batch_refs" not in saved["scoring_scope"]
     assert recommendation["recommendation_type"] == "partial"
     assert recommendation["candidate_ref"] == data["selection_basis"]["selected_candidate_ref"]
     assert recommendation["viewed_candidate_ref"] == viewed_ref
+    assert "selection_basis" not in recommendation
     scope = recommendation["completion_scope"]
     assert scope["complete_batch_count"] == 1 and scope["ordinary_incomplete_batch_count"] == 5
     assert scope["unplanned_operation_count"] == scope["remaining_work"]["operation_count"] == 5
-    assert len(scope["sample_batch_refs"]["incomplete"]) == 3
+    assert "sample_batch_refs" not in scope
     query = {"reference_candidate_ref": reference_ref, "selected_candidate_ref": viewed_ref, "snapshot_ref": snapshot}
     path = BASE + "/runs/" + run_ref + "/decision/export"
     csv_response = client.get(path, query_string=dict(query, section="recommendation", format="csv"))
     assert csv_response.status_code == 200, csv_response.get_data(as_text=True)
     rows = list(csv.DictReader(io.StringIO(csv_response.data.decode("utf-8-sig"))))
-    assert rows and tuple(rows[0]) == RECOMMENDATION_CSV_HEADERS and len(rows[0]) == 94
+    assert rows and tuple(rows[0]) == RECOMMENDATION_CSV_HEADERS and len(rows[0]) == 93
     identity = {"排产编号": run_ref, "归档编号": data["capture_ref"], "读取编号": snapshot,
                 "保存推荐候选编号": recommendation["candidate_ref"], "当前查看候选编号": viewed_ref,
                 "查看基准编号": reference_ref, "比较模式": "candidates", "查看基准类型": "candidate",
                 "范围起点（含）": data["scope"]["range_start"], "范围终点（不含）": data["scope"]["range_end"],
-                "资源视角": data["scope"]["resource_view"], "推荐版本": "decision-recommendation-v1",
-                "推荐记录格式版本": saved["selection_policy_version"]}
+                "资源视角": data["scope"]["resource_view"], "推荐版本": "decision-recommendation-v1"}
     for row in rows:
         assert {field: row[field] for field in identity} == {**identity, "读取编号": "'" + snapshot}
     differences = {row["指标标识"]: row for row in rows if row["record_kind"] == "difference"}
@@ -336,9 +326,10 @@ def test_recommendation_exports_include_complete_remaining_work_and_preserve_vie
     assert supports and all(row["相关明细候选编号"] == support_targets[row["指标标识"], row["相关明细永久编号"]] for row in supports)
     completion_rows = [row for row in rows if row["record_kind"] == "completion_set"]
     assert len(completion_rows) == len(refs) * 6
+    expected_batches = {case.ref("batch", "B" + str(number)) for number in range(1, 7)}
     for ref in refs:
         candidate_rows = [row for row in completion_rows if row["候选永久编号"] == ref]
-        assert len(candidate_rows) == 6 and {row["批次永久编号"] for row in candidate_rows} == set(data["scope"]["batch_refs"])
+        assert len(candidate_rows) == 6 and {row["批次永久编号"] for row in candidate_rows} == expected_batches
         assert sum(row["安排分类"] == "complete" for row in candidate_rows) == 1
         assert all(row["预计完工"] == row["拖期小时"] == "" for row in candidate_rows if row["安排分类"] == "incomplete")
     remaining = [row for row in rows if row["record_kind"] == "remaining_work"]
@@ -362,7 +353,7 @@ def test_recommendation_exports_include_complete_remaining_work_and_preserve_vie
     try:
         assert book.sheetnames == ["推荐说明", "工序安排", "剩余需求", "指标计算方式", "比较范围"]
         header_lists = {"推荐说明": RECOMMENDATION_HEADERS, "工序安排": COMPLETION_HEADERS, "剩余需求": REMAINING_HEADERS}
-        assert [len(headers) for headers in header_lists.values()] == [37, 36, 59]
+        assert [len(headers) for headers in header_lists.values()] == [36, 35, 58]
         explanation_rows = book["推荐说明"].iter_rows(min_row=2)
         index = {field: i for i, field in enumerate(RECOMMENDATION_HEADERS)}
         for values in explanation_rows:

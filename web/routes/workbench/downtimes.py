@@ -3,15 +3,16 @@
 from flask import current_app, g, request
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_downtime import normalize_downtime
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.downtimes import WorkbenchDowntimeService
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
-from .read_context import bind_read_snapshot
-from .resource_action_context import json_body
+from .read_context import bind_read_snapshot, current_snapshot_time
+from .request_json import command_body
+from .resource_action_context import BODY, PAGE_STALE_MESSAGE
 from .write_context import issue_write_context, validate_write_context
 
 ACTIONS = ["machine.downtime_" + action for action in ("create", "update", "cancel")]
@@ -21,19 +22,18 @@ ACTIONS = ["machine.downtime_" + action for action in ("create", "update", "canc
 def machine_downtimes(ref):
     if request.args:
         raise WorkbenchCommandRejected("invalid_input", "停机记录不接受额外查询条件，请重新打开设备详情。", 400)
+    as_of = current_snapshot_time()
     service = WorkbenchDowntimeService(g.db, current_app.logger)
     with TransactionManager(g.db).transaction():
         state = service.snapshot(ref)
         data = {"entity_ref": ref, **service.public(state), "write_context": issue_write_context(ref, ACTIONS, state)}
-        snapshot = bind_read_snapshot({"kind": "machine_downtimes", "ref": ref}, state)
+        snapshot = bind_read_snapshot({"kind": "machine_downtimes", "ref": ref}, state, as_of=as_of)
     return query_success(data, snapshot)
 
 
 @api_endpoint
 def machine_downtime_command(ref, action):
-    body = json_body({"request_key", "write_token", "input"})
-    validate_request_key(body["request_key"])
-    g.workbench_request_key = body["request_key"]
+    body = command_body(BODY, stale=PAGE_STALE_MESSAGE)
     payload = normalize_downtime(action, body["input"])
     service = WorkbenchDowntimeService(g.db, current_app.logger)
     name = "machine.downtime_" + action

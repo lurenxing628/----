@@ -1,75 +1,50 @@
-"""Allowlisted plan/task DTOs. Private catalog errors and locators never serialize."""
+"""Allowlisted plan/task DTOs over self-contained ScheduleHistory and Schedule rows."""
 
 from __future__ import annotations
 
-from core.infrastructure.sqlite_udf import parse_dt_for_sql
+from typing import Any, Dict, Mapping, Optional
+
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.workbench.facts.history_documents import HistoryDocuments
 from core.services.workbench.facts.zero_duration import point_event_dto
-from core.shared.strict_parse import is_exact_positive_int
+from core.shared.local_datetime import format_local_datetime, parse_local_datetime, us_to_datetime, us_to_iso
+from core.shared.strict_parse import wire_int
 
-_REASONS = {
-    "summary_invalid": "这次排产的摘要无效，确认不了计划是否完整。请刷新后重试。",
-    "summary_missing": "这次排产的摘要缺失，确认不了计划是否完整。请刷新后重试。",
-    "plan_unavailable": "这个计划的类型关系或明细无效，暂时看不了。请刷新计划列表后重试。",
-    "plan_binding_invalid": "这个计划的类型或它依据的计划已经变了，暂时看不了。请刷新计划列表后重试。",
-    "identity_missing": "计划编号缺失，请刷新计划列表。",
-    "identity_invalid": "这个计划的编号和当前记录对不上，暂时看不了。请刷新计划列表后重试。",
-    "source_missing": "计划来源记录已不存在，请刷新列表后重新选择。",
-}
-
-
-def wire_positive_int64(value):
-    if not is_exact_positive_int(value):
-        return None
-    return value if value <= (1 << 53) - 1 else str(value)
-
-
-def _public_reasons(codes):
-    return [{"code": code if code in _REASONS else "plan_unavailable",
-             "message": _REASONS.get(code, _REASONS["plan_unavailable"])} for code in codes]
+# A catalog entry's only blocked reason is ``plan_unavailable`` (``plan_catalog_entry``); its exception text stays internal.
+_PLAN_UNAVAILABLE_MESSAGE = "这个计划的类型关系或明细无效，暂时看不了。请刷新计划列表后重试。"
 
 
 def project_plan(entry, plan_ref):
+    """``entry.locator.version`` is a ScheduleHistory key: an INTEGER PRIMARY KEY that only ScheduleVersionSeq
+    (AUTOINCREMENT) allocates, so it is a positive int."""
     identity = entry.plan_identity
-    version = wire_positive_int64(entry.locator.version)
-    if entry.can_view and version is None:
-        raise WorkbenchCommandRejected("plan_unavailable", "计划的版本号无效，不能开放查看。请刷新计划列表后重试。")
-    return {"plan_ref": plan_ref, "version": version, "kind": entry.kind,
-            "is_current_official": (entry.can_view and identity is not None
-                                    and identity.is_current_executable_official_version),
-            "display_name": entry.display_name, "completeness": entry.completeness,
-            "capabilities": {"view": entry.can_view, "export": entry.can_view,
-                             "edit_draft": False, "adopt": False, "report_actual": False},
-            "blocked_reasons": _public_reasons(issue.code for issue in entry.blocked_reasons)}
-
-
-def project_unavailable_plan(locator, plan_ref, display_name, reason_codes):
-    """A disabled header; a missing permanent identity stays null, never allocated."""
-    version = wire_positive_int64(locator.version)
-    return {"plan_ref": plan_ref, "version": version, "kind": "official",
-            "is_current_official": False, "display_name": display_name, "completeness": "invalid",
-            "capabilities": {"view": False, "export": False, "edit_draft": False, "adopt": False, "report_actual": False},
-            "blocked_reasons": _public_reasons(reason_codes)}
+    return {
+        "plan_ref": plan_ref,
+        "version": wire_int(entry.locator.version),
+        "kind": entry.kind,
+        "is_current_official": (
+            entry.can_view and identity is not None and identity.is_current_executable_official_version
+        ),
+        "display_name": entry.display_name,
+        "completeness": entry.completeness,
+        "capabilities": {
+            "view": entry.can_view,
+            "export": entry.can_view,
+            "edit_draft": False,
+            "adopt": False,
+            "report_actual": False,
+        },
+        "blocked_reasons": [
+            {"code": issue.code, "message": _PLAN_UNAVAILABLE_MESSAGE} for issue in entry.blocked_reasons
+        ],
+    }
 
 
 def public_time(value):
-    parsed = parse_dt_for_sql(value)
+    parsed = parse_local_datetime(value)
     if parsed is None:
         raise WorkbenchCommandRejected("plan_unavailable", "工序安排的起止时间无效，请核对计划资料。")
-    return parsed.replace(" ", "T")
-
-
-def required_text(value):
-    if type(value) is not str or not value.strip():
-        raise WorkbenchCommandRejected("plan_unavailable", "有安排缺批次号或工序名称，读不全。请到批次管理核对。")
-    return value
-
-
-def sequence(value):
-    wire = wire_positive_int64(value)
-    if wire is None:
-        raise WorkbenchCommandRejected("plan_unavailable", "工序号无效，请到批次管理核对。")
-    return wire
+    return format_local_datetime(parsed).replace(" ", "T")
 
 
 def resource_ref(row, kind, identities):
@@ -79,115 +54,133 @@ def resource_ref(row, kind, identities):
     return identities[kind][str(key)].ref
 
 
-def _captured_quantities(operation, batch, execution, basis):
-    from core.services.workbench.facts.candidate_values import number
-
-    gaps = []
-    piece = operation.get("piece_id")
-    valid_piece = "piece_id" in operation and (piece is None or type(piece) is str and piece.strip() and "\x00" not in piece)
-    captured = type(execution) is dict
-    quantity = number(execution.get("target_quantity"), "quantity", gaps, integer=True) if captured else None
-    batch_quantity = number(batch.get("quantity"), "batch_quantity", gaps, integer=True)
-    valid = (valid_piece and captured
-             and execution.get("target_basis") == ("piece" if piece is not None else "batch"))
-    return {"piece_id": piece if valid_piece else None, "quantity": quantity if valid else None,
-            "batch_quantity": batch_quantity, "quantity_basis": basis,
-            "quantity_reason": None if valid and quantity is not None and not gaps else "plan_target_invalid"}
-
-
-def read_adopted_task_facts(conn, plan_ref, *, context):
-    from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
-    from core.services.workbench.facts.adoption_baseline_sources import read_adoption_operation_facts
-    from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable, require
-
-    try:
-        evidence = adopted_source_record(plan_ref, context=context)
-        basis, arranged = evidence["basis"], evidence["arranged"]
-        source = evidence["generation_facts"] if basis == "candidate_adoption" else evidence["trial_source"]
-        result = _source_quantities(basis, arranged, source)
-        require(set(result) == {row["op_id"] for row in arranged}, "quantity.complete_operation_set")
-        return result, None, read_adoption_operation_facts(conn, evidence)
-    except (AdoptionBaselineUnavailable, WorkbenchPlanReferenceError):
-        return {}, "plan_target_unavailable", {}
-    except WorkbenchCommandRejected as exc:
-        if exc.status == 413:
-            raise
-        return {}, "plan_target_unavailable", {}
+def build_plan_provenance(history: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "state": "available",
+        "reason": None,
+        "source_kind": history["source_kind"],
+        "source_ref": history["source_ref"],
+        "source_label": history["source_label"],
+        "run_ref": history["run_ref"],
+        "accepted_at": history["accepted_at"],
+        "finished_at": history["finished_at"],
+        "adopted_at": history["adopted_at"],
+        "algorithm": HistoryDocuments(history).algorithm,
+        "baseline": {
+            "baseline_ref": history["baseline_ref"],
+            "version": history["baseline_version"],
+            "kind": history["baseline_kind"],
+            "captured_at": history["baseline_captured_at"],
+            "captured_task_count": history["baseline_captured_task_count"],
+        },
+    }
 
 
-def adopted_source_record(plan_ref, *, context):
-    locator = context.resolve(plan_ref)
-    return context.adoption_source(plan_ref, locator.version, context.history(locator.version), recorded=None)
+def row_resource_entries(rows, resources):
+    """Directory entries of current-plan rows: machines and operators under their live names, suppliers under
+    the label frozen in the row.
 
-
-def _source_quantities(basis, arranged, source):
-    # Only the audited source can supply target work; current batch joins cannot.
-    if basis == "candidate_adoption":
-        facts = source
-        refs = {key: ref for ref, key in facts.operations.items()}
-        result = {}
-        for item in arranged:
-            op = facts.tables["BatchOperations"][item["op_id"]]
-            result[item["op_id"]] = _captured_quantities(op, facts.tables["Batches"][op["batch_id"]],
-                                                       facts.execution.get(refs[item["op_id"]]), "run_admission")
-        return result
-    return {row["original"]["operation"]["id"]: _captured_quantities(
-        row["original"]["operation"], row["original"]["batch"], row["original"]["execution"], "trial_creation")
-        for row in source.source.rows}
-
-
-def project_light_tasks(plan_ref, rows, task_refs, operation_refs, resources, origins, *, context):
-    tasks = []
+    Master names are not admitted on every write path, so the live name is admitted here, its one read-side check.
+    """
+    entries = []
     for row in rows:
-        start, end = context.row_times(plan_ref, row)
-        piece = row.get("piece_id")
-        if piece is not None:
-            required_text(piece)
-        required_text(row["batch_id"])
-        sequence(row["seq"])
-        required_text(row["op_type_name"])
-        supplier = origins.get(row["op_id"], {}).get("supplier")
-        supplier_ref = supplier["ref"] if supplier is not None else None
-        tasks.append({
-            "task_ref": task_refs[row["schedule_id"]],
-            "operation_ref": operation_refs[row["op_id"]],
-            "machine_ref": resource_ref(row, "machine", resources),
-            "operator_ref": resource_ref(row, "operator", resources),
-            "supplier_ref": supplier_ref,
-            "start": start,
-            "end": end,
-            "_row": row,
-        })
-    if len({task["task_ref"] for task in tasks}) != len(tasks):
-        raise WorkbenchCommandRejected("task_binding_invalid", "计划里有安排编号重复，确认不了完整范围。请刷新后重试。")
-    return tasks
+        for kind in ("machine", "operator"):
+            key = row[kind + "_id"]
+            if key in (None, ""):
+                continue
+            identity = resources[kind][str(key)]
+            label = row[kind + "_name"]
+            if label is not None and (type(label) is not str or not label.strip()):
+                raise WorkbenchCommandRejected("plan_unavailable", "设备或人员名称无效，请到资料总览补填。")
+            entries.append({"kind": kind, "ref": identity.ref, "business_code": identity.entity_key, "label": label})
+        if row["supplier_ref"] is not None:
+            entries.append(
+                {
+                    "kind": "supplier",
+                    "ref": row["supplier_ref"],
+                    "business_code": row["supplier_id"],
+                    "label": row["supplier_label"],
+                }
+            )
+    return entries
 
 
-def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, facts, context):
-    tasks = []
-    quantities, quantity_reason, origins = context.adopted_task_facts(plan_ref) if rows else ({}, None, {})
-    facts["resource_directory"] = [resource for row in rows for resource in
-        origins.get(row["op_id"], {}).get("resource_directory", [])]
+def row_frozen_resource_entries(rows):
+    entries = []
     for row in rows:
-        start, end = context.row_times(plan_ref, row)
-        piece = row.get("piece_id")
-        if piece is not None:
-            piece = required_text(piece)
-        presentation = quantities.get(row["op_id"], {"piece_id": piece, "quantity": None, "batch_quantity": None,
-                                                    "quantity_basis": "unknown", "quantity_reason": quantity_reason})
-        supplier = origins.get(row["op_id"], {}).get("supplier")
-        # Schedule has no supplier assignment: only the adopted source can prove it.
-        supplier_ref = supplier["ref"] if supplier is not None else None
-        tasks.append({"task_ref": task_refs[row["schedule_id"]], "operation_ref": operation_refs[row["op_id"]],
-                      "plan_ref": plan_ref, "batch_id": required_text(row["batch_id"]),
-                      "sequence": sequence(row["seq"]), "process_label": required_text(row["op_type_name"]),
-                      **presentation,
-                      "machine_ref": resource_ref(row, "machine", resources),
-                      "operator_ref": resource_ref(row, "operator", resources),
-                      "supplier_ref": supplier_ref, "start": start, "end": end})
-        if start == end:
-            low_dt, high_dt = context.row_datetime_interval(plan_ref, row)
-            tasks[-1].update(point_event_dto(low_dt, high_dt))
-    if len({task["task_ref"] for task in tasks}) != len(tasks):
-        raise WorkbenchCommandRejected("task_binding_invalid", "计划里有安排编号重复，确认不了完整范围。请刷新后重试。")
-    return tasks
+        for kind in ("machine", "operator", "supplier"):
+            ref = row[kind + "_ref"]
+            if ref is not None:
+                entries.append(
+                    {
+                        "kind": kind,
+                        "ref": ref,
+                        "business_code": row[kind + "_id"],
+                        "label": row[kind + "_label"],
+                    }
+                )
+    return entries
+
+
+def resource_directory(entries):
+    """One entry per resource, ordered by kind and ref. The first entry wins, so callers list the current plan's
+    live-named entries before baseline-only frozen ones."""
+    directory = {}
+    for entry in entries:
+        directory.setdefault((entry["kind"], entry["ref"]), entry)
+    return [directory[key] for key in sorted(directory)]
+
+
+def _build_task_dto(
+    plan_ref: str,
+    row: Mapping[str, Any],
+    *,
+    machine_ref: Optional[str],
+    operator_ref: Optional[str],
+) -> Dict[str, Any]:
+    task = {
+        "task_ref": row["task_ref"],
+        "operation_ref": row["operation_ref"],
+        "plan_ref": plan_ref,
+        "batch_id": row["batch_id"],
+        "sequence": wire_int(row["seq"]),
+        "process_label": row["op_type_name"],
+        "piece_id": row["piece_id"],
+        "quantity": row["quantity"],
+        "batch_quantity": row["batch_quantity"],
+        "quantity_basis": row["quantity_basis"],
+        "quantity_reason": row["quantity_reason"],
+        "machine_ref": machine_ref,
+        "operator_ref": operator_ref,
+        "supplier_ref": row["supplier_ref"],
+        "start": us_to_iso(row["start_us"]),
+        "end": us_to_iso(row["end_us"]),
+    }
+    if row["is_point_event"]:
+        point_dt = us_to_datetime(row["start_us"])
+        task.update(point_event_dto(point_dt, point_dt))
+    return task
+
+
+def project_tasks(plan_ref, rows, resources):
+    return [
+        _build_task_dto(
+            plan_ref,
+            row,
+            machine_ref=resource_ref(row, "machine", resources),
+            operator_ref=resource_ref(row, "operator", resources),
+        )
+        for row in rows
+    ]
+
+
+def project_frozen_tasks(plan_ref, rows):
+    return [
+        _build_task_dto(
+            plan_ref,
+            row,
+            machine_ref=row["machine_ref"],
+            operator_ref=row["operator_ref"],
+        )
+        for row in rows
+    ]

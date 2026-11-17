@@ -10,9 +10,10 @@ from core.services.workbench.facts.completion_scope import project_completion_su
 from core.services.workbench.run.decision_completion_queries import completion_batches, normalize_completion_filters
 from tests.workbench.run_candidate_support import BASE, api, compute, install_representatives
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
+from tests.workbench.run_decision_support import operation_ref
 from tests.workbench.test_completion_scope import batch_item
 from tests.workbench.test_run_decision_api import decision
-from tests.workbench.test_run_decision_impact_api import detail, many_batches, operation_ref
+from tests.workbench.test_run_decision_impact_api import detail, many_batches
 
 RUN, FIRST, SECOND = (format(number, "048x") for number in range(1, 4))
 
@@ -20,17 +21,17 @@ RUN, FIRST, SECOND = (format(number, "048x") for number in range(1, 4))
 def completion_source(deliveries, pending, selected):
     scopes = {key: project_completion_summary(items, pending[key])
               for key, items in deliveries.items()}
+    batch_refs = sorted({row["batch_ref"] for items in deliveries.values() for row in items})
     scope = {"run_ref": RUN, "selected_candidate_ref": selected, "comparison_mode": "candidates",
              "reference": {"kind": "candidate", "candidate_ref": FIRST}, "reference_state": "available",
              "range_start": "2026-10-13T08:00:00", "range_end": "2026-10-13T09:00:00",
              "resource_view": "selected_batches", "metric_scope": "full_admission", "time_basis": "factory_local",
-             "batch_refs": sorted({row["batch_ref"] for items in deliveries.values() for row in items})}
-    rows = [{"candidate_ref": key, "status": "completed",
-             "artifact": {"label": "候选 " + str(index)}}
-            for index, key in enumerate(deliveries, 1)]
+             "batch_count": len(batch_refs), "operation_count": len(batch_refs)}
+    rows = [{"candidate_ref": key, "label": "候选 " + str(index)} for index, key in enumerate(deliveries, 1)]
     selected_row = next(row for row in rows if row["candidate_ref"] == selected)
-    source = SimpleNamespace(run={"run_ref": RUN}, scope=scope, baseline={"kind": "candidate", "candidate_ref": FIRST,
-                            "state": "available"}, selected_ref=selected, selected=selected_row, rows=rows, reference_ref=FIRST,
+    source = SimpleNamespace(run={"run_ref": RUN}, scope=scope, batch_refs=batch_refs,
+                             baseline={"kind": "candidate", "candidate_ref": FIRST, "state": "available"},
+                             selected_ref=selected, selected=selected_row, rows=rows, reference_ref=FIRST,
                              comparison_mode="candidates", resource_view="selected_batches")
     source.completion = SimpleNamespace(
         delivery=deliveries.__getitem__, scope=lambda key, coverage=None: scopes[key],
@@ -56,7 +57,7 @@ def test_partial_completion_anchor_and_remaining_export_exclude_arranged_prefixe
     overview = decision(client, run_ref, **query)["data"]
     recommendation = overview["recommendation"]
     assert recommendation["candidate_ref"] == recommendation["viewed_candidate_ref"] == anchor
-    assert len(overview["completion_groups"]) == len(refs)
+    assert "completion_groups" not in overview
     batch_refs = {code: case.ref("batch", code) for code in ("B1", "B2")}
     remaining_refs = {operation_ref(case, op) for op in (first_b2, second_b2)}
     op_refs = remaining_refs | {operation_ref(case, case.op_id)}
@@ -173,7 +174,7 @@ def test_completion_batches_api_paginates_all_members_under_one_snapshot(candida
 
 def test_unknown_arranged_batch_has_no_invented_remaining_work():
     ref = format(101, "048x")
-    unknown = [batch_item(ref, finish=None)]
+    unknown = [batch_item(ref, uncertain=("no_admission_baseline",))]
     deliveries, pending = {FIRST: unknown, SECOND: unknown}, {FIRST: [], SECOND: []}
     known = completion_batches(completion_source(deliveries, pending, FIRST),
                                normalize_completion_filters(completion_filter="unknown"))
@@ -181,5 +182,5 @@ def test_unknown_arranged_batch_has_no_invented_remaining_work():
     item = known["items"][0]
     assert item["completion_state"] == "unknown" and item["schedule_complete"] is False
     assert item["scheduled_operation_count"] == 1 and item["remaining_work"]["operation_count"] == 0
-    assert item["remaining_drill"] is None and "schedule_time_invalid" in item["issues"]
+    assert item["remaining_drill"] is None and "no_admission_baseline" in item["issues"]
     assert known["summary"]["unknown_batch_count"] == 1 and known["summary"]["remaining_work"]["operation_count"] == 0

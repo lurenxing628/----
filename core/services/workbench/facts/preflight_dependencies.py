@@ -3,7 +3,7 @@
 from collections import defaultdict
 
 from core.models.workbench_preflight import issue
-from core.shared.strict_parse import is_stored_number
+from core.shared.strict_parse import is_exact_positive_int
 
 
 def material_deferred_ids(rows, settings):
@@ -12,7 +12,7 @@ def material_deferred_ids(rows, settings):
     Resource gaps, closed operations, invalid material facts and arbitrary
     omissions never acquire the same adoption permission.
     """
-    if settings.get("material_strategy") != "stage" or settings.get("ready_check") is not True:
+    if settings["material_strategy"] != "stage" or settings["ready_check"] is not True:
         return set()
     material_codes = {"material_not_ready", "material_after_window"}
     result = set()
@@ -63,7 +63,7 @@ def link_predecessors(rows, *, piece_scope=None):
     for row in rows:
         chains[row["piece_id"] or ""].append(row)
     for chain in chains.values():
-        invalid = any(not is_stored_number(row["sequence"], integer=True, positive=True) for row in chain)
+        invalid = any(not is_exact_positive_int(row["sequence"]) for row in chain)
         duplicate = len({row["sequence"] for row in chain}) != len(chain)
         if invalid or duplicate:
             for row in chain:

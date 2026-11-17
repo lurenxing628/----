@@ -43,7 +43,6 @@
           "view": true
         },
         "completeness": "partial",
-        "data_gaps": [],
         "label": "重点工序优先方案 3/3",
         "metric_scopes": {
           "delivery": "completed_batches_only",
@@ -99,7 +98,6 @@
             "value": 283.16
           }
         },
-        "persisted_status": "completed",
         "run_ref": "cb290bffcd82d59594e4d629023df19e3b5fd375e9cca4ca",
         "status": "partial",
         "task_count": 31
@@ -113,7 +111,7 @@
       },
       "comparisons": [
         {
-          "baseline_segments": [],
+          "baseline_segment": null,
           "batch_label": "DP-STAGE",
           "batch_quantity": 1,
           "batch_ref": "4c0a10c4918965272b7248fb43c1b1f9d14fa2e3e988ccd1",
@@ -187,7 +185,7 @@
           "status": "newly_scheduled"
         },
         {
-          "baseline_segments": [],
+          "baseline_segment": null,
           "batch_label": "DP-STAGE",
           "batch_quantity": 1,
           "batch_ref": "4c0a10c4918965272b7248fb43c1b1f9d14fa2e3e988ccd1",
@@ -295,7 +293,6 @@
       },
       "improvement_assessment": null,
       "operation_count": 2,
-      "rows_complete": true,
       "time_scope": {
         "counterpart_policy": "retain_complete_counterpart",
         "interval": "half_open_overlap",
@@ -346,7 +343,6 @@
         "view": true
       },
       "completeness": "partial",
-      "data_gaps": [],
       "label": "重点工序优先方案 3/3",
       "metric_scopes": {
         "delivery": "completed_batches_only",
@@ -402,7 +398,6 @@
           "value": 283.16
         }
       },
-      "persisted_status": "completed",
       "run_ref": "cb290bffcd82d59594e4d629023df19e3b5fd375e9cca4ca",
       "status": "partial",
       "task_count": 31
@@ -422,7 +417,6 @@
         "kind": "admission_official",
         "version": 1
       },
-      "data_gaps": [],
       "execution_basis": "captured_at_run_admission",
       "finished_at": "2026-10-13T16:29:43",
       "input": {

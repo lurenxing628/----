@@ -1,10 +1,9 @@
 """AS-owned fixtures: actual SQLite, actual ledger, actual scheduling engine."""
 
-from datetime import datetime
-
 import pytest
 
 from core.models.schedule_config_runtime_fields import default_snapshot_values
+from core.models.workbench_preflight import normalize_preflight_input
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
@@ -43,7 +42,7 @@ class RunCase(LedgerCase):
             FROM WorkbenchPlanSourceRefs r JOIN BatchOperations bo ON CAST(bo.id AS TEXT)=r.source_key
             WHERE r.kind='operation' AND r.active=1 ORDER BY r.ref"""))
         refs = [row[0] for row in rows if not batch_ids or row[1] in batch_ids or row[2]]
-        ledger = ExecutionLedgerService(self.conn, clock=lambda: datetime(2026, 9, 10, 12))
+        ledger = ExecutionLedgerService(self.conn)
         with ledger.read_snapshot() as scope:
             return ledger.project_operations(scope, refs)
 
@@ -61,7 +60,8 @@ def run_case(schema_conn):
     conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",
                  ('[{"start":"08:00","end":"16:00","day_offset":0}]',))
     conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
-    conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")
+    conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('M1','Lathe')")
+    conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M1','T1')")
     conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O1','Operator')")
     conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('O1','M1')")
     conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('P1','Part')")
@@ -70,8 +70,7 @@ def run_case(schema_conn):
     case = RunCase(conn)
     case.batch("B1")
     case.op_id = case.operation()
-    case.config(algo_mode="greedy", time_budget_seconds=60,
-                ortools_enabled="no", freeze_window_enabled="no")
+    case.config(algo_mode="greedy", time_budget_seconds=60, freeze_window_enabled="no")
     yield case
 
 
@@ -83,7 +82,8 @@ def admitted_dispositions(conn, settings, projections):
 def compute_admitted(conn, settings, projections, dispositions):
     """Worker form: one production capture, its projections and the admission's dispositions in one read snapshot."""
     with candidate_read_snapshot(conn):
-        return compute_candidate_run(conn, settings, projections, capture=ProductionFactsCapture(conn),
+        return compute_candidate_run(conn, normalize_preflight_input(settings), projections,
+                                     capture=ProductionFactsCapture(conn),
                                      dispositions=dispositions)
 
 
@@ -93,9 +93,9 @@ def compute_run(conn, settings, projections):
 
 
 def prepare_run_input(conn, settings, projections, **kwargs):
-    """Production preparation form: caller-owned facts bound to one capture."""
+    """Production preparation form: input admitted on the submit side, caller-owned facts bound to one capture."""
     with candidate_read_snapshot(conn), PreflightFacts.open(conn) as facts:
-        return prepare_business_input(conn, settings, projections, facts=facts, **kwargs)
+        return prepare_business_input(conn, normalize_preflight_input(settings), projections, facts=facts, **kwargs)
 
 
 def unchanged(case, action):

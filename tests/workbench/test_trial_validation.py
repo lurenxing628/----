@@ -1,6 +1,8 @@
 """Real calendar, qualification, execution ledger and editable business conflicts."""
 
-from datetime import datetime
+import json
+from copy import deepcopy
+from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Optional
 
@@ -12,16 +14,25 @@ from core.services.personnel.operator_qualification import OperatorQualification
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.workbench.batch.facts import BatchFacts
 from core.services.workbench.batch.scope import BatchFactScope
+from core.services.workbench.facts.trial_origin import OfficialTrialSource
 from core.services.workbench.run import schedule_occupancy_constraints
 from core.services.workbench.run.preflight import PreflightService
-from core.services.workbench.run.schedule_occupancy_constraints import collect_occupancy_issues
+from core.services.workbench.run.schedule_occupancy_constraints import (
+    collect_occupancy_issues,
+    latest_schedule_rows,
+)
 from core.services.workbench.trial import constraints, facts
-from core.services.workbench.trial.constraints import build_trial_intervals, prepare_outside_schedule_state
+from core.services.workbench.trial.calendar import new_slot_effort
+from core.services.workbench.trial.constraints import build_trial_intervals
 from core.services.workbench.trial.occupancy import reported_archive
+from core.shared.local_datetime import datetime_to_us
+from tests.workbench.execution_ledger_support import publish_official_plan
+from tests.workbench.identity_metadata_support import insert_row
+from tests.workbench.plan_catalog_support import insert_schedule_rows, update_schedule_rows
 from tests.workbench.run_compute_support import compute_run, prepare_run_input
 from tests.workbench.trial_adoption_support import INTENT
 from tests.workbench.trial_adoption_support import service as adoption_service
-from tests.workbench.trial_support import change, create, service, snapshot
+from tests.workbench.trial_support import change, create, official, service, snapshot
 from tests.workbench.trial_support import trial_case as trial_case
 
 
@@ -43,6 +54,10 @@ def test_resources_and_start_one_change_and_conflict_remains_editable(trial_case
 
 
 def test_captured_qualifications_match_live_rules_across_work_types_without_sql(trial_case, monkeypatch):
+    from core.services.personnel.operator_qualification import (
+        require_machine_authorization,
+        require_work_type_qualification,
+    )
     from data.repositories.operator_machine_repo import OperatorMachineRepository
     from data.repositories.operator_qualification_repo import OperatorQualificationRepository
 
@@ -51,11 +66,11 @@ def test_captured_qualifications_match_live_rules_across_work_types_without_sql(
     case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M1','T2')")
     other = case.operation(seq=2, op_type_id="T2", op_type_name="Milling", unit_hours=1)
     case.plan(1, [case.op_id, other], start="2026-09-09T08:00:00", end="2026-09-09T11:00:00")
-    case.conn.execute("UPDATE Schedule SET start_time='2026-09-09T11:00:00',end_time='2026-09-09T14:00:00' WHERE op_id=?",
-                      (other,))
+    update_schedule_rows(
+        case.conn, 1, where="op_id = ?", params=(other,), start_time="2026-09-09T11:00:00", end_time="2026-09-09T14:00:00"
+    )
     case.conn.commit()
     draft = None
-    qualification = OperatorQualificationService(case.conn)
 
     def unexpected_sql(*args, **kwargs):
         raise AssertionError("Trial qualification must consume the current capture")
@@ -69,16 +84,22 @@ def test_captured_qualifications_match_live_rules_across_work_types_without_sql(
         elif state == "unauthorized":
             case.conn.execute("DELETE FROM OperatorMachine WHERE operator_id='O1' AND machine_id='M1'")
         case.conn.commit()
+        # The live rules: today's stored skill facts and authorizations, interpreted by the same functions.
+        qualifications = OperatorQualificationService.project_facts(
+            ["O1"], *OperatorQualificationRepository(case.conn).read_skill_facts(["O1"]))
+        authorized = {(row["operator_id"], row["machine_id"])
+                      for row in OperatorMachineRepository(case.conn).list_simple_rows_for_operators(["O1"])}
         expected = {}
         for sequence, work_type in ((1, "T1"), (2, "T2")):
             try:
-                qualification.require(operator_id="O1", machine_id="M1", op_type_id=work_type)
+                require_machine_authorization(authorized, "O1", "M1")
+                require_work_type_qualification(qualifications, "O1", work_type)
                 expected[sequence] = False
             except OperatorQualificationError:
                 expected[sequence] = True
         with monkeypatch.context() as captured:
             captured.setattr(OperatorQualificationRepository, "read_skill_facts", unexpected_sql)
-            captured.setattr(OperatorMachineRepository, "exists", unexpected_sql)
+            captured.setattr(OperatorMachineRepository, "list_simple_rows_for_operators", unexpected_sql)
             draft = (create(case, {"base": {"plan_ref": case.plan_ref(1)}}) if draft is None
                      else service(case.conn).get(draft["draft_ref"]))
         for task in draft["tasks"]:
@@ -133,15 +154,19 @@ def _mixed_external_cycle(case):
             cursor = case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,"
                 "ext_group_id,setup_hours,unit_hours) VALUES ('P1',?,'T1','Turning','external','S1','G',0,0)", (seq,))
             template_rows.append({"id": cursor.lastrowid})
-        for prepared in writer.prepare_templates(template_rows, facts=BatchFactScope(BatchFacts(case.conn)).load()):
+        for prepared in writer.prepare_templates(template_rows, facts=BatchFactScope(BatchFacts(case.conn, material_day=date.today().isoformat())).load()):
             members.append(writer.copy_prepared_template('B1', prepared))
     case.batch('B2')
     movable = case.operation('B2', machine_id='M2', operator_id='O2')
     case.plan(1, [case.op_id, *members, movable], end="2026-09-09T11:00:00")
-    case.conn.execute("UPDATE Schedule SET machine_id=NULL,operator_id=NULL,start_time='2026-09-09T11:00:00',"
-                      "end_time='2026-09-10T11:00:00' WHERE op_id IN (?,?)", members)
-    case.conn.execute("UPDATE Schedule SET machine_id='M2',operator_id='O2',start_time='2026-09-09T11:00:00',"
-                      "end_time='2026-09-09T11:45:00' WHERE op_id=?", (movable,))
+    update_schedule_rows(
+        case.conn, 1, where="op_id IN (?, ?)", params=tuple(members),
+        machine_id=None, operator_id=None, start_time="2026-09-09T11:00:00", end_time="2026-09-10T11:00:00",
+    )
+    update_schedule_rows(
+        case.conn, 1, where="op_id = ?", params=(movable,),
+        machine_id="M2", operator_id="O2", start_time="2026-09-09T11:00:00", end_time="2026-09-09T11:45:00",
+    )
     case.conn.commit()
     case.command('create', case.task(1, case.op_id), case.values(3, actual_end='2026-09-09T11:00:00',
                                                               effective_processing_hours=3))
@@ -155,7 +180,7 @@ def test_confirmed_merged_return_replaces_estimate_in_real_trial_adoption(trial_
     case = trial_case
     members, _ = _mixed_external_cycle(case)
     settings = case.settings('B2')
-    checked, _ = PreflightService(case.conn).evaluate(settings)
+    checked, _ = PreflightService(case.conn).evaluate(settings, material_day=date.today().isoformat())
     assert checked['blockers'] == []
     prepared = prepare_run_input(case.conn, settings, case.projections('B2'))
     assert prepared.normalized_batch_ids == ['B2'] and not prepared.execution_guard.execution_completed_op_ids
@@ -230,8 +255,21 @@ def _live_issues(rows, others=(), schedule=(), *, execution_operations=None, ori
                                     for _, op_id, unit_hours, _ in operations],
                 "WorkbenchPlanSourceRefs": [{"ref": ref, "source_key": str(op_id), "kind": "operation", "active": 1}
                                             for ref, op_id, _, _ in operations],
-                "Schedule": [{"id": index, "version": 1, "op_id": op_id, "start_time": start, "end_time": end,
-                              "machine_id": "M1", "operator_id": "O1"} for index, (op_id, start, end) in enumerate(schedule)]}},
+                "Schedule": [
+                    {
+                        "id": index,
+                        "version": 1,
+                        "op_id": op_id,
+                        "start_time": start,
+                        "end_time": end,
+                        "start_us": datetime_to_us(datetime.fromisoformat(start)),
+                        "end_us": datetime_to_us(datetime.fromisoformat(end)),
+                        "is_point_event": 1 if start == end else 0,
+                        "machine_id": "M1",
+                        "operator_id": "O1",
+                    }
+                    for index, (op_id, start, end) in enumerate(schedule)
+                ]}},
             "execution": {ref: execution for ref, _, _, execution in operations},
             "execution_reported": {ref: reported_archive(execution) for ref, _, _, execution in operations},
             "execution_operations": execution_operations or {
@@ -241,7 +279,7 @@ def _live_issues(rows, others=(), schedule=(), *, execution_operations=None, ori
             },
             "origin": origin or SimpleNamespace(
                 unarranged={},
-                facts=None,
+                source=OfficialTrialSource({}),
                 admission_operations={},
                 admission_refs_by_op_id={},
                 admission={"facts": {"tables": {"BatchOperations": [], "WorkbenchPlanSourceRefs": []}}},
@@ -249,13 +287,12 @@ def _live_issues(rows, others=(), schedule=(), *, execution_operations=None, ori
             "preflight_facts": SimpleNamespace(refs={("machine", "M1"): "MR1", ("operator", "O1"): "OR1"},
                                                operation_refs={op_id: ref for ref, op_id, _, _ in operations})}
     reported = live["execution_reported"]
-    latest_schedule, outside_point_versions = prepare_outside_schedule_state(None, rows, live, reported)
+    latest_schedule = latest_schedule_rows(live["facts"]["tables"]["Schedule"])
     return collect_occupancy_issues(
         rows,
         live,
         trial_intervals=build_trial_intervals(rows, reported=reported),
         latest_schedule=latest_schedule,
-        outside_point_versions=outside_point_versions,
     )
 
 
@@ -443,7 +480,7 @@ def test_retired_external_and_retired_resource_occupancy_contracts():
     }
     origin = SimpleNamespace(
         unarranged={"op-retired": {"operation": {"id": 7, "source": "external"}}},
-        facts=None,
+        source=OfficialTrialSource({}),
         admission_operations={},
         admission_refs_by_op_id={},
         admission={"facts": {"tables": {"BatchOperations": [], "WorkbenchPlanSourceRefs": []}}},
@@ -557,28 +594,134 @@ def test_completed_multi_resource_seed_occupies_each_report_segment(trial_case):
     hours = {row["resource_ref"]: row["arranged_hours"] for row in draft["capacity"]["resources"]}
     assert hours[case.ref("machine", "M1")] == hours[case.ref("operator", "O1")] == 1
     assert hours[m2] == hours[o2] == 2
-    case.conn.execute("UPDATE Schedule SET machine_id='M2',operator_id='O2' WHERE op_id=?", (outside,))
+    update_schedule_rows(case.conn, 1, where="op_id = ?", params=(outside,), machine_id="M2", operator_id="O2", sync_history=False)
     case.conn.commit()
     assert {"machine_overlap", "operator_overlap"} <= codes(service(case.conn).get(draft["draft_ref"]))
 
 
-def test_trial_downtime_validation_reuses_downtime_index_and_rejects_inverted_or_unparsed_unknown_rows(trial_case):
+def test_trial_downtime_validation_reports_active_overlap_and_ignores_cancelled_rows(trial_case):
+    case = trial_case
+    draft = create(case)
+    window = (datetime_to_us(datetime(2026, 9, 9, 9)), datetime_to_us(datetime(2026, 9, 9, 10)))
+    case.conn.execute(
+        "INSERT INTO MachineDowntimes(machine_id,start_time,end_time,start_us,end_us,reason_code,status) "
+        "VALUES ('M1','2026-09-09 09:00:00','2026-09-09 10:00:00',?,?,'maintenance','cancelled')",
+        window,
+    )
+    case.conn.commit()
+    assert "machine_downtime" not in codes(service(case.conn).get(draft["draft_ref"]))
+
+    case.conn.execute("UPDATE MachineDowntimes SET status='active'")
+    case.conn.commit()
+    overlapped = service(case.conn).get(draft["draft_ref"])
+    assert "machine_downtime" in codes(overlapped)
+    assert "calendar_unproven" not in codes(overlapped)
+
+
+@pytest.mark.parametrize("periods_json", ["{", '[{"start":"25:00","end":"26:00","day_offset":0}]'])
+def test_trial_corrupt_calendar_storage_fails_the_read_instead_of_becoming_an_issue(trial_case, periods_json):
+    # 当天工作日历的时段存坏了（读不出来，或内容不合时段规则）是存储损坏（500），不是试调排得对不对，不能混进试调问题列表。
     case = trial_case
     draft = create(case)
     case.conn.execute(
-        "INSERT INTO MachineDowntimes(machine_id,start_time,end_time,status) "
-        "VALUES ('M1','2026-09-09T10:00:00','2026-09-09T09:00:00','active')"
+        "INSERT INTO WorkCalendar(date,day_type,periods_json,efficiency,allow_normal,allow_urgent) "
+        "VALUES ('2026-09-09','workday',?,1.0,'yes','yes')",
+        (periods_json,),
     )
     case.conn.commit()
-    inverted = service(case.conn).get(draft["draft_ref"])
-    assert "calendar_unproven" in codes(inverted)
+    with pytest.raises(WorkbenchCommandRejected) as caught:
+        service(case.conn).get(draft["draft_ref"])
+    assert (caught.value.code, caught.value.status) == ("storage_failure", 500)
 
-    case.conn.execute("DELETE FROM MachineDowntimes")
-    case.conn.execute(
-        "INSERT INTO MachineDowntimes(machine_id,start_time,end_time,status) "
-        "VALUES ('M1','not-a-time','2026-09-09T09:00:00','pending')"
-    )
+
+@pytest.mark.parametrize(("unit_hours", "unavailable", "blocked"), [(0, False, ["task_frozen"]), (0.25, True, [])])
+def test_hold_window_point_arrangement_without_matching_evidence_is_locked_point_evidence_unproven(
+        trial_case, unit_hours, unavailable, blocked):
+    # 不重排时段里的零工时原安排：工时确实为零就原样保留；有实际工时却排成零时长，在正式计划里找不到对应依据，
+    # 整段不保留，报 locked_point_evidence_unproven（领域拒绝），不能正式采用。
+    case = trial_case
+    point = case.operation(seq=2, setup_hours=0, unit_hours=unit_hours)
+    case.config(freeze_window_enabled="yes", freeze_window_days=2)
+    intent = official(case)
+    insert_schedule_rows(case.conn, 1, [{"op_id": point, "machine_id": "M1", "operator_id": "O1",
+                                         "start_time": "2026-09-09T11:00:00", "end_time": "2026-09-09T11:00:00"}])
     case.conn.commit()
-    unknown_bad_time = service(case.conn).get(draft["draft_ref"])
-    assert "downtime_state_unknown" in codes(unknown_bad_time)
-    assert "calendar_unproven" not in codes(unknown_bad_time)
+    data = service(case.conn).get(create(case, intent)["draft_ref"])
+    assert [row["message"] for row in data["validation"]["issues"] if row["code"] == "locked_point_evidence_unproven"] == (
+        ["正式采用要原样保留来源排产不重排时段里的原安排，但其中零工时原安排在正式计划里找不到对应依据，"
+         "不能正式采用。请重新做排产检查，或把不重排时段改短或不设后再试。"] if unavailable else [])
+    assert [[reason["code"] for reason in task["edit_context"]["blocked_reasons"]] for task in data["tasks"]] == [blocked] * 2
+
+
+def _external_trial(case):
+    case.conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('EXT','Heat treatment','external')")
+    case.conn.execute("INSERT INTO Suppliers(supplier_id,name) VALUES ('S1','Supplier')")
+    case.conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('S1','EXT')")
+    insert_row(case.conn, "ExternalGroups", dict(group_id="EG", part_no="P1", start_seq=2, end_seq=2,
+               merge_mode="separate", total_days=None, supplier_id="S1"))
+    insert_row(case.conn, "PartOperations", dict(part_no="P1", seq=2, op_type_id="EXT", op_type_name="Heat treatment",
+               source="external", supplier_id="S1", ext_group_id="EG", ext_days=2, setup_hours=None, unit_hours=None,
+               status="active"))
+    external = case.operation(seq=2, op_type_id="EXT", op_type_name="Heat treatment", source="external",
+                              supplier_id="S1", machine_id=None, operator_id=None, setup_hours=None, unit_hours=None, ext_days=2)
+    publish_official_plan(case.conn, 1, [
+        {"op_id": case.op_id, "machine_id": "M1", "operator_id": "O1",
+         "start_time": "2026-09-09T08:00:00", "end_time": "2026-09-09T11:00:00"},
+        {"op_id": external, "machine_id": None, "operator_id": None,
+         "start_time": "2026-09-09T11:00:00", "end_time": "2026-09-11T11:00:00"}])
+    case.conn.commit()
+    draft = create(case, {"base": {"plan_ref": case.plan_ref(1)}})
+    return draft, next(index for index, row in enumerate(draft["tasks"]) if row["source"] == "external")
+
+
+@pytest.mark.parametrize("merged", [False, True], ids=["own-cycle", "group-cycle"])
+def test_saved_draft_cycle_is_admitted_before_it_is_added_as_calendar_days(trial_case, merged):
+    # 草稿原始行（original_json）是存储副本，表上的 CHECK 管不到：从真实草稿读出原始行改出坏值，
+    # 把外协周期当天数累加之前按同一值域拒收；没设周期同样报缺失。
+    case = trial_case
+    draft, task = _external_trial(case)
+    stored = json.loads(case.conn.execute("SELECT original_json FROM WorkbenchTrialRows WHERE draft_ref=? AND task_ref=?",
+                                          (draft["draft_ref"], draft["tasks"][task]["task_ref"])).fetchone()[0])
+    assert new_slot_effort(stored).external_cycle_days == 2
+
+    def effort(days):
+        original = deepcopy(stored)
+        if merged:
+            original["external_group"].update(merge_mode="merged", total_days=days)
+        else:
+            original["operation"]["ext_days"] = days
+        return new_slot_effort(original)
+
+    assert effort(36500).external_cycle_days == 36500
+    for days in (None, 0, -1, 36500.5, float("inf"), float("nan"), True, "2"):
+        with pytest.raises(WorkbenchCommandRejected) as caught:
+            effort(days)
+        assert (caught.value.code, caught.value.status) == ("external_duration_unknown", 422)
+
+
+def test_adjusting_an_external_return_past_the_last_representable_date_is_calendar_unproven(trial_case):
+    case = trial_case
+    draft, task = _external_trial(case)
+    moved = change(case, draft, start="2026-09-12T11:00:00", machine=None, operator=None, task=task)["data"]
+    assert (moved["tasks"][task]["start"], moved["tasks"][task]["end"]) == ("2026-09-12T11:00:00", "2026-09-14T11:00:00")
+    # 回厂时刻越过 9999-12-31：日历算不出完工，是可提示的调整拒绝（422），不是 500。
+    with pytest.raises(WorkbenchCommandRejected) as caught:
+        change(case, moved, start="9999-12-31T00:00:00", machine=None, operator=None, task=task, key="trial-change-00000002")
+    assert (caught.value.code, caught.value.status) == ("calendar_unproven", 422)
+
+
+def test_moving_a_point_outside_the_shift_is_point_calendar_conflict(trial_case):
+    case = trial_case
+    point = case.operation(seq=2, setup_hours=0, unit_hours=0)
+    intent = official(case)
+    insert_schedule_rows(case.conn, 1, [{"op_id": point, "machine_id": "M1", "operator_id": "O1",
+                                         "start_time": "2026-09-09T11:00:00", "end_time": "2026-09-09T11:00:00"}])
+    case.conn.commit()
+    draft = create(case, intent)
+    task = next(index for index, row in enumerate(draft["tasks"]) if row["start"] == row["end"])
+    moved = change(case, draft, start="2026-09-10T09:00:00", machine="M1", operator="O1", task=task)["data"]
+    assert moved["tasks"][task]["start"] == moved["tasks"][task]["end"] == "2026-09-10T09:00:00"
+    # 班次 08:00-16:00：20:00 的点时间不在允许班次内，拒绝而不推迟完工。
+    with pytest.raises(WorkbenchCommandRejected) as caught:
+        change(case, moved, start="2026-09-10T20:00:00", machine="M1", operator="O1", task=task, key="trial-change-00000002")
+    assert (caught.value.code, caught.value.status) == ("point_calendar_conflict", 422)

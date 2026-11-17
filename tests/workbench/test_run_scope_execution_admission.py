@@ -84,7 +84,7 @@ def intent(base_url, settings):
 
 
 def report_partial(case, base_url):
-    task = next(row for row in success(base_url, "/execution/tasks")["tasks"] if row["batch_id"] == "B1")
+    task = next(row for row in success(base_url, "/execution/tasks", {})["tasks"] if row["batch_id"] == "B1")
     start, end = case.conn.execute("SELECT start_time,end_time FROM Schedule WHERE version=? AND op_id=?",
                                   (case.version, case.op_id)).fetchone()
     start, end = datetime.fromisoformat(start), datetime.fromisoformat(end)
@@ -96,7 +96,7 @@ def report_partial(case, base_url):
                                   effective_processing_hours=(middle - start).total_seconds() / 3600)}
     status, result = request(base_url, "/execution/tasks/" + task["task_ref"] + "/reports", body)
     assert status == 200 and result["result"] == "committed", result
-    refreshed = next(row for row in success(base_url, "/execution/tasks")["tasks"] if row["task_ref"] == task["task_ref"])
+    refreshed = next(row for row in success(base_url, "/execution/tasks", {})["tasks"] if row["task_ref"] == task["task_ref"])
     assert refreshed["execution"]["execution_state"] == "partial"
     return task, middle, end
 
@@ -132,7 +132,7 @@ def test_outside_partial_blocks_preview_and_fresh_and_stale_admission(scope_serv
     assert status == 409 and outcome["committed"] is False, outcome
     assert outcome["error"]["code"] == "snapshot_stale"
     assert all_rows(case.conn) == before and dispatched == []
-    current = next(row for row in success(base_url, "/execution/tasks")["tasks"] if row["task_ref"] == task["task_ref"])
+    current = next(row for row in success(base_url, "/execution/tasks", {})["tasks"] if row["task_ref"] == task["task_ref"])
     status, completed = request(base_url, "/execution/tasks/" + task["task_ref"] + "/reports", {
         "request_key": "scope-complete-report-" + uuid.uuid4().hex,
         "write_token": current["execution"]["write_context"]["write_token"],
@@ -144,4 +144,4 @@ def test_outside_partial_blocks_preview_and_fresh_and_stale_admission(scope_serv
     status, accepted = request(base_url, "/scheduling/runs", {"input_ref": checked["input_ref"],
         "write_token": authorization["write_context"]["write_token"], "request_key": "scope-valid-accept-" + uuid.uuid4().hex})
     assert status == 202 and dispatched == [accepted["run_ref"]], accepted
-    assert WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])["state"] == "complete"
+    assert WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])["state"] == "complete"

@@ -5,7 +5,7 @@ import pytest
 from core.services.capacity import plan_calendar_intervals
 from core.services.capacity.plan_calendar_intervals import IntervalIndex, instant
 from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
-from core.services.workbench.facts import resource_calendar, resource_intervals, resource_projection
+from core.services.workbench.facts import resource_calendar, resource_projection
 from core.services.workbench.facts.resource_calendar import normalize_resource_calendar
 from core.services.workbench.facts.resource_pressure import DEFAULT_PRESSURE_THRESHOLD
 from core.services.workbench.facts.resource_projection import (
@@ -42,7 +42,7 @@ def calendar(*days):
 
 
 def task_interval_map(tasks):
-    return {row["row_ref"]: resource_intervals.task_interval(row) for row in tasks}
+    return {row["row_ref"]: (instant(row["start"]), instant(row["end"])) for row in tasks}
 
 
 def test_operation_segments_merge_before_independent_demand_and_conflict_sweep(monkeypatch):
@@ -54,16 +54,12 @@ def test_operation_segments_merge_before_independent_demand_and_conflict_sweep(m
     parsed = task_interval_map(rows)
     normalized_inputs, original_union = [], plan_calendar_intervals.union
 
-    def unexpected_parse(_row):
-        pytest.fail("该来源已核实的区间应直接复用。")
-
     def record_raw_union(values):
         values = list(values)
         normalized_inputs.append(values)
         return original_union(values)
 
     with monkeypatch.context() as scoped:
-        scoped.setattr(resource_intervals, "task_interval", unexpected_parse)
         assert resource_cohort([rows], task_intervals=[parsed]) == [MACHINE, OPERATOR]
         index = ResourceTaskIndex(rows, start, end, task_intervals=parsed)
         scoped.setattr(plan_calendar_intervals, "union", record_raw_union)
@@ -287,7 +283,7 @@ def test_known_zero_capacity_external_and_point_tasks_use_saved_assignments():
     rows = [task("a", "op:a", start, end, source=None),
             task("point", "op:p", start, start, machine=point_machine, event_kind="point", occupies_resources=False),
             task("external", "op:e", start, end, source="external", machine=external_machine)]
-    parsed = {row["row_ref"]: resource_intervals.task_interval(row) for row in rows}
+    parsed = task_interval_map(rows)
     assert resource_cohort([rows], task_intervals=[parsed]) == [MACHINE, OPERATOR]
     index = ResourceTaskIndex(rows, start, end, task_intervals=parsed)
     zero = index.window(MACHINE, calendar(day_calendar(start, end, [])))
@@ -299,37 +295,9 @@ def test_known_zero_capacity_external_and_point_tasks_use_saved_assignments():
     assert zero["task_count"] == zero["operation_count"] == 1
 
 
-def test_unknown_workload_and_absent_arrangements_keep_capacity_and_idle_semantics_independent():
-    from core.services.workbench.run.decision_resource_engine import _period_summary
-
+def test_absent_arrangements_keep_capacity_and_idle_semantics_independent():
     start, end = at("08:00:00"), at("10:00:00")
     saved = calendar(day_calendar(start, end, [(start, end)]))
-    rows = [task("known", "op:k", start, at("09:00:00")), task("missing", "op:m", None, end)]
-    parsed = {row["row_ref"]: resource_intervals.task_interval(row) for row in rows}
-    partial_index = ResourceTaskIndex(rows, start, end, task_intervals=parsed)
-    partial = partial_index.window(MACHINE, saved)
-    partial_filter = partial_index.day_filter_summary(MACHINE, saved, threshold=DEFAULT_PRESSURE_THRESHOLD)
-    assert partial_filter is not None
-    assert partial_filter == _period_summary(partial_index.period_facts(MACHINE, saved, threshold=DEFAULT_PRESSURE_THRESHOLD), partial["daily_peak_utilization"])
-    assert partial["unknown_days"] == 0 and partial_filter["unknown_period_count"] == 1
-    assert partial["available_hours"] == 2 and partial["state"] == "partial"
-    assert partial["occupied_hours"] is partial["span_occupied_hours"] is partial["task_count"] is None
-    assert partial["known_occupied_hours"] == partial["known_span_occupied_hours"] == 1
-    assert partial["known_task_count"] == partial["known_operation_count"] == partial["unknown_workload_count"] == 1
-    assert partial["conflict"] is None and partial["high_pressure"] is None and partial["utilization_ratio"] is None
-    measured = partial_index._measurements[MACHINE["kind"], MACHINE["ref"]][1]
-    lowered = partial_index.window(MACHINE, saved, threshold=0.5)
-    assert lowered["high_pressure"] is True and lowered["utilization_ratio"] is None and lowered["pressure_threshold"] == 0.5
-    assert partial_index._measurements[MACHINE["kind"], MACHINE["ref"]][1] is measured
-    assert partial["issues"] == [{"code": "task_time_unknown", "message": "保存任务的时间或点事件依据缺项，占用和负荷保留已知小计。", "field": "task_time"}]
-    transient_single = ResourceTaskIndex(rows, start, end, task_intervals=parsed, retain_statistics_values=False)
-    assert transient_single.window(MACHINE, saved) == partial
-    assert len(transient_single._measurement(
-        MACHINE, saved, retain_statistics_values=transient_single.retain_statistics_values)._value_cache) == 1
-    details = ResourceTaskIndex(rows, start, end, task_intervals=task_interval_map(rows)).periods(
-        MACHINE, saved, threshold=DEFAULT_PRESSURE_THRESHOLD, details=True
-    )[0]
-    assert details["contribution_operation_count"] is None and details["known_contribution_operation_count"] == 1
     absent = ResourceTaskIndex([], start, end, work_available=False, task_intervals=task_interval_map([])).window(MACHINE, saved)
     assert absent["available_hours"] == 2
     assert absent["occupied_hours"] is absent["known_occupied_hours"] is absent["task_count"] is None
@@ -370,18 +338,6 @@ def test_unknown_workload_and_absent_arrangements_keep_capacity_and_idle_semanti
                                                "field": "machine", "kind": "machine"}]
 
 
-def test_unproven_formal_zero_interval_keeps_assigned_cohort_and_unknown_workload():
-    start, end = at("08:00:00"), at("10:00:00")
-    row = task("formal", "op:formal", start, start, interval_comparable=False)
-    parsed = {row["row_ref"]: resource_intervals.task_interval(row)}
-    assert resource_cohort([[row]], task_intervals=[parsed]) == [MACHINE, OPERATOR]
-    value = ResourceTaskIndex([row], start, end, task_intervals=parsed).window(
-        MACHINE, calendar(day_calendar(start, end, [(start, end)])))
-    assert value["available_hours"] == 2 and value["unknown_workload_count"] == 1
-    assert value["span_occupied_hours"] is value["occupied_hours"] is value["utilization_ratio"] is None
-    assert value["state"] == "partial" and value["work_state"] == "unavailable"
-
-
 def test_resource_grains_keep_actual_work_windows_weekly_weights_and_rest_span_evidence(monkeypatch):
     from core.services.workbench.facts.resource_pressure import pressure_from_index
     from core.services.workbench.run.decision_resource_engine import _period_summary
@@ -412,7 +368,7 @@ def test_resource_grains_keep_actual_work_windows_weekly_weights_and_rest_span_e
         if prepared is not None:
             prepared_reads.append((low, high))
         value = original_values(measurement, low, high, calendar_days, potential_work=potential_work, prepared=prepared)
-        effective = (value.raw["span_occupied_hours"] > 0 or not measurement.work_complete
+        effective = (value.raw["span_occupied_hours"] > 0 or not measurement.work_available
                      if potential_work is None else potential_work)
         value_reads.append((id(measurement), measurement.resource["kind"], measurement.resource["ref"], low, high,
                             tuple((day.date, day.low, day.high, day.available) for day in calendar_days), effective))

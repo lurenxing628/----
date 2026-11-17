@@ -21,20 +21,11 @@ def count_process_export_rows(kind, parts, facts, file_format):
     return count
 
 
-def _requires_workflow_table(query):
-    return (
-        query.stage is not None
-        or "stage" in query.column_filters
-        or any(item["field"] == "stage" for item in query.ordering())
-    )
-
-
 def select_export_parts(scope, refs, request):
     """The export's current parts: explicit refs in their order, else request's matching rows; both were admitted at preflight."""
-    parts = {row["ref"]: row for row in scope.raw_facts()["parts"]}
+    parts = {row["ref"]: row for row in scope.raw_facts().parts}
     if refs is None:
-        table = scope.table() if _requires_workflow_table(request) else scope.raw_table()
-        refs = [row["ref"] for row in table.matching_rows(request)]
+        refs = [row["ref"] for row in scope.table().matching_rows(request)]
     elif scope.part_ref is None:
         for ref in refs:
             if ref not in parts:
@@ -54,7 +45,7 @@ def _seq_key(row):
 
 def process_export_rows(kind, parts, facts):
     grouped = {}
-    for row in facts["operations"]:
+    for row in facts.operations:
         if row["status"] == "active":
             grouped.setdefault(row["part_no"], []).append(row)
     if kind == "route":
@@ -68,14 +59,14 @@ def process_export_rows(kind, parts, facts):
             yield {"business_code": part["part_no"], "label": part["part_name"],
                    "route_raw": raw, "remark": part["remark"]}
         return
-    groups = {row["group_id"]: row for row in facts["groups"]}
+    groups = {row["group_id"]: row for row in facts.groups}
     for part in parts:
         written_groups = set()
         for row in sorted(grouped.get(part["part_no"], []), key=_seq_key):
             exported = _hours_export_row(part["part_no"], row, groups)
             if row["ext_group_id"] in written_groups:
-                exported.pop("group_total_days", None)
-            elif exported.get("group_total_days") is not None:
+                del exported["group_total_days"]
+            elif exported["group_total_days"] is not None:
                 written_groups.add(row["ext_group_id"])
             # Missing values are incomplete work, not requests to clear them on re-import.
             yield {key: value for key, value in exported.items() if value is not None}

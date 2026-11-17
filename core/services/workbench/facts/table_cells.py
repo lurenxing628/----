@@ -1,16 +1,14 @@
 """One canonical business-cell representation for facets, equality and ordering."""
 
-import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
+from core.models.enums import RESOURCE_STATUS_RANKS
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_resource_status import table_status_label
 from core.shared.strict_json import canonical_json
 from core.shared.strict_parse import is_exact_finite_number
-
-
-def text_value(value):
-    return " ".join(unicodedata.normalize("NFC", str(value)).split())
+from core.shared.text_keys import text_key
 
 
 @dataclass(frozen=True)
@@ -23,7 +21,7 @@ class TableCell:
 def text_cell(value, *, missing="未知"):
     if value is None:
         return TableCell(canonical_json({"type": "text", "value": None}), missing, (0, ""))
-    value = text_value(value)
+    value = text_key(value)
     return TableCell(canonical_json({"type": "text", "value": value}), value or "（空白）", (1, value))
 
 
@@ -40,17 +38,16 @@ def number_cell(value, unit="", *, missing="未知"):
     if not is_exact_finite_number(value):
         raise WorkbenchCommandRejected("storage_failure", "这个格子里存的数字不合法，没有显示成 0。请到资料总览核对后重试。", 500)
     number = number_text(value)
-    unit = text_value(unit) if unit else ""
+    unit = text_key(unit) if unit else ""
     return TableCell(canonical_json({"type": "number", "value": number, "unit": unit}),
                      number + (" " + unit if unit else ""), (1, value))
 
 
 def relation_cell(labels):
-    values = sorted(text_value(label) for label in labels)
+    values = sorted(text_key(label) for label in labels)
     return TableCell(canonical_json({"type": "relations", "value": values}), "、".join(values) or "未选", (1, tuple(values)))
 
 
 def status_cell(kind, status):
-    labels = {"active": "启用", "inactive": "停用", "maintain": "停机", "leave": "请假", "pending_review": "待复核"}
-    labels["active"] = {"machine": "可用", "operator": "在岗"}.get(kind, "启用")
-    return text_cell(labels[status])
+    """Same text key and label as the status word; ordered by the shared business rank, like the SQL pages."""
+    return replace(text_cell(table_status_label(kind, status)), order=(1, RESOURCE_STATUS_RANKS[status]))

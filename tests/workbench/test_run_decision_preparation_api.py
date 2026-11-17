@@ -11,17 +11,17 @@ from openpyxl import load_workbook
 
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.operation_effort_evidence import archived_standard_effort
-from core.services.workbench.facts.resource_intervals import task_interval
 from core.services.workbench.run.decision_source import DecisionSource
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_adoption_support import INTENT, service
 from tests.workbench.run_candidate_support import BASE, api, compute
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
+from tests.workbench.run_decision_support import add_pair, operation_ref
+from tests.workbench.run_jobs_support import RUN_NOW
 from tests.workbench.run_jobs_support import service as run_service
 from tests.workbench.test_material_stage_release import add_requirement
 from tests.workbench.test_run_decision_api import decision
-from tests.workbench.test_run_decision_impact_api import detail, operation_ref
-from tests.workbench.test_run_decision_resource_api import add_pair
+from tests.workbench.test_run_decision_impact_api import detail
 
 DAY = "2026-09-09"
 WINDOW = {"range_start": DAY + "T08:00:00", "range_end": DAY + "T16:00:00"}
@@ -30,10 +30,10 @@ WINDOW = {"range_start": DAY + "T08:00:00", "range_end": DAY + "T16:00:00"}
 def run(case, key, settings=None):
     input_ref = case.preflight(settings)
     service = run_service(case.conn)
-    preview = service.preview(input_ref)["write_context"]
+    preview = service.preview(input_ref, now=RUN_NOW)["write_context"]
     assert preview["capabilities"]["scheduling.run"] is True, preview["blocked_reasons"]
     accepted = service.accept(input_ref, preview["write_token"], key)
-    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
     return result["run_ref"], [row["candidate_ref"] for row in result["candidates"]]
 
 
@@ -69,7 +69,7 @@ def test_real_worker_saves_one_requirement_used_by_all_candidates_and_workspaces
     query = dict(WINDOW, selected_candidate_ref=refs[0], reference_candidate_ref=refs[0])
     with CandidateStore(case.conn).snapshot():
         source = DecisionSource(CandidateStore(case.conn), run_ref, **query)
-        for method in (source.analysis_groups, source.preparation.rows, source.preparation.summary,
+        for method in (source.operation_arrangements, source.preparation.rows, source.preparation.summary,
                        source.changeovers.projection, source.changeovers.metrics):
             assert method("reference") is method(refs[0])
     overview = decision(client, run_ref, **query)["data"]
@@ -81,6 +81,8 @@ def test_real_worker_saves_one_requirement_used_by_all_candidates_and_workspaces
     assert definitions["changeover_count"]["label"] == "算法工种切换"
     for candidate in overview["candidates"]:
         assert candidate["metrics"]["scheduled_setup_hours"]["value"] == 2
+        assert candidate["metrics"]["scheduled_setup_hours"]["member_unit"] == "operation"
+        assert "allocation_groups" not in candidate["coverage"]["preparation"]
         delta = candidate["deltas"]["scheduled_setup_hours"]
         assert delta["value"] == 0 and delta["direction"] == "equal"
     preparation = detail(client, run_ref, "preparation", **query)
@@ -120,6 +122,7 @@ def test_unplanned_and_material_deferred_work_remain_neutral(candidate_case):
     assert row["after"]["allocation_state"] == "unplanned"
     assert row["after"]["setup_standard_hours"] == 3
     summary = document["data"]["summary"]
+    assert "coverage" not in summary
     assert summary["after"]["pending_setup_hours"]["value"] == 5
     assert summary["after"]["scheduled_setup_hours"]["value"] == 2
     assert summary["after"]["unplanned_setup_hours"]["value"] == 3
@@ -140,6 +143,27 @@ def test_unplanned_and_material_deferred_work_remain_neutral(candidate_case):
     assert stage_delta["value"] == -1 and stage_delta["state"] == "different_coverage" and stage_delta["direction"] == "neutral"
 
 
+def test_partial_result_saves_and_reads_back_a_derived_requirement_beyond_one_entry_bound(candidate_case):
+    # 单件工时与数量各自合法，加工需求 = 2 × (2^53-1) 是派生值，只要求有限、非负；没有可用设备的工序不排，结果是 partial。
+    case = candidate_case
+    largest = (1 << 53) - 1
+    case.conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T2','Milling')")
+    case.batch("B2", quantity=2)
+    large_id = case.operation("B2", op_type_id="T2", op_type_name="Milling", machine_id=None, operator_id=None,
+                              setup_hours=0, unit_hours=largest)
+    case.conn.commit()
+    run_ref, refs = compute(case, case.settings("B1", "B2"))
+    saved = {item["op_id"]: item for item in receipt(case, run_ref)["operation_effort"]["items"]}[large_id]
+    assert saved["target_quantity"] == 2
+    assert saved["processing_standard_hours"] == saved["required_standard_hours"] == float(2 * largest)
+    client, _ = api(case)
+    rows = by_operation(detail(client, run_ref, "preparation", **dict(WINDOW, selected_candidate_ref=refs[0])))
+    assert rows[operation_ref(case, case.op_id)]["after"]["allocation_state"] == "new_schedule"
+    row = rows[operation_ref(case, large_id)]["after"]
+    assert row["allocation_state"] == "unplanned"
+    assert (row["processing_standard_hours"], row["required_standard_hours"]) == (float(2 * largest), float(2 * largest))
+
+
 def test_preparation_pages_filters_snapshot_and_all_filtered_exports(candidate_case):
     case = candidate_case
     add_pair(case)
@@ -150,30 +174,18 @@ def test_preparation_pages_filters_snapshot_and_all_filtered_exports(candidate_c
         ids.append(case.operation(seq=sequence, machine_id=machine, operator_id=operator, setup_hours=0.2, unit_hours=0.05))
     case.conn.commit()
     run_ref, refs = compute(case)
-    assert receipt(case, run_ref)["selection"]["generation_policy_version"] == "unified_search_v1"
     client, _ = api(case)
     query = dict(WINDOW, selected_candidate_ref=refs[0], reference_candidate_ref=refs[0], machine_ref=case.ref("machine", "M1"),
                  sort="after_setup_hours", order="asc")
-    from collections import Counter
-
-    from core.services.workbench.run.decision_preparation import DecisionPreparation
-
-    side_calls, task_calls = Counter(), []
-    original_side, original_tasks = DecisionPreparation._side, DecisionSource.analysis_tasks
-
-    def count_side(self, key, row):
-        side_calls["calls"] += 1
-        return original_side(self, key, row)
+    task_calls, original_tasks = [], DecisionSource.analysis_tasks
 
     def count_tasks(self, key):
         task_calls.append(self.computation_key(key))
         return original_tasks(self, key)
 
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(DecisionPreparation, "_side", count_side)
         patch.setattr(DecisionSource, "analysis_tasks", count_tasks)
         initial = detail(client, run_ref, "preparation", **query)
-    assert side_calls["calls"] == 40
     assert set(task_calls) <= {refs[0], "reference"}
     token = initial["meta"]["snapshot_ref"]
     page = initial["data"]["page"]
@@ -264,7 +276,8 @@ def test_changeover_api_keeps_type_identity_points_predecessors_and_partial_over
         for row in copied:
             start, end, label = times[row["operation_ref"]]
             row.update(start=DAY + "T" + start, end=DAY + "T" + end, process_type_label=label)
-        source._task_intervals[candidate_ref] = {row["row_ref"]: task_interval(row) for row in copied}
+        source._task_intervals[candidate_ref] = {
+            row["row_ref"]: (datetime.fromisoformat(row["start"]), datetime.fromisoformat(row["end"])) for row in copied}
         return copied
 
     monkeypatch.setattr(DecisionSource, "analysis_tasks", copied_arrangements)

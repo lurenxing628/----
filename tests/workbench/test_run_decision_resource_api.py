@@ -3,26 +3,27 @@
 import csv
 import io
 from copy import deepcopy
+from datetime import datetime
 from typing import Any
 
 import pytest
 from openpyxl import load_workbook
 
-from core.infrastructure.read_evidence import read_evidence_scope
 from core.services.scheduler.calendar.admin import CalendarAdmin
 from core.services.workbench.facts import resource_calendar, resource_projection
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline
 from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.decision_metrics import COVERAGE_MEMBER_FIELDS
 from core.services.workbench.facts.resource_projection import ResourceTaskIndex
 from core.services.workbench.run.decision_export import read_decision_export, write_run_decision_export
 from core.services.workbench.run.decision_resource_export import coverage_operation_rows
 from core.services.workbench.run.decision_source import DecisionSource
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_adoption_support import INTENT, service
-from tests.workbench.run_candidate_support import BASE, api, compute, compute_two_objectives, install_representatives
+from tests.workbench.run_candidate_support import BASE, api, compute, compute_two_objectives
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
+from tests.workbench.run_decision_support import add_pair, operation_ref, representative_archive
 from tests.workbench.test_run_decision_api import decision
-from tests.workbench.test_run_decision_impact_api import operation_ref
 
 DAY = "2026-09-09"
 WINDOW = {"range_start": DAY + "T08:00:00", "range_end": DAY + "T16:00:00"}
@@ -35,63 +36,9 @@ def resource_document(client, run_ref, section: Any = "resources", **query: Any)
     return response.get_json()
 
 
-def add_pair(case, machine="M2", operator="O2", label=r"备用'甲\N"):
-    case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES (?,?,'T1')", (machine, label))
-    case.conn.execute("INSERT INTO Operators(operator_id,name) VALUES (?,?)", (operator, label))
-    case.conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES (?,?)", (operator, machine))
-
-
 def summary_part(data):
     """The combined workspace data is the decision summary plus its resource result and query."""
     return {key: value for key, value in data.items() if key not in ("resource_result", "resource_query")}
-
-
-def representative_archive(case, monkeypatch, settings=None, *, count=1, edits=None):
-    """Save a real current run with ``count`` representatives, then give chosen ones explicit arrangements."""
-    from dataclasses import replace
-    from datetime import datetime
-
-    from core.models.workbench_run_job import durable_value
-    from core.services.workbench.run import compute as compute_module
-
-    real_outcomes = compute_module._candidate_outcomes
-
-    def outcomes_with_edits(conn, schedule_input, comparison, *, calendar, validation_context):
-        outcomes = real_outcomes(
-            conn,
-            schedule_input,
-            comparison,
-            calendar=calendar,
-            validation_context=validation_context,
-        )
-        for index, edit in (edits or {}).items():
-            key = comparison.candidates[index].candidate_key
-            outcome = outcomes[key]
-            payload = outcome.validated_payload
-            rows = []
-            for row in payload.schedule_rows:
-                item = durable_value(row)
-                edit(item)
-                rows.append(replace(
-                    row,
-                    machine_id=item["machine_id"],
-                    operator_id=item["operator_id"],
-                    start_time=datetime.fromisoformat(item["start_time"]),
-                    end_time=datetime.fromisoformat(item["end_time"]),
-                ))
-            updated_payload = replace(payload, schedule_rows=list(rows))
-            outcomes[key] = replace(
-                outcome,
-                validated_payload=updated_payload,
-                resolved_intervals={row.op_id: (row.start_time, row.end_time) for row in rows},
-            )
-        return outcomes
-
-    with monkeypatch.context() as archived:
-        install_representatives(archived, count)
-        if edits:
-            archived.setattr(compute_module, "_candidate_outcomes", outcomes_with_edits)
-        return compute(case, settings)
 
 
 def reassigned_run(case, monkeypatch):
@@ -160,8 +107,18 @@ def test_candidate_switch_keeps_unused_resources_and_archived_capacity(candidate
     assert chosen["metrics"]["machine_util_avg"]["value"] == 1
     window_reads.clear()
     calendar_reads.clear()
+    with monkeypatch.context() as scoped:
+        scoped.setattr(ResourceTaskIndex, "window", record_window)
+        scoped.setattr(resource_calendar.ResourceCalendar, "__init__", record_calendar)
+        default_overview = decision(client, run_ref, selected_candidate_ref=refs[0], reference_candidate_ref=refs[0])["data"]
+        default_machines = resource_document(
+            client, run_ref, selected_candidate_ref=refs[0], reference_candidate_ref=refs[0], resource_kind="machine",
+        )["data"]
+    assert window_reads == [] and calendar_reads == []
+    assert default_overview["candidates"][0]["metrics"]["machine_occupied_hours"]["value"] == pytest.approx(0.75)
+    assert default_machines["summary"]["after"]["occupied_hours"] == pytest.approx(0.75)
     store = CandidateStore(case.conn)
-    with store.snapshot(), read_evidence_scope(case.conn):
+    with store.snapshot():
         source = DecisionSource(store, run_ref, selected_candidate_ref=refs[-1], reference_candidate_ref=refs[0], **WINDOW)
         engine = source.resources
         with monkeypatch.context() as scoped:
@@ -174,7 +131,11 @@ def test_candidate_switch_keeps_unused_resources_and_archived_capacity(candidate
             reference_metrics = engine.metrics("reference")
             assert engine.metrics(refs[0]) == reference_metrics
         selected = next(row for row in overview["candidates"] if row["candidate_ref"] == refs[-1])
-        assert pair_metrics == {key: selected["metrics"][key] for key in pair_metrics}
+        public_pair = {
+            key: {f: v for f, v in item.items() if f not in COVERAGE_MEMBER_FIELDS}
+            for key, item in pair_metrics.items()
+        }
+        assert public_pair == {key: selected["metrics"][key] for key in pair_metrics}
         assert set(engine.indexes) == {refs[0], refs[-1]}
         assert source.scope["resource_refs"] == overview["scope"]["resource_refs"]
     assert set(calendar_reads) == cohort_refs and len(calendar_reads) == len(cohort_refs)
@@ -199,6 +160,26 @@ def test_candidate_switch_keeps_unused_resources_and_archived_capacity(candidate
     previous = documents["machine"]
     reread = resource_document(client, run_ref, **dict(query, resource_kind="machine", snapshot_ref=previous["meta"]["snapshot_ref"]))
     assert reread["data"] == previous["data"]
+
+
+def test_increase_ranking_needs_a_reference_arrangement(candidate_case, monkeypatch):
+    case = candidate_case
+    run_ref, refs = reassigned_run(case, monkeypatch=monkeypatch)
+    client, _ = api(case)
+    query = {**WINDOW, "selected_candidate_ref": refs[-1], "resource_kind": "machine"}
+    order = [case.ref("machine", "M2"), case.ref("machine", "M1")]
+    absent = resource_document(client, run_ref, **query, comparison_mode="admission_official")["data"]
+    assert absent["baseline"]["state"] == "absent"
+    rankings = absent["rankings"]
+    assert rankings["top_increase"] == []
+    assert rankings["limit"] == 10 and rankings["total"] == len(absent["items"]) == 2
+    assert [row["resource_ref"] for row in rankings["top_pressure"]] == order
+    assert all("drill" in row for row in absent["items"] + rankings["top_pressure"])
+    compared = resource_document(client, run_ref, **query, reference_candidate_ref=refs[0])["data"]
+    assert compared["baseline"]["state"] == "available"
+    increase = compared["rankings"]["top_increase"]
+    assert [row["resource_ref"] for row in increase] == order
+    assert [row["deltas"]["utilization_ratio"] for row in increase] == pytest.approx([0.75 / 8, -0.75 / 8])
 
 
 def test_partial_night_window_splits_days_and_preserves_overlap_identity(candidate_case, monkeypatch):
@@ -416,7 +397,7 @@ def test_unknown_operator_capacity_and_known_zero_capacity_remain_distinct(candi
                                     ("operator_high_pressure_count", "high_pressure", {case.ref("operator", "O2"), case.ref("operator", "O3")}),
                                     ("operator_zero_capacity_task_count", "zero_capacity_task", {case.ref("operator", "O2"), case.ref("operator", "O3")})):
         value = chosen["metrics"][metric]
-        assert set(value["covered_resource_refs"]) == expected
+        assert "covered_resource_refs" not in value and value["member_unit"] == "operator"
         assert value["known_count"] == len(expected) and value["unknown_count"] == 3 - len(expected)
         assert expected == {row["resource_ref"] for row in operators["data"]["items"] if row["after"][field] is not None}
     machines = resource_document(client, run_ref, **dict(query, resource_kind="machine"))
@@ -485,7 +466,7 @@ def test_full_candidate_view_exposes_uncovered_official_pressure(candidate_case)
     adopted = adopter.adopt(old_refs[0], preview["write_context"]["write_token"], "resource-formal-isolated-adopt", INTENT)
     assert adopted["ok"] is True
     accepted = case.accept(key="resource-b1-only-run", settings=case.settings("B1"))
-    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
     run_ref, selected = result["run_ref"], result["candidates"][0]["candidate_ref"]
     client, _ = api(case)
     query = {**WINDOW, "comparison_mode": "admission_official", "selected_candidate_ref": selected}
@@ -499,9 +480,10 @@ def test_full_candidate_view_exposes_uncovered_official_pressure(candidate_case)
     assert coverage == contribution["data"]["coverage"]["after"]
     assert coverage["formal_state"] == "available" and coverage["formal_operation_count"] == 2
     assert coverage["covered_formal_operation_count"] == 1 and coverage["formal_coverage_complete"] is False
-    assert coverage["missing_formal_operation_refs"] == [operation_ref(case, second_id)]
+    assert coverage["missing_formal_operation_count"] == 1
     assert {row["operation_ref"] for row in coverage["missing_formal_arrangements"]} == {operation_ref(case, second_id)}
-    assert coverage["unplanned_operation_refs"] == coverage["deferred_operation_refs"] == []
+    assert coverage["unplanned_operation_count"] == coverage["deferred_operation_count"] == 0
+    assert not {"missing_formal_operation_refs", "unplanned_operation_refs", "deferred_operation_refs"}.intersection(coverage)
     assert other["drill"]["reference"]["reference_view"] is True
     assert other["drill"]["reference"]["plan_ref"] == adopted["data"]["official_plan"]["plan_ref"]
 
@@ -522,16 +504,15 @@ def test_partial_worker_resource_load_keeps_ordinary_unplanned_demand_visible(ca
     assert machine["utilization_ratio"] == 0.625
     coverage = document["data"]["coverage"]["after"]
     assert coverage["formal_state"] == "absent"
-    assert coverage["unplanned_operation_refs"] == [operation_ref(case, second_id)]
-    assert coverage["deferred_operation_refs"] == []
+    assert coverage["unplanned_operation_count"] == 1
+    assert coverage["deferred_operation_count"] == 0
     full = resource_document(client, run_ref, **dict(query, resource_view="full_candidate"))
     assert full["data"]["coverage"]["after"] == coverage
     formal_query = {key: value for key, value in query.items() if key != "reference_candidate_ref"}
     formal_query["comparison_mode"] = "admission_official"
     formal = resource_document(client, run_ref, **formal_query)
     assert formal["data"]["baseline"]["state"] == "absent"
-    assert set(formal["data"]["coverage"]["before"]["unplanned_operation_refs"]) == {
-        operation_ref(case, case.op_id), operation_ref(case, second_id)}
+    assert formal["data"]["coverage"]["before"]["unplanned_operation_count"] == 2
     export_path = BASE + "/runs/" + run_ref + "/decision/export"
     response = client.get(export_path, query_string=dict(formal_query, snapshot_ref=formal["meta"]["snapshot_ref"],
                                                         section="resources", format="xlsx"))
@@ -625,7 +606,7 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
 
     def record_values(value, low, high, calendar_days, *, potential_work=None, prepared=None):
         result = original_values(value, low, high, calendar_days, potential_work=potential_work, prepared=prepared)
-        effective_work = (result.raw["span_occupied_hours"] > 0 or not value.work_complete
+        effective_work = (result.raw["span_occupied_hours"] > 0 or not value.work_available
                           if potential_work is None else potential_work)
         calculation_keys.append((value.resource["ref"], low, high, value._day_key(calendar_days), effective_work))
         return result
@@ -759,12 +740,17 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
     coverage_refs = {field: [f"{number:048x}" for number in range(index * 800 + 1, (index + 1) * 800 + 1)]
                      for index, (field, _category) in enumerate(categories)}
     assert all(len("、".join(values)) > 32767 for values in coverage_refs.values())
-    coverage["after"].update(coverage_refs, formal_operation_count=800, covered_formal_operation_count=0, formal_coverage_complete=False)
+    coverage["after"].update(
+        formal_operation_count=800, covered_formal_operation_count=0, formal_coverage_complete=False,
+        missing_formal_operation_count=800, unplanned_operation_count=800, deferred_operation_count=800,
+    )
     source_query = {key: value for key, value in query.items() if key not in ("resource_kind", "sort", "order")}
     store = CandidateStore(case.conn)
-    with store.snapshot(), read_evidence_scope(case.conn):
+    with store.snapshot():
         source = DecisionSource(store, run_ref, **source_query)
-        boundary["export_coverage_operations"] = list(coverage_operation_rows(source, coverage))
+        boundary["export_coverage_operations"] = list(
+            coverage_operation_rows(source, {"before": source.resources.coverage_operation_refs("reference"), "after": coverage_refs})
+        )
         engine = source.resources
         resource = engine.resource(case.ref("machine", "M1"), "machine")
         calendar = engine.resource_calendar(resource)
@@ -975,7 +961,7 @@ def test_resource_workspace_shares_source_restores_view_and_keeps_resource_failu
     assert paging["data"]["resource_result"]["data"]["page"]["number"] == 2
     assert paging["meta"]["as_of"] == paging["data"]["resource_result"]["meta"]["as_of"]
     store = CandidateStore(case.conn)
-    with store.snapshot(), read_evidence_scope(case.conn):
+    with store.snapshot():
         source = original_source(store, run_ref, **query)
         state, scope = source.state(), {"kind": "run-decision", **source.scope}
     old_summary = bind_read_snapshot(scope, state, as_of=DAY + "T08:01:00")
@@ -1092,3 +1078,106 @@ def test_attention_line_reuses_one_request_resource_index_and_measurements(candi
     assert default_export_built["index"] > 0 and lowered_export_built == default_export_built
     assert lowered_export[0]["export_resources"][0]["filters"]["pressure_threshold"] == 0.8
     assert lowered_export[0]["candidates"] == default_export[0]["candidates"]
+
+
+def test_side_resources_table_isolates_heavy_details_and_keeps_candidate_first_labels(candidate_case):
+    import json
+
+    case = candidate_case
+    case.conn.execute("UPDATE Machines SET name='正式旧车床' WHERE machine_id='M1'")
+    case.conn.execute("UPDATE Operators SET name='正式旧操作工' WHERE operator_id='O1'")
+    case.conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('M2','基线旧M2')")
+    case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M2','T1')")
+    case.conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O2','基线旧O2')")
+    case.conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('O2','M2')")
+    case.batch("B2")
+    case.operation("B2", machine_id="M2", operator_id="O2")
+    case.conn.execute("UPDATE BatchOperations SET machine_id='M1', operator_id='O1' WHERE id=?", (case.op_id,))
+    case.conn.commit()
+    _, old_refs = compute(case, case.settings("B1", "B2"))
+    adopter = service(case.conn)
+    preview = adopter.preview(old_refs[0])
+    assert preview["validation"]["can_adopt"] is True, preview
+    adopted = adopter.adopt(old_refs[0], preview["write_context"]["write_token"], "side-res-cand-priority-adopt", INTENT)
+    assert adopted["ok"] is True
+
+    case.conn.execute("UPDATE Machines SET name='未用改名车床' WHERE machine_id='M1'")
+    case.conn.execute("UPDATE Operators SET name='未用改名操作工' WHERE operator_id='O1'")
+    case.conn.execute("UPDATE Machines SET name='候选新M2' WHERE machine_id='M2'")
+    case.conn.execute("UPDATE Operators SET name='候选新O2' WHERE operator_id='O2'")
+    case.conn.execute("UPDATE BatchOperations SET machine_id='M2', operator_id='O2' WHERE id=?", (case.op_id,))
+    case.conn.commit()
+    accepted = case.accept(key="side-res-second-run", settings=case.settings("B1", "B2"))
+    result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
+    run_ref, selected_ref = result["run_ref"], result["candidates"][0]["candidate_ref"]
+
+    summary_raw, = case.conn.execute(
+        "SELECT summary_json FROM WorkbenchRunCandidateReadModels WHERE candidate_ref=?",
+        (selected_ref,),
+    ).fetchone()
+    official_raw, = case.conn.execute(
+        "SELECT official_json FROM WorkbenchRunDecisionReadModels WHERE run_ref=?",
+        (run_ref,),
+    ).fetchone()
+    summary_doc = json.loads(summary_raw)
+    official_doc = json.loads(official_raw)
+    for doc in (summary_doc, official_doc):
+        assert "default_resource_cohorts" in doc
+        assert not {"default_resources", "window_rows", "day_periods", "day_filter_summaries"}.intersection(doc)
+    stored_sides = {
+        (row[0], row[1])
+        for row in case.conn.execute(
+            "SELECT side_key, resource_view FROM WorkbenchRunSideResources WHERE run_ref=?",
+            (run_ref,),
+        )
+    }
+    assert {("official", "selected_batches"), ("official", "full_candidate"),
+            (selected_ref, "selected_batches"), (selected_ref, "full_candidate")} <= stored_sides
+
+    client, statements = api(case)
+    overview_off = decision(client, run_ref, comparison_mode="admission_official", selected_candidate_ref=selected_ref)["data"]
+    statements.clear()
+    for section in ("batches", "operations", "preparation", "changeovers"):
+        resp = client.get(
+            BASE + "/runs/" + run_ref + "/decision/" + section,
+            query_string={"comparison_mode": "admission_official", "selected_candidate_ref": selected_ref},
+        )
+        assert resp.status_code == 200, resp.get_json()
+    assert not any("WorkbenchRunSideResources" in sql for sql in statements)
+
+    m1_ref, o1_ref = case.ref("machine", "M1"), case.ref("operator", "O1")
+    m2_ref, o2_ref = case.ref("machine", "M2"), case.ref("operator", "O2")
+    off_cohort = {r["ref"]: r["label"] for r in overview_off["resource_cohort"]["resources"]}
+    assert off_cohort == {
+        m1_ref: "正式旧车床",
+        o1_ref: "正式旧操作工",
+        m2_ref: "候选新M2",
+        o2_ref: "候选新O2",
+    }
+
+    res_off_default = resource_document(
+        client, run_ref, comparison_mode="admission_official", selected_candidate_ref=selected_ref, resource_kind="machine",
+    )["data"]
+    res_off_window = resource_document(
+        client, run_ref, **WINDOW, comparison_mode="admission_official", selected_candidate_ref=selected_ref, resource_kind="machine",
+    )["data"]
+    for data in (res_off_default, res_off_window):
+        for ref, expected_label in ((m1_ref, "正式旧车床"), (m2_ref, "候选新M2")):
+            item = next(r for r in data["items"] if r["resource_ref"] == ref)
+            assert item["label"] == item["before"]["label"] == item["after"]["label"] == expected_label
+            cell = next(r for r in data["heatmap"]["items"] if r["resource_ref"] == ref)["cells"][0]
+            assert cell["before"]["label"] == cell["after"]["label"] == expected_label
+
+    overview_cand = decision(
+        client, run_ref, comparison_mode="candidates", selected_candidate_ref=selected_ref, reference_candidate_ref=selected_ref,
+    )["data"]
+    cand_cohort = {r["ref"]: r["label"] for r in overview_cand["resource_cohort"]["resources"]}
+    assert cand_cohort == {m2_ref: "候选新M2", o2_ref: "候选新O2"}
+    res_cand_default = resource_document(
+        client, run_ref, comparison_mode="candidates", selected_candidate_ref=selected_ref,
+        reference_candidate_ref=selected_ref, resource_kind="machine",
+    )["data"]
+    cand_item = next(r for r in res_cand_default["items"] if r["resource_ref"] == m2_ref)
+    assert cand_item["label"] == cand_item["before"]["label"] == cand_item["after"]["label"] == "候选新M2"
+    cand_cell = next(r for r in res_cand_default["heatmap"]["items"] if r["resource_ref"] == m2_ref)["cells"][0]
+    assert cand_cell["before"]["label"] == cand_cell["after"]["label"] == "候选新M2"

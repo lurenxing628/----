@@ -11,8 +11,8 @@ from web.api_responses import json_response, query_success
 
 from .assets import WorkbenchAssetsUnavailable, read_asset_manifest
 from .navigation_boot import WorkbenchNavigationInvalid, read_navigation
-from .navigation_metadata import VIEW_ALIASES, VIEW_TITLES, navigation_groups
-from .read_context import unbound_snapshot
+from .navigation_metadata import NAVIGATION_RULES, VIEW_ALIASES, VIEW_TITLES, navigation_groups
+from .read_context import current_snapshot_time, unbound_snapshot
 
 bp = Blueprint("workbench", __name__)
 
@@ -76,6 +76,7 @@ def _host(view: str):
         "trial_url": url_for("workbench.trial"),
         "nav_groups": navigation_groups(),
         "view_aliases": dict(VIEW_ALIASES),
+        "navigation_rules": NAVIGATION_RULES,
         "help_url": url_for("scheduler.config_manual_page"),
         "overview_url": url_for("workbench.system_overview"),
         "instance_label": current_app.config.get("WORKBENCH_INSTANCE_LABEL", "本机数据"),
@@ -103,7 +104,7 @@ def trial():
 
 @bp.get("/api/workbench/v1/system/overview")
 def system_overview():
-    request_ref = uuid.uuid4().hex
+    request_ref, as_of = uuid.uuid4().hex, current_snapshot_time()
     try:
         from core.infrastructure.transaction import TransactionManager
         from core.services.system.workbench_overview import build_system_overview
@@ -114,7 +115,7 @@ def system_overview():
                 db_path=current_app.config["DATABASE_PATH"],
                 backup_dir=current_app.config["BACKUP_DIR"],
                 log_dir=current_app.config["LOG_DIR"],
-                backup_keep_days_default=int(current_app.config["BACKUP_KEEP_DAYS"]),
+                backup_keep_days_default=current_app.config["BACKUP_KEEP_DAYS"],
             )
     except Exception:
         current_app.logger.exception("工作台系统概况读取失败 request_ref=%s", request_ref)
@@ -123,4 +124,4 @@ def system_overview():
             "fields": [], "retryable": True, "request_ref": request_ref,
         }}, status=500)
     # 概况是一次性的本机检查，没有可回绑的读取快照。
-    return query_success(data, unbound_snapshot())
+    return query_success(data, unbound_snapshot(as_of))

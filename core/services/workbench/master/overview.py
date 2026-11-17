@@ -6,13 +6,15 @@ import csv
 import io
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_master_overview import DOMAINS, STATUS, MasterOverviewScope, public_ref
+from core.models.workbench_master_overview import DOMAINS, STATUS, MasterOverviewScope
+from core.shared.refs import is_ref
 
 from .overview_calendar import add_calendar
-from .overview_facts import SOURCES, MasterOverviewFacts
+from .overview_facts import MasterOverviewFacts
 from .overview_graph import MasterOverviewGraph, text
 from .overview_process import add_process
 from .overview_relations import batch_relations, resource_profile_fields
@@ -75,16 +77,19 @@ class MasterOverviewReadScope:
         by_domain = {domain: [] for domain, _ in DOMAINS}
         for entity in self.entities:
             by_domain[entity["domain"]].append(entity)
-        domains = []
-        for domain, label in DOMAINS:
-            rows = by_domain[domain]
-            loaded = self.facts.available(*SOURCES[domain], "WorkbenchEntityRefs")
-            domains.append({"id": domain, "label": label, "loaded": loaded, "count": len(rows) if loaded else None,
-                            "attention": sum(bool(row["issue_count"]) for row in rows) if loaded else None,
-                            "unknown": sum(not row["checks_complete"] for row in rows) if loaded else None})
-        complete = all(row["loaded"] for row in domains)
-        relation_complete = complete and all(row["relations_complete"] for row in self.entities)
-        self._overview = {"domains": domains, "complete": complete, "basis": BASIS, "gaps": self.facts.gaps,
+        domains = [
+            {
+                "id": domain,
+                "label": label,
+                "loaded": True,
+                "count": len(by_domain[domain]),
+                "attention": sum(bool(row["issue_count"]) for row in by_domain[domain]),
+                "unknown": sum(not row["checks_complete"] for row in by_domain[domain]),
+            }
+            for domain, label in DOMAINS
+        ]
+        relation_complete = all(row["relations_complete"] for row in self.entities)
+        self._overview = {"domains": domains, "complete": True, "basis": BASIS, "gaps": self.facts.gaps,
                           "stats": {"entities": len(self.entities), "issues": len(self.issues),
                                     "affected": sum(bool(row["issue_count"]) for row in self.entities),
                                     "relations": len(self.graph.edges) if relation_complete else None,
@@ -116,7 +121,7 @@ class MasterOverviewReadScope:
                 "page": {"number": number, "size": scope.size, "total": len(rows), "pages": pages}}
 
     def resolve(self, domain, ref):
-        if domain not in LABELS or not public_ref(ref):
+        if domain not in LABELS or not is_ref(ref):
             raise WorkbenchCommandRejected("entity_not_found", "这条记录已失效，请重新选择。", 404)
         entity = self.entity_by_key.get((domain, ref))
         if entity is None:
@@ -172,8 +177,8 @@ class MasterOverviewService:
         self.facts = MasterOverviewFacts(conn)
 
     @contextmanager
-    def read_snapshot(self, *, bind_snapshot=None) -> Iterator[MasterOverviewReadScope]:
-        with self.facts.read_snapshot(bind_snapshot=bind_snapshot) as fact_scope:
+    def read_snapshot(self, *, as_of: datetime, bind_snapshot=None) -> Iterator[MasterOverviewReadScope]:
+        with self.facts.read_snapshot(as_of=as_of, bind_snapshot=bind_snapshot) as fact_scope:
             graph = MasterOverviewGraph(fact_scope)
             add_resources(graph)
             add_process(graph)

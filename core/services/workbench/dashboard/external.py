@@ -9,12 +9,11 @@ An unregistered operation is unknown, not a dispatched shipment or zero risk.
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import bounded
-from core.models.workbench_outsourcing import STATES
 from core.models.workbench_outsourcing_input import prepare_values
 from core.services.workbench.outsourcing.projection import values
 from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
 
-from .external_sources import gap, latest_fact, source_gaps, subject
+from .external_sources import gap, subject
 from .facts import source_issue
 from .projection import category
 
@@ -24,20 +23,17 @@ COUNTS = ("receipt_count", "current_receipt_count", "awaiting_return_count", "ov
 
 def summary():
     return {**category("loaded"), **dict.fromkeys(COUNTS, 0),
-            "kind": "outsourcing_receipts", "tracking_basis": "manual_receipt_facts",
-            "handling_supported": False, "handling_count": 0, "closed_count": 0, "evaluation_gaps": [],
+            "kind": "outsourcing_receipts", "tracking_basis": "manual_receipt_facts", "evaluation_gaps": [],
             "entry": {"view": "outsourcing", "target": "/api/workbench/v1/outsourcing/receipts", "enabled": True}}
 
 
 def _receipts(reader, now, result, facts, sources):
     captured = {}
     for ref, rows in facts.items():
-        latest = latest_fact(rows["latest"])
+        latest = rows["latest"]
         header = rows["header"]
         captured[ref] = {"latest": latest, "header": header}
         try:
-            if latest["confirmed_state"] not in STATES:
-                raise WorkbenchCommandRejected("invalid_input", "外协确认状态无效。")
             prepare_values(None, values(latest), now)
         except WorkbenchCommandRejected as exc:
             if exc.code != "invalid_input":
@@ -64,7 +60,7 @@ def _receipts(reader, now, result, facts, sources):
     return captured
 
 
-def _targets(reader, result, rows, sources):
+def _targets(result, rows, sources):
     entries = sources.load_target_rows(rows)
     for item in entries:
         result["unregistered_count"] += 1
@@ -78,35 +74,24 @@ def _targets(reader, result, rows, sources):
         detail = gap(item["operation_ref"], title, issues)
         detail["operation"] = {"code": item["business_code"], "name": item["label"]}
         result["evaluation_gaps"].append(detail)
-    source_rows = source_gaps(reader.conn)
-    for item in source_rows:
-        if item["outsourcing_ref"] is None:
-            legacy_external = item["source_kind"] == "external"
-            if legacy_external:
-                issue = source_issue("external_source_noncanonical", "已识别为历史外协工序，但归属未按标准保存，物流登记尚未评估。请到基础资料核对。")
-            else:
-                issue = source_issue("external_source_unknown", "工序归属未填写或无效，请确认自制或外协。")
-            title = subject(item["business_code"], "历史外协工序" if legacy_external else "来源未知工序")
-            result["evaluation_gaps"].append(gap(item["operation_ref"], title, [issue]))
 
 
 def load_external(conn, now):
     """Capture receipt facts once for the dashboard summary and handling projection."""
     if not conn.in_transaction:
         raise RuntimeError("External dashboard reads require a caller-owned snapshot")
-    reader = WorkbenchOutsourcingService(conn, clock=lambda: now)
+    reader = WorkbenchOutsourcingService(conn)
     result = summary()
     receipt_facts = reader.capture_receipts()
-    target_rows, entities = reader.sources.target_rows(unregistered_only=True)
+    target_rows = reader.sources.unregistered_operation_rows()
     source_targets = [rows["header"]["target"] for rows in receipt_facts.values()]
     source_targets.extend(reader.sources.target_from_row(row) for row in target_rows)
     sources = reader.sources.capture(
         source_targets,
-        entities=entities,
         revision=reader.sources.repo.plan_identity_revision(),
     )
     captured = _receipts(reader, now, result, receipt_facts, sources)
-    _targets(reader, result, target_rows, sources)
+    _targets(result, target_rows, sources)
     gaps = bounded(result["evaluation_gaps"])
     result["unknown_count"] = len(gaps)
     result["source_gap_count"] = sum(item["code"] != "outsourcing_unregistered" for item in gaps)
@@ -115,3 +100,21 @@ def load_external(conn, now):
     if not result["receipt_count"] and not gaps:
         result["state"] = "no_data"
     return result, captured
+
+
+def load_external_item(conn, now, outsourcing_ref):
+    """Capture a single receipt's facts and source closure without scanning unregistered targets."""
+    if not conn.in_transaction:
+        raise RuntimeError("External dashboard reads require a caller-owned snapshot")
+    reader = WorkbenchOutsourcingService(conn)
+    result = summary()
+    raw = reader.repo.receipt_facts([outsourcing_ref])[outsourcing_ref]
+    header = reader.header_from_row(raw["header"])
+    receipt_facts = {outsourcing_ref: {"header": header, "latest": raw["latest"]}}
+    sources = reader.sources.capture(
+        [header["target"]],
+        revision=reader.sources.repo.plan_identity_revision(),
+    )
+    captured = _receipts(reader, now, result, receipt_facts, sources)
+    gap_row = result["evaluation_gaps"][0] if result["evaluation_gaps"] else None
+    return captured[outsourcing_ref], gap_row

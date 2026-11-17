@@ -2,7 +2,7 @@
 
 import csv
 import json
-from datetime import datetime
+from datetime import date, datetime
 from io import BytesIO, StringIO
 from typing import Any, Optional
 
@@ -18,8 +18,11 @@ from core.services.workbench.batch.materials import WorkbenchBatchMaterialServic
 from core.services.workbench.batch.scope import BatchFactScope
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from core.services.workbench.facts.delivery_projection import (
+    DeliveryBatch,
+    DeliveryTask,
     delivery_batch_delta,
     delivery_summary,
+    known_delivery_batch_refs,
     project_delivery_batch,
 )
 from core.services.workbench.plan.export import HEADERS, write_plan_export
@@ -36,11 +39,9 @@ def batch_delivery(due: Any = "2026-10-13", *, finish="2026-10-13T12:00:00", mis
                    deferred=False, part_name: Optional[str] = "零件"):
     batch = {"batch_id": "B1", "part_no": "P1", "part_name": part_name, "due_date": due,
              "quantity": 3, "priority": "urgent"}
-    rows = [{"schedule_id": 1, "op_id": 1, "batch_id": "B1"}]
-    intervals = {1: (datetime(2026, 10, 13, 8, 0), datetime.fromisoformat(finish)) if finish else None}
-    operations = [{"op_id": 1}, {"op_id": 2}] if missing else [{"op_id": 1}]
-    return project_delivery_batch(batch, "batch-ref", rows, operations, intervals, False, [],
-                                  deferred_operation_ids={2} if deferred else set())
+    item = DeliveryBatch(batch, "batch-ref", frozenset({1, 2} if missing else {1}),
+                         (DeliveryTask(1, datetime.fromisoformat(finish)),), False, ())
+    return project_delivery_batch(item, deferred_operation_ids=frozenset({2} if deferred else ()), scope_issues=())
 
 
 @pytest.mark.parametrize("due,state,risk,issue", [
@@ -77,7 +78,8 @@ def test_due_coverage_excludes_unspecified_and_keeps_invalid_in_unknown():
     assert summary["overdue_count"] is summary["total_tardiness_hours"] is None
     assert summary["known_overdue_count"] == 1 and summary["known_tardiness_hours"] > 0
     assert summary["deferred_batch_count"] == 1
-    assert summary["unknown_batch_refs"] == ["2", "3"]
+    assert not {"complete_batch_refs", "deferred_batch_refs", "known_batch_refs", "unknown_batch_refs"}.intersection(summary)
+    assert known_delivery_batch_refs(rows) == ["0", "1"]
     not_applicable = delivery_summary([rows[-1]])
     assert not_applicable["state"] == "not_applicable"
     assert not_applicable["overdue_count"] is not_applicable["total_tardiness_hours"] is not_applicable["known_tardiness_hours"] is None
@@ -182,7 +184,7 @@ def test_stage_adoption_keeps_deferred_operation_evidence(candidate_case):
         for batch_id, operation_id in (("B1", second), ("B2", third)):
             operation_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1", (str(operation_id),)).fetchone()[0]
             batch_ref = case.ref("batch", batch_id)
-            scope = BatchFactScope(BatchFacts(case.conn), command=True, mode="single_instance", target_ref=batch_ref)
+            scope = BatchFactScope(BatchFacts(case.conn, material_day=date.today().isoformat()), command=True, mode="single_instance", target_ref=batch_ref)
             WorkbenchBatchMaterialService(case.conn).apply_normalized(scope, batch_ref, normalize_material_changes({"removed_keys": [], "rows": [{
                 "row_key": None, "material_ref": case.ref("material", "STEEL"), "required_quantity": 3,
                 "available_quantity": 0, "operation_ref": operation_ref, "arrivals": []}]}))
@@ -197,8 +199,10 @@ def test_stage_adoption_keeps_deferred_operation_evidence(candidate_case):
     assert preview["validation"]["can_adopt"], preview
     result = adopter.adopt(refs[0], preview["write_context"]["write_token"], "delivery-stage-adoption", INTENT)
     plan = result["data"]["official_plan"]
-    audit = json.loads(case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (plan["version"],)).fetchone()[0])
-    assert audit["deferred_operation_ids"] == [second, third]
+    deferred_ids = json.loads(
+        case.conn.execute("SELECT deferred_operation_ids_json FROM ScheduleHistory WHERE version=?", (plan["version"],)).fetchone()[0]
+    )
+    assert deferred_ids == [second, third]
     reader = WorkbenchPlanQueryService(case.conn)
     with reader.read_snapshot() as context:
         data, _ = reader.workspace(context, PlanReadScope(plan["plan_ref"]))
@@ -207,20 +211,12 @@ def test_stage_adoption_keeps_deferred_operation_evidence(candidate_case):
     assert all(batch["completion_state"] == "deferred" and batch["risk"] == "unknown" for batch in items)
     assert all(batch["planned_finish"] is batch["delay_hours"] is None for batch in items)
     assert next(batch for batch in items if batch["batch_id"] == "B2")["task_count"] == 0
-    dashboard = WorkbenchDashboardService(case.conn, clock=lambda: datetime(2026, 9, 10, 12))
+    dashboard = WorkbenchDashboardService(case.conn)
     with dashboard.read_snapshot():
-        data = dashboard.read()
+        data = dashboard.read(datetime(2026, 9, 10, 12))
     assert data["categories"]["delivery"]["unknown_count"] == 2
     assert {row["source_ref"] for row in data["categories"]["delivery"]["evaluation_gaps"]} == {
         batch["batch_ref"] for batch in items}
-    # Without explicit deferred_operation_ids in the saved summary, delivery does not consult the adoption source.
-    audit.pop("deferred_operation_ids")
-    case.conn.execute("UPDATE ScheduleHistory SET result_summary=? WHERE version=?", (json.dumps(audit), plan["version"]))
-    case.conn.commit()
-    with reader.read_snapshot() as context:
-        data, _ = reader.workspace(context, PlanReadScope(plan["plan_ref"]))
-    assert [batch["batch_id"] for batch in data["projections"]["delivery_risks"]["items"]] == ["B1"]
-    assert data["projections"]["delivery_risks"]["items"][0]["completion_state"] == "incomplete"
 
 
 def test_plan_workspace_delivery_marks_blob_and_non_utf8_due_dates_invalid(candidate_case):

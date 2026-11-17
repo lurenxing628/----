@@ -1,10 +1,11 @@
 """Real app registration and independent material download oracles for HTTP tests."""
 
-import sqlite3
 from contextlib import closing
 from io import BytesIO
 
 from flask import Blueprint
+
+from tests._support.sqlite_connection import open_test_connection
 
 BASE = "/api/workbench/v1"
 
@@ -20,10 +21,8 @@ def register_actions(app):
 
 
 def database(client):
-    conn = sqlite3.connect(client.application.config["DATABASE_PATH"])
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys=ON")
-    return closing(conn)
+    """与产品连接同一口径（行映射、外键、SQL 函数）：导出等生产读取会直接用这条连接。"""
+    return closing(open_test_connection(client.application.config["DATABASE_PATH"]))
 
 
 def snapshot(client):

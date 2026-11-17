@@ -1,5 +1,7 @@
 """BX-only helpers: temporary real v26 SQLite and actual admission/worker/engine."""
 
+from datetime import datetime
+
 from flask import Blueprint, g
 
 from core.services.workbench.run.candidate_adoption import WorkbenchRunCandidateAdoptionService
@@ -19,7 +21,7 @@ BASE = "/api/workbench/v1/scheduling/candidates/"
 def service(conn, enabled=True):
     return WorkbenchRunCandidateAdoptionService(conn, integration_enabled=enabled,
         context_factory=issue_write_context, context_validator=validate_write_context,
-        data_context=data_context(conn))
+        data_context=data_context(conn), clock=datetime.now)
 
 
 def candidate(case, settings=None):
@@ -45,7 +47,7 @@ def snapshot(conn):
 
 def assert_retained(before, after):
     append_only = {"Schedule", "ScheduleHistory", "ScheduleVersionSeq", "OperationLogs",
-                   "WorkbenchCommandReceipts", "WorkbenchPlanSourceRefs", "WorkbenchTaskRefs"}
+                   "WorkbenchCommandReceipts", "WorkbenchHistoryEntries", "WorkbenchPlanSourceRefs"}
     mutable_clocks = {"sqlite_sequence", "WorkbenchPlanIdentityClock", "WorkbenchSourceRevisions"}
     assert set(before) == set(after)
     for name, rows in before.items():

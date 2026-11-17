@@ -136,7 +136,7 @@ class WorkbenchBatchOperationService:
 
     def _validate_internal(self, resources, row):
         machine = resources.catalogs["machine"].get(row["machine_id"])
-        if machine and row["op_type_id"] not in resources.machine_types.get(row["machine_id"], set()):
+        if machine and row["op_type_id"] not in resources.machine_types[row["machine_id"]]:
             raise WorkbenchCommandRejected("constraint_conflict", "设备与工序工种不匹配。")
         resources.require_operator(row["operator_id"], row["op_type_id"], row["machine_id"])
 

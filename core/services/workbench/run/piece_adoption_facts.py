@@ -1,15 +1,10 @@
 """Bind the complete route and dispositions to current raw identities."""
 
 
-from core.infrastructure.read_evidence import verified_read
 from core.services.workbench.facts.piece_scope import block
 
 
-def current_piece_scope(conn, prepared):
-    return verified_read(conn, ("piece_scope", id(prepared)), lambda: _current_piece_scope(prepared))
-
-
-def _current_piece_scope(prepared):
+def current_piece_scope(prepared):
     facts = prepared.facts
     operations = prepared.operations
     batch_refs = {batch_id: facts.refs["batch", batch_id] for batch_id in prepared.normalized_batch_ids}

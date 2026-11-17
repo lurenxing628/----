@@ -3,16 +3,17 @@
 from core.models.objective import best_score_schema, comparison_metric_key, objective_choice_labels
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 
+from .candidate_artifact import scoring_scope_record
 from .candidate_values import corrupt
 
 PROCESS_CANDIDATE_FIELDS = ("candidate_ref", "label", "status", "representative_objectives", "origin",
                      "first_found_elapsed_ms", "search_evidence_ref")
-_SCOPE_FIELDS = ("scheduled_operation_refs", "complete_batch_refs", "objective_scope", "components_known", "is_complete")
 _ACTION_COUNTERS = ("evaluation_count", "verified_evaluation_count", "new_decisions", "reused_decisions")
 
 
 def _candidate(row):
-    return {key: row.get(key) for key in PROCESS_CANDIDATE_FIELDS}
+    """One candidate's catalog card fields; the saved catalog (``candidate_summary``) carries every one of them."""
+    return {key: row[key] for key in PROCESS_CANDIDATE_FIELDS}
 
 
 def _unit(key):
@@ -47,10 +48,12 @@ def _stages(actions, phase_seconds):
 
 
 def project_unified_process(process, *, objective, candidate, candidates=()):
-    """Project one resolved target direction of parsed saved facts with permanent scope members; perform no reads."""
+    """Project one resolved target direction of parsed saved facts with scalar scope counts; perform no reads."""
     objectives = [_objective(name) for name in process["target_objectives"]]
     descriptor = next(row for row in objectives if row["name"] == objective)
-    scopes = {scope_ref: {key: scope[key] for key in _SCOPE_FIELDS} for scope_ref, scope in process["scopes"].items()}
+    scopes = {scope_ref: scoring_scope_record(scope, scheduled=scope["scheduled_operation_refs"],
+                                              complete=scope["complete_batch_refs"])
+              for scope_ref, scope in process["scopes"].items()}
     events = {event["event_id"]: event for event in process["events"]}
     first_complete = [event["elapsed_ms"] for event in events.values()
                       if event["event_type"] == "archive_observation" and event["verified"] is True
@@ -71,8 +74,12 @@ def project_unified_process(process, *, objective, candidate, candidates=()):
                        "primary_value": point["score"][field_order.index(key)]})
     actions = [action for action in process["actions"] if action["search_objective"] == objective]
     current = _candidate(candidate)
-    evidence = current["search_evidence_ref"]
-    source_event = events.get(evidence["source_event_id"]) if evidence is not None else None
+    # The saved evidence names a source event only when the search recorded one for this entry; a named event
+    # missing from the saved process is corrupt, as for the progress points above.
+    event_id = current["search_evidence_ref"]["source_event_id"]
+    if event_id is not None and event_id not in events:
+        corrupt()
+    source_event = None if event_id is None else events[event_id]
     return {"process_version": UNIFIED_PROCESS_VERSION,
             "summary": {"elapsed_ms": process["elapsed_ms"],
                         "first_complete_elapsed_ms": min(first_complete) if first_complete else None,

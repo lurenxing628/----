@@ -5,31 +5,35 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
-from .candidate_values import corrupt
-from .delivery_projection import delivery_summary, project_delivery_batch
+from .delivery_projection import DeliveryBatch, DeliveryTask, delivery_summary, project_delivery_batch
 from .preflight_dependencies import material_deferred_ids
 
 if TYPE_CHECKING:
     from .candidate_facts import GenerationFacts
 
 
-def prepare_candidate_delivery_groups(tasks, facts: GenerationFacts):
-    """Capture schedule rows, complete batch task groups and unresolved source facts."""
-    rows, by_batch, uncertain = [], defaultdict(list), set()
+def captured_delivery_groups(tasks, facts: GenerationFacts, intervals):
+    """Each saved task under its archived batch, paired with its delivery task."""
+    groups = defaultdict(list)
     for task in tasks:
-        op_id = facts.operations.get(task["operation_ref"])
-        operation = facts.tables["BatchOperations"].get(op_id)
-        if operation is None:
-            uncertain.add("captured_operation_missing")
-            continue
-        batch = operation["batch_id"]
-        by_batch[batch].append(task)
-        rows.append({"schedule_id": task["row_ref"], "op_id": op_id, "batch_id": batch})
-    return rows, by_batch, uncertain
+        operation = facts.operation(task["operation_ref"])
+        groups[operation["batch_id"]].append((task, DeliveryTask(operation["id"], intervals[task["row_ref"]][1])))
+    return groups
 
 
-def _selected_keys(settings, facts: GenerationFacts, by_batch, visible, unplanned, scope, uncertain):
-    refs = facts.batch_ids_by_ref
+def captured_operation_ids(facts: GenerationFacts, batch_id):
+    return frozenset(row["op_id"] for row in facts.operations_by_batch.get(batch_id, ()))
+
+
+def captured_delivery_batch(facts: GenerationFacts, batch, ref, group, *, incomplete) -> DeliveryBatch:
+    return DeliveryBatch(batch, ref, captured_operation_ids(facts, batch["batch_id"]),
+                         tuple(task for _, task in group), incomplete, ())
+
+
+def _selected_keys(settings, facts: GenerationFacts, by_batch, visible, unplanned, scope):
+    """The archived batches a delivery view covers. Every requested ref is an archived batch's: the admitted input's
+    (``AdmissionBaseline``), the scope's (one of the candidate's batches, ``scope_workspace_tasks``), or a task's or
+    unplanned operation's, whose labels come from the archive."""
     batch_ref = scope.batch_ref if scope is not None else None
     range_start = scope.range_start if scope is not None else None
     if batch_ref:
@@ -37,31 +41,10 @@ def _selected_keys(settings, facts: GenerationFacts, by_batch, visible, unplanne
     elif range_start:
         requested = [row["batch_ref"] for row in visible + unplanned]
     else:
-        requested = settings.get("batch_refs")
-        if type(requested) is not list:
-            uncertain.add("captured_input_scope_missing")
-            requested = []
+        requested = settings["batch_refs"]
     keys = set(by_batch) if batch_ref is None and range_start is None else set()
-    for ref in requested:
-        if ref is not None and type(ref) is not str:
-            corrupt()
-        if ref not in refs:
-            uncertain.add("captured_batch_identity_missing")
-        else:
-            keys.add(refs[ref])
+    keys.update(facts.batch_id(ref) for ref in requested)
     return sorted(keys)
-
-
-def _incomplete_batch_ids(candidate):
-    completion = (candidate["artifact"].get("metrics") or {}).get("completion")
-    if completion is None:
-        return set()
-    if type(completion) is not dict:
-        corrupt()
-    ids = completion.get("incomplete_batch_ids", [])
-    if type(ids) is not list or any(type(value) is not str or not value for value in ids):
-        corrupt()
-    return set(ids)
 
 
 def _last_operations(item, tasks):
@@ -74,35 +57,26 @@ def _last_operations(item, tasks):
             if task["end"] == finish]
 
 
-def _items(keys, facts: GenerationFacts, rows, tasks, intervals, incomplete, uncertain, deferred, *, precomputed):
-    operations, schedules = facts.operations_by_batch, defaultdict(list)
-    for row in rows:
-        schedules[row["batch_id"]].append(row)
-    result, missing = [], []
-    uncertain_list = sorted(uncertain)
+def _items(keys, facts: GenerationFacts, groups, incomplete, deferred, *, precomputed):
+    result = []
     for key in keys:
-        batch, ref = facts.tables["Batches"].get(key), facts.entity_refs.get(("batch", key))
-        if batch is None or ref is None:
-            missing.append(key)
-            continue
-        if precomputed is not None and not uncertain_list and ref in precomputed:
+        batch, ref = facts.related("Batches", key), facts.entity_ref("batch", key)
+        if precomputed is not None and ref in precomputed:
             item = dict(precomputed[ref])
         else:
-            item = project_delivery_batch(batch, ref, schedules[key], operations.get(key, ()), intervals,
-                                          key in incomplete, uncertain_list, deferred_operation_ids=deferred)
-        item["last_operations"] = _last_operations(item, tasks.get(key, []))
+            item = project_delivery_batch(captured_delivery_batch(facts, batch, ref, groups[key], incomplete=key in incomplete),
+                                          deferred_operation_ids=deferred, scope_issues=())
+        item["last_operations"] = _last_operations(item, [task for task, _ in groups[key]])
         result.append(item)
-    return result, missing
+    return result
 
 
 def _project_items(candidate, facts: GenerationFacts, tasks, settings, deferred_ids, *, intervals, scope=None, visible=(), unplanned=None,
                    precomputed=None):
-    rows, by_batch, uncertain = prepare_candidate_delivery_groups(tasks, facts)
-    keys = _selected_keys(settings, facts, by_batch, visible, unplanned, scope, uncertain)
-    incomplete = _incomplete_batch_ids(candidate)
-    items, missing = _items(keys, facts, rows, by_batch, intervals,
-                            incomplete, uncertain, deferred_ids, precomputed=precomputed)
-    return items, missing, uncertain, len(keys)
+    groups = captured_delivery_groups(tasks, facts, intervals)
+    keys = _selected_keys(settings, facts, groups, visible, unplanned, scope)
+    incomplete = set(candidate["artifact"]["metrics"]["completion"]["incomplete_batch_ids"])
+    return _items(keys, facts, groups, incomplete, deferred_ids, precomputed=precomputed)
 
 
 def project_delivery_detail(candidate, facts: GenerationFacts, tasks, settings, *, intervals,
@@ -114,22 +88,16 @@ def project_delivery_detail(candidate, facts: GenerationFacts, tasks, settings, 
         else None
     )
     return _project_items(candidate, facts, tasks, settings, deferred_ids,
-                          intervals=intervals, precomputed=precomputed)[0]
+                          intervals=intervals, precomputed=precomputed)
 
 
 def candidate_delivery_risks(candidate, facts: GenerationFacts, tasks, disposition, scope, settings, visible, unplanned, *, intervals):
     """Select by display scope, but calculate every selected batch in full."""
-    items, missing, uncertain, batch_count = _project_items(candidate, facts, tasks, settings,
+    items = _project_items(candidate, facts, tasks, settings,
         material_deferred_ids(disposition.values(), settings), intervals=intervals, scope=scope, visible=visible, unplanned=unplanned)
-    issues = [{"code": code, "message": "排产时记下的依据不完整，交付结论算不出来；系统没有拿当前资料凑。"}
-              for code in sorted(uncertain)]
-    if missing:
-        issues.append({"code": "captured_batch_missing", "message": "排产存档中缺少批次资料：" + "、".join(missing)
-                       + "。请在排产记录中核对这些批次。"})
     return {"candidate_ref": candidate["candidate_ref"], "scope": scope.scope(),
-            "state": "available" if not issues else "partial" if items else "unavailable",
-            "items": items, "items_complete": not issues, "batch_count": batch_count, "issues": issues,
-            "summary": delivery_summary(items, len(missing)),
+            "state": "available", "items": items, "items_complete": True, "batch_count": len(items), "issues": [],
+            "summary": delivery_summary(items),
             "basis": {"kind": "planned_delivery", "metadata_basis": "captured_at_run_admission",
                       "operation_scope": "captured_batch_operations", "completion_scope": "full_candidate",
                       "time_basis": "factory_local", "due_boundary": "next_day_exclusive",

@@ -2,7 +2,6 @@
 
 import codecs
 import csv
-import json
 import re
 from tempfile import SpooledTemporaryFile
 
@@ -60,7 +59,7 @@ OPERATION_HEADERS = ("排产编号", "查看基准永久编号", "所选方案�
                      "基准设备编号", "基准设备", "所选设备编号", "所选设备", "设备变化", "基准人员编号", "基准人员", "所选人员编号", "所选人员", "人员变化",
                      "基准来源", "所选来源", "来源变化", "变化类型", "标准准备工时", "标准单件工时", "执行目标量", "剩余数量", "标准总工时",
                      "工时计算方式", "工时状态", "排产时保护", "基准锁定", "所选锁定", "排产时执行状态", "排产时已完数量", "排产时首次实开", "排产时确认完工",
-                     "基准多段安排", "所选多段安排", "基准缺项", "所选缺项")
+                     "基准缺项", "所选缺项")
 OPERATION_HEADERS += RUNTIME_OPERATION_HEADERS
 OPERATION_HEADERS += ("基准排产状态", "所选排产状态", "排产状态变化", "基准未排说明", "所选未排说明", "已确认变化字段",
                       "基准供方编号", "基准供方", "所选供方编号", "所选供方", "供方变化")
@@ -103,7 +102,7 @@ def _display_number(value, definition):
 
 def overview_rows(data):
     scope, baseline = data["scope"], data["baseline"]
-    common = [data["run"]["run_ref"], data["capture_ref"], baseline_ref(baseline), baseline.get("label"),
+    common = [data["run"]["run_ref"], data["capture_ref"], baseline_ref(baseline), baseline["label"],
               scope["selected_candidate_ref"], data["recommendation"]["candidate_ref"], scope["range_start"], scope["range_end"]]
     for candidate in data["candidates"]:
         coverage = candidate["coverage"]
@@ -125,8 +124,12 @@ def _detail_label(value: str) -> str:
 
 def batch_rows(data):
     common = [data["run_ref"], baseline_ref(data["baseline"]), data["candidate"]["candidate_ref"]]
+    unarranged = data["export_unarranged_operations"]
     for row in data["items"]:
         before, after = row["before"], row["after"]
+        batch_unarranged = unarranged.get(row["batch_ref"])
+        deferred_refs = batch_unarranged["deferred"] if batch_unarranged is not None else ()
+        unplanned_refs = batch_unarranged["unplanned"] if batch_unarranged is not None else ()
         yield common + [row["batch_ref"], row["batch_id"], row["part_no"], row["part_label"], row["quantity"], row["priority"],
             row["due_date"], _detail_label(row["due_state"]), issue_text(row["due_issue"]),
             _detail_label(before["completion_state"]), _detail_label(after["completion_state"]), _detail_label(before["risk"]), _detail_label(after["risk"]),
@@ -135,7 +138,7 @@ def batch_rows(data):
             after["operation_count"], before["scheduled_operation_count"], after["scheduled_operation_count"],
             before["unscheduled_operation_count"], after["unscheduled_operation_count"], before["deferred_operation_count"], after["deferred_operation_count"],
             before["ordinary_unscheduled_operation_count"], after["ordinary_unscheduled_operation_count"],
-            "、".join(row["deferred_operation_refs"] or ()) or None, "、".join(row["unplanned_operation_refs"] or ()) or None,
+            "、".join(deferred_refs) or None, "、".join(unplanned_refs) or None,
             issue_text(before["issues"]), issue_text(after["issues"]),
             "、".join(_detail_label(kind) for kind in row["attention_kinds"]) or None,
             row["operation_change_count"], row["operation_unknown_count"], _label(row["operation_changes_state"])]
@@ -143,14 +146,6 @@ def batch_rows(data):
 
 def _resource(side, kind, field):
     return (side.get(kind) or {}).get(field)
-
-
-def _segments(side):
-    segments = side.get("segments")
-    if not segments:
-        return None
-    # 多段事实单列保存，独立时间和资源差值继续为空。
-    return json.dumps(segments, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
 
 
 def operation_rows(data):
@@ -167,7 +162,7 @@ def operation_rows(data):
             "归档工序标准×归档执行目标量", _label(effort["state"]), boolean_text(constraints["protected_at_admission"]),
             boolean_text(constraints["reference_locked"]), boolean_text(constraints["selected_locked"]), constraints["execution_state"],
             constraints["known_completed_quantity"], constraints["first_actual_start"], constraints["confirmed_finish"],
-            _segments(before), _segments(after), issue_text(before.get("data_gaps")), issue_text(after.get("data_gaps"))] + runtime_operation_values(row) + [
+            issue_text(before.get("data_gaps")), issue_text(after.get("data_gaps"))] + runtime_operation_values(row) + [
             _detail_label(row["before_state"]["status"]), _detail_label(row["after_state"]["status"]), boolean_text(row["status_changed"]),
             issue_text(row["before_state"]["reason"]), issue_text(row["after_state"]["reason"]),
             "、".join({"start": "开工", "end": "完工", "machine": "设备", "operator": "人员", "supplier": "供方",
@@ -212,22 +207,12 @@ def read_decision_export(conn, run_ref, section, *, bind_snapshot, filter_sectio
                 continue
             batch = filters.get("batch_ref") if detail_section in ("batches", "operations") else None
             current_filters = active_filters if name == detail_section else normalize_filters(name, batch_ref=batch)
-            data["export_" + name] = decision_details(source, name, current_filters, all_rows=True)
-        if section in ("resources", "all"):
-            if active_filters is not None and detail_section in ("resources", "resource-days"):
-                current_filters = active_filters if detail_section == "resources" else {
-                    **active_filters, "section": "resources", "bucket_start": None, "bucket_end": None,
-                    "pressure_filter": "all", "sort": "after_peak_utilization", "order": "desc"}
-                resource_documents = [_all_resource_rows(source, current_filters)]
-            else:
-                resource_documents = [_all_resource_rows(source, normalize_resource_filters("resources", resource_kind=kind))
-                                      for kind in ("machine", "operator")]
-            data["export_resources"] = resource_documents
-        if section == "resource-days" or section == "all" and detail_section == "resource-days":
-            data["export_resource_days"] = _all_resource_rows(source, active_filters)
-        if fmt == "xlsx" and section in ("resources", "resource-days", "all"):
-            resource_document = data["export_resources"][0] if "export_resources" in data else data["export_resource_days"]
-            data["export_coverage_operations"] = list(coverage_operation_rows(source, resource_document["coverage"]))
+            detail_doc = decision_details(source, name, current_filters, all_rows=True)
+            if name == "batches":
+                detail_doc["export_unarranged_operations"] = source.repo.unarranged_batch_operation_refs(
+                    source.run["run_ref"], source.selected_ref, batch_refs=[row["batch_ref"] for row in detail_doc["items"]])
+            data["export_" + name] = detail_doc
+        _attach_resource_exports(source, data, section, detail_section, active_filters, fmt)
         for name in ("preparation", "changeovers"):
             if section not in (name, "all"):
                 continue
@@ -237,6 +222,27 @@ def read_decision_export(conn, run_ref, section, *, bind_snapshot, filter_sectio
         data["export_filter_section"] = detail_section
         data["export_filters"] = active_filters
         return data, snapshot
+
+
+def _attach_resource_exports(source, data, section, detail_section, active_filters, fmt):
+    if section in ("resources", "all"):
+        if active_filters is not None and detail_section in ("resources", "resource-days"):
+            current_filters = active_filters if detail_section == "resources" else {
+                **active_filters, "section": "resources", "bucket_start": None, "bucket_end": None,
+                "pressure_filter": "all", "sort": "after_peak_utilization", "order": "desc"}
+            resource_documents = [_all_resource_rows(source, current_filters)]
+        else:
+            resource_documents = [_all_resource_rows(source, normalize_resource_filters("resources", resource_kind=kind))
+                                  for kind in ("machine", "operator")]
+        data["export_resources"] = resource_documents
+    if section == "resource-days" or section == "all" and detail_section == "resource-days":
+        data["export_resource_days"] = _all_resource_rows(source, active_filters)
+    if fmt == "xlsx" and section in ("resources", "resource-days", "all"):
+        coverage_refs = {
+            "before": source.resources.coverage_operation_refs("reference"),
+            "after": source.resources.coverage_operation_refs(source.selected_ref),
+        }
+        data["export_coverage_operations"] = list(coverage_operation_rows(source, coverage_refs))
 
 
 def _all_resource_rows(source, filters):
@@ -363,12 +369,12 @@ def _xlsx(data, snapshot, tables):
                    ("读取编号", snapshot["snapshot_ref"]), ("读取时间", snapshot["as_of"]),
                    ("比较模式", "排产时的正式计划" if scope["comparison_mode"] == "admission_official" else "同次候选"),
                    ("查看基准编号", baseline_ref(data["baseline"])), ("查看基准状态", _label(data["baseline"]["state"])),
-                   ("正式基准版本", data["baseline"].get("version")), ("正式来源候选编号", data["baseline"].get("source_candidate_ref")),
+                   ("正式基准版本", data["baseline"]["version"]), ("正式来源候选编号", data["baseline"]["source_candidate_ref"]),
                    ("所选方案编号", scope["selected_candidate_ref"]),
                    ("推荐方案编号", data["recommendation"]["candidate_ref"]), ("范围起点（含）", scope["range_start"]),
-                   ("推荐版本", data["recommendation"]["recommendation_version"]), ("推荐记录格式版本", data["selection_basis"]["selection_policy_version"]),
-                   ("范围终点（不含）", scope["range_end"]), ("批次数", len(scope["batch_refs"])),
-                   ("工序数", len(scope["operation_refs"])), ("差值方向", "候选减查看基准"),
+                   ("推荐版本", data["recommendation"]["recommendation_version"]),
+                   ("范围终点（不含）", scope["range_end"]), ("批次数", scope["batch_count"]),
+                   ("工序数", scope["operation_count"]), ("差值方向", "候选减查看基准"),
                    ("资源视角", "本次所选批次" if scope["resource_view"] == "selected_batches" else "方案全部安排"),
                    ("共同设备数", len(scope["resource_refs"]["machine"])), ("共同人员数", len(scope["resource_refs"]["operator"])),
                    ("资源占用计算方式", "保存安排区间与归档可排窗口的交集；休息时段的保留跨度单列"),

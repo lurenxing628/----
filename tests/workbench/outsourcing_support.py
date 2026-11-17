@@ -1,5 +1,6 @@
 """Outsourcing fixtures use a database built exactly as production creates a new one."""
 
+import logging
 from datetime import datetime
 
 import pytest
@@ -13,6 +14,7 @@ from tests._support.paths import REPO_ROOT
 from web.routes.workbench.commands import register_command_routes
 from web.routes.workbench.outsourcing import register_outsourcing_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
+from web.runtime_host import install_wall_clock
 
 NOW = datetime(2026, 9, 10, 12)
 ROOT = "/api/workbench/v1/outsourcing"
@@ -32,7 +34,7 @@ def original_rows(conn):
 class OutsourcingCase:
     def __init__(self, path, conn):
         self.path, self.conn, self.counter = path, conn, 0
-        self.reader = WorkbenchOutsourcingService(conn, clock=lambda: NOW)
+        self.reader = WorkbenchOutsourcingService(conn)
 
     def entity_ref(self, kind, code):
         return self.conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind=? AND entity_key=? AND active=1", (kind, code)).fetchone()[0]
@@ -53,7 +55,7 @@ class OutsourcingCase:
                                                   context_factory=issue_write_context)
 
     def preview(self, payload, conn=None):
-        return self.writer(conn).preview(payload)
+        return self.writer(conn).preview(payload, now=NOW)
 
     def confirm(self, preview, *, key=None, conn=None, payload=None):
         self.counter += 1
@@ -63,13 +65,13 @@ class OutsourcingCase:
 
     def detail(self, ref):
         with self.reader.read_snapshot():
-            return self.reader.detail(ref, bind_snapshot=lambda _content: None)["item"]
+            return self.reader.detail(ref, as_of=NOW, bind_snapshot=lambda _content: None)["item"]
 
 
 @pytest.fixture(name="outsourcing_case")
 def outsourcing_case(tmp_path):
     path = tmp_path / "outsourcing.sqlite"
-    ensure_schema(str(path), schema_path=str(REPO_ROOT / "schema.sql"))
+    ensure_schema(str(path), logging.getLogger(__name__), schema_path=str(REPO_ROOT / "schema.sql"))
     conn = get_connection(str(path))
     conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('XT1','Heat treatment','external')")
     conn.execute("INSERT INTO Suppliers(supplier_id,name,default_days) VALUES ('XS1','Supplier',2)")
@@ -87,18 +89,12 @@ def outsourcing_case(tmp_path):
 
 def api(case, monkeypatch):
     import web.routes.workbench.outsourcing as module
-    from web.routes.workbench import read_context
 
-    class Clock(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return NOW
-
-    monkeypatch.setattr(read_context, "datetime", Clock)
-    monkeypatch.setattr(module, "WorkbenchOutsourcingService", lambda conn: WorkbenchOutsourcingService(conn, clock=lambda: NOW))
+    # 墙钟照工厂的做法装在应用上；这里只替换本机操作人。
     monkeypatch.setattr(module, "WorkbenchOutsourcingCommandService", lambda conn, **kwargs: WorkbenchOutsourcingCommandService(
-        conn, clock=lambda: NOW, actor_provider=lambda: "http-local-operator", **kwargs))
+        conn, actor_provider=lambda: "http-local-operator", **kwargs))
     app = Flask(__name__)
+    install_wall_clock(app, lambda: NOW)
     bp = Blueprint("workbench", __name__)
     register_outsourcing_routes(bp)
     register_command_routes(bp)

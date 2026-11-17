@@ -1,74 +1,77 @@
 """Field namespace registration. Caller owns blueprint, app startup and schema."""
 
-from flask import g, request
+from flask import current_app, g
 
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
-from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES
+from core.models.workbench_load_limits import MAX_WINDOW_RESPONSE_BYTES
 from core.services.workbench.execution.field_workspace import FieldWorkspaceService
-from core.services.workbench.execution.field_workspace_scope import PARAMETERS, normalize_scope, page_input
+from core.services.workbench.execution.field_workspace_scope import normalize_scope, page_input
+from core.shared.key_sets import keys_conform
 from web.api_responses import json_response, query_success
 from web.routes.workbench.api_responses import api_endpoint, read_endpoint
 from web.routes.workbench.read_budget import PLAN_READ_SLOTS
-from web.routes.workbench.read_context import bind_read_snapshot
+from web.routes.workbench.read_context import bind_read_snapshot, current_snapshot_time, read_snapshot_time
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
+from web.runtime_host import wall_clock
 
+from .execution_files import register_execution_file_routes
+from .execution_request import field_command, field_read
+from .request_json import BodyTexts, read_json_body, rejecter
 
-def arguments():
-    if set(request.args) - set(PARAMETERS) or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected('invalid_input', '现场记录的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。', 400)
-    return request.args.to_dict()
+_VOID_PREVIEW_REJECTED = '请填写撤销原因后重新查看影响。'
+_VOID_PREVIEW = BodyTexts(transport=_VOID_PREVIEW_REJECTED, malformed=_VOID_PREVIEW_REJECTED,
+                          incomplete=_VOID_PREVIEW_REJECTED)
 
 
 def field_query(task_ref=None):
-    args = arguments()
+    args = field_read()
     scope = normalize_scope(args)
     number, size = page_input(args)
+    locate_task_ref = args.get('task_ref')
+    locate_operation_ref = args.get('operation_ref')
+    token = args.get('snapshot_ref')
+    as_of, binding = read_snapshot_time(token)
     reader = FieldWorkspaceService(g.db, context_factory=issue_write_context)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot() as ws_scope:
             read_state = reader.prepare_read(ws_scope, scope)
-            snapshot = bind_read_snapshot({'kind': 'field', **read_state.effective_scope}, read_state.state, args.get('snapshot_ref'))
-            cohort, _ = reader.cohort(ws_scope, read_state)
-    # 读事务已结束：定位页码、给这一页签发报工令牌只用已算好的范围，不再占着读锁。
-    if args.get('task_ref'):
-        # 定位页码只在已算好的范围里查，不签报工令牌；令牌由下面 page() 给这一页签发一次。
-        index = next((index for index, row in enumerate(cohort['tasks']) if row['task_ref'] == args['task_ref']), None)
-        if index is None:
-            raise WorkbenchCommandRejected('entity_not_found', '所选任务不在当前范围，请刷新后重选。', 404)
-        if args.get('operation_ref') and cohort['tasks'][index]['operation_ref'] != args['operation_ref']:
-            raise WorkbenchCommandRejected('constraint_conflict', '选中的工序和这条任务对不上，安排没有变化。请刷新页面后重新选择工序。')
-        if task_ref is None:
-            number = index // size + 1
-    data = reader.detail(cohort, task_ref) if task_ref else reader.page(cohort, number, size)
-    return query_success(data, snapshot, byte_limit=MAX_PLAN_RESPONSE_BYTES)
+            snapshot = bind_read_snapshot({'kind': 'field', **read_state.effective_scope}, read_state.state, token,
+                                          as_of=as_of, binding=binding)
+            data = (
+                reader.detail(
+                    ws_scope,
+                    read_state,
+                    task_ref,
+                    locate_task_ref=locate_task_ref,
+                    locate_operation_ref=locate_operation_ref,
+                )
+                if task_ref
+                else reader.page(
+                    ws_scope,
+                    read_state,
+                    number,
+                    size,
+                    locate_task_ref=locate_task_ref,
+                    locate_operation_ref=locate_operation_ref,
+                )
+            )
+    return query_success(data, snapshot, byte_limit=MAX_WINDOW_RESPONSE_BYTES)
 
 
-@api_endpoint
+@read_endpoint
 def field_tasks():
     return field_query()
 
 
-@api_endpoint
+@read_endpoint
 def field_task(task_ref):
     return field_query(task_ref)
-
-
-def command_body():
-    if request.args or not request.is_json:
-        raise WorkbenchCommandRejected('invalid_input', '提交的内容格式不正确，报工还没有保存。请刷新页面后重新填写。', 400)
-    body = request.get_json()
-    if type(body) is not dict or set(body) != {'input', 'request_key', 'write_token'} or type(body['input']) is not dict:
-        raise WorkbenchCommandRejected('invalid_input', '提交的内容不完整或有多余项，报工还没有保存。请刷新页面后重新填写。', 400)
-    validate_request_key(body['request_key'])
-    g.workbench_request_key = body['request_key']
-    return body
 
 
 def save_report(action, ref):
     from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 
-    body = command_body()
-    service = WorkbenchProductionReportService(g.db)
+    body = field_command()
+    service = WorkbenchProductionReportService(g.db, clock=wall_clock(current_app))
     result = service.execute(action, ref, body['input'], request_key=body['request_key'],
                              validate_context=lambda subject, operation, snapshot: validate_write_context(body['write_token'], subject, operation, snapshot))
     return json_response(result)
@@ -98,20 +101,19 @@ def field_report_void(report_ref):
 def field_report_void_preview(report_ref):
     from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 
-    body = request.get_json(silent=True)
-    if request.args or type(body) is not dict or set(body) != {'input'} or type(body['input']) is not dict:
-        raise WorkbenchCommandRejected('invalid_input', '请填写撤销原因后重新查看影响。', 400)
-    service = WorkbenchProductionReportService(g.db, context_factory=issue_write_context)
-    preview = service.preview('report_void', report_ref, body['input'])
-    snapshot = bind_read_snapshot({'kind': 'report_void', 'report_ref': report_ref}, preview.pop('snapshot'))
-    return query_success(preview, snapshot, byte_limit=MAX_PLAN_RESPONSE_BYTES)
+    body = read_json_body(_VOID_PREVIEW)
+    if not keys_conform(body, ('input',)) or type(body['input']) is not dict:
+        rejecter(_VOID_PREVIEW_REJECTED)()
+    now = current_snapshot_time()
+    service = WorkbenchProductionReportService(g.db, clock=wall_clock(current_app), context_factory=issue_write_context)
+    preview = service.preview_void(report_ref, body['input'], now=now)
+    snapshot = bind_read_snapshot({'kind': 'report_void', 'report_ref': report_ref}, preview.pop('snapshot'), as_of=now)
+    return query_success(preview, snapshot, byte_limit=MAX_WINDOW_RESPONSE_BYTES)
 
 
 def register_execution_routes(bp):
-    from .execution_files import register_execution_file_routes
-
     root = '/api/workbench/v1/execution'
-    for path, view, method in [('/tasks', field_tasks, 'GET'), ('/tasks/<task_ref>', field_task, 'GET'),
+    for path, view, method in [('/tasks', field_tasks, 'POST'), ('/tasks/<task_ref>', field_task, 'POST'),
                                ('/tasks/<task_ref>/reports', field_report_create, 'POST'),
                                ('/reports/<report_ref>/supplement', field_report_supplement, 'POST'),
                                ('/reports/<report_ref>/correct', field_report_correct, 'POST'),

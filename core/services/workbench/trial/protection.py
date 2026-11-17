@@ -1,8 +1,7 @@
 """Snapshot-local indexes for immutable identities, locks, frozen arrangements and execution facts."""
 
-from datetime import date, datetime, time
-
 from core.errors import ValidationError
+from core.models.workbench_preflight import run_dates
 from core.models.workbench_trial import issue
 from core.services.workbench.facts.stored_algo_inputs import stored_batch_operation
 from core.services.workbench.run.input_config import candidate_config, hold_window, window_label
@@ -12,16 +11,17 @@ from core.services.workbench.run.schedule_row_constraints import HOLD_WINDOW_RER
 from .materials import hold_settings
 
 
-def prepare_frozen_arrangements(admission, rows, live, *, settings):
+def prepare_frozen_arrangements(rows, live, *, settings):
     """正式采用时按来源排产的不重排时段原样保留的完整冻结输入。
 
     与试调采用复核同一口径：同一份排产输入（冻结从来源排产的起日起算）、同一份正式计划、
-    同一批要重排的工序，由排产计算同一套保留规则找出。冻结资料读不出来时抛 AppError，由调用方提示。
+    同一批要重排的工序，由排产计算同一套保留规则找出。时段里的零工时原安排和正式计划的依据对不上时
+    抛 CandidateRunInputError（point_evidence_unproven），由调用方提示。
     """
     version = live["baseline"]["version"]
     if version is None:
         return HeldArrangements(set(), [], {})
-    anchor = hold_settings(admission, settings)
+    anchor = hold_settings(live["origin"].source, settings)
     facts = live["preflight_facts"]
     try:
         config = facts.configuration()
@@ -33,11 +33,11 @@ def prepare_frozen_arrangements(admission, rows, live, *, settings):
     batch_ids = {row["original"]["batch"]["batch_id"] for row in rows}
     operations = [stored_batch_operation(op) for op in tables["BatchOperations"] if op["batch_id"] in batch_ids]
     moving = _rescheduled_ids(rows, live)
+    start = run_dates(anchor).start
     return held_arrangements(
-        facts=facts, prev_version=version,
-        start_dt=datetime.combine(date.fromisoformat(anchor["start_date"]), time.min),
+        facts=facts, prev_version=version, start_dt=start,
         reschedulable_operations=[op for op in operations if op.id in moving],
-        hold_window=hold_window(anchor, snapshot=config)[0])
+        hold_window=hold_window(anchor, start=start, snapshot=config)[0])
 
 
 def _rescheduled_ids(rows, live):
@@ -78,11 +78,11 @@ def frozen_issue(row, seed, *, changed):
     return issue("task_frozen", head + "，试调不能改它。" + HOLD_WINDOW_RERUN_NOTE, row["task_ref"])
 
 
-def keeps_frozen(row, seed):
+def keeps_frozen(row, seed, span):
+    """Whether the row still holds the frozen arrangement; ``span`` is its admitted current interval."""
     current = row["current"]
     return ((current["machine_id"], current["operator_id"]) == (seed["machine_id"], seed["operator_id"])
-            and datetime.fromisoformat(current["start"]) == seed["start_time"]
-            and datetime.fromisoformat(current["end"]) == seed["end_time"])
+            and span == (seed["start_time"], seed["end_time"]))
 
 
 class TrialProtection:

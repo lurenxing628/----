@@ -8,12 +8,9 @@ import pytest
 from core.models.workbench_report import ReportPage
 from core.models.workbench_report_catalog import ReportCatalogScope
 from core.services.capacity.plan_calendar_intervals import IntervalIndex
+from core.services.common.plan_query import SchedulePlanQueryService
 from core.services.report.downtime_impact import compute_downtime_impact
-from core.services.report.report_degradation import (
-    record_report_bad_time_row,
-    record_report_missing_machine_row,
-    report_degradation_payload,
-)
+from core.services.report.report_engine import ReportEngine
 from core.services.report.utilization import group_utilization_rows, utilization_from_groups
 from core.services.report.utilization_calendars import (
     _project_resources,
@@ -22,6 +19,24 @@ from core.services.report.utilization_calendars import (
 )
 from core.services.workbench.report.catalog import catalog_workspace
 from core.shared.degradation import DegradationCollector
+from core.shared.local_datetime import datetime_to_us
+from tests.workbench.execution_ledger_support import publish_official_plan
+
+
+def _us(text):
+    return datetime_to_us(datetime.fromisoformat(text))
+
+
+def _downtime(machine, start, end, name=None):
+    """A stored active downtime row as MachineDowntimeRepository returns it."""
+    return {"machine_id": machine, "machine_name": machine if name is None else name,
+            "start_us": _us(start), "end_us": _us(end)}
+
+
+def _times(start, end):
+    """Stored Schedule instants as the plan detail query returns them."""
+    start_us, end_us = _us(start), _us(end)
+    return {"start_us": start_us, "end_us": end_us, "is_point_event": int(start_us == end_us)}
 
 
 def test_interval_overlap_keeps_touching_windows_and_subsecond_boundaries():
@@ -42,14 +57,12 @@ def test_interval_overlap_keeps_touching_windows_and_subsecond_boundaries():
 
 
 def test_downtime_report_keeps_raw_count_merge_diagnostics_and_overlapping_tasks():
-    def downtime(machine, start, end):
-        return {"machine_id": machine, "machine_name": machine, "start_time": start, "end_time": end}
+    downtime = _downtime
 
     def task(machine, start, end, source="internal"):
-        return {"machine_id": machine, "start_time": start, "end_time": end, "source": source}
+        return {"machine_id": machine, "source": source, **_times(start, end)}
 
     day = "2026-10-17T"
-    collector = DegradationCollector()
     result = compute_downtime_impact(
         downtime_rows=[downtime("M1", day + "08:00:00", day + "09:00:00"),
                        downtime("M1", day + "09:00:00", day + "10:00:00"),
@@ -63,7 +76,6 @@ def test_downtime_report_keeps_raw_count_merge_diagnostics_and_overlapping_tasks
                        task("M1", day + "08:00:00", day + "10:00:00", source="external"),
                        task("M2", day + "08:30:00", day + "09:30:00")],
         start_dt=datetime(2026, 10, 17, 7), end_dt_excl=datetime(2026, 10, 17, 12),
-        degradation_collector=collector,
     )
     assert result == [
         {"machine_id": "M2", "machine_name": "M2", "downtime_hours": 3.0, "downtime_count": 2,
@@ -73,34 +85,36 @@ def test_downtime_report_keeps_raw_count_merge_diagnostics_and_overlapping_tasks
         {"machine_id": "M3", "machine_name": "M3", "downtime_hours": 1.0, "downtime_count": 1,
          "schedule_overlap_hours": 0.0, "schedule_overlap_count": 0},
     ]
-    assert collector.to_counters() == {}
-    payload = report_degradation_payload(collector)
-    assert payload == {"report_degraded": False}
 
 
-def test_report_degradation_payload_only_marks_corrupted_or_incomplete_inputs_degraded():
-    clean = DegradationCollector()
-    assert report_degradation_payload(clean) == {"report_degraded": False}
+def test_utilization_report_is_degraded_exactly_when_resource_capacity_cannot_be_computed(schema_conn):
+    conn = schema_conn
+    conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','turning')")
+    conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('P1','part')")
+    conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('B1','P1',1)")
+    rows = []
+    # 320 台设备、320 名人员：62 天的报表窗口要投影 63 天 ×(1+640) 格，超过日历投影上限 40000 格，容量算不出来。
+    for index in range(320):
+        machine, operator = f"M{index:03d}", f"O{index:03d}"
+        conn.execute("INSERT INTO Machines(machine_id,name) VALUES (?,?)", (machine, machine))
+        conn.execute("INSERT INTO Operators(operator_id,name) VALUES (?,?)", (operator, operator))
+        op_id = conn.execute(
+            "INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source) "
+            "VALUES (?,'B1',?,'T1','turning','internal')", (f"OP{index:03d}", index + 1)).lastrowid
+        rows.append({"op_id": op_id, "machine_id": machine, "operator_id": operator,
+                     "start_time": "2026-09-09T08:00:00", "end_time": "2026-09-09T09:00:00"})
+    publish_official_plan(conn, 1, rows)
+    engine = ReportEngine(conn)
+    resolution = SchedulePlanQueryService(conn).resolve_existing_plan(1)
 
-    bad_time = DegradationCollector()
-    record_report_bad_time_row(bad_time, scope="schedule")
-    assert report_degradation_payload(bad_time)["report_degraded"] is True
+    day = engine.utilization(resolution, "2026-09-09", "2026-09-09")
+    assert day["report_degraded"] is False
+    assert all(row["capacity_hours"] is not None for row in day["machines"] + day["operators"])
 
-    missing_machine = DegradationCollector()
-    record_report_missing_machine_row(
-        missing_machine,
-        scope="downtime",
-    )
-    assert report_degradation_payload(missing_machine)["report_degraded"] is True
-
-    unknown_capacity = DegradationCollector()
-    unknown_capacity.add(
-        code="resource_load_capacity_failed",
-        scope="resource_load",
-        field="占用率",
-        message="日历资料不完整",
-    )
-    assert report_degradation_payload(unknown_capacity)["report_degraded"] is True
+    window = engine.utilization(resolution, "2026-09-01", "2026-11-01")
+    assert window["report_degraded"] is True
+    assert len(window["machines"]) == len(window["operators"]) == 320
+    assert all(row["capacity_hours"] is None for row in window["machines"] + window["operators"])
 
 
 def test_downtime_overlap_clips_to_query_window_and_zero_duration_point_events_do_not_degrade():
@@ -108,14 +122,7 @@ def test_downtime_overlap_clips_to_query_window_and_zero_duration_point_events_d
     start_dt = datetime(2026, 10, 17, 0, 0)
     end_dt_excl = datetime(2026, 10, 18, 0, 0)
 
-    downtime_rows = [
-        {
-            "machine_id": "M1",
-            "machine_name": "M1",
-            "start_time": "2026-10-16T20:00:00",
-            "end_time": "2026-10-17T04:00:00",
-        }
-    ]
+    downtime_rows = [_downtime("M1", "2026-10-16T20:00:00", "2026-10-17T04:00:00")]
     schedule_rows = [
         {
             "op_id": 1,
@@ -123,8 +130,7 @@ def test_downtime_overlap_clips_to_query_window_and_zero_duration_point_events_d
             "machine_name": "M1",
             "operator_id": "OP1",
             "operator_name": "OP1",
-            "start_time": "2026-10-16T22:00:00",
-            "end_time": "2026-10-17T02:00:00",
+            **_times("2026-10-16T22:00:00", "2026-10-17T02:00:00"),
             "source": "internal",
         },
         {
@@ -133,8 +139,7 @@ def test_downtime_overlap_clips_to_query_window_and_zero_duration_point_events_d
             "machine_name": "M1",
             "operator_id": "OP1",
             "operator_name": "OP1",
-            "start_time": "2026-10-17T01:00:00",
-            "end_time": "2026-10-17T01:00:00",
+            **_times("2026-10-17T01:00:00", "2026-10-17T01:00:00"),
             "source": "internal",
         },
     ]
@@ -144,7 +149,6 @@ def test_downtime_overlap_clips_to_query_window_and_zero_duration_point_events_d
         schedule_rows=schedule_rows,
         start_dt=start_dt,
         end_dt_excl=end_dt_excl,
-        degradation_collector=collector,
     )
     assert impact == [
         {
@@ -173,7 +177,7 @@ def test_downtime_overlap_clips_to_query_window_and_zero_duration_point_events_d
         ("machine", "M1"): calendar_projection,
         ("operator", "OP1"): calendar_projection,
     }
-    groups = group_utilization_rows(schedule_rows, start_dt, end_dt_excl, collector)
+    groups = group_utilization_rows(schedule_rows, start_dt, end_dt_excl)
     machines, operators = utilization_from_groups(
         groups,
         start_dt=start_dt,
@@ -184,8 +188,6 @@ def test_downtime_overlap_clips_to_query_window_and_zero_duration_point_events_d
     assert len(machines) == 1 and machines[0]["hours"] == 2.0 and machines[0]["task_count"] == 1
     assert len(operators) == 1 and operators[0]["hours"] == 2.0 and operators[0]["task_count"] == 1
     assert collector.to_counters() == {}
-    payload = report_degradation_payload(collector)
-    assert payload == {"report_degraded": False}
 
 
 def test_report_preserves_raw_resource_id_without_stripping_non_empty_whitespace():
@@ -199,28 +201,12 @@ def test_report_preserves_raw_resource_id_without_stripping_non_empty_whitespace
             "machine_name": "设备一",
             "operator_id": " OP1 ",
             "operator_name": "人员一",
-            "start_time": "2026-10-17T08:00:00",
-            "end_time": "2026-10-17T10:00:00",
-            "source": "internal",
-        },
-        {
-            "op_id": 2,
-            "machine_id": "   ",
-            "operator_id": "   ",
-            "start_time": "2026-10-17T08:00:00",
-            "end_time": "2026-10-17T10:00:00",
+            **_times("2026-10-17T08:00:00", "2026-10-17T10:00:00"),
             "source": "internal",
         },
     ]
-    downtime_rows = [
-        {
-            "machine_id": " M1 ",
-            "machine_name": "设备一",
-            "start_time": "2026-10-17T09:00:00",
-            "end_time": "2026-10-17T11:00:00",
-        }
-    ]
-    groups = group_utilization_rows(schedule_rows, start_dt, end_dt_excl, collector)
+    downtime_rows = [_downtime(" M1 ", "2026-10-17T09:00:00", "2026-10-17T11:00:00", "设备一")]
+    groups = group_utilization_rows(schedule_rows, start_dt, end_dt_excl)
     ids = resource_ids_from_groups(groups)
     assert ids == {"machine": [" M1 "], "operator": [" OP1 "]}
 
@@ -281,7 +267,6 @@ def test_report_preserves_raw_resource_id_without_stripping_non_empty_whitespace
         schedule_rows=schedule_rows,
         start_dt=start_dt,
         end_dt_excl=end_dt_excl,
-        degradation_collector=collector,
     )
     assert impact == [
         {
@@ -299,7 +284,8 @@ def test_report_preserves_raw_resource_id_without_stripping_non_empty_whitespace
 def test_resource_calendars_only_project_resources_occupying_the_report_window(schema_conn):
     conn = schema_conn
     conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','turning')")
-    conn.execute("INSERT INTO Machines(machine_id,name,op_type_id,status) VALUES ('M1','lathe','T1','active')")
+    conn.execute("INSERT INTO Machines(machine_id,name,status) VALUES ('M1','lathe','active')")
+    conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M1','T1')")
     conn.execute("INSERT INTO Operators(operator_id,name,status) VALUES ('OP1','operator','active')")
     conn.commit()
     start_dt, end_dt_excl = datetime(2026, 10, 1), datetime(2026, 11, 1)
@@ -308,18 +294,16 @@ def test_resource_calendars_only_project_resources_occupying_the_report_window(s
 
     def row(key, start, end, source="internal"):
         return {"op_id": next(op_ids), "machine_id": key, "machine_name": key, "operator_id": key.replace("M", "OP"), "operator_name": key,
-                "start_time": start, "end_time": end, "source": source}
+                "source": source, **_times(start, end)}
 
     schedule_rows = [row("M1", "2026-10-17T08:00:00", "2026-10-17T10:00:00"),
                      row("M-OUTSIDE", "2026-11-03T08:00:00", "2026-11-03T10:00:00"),
-                     row("M-BAD", "not a time", "2026-10-17T10:00:00"),
-                     row("M-REVERSED", "2026-10-17T10:00:00", "2026-10-17T08:00:00"),
                      row("M-EXTERNAL", "2026-10-17T08:00:00", "2026-10-17T10:00:00", source="external")]
     # 700 个点事件各带一台设备一个人：若也投影日历，32 天 ×(1+1400) 个单元格会超过 40000 的预算。
     schedule_rows += [row(f"M-POINT-{index}", "2026-10-17T08:00:00", "2026-10-17T08:00:00") for index in range(700)]
     # 与报表引擎同一条链路：一次分组同时决定日历投影范围和占用率。
     collector = DegradationCollector()
-    groups = group_utilization_rows(schedule_rows, start_dt, end_dt_excl, collector)
+    groups = group_utilization_rows(schedule_rows, start_dt, end_dt_excl)
     calendars = resource_calendars_for_ids(conn, resource_ids_from_groups(groups), start_dt, end_dt_excl)
     assert set(calendars) == {("machine", "M1"), ("operator", "OP1")}
     assert all(item["state"] == "available" for item in calendars.values())
@@ -327,8 +311,6 @@ def test_resource_calendars_only_project_resources_occupying_the_report_window(s
                                                   calendars=calendars, degradation_collector=collector)
     assert [item["machine_id"] for item in machines] == ["M1"] and [item["operator_id"] for item in operators] == ["OP1"]
     assert machines[0]["capacity_hours"] is not None and operators[0]["capacity_hours"] is not None
-    # 日历预算和占用率共用同一次分组，坏时间只报一次。
-    assert collector.to_counters() == {"bad_time_row_skipped": 2}
 
 
 def test_catalog_search_matches_rows_only_reachable_through_zero_values():
@@ -398,12 +380,12 @@ def test_global_calendar_is_built_lazily_zero_times_for_overridden_operators_and
         "profiles": [],
         "shift_profiles": [],
         "patterns": [],
-        "machines": [{"machine_id": "M-BAD-STATUS", "status": "retired"}],
+        "machines": [],
         "operators": [{"operator_id": "OP1", "status": "active"}],
         "downtimes": [],
     }
     projected = _project_resources(
-        {"machine": ["M-MISSING", "M-BAD-STATUS"], "operator": ["OP1"]},
+        {"machine": ["M-MISSING"], "operator": ["OP1"]},
         overridden_facts,
         first_day,
         last_day,
@@ -414,7 +396,6 @@ def test_global_calendar_is_built_lazily_zero_times_for_overridden_operators_and
     assert projected["operator", "OP1"]["state"] == "available"
     assert projected["operator", "OP1"]["available_hours"] == 6.0
     assert projected["machine", "M-MISSING"]["issues"][0]["code"] == "resource_missing"
-    assert projected["machine", "M-BAD-STATUS"]["issues"][0]["code"] == "resource_status_unknown"
 
     calls.clear()
     valid_global = [
@@ -478,34 +459,32 @@ def test_global_calendar_is_built_lazily_zero_times_for_overridden_operators_and
     assert broken_shared["operator", "OP2"]["state"] == "unavailable"
     assert broken_shared["operator", "OP2"]["basis"] == "personal_or_operator_shift_calendar"
 
-    # ArchivedCalendar._resource_day 同样在计算 _policy_day 前通过 resource_record_unavailable 短路缺失或非法状态资源。
+    # ArchivedCalendar._resource_day 同样在计算 _policy_day 前通过 resource_record_unavailable 短路缺失的资源。
     from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 
-    m_missing_ref, o_bad_ref = "a" * 48, "b" * 48
-    saved_archive = {
-        "tables": {
-            "SchemaVersion": [{"id": 1, "version": 45}],
-            "WorkbenchEntityRefs": [
-                {"kind": "machine", "ref": m_missing_ref, "entity_key": "M-GONE", "active": 1},
-                {"kind": "operator", "ref": o_bad_ref, "entity_key": "OP-BAD", "active": 1},
-            ],
-            "Machines": [],
-            "Operators": [{"operator_id": "OP-BAD", "name": "状态非法", "status": "retired"}],
-            "WorkCalendar": broken_global,
-            "OperatorCalendar": [],
-            "MachineDowntimes": [],
-            "WorkbenchOperatorProfiles": [],
-            "WorkbenchShiftProfiles": [],
-            "WorkbenchShiftPatternDays": [],
-            "WorkbenchCalendarDefaults": [],
-        }
+    m_missing_ref, o_missing_ref = "a" * 48, "b" * 48
+    saved_tables = {
+        "SchemaVersion": [{"id": 1, "version": 45}],
+        "WorkbenchEntityRefs": [
+            {"kind": "machine", "ref": m_missing_ref, "entity_key": "M-GONE", "active": 1},
+            {"kind": "operator", "ref": o_missing_ref, "entity_key": "OP-GONE", "active": 1},
+        ],
+        "Machines": [],
+        "Operators": [],
+        "WorkCalendar": broken_global,
+        "OperatorCalendar": [],
+        "MachineDowntimes": [],
+        "WorkbenchOperatorProfiles": [],
+        "WorkbenchShiftProfiles": [],
+        "WorkbenchShiftPatternDays": [],
+        "WorkbenchCalendarDefaults": [],
     }
     calls.clear()
     archived_results = dict(
-        ArchivedCalendar(saved_archive).iter_resources(
+        ArchivedCalendar(saved_tables).iter_resources(
             [
                 {"kind": "machine", "ref": m_missing_ref, "saved_id": "M-GONE"},
-                {"kind": "operator", "ref": o_bad_ref, "saved_id": "OP-BAD"},
+                {"kind": "operator", "ref": o_missing_ref, "saved_id": "OP-GONE"},
             ],
             "2026-10-17T00:00:00",
             "2026-10-18T00:00:00",
@@ -513,4 +492,4 @@ def test_global_calendar_is_built_lazily_zero_times_for_overridden_operators_and
     )
     assert calls == []
     assert archived_results[m_missing_ref]["issues"][0]["code"] == "resource_missing"
-    assert archived_results[o_bad_ref]["issues"][0]["code"] == "resource_status_unknown"
+    assert archived_results[o_missing_ref]["issues"][0]["code"] == "resource_missing"

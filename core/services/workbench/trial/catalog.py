@@ -1,7 +1,7 @@
 """Readonly directory summaries never choose a default/latest draft or candidate."""
 
 from core.models.content import content_text
-from core.models.workbench_trial import reference, reject
+from core.models.workbench_trial import reject
 from core.models.workbench_trial_catalog import MAX_CATALOG_ROWS, TrialCatalogScope
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.source_revisions import TRIAL_SOURCE_KEYS, read_source_revisions
@@ -59,12 +59,11 @@ def _text(value):
 
 
 def _summary(row, collection):
-    base_kind, base_ref = row["base_kind"], reference(row["base_ref"])
-    if base_kind not in ("plan_ref", "candidate_ref") or type(row["row_count"]) is not int or row["row_count"] <= 0:
-        reject("trial_catalog_invalid", "试调列表里这条记录的来源或范围不完整，这里不猜内容。请刷新后重试。")
+    # 来源种类、行数与三个永久编号由 WorkbenchTrialDrafts、WorkbenchTrialScenarios 的 CHECK 定型。
+    base_kind, base_ref = row["base_kind"], row["base_ref"]
     source = _source_label(row)
     is_draft = collection == "drafts"
-    ref = reference(row["draft_ref"] if is_draft else row["scenario_ref"])
+    ref = row["draft_ref"] if is_draft else row["scenario_ref"]
     status = row["status"] if is_draft else "saved"
     title = row["saved_name"] or source + "的试调" if is_draft else row["name"]
     target_key = "draft_ref" if is_draft else "scenario_ref"

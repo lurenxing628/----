@@ -1,4 +1,6 @@
-"""No-op relationship files keep historical primaries with linear row inspections."""
+"""Relationship file import and export: per-row primaries, read-snapshot reuse and identity guards."""
+
+from datetime import datetime
 
 import pytest
 from flask import Blueprint, Flask, g
@@ -15,73 +17,31 @@ from tests.workbench.identity_metadata_support import insert_row
 from tests.workbench.resource_entity_support import identity_for, resource_database, resource_row  # noqa: F401
 from web.routes.workbench.relation_files import register_relation_file_routes
 from web.routes.workbench.resources import register_resource_routes
+from web.runtime_host import install_wall_clock
 
 
-def test_primary_planning_groups_rows_once_and_preserves_unchanged_legacy_groups(monkeypatch):
-    count = 300
-    rows = [{"errors": [], "values": {"operator_code": f"O{i}", "machine_code": "M1",
-             "skill_level": "normal", "is_primary": "no"}} for i in range(count)]
-    current = {f"O{i}": {"M1": {"skill_level": "normal", "is_primary": "no"}} for i in range(count)}
-    rows.append({"errors": [], "values": {"operator_code": "legacy", "machine_code": "M1", "is_primary": "yes"}})
-    rows.append({"errors": [], "values": {"operator_code": "legacy", "machine_code": "M2", "is_primary": "yes"}})
-    current["legacy"] = {code: {"skill_level": "normal", "is_primary": "yes"} for code in ("M1", "M2")}
-    inspections, original = [], module._blocked
-
-    def captured(row):
-        inspections.append(True)
-        return original(row)
-
-    monkeypatch.setattr(module, "_blocked", captured)
-    result = object.__new__(module.WorkbenchRelationFileService)._final_primaries(rows, current)
-    assert all(not result[f"O{i}"] for i in range(count))
-    assert result["legacy"] == {"M1", "M2"} and all(not row["errors"] for row in rows)
-    assert len(inspections) <= 4 * len(rows)
-
-
-def _replaced_primaries(current, primaries):
-    return {operator: [code for code, link in sorted(links.items())
-                       if link["is_primary"] == "yes" and code not in primaries[operator]]
-            for operator, links in current.items()}
-
-
-def test_primary_notes_cover_unchanged_claim_demoting_legacy_primary_without_false_positive_on_blank():
-    service = object.__new__(module.WorkbenchRelationFileService)
-    current = {
-        "O1": {
-            "M1": {"skill_level": "normal", "is_primary": "yes"},
-            "M2": {"skill_level": "normal", "is_primary": "yes"},
-            "M3": {"skill_level": "normal", "is_primary": "no"},
-        }
-    }
-    claim_rows = [
-        {"row": 1, "errors": [], "notes": [], "requires_confirmation": False,
-         "values": {"operator_code": "O1", "machine_code": "M1", "skill_level": "normal", "is_primary": "yes"}},
-        {"row": 2, "errors": [], "notes": [], "requires_confirmation": False,
-         "values": {"operator_code": "O1", "machine_code": "M3", "skill_level": "expert", "is_primary": None}},
-    ]
-    primaries = service._final_primaries(claim_rows, current)
-    assert primaries["O1"] == {"M1"}
-    replaced = _replaced_primaries(current, primaries)
-    for row in claim_rows:
-        service._classify(row, current, primaries, replaced)
-    assert claim_rows[0]["result"] == "unchanged"
-    assert claim_rows[0]["notes"] == ["确认后 M2 不再是这个人的主操设备。"]
-    assert claim_rows[0]["requires_confirmation"] is True
-
-    drop_rows = [
-        {"row": 1, "errors": [], "notes": [], "requires_confirmation": False,
-         "values": {"operator_code": "O1", "machine_code": "M1", "skill_level": "expert", "is_primary": None}},
-        {"row": 2, "errors": [], "notes": [], "requires_confirmation": False,
-         "values": {"operator_code": "O1", "machine_code": "M2", "skill_level": None, "is_primary": "no"}},
-    ]
-    primaries = service._final_primaries(drop_rows, current)
-    assert primaries["O1"] == {"M1"}
-    replaced = _replaced_primaries(current, primaries)
-    for row in drop_rows:
-        service._classify(row, current, primaries, replaced)
-    assert drop_rows[0]["result"] == "update"
-    assert drop_rows[0]["notes"] == []
-    assert drop_rows[0]["requires_confirmation"] is False
+def test_relation_import_two_primary_rows_for_one_operator_make_both_primary_and_keep_the_old_one(resource_conn):
+    conn = resource_conn
+    for code in ("M2", "M3"):
+        insert_row(conn, "Machines", {"machine_id": code, "name": code})
+        insert_row(conn, "MachineOpTypes", {"machine_id": code, "op_type_id": "OT1"})
+    insert_row(conn, "OperatorMachine", {"operator_id": "O1", "machine_id": "M2", "skill_level": "normal", "is_primary": "no"})
+    conn.commit()
+    service = module.WorkbenchRelationFileService(conn, "operator_machine")
+    content = file_bytes([("O1", "M2", "", "是"), ("O1", "M3", "", "是")], headers=("工号", "设备编号", "技能等级", "主操设备"))
+    preview = service.preview_import(content, file_format="csv", mode="upsert")
+    rows = preview.as_dict()["rows"]
+    assert [(row["result"], row["changes"]) for row in rows] == [
+        ("update", {"is_primary": {"before": "no", "after": "yes"}}), ("new", {})]
+    assert rows[1]["after"]["skill_level"] == "normal" and rows[1]["after"]["is_primary"] == "yes"
+    assert not any(row["errors"] or row["notes"] or row["requires_confirmation"] for row in rows)
+    with service.tx.transaction():
+        outcome = service.confirm_import(preview)
+    assert outcome.result == "committed"
+    stored = [tuple(row) for row in conn.execute(
+        "SELECT machine_id, skill_level, is_primary FROM OperatorMachine WHERE operator_id='O1' ORDER BY machine_id")]
+    # 原主操 M1 文件里没写，保持原样；同一个人现在有三台主操设备。
+    assert stored == [("M1", "expert", "yes"), ("M2", "normal", "yes"), ("M3", "normal", "yes")]
 
 
 def test_relation_export_in_read_snapshot_reuses_loaded_table_facts(resource_conn, monkeypatch):
@@ -116,6 +76,7 @@ def test_relation_export_in_read_snapshot_reuses_loaded_table_facts(resource_con
     assert any(row["operator_code"] == "O1" and row["machine_code"] == "M1" for row in rows)
 
     app = Flask(__name__)
+    install_wall_clock(app, datetime.now)
     app.config.update(TESTING=True, SECRET_KEY="relation-export-capacity")
     bp = Blueprint("relation_export_capacity", __name__)
     register_resource_routes(bp)
@@ -240,7 +201,8 @@ def test_relation_import_rejects_null_marker_on_required_columns(resource_conn):
 def test_relation_import_preserves_legacy_surrounding_whitespace_without_touching_trimmed_sibling(resource_conn):
     conn = resource_conn
     insert_row(conn, "Operators", {"operator_id": " O1 ", "name": "带空格人员"})
-    insert_row(conn, "Machines", {"machine_id": " M1 ", "name": "带空格设备", "op_type_id": "OT1"})
+    insert_row(conn, "Machines", {"machine_id": " M1 ", "name": "带空格设备"})
+    insert_row(conn, "MachineOpTypes", {"machine_id": " M1 ", "op_type_id": "OT1"})
     insert_row(conn, "OperatorMachine", {"operator_id": " O1 ", "machine_id": " M1 ",
                                          "skill_level": "normal", "is_primary": "no"})
     conn.commit()

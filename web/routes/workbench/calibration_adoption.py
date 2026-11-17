@@ -3,32 +3,34 @@
 from flask import current_app, g, request
 
 from core.models.workbench_calibration import MAX_RESPONSE_BYTES
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.calibration.adoption import WorkbenchCalibrationAdoptionService
 from core.services.workbench.commands import command_lookup_payload
+from core.shared.key_sets import keys_conform
 from web.api_responses import json_response, query_success
+from web.runtime_host import wall_clock
 
 from .api_responses import api_endpoint, read_endpoint
 from .read_context import unbound_snapshot
+from .request_json import BodyTexts, command_body, read_json_body, rejecter
 from .write_context import issue_write_context, validate_write_context
 
 
 def _service():
     return WorkbenchCalibrationAdoptionService(g.db,
         integration_enabled=current_app.config.get("WORKBENCH_CALIBRATION_ADOPTION_ENABLED") is True,
-        context_factory=issue_write_context, context_validator=validate_write_context)
+        context_factory=issue_write_context, context_validator=validate_write_context, clock=wall_clock(current_app))
 
 
-def _body(fields):
-    value = request.get_json()
-    if request.args or type(value) is not dict or set(value) != set(fields):
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，还没有采用。请刷新页面后重新填写。", 400)
-    return value
+_REJECTED = "提交的内容不完整或有多余项，还没有采用。请刷新页面后重新填写。"
+_BODY = BodyTexts(transport=_REJECTED, malformed=_REJECTED, incomplete=_REJECTED)
 
 
 @read_endpoint
 def calibration_adoption_preview(suggestion_ref):
-    value = _body(("input",))
+    value = read_json_body(_BODY)
+    if not keys_conform(value, ("input",)):
+        rejecter(_REJECTED)()
     data = _service().preview(suggestion_ref, value["input"])
     # 采用预览靠写入凭据防并发，没有可回绑的读取快照。
     return query_success(data, unbound_snapshot(data["generated_at"]), byte_limit=MAX_RESPONSE_BYTES,
@@ -37,9 +39,7 @@ def calibration_adoption_preview(suggestion_ref):
 
 @api_endpoint
 def calibration_adoption_confirm(suggestion_ref):
-    value = _body(("write_token", "request_key", "input"))
-    validate_request_key(value["request_key"])
-    g.workbench_request_key = value["request_key"]
+    value = command_body(_BODY, stale="本页数据已过期，还没有采用。请刷新页面后重新填写。")
     g.workbench_result_target = (
         "/api/workbench/v1/calibration/" + suggestion_ref + "/adopt/receipts/" + value["request_key"]
     )

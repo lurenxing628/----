@@ -191,6 +191,21 @@ def test_decode_reports_rejects_corrupted_numeric_or_dangling_shared_string_cell
     assert exc_info.value.status == 422
 
 
+@pytest.mark.parametrize("key,value,accepted,message", [
+    ("effective_processing_hours", (1 << 53) - 1, True, None),
+    ("effective_processing_hours", float(1 << 53), False, "有效加工小时请填 0 或正数；不填就留空。"),
+    ("completed_quantity", (1 << 53) - 1, True, None),
+    ("completed_quantity", 1 << 53, False, "完成数量请填 0 或正整数；不填就留空。"),
+])
+def test_report_input_admits_the_same_number_domain_the_readers_accept(key, value, accepted, message):
+    if accepted:
+        assert normalize_report_input("create", {key: value})[key] == value
+        return
+    with pytest.raises(WorkbenchCommandRejected) as exc_info:
+        normalize_report_input("create", {key: value})
+    assert (exc_info.value.code, exc_info.value.status, str(exc_info.value)) == ("invalid_input", 422, message)
+
+
 @pytest.mark.parametrize("bad_char", ["\x00", "\x07", "\x1f", "\ufffe", "\uffff"])
 def test_report_input_and_xlsx_codec_reject_illegal_xml_characters(bad_char):
     with pytest.raises(WorkbenchCommandRejected):

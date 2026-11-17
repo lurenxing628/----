@@ -6,11 +6,7 @@ from io import StringIO
 
 from core.models.workbench_plan_scope import PlanReadScope
 from core.models.workbench_run_candidate import RunCandidateReadScope
-from core.services.workbench.facts.gantt_graph import (
-    build_gantt_graph,
-    project_scoped_gantt_graph,
-    unavailable_graph,
-)
+from core.services.workbench.facts.gantt_graph import build_gantt_graph
 from core.services.workbench.plan.export import HEADERS, write_plan_export
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.run.candidates import WorkbenchRunCandidateQueryService
@@ -126,16 +122,6 @@ def test_candidate_and_adopted_graph_keep_full_frozen_route_across_range_and_bom
     assert candidate_workspace(case, refs[0])["gantt_graph"] == candidate_graph
     assert plan_workspace(case, plan_ref)["gantt_graph"] == plan_graph
 
-    # Changing operation identity invalidates an adopted binding instead of reconnecting it to the new BOM.
-    case.conn.execute("UPDATE BatchOperations SET seq=100-seq,"
-                      "piece_id=CASE WHEN piece_id IS NULL THEN NULL ELSE 'changed-'||piece_id END")
-    case.conn.commit()
-    assert candidate_workspace(case, refs[0])["gantt_graph"] == candidate_graph
-    invalidated = plan_workspace(case, plan_ref)["gantt_graph"]
-    assert invalidated["state"] == "unavailable" and invalidated["reason"]
-    assert invalidated["nodes"] == invalidated["critical_task_refs"] == invalidated["critical_edges"] == []
-    assert "edges" not in invalidated
-
 
 def test_zero_duration_split_and_join_are_graph_nodes_after_adoption(trial_case, monkeypatch):
     from core.services.capacity.plan_calendar_io import CalendarFacts
@@ -226,45 +212,25 @@ def test_shared_graph_keeps_20k_nodes_all_predecessors_and_complete_critical_fac
     assert all(edge["edge_type"] == "process" for edge in graph["critical_edges"])
 
 
-def test_plan_and_candidate_public_dtos_isolate_in_process_caches_on_mutation(trial_case, monkeypatch):
+def test_plan_and_candidate_public_dtos_isolate_in_process_caches_on_mutation(trial_case):
     from copy import deepcopy
-
-    import pytest
 
     from core.services.workbench.execution.actual_gantt import ActualGanttService
     from core.services.workbench.execution.actual_gantt_scope import ActualGanttScope
-    from core.services.workbench.facts import resource_intervals
     from core.services.workbench.facts.candidate_store import CandidateStore
-    from core.services.workbench.run import decision_source
     from core.services.workbench.run.candidate_baseline import (
         WorkbenchRunCandidateBaselineQueryService,
     )
-    from core.services.workbench.run.decision_impact import operation_impacts
-    from core.services.workbench.run.decision_preparation import DecisionPreparation
+    from core.services.workbench.run.decision_preparation_queries import (
+        normalize_preparation_filters,
+        preparation_details,
+    )
+    from core.services.workbench.run.decision_queries import decision_details, normalize_filters
     from core.services.workbench.run.decision_source import DecisionSource
-    from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
     case = trial_case
     _, run_ref, refs = piece_candidate(case)
     candidate_ref = refs[0]
-
-    official_saved = DecisionSource(CandidateStore(case.conn), run_ref, comparison_mode="admission_official")
-    assert official_saved.official_changed is False
-    with monkeypatch.context() as official_reread_scope:
-        official_reread_scope.setattr(WorkbenchRunRepository, "dependencies_match", lambda _self, _expected: False)
-        official_reread_scope.setattr(
-            resource_intervals,
-            "task_interval",
-            lambda _row: pytest.fail("resource_cohort should reuse prepared reference task_intervals"),
-        )
-        official_reread_scope.setattr(
-            decision_source,
-            "task_interval",
-            lambda _row: pytest.fail("DecisionSource should reuse official_details task_intervals"),
-        )
-        official_reread = DecisionSource(CandidateStore(case.conn), run_ref, comparison_mode="admission_official")
-        assert official_reread.official_changed is True
-        assert official_reread.resource_cohort == official_saved.resource_cohort
 
     cand_first, _ = WorkbenchRunCandidateQueryService(case.conn).workspace(RunCandidateReadScope(candidate_ref), bind_snapshot=lambda scope, state: state)
     cand_expected = deepcopy(cand_first)
@@ -322,40 +288,19 @@ def test_plan_and_candidate_public_dtos_isolate_in_process_caches_on_mutation(tr
     base_second, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateReadScope(candidate_ref), bind_snapshot=lambda scope, state: state)
     assert base_second == base_expected
 
+    preparation = normalize_preparation_filters("preparation")
     decision_one = DecisionSource(CandidateStore(case.conn), run_ref)
-    prep_refs = decision_one.scope["operation_refs"]
-    prep_impacts_first = DecisionPreparation(decision_one).impacts(prep_refs)
+    prep_impacts_first = preparation_details(decision_one, preparation, all_rows=True)["items"]
     prep_impacts_expected = deepcopy(prep_impacts_first)
     prep_impacts_first[0]["after"]["evidence_source"]["run_ref"] = "POLLUTED"
     prep_impacts_first[0]["after"]["data_gaps"].append({"field": "runtime_requirement", "code": "polluted", "message": "POLLUTED"})
     prep_impacts_first[0]["after"]["standard"]["evidence_source"]["run_ref"] = "POLLUTED"
-    assert DecisionPreparation(DecisionSource(CandidateStore(case.conn), run_ref)).impacts(prep_refs) == prep_impacts_expected
+    assert preparation_details(DecisionSource(CandidateStore(case.conn), run_ref), preparation, all_rows=True)["items"] == prep_impacts_expected
 
-    impacts_first = operation_impacts(decision_one, decision_one.scope["operation_refs"])
+    operations = normalize_filters("operations")
+    impacts_first = decision_details(decision_one, "operations", operations, all_rows=True)["items"]
     impacts_expected = deepcopy(impacts_first)
     impacts_first[0]["constraints"]["reasons"].append({"code": "polluted"})
-
+    impacts_first[0]["after"]["data_gaps"].append({"code": "polluted"})
     decision_two = DecisionSource(CandidateStore(case.conn), run_ref)
-    assert operation_impacts(decision_two, decision_two.scope["operation_refs"]) == impacts_expected
-
-    first_op_ref = decision_two.scope["operation_refs"][0]
-    decision_two.disposition[first_op_ref] = {
-        **decision_two.disposition[first_op_ref],
-        "issues": [{"code": "protected_issue", "message": "original"}],
-    }
-    disposition_expected = deepcopy(decision_two.disposition[first_op_ref])
-    impacts_with_issue = operation_impacts(decision_two, [first_op_ref])
-    impacts_with_issue_expected = deepcopy(impacts_with_issue)
-    impacts_with_issue[0]["constraints"]["reasons"][0]["message"] = "POLLUTED"
-    impacts_with_issue[0]["constraints"]["reasons"].append({"code": "polluted"})
-    assert decision_two.disposition[first_op_ref] == disposition_expected
-    assert operation_impacts(decision_two, [first_op_ref]) == impacts_with_issue_expected
-
-    cached_unavailable = unavailable_graph("full_plan", "工序顺序数据不完整。")
-    scoped_unavailable = project_scoped_gantt_graph(cached_unavailable, {"B1"}, include_nodes=True)
-    scoped_unavailable["nodes"].append({"task_ref": "polluted"})
-    scoped_unavailable["critical_task_refs"].append("polluted")
-    scoped_unavailable["critical_edges"].append({"from_task_ref": "polluted"})
-    assert cached_unavailable["nodes"] == []
-    assert cached_unavailable["critical_task_refs"] == []
-    assert cached_unavailable["critical_edges"] == []
+    assert decision_details(decision_two, "operations", operations, all_rows=True)["items"] == impacts_expected

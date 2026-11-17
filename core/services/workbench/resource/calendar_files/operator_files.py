@@ -114,10 +114,8 @@ class WorkbenchOperatorCalendarFileService:
     def _parse_row(self, source) -> Dict[str, Any]:
         row = action_row(source["row"])
         row["errors"] = list(source["errors"])
-        row["notes"] = []
         values = source["values"]
         row["reference_fields"] = [key for key in READONLY[self.kind] if key in values]
-        row["input"] = None
         parsed: Dict[str, Any] = {}
         for key in file_columns(self.kind):
             if key in READONLY[self.kind] or key not in values:

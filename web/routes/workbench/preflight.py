@@ -10,19 +10,20 @@ from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError, ValidationError
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_preflight import (
     SCHEDULING_PREFERENCES_ACTION,
     SCHEDULING_PREFERENCES_SUBJECT,
 )
-from core.models.workbench_run_job import new_run_ref
 from core.services.workbench.run.preferences import SchedulingPreferencesService
+from core.shared.refs import new_ref
 from core.shared.strict_json import canonical_json
 from web.api_responses import failure, json_response, query_success
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
-from .api_responses import api_endpoint, domain_failure
-from .read_context import bind_read_snapshot
+from .api_responses import api_endpoint, domain_failure, rejection_failure
+from .read_context import bind_read_snapshot, current_snapshot_time
+from .request_json import BodyTexts, command_body
 from .write_context import issue_write_context, validate_write_context
 
 if TYPE_CHECKING:
@@ -47,13 +48,15 @@ def _require_current(original, current):
         raise WorkbenchCommandRejected("snapshot_stale", "排产检查之后批次范围或现场记录有变化，这次排产没有开始。请重新点「开始排产检查」。")
 
 
-def evaluate_preflight_input_prepared(conn, input_ref: str, *, facts: "PreflightFacts") -> "PreparedPreflight":
-    """Private same-transaction continuation; caller owns transaction and PreflightFacts."""
+def evaluate_preflight_input_prepared(conn, input_ref: str, *, facts: "PreflightFacts",
+                                      material_day: str) -> "PreparedPreflight":
+    """Private same-transaction continuation; caller owns transaction, PreflightFacts and the material day."""
     from core.services.workbench.run.preflight import PreflightService
 
     normalized, original = _preflight_binding(conn, input_ref)
     _require_current(original, facts.fingerprint())
-    return PreflightService(conn).evaluate_prepared(normalized, facts=facts, fingerprint=original)
+    return PreflightService(conn).evaluate_prepared(normalized, facts=facts, material_day=material_day,
+                                                    fingerprint=original)
 
 
 def scheduling_preflight():
@@ -62,18 +65,19 @@ def scheduling_preflight():
     try:
         if request.args or not request.is_json:
             raise WorkbenchCommandRejected("invalid_input", "提交的内容格式不正确，排产检查没有执行。请刷新页面后重新点「开始排产检查」。", 400)
-        data, fingerprint = PreflightService(g.db).evaluate(request.get_json())
+        as_of = current_snapshot_time()
+        data, fingerprint = PreflightService(g.db).evaluate(request.get_json(), material_day=as_of.date().isoformat())
         binding = {"input": data["normalized_input"], "fingerprint": fingerprint,
-                   "check_ref": new_run_ref()}
+                   "check_ref": new_ref()}
         token, expires = issue_public_token_with_expiry(INPUT_SCOPE, MappingProxyType(binding), key=binding["check_ref"],
                                                        group=fingerprint, ttl_seconds=900)
         data.update(input_ref=token, input_expires_at=datetime.fromtimestamp(expires).strftime("%Y-%m-%dT%H:%M:%S"),
                     write_context={"write_token": None, "expires_at": None,
                                    "capabilities": {"scheduling.preflight": True, "scheduling.run": False},
                                    "blocked_reasons": data["run_blocked_reasons"]})
-        response = query_success(data, {"snapshot_ref": token, "as_of": datetime.now().isoformat(timespec="seconds")})
+        response = query_success(data, {"snapshot_ref": token, "as_of": as_of.isoformat(timespec="seconds")})
     except WorkbenchCommandRejected as exc:
-        response = failure(exc.code, str(exc), exc.status)
+        response = rejection_failure(exc)
     except AppError as exc:
         response = domain_failure(exc)
     except HTTPException as exc:
@@ -90,22 +94,19 @@ def scheduling_preflight():
 def scheduling_preferences_read():
     if request.args:
         raise WorkbenchCommandRejected("invalid_input", "排产范围读取条件不正确。", 400)
+    as_of = current_snapshot_time()
     with TransactionManager(g.db).transaction():
         data, state = SchedulingPreferencesService(g.db).snapshot()
         data["write_context"] = issue_write_context(SCHEDULING_PREFERENCES_SUBJECT, [SCHEDULING_PREFERENCES_ACTION], state)
-        snapshot = bind_read_snapshot({"kind": "scheduling_preferences"}, canonical_json(state))
+        snapshot = bind_read_snapshot({"kind": "scheduling_preferences"}, canonical_json(state), as_of=as_of)
     return query_success(data, snapshot)
 
 
 @api_endpoint
 def scheduling_preferences_write():
-    if request.args or not request.is_json:
-        raise WorkbenchCommandRejected("invalid_input", "排产范围的保存内容格式不正确。", 400)
-    body = request.get_json()
-    if type(body) is not dict or set(body) != {"request_key", "write_token", "input"}:
-        raise WorkbenchCommandRejected("invalid_input", "排产范围的保存内容不完整或有多余项。", 400)
-    validate_request_key(body["request_key"])
-    g.workbench_request_key = body["request_key"]
+    body = command_body(BodyTexts(transport="排产范围的保存内容格式不正确。", malformed="排产范围的保存内容格式不正确。",
+                                  incomplete="排产范围的保存内容不完整或有多余项。"),
+                        stale="本页数据已过期，排产范围还没有保存。请刷新页面后重新选择。")
     result = SchedulingPreferencesService(g.db, current_app.logger).save(
         body["input"], request_key=body["request_key"],
         validate_context=lambda subject, action, state: validate_write_context(body["write_token"], subject, action, state))

@@ -10,25 +10,13 @@ from core.services.capacity.plan_calendar_intervals import instant, segments, un
 KINDS = ("machine", "operator")
 
 
-def task_interval(task):
-    if task.get("interval_comparable") is False:
-        return None
-    try:
-        start, end = instant(task.get("start")), instant(task.get("end"))
-    except (ValueError, TypeError, OverflowError):
-        return None
-    if start == end:
-        return (start, end) if task.get("event_kind") == "point" and task.get("occupies_resources") is False else None
-    return (start, end) if start < end else None
-
-
 def resource_cohort(task_pools, *, task_intervals):
     """Saved resource identities involved across every compared object's tasks."""
     resources = {}
     for source_index, tasks in enumerate(task_pools):
         for task in tasks:
             interval = task_intervals[source_index][task["row_ref"]]
-            if task.get("source") == "external" or interval is not None and interval[0] == interval[1]:
+            if task.get("source") == "external" or interval[0] == interval[1]:
                 continue
             for kind in KINDS:
                 value = task.get(kind)
@@ -39,12 +27,10 @@ def resource_cohort(task_pools, *, task_intervals):
 
 
 def occupying_tasks(tasks, low, high, *, task_intervals):
-    """Tasks occupying a resource inside [low, high); external work and point events never do, unknown times stay."""
+    """Tasks occupying a resource inside [low, high); external work and point events never do."""
     for task in tasks:
         interval = task_intervals[task["row_ref"]]
-        if task.get("source") == "external" or interval is not None and interval[0] == interval[1]:
-            continue
-        if interval is not None and not (interval[0] < high and interval[1] > low):
+        if task.get("source") == "external" or interval[0] == interval[1] or not (interval[0] < high and interval[1] > low):
             continue
         yield task, interval
 
@@ -85,11 +71,10 @@ class _OverlapNode:
 
 
 class ResourceIntervals:
-    """One resource's valid rows and independent operation demand segments."""
+    """One resource's rows and independent operation demand segments."""
 
-    def __init__(self, rows: List[Tuple[datetime, datetime, Dict[str, Any]]], unknown: List[Dict[str, Any]]):
+    def __init__(self, rows: List[Tuple[datetime, datetime, Dict[str, Any]]]):
         self.rows = sorted(rows, key=lambda row: (row[0], row[1], row[2]["row_ref"]))
-        self.unknown = unknown
         self.starts = [row[0] for row in self.rows]
         self.ends = sorted(row[1] for row in self.rows)
         grouped = defaultdict(list)
@@ -127,7 +112,7 @@ class ResourceIntervals:
         return result
 
 
-def sweep_details(rows, unknown, start, end):
+def sweep_details(rows, start, end):
     """Sweep actual active rows; conflicts count distinct permanent operations."""
     events = defaultdict(list)
     for index, (low, high, task) in enumerate(rows):
@@ -154,5 +139,4 @@ def sweep_details(rows, unknown, start, end):
         previous = at
     fields = ("row_ref", "operation_ref", "batch_ref", "batch_label", "process_label", "start", "end")
     tasks = [{key: task.get(key) for key in fields} for _, _, task in rows]
-    tasks.extend({key: task.get(key) for key in fields} for task in unknown)
     return {"conflicts": conflicts, "tasks": tasks}

@@ -1,8 +1,33 @@
 """Saved condition facts with separate trial work and environment provenance."""
 
-from core.services.workbench.facts.archived_calendar import ArchivedCalendar
+from functools import cached_property
+from typing import Any, Callable, Dict, List, Union
+
+from core.services.workbench.facts.archived_calendar import CALENDAR_TABLES, ArchivedCalendar
 from core.services.workbench.facts.candidate_facts import entity_ref_rows
-from core.services.workbench.facts.candidate_values import corrupt
+from core.services.workbench.facts.trial_origin import CandidateTrialSource
+
+from .packets import RunPacket, TrialPacket, UnavailablePacket
+
+# Where each kind of source saved its facts, for the paths a projection reports.
+_ORIGINS = {
+    "run": {
+        "environment": "capture.facts",
+        "original": "capture.facts",
+        "input": "capture.input",
+        "execution": "capture.execution",
+        "tasks": "raw_tasks",
+    },
+    "trial": {
+        "environment": "head.admission.facts",
+        "input": "head.admission.input",
+        "original": "head.admission.source.capture.facts",
+        "execution": "head.admission.execution",
+        "tasks": "rows",
+        "saved": "saved",
+    },
+    "empty": {},
+}
 
 
 def _table_paths(rows, key, prefix):
@@ -18,76 +43,71 @@ class ConditionSource:
 
     ``operations`` and ``batches`` are permanent-reference indexes. ``execution``
     is the saved operation-reference index; empty collections retain real zero.
-    Trial ``archive`` always belongs to draft admission. Its business work stays
-    in ``rows.original`` or the source capture for saved unplanned operations.
+    Trial environment tables always belong to the draft admission. Its business work stays
+    in ``rows.original`` or the source capture for saved unplanned operations. An unavailable
+    source keeps only its kind, identity and issue; no reader reads its saved facts.
     """
 
-    def __init__(self, packet):
-        self.kind, self.ref, self.entry_ref = packet["kind"], packet["ref"], packet["entry_ref"]
-        self.issue = packet.get("source_issue")
-        self.available = self.kind != "empty"
-        self.archive = self.input = self.execution = self.baseline = None
-        self.artifact = self.raw_tasks = self.trial_rows = self.saved = self.calendar = None
-        self.facts = self.original_facts = self.origin = self.trial_contexts = None
+    def __init__(self, packet: Union[UnavailablePacket, RunPacket, TrialPacket]):
+        self.kind, self.ref, self.entry_ref = packet.kind, packet.ref, packet.entry_ref
+        self.issue = packet.source_issue if isinstance(packet, UnavailablePacket) else None
+        self.available = self.issue is None
+        # Every available source records its input, execution and baseline.
+        self.input: Dict[str, Any]
+        self.execution: Dict[str, Any]
+        self.baseline: Dict[str, Any]
+        self.saved: Dict[str, Any]  # trial sources only: the saved draft or scenario snapshot
+        self.artifact = self.raw_tasks = self.trial_rows = None
+        self.origin = self.trial_contexts = None
         self.operations, self.batches, self.entity_refs = {}, {}, {}
         self.original_entity_refs = {}
         self.refs_by_op_id = {}
         self._input_paths = {}
-        self._operation_paths, self._batch_paths, self._origins = {}, {}, {}
+        self._operation_paths, self._batch_paths = {}, {}
+        # An unavailable source keeps its kind's paths; only the empty side has none.
+        self._origins = dict(_ORIGINS[self.kind])
+        # Every available source binds, once, where its tables are read: its environment tables, and the tables its
+        # original work relations were saved in (the same ones except for a trial based on a run candidate).
+        self._environment_tables: Callable[[str], List[Dict[str, Any]]]
+        self._original_tables: Callable[[str], List[Dict[str, Any]]]
         self._source_cache = {}
-        if self.kind == "run":
-            self._origins = {"environment": "capture.facts_text", "original": "capture.facts_text",
-                             "input": "capture.input", "execution": "capture.execution", "tasks": "raw_tasks"}
-            if self._missing_source():
-                return
+        if isinstance(packet, RunPacket):
             self._run(packet)
-        elif self.kind == "trial":
-            self._origins = {"environment": "head.admission.facts", "input": "head.admission.input",
-                             "original": "head.admission.source.capture.facts_text",
-                             "execution": "head.admission.execution", "tasks": "rows", "saved": "saved"}
-            if self._missing_source():
-                return
+        elif isinstance(packet, TrialPacket):
             self._trial(packet)
-        elif self.kind != "empty":
-            raise ValueError("Unknown saved condition source")
 
-    def _missing_source(self):
-        # Only an unproven adoption audit leaves a packet unread; every read source is complete.
-        if self.issue is None:
-            return False
-        self.available = False
-        return True
-
-    def _run(self, packet):
-        facts, capture = packet["facts"], packet["capture"]
-        candidate = packet["candidate"]
-        self.archive, self.input = facts.archive, capture["input"]
+    def _run(self, packet: RunPacket):
+        facts, capture = packet.facts, packet.capture
+        candidate = packet.candidate
+        self.input = capture["input"]
         self.execution, self.baseline = facts.execution, capture["baseline"]
         self.artifact = candidate["artifact"] if candidate is not None else None
-        self.raw_tasks = packet["raw_tasks"]
+        self.raw_tasks = packet.raw_tasks
         self.entity_refs = self.original_entity_refs = facts.entity_refs
         self.refs_by_op_id = facts.operation_refs
-        self.facts = facts
-        self.calendar = ArchivedCalendar(self.archive, source_ref=self.ref, facts=facts)
-        self._work_indexes(facts.tables["BatchOperations"], facts.tables["Batches"], facts.operations,
-                           self._origins["original"])
+        self._environment_tables = self._original_tables = facts.table
+        self._work_indexes(
+            facts.tables["BatchOperations"],
+            facts.tables["Batches"],
+            facts.operations,
+            self._origins["original"],
+        )
         self._input_paths = {key: "capture.input." + key for key in self.input}
 
     def _work_indexes(self, operations, batches, operation_refs, prefix):
         op_paths = _table_paths(operations.values(), "id", prefix + ".tables.BatchOperations")
         batch_paths = _table_paths(batches.values(), "batch_id", prefix + ".tables.Batches")
         for ref, key in operation_refs.items():
-            if key in operations:
-                self.operations[ref], self._operation_paths[ref] = operations[key], op_paths[key]
+            self.operations[ref], self._operation_paths[ref] = operations[key], op_paths[key]
         for (kind, key), ref in self.entity_refs.items():
-            if kind == "batch" and key in batches:
+            if kind == "batch":
                 self.batches[ref], self._batch_paths[ref] = batches[key], batch_paths[key]
 
-    def _trial(self, packet):
-        self.saved, self.trial_rows = packet["saved"], packet["rows"]
-        admission = packet["head"]["admission"]
-        self.archive, self.execution, self.baseline = admission["facts"], admission["execution"], admission["baseline"]
-        self.calendar = ArchivedCalendar(self.archive, source_ref=self.ref)
+    def _trial(self, packet: TrialPacket):
+        self.saved, self.trial_rows = packet.saved, packet.rows
+        admission = packet.head["admission"]
+        self.execution, self.baseline = admission["execution"], admission["baseline"]
+        self._environment_tables = packet.origin.tables.__getitem__
         self.entity_refs = entity_ref_rows(self.table("WorkbenchEntityRefs"))
         for index, row in enumerate(self.trial_rows):
             original, ref = row["original"], row["operation_ref"]
@@ -97,22 +117,24 @@ class ConditionSource:
             if batch_ref not in self.batches:
                 self.batches[batch_ref] = original["batch"]
                 self._batch_paths[batch_ref] = f"rows[{index}].original.batch"
-        self._trial_unplanned(packet["origin"])
-        self._trial_input(admission)
+        self._trial_unplanned(packet.origin)
+        self._trial_input(packet.origin.source)
 
     def _trial_unplanned(self, origin):
-        facts = origin.facts
-        if facts is not None:
+        source = origin.source
+        if isinstance(source, CandidateTrialSource):
+            facts = source.facts
             op_rows = facts.tables["BatchOperations"].values()
             batch_rows = facts.tables["Batches"].values()
             entity_refs = facts.entity_refs
-            prefix = "head.admission.source.capture.facts_text"
+            prefix = "head.admission.source.capture.facts"
+            self._original_tables = facts.table
         else:
             op_rows, batch_rows = self.table("BatchOperations"), self.table("Batches")
             entity_refs = self.entity_refs
             prefix = self._origins["environment"]
+            self._original_tables = self._environment_tables
         self.origin = origin
-        self.original_facts = facts
         self.original_entity_refs = entity_refs
         self.refs_by_op_id = origin.admission_refs_by_op_id
         self._origins["original"] = prefix
@@ -125,37 +147,27 @@ class ConditionSource:
             if batch_ref not in self.batches:
                 self.batches[batch_ref], self._batch_paths[batch_ref] = batch, batch_paths[batch["batch_id"]]
 
-    def _trial_input(self, admission):
-        source = admission["source"]
-        self.input = {}
-        inputs = ((admission["input"], "head.admission.input"),
-                  (source.get("material_policy"), "head.admission.source.material_policy"),
-                  ((source.get("capture") or {}).get("input"), "head.admission.source.capture.input"))
-        for values, prefix in inputs:
-            if values is None:
-                continue
-            if type(values) is not dict:
-                corrupt()
-            for key, value in values.items():
-                self.input[key], self._input_paths[key] = value, prefix + "." + key
-        date_inputs = (inputs[0], inputs[2], inputs[1])
-        for key in ("start_date", "end_date"):
-            for values, prefix in date_inputs:
-                if values is not None and key in values:
-                    self.input[key], self._input_paths[key] = values[key], prefix + "." + key
-                    break
+    def _trial_input(self, source):
+        # The trial's own input names only its base and view scope; its run settings are the source's.
+        self.input = source.settings
+        prefix = "head.admission.source." + source.settings_path + "."
+        self._input_paths = {key: prefix + key for key in self.input}
+
+    @cached_property
+    def calendar(self):
+        return ArchivedCalendar({name: self.table(name) for name in CALENDAR_TABLES}, source_ref=self.ref)
 
     def table(self, name):
-        """Keep saved empty tables distinct from missing tables and columns."""
-        return self.calendar.table(name) if self.calendar is not None else None
+        """One admitted archive table, decoded once."""
+        return self._environment_tables(name)
 
     def original_table(self, name):
         """Read original work relations without replacing trial environment facts."""
-        return self.original_facts.table(name) if self.original_facts is not None else self.table(name)
+        return self._original_tables(name)
 
     def input_path(self, key):
-        """Return the saved field path, or None when that input was absent."""
-        return self._input_paths.get(key)
+        """The saved field path of one recorded input."""
+        return self._input_paths[key]
 
     def source(self, path, origin="environment"):
         """Locate saved fields, including original work indexed by permanent ref."""
@@ -181,10 +193,7 @@ class ConditionSource:
         elif path.startswith(("capture.", "candidate.", "receipt.", "head.", "rows[", "saved.")):
             saved_path = path
         else:
-            prefix = self._origins.get(origin)
-            if prefix is None:
-                raise ValueError("Unknown saved condition origin")
-            saved_path = _join_path(prefix, path)
+            saved_path = _join_path(self._origins[origin], path)
         result = {"kind": self.kind, "ref": self.ref, "path": saved_path}
         self._source_cache[key] = result
         return result

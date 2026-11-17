@@ -145,8 +145,8 @@ def read_material_file(content: bytes, file_format: str):
 def _export_value(value, field, number, file_format):
     if field == "stock_qty":
         return value
-    if field == "status" and type(value) is str:
-        value = STATUS_LABELS.get(value, value)
+    if field == "status":
+        value = STATUS_LABELS[value]
     if value is None:
         return r"\N" if field in _CLEARABLE else None
     if type(value) is not str:

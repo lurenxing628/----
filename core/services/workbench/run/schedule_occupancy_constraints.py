@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
 from datetime import datetime
 from heapq import heappop, heappush
 from typing import (
@@ -18,31 +17,18 @@ from typing import (
     Sequence,
     Set,
     Tuple,
-    Union,
 )
 
+from core.algorithm_contracts.schedule_point_evidence import is_point_work
 from core.models.content import content_text
 from core.models.workbench_trial import issue, reject
-from core.services.execution.projection import is_point_work
+from core.services.workbench.facts.trial_origin import CandidateTrialSource
+from core.shared.local_datetime import row_interval
 
 if TYPE_CHECKING:
     from core.services.scheduler.run.schedule_input_contracts import ExecutionGuardState
 
 MAX_OCCUPANCY_ISSUES = 50000
-
-
-@dataclass(frozen=True)
-class ProvenOutsidePoints:
-    op_ids: AbstractSet[int]
-
-
-@dataclass(frozen=True)
-class UnprovenOutsidePoints:
-    problem: Dict[str, Any]
-
-
-OutsidePointVersion = Union[ProvenOutsidePoints, UnprovenOutsidePoints]
-OutsidePointVersions = Mapping[int, OutsidePointVersion]
 
 
 def collect_resource_segments(
@@ -133,7 +119,6 @@ def collect_occupancy_issues(
     *,
     trial_intervals: Mapping[str, Any],
     latest_schedule: Mapping[int, Mapping[str, Any]],
-    outside_point_versions: OutsidePointVersions,
 ) -> List[Dict[str, Any]]:
     """Collect deduplicated resource occupancy, overlap and unproven-release blockers."""
     found: Dict[str, Dict[str, Any]] = {}
@@ -150,9 +135,7 @@ def collect_occupancy_issues(
     ids = {(kind, ref): key for (kind, key), ref in live["preflight_facts"].refs.items()}
     actual, release, unproven = _execution_occupancy(rows, live, reported, ids, add)
     occupied = _trial_intervals(rows, occupancy, actual, ids)
-    placed = _outside_intervals(
-        occupied, rows, live, reported, ids, latest_schedule, outside_point_versions, add
-    )
+    placed = _outside_intervals(occupied, rows, live, reported, ids, latest_schedule)
     _actual_intervals(occupied, reported, actual, placed, ids)
     scan_resource_overlaps(occupied, add)
     _unproven_issues(rows, occupancy, release, unproven, add)
@@ -164,9 +147,9 @@ def _archived_operations(rows: Sequence[Mapping[str, Any]], live: Mapping[str, A
     origin = live["origin"]
     for ref, member in origin.unarranged.items():
         archived.setdefault(ref, member["operation"])
-    if origin.facts is not None:
-        ops = origin.facts.tables["BatchOperations"]
-        for op_id, ref in origin.facts.operation_refs.items():
+    if isinstance(origin.source, CandidateTrialSource):
+        ops = origin.source.facts.tables["BatchOperations"]
+        for op_id, ref in origin.source.facts.operation_refs.items():
             if op_id in ops:
                 archived.setdefault(ref, ops[op_id])
     ops = origin.admission_operations
@@ -256,35 +239,6 @@ def _identified(
     return result
 
 
-def _positive_local_interval(start_raw: Any, end_raw: Any) -> Tuple[datetime, datetime]:
-    start, end = datetime.fromisoformat(start_raw), datetime.fromisoformat(end_raw)
-    if start.tzinfo is not None or end.tzinfo is not None or end <= start:
-        raise ValueError("Invalid positive factory-local interval")
-    return start, end
-
-
-def _outside_interval_invalid() -> Dict[str, Any]:
-    return issue("outside_scope_interval_invalid", "范围外正式安排的时间不对，判断不了设备人员有没有空。")
-
-
-def _outside_occupancy(
-    row: Mapping[str, Any],
-    outside_point_versions: OutsidePointVersions,
-) -> Tuple[Optional[Tuple[datetime, datetime]], Optional[Dict[str, Any]]]:
-    """A proven point occupies nothing; an unproven interval reports a blocker."""
-    if row["start_time"] == row["end_time"]:
-        version_state = outside_point_versions[row["version"]]
-        if isinstance(version_state, UnprovenOutsidePoints):
-            return None, version_state.problem
-        if row["op_id"] in version_state.op_ids:
-            return None, None
-        return None, _outside_interval_invalid()
-    try:
-        return _positive_local_interval(row["start_time"], row["end_time"]), None
-    except (TypeError, ValueError):
-        return None, _outside_interval_invalid()
-
-
 def latest_schedule_rows(
     schedule_rows: Sequence[Mapping[str, Any]],
 ) -> Dict[int, Mapping[str, Any]]:
@@ -301,8 +255,6 @@ def _outside_intervals(
     reported: Mapping[str, Any],
     ids: Mapping[Tuple[str, Any], Any],
     latest_schedule: Mapping[int, Mapping[str, Any]],
-    outside_point_versions: OutsidePointVersions,
-    add_issue: Callable[[Dict[str, Any]], None],
 ) -> Set[str]:
     placed: Set[str] = set()
     selected = {row["operation_ref"] for row in rows}
@@ -318,12 +270,11 @@ def _outside_intervals(
             role = "outside_actual"
             placed.add(ref)
         else:
-            span, problem = _outside_occupancy(row, outside_point_versions)
-            if problem is not None:
-                add_issue(problem)
-            if span is None:
+            if row["is_point_event"]:
                 continue
-            segments = ((*span, row["machine_id"], row["operator_id"]),)
+            segments = (
+                (*row_interval(row), row["machine_id"], row["operator_id"]),
+            )
             role = "outside"
         _occupy(occupied, segments, ref, None, role)
     return placed

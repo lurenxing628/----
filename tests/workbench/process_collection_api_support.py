@@ -11,7 +11,8 @@ import pytest
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from tests._support.node_runtime_support import node_runtime
 from tests.workbench.process_query_support import seed_process
-from tests.workbench.process_stage_api_support import BASE, StageAPI, rejected, seed_history, success
+from tests.workbench.process_stage_api_support import BASE, StageAPI, seed_history, success
+from tests.workbench.process_stage_api_support import rejected as rejected
 
 CREATE = {"business_code": "API-NEW", "label": "New part", "route_raw": " 10turning\r\n20unknown ", "remark": " note "}
 LIST = BASE + "/entities/part"

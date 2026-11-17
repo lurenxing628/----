@@ -1,7 +1,5 @@
 """Worker -> persisted candidate -> official -> reopened DB -> changed saved trial -> official."""
 
-import json
-
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
@@ -58,10 +56,13 @@ def test_common_piece_chain_preserves_raw_source_saved_scene_and_receipts(trial_
         assert next_plan["source_scenario_ref"] == saved["scenario_ref"]
         assert trial_service(reopened).scenario(saved["scenario_ref"]) == frozen_scene
         assert workspace(reopened, plan["plan_ref"])["tasks"] == read["tasks"]
-        for version, source in ((1, "workbench_candidate_adoption"), (2, "workbench_trial_adoption")):
-            audit = json.loads(reopened.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (version,)).fetchone()[0])
-            assert audit["source"] == source
-            assert audit["run_ref"] == run_ref if version == 1 else audit["scenario_ref"] == saved["scenario_ref"]
+        for version, source_kind in ((1, "candidate_adoption"), (2, "trial_adoption")):
+            row = reopened.execute(
+                "SELECT source_kind, source_ref, run_ref FROM ScheduleHistory WHERE version=?",
+                (version,),
+            ).fetchone()
+            assert row["source_kind"] == source_kind
+            assert row["run_ref"] == run_ref if version == 1 else row["source_ref"] == saved["scenario_ref"]
         current = snapshot(reopened)
         for table in ("Batches", "BatchOperations", "WorkbenchRunCandidates", "WorkbenchRunCandidateTasks",
                       "WorkbenchProductionReports", "WorkbenchProductionReportRevisions"):

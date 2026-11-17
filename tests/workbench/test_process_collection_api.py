@@ -14,6 +14,7 @@ from tests.workbench.process_collection_api_support import (
     seed_table_rows,
     success,
 )
+from tests.workbench.process_commands_support import CONFIRMED_AT
 
 _fixture = collection_api_fixture
 _DUPLICATE_QUERY = "查询条件里有重复的项，请重新选择。"
@@ -221,23 +222,24 @@ def test_single_part_detail_prebinds_before_projection_and_tracks_shared_identit
         assert rejected(after_identity_change, "snapshot_stale", 409)
 
 
-def test_raw_facts_skip_workflow_enrichment_and_build_template_sources_once(collection_api, monkeypatch):
+def test_raw_facts_skip_catalog_enrichment_and_part_list_uses_true_sql_pagination(collection_api, monkeypatch):
+    from core.infrastructure.transaction import TransactionManager
     from core.models.workbench_process_table_query import ProcessTablePageRequest
-    from core.services.process import workflow_state
-    from core.services.workbench.process import scope as process_scope
+    from core.services.process.workflow_state import record_confirmation
+    from core.services.workbench.process import template_facts
     from core.services.workbench.process.file_export import select_export_parts
     from core.services.workbench.process.queries import WorkbenchProcessQueryService
     from core.services.workbench.process.scope import ProcessFactScope
 
     api = collection_api
-    # raw_facts for explicit export and route export must not call workflow_snapshot.
+    # Explicit export uses raw_facts without loading shared supplier/op_type catalogs.
     with api.database() as conn:
         reader = WorkbenchProcessQueryService(conn)
         with monkeypatch.context() as patch:
             patch.setattr(
-                process_scope,
-                "workflow_snapshot",
-                lambda *a, **kw: pytest.fail("Explicit export must use raw_facts without workflow_snapshot"),
+                ProcessFactScope,
+                "load_catalog",
+                lambda *a, **kw: pytest.fail("Explicit export must use raw_facts without loading shared catalogs"),
             )
             with reader.read_snapshot() as scope:
                 parts = select_export_parts(scope, [api.ref(code="PROC-001")], ProcessTablePageRequest())
@@ -245,17 +247,57 @@ def test_raw_facts_skip_workflow_enrichment_and_build_template_sources_once(coll
 
         # Single-part resolved_detail constructs TemplateSourceFacts only once.
         source_calls = []
-        orig_build = workflow_state.build_template_source_facts
+        orig_build = template_facts.TemplateSourceFacts
 
         def counted_build(*args, **kwargs):
             source_calls.append(True)
             return orig_build(*args, **kwargs)
 
         with monkeypatch.context() as patch:
-            patch.setattr(process_scope, "build_template_source_facts", counted_build)
+            patch.setattr(template_facts, "TemplateSourceFacts", counted_build)
             with reader.read_snapshot() as scope:
                 scope.detail(api.ref(code="PROC-001"))
         assert len(source_calls) == 1
+
+        # SQL true pagination: seed 65 parts and verify /entities/part uses LIMIT/OFFSET and json_each
+        # without loading full PartOperations, ExternalGroups, Suppliers or OpTypes tables.
+        conn.executemany(
+            "INSERT INTO Parts(part_no,part_name,route_raw,route_parsed) VALUES (?,?,'10车削','yes')",
+            [(f"PG-{idx:03d}", f"分页件-{idx:03d}") for idx in range(65)],
+        )
+        conn.executemany(
+            "INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,setup_hours,unit_hours,status) "
+            "VALUES (?,10,'PROC-IN','车削','internal',0.5,0.25,'active')",
+            [(f"PG-{idx:03d}",) for idx in range(65)],
+        )
+        conn.commit()
+        with TransactionManager(conn).transaction(begin_immediate=True):
+            for stage in ("route", "source", "hours"):
+                record_confirmation(conn, "PG-005", stage, confirmed_at=CONFIRMED_AT)
+
+        page_queries = []
+        req = ProcessTablePageRequest(
+            query="PG-",
+            number=2,
+            size=10,
+            sort=[{"field": "stage", "direction": "desc"}, {"field": "business_code", "direction": "asc"}],
+        )
+        with reader.read_snapshot() as scope:
+            expected_page = scope.table().page(req)
+        fresh_reader = WorkbenchProcessQueryService(conn)
+        conn.set_trace_callback(page_queries.append)
+        try:
+            with fresh_reader.read_snapshot() as scope:
+                actual_page = scope.page(req)
+        finally:
+            conn.set_trace_callback(None)
+        assert {k: v for k, v in actual_page.items() if k != "create_context"} == expected_page
+        assert len(actual_page["entities"]) == 10
+        assert any("LIMIT 10 OFFSET 10" in sql for sql in page_queries)
+        assert any("json_each" in sql for sql in page_queries)
+        assert not any("ExternalGroups" in sql for sql in page_queries)
+        assert not any("Suppliers" in sql for sql in page_queries)
+        assert not any("OpTypes" in sql for sql in page_queries)
 
     # Pure text route-file preview/import (part_name / remark only, no route change) must not load supplier catalogs.
     with api.database() as conn:
@@ -346,7 +388,8 @@ def test_route_file_import_preserves_legacy_spaced_part_without_touching_sibling
         good_doc = good_preview.as_dict()
         assert good_doc["summary"]["rejected"] == 0
         with TransactionManager(conn).transaction(begin_immediate=True):
-            outcome = service.confirm_import(good_preview, discard_group_refs=[], confirm_zero_unit_hours=False)
+            outcome = service.confirm_import(good_preview, discard_group_refs=[], confirm_zero_unit_hours=False,
+                                             confirmed_at=CONFIRMED_AT)
         assert outcome.result == "committed"
         spaced_row = conn.execute(
             "SELECT part_name, remark FROM Parts WHERE part_no=' PROC-001 '"

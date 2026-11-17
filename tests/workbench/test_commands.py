@@ -1,7 +1,7 @@
 """Ordinary command intent, nested domain transactions and uncertain commits."""
 
 
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
@@ -11,7 +11,7 @@ from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchComm
 from core.services.workbench.commands import WorkbenchCommandService
 from data.repositories.op_type_repo import OpTypeRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
-from web.routes.workbench.read_context import bind_read_snapshot
+from web.routes.workbench.read_context import bind_read_snapshot, rebind_read_snapshot
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 
 KEY = "request-test-000000001"
@@ -52,12 +52,14 @@ def test_one_intent_replays_exact_result_before_expired_guard(schema_conn):
     assert schema_conn.execute("SELECT COUNT(*) FROM OpTypes").fetchone()[0] == 1
     assert not schema_conn.in_transaction
     from flask import Flask
-    with Flask("content-binding").app_context():
+
+    app = Flask("content-binding")
+    with app.app_context():
         raw = {"value": b"\x00", "date": date(2026, 5, 1)}
         context = issue_write_context("content-source", ["content.check"], raw)
         validate_write_context(context["write_token"], "content-source", "content.check", raw)
-        read = bind_read_snapshot({"kind": "content-source"}, raw)
-        assert bind_read_snapshot({"kind": "content-source"}, raw, read["snapshot_ref"]) == read
+        read = bind_read_snapshot({"kind": "content-source"}, raw, as_of=datetime(2026, 5, 1, 8, 0))
+        assert rebind_read_snapshot({"kind": "content-source"}, raw, read["snapshot_ref"]) == read
     row = WorkbenchCommandService(schema_conn).repo.get(KEY)
     assert row is not None and row["input_json"] is not None
     with pytest.raises(WorkbenchCommandRejected) as changed:
@@ -79,6 +81,53 @@ def test_receipt_failure_rolls_back_nested_domain_and_identity(schema_conn, monk
     assert schema_conn.execute("SELECT COUNT(*) FROM OpTypes").fetchone()[0] == 0
     assert schema_conn.execute("SELECT COUNT(*) FROM WorkbenchEntityRefs").fetchone()[0] == 0
     assert service.lookup(KEY) is None and not schema_conn.in_transaction
+
+
+@pytest.mark.parametrize("column", ["input_json", "outcome_json"])
+def test_unreadable_receipt_replays_as_unknown_and_never_as_retryable(schema_conn, column):
+    first = run(schema_conn)
+    assert first["ok"] and not first["replayed"]
+    schema_conn.execute(f"UPDATE WorkbenchCommandReceipts SET {column}='{{' WHERE request_key=?", (KEY,))
+    schema_conn.commit()
+
+    def committed_already():
+        pytest.fail("A receipt that exists must never let the same request key run again")
+
+    service = WorkbenchCommandService(schema_conn)
+    with pytest.raises(WorkbenchCommandUncertain) as executed:
+        run(schema_conn, guard=committed_already)
+    with pytest.raises(WorkbenchCommandUncertain) as replayed:
+        service.replay(request_key=KEY, action="op_type.create", context_ref="op_type.collection",
+                       normalized_input=INPUT)
+    for error in (executed.value, replayed.value):
+        assert error.request_key == KEY and error.committed == "unknown"
+        assert "不要重复提交" in str(error)
+    assert schema_conn.execute("SELECT COUNT(*) FROM OpTypes").fetchone()[0] == 1
+    assert not schema_conn.in_transaction
+
+
+def test_guard_storage_failure_stays_a_rejection_not_an_unknown_commit(schema_conn):
+    from core.models.content import StoredJsonCorrupt
+
+    def unreadable_guard():
+        raise StoredJsonCorrupt()
+
+    with pytest.raises(StoredJsonCorrupt) as rejected:
+        run(schema_conn, guard=unreadable_guard)
+    assert (rejected.value.code, rejected.value.status, rejected.value.committed) == ("storage_failure", 500, False)
+    assert WorkbenchCommandService(schema_conn).lookup(KEY) is None
+
+
+def test_report_row_list_input_replays_with_its_own_shape(schema_conn):
+    # 报工逐行提交时原提交是行列表（production_report.py 的 items），重放按列表读回执。
+    ref = "a" * 48
+    rows = [{"action": "report", "ref": ref, "payload": {"completed_quantity": 1}}]
+    intent = {"action": "execution.report", "context_ref": ref}
+    first = run(schema_conn, normalized_input=rows, **intent)
+    assert run(schema_conn, normalized_input=rows, **intent) == {**first, "replayed": True}
+    with pytest.raises(WorkbenchCommandRejected) as changed:
+        run(schema_conn, normalized_input=[{**rows[0], "payload": {"completed_quantity": 2}}], **intent)
+    assert changed.value.code == "request_key_conflict"
 
 
 def test_response_counts_and_sends_the_same_strict_utf8_envelope(monkeypatch):

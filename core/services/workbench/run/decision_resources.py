@@ -158,7 +158,7 @@ def resource_details(source, filters, view, *, page: Union[int, str] = 1, size: 
     start, end = source.scope["range_start"], source.scope["range_end"]
     grain = filters["grain"]
     common = {"run_ref": source.run["run_ref"], "scope": source.scope, "baseline": source.baseline,
-              "candidate": {"candidate_ref": source.selected_ref, "label": source.selected["artifact"].get("label")},
+              "candidate": {"candidate_ref": source.selected_ref, "label": source.selected["label"]},
               "filters": filters, "coverage": {"before": engine.coverage("reference", details=True), "after": engine.coverage(source.selected_ref, details=True)},
               "metric_version": RESOURCE_METRIC_VERSION}
     if section == "resource-days":
@@ -217,8 +217,10 @@ def resource_details(source, filters, view, *, page: Union[int, str] = 1, size: 
                 "page": {"number": page, "size": size, "total": len(rows), "has_more": False},
                 "pressure_scope": pressure_scope}
     visible = rows[offset:offset + size]
+    # Without a reference arrangement every utilization delta is unknown, so there is no increase ranking.
     rankings = {"top_pressure": _ordered(rows, "after_peak_utilization", "desc")[:10],
-                "top_increase": _ordered(rows, "utilization_delta", "desc")[:10], "limit": 10, "total": len(rows)}
+                "top_increase": _ordered(rows, "utilization_delta", "desc")[:10] if source.arrangement_available("reference") else [],
+                "limit": 10, "total": len(rows)}
     output_refs = {row["resource_ref"] for row in visible + rankings["top_pressure"] + rankings["top_increase"]}
     for row in rows:
         if row["resource_ref"] in output_refs:

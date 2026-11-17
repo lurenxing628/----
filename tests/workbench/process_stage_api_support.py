@@ -1,6 +1,5 @@
 """Real Flask stage requests with isolated SQLite and independent row oracles."""
 
-import sqlite3
 import uuid
 from contextlib import contextmanager
 
@@ -8,22 +7,25 @@ import pytest
 
 from core.infrastructure.transaction import TransactionManager
 from core.services.process.workflow_state import record_confirmation
+from tests._support.sqlite_connection import open_test_connection
+from tests.workbench.plan_catalog_support import insert_schedule_row
+from tests.workbench.process_commands_support import CONFIRMED_AT
 from tests.workbench.process_query_support import ref_for, seed_process
 from tests.workbench.process_route_support import all_table_snapshot
 
 BASE = "/api/workbench/v1"
 PART = "PROC-001"
-METADATA = {"WorkbenchProcessWorkflow", "WorkbenchProcessOperationConfirmations", "WorkbenchCommandReceipts"}
+METADATA = {"WorkbenchCommandReceipts"}
 
 
-def seed_history(conn):
+def seed_history(conn, *, scheduled=True):
     conn.execute("ALTER TABLE PartOperations ADD COLUMN private_stage_note TEXT")
     conn.execute("UPDATE PartOperations SET private_stage_note=' hidden original ',created_at='2000-01-01 00:00:00'")
     conn.execute("""INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_name,source,setup_hours,unit_hours)
         VALUES ('STAGE-API-OLD','PROC-B',10,'original batch operation','internal',7.5,8.25)""")
     key = conn.execute("SELECT id FROM BatchOperations WHERE op_code='STAGE-API-OLD'").fetchone()[0]
-    conn.execute("INSERT INTO Schedule(op_id,start_time,end_time) VALUES (?,?,?)",
-                 (key, "2026-10-01 08:00:00", "2026-10-01 09:00:00"))
+    if scheduled:
+        insert_schedule_row(conn, 1, key, "2026-10-01T08:00:00", "2026-10-01T09:00:00")
     conn.commit()
 
 
@@ -35,7 +37,7 @@ def seed_stage_scale(conn, code, count, *, confirmed_route=True):
     conn.commit()
     if confirmed_route:
         with TransactionManager(conn).transaction(begin_immediate=True):
-            record_confirmation(conn, code, "route")
+            record_confirmation(conn, code, "route", confirmed_at=CONFIRMED_AT)
 
 
 @pytest.fixture(name="stage_api")
@@ -44,6 +46,15 @@ def stage_api_fixture(app_client):
     with api.database() as conn:
         seed_process(conn)
         seed_history(conn)
+    return api
+
+
+@pytest.fixture(name="unscheduled_stage_api")
+def unscheduled_stage_api_fixture(app_client):
+    api = StageAPI(app_client)
+    with api.database() as conn:
+        seed_process(conn)
+        seed_history(conn, scheduled=False)
     return api
 
 
@@ -69,9 +80,7 @@ class StageAPI:
 
     @contextmanager
     def database(self):
-        conn = sqlite3.connect(self.client.application.config["DATABASE_PATH"])
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys=ON")
+        conn = open_test_connection(self.client.application.config["DATABASE_PATH"])
         try:
             with conn:
                 yield conn

@@ -3,6 +3,7 @@
 from core.models.content import content_text
 from core.services.workbench.execution.field_workspace import FieldWorkspaceService
 from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture  # noqa: F401
+from tests.workbench.plan_catalog_support import update_schedule_rows
 
 
 def three_operations(case):
@@ -103,21 +104,30 @@ def test_large_cohort_reads_task_plan_once_and_keeps_requested_duplicate_guard(l
 
 
 def test_field_visible_finish_dates_narrow_before_ledger_and_keep_inclusive_days(ledger_case, monkeypatch):
+    import pytest
+
     from core.services.execution import ledger_reader
     from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 
     case = ledger_case
     ids = three_operations(case)
     for op, day in zip(ids, (1, 2, 3)):
-        case.conn.execute("UPDATE Schedule SET start_time=?,end_time=? WHERE version=2 AND op_id=?",
-                          (f"2026-01-{day:02d}T08:00:00", f"2026-01-{day:02d}T10:00:00", op))
-    reads, original = [], WorkbenchExecutionRepository.reports
+        update_schedule_rows(
+            case.conn, 2, where="op_id = ?", params=(op,),
+            start_time=f"2026-01-{day:02d}T08:00:00", end_time=f"2026-01-{day:02d}T10:00:00",
+        )
+    reads, original = [], WorkbenchExecutionRepository.active_reports
 
-    def reports(repo, refs, limit):
+    def active_reports(repo, refs, limit):
         reads.append(list(refs))
         return original(repo, refs, limit)
 
-    monkeypatch.setattr(WorkbenchExecutionRepository, "reports", reports)
+    monkeypatch.setattr(WorkbenchExecutionRepository, "active_reports", active_reports)
+    monkeypatch.setattr(
+        WorkbenchExecutionRepository,
+        "reports",
+        lambda *_: pytest.fail("cohort must read active_reports without scanning Revisions"),
+    )
     monkeypatch.setattr(ledger_reader, "MAX_OPERATIONS", 2)
     reader = FieldWorkspaceService(case.conn)
     with reader.read_snapshot() as ws_scope:
@@ -135,6 +145,7 @@ def test_field_visible_finish_dates_narrow_before_ledger_and_keep_inclusive_days
 def test_field_page_constructs_report_dicts_only_for_sliced_page_tasks(ledger_case, monkeypatch):
     from core.models.workbench_execution import ExecutionProjection
     from core.services.workbench.execution import field_workspace
+    from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 
     case = ledger_case
     op_ids = [case.op_id] + [case.op(f"OP-BULK-{idx:02d}", seq=idx + 1) for idx in range(1, 30)]
@@ -144,8 +155,10 @@ def test_field_page_constructs_report_dicts_only_for_sliced_page_tasks(ledger_ca
 
     report_row_calls = []
     to_dict_calls = []
+    history_read_batches = []
     orig_report_rows = field_workspace.CohortTaskExecution.report_rows
     orig_to_dict = ExecutionProjection.to_dict
+    orig_reports = WorkbenchExecutionRepository.reports
 
     monkeypatch.setattr(
         field_workspace.CohortTaskExecution,
@@ -157,13 +170,21 @@ def test_field_page_constructs_report_dicts_only_for_sliced_page_tasks(ledger_ca
         "to_dict",
         lambda self: (to_dict_calls.append(self.operation_ref), orig_to_dict(self))[1],
     )
+    monkeypatch.setattr(
+        WorkbenchExecutionRepository,
+        "reports",
+        lambda repo, refs, limit: (history_read_batches.append(list(refs)), orig_reports(repo, refs, limit))[1],
+    )
 
     reader = FieldWorkspaceService(case.conn)
     with reader.read_snapshot() as ws_scope:
-        cohort, _ = reader.cohort(ws_scope, reader.prepare_read(ws_scope, {}))
-    assert cohort["summary"]["tasks"] == 30 and cohort["summary"]["reports"] == 30
-    assert len(report_row_calls) == 0 and len(to_dict_calls) == 0
+        read_state = reader.prepare_read(ws_scope, {})
+        cohort, _ = reader.cohort(ws_scope, read_state)
+        assert cohort["summary"]["tasks"] == 30 and cohort["summary"]["reports"] == 30
+        assert len(report_row_calls) == 0 and len(to_dict_calls) == 0 and history_read_batches == []
 
-    paged = reader.page(cohort, 1, 1)
+        paged = reader.page(ws_scope, read_state, 1, 1)
+    assert paged["summary"]["tasks"] == 30 and paged["summary"]["reports"] == 30
     assert len(paged["tasks"]) == 1
     assert len(report_row_calls) == 0 and len(to_dict_calls) == 1
+    assert len(history_read_batches) == 1 and len(history_read_batches[0]) == 1

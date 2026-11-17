@@ -26,12 +26,13 @@ from web.api_responses import query_success
 from .material_actions_context import (
     EXPIRED_MESSAGE,
     EXPORT_SCOPE,
+    STALE_REF_MESSAGE,
     json_body,
-    opaque_ref,
     read_endpoint,
     scope_input,
 )
-from .read_context import bind_read_snapshot, resolve_read_snapshot
+from .read_context import rebind_read_snapshot, resolve_read_snapshot
+from .request_json import opaque_ref
 from .resource_action_context import (
     admit_export_selection,
     download_args,
@@ -62,7 +63,7 @@ def material_export_preview():
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fact_scope:
         read_binding = resolve_read_snapshot(snapshot_ref)
-        snapshot = bind_read_snapshot(query_scope, fact_scope.state_fingerprint(), snapshot_ref, binding=read_binding)
+        snapshot = rebind_read_snapshot(query_scope, fact_scope.state_fingerprint(), snapshot_ref, binding=read_binding)
         arguments, scope, count = _selection(body, fact_scope, page_request)
         document = {"query_scope": query_scope, "snapshot_ref": snapshot_ref, "arguments": arguments}
         identity = {"selected_refs": arguments["selected_refs"]} if scope is None else {"scope": scope}
@@ -80,11 +81,11 @@ def material_export_preview():
 @read_endpoint
 def material_export():
     file_format = download_args({"export_ref", "format"})
-    ref = opaque_ref(request.args["export_ref"])
+    ref = opaque_ref(request.args["export_ref"], STALE_REF_MESSAGE)
     binding, read_binding = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale", expired_message=EXPIRED_MESSAGE)
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as scope:
-        snapshot = bind_read_snapshot(
+        snapshot = rebind_read_snapshot(
             binding["query_scope"],
             scope.state_fingerprint(),
             binding["snapshot_ref"],

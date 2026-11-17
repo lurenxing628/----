@@ -29,6 +29,23 @@ def test_upload_rejects_non_upsert_mode_without_writes(file_api, kind):
     assert file_api.snapshot() == before
 
 
+_BLANK_CODE = "图号不能留空。请补填后重新导入。"
+
+
+@pytest.mark.parametrize("kind,content,errors", [
+    ("hours", "business_code,sequence,unit_hours\r\n,10,1\r\nPROC-001,abc,1\r\n",
+     [("business_code", _BLANK_CODE), ("sequence", "工序必须填写正整数，不接受小数、科学记数法或单位。")]),
+    ("route", "business_code,label\r\n   ,名称\r\n\\N,名称\r\n",
+     [("business_code", _BLANK_CODE), ("business_code", _BLANK_CODE)]),
+])
+def test_preview_reports_a_bad_key_cell_once(file_api, kind, content, errors):
+    rows = success(file_api.upload(kind, content.encode("utf-8-sig")))["data"]["rows"]
+    # 图号、工序号只由解码层报一次；领域层只读已准入的关键值，不再另报一条。
+    assert [row["errors"] for row in rows] == [
+        [{"row": number, "field": field, "code": "invalid_input", "message": message}]
+        for number, (field, message) in enumerate(errors, start=2)]
+
+
 @pytest.mark.parametrize("kind", ["route", "hours"])
 @pytest.mark.parametrize("fmt,status", [("txt", 422), ("XLSX", 422), ("csv", 200), ("xlsx", 200)])
 def test_template_admits_format_at_route(file_api, kind, fmt, status):

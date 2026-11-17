@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from datetime import datetime
+from typing import TYPE_CHECKING, Callable
 
 from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_execution_input import closed_write_context, normalize_report_void_input, reject
 from core.services.execution.ledger_reader import ExecutionLedgerReadScope, project_loaded_facts
 from core.services.execution.projection import materialize_operation_history
-from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository, new_ref
+from core.shared.refs import new_ref
+from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository
 
 from .production_report_dependencies import ReportDependencies
 from .production_report_prepare import ReportBatchRejected
@@ -52,11 +54,11 @@ def _cycle_warnings(dependencies, operation, before, after):
 
 
 class WorkbenchReportVoidService:
-    def __init__(self, ledger: ExecutionLedgerService, commands, actor_provider):
-        self.ledger, self.commands, self.actor_provider = ledger, commands, actor_provider
+    def __init__(self, ledger: ExecutionLedgerService, commands, actor_provider, clock: Callable[[], datetime]):
+        self.ledger, self.commands, self.actor_provider, self.clock = ledger, commands, actor_provider, clock
         self.conn = ledger.conn
 
-    def _prepare(self, ledger_scope: ExecutionLedgerReadScope, payload):
+    def _prepare(self, ledger_scope: ExecutionLedgerReadScope, payload, now: datetime):
         header = self.ledger.report_header(report_ref=payload["report_ref"])
         if header is None:
             reject("原报工记录不存在，请刷新后重新选择。", "entity_not_found", 404)
@@ -81,7 +83,7 @@ class WorkbenchReportVoidService:
         if not isinstance(actor, str) or not actor.strip():
             raise ValueError("Local application operator must be supplied by the server.")
         fact = dict(payload, void_fact_ref=new_ref(), local_operator=actor,
-                    recorded_at=self.ledger.clock().isoformat(timespec="seconds"), receipt_ref=None)
+                    recorded_at=now.isoformat(timespec="seconds"), receipt_ref=None)
         changed = dict(facts, voids=dict(facts["voids"]))
         changed["voids"][payload["report_ref"]] = fact
         after = project_loaded_facts(changed, include_history=False)[0]
@@ -102,10 +104,10 @@ class WorkbenchReportVoidService:
                 "facts": facts, "changed_facts": changed,
                 "impacts": impacts, "warnings": warnings, "snapshot": snapshot, "unchanged": False}
 
-    def preview(self, report_ref, payload):
+    def preview(self, report_ref, payload, *, now: datetime):
         normalized = normalize_report_void_input(report_ref, payload)
         with self.ledger.read_snapshot() as ledger_scope:
-            prepared = self._prepare(ledger_scope, normalized)
+            prepared = self._prepare(ledger_scope, normalized, now)
             context = closed_write_context()
             if not prepared["impacts"] and self.ledger.context_factory:
                 context = self.ledger.context_factory(report_ref, ["report_void"], prepared["snapshot"])
@@ -139,7 +141,7 @@ class WorkbenchReportVoidService:
 
         def guard():
             with self.ledger.read_snapshot() as ledger_scope:
-                prepared = self._prepare(ledger_scope, normalized)
+                prepared = self._prepare(ledger_scope, normalized, self.clock())
             validate_context(report_ref, "report_void", prepared["snapshot"])
             if prepared["impacts"]:
                 raise ReportBatchRejected("constraint_conflict", "这次撤销会影响已有的后道执行或正式计划，请先处理列出的关联记录。",

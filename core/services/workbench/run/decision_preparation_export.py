@@ -58,8 +58,8 @@ def preparation_rows(data):
         before, after = row["before"], row["after"]
         yield common + [row[field] for field in ("batch_ref", "batch_label", "operation_ref", "part_label", "sequence", "process_label", "piece_id")] + (
             effort_values(before) + effort_values(after)
-            + ["、".join(machine[field] or "" for machine in side["machines"]) or None for side in (before, after) for field in ("ref", "label")]
-            + [_json(side["arrangements"]) for side in (before, after)]
+            + [side["machine"][field] or None if side["machine"] is not None else None for side in (before, after) for field in ("ref", "label")]
+            + [_json(side["arrangement"]) for side in (before, after)]
             + [row["deltas"][field][name] for field in ("setup_standard_hours", "processing_standard_hours", "required_standard_hours") for name in ("value", "state", "direction")]
             + [issue_text(row["data_gaps"])])
 

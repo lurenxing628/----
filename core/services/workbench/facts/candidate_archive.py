@@ -1,40 +1,28 @@
 """Read the immutable admission and candidate evidence without installing anything."""
 
+from core.models.enums import RUN_RESULT_STATE_VALUES
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
-from .candidate_projection import candidate_completeness, validate_manifest
-from .candidate_store import CandidateStore
+from .candidate_projection import candidate_completeness
+from .candidate_read_source import load_saved_run
 from .preflight_dependencies import material_deferred_ids
 from .run_policy import require_admission
 
 
-def load_adoption_candidate(conn, candidate_ref):
-    run, candidate, scope, tasks, capture, ids, facts, _ = load_adoption_candidate_with_key(
-        conn, candidate_ref
-    )
-    return run, candidate, scope, tasks, capture, ids, facts
-
-
-def load_adoption_candidate_with_key(conn, candidate_ref):
-    store = CandidateStore(conn)
+def load_adoption_candidate(conn, candidate_ref, *, store):
     run_ref = store.candidate_run(candidate_ref)
     run = store.run(run_ref)
     repo = WorkbenchRunRepository(conn)
     head = repo.head(run_ref)
     require_admission(repo, head)
-    receipt = store.receipt(run)
     candidates = store.candidates(run_ref)
-    validate_manifest(run, candidates, receipt)
+    saved = load_saved_run(store, run, candidates)
     candidate = next(row for row in candidates if row["candidate_ref"] == candidate_ref)
-    capture = store.capture(run_ref)
-    facts = store.generation_facts(capture)
-    scope = store.dispositions(receipt, facts, capture)
-    ids = require_candidate_scope(run, candidate, scope, capture, scheduled_op_ids=store.scheduled_op_ids(candidate))
+    scope = saved.disposition
+    ids = require_candidate_scope(run, candidate, scope, saved.capture, scheduled_op_ids=store.scheduled_op_ids(candidate))
     tasks = store.tasks(candidate_ref)
-    if len(tasks) != len(ids):
-        raise CandidateAdoptionBlocked("candidate_artifact_invalid", "这个候选方案的工序明细条数对不上，不能采用。请重新排产后再试。")
-    return run, candidate, scope, tasks, capture, ids, facts, store.build_adoption_raw_key(candidate_ref, head)
+    return run, candidate, saved.persisted, scope, tasks, saved.capture, ids, saved.facts
 
 
 def require_candidate_scope(run, candidate, scope, capture, *, scheduled_op_ids, completeness=None):
@@ -42,7 +30,7 @@ def require_candidate_scope(run, candidate, scope, capture, *, scheduled_op_ids,
     if completeness is None:
         completeness = candidate_completeness(candidate, scope, scheduled_op_ids=scheduled_op_ids)
     deferred = material_deferred_ids(scope.values(), capture["input"])
-    if run["state"] not in ("complete", "partial") or (completeness != "complete" and not deferred):
+    if run["state"] not in RUN_RESULT_STATE_VALUES or (completeness != "complete" and not deferred):
         raise CandidateAdoptionBlocked("candidate_incomplete", _incomplete_message(candidate, scope, deferred, scheduled_op_ids))
     ids = scheduled_op_ids
     if not ids or ids != {row["op_id"] for row in scope.values()} - deferred:
@@ -74,19 +62,15 @@ def _unscheduled_beyond_skipped(candidate, scope, scheduled_op_ids):
     """排产结果的 incomplete_batch_ids 本来就含跳过的批次，只有跳过批次以外的才算另一个原因。"""
     skipped = {row["batch_id"] for row in scope.values() if row["status"] == "skipped"}
     expected = {row["op_id"] for row in scope.values() if row["status"] != "skipped"}
-    if expected - (scheduled_op_ids or set()):
+    if expected - scheduled_op_ids:
         return True
-    completion = (candidate["artifact"].get("metrics") or {}).get("completion")
-    incomplete = completion.get("incomplete_batch_ids") if type(completion) is dict else None
-    return type(incomplete) is list and any(type(item) is not str or item not in skipped for item in incomplete)
+    return any(batch_id not in skipped for batch_id in candidate["artifact"]["metrics"]["completion"]["incomplete_batch_ids"])
 
 
 def _require_complete_summary(artifact, ids):
-    engine_summary = artifact.get("summary")
-    if (type(engine_summary) is not dict or engine_summary.get("success") is not True
-            or engine_summary.get("errors") != [] or engine_summary.get("failed_ops") != 0
-            or type(engine_summary.get("failed_ops")) is not int
-            or type(engine_summary.get("total_ops")) is not int or engine_summary["total_ops"] != len(ids)
-            or type(engine_summary.get("scheduled_ops")) is not int
-            or engine_summary.get("scheduled_ops") != len(ids)):
+    """The decode succeeded without errors and scheduled exactly the proven operations; the store admitted the
+    summary's shape (candidate_artifact.admit_artifact)."""
+    summary = artifact["summary"]
+    if (not summary["success"] or summary["errors"] != [] or summary["failed_ops"] != 0
+            or summary["total_ops"] != len(ids) or summary["scheduled_ops"] != len(ids)):
         raise CandidateAdoptionBlocked("candidate_unproven", "这个候选方案里有没排上的工序，或者缺少完整结果，不能采用。请重新排产后再试。")

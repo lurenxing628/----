@@ -4,7 +4,7 @@ import pytest
 from flask import Blueprint
 
 from tests.workbench.piece_chain_support import adopt_candidate, adopt_trial, piece_candidate, saved_trial
-from tests.workbench.point_downstream_support import ACTUAL, FIELD, app_for, read
+from tests.workbench.point_downstream_support import ACTUAL, FIELD, app_for, read, read_body
 from tests.workbench.trial_support import snapshot
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 from web.routes.workbench.dashboard import register_dashboard_routes
@@ -24,8 +24,8 @@ def _client(case):
 def _read_quantities(client, case, plan_ref):
     before = snapshot(case.conn)
     plan = read(client, "/api/workbench/v1/plans/" + plan_ref + "/workspace")["data"]
-    actual = read(client, ACTUAL, plan_ref=plan_ref)["data"]
-    field = read(client, FIELD + "/tasks", plan_ref=plan_ref, size=100)["data"]
+    actual = read_body(client, ACTUAL, plan_ref=plan_ref)["data"]
+    field = read_body(client, FIELD + "/tasks", plan_ref=plan_ref, size=100)["data"]
     merged = read(client, DASHBOARD, size=100)["data"]
     standalone = read(client, DASHBOARD + "/analysis", plan_ref=plan_ref, section="timeline", size=100)["data"]
     assert merged["analysis_error"] is None

@@ -5,15 +5,16 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, replace
 from datetime import date, datetime
-from typing import TYPE_CHECKING, AbstractSet, Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import TYPE_CHECKING, AbstractSet, Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple, cast
 
 from core.algorithm_contracts.operation_effort import OperationEffort
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.models.batch import Batch
 from core.models.batch_operation import BatchOperation
+from core.models.enums import OperationRequirementRole, SourceType
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 from core.models.workbench_execution import ExecutionProjection
-from core.models.workbench_preflight import local_date, normalize_preflight_input
+from core.models.workbench_preflight import run_dates
 from core.services.scheduler.run.schedule_input_builder import build_algo_operations
 from core.services.scheduler.run.schedule_input_contracts import (
     ExecutionGuardState,
@@ -42,6 +43,7 @@ from .input_runtime import prepare_seed_preparation
 if TYPE_CHECKING:
     from core.models.workbench_piece_adoption import PieceAdoptionScope
 
+    from .preflight import PreparedPreflight
     from .preflight_facts import PreflightFacts
 
 _CLASSIFY_CURRENT = object()
@@ -70,6 +72,8 @@ class PreparedBusinessInput:
     missing_internal_resource_op_ids: Set[int]
     operation_sources: Dict[int, str]
     operation_efforts: Sequence[OperationEffort]
+    # Wall-clock start (time.monotonic) of the run summary's time_cost_ms, taken when this preparation is
+    # complete; only build_result_summary subtracts from it, on the same clock. Not the search budget clock.
     t0: float
 
 
@@ -83,26 +87,41 @@ def prepare_solver_input(business: PreparedBusinessInput) -> SolverInput:
         end_date=business.end_date,
         readiness_gate_enabled=business.readiness_gate_enabled,
         seeds=business.seeds,
+        # A new-schedule internal requirement is internal_operation_effort's, so its hours are always set.
+        required_hours_by_op_id={
+            effort.op_id: cast(float, effort.required_standard_hours)
+            for effort in business.operation_efforts
+            if effort.requirement_role == OperationRequirementRole.NEW_SCHEDULE.value
+            and effort.source == SourceType.INTERNAL.value
+        },
         predecessors=business.predecessors,
     )
 
 
 def prepare_business_input(
     conn,
-    normalized_input: Mapping[str, Any],
+    settings: Mapping[str, Any],
     execution_projections: Sequence[ExecutionProjection],
     *,
     facts: PreflightFacts,
     config_snapshot: Optional[ScheduleConfigSnapshot] = None,
     baseline: Optional[Mapping[str, Any]] = None,
     held: Any = None,
-    preflight_rows: Optional[Sequence[Mapping[str, Any]]] = None,
+    preflight: Optional[PreparedPreflight] = None,
     admitted_dispositions: Any = _CLASSIFY_CURRENT,
     admitted_piece_scope: Optional[PieceAdoptionScope] = None,
     include_efforts: bool = True,
 ) -> PreparedBusinessInput:
-    """Read-only business preparation. Caller supplies selected + last-official execution scope."""
-    settings = normalized_input if preflight_rows is not None else normalize_preflight_input(normalized_input)
+    """Read-only business preparation. Caller supplies selected + last-official execution scope.
+
+    ``settings`` is admitted by its caller, through the submit side (``normalize_preflight_input``) or the stored side
+    (``check_stored_input``). ``preflight`` is the same request's preflight for ``settings`` (run admission): its dates
+    and task rows are reused; other callers have the dates converted here once.
+    """
+    if preflight is None:
+        dates, preflight_rows = run_dates(settings), None
+    else:
+        dates, preflight_rows = preflight.dates, preflight.evaluation_rows
     if not settings["batch_refs"]:
         fail("empty_scope", "请先勾选要排产的批次。")
     with candidate_read_snapshot(conn):
@@ -110,16 +129,15 @@ def prepare_business_input(
             _prepare_scope_and_config(facts, settings, config_snapshot, baseline, admitted_piece_scope)
         )
         projections = {proj.operation_ref: proj for proj in execution_projections}
-        start = datetime.combine(local_date(settings["start_date"]), datetime.min.time())
         guard, dispositions, mutable, guarded_ids, algo_ops, seeds = _prepare_execution_and_seeds(
-            conn, facts=facts, settings=settings, raw_batches=raw_batches, batches=batches,
-            operations=operations, projections=projections, prev_version=prev_version, start=start,
+            facts=facts, settings=settings, raw_batches=raw_batches, batches=batches,
+            operations=operations, projections=projections, prev_version=prev_version, start=dates.start,
             base_config=base_config, piece_scope=piece_scope, held=held, preflight_rows=preflight_rows,
             admitted_dispositions=admitted_dispositions,
         )
         efforts = (
             prepare_operation_efforts(
-                conn, facts=facts, operations=operations, batches=batches, algo_ops=algo_ops,
+                facts=facts, operations=operations, batches=batches, algo_ops=algo_ops,
                 seeds=seeds, execution_facts=guard.execution_facts, projections=projections,
             )
             if include_efforts
@@ -128,8 +146,8 @@ def prepare_business_input(
         return PreparedBusinessInput(
             settings=settings, facts=facts,
             normalized_batch_ids=[row["batch_id"] for row in raw_batches],
-            batches=batches, operations=operations, algo_ops=algo_ops, config=cfg, start=start,
-            end_date=local_date(settings["end_date"]),
+            batches=batches, operations=operations, algo_ops=algo_ops, config=cfg, start=dates.start,
+            end_date=dates.end_date,
             readiness_gate_enabled=settings["ready_check"],
             execution_guard=guard, seeds=seeds, piece_scope=piece_scope, predecessors=predecessors,
             dispositions=dispositions, baseline_version=prev_version,
@@ -174,7 +192,6 @@ def _prepare_scope_and_config(
 
 
 def _prepare_execution_and_seeds(
-    conn,
     *,
     facts: PreflightFacts,
     settings: Mapping[str, Any],
@@ -201,7 +218,7 @@ def _prepare_execution_and_seeds(
     )
     cycles = (
         {
-            row["op_id"]: dict(row["external_execution_cycle"])
+            row["op_id"]: row["external_execution_cycle"]
             for row in preflight_rows
             if "external_execution_cycle" in row and row["op_id"] not in completed
         }
@@ -226,7 +243,6 @@ def _prepare_execution_and_seeds(
         facts, batches, operations, mutable, guarded_ids, cycles, releases
     )
     seeds = prepare_seed_preparation(
-        conn,
         facts=facts,
         prev_version=prev_version,
         start_dt=start,
@@ -236,7 +252,7 @@ def _prepare_execution_and_seeds(
         completed_ids=completed,
         execution_seeds=execution_seeds,
         actual_group_intervals=actual_group_intervals,
-        hold_window=hold_window(settings, snapshot=base_config)[0] if held is None else None,
+        hold_window=hold_window(settings, start=start, snapshot=base_config)[0] if held is None else None,
         piece_scope=piece_scope,
         held=held,
     )

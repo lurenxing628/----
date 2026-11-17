@@ -5,10 +5,11 @@ from __future__ import annotations
 import calendar
 import uuid
 from datetime import date, datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager, in_transaction_context
+from core.models.enums import CalendarDayType
 from core.models.workbench_calendar import (
     CALENDAR_PREVIEW_TTL_SECONDS,
     CalendarRangePreview,
@@ -44,10 +45,9 @@ def _date_key(value: Any) -> str:
 
 
 class WorkbenchCalendarService:
-    def __init__(self, conn, logger=None, *, clock: Callable[[], datetime] = datetime.now):
+    def __init__(self, conn, logger=None):
         self.conn = conn
         self.logger = logger
-        self._clock = clock
         self._admin = CalendarAdmin(conn, logger=logger)
         self._engine: Optional[CalendarEngine] = None
         self._query = WorkbenchCalendarQueryRepository(conn, logger=logger)
@@ -72,12 +72,6 @@ class WorkbenchCalendarService:
     def normalize(action: str, payload: Any) -> Dict[str, Any]:
         """Private pure input API; see normalize_calendar_input for the complete shapes."""
         return normalize_calendar_input(action, payload)
-
-    def _now(self) -> datetime:
-        now = self._clock()
-        if not isinstance(now, datetime) or now.tzinfo is not None:
-            raise ValueError("日历时钟必须使用无时区的工厂本地时间。")
-        return now.replace(microsecond=0)
 
     def range_states(self, start_date: str, end_date: str) -> Dict[str, Dict[str, Any]]:
         """Merge raw rows with lifetime refs per date; caller owns one transaction for both reads.
@@ -127,7 +121,7 @@ class WorkbenchCalendarService:
         states = self.range_states(day, day)
         return self._snapshot(day, states, projection=self.projection(states))
 
-    def month(self, year: int, month: int) -> Dict[str, Any]:
+    def month(self, year: int, month: int, *, as_of: datetime) -> Dict[str, Any]:
         """Private monthly read: one-based month, real date cells, Monday-first padding.
 
         Counts/policies use actual domain results, not weekday guesses. No statutory
@@ -138,7 +132,7 @@ class WorkbenchCalendarService:
             raise ValidationError("年月不合法，月份应为 1 至 12。", field="month")
         first = date(year, month, 1)
         count = calendar.monthrange(year, month)[1]
-        last, now = first.replace(day=count), self._now()
+        last = first.replace(day=count)
         if not self.conn.in_transaction:
             raise RuntimeError("日历读取必须在快照事务中执行。")
         states = self.range_states(first.isoformat(), last.isoformat())
@@ -150,13 +144,13 @@ class WorkbenchCalendarService:
             day = first + timedelta(days=offset)
             snapshot = self._snapshot(day.isoformat(), states, projection=projection)
             days.append({**snapshot, "day": day.day, "weekday": day.weekday(),
-                         "is_weekend": day.weekday() >= 5, "is_today": day == now.date()})
+                         "is_weekend": day.weekday() >= 5, "is_today": day == as_of.date()})
         following = self._following_row(last, days[-1])
         if following:
             projection = projection.with_rows({**rows, **following})
         cells = [None] * first.weekday() + days
         cells += [None] * (-len(cells) % 7)
-        return {"year": year, "month": month, "as_of": now.isoformat(timespec="seconds"),
+        return {"year": year, "month": month, "as_of": as_of.isoformat(timespec="seconds"),
                 "time_basis": "factory_local", "days": days, "cells": cells,
                 "previous_month": self._adjacent(year, month, -1), "next_month": self._adjacent(year, month, 1),
                 "default_periods": periods, "stats": month_stats(days, projection)}
@@ -231,6 +225,9 @@ class WorkbenchCalendarService:
                 default = self._base_engine()._default_for_date(before["date"])
                 payload.update(default.to_dict())
                 payload["remark"] = None
+                # 引擎把没配置的周末推成 weekend；存储只有工作日和假期，周末按假期存。
+                if default.day_type == CalendarDayType.WEEKEND.value:
+                    payload["day_type"] = CalendarDayType.HOLIDAY.value
         patch = calendar_domain_fields(fields)
         require_periods_when_rest_turns_work(before["date"], row, patch)
         payload.update(patch)
@@ -255,8 +252,6 @@ class WorkbenchCalendarService:
     def apply_checked(self, action, normalized_input, checked):
         """Consume the guard's current facts in its same outer command transaction."""
         payload = normalized_input
-        if action == "confirm":
-            return self.confirm(payload, checked)
         if action not in ("upsert", "delete"):
             raise ValidationError("「预览变更」不能当成保存操作。", field="action")
         return self._apply_day(action, payload, checked)
@@ -345,14 +340,14 @@ class WorkbenchCalendarService:
                                    "effective": after_effective}})
         return {"request": request, "dates": dates, "days": days, "calendars": calendars}
 
-    def preview(self, payload: Dict[str, Any]) -> CalendarRangePreview:
+    def preview(self, payload: Dict[str, Any], *, now: datetime) -> CalendarRangePreview:
         """Read-only bounded preview. No placeholder rows, business writes or long lock.
 
         Weekday/weekend means Gregorian Mon-Fri/Sat-Sun, including configured holidays
         and overtime, exactly as the prototype. Conflicting hidden shift windows reject
         the preview instead of advertising hours that the domain would not save.
         """
-        request, now = self.normalize("preview", payload), self._now()
+        request = self.normalize("preview", payload)
         with self._tx.transaction():
             context = self._normalization_context()
             facts = self._preview_days(request, context=context)
@@ -361,7 +356,8 @@ class WorkbenchCalendarService:
             expires_at=(now + timedelta(seconds=CALENDAR_PREVIEW_TTL_SECONDS)).isoformat(timespec="seconds"),
             request=facts["request"], dates=facts["dates"], days=facts["days"])
 
-    def confirm(self, normalized_input: Dict[str, Any], preview: CalendarRangePreview) -> WorkbenchCommandOutcome:
+    def confirm(self, normalized_input: Dict[str, Any], preview: CalendarRangePreview, *,
+                now: datetime) -> WorkbenchCommandOutcome:
         """Private confirm callback, inside the same outer write transaction and receipt.
 
         Revalidate TTL, exact date set and current calendar facts before
@@ -372,8 +368,8 @@ class WorkbenchCalendarService:
         payload = normalized_input
         if preview.preview_ref != payload["preview_ref"]:
             raise WorkbenchCommandRejected("snapshot_stale", "这份变更清单已失效，请重新点「预览变更」。")
-        now = self._now().isoformat(timespec="seconds")
-        if not preview.created_at <= now < preview.expires_at:
+        now_text = now.isoformat(timespec="seconds")
+        if not preview.created_at <= now_text < preview.expires_at:
             raise WorkbenchCommandRejected("snapshot_stale", "这份变更清单已过期或内容有变化，请重新点「预览变更」。")
         context = self._normalization_context()
         current = self._preview_days(preview.request, expected=preview, context=context)

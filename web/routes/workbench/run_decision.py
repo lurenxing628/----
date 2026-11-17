@@ -1,10 +1,9 @@
 """同次候选总览与下载共用一个比较投影。"""
 
-import uuid
 from io import BytesIO
 from typing import Dict
 
-from flask import current_app, g, request, send_file
+from flask import g, request, send_file
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, reference
@@ -18,11 +17,12 @@ from core.services.workbench.run.decision_queries import read_decision_details
 from core.services.workbench.run.decision_resource_workspace import read_resource_workspace
 from core.services.workbench.run.decision_resources import read_resource_details
 from core.services.workbench.run.decision_workspace import read_reference_workspace
-from web.api_responses import failure_payload, json_response, query_payload, query_success
+from web.api_responses import json_response, query_payload, query_success
 
-from .api_responses import api_endpoint
+from .api_responses import api_endpoint, rejection_payload
 from .read_budget import PLAN_READ_SLOTS
-from .read_context import bind_read_snapshot, snapshot_binder
+from .read_context import bind_read_snapshot, current_snapshot_time, rebind_read_snapshot, snapshot_binder
+from .request_json import single_value_arguments
 
 _QUERY = ("comparison_mode", "reference_candidate_ref", "selected_candidate_ref", "range_start", "range_end", "resource_view")
 _FILTERS = ("batch_ref", "resource_ref", "change_kind", "sort", "order", "delivery_filter", "selected_batch_ref")
@@ -30,9 +30,7 @@ _RESOURCE_PERIOD_FILTERS = ("grain", "pressure_threshold", "display_start", "dis
 
 
 def _query(allowed) -> Dict[str, str]:
-    if set(request.args) - set(allowed) or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "比较条件含重复或不支持的项，请重新选择比较范围。", 422)
-    values = {key: request.args[key] for key in allowed if key in request.args}
+    values = single_value_arguments(allowed, message="比较条件含重复或不支持的项，请重新选择比较范围。", status=422)
     for name in ("selected_candidate_ref", "reference_candidate_ref"):
         if name in values:
             reference(values[name])
@@ -55,7 +53,8 @@ def _detail(run_ref, section):
     values = _query(_QUERY + _FILTERS + ("page", "size", "snapshot_ref"))
     token = values.pop("snapshot_ref", None)
     with PLAN_READ_SLOTS.slot():
-        return _response(*read_decision_details(g.db, run_ref, section, bind_snapshot=snapshot_binder(token), **values))
+        data, snapshot = read_decision_details(g.db, run_ref, section, bind_snapshot=snapshot_binder(token), **values)
+    return _response(data, snapshot)
 
 
 @api_endpoint
@@ -73,7 +72,8 @@ def run_decision_completion_batches(run_ref):
     values = _query(_QUERY + ("completion_filter", "sort", "order", "page", "size", "snapshot_ref"))
     token = values.pop("snapshot_ref", None)
     with PLAN_READ_SLOTS.slot():
-        return _response(*read_completion_batches(g.db, run_ref, bind_snapshot=snapshot_binder(token), **values))
+        data, snapshot = read_completion_batches(g.db, run_ref, bind_snapshot=snapshot_binder(token), **values)
+    return _response(data, snapshot)
 
 
 @api_endpoint
@@ -81,7 +81,8 @@ def run_decision_process(run_ref):
     values = _query(_QUERY + ("process_candidate_ref", "objective", "record_kind", "sort", "order", "page", "size", "snapshot_ref"))
     token = values.pop("snapshot_ref", None)
     with PLAN_READ_SLOTS.slot():
-        return _response(*read_process_details(g.db, run_ref, bind_snapshot=snapshot_binder(token), **values))
+        data, snapshot = read_process_details(g.db, run_ref, bind_snapshot=snapshot_binder(token), **values)
+    return _response(data, snapshot)
 
 
 def _preparation_detail(run_ref, section):
@@ -89,7 +90,8 @@ def _preparation_detail(run_ref, section):
     values = _query(_QUERY + filters + ("page", "size", "snapshot_ref"))
     token = values.pop("snapshot_ref", None)
     with PLAN_READ_SLOTS.slot():
-        return _response(*read_preparation_details(g.db, run_ref, section, bind_snapshot=snapshot_binder(token), **values))
+        data, snapshot = read_preparation_details(g.db, run_ref, section, bind_snapshot=snapshot_binder(token), **values)
+    return _response(data, snapshot)
 
 
 @api_endpoint
@@ -109,7 +111,8 @@ def _resource_detail(run_ref, section):
     values = _query(_QUERY + filters + ("page", "size", "snapshot_ref"))
     token = values.pop("snapshot_ref", None)
     with PLAN_READ_SLOTS.slot():
-        return _response(*read_resource_details(g.db, run_ref, section, bind_snapshot=snapshot_binder(token), **values))
+        data, snapshot = read_resource_details(g.db, run_ref, section, bind_snapshot=snapshot_binder(token), **values)
+    return _response(data, snapshot)
 
 
 @api_endpoint
@@ -127,7 +130,8 @@ def run_decision_reference_workspace(run_ref):
     values = _query(_QUERY + ("batch_ref", "snapshot_ref"))
     token = values.pop("snapshot_ref", None)
     with PLAN_READ_SLOTS.slot():
-        return _response(*read_reference_workspace(g.db, run_ref, bind_snapshot=snapshot_binder(token), **values))
+        data, snapshot = read_reference_workspace(g.db, run_ref, bind_snapshot=snapshot_binder(token), **values)
+    return _response(data, snapshot)
 
 
 @api_endpoint
@@ -142,33 +146,30 @@ def run_decision_summary(run_ref):
     return _response(data, snapshot)
 
 
-def _resource_workspace_binder(summary_token):
-    """Bind the summary with its own token; a stale resource-view token stays the view's own error."""
+def _resource_workspace_binder(summary_token, now):
+    """Bind the summary with its own token; a stale resource-view token stays the view's own error. A fresh
+    snapshot takes the other view's as_of, else ``now``, the request's one reading of the clock."""
     def bind(scope, state, resource):
-        snapshot = bind_read_snapshot(scope, state, summary_token) if summary_token is not None else None
+        snapshot = rebind_read_snapshot(scope, state, summary_token) if summary_token is not None else None
         resource_snapshot, error = None, None
         if resource is not None:
             filters, token = resource
             try:
                 resource_snapshot = bind_read_snapshot({**scope, "filters": filters}, state, token,
-                                                       as_of=snapshot["as_of"] if snapshot is not None else None)
+                                                       as_of=now if snapshot is None else snapshot["as_of"])
             except WorkbenchCommandRejected as exc:
                 error = exc
             else:
                 if snapshot is None:
                     snapshot = bind_read_snapshot(scope, state, as_of=resource_snapshot["as_of"])
         if snapshot is None:
-            snapshot = bind_read_snapshot(scope, state)
+            snapshot = bind_read_snapshot(scope, state, as_of=now)
         return snapshot, resource_snapshot, error
     return bind
 
 
 def _resource_error(error):
-    request_ref = uuid.uuid4().hex
-    if error.status >= 500:
-        current_app.logger.error("工作台请求失败 code=%s request_ref=%s", error.code, request_ref,
-                                 exc_info=(type(error), error, error.__traceback__))
-    return {**failure_payload(error.code, str(error), error.status, request_ref=request_ref), "status": error.status}
+    return {**rejection_payload(error), "status": error.status}
 
 
 @api_endpoint
@@ -184,7 +185,8 @@ def run_decision_resource_workspace(run_ref):
         resource_query["snapshot_ref"] = resource_token
     with PLAN_READ_SLOTS.slot():
         data, resource_data, resource_query, resource_error, snapshot, resource_snapshot = read_resource_workspace(
-            g.db, run_ref, resource_query=resource_query, bind_snapshot=_resource_workspace_binder(summary_token),
+            g.db, run_ref, resource_query=resource_query,
+            bind_snapshot=_resource_workspace_binder(summary_token, current_snapshot_time()),
             **summary_query)
     resource_result = (_resource_error(resource_error) if resource_error is not None
                        else query_payload(resource_data, resource_snapshot) if resource_data is not None else None)
@@ -202,7 +204,7 @@ def run_decision_export(run_ref):
         raise WorkbenchCommandRejected("invalid_input", "请刷新方案比较后导出当前资料。", 422)
     with PLAN_READ_SLOTS.slot():
         data, snapshot = read_decision_export(g.db, run_ref, section, bind_snapshot=snapshot_binder(token), fmt=fmt, **values)
-    download = (write_decision_xlsx("run", data, snapshot, section) if fmt == "xlsx" else
+    download = (write_decision_xlsx(write_run_decision_export, data, snapshot, section) if fmt == "xlsx" else
                 write_run_decision_export(data, snapshot, fmt, section))
     response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,
                          download_name=download.filename, max_age=0)

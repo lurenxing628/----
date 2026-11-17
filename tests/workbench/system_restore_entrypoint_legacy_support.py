@@ -1,11 +1,13 @@
 """Run the original restore assertions on the concrete DH controller contract."""
 
+import sys
 from pathlib import Path
 
 import pytest
 
 from tests.workbench.system_maintenance_support import BASE, SystemTestAPI
 from web.bootstrap import factory
+from web.bootstrap.launcher_paths import current_runtime_owner
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
 from web.bootstrap.workbench_run_runtime import install_workbench_run_runtime
 from web.bootstrap.workbench_system_restore import install_workbench_system_restore_host
@@ -31,11 +33,8 @@ class ManagedSystemAPI(SystemTestAPI):
 @pytest.fixture(name="system_api")
 def system_api(db_env, tmp_path, monkeypatch):
     monkeypatch.setenv("APS_ENV", "production")
-    journal_dir = tmp_path / "legacy-restore-journal"
-    journal_dir.mkdir()
-    monkeypatch.setenv("APS_SYSTEM_JOURNAL_DIR", str(journal_dir))
     scope = str(tmp_path / "legacy-restore-host")
-    payload = acquire_runtime_lock(scope, db_path=db_env)
+    payload = acquire_runtime_lock(scope, owner=current_runtime_owner(), exe_path=sys.executable, db_path=db_env)
     runtime = gate = None
     try:
         app = factory.create_app_core()

@@ -5,14 +5,17 @@ from flask import current_app, g
 from core.models.workbench_action_values import UPSERT_IMPORT_MODES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_file import check_format, file_columns
+from core.services.process.workflow_state import confirmation_stamp
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process import scope as process_scope
 from core.services.workbench.process.files import WorkbenchProcessFileService, file_operation
 from web.api_responses import json_response, query_success
+from web.runtime_host import wall_clock
 
 from .api_responses import api_endpoint
 from .process_action_context import action_preview, checked_preview, confirmed_body
-from .read_context import bind_read_snapshot
+from .process_file_exports import process_file_export, process_file_export_preview, process_file_template
+from .read_context import bind_read_snapshot, current_snapshot_time
 from .request_json import read_upload_file, read_upload_form
 from .resource_action_context import read_endpoint
 
@@ -35,13 +38,15 @@ def _upload(kind):
 @read_endpoint
 def process_file_preview(kind):
     content, fmt, mode, target = _upload(kind)
+    as_of = current_snapshot_time()
     service = WorkbenchProcessFileService(g.db, current_app.logger)
     # 文件事实只解析、校验一次；每次预检仍在服务读快照中比对当前工艺资料。
     preview, extra = service.preview_import(kind, content, file_format=fmt, mode=mode, target_ref=target)
     body = preview.as_dict()
     data = action_preview(preview, body["operation"], kind=kind, extra=extra)
     snapshot = bind_read_snapshot({"kind": "process_file_import", "operation": body["operation"],
-                                   "preview_ref": data["preview_ref"], "target_ref": target}, body["request"]["state"])
+                                   "preview_ref": data["preview_ref"], "target_ref": target}, body["request"]["state"],
+                                  as_of=as_of)
     return query_success(data, snapshot, body["notices"])
 
 
@@ -56,13 +61,12 @@ def process_file_confirm(kind):
         guard=lambda: checked_preview(payload["preview_ref"], operation, body["write_token"]),
         mutate=lambda preview: WorkbenchProcessFileService(g.db, current_app.logger).confirm_import(
             preview, discard_group_refs=payload["discard_group_refs"],
-            confirm_zero_unit_hours=payload["confirm_zero_unit_hours"]))
+            confirm_zero_unit_hours=payload["confirm_zero_unit_hours"],
+            confirmed_at=confirmation_stamp(wall_clock(current_app)())))
     return json_response(result)
 
 
 def register_process_file_routes(bp):
-    from .process_file_exports import process_file_export, process_file_export_preview, process_file_template
-
     root = "/api/workbench/v1/process-files/<kind>"
     for path, view, method in (("preview", process_file_preview, "POST"), ("confirm", process_file_confirm, "POST"),
                                ("export-preview", process_file_export_preview, "POST"),

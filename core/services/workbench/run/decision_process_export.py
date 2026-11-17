@@ -119,7 +119,7 @@ def _unified_records(saved):
         records["搜索动作"].extend({"record_kind": "search_action", **direction, **_values(action, _UNIFIED_ACTION_FIELDS),
             "动作改善方向": canonical_json(action["improved_objectives"])} for action in projected["actions"])
         records["搜索阶段"].extend({"record_kind": "stage", **direction, **_values(stage, _UNIFIED_STAGE_FIELDS)} for stage in projected["stages"])
-    for scope_ref, scope in current["scopes"].items():
+    for scope_ref, scope in process["scopes"].items():
         records["评价范围"].append({"record_kind": "score_scope", "评价范围编号": scope_ref,
             "目标评价范围": scope["objective_scope"], "评分分量已知": scope["components_known"], "本次工序已排齐": scope["is_complete"],
             "已排工序成员数": len(scope["scheduled_operation_refs"]), "排齐批次成员数": len(scope["complete_batch_refs"])})

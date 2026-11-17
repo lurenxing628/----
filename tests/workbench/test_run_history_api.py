@@ -14,11 +14,12 @@ from flask import Blueprint
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_run_history import RunHistoryScope
-from core.models.workbench_run_job import new_run_ref
-from core.services.workbench.facts.decision_read_model import build_failure_read_models
+from core.models.workbench_run_receipt import FailedReceipt
 from core.services.workbench.facts.decision_read_models import decode_model
 from core.services.workbench.run.history import WorkbenchRunHistoryQueryService
+from core.services.workbench.run.terminal import record_terminal_without_results
 from core.services.workbench.run.worker import WorkbenchRunWorker
+from core.shared.refs import new_ref
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from tests._support.excel_templates import point_env_at_shared
 from tests.workbench.run_history_support import BASE, dump, read
@@ -31,8 +32,7 @@ from web.routes.workbench.run_history import register_run_history_routes
 def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case, tmp_path, monkeypatch):
     case = history_case
     ref, token = case.intent()
-    runner = service(case.conn)
-    runner.clock = lambda: datetime(2026, 9, 10, 12, 0, 0, 50000)
+    runner = service(case.conn, clock=lambda: datetime(2026, 9, 10, 12, 0, 0, 50000))
     accepted = runner.accept(ref, token, "run-request-00000001")
     assert accepted["data"]["accepted_at"] == "2026-09-10T12:00:00.050000"
     captured_scope = accepted["data"]["scope_summary"]
@@ -84,12 +84,12 @@ def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case
         register_run_candidate_routes(candidates_bp)
         app.register_blueprint(candidates_bp)
     client = app.test_client()
-    from core.services.workbench.run.jobs import WorkbenchRunService
+    from web.bootstrap import workbench_run_runtime
 
     def forbidden(*args, **kwargs):
         raise AssertionError("History GET must not install, recover or dispatch")
 
-    monkeypatch.setattr(WorkbenchRunService, "recover_unfinished_runs", forbidden)
+    monkeypatch.setattr(workbench_run_runtime, "recover_unfinished_runs", forbidden)
     monkeypatch.setattr(WorkbenchRunWorker, "execute", forbidden)
     before = dump(case.conn)
     data = read(client)["data"]
@@ -115,18 +115,18 @@ def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case
 
 def test_new_process_reopens_history_without_browser_token_cache(history_case):
     case = history_case
-    complete = case.accept(new_run_ref())
-    complete_result = WorkbenchRunWorker(case.conn).execute(complete["run_ref"])
+    complete = case.accept(new_ref())
+    complete_result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(complete["run_ref"])
     assert complete_result["state"] == "complete"
     refs = [complete["run_ref"]]
     # A stored skipped operation leaves the real selected candidate short of the admitted scope.
     skipped = case.operation(seq=2)
     case.conn.execute("UPDATE BatchOperations SET status='skipped' WHERE id=?", (skipped,))
     case.conn.commit()
-    partial = case.accept(new_run_ref())
-    partial_result = WorkbenchRunWorker(case.conn).execute(partial["run_ref"])
+    partial = case.accept(new_ref())
+    partial_result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(partial["run_ref"])
     assert partial_result["state"] == "partial"
-    assert partial_result["candidates"] and all(row["status"] == "completed" for row in partial_result["candidates"])
+    assert partial_result["candidates"]
     assert partial_result["candidates"][0]["task_count"] == 1
     for candidate in partial_result["candidates"]:
         actual_count = case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateTasks WHERE candidate_ref=?",
@@ -135,18 +135,16 @@ def test_new_process_reopens_history_without_browser_token_cache(history_case):
     refs.append(partial["run_ref"])
     repo = WorkbenchRunRepository(case.conn)
     for state in ("failed", "interrupted"):
-        accepted = case.accept(new_run_ref())
+        accepted = case.accept(new_ref())
         run_ref = accepted["run_ref"]
         when = datetime.fromisoformat(accepted["data"]["accepted_at"])
-        result = {"state": state, "result_persisted": False, "candidates": [],
-                  "error": {"code": "history_fixture_" + state,
-                            "message": "跨进程历史读取测试明确保存的 " + state + " 终态。"}}
+        result = FailedReceipt(state, {"code": "history_fixture_" + state,
+                                       "message": "跨进程历史读取测试明确保存的 " + state + " 终态。"}, None)
         with TransactionManager(case.conn).transaction(begin_immediate=True):
-            assert repo.claim(run_ref, new_run_ref(), (when + timedelta(seconds=1)).isoformat(timespec="microseconds"))
+            assert repo.claim(run_ref, new_ref(), (when + timedelta(seconds=1)).isoformat(timespec="microseconds"))
             admission = decode_model(repo.admission_read_model(run_ref, fields=("decision",)), ("decision",))["decision"]
-            models = build_failure_read_models(repo.get(run_ref), admission, result)
-            repo.insert_decision_read_models(run_ref, models["run_model"], models["candidate_models"])
-            repo.finish(run_ref, result, (when + timedelta(seconds=2)).isoformat(timespec="microseconds"))
+            record_terminal_without_results(case.conn, repo.get(run_ref), admission, result,
+                                            (when + timedelta(seconds=2)).isoformat(timespec="microseconds"))
         assert not case.conn.in_transaction
         refs.append(run_ref)
     expected, fingerprint = WorkbenchRunHistoryQueryService(case.conn).catalog_for_snapshot(
@@ -155,14 +153,13 @@ def test_new_process_reopens_history_without_browser_token_cache(history_case):
     before = dump(case.conn)
     code = '''import json, sqlite3, sys
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_schema_contract_issues
-from core.infrastructure.schema_declaration import load_schema_sql
 from core.models.workbench_run_history import RunHistoryScope
 from core.services.workbench.run.history import WorkbenchRunHistoryQueryService
 conn = sqlite3.connect(sys.argv[1])
 conn.row_factory = sqlite3.Row
 conn.execute("PRAGMA foreign_keys=ON")
 assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
-assert current_schema_contract_issues(conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
+assert current_schema_contract_issues(conn, schema_version=CURRENT_SCHEMA_VERSION) == []
 conn.execute("PRAGMA query_only=ON")
 data, fingerprint = WorkbenchRunHistoryQueryService(conn).catalog_for_snapshot(
     RunHistoryScope(), bind_snapshot=lambda _scope, state: state
@@ -194,12 +191,12 @@ def test_stale_snapshot_ref_short_circuits_before_listing_jobs(history_case, mon
     def bind_db():
         g.db = case.conn
 
-    case.accept(new_run_ref())
+    case.accept(new_ref())
     client = case.app.test_client()
     initial = read(client)
     stale_token = initial["meta"]["snapshot_ref"]
     assert stale_token
-    case.accept(new_run_ref())
+    case.accept(new_ref())
 
     list_calls = 0
 

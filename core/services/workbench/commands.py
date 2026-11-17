@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
 
 from core.errors import BusinessError, ValidationError
 from core.infrastructure.transaction import TransactionManager
-from core.models.content import content_text
+from core.models.content import StoredJsonCorrupt, content_text
 from core.models.workbench_command import (
     WorkbenchCommandOutcome,
     WorkbenchCommandRejected,
@@ -72,10 +72,10 @@ class WorkbenchCommandService:
         scheduling run holds the scheduler lock) check this first, so a retry of
         an already committed request still replays instead of being refused.
         """
-        action, context_ref, input_text = self._admit(request_key, action, context_ref, normalized_input)
+        action, context_ref, input_text, input_shape = self._admit(request_key, action, context_ref, normalized_input)
         try:
-            return self._replay(request_key, action, context_ref, input_text)
-        except (WorkbenchCommandRejected, BusinessError, ValidationError):
+            return self._replay(request_key, action, context_ref, input_text, input_shape)
+        except (WorkbenchCommandRejected, WorkbenchCommandUncertain, BusinessError, ValidationError):
             raise
         except Exception as exc:
             raise WorkbenchCommandUncertain(request_key) from exc
@@ -90,27 +90,28 @@ class WorkbenchCommandService:
         A missing lookup means no committed receipt was observed, not that an in-flight
         request cannot still complete. A retry must retain its original request key.
         """
-        action, context_ref, input_text = self._admit(request_key, action, context_ref, normalized_input)
+        action, context_ref, input_text, input_shape = self._admit(request_key, action, context_ref, normalized_input)
         try:
             # Receipts are immutable and committed atomically with their mutation.
             # A completed SELECT is enough to replay one: taking a write lock here
             # needlessly competes with the worker and long-lived DELETE readers.
-            result = self._replay(request_key, action, context_ref, input_text)
+            result = self._replay(request_key, action, context_ref, input_text, input_shape)
             if result is not None:
                 return result
             with self.tx.transaction(begin_immediate=True):
                 # Another connection may have admitted this intent after the
                 # read-only lookup. Keep the second lookup under the write lock.
-                result = self._replay(request_key, action, context_ref, input_text)
+                result = self._replay(request_key, action, context_ref, input_text, input_shape)
                 if result is None:
                     result = self._apply(request_key, action, context_ref, input_text, guard, mutate)
             return result
-        except (WorkbenchCommandRejected, BusinessError, ValidationError):
+        except (WorkbenchCommandRejected, WorkbenchCommandUncertain, BusinessError, ValidationError):
             raise
         except Exception as exc:
             raise WorkbenchCommandUncertain(request_key) from exc
 
-    def _admit(self, request_key: str, action: object, context_ref: object, normalized_input: Any) -> Tuple[str, str, str]:
+    def _admit(self, request_key: str, action: object, context_ref: object,
+               normalized_input: Any) -> Tuple[str, str, str, Union[Type[dict], Type[list]]]:
         # Admission boundary: some routes pass raw request-body values (for example a preview_ref).
         validate_request_key(request_key)
         if not isinstance(action, str) or not action or not isinstance(context_ref, str) or not context_ref:
@@ -121,19 +122,27 @@ class WorkbenchCommandService:
             raise WorkbenchCommandRejected("invalid_input", "提交的内容里有存不下来的数据，操作没有完成。", 400) from exc
         if self.conn.in_transaction:
             raise RuntimeError("工作台命令必须拥有最外层事务，不能在调用方未提交的事务中声称已保存。")
-        return action, context_ref, input_text
+        # 同一命令的输入形状固定：报工逐行提交是行列表，其余命令是对象；重放按这个形状读回执里存的原提交。
+        input_shape = dict if type(normalized_input) is dict else list
+        return action, context_ref, input_text, input_shape
 
-    def _replay(self, request_key: str, action: str, context_ref: str, input_text: str) -> Optional[Dict[str, Any]]:
+    def _replay(self, request_key: str, action: str, context_ref: str, input_text: str,
+                input_shape: Union[Type[dict], Type[list]]) -> Optional[Dict[str, Any]]:
         row = self.repo.get(request_key)
         if not row:
             return None
-        self._check_replay(row, action, context_ref, input_text)
-        return self.repo.public_result(row, replayed=True)
+        try:
+            self._check_replay(row, action, context_ref, input_text, input_shape)
+            return self.repo.public_result(row, replayed=True)
+        except StoredJsonCorrupt as exc:
+            # 回执在，这个编号就有一次提交已经生效；回执读不出来就核不了是不是同一次提交，只能报结果未知，不能说没提交。
+            raise WorkbenchCommandUncertain(request_key) from exc
 
-    def _check_replay(self, row, action: str, context_ref: str, input_text: str) -> None:
+    def _check_replay(self, row, action: str, context_ref: str, input_text: str,
+                      input_shape: Union[Type[dict], Type[list]]) -> None:
         if (row["action"], row["context_ref"]) != (action, context_ref):
             raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号对应的内容和上次提交的不一样，请先核对上次的结果。")
-        if self.repo.input_content(row) != input_text:
+        if self.repo.input_content(row, input_shape) != input_text:
             raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号对应的内容和上次提交的不一样，请先核对上次的结果。")
 
     def _apply(self, request_key, action, context_ref, input_text, guard, mutate):

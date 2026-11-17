@@ -2,26 +2,20 @@
 
 from __future__ import annotations
 
-import sqlite3
 from io import BytesIO
 
 import pytest
 
 from core.models.workbench_material_query import MaterialPageRequest
 from core.services.workbench.material.file_codec import write_material_file
+from tests._support.sqlite_connection import open_test_connection
 from tests.workbench.material_file_support import codec_rows, file_bytes
 
 BASE = "/api/workbench/v1/entities/material"
 
 
 def _database(client):
-    from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
-
-    conn = sqlite3.connect(client.application.config["DATABASE_PATH"])
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys=ON")
-    register_schedule_time_sql_functions(conn)
-    return conn
+    return open_test_connection(client.application.config["DATABASE_PATH"])
 
 
 def _list(client, **query):
@@ -215,6 +209,8 @@ def test_material_xlsx_export_import_preserves_cr_and_crlf(app_client, monkeypat
     assert response.status_code == 200, response.get_data(as_text=True)
     preview = response.get_json()["data"]
     assert preview["can_confirm"] and preview["rows"][0]["errors"] == []
+    assert {key: preview["rows"][0][key] for key in ("entity_ref", "notes", "reference_fields")} == {
+        "entity_ref": ref, "notes": [], "reference_fields": ["created_at"]}
     response = confirm(app_client, preview, key="material-cr-import-confirm")
     assert response.status_code == 200, response.get_data(as_text=True)
     assert _detail(app_client, ref)["fields"] == expected
@@ -280,6 +276,8 @@ def test_material_update_delete_and_bulk_delete_by_ref_reuse_the_read_snapshot(a
 
             issued = issue_preview(preview)
             assert issued["can_confirm"] is True and issued["rows"][0]["result"] == "delete"
+            assert {key: issued["rows"][0][key] for key in ("entity_ref", "notes", "reference_fields")} == {
+                "entity_ref": refs["MAT2"], "notes": [], "reference_fields": []}
         outcome = confirm_delete(conn, preview, key="material-ref-bulk-delete-00001")
         assert outcome["result"] == "committed" and outcome["data"]["deleted_count"] == 1
         remaining = dict(conn.execute("SELECT material_id, stock_qty FROM Materials").fetchall())
@@ -344,6 +342,30 @@ def test_material_upload_admission_rejects_format_and_mode(app_client, extra):
         "format": "csv", "mode": "upsert", **extra}, content_type="multipart/form-data")
     error = response.get_json()["error"]
     assert (response.status_code, error["code"], error["fields"]) == (400, "invalid_input", [])
+
+
+_BAD_TOKEN_CONFIRM = {"request_key": "wording-check-00001", "write_token": "stale", "input": {"preview_ref": "r" * 32}}
+_RESOURCE_INCOMPLETE = "提交的内容不完整或有多余项，数据没有改动。请刷新页面后重新填写。"
+_RESOURCE_STALE_REF = "这次操作的编号已失效，数据没有改动。请关掉弹窗后重新打开。"
+
+
+@pytest.mark.parametrize(("method", "path", "body", "message"), [
+    ("POST", "/imports/material/confirm", {"input": {}}, "提交的内容不完整或有多余项，物料没有改动。请刷新页面后重新填写。"),
+    ("POST", "/imports/material/confirm", _BAD_TOKEN_CONFIRM, "这次操作的编号已失效，物料没有改动。请关掉弹窗后重新打开。"),
+    ("POST", "/imports/material/confirm", {**_BAD_TOKEN_CONFIRM, "write_token": "t" * 32, "input": {}},
+     "只能确认刚才预检过的那一批，物料没有改动。请点「重新预检」。"),
+    ("POST", "/imports/machine/confirm", _BAD_TOKEN_CONFIRM, _RESOURCE_STALE_REF),
+    ("POST", "/relation-files/operator_machine/confirm", {"input": {}}, _RESOURCE_INCOMPLETE),
+    ("POST", "/entities/machine/bulk-preview", {"action": "delete"}, _RESOURCE_INCOMPLETE),
+    ("POST", "/entities/machine/M1/downtimes/create", {"input": {}}, _RESOURCE_INCOMPLETE),
+    ("POST", "/calendar/defaults", {"input": {}}, _RESOURCE_INCOMPLETE),
+    ("GET", "/exports/machine?format=csv&export_ref=stale", None, _RESOURCE_STALE_REF),
+    ("GET", "/process-files/route/export?export_ref=stale", None, "这次操作的编号已失效，工艺资料没有改动。请关掉弹窗后重新打开。"),
+])
+def test_request_rejections_keep_their_own_domain_wording(app_client, method, path, body, message):
+    response = app_client.open("/api/workbench/v1" + path, method=method, json=body)
+    error = response.get_json()["error"]
+    assert (response.status_code, error["code"], error["message"]) == (400, "invalid_input", message)
 
 
 def test_material_import_preserves_legacy_spaced_code_without_touching_sibling_and_rejects_spaced_new_code(app_client):

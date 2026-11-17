@@ -49,7 +49,7 @@ def validate_piece_adoption(conn, *, prepared, payload):
     No proof is inferred from the engine's completion flag.
     """
     with _piece_validation_snapshot(conn):
-        context = _prepare_piece_validation_context(conn, prepared)
+        context = _prepare_piece_validation_context(prepared)
         calendar = arrangement_calendar(prepared, payload)
         return _validate_piece(
             prepared,
@@ -77,11 +77,11 @@ def _piece_validation_snapshot(conn):
 def prepare_piece_validation_context(conn, prepared):
     """Prepare shared proof inside the current snapshot, never across requests."""
     with _piece_validation_snapshot(conn):
-        return _prepare_piece_validation_context(conn, prepared)
+        return _prepare_piece_validation_context(prepared)
 
 
-def _prepare_piece_validation_context(conn, prepared):
-    scope = current_piece_scope(conn, prepared)
+def _prepare_piece_validation_context(prepared):
+    scope = current_piece_scope(prepared)
     context = prepare_schedule_validation_context(prepared)
     _material_deferrals(prepared, context["checks"], context["ops"], context["raw_batches"])
     scope_ids = {work.op_id for work in scope.operations}

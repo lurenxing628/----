@@ -18,9 +18,10 @@ from core.services.workbench.commands import WorkbenchCommandService
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint, read_endpoint
-from .batch_context import command_body, json_body, load_preview, read_scope, retry_hint, retry_message, save_preview
-from .read_budget import batch_read_snapshot
-from .read_context import bind_read_snapshot
+from .batch_context import BODY, STALE, load_preview, read_scope, retry_hint, retry_message, save_preview
+from .batch_files import register_batch_file_routes
+from .read_context import bind_read_snapshot, current_snapshot_time
+from .request_json import command_body, read_json_body, single_value_arguments
 from .write_context import (
     issue_write_context,
     preview_write_context,
@@ -41,18 +42,17 @@ def entity_context(entity, issue_context):
 
 
 def _list(query):
-    reader = WorkbenchBatchQueryService(g.db, current_app.logger)
+    reader = WorkbenchBatchQueryService(g.db, current_app.logger, as_of=current_snapshot_time())
     snapshot = None
 
     def bind(fingerprint):
         nonlocal snapshot
-        snapshot = bind_read_snapshot(snapshot_scope(query), fingerprint, query.get("snapshot_ref"))
+        snapshot = bind_read_snapshot(snapshot_scope(query), fingerprint, query.get("snapshot_ref"), as_of=reader.as_of)
 
-    with batch_read_snapshot(reader, bind=bind, mode="collection", query_filter=query) as scope:
-        data = reader.page(scope, query)
-        issue_context = issue_write_context.for_snapshot(scope.fingerprint())
-        data["entities"] = [entity_context(entity, issue_context) for entity in data["entities"]]
-        data["create_context"] = issue_context(COLLECTION, ["batch.create"])
+    data, fingerprint = reader.read_page(query, bind=bind)
+    issue_context = issue_write_context.for_snapshot(fingerprint)
+    data["entities"] = [entity_context(entity, issue_context) for entity in data["entities"]]
+    data["create_context"] = issue_context(COLLECTION, ["batch.create"])
     return query_success(data, snapshot)
 
 
@@ -63,65 +63,63 @@ def batch_list():
 
 @read_endpoint
 def batch_query():
-    return _list(batch_scope(json_body()))
+    return _list(batch_scope(read_json_body(BODY)))
 
 
 @read_endpoint
 def batch_selection():
-    query = batch_scope(json_body())
+    query = batch_scope(read_json_body(BODY))
     if not query.get("snapshot_ref"):
         raise WorkbenchCommandRejected("invalid_input", "数据已更新，还没有全选。请点「刷新」后重新点「全选当前筛选」。", 400)
-    reader = WorkbenchBatchQueryService(g.db, current_app.logger)
+    reader = WorkbenchBatchQueryService(g.db, current_app.logger, as_of=current_snapshot_time())
     snapshot = None
 
     def bind(fingerprint):
         nonlocal snapshot
-        snapshot = bind_read_snapshot(snapshot_scope(query), fingerprint, query["snapshot_ref"])
+        snapshot = bind_read_snapshot(snapshot_scope(query), fingerprint, query["snapshot_ref"], as_of=reader.as_of)
 
-    with batch_read_snapshot(reader, bind=bind, mode="collection", query_filter=query) as scope:
-        data = reader.selection(scope, query)
+    data, _ = reader.read_selection(query, bind=bind)
     return query_success(data, snapshot)
 
 
 @api_endpoint
 def batch_detail(ref):
-    if any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "详情的查询条件不对，详情没有打开。请刷新页面后重新点开这一行。", 400)
-    object_fields(dict(request.args), ("snapshot_ref",))
-    reader = WorkbenchBatchQueryService(g.db, current_app.logger)
+    single_value_arguments({"snapshot_ref"}, message="详情的查询条件不对，详情没有打开。请刷新页面后重新点开这一行。")
+    reader = WorkbenchBatchQueryService(g.db, current_app.logger, as_of=current_snapshot_time())
     snapshot = None
 
     def bind(fingerprint):
         nonlocal snapshot
-        snapshot = bind_read_snapshot({"kind": "batch", "ref": ref}, fingerprint, request.args.get("snapshot_ref"))
+        snapshot = bind_read_snapshot({"kind": "batch", "ref": ref}, fingerprint, request.args.get("snapshot_ref"), as_of=reader.as_of)
 
-    with batch_read_snapshot(reader, bind=bind, mode="single_template", target_ref=ref) as scope:
+    with reader.facts.detached_read_snapshot(bind=bind, mode="single_template", target_ref=ref) as scope:
         data = entity_context(reader.detail(scope, ref), issue_write_context.for_snapshot(scope.fingerprint()))
     return query_success(data, snapshot)
 
 
 @api_endpoint
 def batch_choices():
-    args = request.args
-    if set(args) - {"batch_ref", "operation_ref"} or any(len(args.getlist(key)) != 1 for key in args) or bool(args.get("batch_ref")) != bool(args.get("operation_ref")):
-        raise WorkbenchCommandRejected("invalid_input", "请选择完整的批次及工序后再读取候选资源。", 400)
-    reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    choices_scope = {"kind": "batch_choices", **dict(args)}
+    incomplete = "请选择完整的批次及工序后再读取候选资源。"
+    args = single_value_arguments({"batch_ref", "operation_ref"}, message=incomplete)
+    if bool(args.get("batch_ref")) != bool(args.get("operation_ref")):
+        raise WorkbenchCommandRejected("invalid_input", incomplete, 400)
+    reader = WorkbenchBatchQueryService(g.db, current_app.logger, as_of=current_snapshot_time())
+    choices_scope = {"kind": "batch_choices", **args}
     if not args:
         data = reader.choices_catalog()
-        snapshot = bind_read_snapshot(choices_scope, data)
+        snapshot = bind_read_snapshot(choices_scope, data, as_of=reader.as_of)
     else:
         batch_ref = args["batch_ref"]
-        with batch_read_snapshot(reader, mode="single_choices", target_ref=batch_ref) as scope:
+        with reader.facts.detached_read_snapshot(mode="single_choices", target_ref=batch_ref) as scope:
             data = reader.operation_choices(scope, batch_ref, args["operation_ref"])
-            snapshot = bind_read_snapshot(choices_scope, scope.fingerprint())
+            snapshot = bind_read_snapshot(choices_scope, scope.fingerprint(), as_of=reader.as_of)
     return query_success(data, snapshot)
 
 
 @api_endpoint
 def batch_command(action, ref=None):
-    body = command_body()
-    reader = WorkbenchBatchQueryService(g.db, current_app.logger)
+    body = command_body(BODY, stale=STALE)
+    reader = WorkbenchBatchQueryService(g.db, current_app.logger, as_of=current_snapshot_time())
     domain = WorkbenchBatchService(g.db, current_app.logger)
     if action == "materials_update":
         normalized = normalize_material_changes(body["input"])
@@ -129,7 +127,7 @@ def batch_command(action, ref=None):
         normalized = normalize_operation_input(body["input"]) if action == "operation_update" else normalize_batch_input(action, body["input"])
     ref = None if action == "create" else public_ref(ref)
     subject = COLLECTION if ref is None else ref
-    mode = "collection" if ref is None else "single_instance"
+    mode = "single_create" if ref is None else "single_instance"
     with reader.facts.command_snapshot(mode=mode, target_ref=ref) as scope:
         def guard():
             fingerprint = scope.fingerprint()
@@ -150,9 +148,19 @@ def batch_command(action, ref=None):
             action="batch." + action, context_ref=subject, normalized_input=normalized, guard=guard, mutate=mutate))
 
 
+def _preview_scope_mode(action, payload):
+    if action == "sync_confirm":
+        return "single_template", None
+    if action == "split_confirm":
+        return "single_split", None
+    if payload["action"] == "copy":
+        return "batch_copy", tuple(payload["refs"])
+    return "batch_closure", tuple(payload["refs"])
+
+
 @read_endpoint
 def batch_preview(action, ref=None):
-    body = json_body()
+    body = read_json_body(BODY)
     required = ("input", "snapshot_ref", "scope") if action == "bulk_confirm" else ("input", "snapshot_ref")
     object_fields(body, required, required)
     if not isinstance(body["snapshot_ref"], str) or not body["snapshot_ref"]:
@@ -161,25 +169,16 @@ def batch_preview(action, ref=None):
                normalize_split(body["input"]) if action == "split_confirm" else
                WorkbenchBatchOperationService.normalize_sync(body["input"]))
     query = batch_scope(body["scope"]) if action == "bulk_confirm" else None
-    target_refs = None
-    if action == "sync_confirm":
-        mode = "single_template"
-    elif action == "split_confirm":
-        mode = "single_split"
-    elif payload["action"] in ("delete", "update"):
-        mode = "batch_closure"
-        target_refs = tuple(payload["refs"])
-    else:
-        mode = "collection"
-    reader = WorkbenchBatchQueryService(g.db, current_app.logger)
+    mode, target_refs = _preview_scope_mode(action, payload)
+    reader = WorkbenchBatchQueryService(g.db, current_app.logger, as_of=current_snapshot_time())
 
     def bind(fingerprint):
         if action in ("sync_confirm", "split_confirm"):
-            bind_read_snapshot({"kind": "batch", "ref": ref}, fingerprint, body["snapshot_ref"])
+            bind_read_snapshot({"kind": "batch", "ref": ref}, fingerprint, body["snapshot_ref"], as_of=reader.as_of)
         else:
-            bind_read_snapshot(snapshot_scope(query), fingerprint, body["snapshot_ref"])
+            bind_read_snapshot(snapshot_scope(query), fingerprint, body["snapshot_ref"], as_of=reader.as_of)
 
-    with batch_read_snapshot(reader, bind=bind, mode=mode, target_ref=ref, target_refs=target_refs) as scope:
+    with reader.facts.detached_read_snapshot(bind=bind, mode=mode, target_ref=ref, target_refs=target_refs) as scope:
         if action == "split_confirm":
             data = WorkbenchQuantitySplitService(g.db, current_app.logger).plan_normalized(scope, ref, payload)
             data["materials"] = [{"business_code": row["material_id"], **{key: value for key, value in row.items()
@@ -192,61 +191,46 @@ def batch_preview(action, ref=None):
         preview, expires_at = save_preview(action, ref, payload, fingerprint, with_expiry=True)
         data.update(preview_ref=preview, expires_at=expires_at,
                     write_context=preview_write_context(preview, expires_at, ["batch." + action]))
-        snapshot = bind_read_snapshot({"kind": "batch_preview", "preview_ref": preview}, fingerprint)
+        snapshot = bind_read_snapshot({"kind": "batch_preview", "preview_ref": preview}, fingerprint, as_of=reader.as_of)
     return query_success(data, snapshot)
 
 
 @read_endpoint
 def batch_facets():
     from core.models.workbench_batch import SORTS
-    from core.services.workbench.batch.queries import cell
 
-    body = object_fields(json_body(), ("scope", "field"), ("scope", "field"))
+    body = object_fields(read_json_body(BODY), ("scope", "field"), ("scope", "field"))
     query = batch_scope(body["scope"])
     if body["field"] not in SORTS or not query.get("snapshot_ref"):
         raise WorkbenchCommandRejected("invalid_input", "要筛选的列不对或数据已更新，筛选没有变化。请点「刷新」后重新打开列筛选。", 400)
     filters = {key: values for key, values in query["column_filters"].items() if key != body["field"]}
     facet_query = {**query, "column_filters": filters}
-    reader = WorkbenchBatchQueryService(g.db, current_app.logger)
+    reader = WorkbenchBatchQueryService(g.db, current_app.logger, as_of=current_snapshot_time())
     snapshot = None
 
     def bind(fingerprint):
         nonlocal snapshot
-        snapshot = bind_read_snapshot(snapshot_scope(query), fingerprint, query["snapshot_ref"])
+        snapshot = bind_read_snapshot(snapshot_scope(query), fingerprint, query["snapshot_ref"], as_of=reader.as_of)
 
-    with batch_read_snapshot(reader, bind=bind, mode="collection", query_filter=facet_query) as scope:
-        rows = reader.matched(scope, facet_query)
-        values = list(dict.fromkeys(cell(row, body["field"]) for row in rows))
-        values.sort(key=lambda value: (value is None, str(value)))
-        if len(values) > 5000:
-            raise WorkbenchCommandRejected("invalid_input", "这一列的可选值超过 5000 项，没有全部列出。请在搜索框里先输入关键字缩小范围。", 422)
-    return query_success({"field": body["field"], "values": values, "count": len(values)}, snapshot)
+    data, _ = reader.read_facets(facet_query, body["field"], bind=bind)
+    return query_success(data, snapshot)
 
 
 @api_endpoint
 def batch_confirm(action, ref=None):
-    body = command_body()
+    body = command_body(BODY, stale=STALE)
     normalized = object_fields(body["input"], ("preview_ref",), ("preview_ref",))
     token = normalized["preview_ref"]
     if not isinstance(token, str) or not token:
         raise WorkbenchCommandRejected("invalid_input", retry_message(action, "预检结果编号缺失"), 400)
-    reader = WorkbenchBatchQueryService(g.db, current_app.logger)
+    reader = WorkbenchBatchQueryService(g.db, current_app.logger, as_of=current_snapshot_time())
     action_scope = None
 
     def guard():
         nonlocal action_scope
         binding = load_preview(token, action, ref)
         payload = binding["input"]
-        target_refs = None
-        if action == "sync_confirm":
-            mode = "single_template"
-        elif action == "split_confirm":
-            mode = "single_split"
-        elif payload["action"] in ("delete", "update"):
-            mode = "batch_closure"
-            target_refs = tuple(payload["refs"])
-        else:
-            mode = "collection"
+        mode, target_refs = _preview_scope_mode(action, payload)
         action_scope = BatchFactScope(
             reader.facts,
             command=True,
@@ -282,8 +266,6 @@ def batch_confirm(action, ref=None):
 
 
 def register_batch_routes(bp):
-    from .batch_files import register_batch_file_routes
-
     base = "/api/workbench/v1/entities/batch"
     for path, endpoint, method in (("", batch_list, "GET"), ("/query", batch_query, "POST"), ("/selection", batch_selection, "POST"), ("/facets", batch_facets, "POST"),
                                    ("/choices", batch_choices, "GET"), ("/<ref>", batch_detail, "GET")):

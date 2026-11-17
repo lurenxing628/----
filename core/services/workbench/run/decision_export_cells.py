@@ -11,7 +11,7 @@ def issue_text(value):
 
 
 def baseline_ref(baseline):
-    return baseline.get("candidate_ref") if baseline["kind"] == "candidate" else baseline.get("baseline_ref")
+    return baseline["candidate_ref"] if baseline["kind"] == "candidate" else baseline["baseline_ref"]
 
 
 def boolean_text(value):

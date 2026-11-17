@@ -12,15 +12,16 @@ from core.services.workbench.resource.files import WorkbenchResourceFileService
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from web.api_responses import query_success
 
-from .read_context import bind_read_snapshot, resolve_read_snapshot
+from .read_context import rebind_read_snapshot, resolve_read_snapshot
+from .request_json import opaque_ref
 from .resource_action_context import (
     EXPORT_SCOPE,
+    STALE_REF_MESSAGE,
     admit_export_selection,
     download_args,
     export_identity,
     file_response,
     json_body,
-    opaque_ref,
     read_endpoint,
     resolve_context,
     retain_context,
@@ -41,7 +42,7 @@ def resource_export_preview(kind):
     service = WorkbenchResourceFileService(g.db, kind, current_app.logger, reader=reader)
     with reader.read_snapshot() as scope:
         read_binding = resolve_read_snapshot(snapshot_ref)
-        snapshot = bind_read_snapshot(query_scope, scope.state_fingerprint(), snapshot_ref, binding=read_binding)
+        snapshot = rebind_read_snapshot(query_scope, scope.state_fingerprint(), snapshot_ref, binding=read_binding)
         arguments, count = service.preview_export(scope, selection, request=page_request, selected_refs=body.get("refs"))
         identity = export_identity(arguments)
         document = {"kind": kind, "query_scope": query_scope, "snapshot_ref": snapshot_ref, "arguments": arguments}
@@ -55,17 +56,17 @@ def resource_export_preview(kind):
 def resource_export(kind):
     action_kind(kind)
     fmt = download_args({"export_ref", "format"})
-    ref = opaque_ref(request.args["export_ref"])
+    ref = opaque_ref(request.args["export_ref"], STALE_REF_MESSAGE)
     binding, read_binding = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale")
     if binding["kind"] != kind:
         raise WorkbenchCommandRejected("snapshot_stale", "这次导出的编号属于另一类记录，没有开始下载。请刷新页面后重新点「导出」。")
     reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
     service = WorkbenchResourceFileService(g.db, kind, current_app.logger, reader=reader)
     with reader.read_snapshot() as scope:
-        snapshot = bind_read_snapshot(binding["query_scope"], scope.state_fingerprint(), binding["snapshot_ref"], binding=read_binding)
+        snapshot = rebind_read_snapshot(binding["query_scope"], scope.state_fingerprint(), binding["snapshot_ref"], binding=read_binding)
         rows = service.export_rows(scope, fmt, **binding["arguments"])
     # 读事务已结束：生成 CSV/XLSX 只用已读出的行，不再挡别人提交写入。
-    response = file_response(service.write_export(rows, fmt, request=binding["arguments"]["request"]))
+    response = file_response(write_resource_file(kind, rows, fmt, category=binding["arguments"]["request"].category))
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-As-Of"] = snapshot["as_of"]
     return response

@@ -50,7 +50,7 @@ def read_resource_workspace(conn, run_ref, *, resource_query, bind_snapshot, **s
         effective = normalize_saved_resource_view(saved_view, source.scope)
         filters.update({key: effective.get(key) for key in ("resource_ref", "display_start", "display_end")})
         view, error = None, None
-        if source.selected is not None and source.selected["status"] == "completed":
+        if source.selected is not None:
             try:
                 filters, view = resource_view(source, filters, heatmap_page=effective["heatmap_page"],
                                               heatmap_size=effective["heatmap_size"])

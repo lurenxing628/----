@@ -55,7 +55,7 @@ def _batch_row(source, key, item):
             "deferred_operation_count": deferred_count,
             "remaining_work": {"operation_count": count,
                                "metrics": public_preparation_metrics(metrics)},
-            "issues": list(item["issues"]),
+            "issues": item["issues"],
             "remaining_drill": _remaining_drill(source, key, count, batch_ref=item["batch_ref"])}
 
 
@@ -65,7 +65,7 @@ def completion_batches(source, filters, *, page: Union[int, str] = 1, size: Unio
         reject("invalid_input", "请选择本次排产中的候选后查看工序安排。", 422)
     scope = source.completion.scope(key)
     membership = COMPLETION_FILTERS[filters["completion_filter"]]
-    refs = set(source.scope["batch_refs"] if membership is None else scope[membership])
+    refs = set(source.batch_refs if membership is None else scope[membership])
     items = [row for row in source.completion.delivery(key) if row["batch_ref"] in refs]
     items.sort(key=lambda row: row["batch_ref"])
     known = [row for row in items if row["batch_id"] is not None]
@@ -77,7 +77,7 @@ def completion_batches(source, filters, *, page: Union[int, str] = 1, size: Unio
     selected = items[offset:offset + size]
     remaining = source.completion.remaining_operation_refs(key)
     return {"run_ref": source.run["run_ref"], "scope": source.scope, "baseline": source.baseline,
-            "candidate": {"candidate_ref": key, "label": candidate["artifact"].get("label"), "persisted_status": candidate["status"]},
+            "candidate": {"candidate_ref": key, "label": candidate["label"]},
             "source": {"role": "completion_anchor", "grain": "full_admission_per_candidate_batch",
                        "candidate_ref": key, "available": True, "reason": None},
             "filters": filters, "items": [_batch_row(source, key, item) for item in selected],

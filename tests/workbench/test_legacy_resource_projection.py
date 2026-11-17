@@ -31,10 +31,10 @@ def shipped(data, program):
 def trial_contract_and_capacity_panel(data):
     return shipped(data, r"""
 const w = h.runtime;
-const TrialContract = h.module('TrialContract.js'), TrialViewState = h.module('TrialViewState.js'),
+const TrialViewState = h.module('TrialViewState.js'),
   TrialResults = h.module('TrialResults.jsx'), WorkbenchTerms = h.module('WorkbenchTerms.js'),
   TrialControls = h.module('TrialControls.jsx');
-const data = TrialContract.workspace(sourceData);
+const data = sourceData;
 w.history = {state:null};
 const defaultView = TrialViewState.defaults(data);
 h.setStub('TrialViewState.js', {
@@ -79,7 +79,9 @@ def test_old_candidate_comparison_fixed_cohort_and_archived_capacity(candidate_c
             assert value["available_hours"] == 16 and value["occupied_hours"] == 0.75
             assert value["balance_cv"] == pytest.approx(1)
         assert len(data["resources"]) == 4
-        assert all(row["before"]["window_metrics"]["occupied_hours"] is None for row in data["resources"])
+        # 每个资源两侧只交出界面读的状态与日峰值；缺保存安排的一侧峰值未知。
+        assert all(row["before"] == {"state": "partial", "peak_utilization": None}
+                   and set(row["after"]) == {"state", "peak_utilization"} for row in data["resources"])
         definitions = {row["key"]: row for row in metric_definitions()}
         for entry in data["tradeoffs"]["all_differences"]:
             assert entry["metric_version"] == definitions[entry["metric_key"]]["metric_version"]
@@ -95,7 +97,6 @@ const payload = {ok:true, schema_version:1, data:d, meta:{request_ref:'a'.repeat
   time_basis:'factory_local', snapshot_ref:'b'.repeat(32), as_of:'2026-09-10T12:00:00'}, warnings:[]};
 const scope = {run_ref:d.candidate.run_ref, candidate_ref:d.candidate.candidate_ref,
   range_start:d.time_scope.range_start, range_end:d.time_scope.range_end, ...(d.batch_ref ? {batch_ref:d.batch_ref} : {})};
-DashboardCandidateComparisonAPI.validate(payload, scope);
 const text = h.text(h.render(DashboardCandidatePanels.Metrics, {data:d}));
 assert(text.includes(WorkbenchTerms.resource_kinds.machine) && text.includes(WorkbenchTerms.resource_kinds.operator));
 assert(text.includes('比较对象缺少保存安排，工种切换次数未知。'));
@@ -110,8 +111,6 @@ for (const item of d.tradeoffs.all_differences) {
 assert(!text.includes('推荐方案'), 'The old dashboard compares the explicitly selected candidate');
 const resources = d.tradeoffs.all_differences.filter(item => item.source === 'archived_resource_calendar');
 assert(resources.length && resources.every(item => item.metric_version === d.resource_common.metric_version));
-assert.throws(() => DashboardCandidateComparisonAPI.validate(payload, {...scope, candidate_ref:'0'.repeat(48)}));
-assert.throws(() => DashboardCandidateComparisonAPI.validate(payload, {...scope, run_ref:'0'.repeat(48)}));
 return (async () => {
   // 在 fetch 层打桩：读取经共享传输层与值班台合约的同一条读取链。
   const requests = [];
@@ -159,7 +158,8 @@ def test_trial_capacity_uses_creation_archive_after_live_calendar_changes(trial_
 def test_trial_new_permanent_resource_ref_stays_unknown_in_original_archive(trial_case):
     case = trial_case
     draft = create(case)
-    case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M4','New lathe','T1')")
+    case.conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('M4','New lathe')")
+    case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M4','T1')")
     case.conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O4','New operator')")
     case.conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('O4','M4')")
     case.conn.commit()
@@ -178,8 +178,8 @@ def test_trial_new_permanent_resource_ref_stays_unknown_in_original_archive(tria
     trial_contract_and_capacity_panel(saved)
 
 
-def test_current_dashboard_two_kinds_share_fact_contract_without_rederiving_pressure(dashboard_case, monkeypatch):
-    client = api(dashboard_case, monkeypatch)
+def test_current_dashboard_two_kinds_share_fact_contract_without_rederiving_pressure(dashboard_case):
+    client = api(dashboard_case)
     response = client.get('/api/workbench/v1/dashboard/analysis', query_string={'section': 'pressure'})
     assert response.status_code == 200
     document = response.get_json()

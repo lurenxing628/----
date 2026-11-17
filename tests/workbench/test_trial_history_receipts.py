@@ -128,14 +128,13 @@ def test_real_adoptions_batch_history_reads(trial_case, monkeypatch):
                 context.repo.prefetch_history_rows(versions)
                 assert workbench_plan_identity_repo.WorkbenchPlanIdentityRepository(case.conn).read_revision() == context.references.read_revision()
                 for version, plan_ref in zip(versions, plan_refs):
-                    histories = context.history_rows(version)
-                    assert len(histories) == 1 and histories[0]["version"] == version
-                    identity = context.repo.get_history_identity_row(version)
-                    assert identity is not None and identity["version"] == version
+                    history = context.history(version)
+                    assert history is not None and history["version"] == version
+                    assert history["plan_ref"] == plan_ref
                     assert context.resolve(plan_ref).version == version
     finally:
         case.conn.set_trace_callback(None)
-    histories = [sql.upper() for sql in statements if "FROM SCHEDULEHISTORY" in sql.upper() and "RESULT_SUMMARY" in sql.upper()]
+    histories = [sql.upper() for sql in statements if "FROM SCHEDULEHISTORY" in sql.upper() and "PLAN_REF" in sql.upper()]
     assert len(histories) == 1 and "VERSION IN (" in histories[0]
     assert not any("PRAGMA_SCHEMA_VERSION" in sql.upper() for sql in statements)
 
@@ -153,5 +152,5 @@ def test_real_adoptions_batch_history_reads(trial_case, monkeypatch):
     assert entry["current_state"] == "historical" and entry["adoption"]["reason"] == INTENT["reason"]
     assert not any(issue["code"].startswith("audit_") for issue in entry["evidence_gaps"])
     # Every receipt keeps its original intent, so the reader never scans the whole history table.
-    assert not any(sql.upper() == "SELECT RESULT_SUMMARY FROM SCHEDULEHISTORY" for sql in statements)
+    assert not any("FROM SCHEDULEHISTORY" in sql.upper() and "WHERE" not in sql.upper() for sql in statements)
     assert adoption_service(case.conn).adopt(first_saved["scenario_ref"], "expired-token", keys[0], INTENT) == dict(first, replayed=True)

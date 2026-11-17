@@ -5,7 +5,7 @@ from flask import current_app, g, request
 from core.infrastructure.transaction import TransactionManager
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_system import RESTORE_DISABLED, filter_records, query_input
+from core.models.workbench_system import QUERY_FIELDS, RESTORE_DISABLED, filter_records, query_input
 from core.services.workbench.facts.system_reads import log_records
 from core.services.workbench.facts.system_redaction import public_system_text
 from core.services.workbench.system.config import SystemConfigWorkspace
@@ -13,7 +13,8 @@ from core.services.workbench.system.maintenance_records import maintenance_recor
 from web.api_responses import query_success
 from web.runtime_host import restore_host
 
-from .read_context import bind_read_snapshot
+from .read_context import bind_read_snapshot, current_snapshot_time
+from .request_json import single_value_arguments
 from .system_context import issue_context, journal, query_payload, system_endpoint
 from .system_log_snapshots import resolve_log_snapshot, retain_log_snapshot
 
@@ -35,22 +36,22 @@ def file_capabilities(journal_records, *, event_journal):
 
 
 def collection(kind, *, event_journal=None, journal_records=None):
-    if any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "筛选条件有重复项，当前筛选没有变化。请刷新页面后重新选择。", 400)
-    query = query_input(request.args.to_dict(), kind)
+    arguments = single_value_arguments(QUERY_FIELDS, message="筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。")
+    query = query_input(arguments, kind)
     scope = {"kind": "system." + kind, **{key: value for key, value in query.items() if key not in ("page", "page_size")}}
     token = request.args.get("snapshot_ref")
     if kind == "logs" and token:
         rows, sources, snapshot = resolve_log_snapshot(scope, token)
         return rows, sources, query, snapshot
+    as_of = current_snapshot_time()
     if kind == "backups":
         rows, sources = maintenance_records(g.db, current_app.config["BACKUP_DIR"], event_journal,
                                             journal_records=journal_records)
     else:
         rows, sources = log_records(g.db, current_app.config["LOG_DIR"], current_app.logger)
     filtered = filter_records(rows, query)
-    snapshot = (retain_log_snapshot(scope, filtered, sources) if kind == "logs" else
-                bind_read_snapshot(scope, content_text({"rows": filtered, "sources": sources}), token))
+    snapshot = (retain_log_snapshot(scope, filtered, sources, as_of=as_of) if kind == "logs" else
+                bind_read_snapshot(scope, content_text({"rows": filtered, "sources": sources}), token, as_of=as_of))
     return filtered, sources, query, snapshot
 
 
@@ -88,8 +89,9 @@ def system_collection(kind):
 def system_config_read():
     if request.args:
         raise WorkbenchCommandRejected("invalid_input", "读取设置不需要筛选条件。请刷新页面后重试。", 400)
+    as_of = current_snapshot_time()
     with TransactionManager(g.db).transaction():
-        data, fingerprint = SystemConfigWorkspace(g.db, current_app.logger, current_app.config.get("BACKUP_KEEP_DAYS", 7)).snapshot()
+        data, fingerprint = SystemConfigWorkspace(g.db, current_app.logger, current_app.config["BACKUP_KEEP_DAYS"]).snapshot()
     data["stored_values"] = {key: public_system_text(value, 256) if value is not None else None for key, value in data["stored_values"].items()}
     data["write_context"] = {"write_token": issue_context("config", fingerprint)}
-    return query_payload(data)
+    return query_payload(data, as_of)

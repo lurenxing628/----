@@ -9,6 +9,7 @@ from core.errors import AppError, ErrorCode
 from core.models.supplier import Supplier
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_supplier import normalize_supplier_input
+from core.services.process.workflow_state import invalidate_supplier_confirmations
 from data.repositories.supplier_repo import SupplierRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_supplier_state_repo import WorkbenchSupplierStateRepository
@@ -69,6 +70,24 @@ class WorkbenchSupplierService:
     def _stored_status(status):
         return ("active", None) if status == "active" else ("inactive", "pending_review" if status == "pending_review" else "disabled")
 
+    def _invalidate_confirmations_if_updated(self, change) -> None:
+        if change.action != "update" or not (change.fields or change.related):
+            return
+        became_unavailable = change.fields.get("status") == "inactive" or (
+            "reason" in change.related and change.related["reason"][0] is not None
+        )
+        removed_op_types = (
+            change.related["op_types"][0] - change.related["op_types"][1]
+            if "op_types" in change.related
+            else ()
+        )
+        invalidate_supplier_confirmations(
+            self.conn,
+            change.business_code,
+            became_unavailable=became_unavailable,
+            removed_op_types=removed_op_types,
+        )
+
     def apply_prepared(self, change, *, read_identity: bool = True):
         if not self.conn.in_transaction:
             raise RuntimeError("供应商操作必须在外层工作台命令事务中执行。")
@@ -88,6 +107,7 @@ class WorkbenchSupplierService:
         if "reason" in change.related:
             reason, exists = change.related["reason"]
             self._query.write_reason(code, reason, exists=exists)
+        self._invalidate_confirmations_if_updated(change)
         changed = change.action != "update" or bool(change.fields or change.related)
         return WorkbenchCommandOutcome(
             "committed" if changed else "unchanged",

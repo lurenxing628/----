@@ -5,10 +5,11 @@ import json
 import logging
 import os
 import sqlite3
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -38,27 +39,6 @@ def enable_restore(api):
     assert api.app.extensions["workbench_system_restore_guard"] is host
     assert host.runtime.ready and host.status["operations_available"]
     host.verify()
-
-
-def test_backup_list_remains_readable_without_maintenance_directory(tmp_path):
-    from flask import Flask
-
-    from web.bootstrap.workbench_system_restore_recovery import (
-        RECOVERY,
-        prepare_system_restore_startup,
-    )
-
-    app = Flask("startup-recovery-test")
-    database = tmp_path / "test.db"
-    app.config.update(DATABASE_PATH=str(database), WORKBENCH_SYSTEM_JOURNAL_DIR="")
-    assert prepare_system_restore_startup(app) is True
-    assert app.extensions[RECOVERY] is True
-    assert not database.exists()
-    client = app.test_client()
-    assert client.get("/api/workbench/v1/system/backups").status_code == 503
-    result = client.get("/api/workbench/v1/system/results/system-test-request-0001")
-    assert result.status_code == 503
-    assert result.get_json()["error"]["code"] == "maintenance_unavailable"
 
 
 def test_static_files_observe_stop_state_without_rereading_database_locks(system_api, monkeypatch):
@@ -131,6 +111,29 @@ def test_utc_operation_logs_use_one_local_time_for_lists_details_filters_and_exp
     assert [(row["status"], row["event_ref"]) for row in skipped_rows] == [("skipped", "4")]
 
 
+def test_maintenance_page_opens_with_unreadable_or_invalid_cleanup_records(tmp_path):
+    api = SystemTestAPI(tmp_path)
+    unreadable, invalid = '{"removed_count":1,', '{"removed_count":"1"}'
+    with closing(api.connect()) as conn:
+        conn.executemany("INSERT INTO OperationLogs(id,log_time,log_level,module,action,detail) "
+                         "VALUES (?,'2026-10-16 00:00:01','INFO','system','cleanup',?)", [(1, unreadable), (2, invalid)])
+        conn.executemany("INSERT INTO SystemJobState(job_key,last_run_time,last_run_detail) VALUES (?,?,?)", [
+            ("auto_backup_cleanup", "2026-10-16 00:00:02", unreadable),
+            ("auto_log_cleanup", "2026-10-16 00:00:03", '{"deleted_count":-1}'),
+        ])
+        conn.commit()
+    data = api.read("/backups", type="cleanup")["data"]
+    audits = {row["event_ref"]: row for row in data["rows"] if row["event_source"] == "operation_audit"}
+    assert {ref: row["status"] for ref, row in audits.items()} == {"1": "unknown", "2": "unknown"}
+    assert json.loads(audits["1"]["body"])["detail"] == {"unparsed_detail": unreadable}
+    assert json.loads(audits["2"]["body"])["detail"] == {"unparsed_detail": invalid}
+    latest = [row for row in data["rows"] if row["event_source"] == "latest_job_state_only"]
+    assert [(row["event_ref"], json.loads(row["body"])["detail"]) for row in latest] == [
+        ("auto_log_cleanup", {"record_error": "上次结果记录异常，详细内容请让维护人员查看日志。"})]
+    flagged = {item["job_key"] for item in data["sources"] if item["code"] == "maintenance_last_detail_invalid"}
+    assert flagged == {"auto_backup_cleanup", "auto_log_cleanup"}
+
+
 def test_evicted_log_windows_release_their_registered_read_text(tmp_path, monkeypatch):
     from flask import g
 
@@ -144,7 +147,8 @@ def test_evicted_log_windows_release_their_registered_read_text(tmp_path, monkey
 
     def retain(body):
         clock[0] += 1
-        return snapshots.retain_log_snapshot({"kind": "system.logs"}, [{"body": body}], ["aps.log"])["snapshot_ref"]
+        return snapshots.retain_log_snapshot({"kind": "system.logs"}, [{"body": body}], ["aps.log"],
+                                             as_of=datetime(2026, 10, 31, 8, 0))["snapshot_ref"]
 
     def retained():
         windows = api.app.extensions["workbench_system_log_snapshots_v1"]
@@ -167,20 +171,50 @@ def test_evicted_log_windows_release_their_registered_read_text(tmp_path, monkey
         assert retained() == [fresh]
 
 
-def test_log_windows_with_the_same_text_hold_the_registered_text(tmp_path, monkeypatch):
+def test_maintenance_record_times_come_from_the_app_clock(tmp_path):
+    from web.runtime_host import install_wall_clock
+
+    api = SystemTestAPI(tmp_path)
+    install_wall_clock(api.app, lambda: datetime(2026, 10, 31, 8, 0, 5, 700000))
+    created = api.file_action("create").get_json()["data"]["operation"]
+    row = api.journal().lookup_job(created["job_ref"])
+    assert created["updated_at"] == row["updated_at"] == "2026-10-31T08:00:05"
+    assert [item["state"] for item in row["history"]] == ["accepted", "checking", "checking", "succeeded"]
+    assert {item["time"] for item in row["history"]} == {"2026-10-31T08:00:05"}
+
+
+def test_maintenance_receipt_as_of_is_not_earlier_than_the_finished_operation(tmp_path):
+    from itertools import count
+
+    from web.runtime_host import install_wall_clock
+
+    api = SystemTestAPI(tmp_path)
+    ticks = count()
+    # 步进钟：每读一次前进一秒，回执元数据若在命令入口取时就会早于维护操作的各步时刻。
+    install_wall_clock(api.app, lambda: datetime(2026, 10, 31, 8, 0) + timedelta(seconds=next(ticks)))
+    response = api.file_action("create")
+    assert response.status_code == 200, response.get_json()
+    body = response.get_json()
+    operation = body["data"]["operation"]
+    row = api.journal().lookup_job(operation["job_ref"])
+    assert operation["updated_at"] == row["updated_at"]
+    assert row["history"][-1]["state"] == "succeeded"
+    finished = max(datetime.fromisoformat(text) for text in [row["updated_at"], *(item["time"] for item in row["history"])])
+    assert datetime.fromisoformat(body["meta"]["as_of"]) >= finished
+
+
+def test_log_windows_with_the_same_text_hold_the_registered_text(tmp_path):
     from flask import g
 
-    from web.routes.workbench import read_context
     from web.routes.workbench import system_log_snapshots as snapshots
 
     api = SystemTestAPI(tmp_path)
     # The same query repeated in a later second gets a new token in the same content group.
-    seconds = iter(range(60))
-    monkeypatch.setattr(read_context, "current_snapshot_time", lambda: datetime(2026, 10, 31, 8, 0, next(seconds)))
     with closing(api.connect()) as conn, api.app.app_context():
         g.db = conn
-        first, second = [snapshots.retain_log_snapshot({"kind": "system.logs"}, [{"body": "same"}], ["aps.log"])["snapshot_ref"]
-                         for _ in range(2)]
+        first, second = [snapshots.retain_log_snapshot({"kind": "system.logs"}, [{"body": "same"}], ["aps.log"],
+                                                       as_of=datetime(2026, 10, 31, 8, 0, offset))["snapshot_ref"]
+                         for offset in range(2)]
         windows = api.app.extensions["workbench_system_log_snapshots_v1"]
         (group,) = api.app.extensions["aps_public_opaque_tokens"]["workbench-read-v1"]["by_value"]
         assert first != second
@@ -356,7 +390,7 @@ def test_journal_admission_and_new_intent_replay_preserve_saved_files(tmp_path, 
     empty = SystemMaintenanceJournal(str(empty_directory), str(tmp_path / "empty.db"))
     previous = empty.admission("empty-maintenance-request-01")
     assert previous is None and reads == [str(empty_directory)]
-    created, replayed = empty.begin("empty-maintenance-request-01", "create", {}, previous=previous)
+    created, replayed = empty.begin("empty-maintenance-request-01", "create", {}, now=datetime.now(), previous=previous)
     assert not replayed and created["database_scope"] == str(tmp_path / "empty.db")
     assert reads == [str(empty_directory)]
     reads.clear()
@@ -370,19 +404,19 @@ def test_journal_admission_and_new_intent_replay_preserve_saved_files(tmp_path, 
     journal = SystemMaintenanceJournal(str(directory), str(database))
     reads.clear()
     assert journal.scope_from_records([]) == str(database) and reads == []
-    row, replayed = journal.begin("new-maintenance-request-01", "create", {})
+    row, replayed = journal.begin("new-maintenance-request-01", "create", {}, now=datetime.now())
     assert reads == [str(directory)]
     assert replayed is False and row["version"] == 2 and row["intent"] == {"action": "create", "input": {}}
     assert row["database_scope"] == str(database)
-    journal.record(row, "succeeded", code="backup_verified")
+    journal.record(row, "succeeded", now=datetime.now(), code="backup_verified")
     new_path = directory / (row["job_ref"] + ".json")
     saved = new_path.read_bytes()
-    replayed_row, replayed = journal.begin(row["request_key"], "create", {})
+    replayed_row, replayed = journal.begin(row["request_key"], "create", {}, now=datetime.now())
     assert replayed is True and same(replayed_row, row)
     assert new_path.read_bytes() == saved
     assert len(list(directory.glob("*.json"))) == 1
     with pytest.raises(WorkbenchCommandRejected) as error:
-        journal.begin(row["request_key"], "delete", {"backup_ref": "another-original-reference"})
+        journal.begin(row["request_key"], "delete", {"backup_ref": "another-original-reference"}, now=datetime.now())
     assert error.value.code == "request_key_conflict"
     from core.services.workbench.facts import system_journal as journal_module
     opened, binary_open = [], journal_module.open_fixed_file_for_read_binary
@@ -448,7 +482,7 @@ def test_system_captures_once_and_tokens_keep_relocated_journal_scope(tmp_path, 
         response = api.file_action("create", key="captured-journal-request-" + str(index))
         assert response.status_code == 200 and response.get_json()["data"]["operation"]["state"] == "succeeded"
     for index in range(7):
-        BackupManager(str(api.database), str(api.backups)).backup(suffix="captured_" + str(index))
+        BackupManager(str(api.database), str(api.backups), logger=logging.getLogger(__name__)).backup(suffix="captured_" + str(index))
     assert len(list(api.backups.glob("aps_backup_*.db"))) == 10
     history = {path.name: path.read_bytes() for path in api.journal_dir.glob("*.json")}
     original_scope = str(api.database)
@@ -507,12 +541,12 @@ def test_job_lookup_and_recovery_view_share_capture_and_observe_new_requests(tmp
     database, directory = tmp_path / "test.db", tmp_path / "journal"
     directory.mkdir()
     journal = SystemMaintenanceJournal(str(directory), str(database))
-    row, _ = journal.begin("captured-recovery-request-001", "create", {})
+    row, _ = journal.begin("captured-recovery-request-001", "create", {}, now=datetime.now())
     captured = journal.records()
-    journal.record(row, "succeeded", code="backup_verified")
+    journal.record(row, "succeeded", now=datetime.now(), code="backup_verified")
     assert journal.lookup(row["request_key"]) is row and journal.lookup_job(row["job_ref"]) is row
     assert captured[0]["state"] == "succeeded"
-    app = make_workbench_system_restore_recovery_app(str(database), str(directory))
+    app = make_workbench_system_restore_recovery_app(str(database), str(directory), logging.getLogger(__name__))
     client = Client(app, Response)
     opened, enumerated = [], []
     read, listdir = SystemMaintenanceJournal._read, os.listdir
@@ -531,8 +565,8 @@ def test_job_lookup_and_recovery_view_share_capture_and_observe_new_requests(tmp
     assert payload["result"]["operation"]["job_ref"] == row["job_ref"]
     assert len(opened) == 1 and enumerated == [str(directory)]
     other = SystemMaintenanceJournal(str(directory), str(database))
-    added, _ = other.begin("captured-recovery-request-002", "create", {})
-    other.record(added, "succeeded", code="backup_verified")
+    added, _ = other.begin("captured-recovery-request-002", "create", {}, now=datetime.now())
+    other.record(added, "succeeded", now=datetime.now(), code="backup_verified")
     assert len(journal.records()) == 1
     assert len(journal.refresh()) == 2
     opened.clear()
@@ -543,6 +577,53 @@ def test_job_lookup_and_recovery_view_share_capture_and_observe_new_requests(tmp
     assert payload["result"]["operation"]["request_key"] == added["request_key"]
     assert len(payload["recent_records"]) == 2
     assert len(opened) == 2 and enumerated == [str(directory)]
+
+
+def test_recovery_host_logs_corrupt_journal_to_files_without_stderr_or_database(tmp_path, monkeypatch):
+    """打包宿主没有 stderr：维护记录损坏时，真实工厂起恢复宿主，恢复页与结果查询照常回答“读不出来”，
+    原因写进日志文件，全程不碰数据库。"""
+    from web.bootstrap import factory
+    from web.bootstrap.app_config import ProductionConfig
+    from web.bootstrap.workbench_system_restore_recovery import RECOVERY
+
+    database, logs, job_ref = tmp_path / "test.db", tmp_path / "logs", "a" * 32
+    journal = tmp_path / "test.db.system-journal"
+    journal.mkdir()
+    (journal / (job_ref + ".json")).write_bytes(b'{"version":2,"job_ref"')
+    monkeypatch.setenv("APS_ENV", "production")
+    monkeypatch.setenv("APS_DB_PATH", str(database))
+    monkeypatch.setenv("APS_LOG_DIR", str(logs))
+    connects = []
+    monkeypatch.setattr(sqlite3, "connect", lambda *args, **kwargs: connects.append(args))
+    monkeypatch.setattr(sys, "stderr", None)
+    # 应用日志器和 Flask 日志器是进程级对象：换成空列表，工厂就不会关掉别的用例留下的处理器；收尾换回。
+    saved = [(logger, logger.handlers, logger.level)
+             for logger in map(logging.getLogger, (ProductionConfig.APP_NAME, factory.__name__))]
+    for logger, _, _ in saved:
+        logger.handlers = []
+    result_path = "/api/workbench/v1/system/jobs/" + job_ref
+    try:
+        app = factory.create_app_core()
+        client = app.test_client()
+        page = client.get("/")
+        result = client.get(result_path)
+    finally:
+        for handler in saved[0][0].handlers:
+            handler.close()
+        for logger, handlers, level in saved:
+            logger.handlers = handlers
+            logger.setLevel(level)
+    assert app.extensions[RECOVERY] is True
+    assert page.status_code == 503 and "维护记录列表没能完整读出来" in page.get_data(as_text=True)
+    assert result.status_code == 503 and result.json["error"]["code"] == "maintenance_unconfirmed"
+    heads = ["System maintenance unconfirmed; starting journal-only recovery host",
+             "恢复页读取维护记录列表失败", "维护结果查询读取维护记录失败：path=" + result_path]
+    name = ProductionConfig.APP_NAME.lower()
+    for log_file in (logs / (name + ".log"), logs / (name + "_error.log")):
+        text = log_file.read_text(encoding="utf-8")
+        assert all(head in text for head in heads), text
+        assert text.count("RuntimeError: 维护记录不是严格的 UTF-8 JSON，须人工核查。") == len(heads), text
+    assert connects == [] and not database.exists()
 
 
 def test_job_result_reads_v2_file_over_collection_capacity_and_checks_database(tmp_path, monkeypatch):
@@ -575,13 +656,12 @@ def test_job_result_reads_v2_file_over_collection_capacity_and_checks_database(t
     response = api.get("/jobs/" + created["job_ref"])
     assert response.status_code == 200 and response.get_json()["data"]["operation"]["state"] == "succeeded"
     assert opened == [str(api.journal_dir / (created["job_ref"] + ".json"))] and not enumerated
-    with pytest.raises(RuntimeError, match="不属于当前数据库"):
-        SystemMaintenanceJournal(str(api.journal_dir), str(tmp_path / "another.db")).lookup_job(created["job_ref"])
     response = api.get("/backups")
     assert response.status_code == 413 and response.get_json()["error"]["code"] == "maintenance_record_capacity"
     opened.clear()
     enumerated.clear()
-    recovery = Client(make_workbench_system_restore_recovery_app(str(api.database), str(api.journal_dir)), Response)
+    recovery = Client(make_workbench_system_restore_recovery_app(str(api.database), str(api.journal_dir),
+                                                              logging.getLogger(__name__)), Response)
     result = recovery.get("/api/workbench/v1/system/jobs/" + created["job_ref"])
     payload = result.json
     assert result.status_code == 200 and payload is not None
@@ -650,7 +730,7 @@ def test_restore_preflight_detects_changed_original_bytes_with_same_file_metadat
             conn.execute("CREATE TABLE marker (value TEXT)")
             conn.execute("INSERT INTO marker VALUES (?)", (value,))
     workspace = SystemFileWorkspace(database_path=str(database), backup_dir=str(backup_dir), journal_dir=str(journal_dir),
-                                    logger=logging.getLogger("system-source-content-tests"))
+                                    logger=logging.getLogger("system-source-content-tests"), clock=datetime.now)
     signature = backup_signature(str(selected))
     row, replayed, path = workspace.prepare_restore(
         request_key="source-content-request-01", intent={"backup_ref": "retained-original-reference"},
@@ -780,6 +860,21 @@ def test_unexpected_failure_after_command_registered_keeps_result_unknown(tmp_pa
     assert (error["code"], error["message"]) == ("storage_failure", messages.unknown("这次维护操作"))
     assert error["request_key"] == "system-test-request-0009"
     assert error["result_target"] == "/api/workbench/v1/system/results/system-test-request-0009"
+
+
+@pytest.mark.parametrize(("key", "value"), [("auto_backup_keep_days", 366), ("auto_log_cleanup_interval_minutes", 0),
+                                            ("auto_backup_enabled", "on")])
+def test_config_save_rejection_points_at_the_setting_key(system_api, key, value):
+    config = system_api.read("/config")["data"]
+    with closing(system_api.connect()) as conn:
+        before = [tuple(row) for row in conn.execute("SELECT * FROM SystemConfig ORDER BY rowid")]
+    response = system_api.post("/config/save", {**config["values"], key: value}, config["write_context"]["write_token"])
+    assert response.status_code == 422, response.get_data(as_text=True)
+    error = response.get_json()["error"]
+    message = "维护设置里有一项填写不对，这次保存没有生效。请检查开关和天数、分钟数后重新保存。"
+    assert (error["code"], error["message"], error["fields"]) == ("invalid_input", message, [{"path": key, "message": message}])
+    with closing(system_api.connect()) as conn:
+        assert [tuple(row) for row in conn.execute("SELECT * FROM SystemConfig ORDER BY rowid")] == before
 
 
 def test_unsaved_system_config_keys_use_conservative_defaults(tmp_path):

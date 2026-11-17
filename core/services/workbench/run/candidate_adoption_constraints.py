@@ -238,9 +238,7 @@ def _evaluate_row(
         if (
             not held_in_publication
             and row.start_time != row.end_time
-            and calendar_duration_conflict(
-                calendar, row, algo, batch, downtime.get(row.machine_id, ()), quantity=quantity
-            )
+            and calendar_duration_conflict(calendar, row, algo, batch, downtime.get(row.machine_id, ()))
         ):
             return "calendar_duration_conflict"
         return None
@@ -269,7 +267,6 @@ def evaluate_draft_schedule_constraints(
             context["live"],
             trial_intervals=trial_intervals,
             latest_schedule=context["latest_schedule"],
-            outside_point_versions=context["outside_point_versions"],
         )
     )
     deduped = tuple({content_text(item): item for item in issues}.values())
@@ -372,7 +369,7 @@ def evaluate_schedule_constraints(
             return ScheduleValidationOutcome(
                 validated_payload=payload,
                 resolved_intervals=resolved_intervals,
-                issues=(dict(issue_map[reason]),),
+                issues=(issue_map[reason],),
             )
     return ScheduleValidationOutcome(
         validated_payload=payload,

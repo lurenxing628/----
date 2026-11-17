@@ -2,11 +2,13 @@
 
 import copy
 import json
+import sys
 import threading
 
 import pytest
 
 from web.bootstrap.factory import create_app_core
+from web.bootstrap.launcher_paths import current_runtime_owner
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
 from web.bootstrap.runtime_server import create_runtime_server
 from web.bootstrap.sample_constraint_checks import check_candidate
@@ -24,7 +26,7 @@ def sample_runtime(tmp_path, monkeypatch):
     monkeypatch.setenv("APS_ENV", "production")
     app = create_app_core()
     scope = str(tmp_path / "launcher")
-    lock = acquire_runtime_lock(scope, db_path=str(database))
+    lock = acquire_runtime_lock(scope, owner=current_runtime_owner(), exe_path=sys.executable, db_path=str(database))
     runtime = install_workbench_run_runtime(app, runtime_lock=lock)
     server = create_runtime_server(app, "127.0.0.1", 0)
     thread = threading.Thread(target=server.serve_forever)

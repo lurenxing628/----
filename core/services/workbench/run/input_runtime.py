@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
+from time import monotonic
 from typing import Any, Dict, List, Set, Tuple
 
 from core.algorithm_contracts.types import ScheduleResult
@@ -14,12 +15,9 @@ from core.services.scheduler.resource_pool_builder import (
 )
 from core.services.scheduler.run.freeze_window import build_freeze_window_seed
 from core.services.scheduler.run.schedule_input_contracts import SeedPreparation, SolverResources
-from core.services.scheduler.run.schedule_input_runtime_support import (
-    _load_runtime_resource_inputs,
-    prepare_runtime_seeds,
-)
+from core.services.scheduler.run.schedule_input_runtime_support import prepare_runtime_seeds
 from core.services.workbench.facts.run_input_rows import fail
-from core.shared.stored_dates import stored_local_iso_datetime
+from core.shared.local_datetime import row_interval
 
 from .input_points import read_point_freeze_rows
 
@@ -89,7 +87,7 @@ def _freeze_hold_window(*, facts, prev_version, start_dt, reschedulable_operatio
     已开工、做完的工序由报工记录保护，其余工序要不要保持原安排，每次排产由不重排时段决定。
 
     前道原安排不在排产起日之后（排产起日前还没报工，或者没排过）的批次整批前后顺序保不住：
-    这批本次不保留、照常重排，排产检查事先提醒；其它原安排读不出来仍整次拒绝。
+    这批本次不保留、照常重排，排产检查事先提醒；零工时原安排的依据对不上仍整次拒绝。
     """
     return build_freeze_window_seed(
         # 试调在来源排产起日上准备这份冻结结果，与来源排产同一口径。
@@ -107,7 +105,7 @@ def held_arrangements(*, facts, prev_version, start_dt, reschedulable_operations
     """排产会原样保留的原安排：落在本次不重排时段里的（含同批次一起保留的前道）；与排产计算同一口径、同样严格。
 
     返回完整冻结结果；保留信息里 hold_window 是本次的不重排时段，freeze_skipped_batch_ids 是前道原安排不全、
-    这次不保留的批次。原安排读不出来抛 ValidationError（field=freeze_window）。
+    这次不保留的批次。零工时原安排的依据对不上抛 CandidateRunInputError（point_evidence_unproven）。
     """
     freeze_meta = {}
     frozen, seeds = _freeze_hold_window(
@@ -116,29 +114,15 @@ def held_arrangements(*, facts, prev_version, start_dt, reschedulable_operations
     return HeldArrangements(frozen, seeds, freeze_meta)
 
 
-def _validate_downtime_row(row):
-    if row["status"] not in ("active", "cancelled"):
-        fail("invalid_downtime_state", "停机记录的状态认不出来，这次排产没有开始。请到工作日历核对停机记录。")
-    if row["status"] == "active":
-        start = stored_local_iso_datetime(row["start_time"], allow_space=True, allow_minutes_only=True)
-        end = stored_local_iso_datetime(row["end_time"], allow_space=True, allow_minutes_only=True)
-        if start is None or end is None:
-            fail("invalid_downtime_interval", "有生效的停机记录时间填得不对，这次排产没有开始。请到工作日历按 2026-09-13 08:30 这样改好。")
-        if end <= start:
-            fail("invalid_downtime_interval", "有生效的停机记录结束时间不比开始时间晚，这次排产没有开始。请到工作日历改好起止时间。")
-        return start, end
-
-
 def runtime_resource_inputs(facts) -> RuntimeResourceInputs:
     """Prepare each stored runtime row once under its production capture owner."""
     capture = facts.capture
     if capture.runtime_resources is None:
         downtimes: Dict[str, List[Tuple[datetime, datetime]]] = {}
         for row in capture.table("MachineDowntimes"):
-            interval = _validate_downtime_row(row)
-            # 停机的设备号是 NOT NULL 外键，按库里原值分组。
-            if interval is not None:
-                downtimes.setdefault(row["machine_id"], []).append(interval)
+            # 已取消的不是停机；停机的设备号是 NOT NULL 外键，按库里原值分组。
+            if row["status"] == "active":
+                downtimes.setdefault(row["machine_id"], []).append(row_interval(row))
         for intervals in downtimes.values():
             intervals.sort(key=lambda interval: interval[0])
         capture.runtime_resources = RuntimeResourceInputs(
@@ -149,7 +133,6 @@ def runtime_resource_inputs(facts) -> RuntimeResourceInputs:
 
 
 def prepare_seed_preparation(
-    conn,
     *,
     facts,
     prev_version,
@@ -173,7 +156,7 @@ def prepare_seed_preparation(
             facts=facts, prev_version=prev_version, start_dt=start_dt,
             reschedulable_operations=mutable, hold_window=hold_window)
     frozen, seeds, to_schedule, external_intervals = prepare_runtime_seeds(
-        conn, run_label="排产计算", operations=operations, algo_ops=algo_ops,
+        run_label="排产计算", operations=operations, algo_ops=algo_ops,
         frozen_op_ids=held.frozen_op_ids, freeze_seed_results=held.seed_results,
         execution_completed_op_ids=completed_ids,
         execution_seed_results=execution_seeds,
@@ -193,17 +176,10 @@ def prepare_seed_preparation(
 
 def prepare_solver_resources(business, solver_input) -> SolverResources:
     runtime = runtime_resource_inputs(business.facts)
-    resources = runtime.resources
-    downtime_meta, pool_meta, downtime, pool = _load_runtime_resource_inputs(
-        cfg=business.config,
-        algo_ops=business.algo_ops,
-        resource_pool_ops=solver_input.to_schedule,
-        start_dt_norm=business.start,
-        load_machine_downtimes_fn=partial(load_machine_downtimes, downtimes=runtime.downtimes),
-        build_resource_pool_fn=partial(build_resource_pool, resource_facts=resources),
-        extend_downtime_map_for_resource_pool_fn=partial(
-            extend_downtime_map_for_resource_pool, downtimes=runtime.downtimes
-        ),
+    downtime = load_machine_downtimes(algo_ops=business.algo_ops, start_dt=business.start, downtimes=runtime.downtimes)
+    pool = build_resource_pool(cfg=business.config, algo_ops=solver_input.to_schedule, resource_facts=runtime.resources)
+    downtime = extend_downtime_map_for_resource_pool(
+        resource_pool=pool, downtime_map=downtime, start_dt=business.start, downtimes=runtime.downtimes,
     )
     operator_ids = frozenset(
         item
@@ -211,7 +187,7 @@ def prepare_solver_resources(business, solver_input) -> SolverResources:
             *(op.operator_id for op in business.operations),
             *(op.operator_id for op in business.algo_ops),
             *(seed["operator_id"] for seed in business.seeds.seed_results),
-            *(pool["machines_by_operator"] if pool else ()),
+            *pool.machines_by_operator,
         )
         if item is not None
     )
@@ -221,7 +197,6 @@ def prepare_solver_resources(business, solver_input) -> SolverResources:
         calendar_engine=calendar_engine,
         downtime_map=downtime,
         resource_pool=pool,
-        downtime_meta=downtime_meta,
-        resource_pool_meta=pool_meta,
         optimizer_seed_version=seed_version,
+        clock=monotonic,
     )

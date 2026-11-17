@@ -18,10 +18,6 @@ def unavailable_graph(scope, reason):
             "critical_task_refs": [], "critical_edges": []}
 
 
-def public_gantt_graph(gantt_graph: dict) -> dict:
-    return project_scoped_gantt_graph(gantt_graph, None, include_nodes=True)
-
-
 def build_gantt_graph(tasks, relations, *, scope, task_intervals):
     by_operation = {task["operation_ref"]: task["task_ref"] for task in tasks}
     previous = {task["task_ref"]: [by_operation[parent] for parent in relations[task["operation_ref"]]
@@ -29,7 +25,7 @@ def build_gantt_graph(tasks, relations, *, scope, task_intervals):
     critical = compute_critical_chain_from_dependencies(tasks, previous, task_intervals=task_intervals)
     return {"state": "available", "reason": None, "scope": scope,
             "nodes": [{**{key: task[key] for key in ("task_ref", "operation_ref", "batch_id", "piece_id", "sequence", "process_label", "start", "end")},
-                       "predecessor_operation_refs": list(relations[task["operation_ref"]])}
+                       "predecessor_operation_refs": relations[task["operation_ref"]]}
                       for task in tasks],
             "critical_task_refs": critical["ids"],
             "critical_edges": [{"from_task_ref": edge["from"], "to_task_ref": edge["to"], "edge_type": edge["edge_type"]}
@@ -37,63 +33,56 @@ def build_gantt_graph(tasks, relations, *, scope, task_intervals):
 
 
 def project_scoped_gantt_graph(full_graph, scoped_batch_ids, *, include_nodes):
-    if full_graph["state"] != "available":
-        return unavailable_graph(full_graph["scope"], full_graph["reason"])
+    """An official plan's stored graph (``build_gantt_graph`` output, always available) scoped to
+    ``scoped_batch_ids`` plus the critical chain's batches; None keeps the full plan."""
     batches = None
     if scoped_batch_ids is not None:
         critical_refs = set(full_graph["critical_task_refs"])
         batches = set(scoped_batch_ids) | {
             node["batch_id"] for node in full_graph["nodes"] if node["task_ref"] in critical_refs
         }
+    scoped = [node for node in full_graph["nodes"] if batches is None or node["batch_id"] in batches]
     if not include_nodes:
-        if batches is not None:
-            node_count = sum(1 for node in full_graph["nodes"] if node["batch_id"] in batches)
-        elif "node_count" in full_graph:
-            node_count = full_graph["node_count"]
-        else:
-            node_count = len(full_graph["nodes"])
         return {
             "state": "available",
             "reason": None,
             "scope": full_graph["scope"],
             "nodes": [],
-            "node_count": node_count,
-            "nodes_complete": node_count == 0,
+            "node_count": len(scoped),
+            "nodes_complete": not scoped,
             "critical_task_refs": [],
             "critical_edges": [],
         }
-    nodes = [
-        dict(node, predecessor_operation_refs=list(node["predecessor_operation_refs"]))
-        for node in full_graph["nodes"]
-        if batches is None or node["batch_id"] in batches
-    ]
     return {
         "state": "available",
         "reason": None,
         "scope": full_graph["scope"],
-        "nodes": nodes,
-        "critical_task_refs": list(full_graph["critical_task_refs"]),
-        "critical_edges": [dict(edge) for edge in full_graph["critical_edges"]],
+        "nodes": scoped,
+        "critical_task_refs": full_graph["critical_task_refs"],
+        "critical_edges": full_graph["critical_edges"],
     }
 
 
 def candidate_gantt_graph(tasks, facts, resource_keys, *, scope, unavailable_reason, task_intervals):
+    """A candidate's graph over its archived operations; a piece structure the frozen relations cannot order leaves
+    the graph unavailable."""
+    task_operations = {task["row_ref"]: facts.operation(task["operation_ref"]) for task in tasks}
+    batch_ids = {operation["batch_id"] for operation in task_operations.values()}
+    operations = {key: row for key, row in facts.tables["BatchOperations"].items() if row["batch_id"] in batch_ids}
+    batches = {key: facts.related("Batches", key) for key in batch_ids}
+    refs = {key: ref for ref, key in facts.operations.items() if key in operations}
     try:
-        batch_ids = {facts.tables["BatchOperations"][facts.operations[task["operation_ref"]]]["batch_id"] for task in tasks}
-        operations = {key: row for key, row in facts.tables["BatchOperations"].items() if row["batch_id"] in batch_ids}
-        batches = {key: facts.tables["Batches"][key] for key in batch_ids}
-        refs = {key: ref for ref, key in facts.operations.items() if key in operations}
         relations = frozen_process_relations(operations, batches, refs)
-        nodes = []
-        for task in tasks:
-            operation = operations[facts.operations[task["operation_ref"]]]
-            machine_ref, operator_ref = resource_keys[task["row_ref"]]
-            # Resource dependencies use captured assignments even when their display directory is missing.
-            nodes.append({"task_ref": task["row_ref"], "operation_ref": task["operation_ref"],
-                          "batch_id": operation["batch_id"], "piece_id": operation["piece_id"],
-                          "sequence": task["sequence"], "process_label": task["process_label"],
-                          "start": task["start"], "end": task["end"],
-                          "machine_ref": machine_ref, "operator_ref": operator_ref})
-    except (PieceAdoptionBlocked, KeyError):
+    except PieceAdoptionBlocked:
         return unavailable_graph(scope, unavailable_reason)
+    nodes = []
+    for task in tasks:
+        operation = task_operations[task["row_ref"]]
+        machine_ref, operator_ref = resource_keys[task["row_ref"]]
+        # Resource dependencies use captured assignments even when their display directory is missing.
+        nodes.append({"task_ref": task["row_ref"], "operation_ref": task["operation_ref"],
+                      "batch_id": operation["batch_id"], "piece_id": operation["piece_id"],
+                      "sequence": task["sequence"], "process_label": task["process_label"],
+                      "start": task["start"], "end": task["end"],
+                      "machine_ref": machine_ref, "operator_ref": operator_ref})
     return build_gantt_graph(nodes, relations, scope=scope, task_intervals=task_intervals)

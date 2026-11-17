@@ -1,6 +1,6 @@
 """One SQLite transaction owns all eight maintenance values, audit and receipt."""
 
-from core.infrastructure.logging import OperationLogger
+from core.infrastructure.operation_logging import OperationLogger
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_system import CONFIG_FIELDS, config_input

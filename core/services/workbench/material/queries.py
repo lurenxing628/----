@@ -1,4 +1,4 @@
-"""Read actual material facts once per snapshot, without metadata repair or demo fallback."""
+"""Read bounded material facts per snapshot, without whole-table prewarming."""
 
 from __future__ import annotations
 
@@ -10,19 +10,14 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_material_query import MaterialPageRequest
-from core.models.workbench_resource_table_query import table_query_required, toolbar_scope
+from core.models.workbench_resource_table_query import toolbar_scope
 from core.services.workbench.facts.source_revisions import MATERIAL_SOURCE_KEYS, read_source_revisions
+from core.services.workbench.facts.table_columns import sql_order
+from core.shared.refs import is_ref
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_material_query_repo import WorkbenchMaterialQueryRepository
 
-from .table_facts import (
-    MaterialRow,
-    material_counts,
-    material_ordered_rows,
-    material_row,
-    material_table_index,
-    material_toolbar_rows,
-)
+from .table_facts import MaterialRow, material_row, material_table_index
 
 
 @dataclass(frozen=True)
@@ -35,8 +30,12 @@ class MaterialReadRecord:
         return {"identity": asdict(self.identity), "material": self.state["material"]}
 
 
+def _filters(query: MaterialPageRequest):
+    return tuple((column, condition["mode"], tuple(condition["values"])) for column, condition in query.column_filters.items())
+
+
 def _validate_ref(ref):
-    if not isinstance(ref, str) or len(ref) != 48 or any(char not in "0123456789abcdef" for char in ref):
+    if not is_ref(ref):
         raise WorkbenchCommandRejected("entity_not_found", "物料记录不存在，请返回列表重新选择。", 404)
 
 
@@ -47,7 +46,7 @@ def _project(row: MaterialRow):
         issues.append({"code": "stock_unknown", "message": "库存数量还没填写。"})
     identity = WorkbenchEntityIdentity(row.ref, "material", raw["material_id"], raw["revision"], True)
     entity = {"ref": identity.ref, "business_code": raw["material_id"], "label": raw["name"],
-              "status": row.status, "fields": {key: raw[key] for key in ("spec", "unit", "stock_qty", "remark")},
+              "status": raw["status"], "fields": {key: raw[key] for key in ("spec", "unit", "stock_qty", "remark")},
               "relationships": {"batch_requirement_count": raw["requirement_count"]}, "issues": issues}
     return MaterialReadRecord(identity, entity, {"identity": identity, "material": raw})
 
@@ -56,13 +55,10 @@ def _project(row: MaterialRow):
 class MaterialFactScope:
     reader: WorkbenchMaterialQueryService
     fingerprint: Optional[Dict[str, Any]] = None
-    rows: Optional[List[Dict[str, Any]]] = None
-    by_ref: Optional[Dict[str, Dict[str, Any]]] = None
     checked: Dict[str, MaterialRow] = field(default_factory=dict)
     records: Dict[str, MaterialReadRecord] = field(default_factory=dict)
     indexes: Dict[Any, Any] = field(default_factory=dict)
-    scopes: Dict[Any, List[Dict[str, Any]]] = field(default_factory=dict)
-    orders: Dict[Any, List[Dict[str, Any]]] = field(default_factory=dict)
+    counts_by_scope: Dict[Any, Dict[str, int]] = field(default_factory=dict)
     matches: Dict[Any, List[str]] = field(default_factory=dict)
 
     def state_fingerprint(self) -> Dict[str, Any]:
@@ -70,25 +66,13 @@ class MaterialFactScope:
             self.fingerprint = {"revisions": read_source_revisions(self.reader.conn, MATERIAL_SOURCE_KEYS)}
         return self.fingerprint
 
-    def _ensure_rows(self) -> List[Dict[str, Any]]:
-        if self.rows is None:
-            rows = self.reader.repo.table_rows()
-            self.rows = rows
-            self.by_ref = {row["ref"]: row for row in rows if row["ref"] is not None}
-        return self.rows
-
-    def _toolbar_rows(self, query):
-        rows = self._ensure_rows()
-        key = tuple(toolbar_scope(query).items())
-        if key not in self.scopes:
-            self.scopes[key] = material_toolbar_rows(rows, query)
-        return self.scopes[key]
-
     def _checked(self, raw) -> MaterialRow:
         """Each captured row passes the storage check once per snapshot; every query path shares it."""
         code = raw["material_id"]
         if code not in self.checked:
             self.checked[code] = material_row(raw)
+        elif "requirement_count" in raw and "requirement_count" not in self.checked[code].raw:
+            self.checked[code].raw["requirement_count"] = raw["requirement_count"]
         return self.checked[code]
 
     def _record(self, row: MaterialRow) -> MaterialReadRecord:
@@ -97,21 +81,33 @@ class MaterialFactScope:
             self.records[code] = _project(row)
         return self.records[code]
 
+    def _records_for(self, rows: List[MaterialRow]) -> List[MaterialReadRecord]:
+        missing_codes = [
+            row.raw["material_id"]
+            for row in rows
+            if row.raw["material_id"] not in self.records and "requirement_count" not in row.raw
+        ]
+        if missing_codes:
+            counts = self.reader.repo.requirement_counts_for(missing_codes)
+            for row in rows:
+                code = row.raw["material_id"]
+                if "requirement_count" not in row.raw:
+                    row.raw["requirement_count"] = counts.get(code, 0)
+        return [self._record(row) for row in rows]
+
     def metrics(self, query: MaterialPageRequest):
-        if query.column_filters:
-            index = self.table_index(query)
-            counts = material_counts([index.rows[code].raw for code in self._matching_keys(query)])
-        else:
-            counts = self.toolbar_metrics(query)
-        return {"scope": "filtered", "counts": counts,
+        return {"scope": "filtered", "counts": self._counts(query),
                 "basis": {"low_stock": "尚未设置低库存阈值。"},
                 "issues": []}
 
-    def toolbar_metrics(self, query: MaterialPageRequest):
-        """Count the toolbar scope from its captured raw rows."""
-        if query.column_filters:
-            raise WorkbenchCommandRejected("invalid_input", "列筛选统计请使用物料查询服务的统一入口。", 400)
-        return material_counts(self._toolbar_rows(query))
+    def _counts(self, query: MaterialPageRequest):
+        """One SQL count per toolbar scope and column filters; filters narrow it to the matched codes.
+        Unshown rows are counted, never materialized or validated."""
+        key = (tuple(toolbar_scope(query).items()), _filters(query))
+        if key not in self.counts_by_scope:
+            keys = self._matching_keys(query) if query.column_filters else None
+            self.counts_by_scope[key] = self.reader.repo.status_counts(query, keys)
+        return self.counts_by_scope[key]
 
     def resolve_many(self, refs) -> None:
         if not refs:
@@ -124,7 +120,7 @@ class MaterialFactScope:
 
     def detail(self, ref) -> MaterialReadRecord:
         _validate_ref(ref)
-        row = self.by_ref.get(ref) if self.by_ref is not None else self.reader.repo.get_by_ref(ref)
+        row = self.reader.repo.get_by_ref(ref)
         if row is None:
             self.reader._resolve_identity(ref)
             raise WorkbenchCommandRejected("storage_failure", "物料的系统编号和实际记录对不上。请刷新重试；仍不行请联系维护人员。", 500)
@@ -134,7 +130,7 @@ class MaterialFactScope:
         """Checked rows in the explicit ref order; a deleted selection is rejected, never skipped."""
         if not refs:
             return []
-        rows = [self.by_ref.get(ref) for ref in refs] if self.by_ref is not None else self.reader.repo.rows_by_refs(refs)
+        rows = self.reader.repo.rows_by_refs(refs)
         return [self._selected(row) for row in rows]
 
     def _selected(self, raw) -> MaterialRow:
@@ -142,19 +138,9 @@ class MaterialFactScope:
             raise WorkbenchCommandRejected("entity_not_found", "勾选的物料已经删除了。请刷新后重新勾选。", 404)
         return self._checked(raw)
 
-    def _ordered_rows(self, query: MaterialPageRequest):
-        self._ensure_rows()
-        key = (tuple(toolbar_scope(query).items()), query.sort, query.direction)
-        if key not in self.orders:
-            self.orders[key] = material_ordered_rows(self._toolbar_rows(query), query)
-        return self.orders[key]
-
     def _matching_keys(self, query: MaterialPageRequest):
         """One filter-and-order pass per table query; page, count and metrics share it."""
-        self._ensure_rows()
-        filters = tuple((column, condition["mode"], tuple(condition["values"]))
-                        for column, condition in query.column_filters.items())
-        key = (tuple(toolbar_scope(query).items()), query.sort, query.direction, filters)
+        key = (tuple(toolbar_scope(query).items()), query.sort, query.direction, _filters(query))
         if key not in self.matches:
             self.matches[key] = self.table_index(query).matching_keys(query)
         return self.matches[key]
@@ -162,38 +148,40 @@ class MaterialFactScope:
     def count(self, query: MaterialPageRequest) -> int:
         if query.column_filters:
             return len(self._matching_keys(query))
-        return len(self._toolbar_rows(query))
+        return self._counts(query)["total"]
 
     def page(self, query: MaterialPageRequest):
-        if table_query_required(query):
+        order = sql_order(query)
+        if order is None:
             index = self.table_index(query)
             matching = self._matching_keys(query)
             start = (query.number - 1) * query.size
-            page_keys = matching[start:start + query.size]
-            records, total = [self._record(index.rows[code]) for code in page_keys], len(matching)
+            page_keys = matching[start : start + query.size]
+            records, total = self._records_for([index.rows[code] for code in page_keys]), len(matching)
         else:
-            ordered = self._ordered_rows(query)
-            start = (query.number - 1) * query.size
-            rows, total = ordered[start:start + query.size], len(ordered)
-            records = [self._record(self._checked(row)) for row in rows]
+            total = self._counts(query)["total"]
+            offset = (query.number - 1) * query.size
+            raw_rows = self.reader.repo.page_rows(query, order) if offset < total else []
+            records = self._records_for([self._checked(row) for row in raw_rows])
         page = {"number": query.number, "size": query.size, "total": total,
                 "pages": max(1, (total + query.size - 1) // query.size),
                 "sort": [{"field": query.sort, "direction": query.direction}]}
         return records, page
 
     def table_index(self, query):
-        self._ensure_rows()
         key = tuple(toolbar_scope(query).items())
         if key not in self.indexes:
-            self.indexes[key] = material_table_index([self._checked(row) for row in self._toolbar_rows(query)])
+            rows = self.reader.repo.toolbar_rows(query)
+            self.indexes[key] = material_table_index([self._checked(row) for row in rows])
         return self.indexes[key]
 
     def matching_rows(self, query):
         """Checked rows of the whole query scope, in query order."""
-        if table_query_required(query):
+        order = sql_order(query)
+        if order is None:
             index = self.table_index(query)
             return [index.rows[code] for code in self._matching_keys(query)]
-        return [self._checked(row) for row in self._ordered_rows(query)]
+        return [self._checked(row) for row in self.reader.repo.toolbar_rows(query, order)]
 
     def facets(self, query, column, search="", number=1, size=100):
         return self.table_index(query).facets(column, search, number, size)

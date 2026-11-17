@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Callable, Optional, Tuple
 
 from core.infrastructure.backup import maintenance_window
-from core.infrastructure.logging import OperationLogger
+from core.infrastructure.operation_logging import OperationLogger
 
 
 @dataclass(frozen=True)

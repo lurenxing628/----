@@ -2,22 +2,23 @@
 
 import json
 import subprocess
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
 from flask import Blueprint, g
 
-from core.infrastructure.transaction import TransactionManager
-from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.models.workbench_preflight import SCHEDULING_PREFERENCES_KEY, normalize_preflight_input
-from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.services.workbench.facts.candidate_facts import admit_generation_facts
 from core.services.workbench.facts.production_capture import ProductionFactsCapture, validate_production_archive
 from core.services.workbench.run.preferences import SchedulingPreferencesService
 from core.services.workbench.run.worker import WorkbenchRunWorker
+from core.services.workbench.trial.facts import saved_capture
 from data.repositories.system_config_repo import SystemConfigRepository
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from tests._support.node_runtime_support import node_runtime
+from tests._support.production_facts_dump import production_facts
 from tests.workbench.preflight_support import payload, read_only_snapshot
 from tests.workbench.preflight_support import pf as pf_fixture  # noqa: F401
 from tests.workbench.run_jobs_support import job_case as job_case_fixture  # noqa: F401
@@ -124,7 +125,40 @@ def test_stale_token_and_changed_request_key_content_do_not_overwrite_preference
     assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "stale_write"
     conflict = save(pf, changed, read(pf)["write_context"]["write_token"])
     assert conflict.status_code == 409 and conflict.get_json()["error"]["code"] == "request_key_conflict"
-    assert read(pf)["input"] == value
+    assert read(pf)["input"] == {**value, "material_strategy": "strict"}
+
+
+@pytest.mark.parametrize("stored", ("{", b"{}"))
+def test_unreadable_saved_preferences_are_an_actionable_409_on_read_and_save(pf, stored, monkeypatch):
+    from core.models.content import StoredJsonCorrupt
+    from core.services.workbench.run import preferences
+
+    SystemConfigRepository(pf.conn).set(SCHEDULING_PREFERENCES_KEY, "{}")
+    pf.conn.execute("UPDATE SystemConfig SET config_value=? WHERE config_key=?", (stored, SCHEDULING_PREFERENCES_KEY))
+    pf.conn.commit()
+    with read_only_snapshot(pf.conn):
+        response = pf.get(ROOT)
+    assert response.status_code == 409 and response.get_json()["error"]["code"] == "scheduling_preferences_invalid"
+    service = SchedulingPreferencesService(pf.conn)
+    with pytest.raises(WorkbenchCommandRejected) as read_error:
+        service.snapshot()
+    with pytest.raises(WorkbenchCommandRejected) as save_error:
+        service.save(payload(pf), request_key="scheduling-preferences-0003", validate_context=lambda *_args: None)
+    for error in (read_error.value, save_error.value):
+        assert (error.code, error.status) == ("scheduling_preferences_invalid", 409)
+        assert isinstance(error.__context__, StoredJsonCorrupt)
+    assert pf.conn.execute("SELECT COUNT(*) FROM WorkbenchCommandReceipts").fetchone()[0] == 0
+
+    # 只有偏好解码失败翻译成可操作提示；其他存储失败原样上抛。
+    other = WorkbenchCommandRejected("storage_failure", "其他存储失败。", 500)
+
+    def failing_read(*_args):
+        raise other
+
+    monkeypatch.setattr(preferences, "read_stored_json", failing_read)
+    with pytest.raises(WorkbenchCommandRejected) as passed_through:
+        service.snapshot()
+    assert passed_through.value is other
 
 
 @pytest.mark.parametrize(("patch", "message"), [
@@ -138,19 +172,16 @@ def test_material_strategy_accepts_only_whole_batch_or_stage_release(pf, patch, 
     assert (error.value.code, error.value.status, str(error.value)) == ("invalid_input", 422, message)
 
 
-def _facts_content(conn):
-    with TransactionManager(conn).transaction():
-        return ProductionFactsCapture(conn).content()
-
-
 def test_preferences_save_does_not_expire_existing_preflight_or_worker_facts(pf):
     checked = pf.post("/api/workbench/v1/scheduling/preflight", json=payload(pf))
     assert checked.status_code == 200, checked.get_json()
-    before = _facts_content(pf.conn)
-    captured_facts = ProductionFactsCapture(pf.conn).archive()
+    before = production_facts(pf.conn)
+    captured = ProductionFactsCapture(pf.conn)
+    # 运行账簿保存的是来源版本；排产任务据它判断现场有没有变。
+    recorded = captured.revisions_record()
     assert save(pf, payload(pf), read(pf)["write_context"]["write_token"]).status_code == 200
-    assert _facts_content(pf.conn) == before
-    assert ProductionFactsCapture(pf.conn).matches_archive(captured_facts)
+    assert production_facts(pf.conn) == before
+    assert ProductionFactsCapture(pf.conn).matches_recorded(recorded)
     from core.services.workbench.run.preflight_facts import PreflightFacts
     from web.routes.workbench.preflight import evaluate_preflight_input_prepared
 
@@ -159,86 +190,63 @@ def test_preferences_save_does_not_expire_existing_preflight_or_worker_facts(pf)
         try:
             with PreflightFacts.open(pf.conn) as facts:
                 prepared = evaluate_preflight_input_prepared(
-                    pf.conn, checked.get_json()["data"]["input_ref"], facts=facts
+                    pf.conn, checked.get_json()["data"]["input_ref"], facts=facts, material_day=date.today().isoformat()
                 )
-            assert prepared.data["normalized_input"] == payload(pf)
+            assert prepared.data["normalized_input"] == payload(pf, material_strategy="strict")
         finally:
             pf.conn.rollback()
 
     # The exclusion is only this one interface preference; normal system configuration stays in the facts.
     SystemConfigRepository(pf.conn).set("auto_backup_enabled", "yes")
     pf.conn.commit()
-    assert _facts_content(pf.conn) != before
-    assert not ProductionFactsCapture(pf.conn).matches_archive(captured_facts)
+    assert production_facts(pf.conn) != before
+    assert not ProductionFactsCapture(pf.conn).matches_recorded(recorded)
 
+
+def test_saved_archive_admits_only_the_scoped_tables_under_current_declared_columns(pf):
     capture = ProductionFactsCapture(pf.conn)
-    assert GenerationFacts({"facts": captured_facts, "execution": []}).archive is captured_facts
-    without = {"Batches", "BatchOperations"}
-    bogus = {**captured_facts, "columns": {**captured_facts["columns"], "WorkCalendar": ["bogus"]}}
-    reordered_parts = {
-        **captured_facts,
-        "columns": {**captured_facts["columns"], "Parts": list(reversed(captured_facts["columns"]["Parts"]))},
-        "tables": {**captured_facts["tables"], "Parts": [list(reversed(row)) for row in captured_facts["tables"]["Parts"]]},
-    }
-    listed_name = [[row[0], [row[1]], row[2], row[3]] if row[:2] == ["table", "Batches"] else row
-                   for row in captured_facts["schema"]]
-    multi_ddl = [
-        [row[0], row[1], row[2], row[3] + "; CREATE TABLE Extra(x INT)"] if row[:2] == ["table", "Batches"] else row
-        for row in captured_facts["schema"]
-    ]
-    bad_sqlite_seq = [
-        [row[0], row[1], row[2], "CREATE TABLE sqlite_sequence(name, seq, extra)"]
-        if row[:2] == ["table", "sqlite_sequence"] else row
-        for row in captured_facts["schema"]
-    ]
+    scoped = capture.scoped_archive(payload(pf)["batch_refs"])
+    validate_production_archive(scoped)
+    assert capture.matches_admitted(scoped)
+    assert admit_generation_facts({"facts": scoped, "execution": []}).archive is scoped
+    columns, tables = scoped["columns"], scoped["tables"]
+    parts = columns["Parts"]
+    renamed = [column + "_x" if column == "remark" else column for column in columns["Machines"]]
     for broken in (
-        # 表结构仍列着批次与工序，存档却没有它们：是损坏，不是“没有工序”。
-        {**captured_facts, "columns": {k: v for k, v in captured_facts["columns"].items() if k not in without},
-         "tables": {k: v for k, v in captured_facts["tables"].items() if k not in without}},
-        {"schema": captured_facts["schema"], "revisions": captured_facts["revisions"]},
-        {k: v for k, v in captured_facts.items() if k != "columns"},
-        {k: v for k, v in captured_facts.items() if k != "tables"},
-        {**captured_facts, "columns": {k: v for k, v in captured_facts["columns"].items() if k != "WorkCalendar"}},
-        bogus,
-        reordered_parts,
-        {**captured_facts, "columns": {**captured_facts["columns"], "WorkCalendar": ["date", "date"]}},
-        {**captured_facts, "tables": {**captured_facts["tables"], "WorkCalendar": [{}]}},
-        {**captured_facts, "tables": {**captured_facts["tables"], "WorkCalendar": [42]}},
-        {k: v for k, v in captured_facts.items() if k != "revisions"},
-        {**captured_facts, "revisions": {}},
-        {**captured_facts, "revisions": {"production_inputs": 0}},
-        {**captured_facts, "revisions": {"production_inputs": True}},
-        {**captured_facts, "revisions": {"": 1}},
-        # 表结构行里的表名不是文字或多语句/内建表 DDL 篡改：源头准入一律报损坏。
-        {**captured_facts, "schema": listed_name},
-        {**captured_facts, "schema": multi_ddl},
-        *([{**captured_facts, "schema": bad_sqlite_seq}] if bad_sqlite_seq != captured_facts["schema"] else []),
+        # 存档少了批次与工序表：是损坏，不是“没有工序”。
+        {**scoped, "columns": {k: v for k, v in columns.items() if k not in ("Batches", "BatchOperations")},
+         "tables": {k: v for k, v in tables.items() if k not in ("Batches", "BatchOperations")}},
+        {**scoped, "columns": {**columns, "Extra": ["x"]}, "tables": {**tables, "Extra": []}},
+        {k: v for k, v in scoped.items() if k != "columns"},
+        {k: v for k, v in scoped.items() if k != "tables"},
+        {k: v for k, v in scoped.items() if k != "revisions"},
+        {**scoped, "schema": []},
+        {**scoped, "columns": {k: v for k, v in columns.items() if k != "WorkCalendar"}},
+        {**scoped, "columns": {**columns, "Machines": renamed}},
+        {**scoped, "columns": {**columns, "Parts": list(reversed(parts))},
+         "tables": {**tables, "Parts": [list(reversed(row)) for row in tables["Parts"]]}},
+        {**scoped, "columns": {**columns, "WorkCalendar": ["date", "date"]}},
+        {**scoped, "tables": {**tables, "WorkCalendar": [{}]}},
+        {**scoped, "tables": {**tables, "WorkCalendar": [42]}},
+        {**scoped, "tables": {**tables, "Parts": [row[:-1] for row in tables["Parts"]]}},
+        {**scoped, "revisions": {}},
+        {**scoped, "revisions": {"production_inputs": 0}},
+        {**scoped, "revisions": {"production_inputs": True}},
+        {**scoped, "revisions": {"": 1}},
     ):
         with pytest.raises(ValueError, match="Corrupt production facts archive"):
-            capture.matches_archive(broken)
-        # 读取保存的候选与现场比对用同一个存档准入，同一份损坏两边都明确报损坏。
-        with pytest.raises(WorkbenchCommandRejected) as exc:
-            GenerationFacts({"facts_text": content_text(broken), "execution": []})
-        assert (exc.value.code, exc.value.status) == ("candidate_artifact_invalid", 500)
-
-
-def test_named_trial_archive_admits_only_named_rows_and_matching_declared_columns(pf):
-    # 试调存档是命名行形态：源头准入一次查全行形态与内嵌 DDL 列序一致性。
-    named = ProductionFactsCapture(pf.conn).archive(named=True)
-    validate_production_archive(named, named=True)
-    positional = ProductionFactsCapture(pf.conn).archive()
-    with pytest.raises(ValueError, match="Corrupt production facts archive"):
-        validate_production_archive(positional, named=True)
-    renamed = [column + "_x" if column == "remark" else column for column in named["columns"]["Machines"]]
-    mismatched = {**named, "columns": {**named["columns"], "Machines": renamed},
-                  "tables": {**named["tables"], "Machines": [
-                      {(key + "_x" if key == "remark" else key): value for key, value in row.items()}
-                      for row in named["tables"]["Machines"]]}}
-    with pytest.raises(ValueError, match="Corrupt production facts archive"):
-        validate_production_archive(mismatched, named=True)
-    seeded = ProductionFactsCapture(pf.conn)
-    seeded.seed_from_admitted_archive(named)
-    assert seeded.matches_admitted(named)
+            validate_production_archive(broken)
+    for broken_recorded in (
+        None,
+        {},
+        {"revisions": {}},
+        {"revisions": {"parts": 0}},
+        {"revisions": {"parts": True}},
+        {"revisions": scoped["revisions"], "schema": []},
+    ):
+        with pytest.raises(ValueError, match="Corrupt production facts archive"):
+            capture.matches_recorded(broken_recorded)
+    assert saved_capture(pf.conn, {"facts": scoped}).matches_admitted(scoped)
 
 
 def test_receipt_failure_rolls_back_preference_and_audit_in_same_transaction(pf, monkeypatch):
@@ -300,8 +308,6 @@ def test_public_preferences_during_real_worker_keep_admitted_scope_and_business_
 
     def after_real_compute(worker, row, prepared, admission):
         assert row["run_ref"] == ref and 1 <= len(prepared.candidates) <= 3
-        # 写库前复核只带回来源版本和表结构，整份存档不经进程往返。
-        assert set(prepared.recorded_source) == {"schema", "revisions"}
         selection = json.loads(prepared.result["result_json"])["selection"]
         candidate_refs = {candidate["candidate_ref"] for candidate in prepared.candidates}
         assert selection["selected_candidate_ref"] in candidate_refs
@@ -318,14 +324,14 @@ def test_public_preferences_during_real_worker_keep_admitted_scope_and_business_
 
     # Preference changes happen after actual computation and before the real atomic write.
     monkeypatch.setattr(WorkbenchRunWorker, "_persist", after_real_compute)
-    worker = WorkbenchRunWorker(case.conn)
+    worker = WorkbenchRunWorker(case.conn, clock=datetime.now)
     if business_change:
         with pytest.raises(WorkbenchCommandRejected) as rejected:
             worker.execute(ref)
         assert rejected.value.code == "snapshot_stale"
     else:
         assert worker.execute(ref)["state"] == "complete"
-    assert len(saved) == 1 and client.get(ROOT).get_json()["data"]["input"] == changed
+    assert len(saved) == 1 and client.get(ROOT).get_json()["data"]["input"] == {**changed, "material_strategy": "strict"}
     stored_input = case.conn.execute("SELECT normalized_input_json FROM WorkbenchRunJobs WHERE run_ref=?", (ref,)).fetchone()[0]
     assert json.loads(stored_input) == admitted_input
     final_response = client.get("/api/workbench/v1/scheduling/runs/" + ref)

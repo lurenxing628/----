@@ -13,23 +13,41 @@ from core.shared.strict_json import load_strict_json
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
-from .read_budget import CALIBRATION_READ_SLOTS
+from .calibration_table import register_calibration_table_routes
 from .read_context import bind_read_snapshot, current_snapshot_time, page_integer, resolve_read_snapshot
-from .request_json import rejecter
+from .request_json import rejecter, single_value_arguments
 
 
 def _arguments(*, export, detail):
-    allowed = {"query", "part_ref", "source", "status", "deviation", "page", "size", "sort", "direction", "snapshot_ref", "column_filters"}
+    allowed = {
+        "query",
+        "part_ref",
+        "source",
+        "status",
+        "deviation",
+        "page",
+        "size",
+        "sort",
+        "direction",
+        "snapshot_ref",
+        "column_filters",
+    }
     if export:
         allowed.add("format")
-    if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "工时校准的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
-    fields: Dict[str, Any] = {key: value for key, value in request.args.items() if key not in ("snapshot_ref", "format", "page", "size")}
-    fields.update(number=page_integer(request.args.get("page", "1"), max_digits=7), size=page_integer(request.args.get("size", "20"), max_digits=7))
+    single_value_arguments(allowed, message="工时校准的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。")
+    fields: Dict[str, Any] = {
+        key: value for key, value in request.args.items() if key not in ("snapshot_ref", "format", "page", "size")
+    }
+    fields.update(
+        number=page_integer(request.args.get("page", "1"), max_digits=7),
+        size=page_integer(request.args.get("size", "20"), max_digits=7),
+    )
     if "column_filters" in fields:
         fields["column_filters"] = load_strict_json(
-            fields["column_filters"], on_malformed=rejecter("列筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。"),
-            on_duplicate=rejecter(DUPLICATE_FILTER_MESSAGE))
+            fields["column_filters"],
+            on_malformed=rejecter("列筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。"),
+            on_duplicate=rejecter(DUPLICATE_FILTER_MESSAGE),
+        )
     query = CalibrationQuery(**fields)
     token = request.args.get("snapshot_ref")
     if (export or detail) and not token:
@@ -43,29 +61,57 @@ def _read(*, export=False, suggestion_ref=None):
     if export and format_name not in ("csv", "xlsx"):
         raise WorkbenchCommandRejected("invalid_input", "只支持 CSV 或 XLSX 格式。", 400)
     binding = resolve_read_snapshot(token) if token is not None else None
-    with CALIBRATION_READ_SLOTS.slot():
-        service = WorkbenchCalibrationService(g.db)
+    service = WorkbenchCalibrationService(g.db)
+    if suggestion_ref is not None:
         with service.read_snapshot() as ledger_scope:
             effective_as_of = binding.as_of_time if binding is not None else current_snapshot_time()
-            facts = service.read(
+            data, detail_snapshot = service.read_detail(
                 ledger_scope,
                 query,
+                suggestion_ref,
                 as_of=effective_as_of,
                 bind_snapshot=lambda content: bind_read_snapshot(
                     query.scope(), content, token, as_of=effective_as_of, binding=binding
                 ),
             )
+        return query_success(
+            data,
+            detail_snapshot,
+            byte_limit=MAX_RESPONSE_BYTES,
+            too_large_message="这次要读的校准明细超过 8 MB，系统没有给出不完整内容。请缩小筛选范围后点「刷新」。",
+        )
+
+    with service.read_snapshot() as ledger_scope:
+        effective_as_of = binding.as_of_time if binding is not None else current_snapshot_time()
+        facts = service.read(
+            ledger_scope,
+            query,
+            as_of=effective_as_of,
+            bind_snapshot=lambda content: bind_read_snapshot(
+                query.scope(), content, token, as_of=effective_as_of, binding=binding
+            ),
+        )
         snapshot = facts["snapshot"]
-        data, rows = service.workspace(facts, query, snapshot, suggestion_ref=suggestion_ref, export=export)
+        data, rows = service.workspace(facts, query, snapshot, export=export)
     if export:
         file = export_calibration(data, rows, snapshot, format_name)
-        response = send_file(file.data, mimetype=file.content_type, as_attachment=True, download_name=file.filename, max_age=0)
+        response = send_file(
+            file.data,
+            mimetype=file.content_type,
+            as_attachment=True,
+            download_name=file.filename,
+            max_age=0,
+        )
         response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
         response.headers["X-Workbench-As-Of"] = snapshot["as_of"]
         response.headers["X-Workbench-Row-Count"] = str(file.estimated_rows)
         return response
-    return query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES,
-        too_large_message="这次要读的校准明细超过 8 MB，系统没有给出不完整内容。请缩小筛选范围后点「刷新」。")
+    return query_success(
+        data,
+        snapshot,
+        byte_limit=MAX_RESPONSE_BYTES,
+        too_large_message="这次要读的校准明细超过 8 MB，系统没有给出不完整内容。请缩小筛选范围后点「刷新」。",
+    )
 
 
 @api_endpoint
@@ -84,8 +130,6 @@ def calibration_export():
 
 
 def register_calibration_routes(bp):
-    from .calibration_table import register_calibration_table_routes
-
     bp.add_url_rule("/api/workbench/v1/calibration", view_func=calibration_list, methods=["GET"])
     bp.add_url_rule("/api/workbench/v1/calibration/export", view_func=calibration_export, methods=["GET"])
     bp.add_url_rule("/api/workbench/v1/calibration/<suggestion_ref>", view_func=calibration_detail, methods=["GET"])

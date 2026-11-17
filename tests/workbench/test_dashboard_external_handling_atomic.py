@@ -52,13 +52,36 @@ def test_competing_writes_reject_stale_loser_and_replay_winner_receipt(external_
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(write, range(2)))
     assert len(case.history(item["item_ref"])) == 1
-    saved = case.conn.execute("SELECT source_facts_json FROM WorkbenchDashboardExternalHistory WHERE item_ref=?",
-                              (item["item_ref"],)).fetchone()
-    archived = json.loads(saved["source_facts_json"])
-    assert archived["facts"]["receipt"]["outsourcing_ref"] == item["source"]["outsourcing_ref"]
+    saved = case.conn.execute(
+        "SELECT * FROM WorkbenchDashboardHistory WHERE item_ref=?",
+        (item["item_ref"],),
+    ).fetchone()
+    assert "source_facts_json" not in saved.keys()
+    archived = json.loads(saved["source_json"])
+    assert archived["category"] == "external"
+    assert archived["source"]["outsourcing_ref"] == item["source"]["outsourcing_ref"]
     winner = next(row for row in results if isinstance(row, dict))
     key = "external-handling-race-0" + ("0" if results[0] == winner else "1")
     replay = case.command(item, follow(), key=key)
     assert replay["replayed"] and replay["receipt_ref"] == winner["receipt_ref"]
     assert len(case.history(item["item_ref"])) == 1
     assert sum(row == "stale_write" for row in results) == 1
+
+
+def test_external_write_token_ignores_unrelated_plan_clock_and_rejects_receipt_mutation(external_handling_case):
+    case = external_handling_case
+    ref = case.register()
+    item = case.item("external")
+
+    # Advancing the global plan clock via an unrelated plan publish must not invalidate the external write_token.
+    case.plan(2)
+    case.conn.commit()
+    committed = case.command(item, follow(), key="external-ignore-plan-clock-01")
+    assert committed["result"] == "committed"
+
+    # Mutating the receipt's own facts invalidates the external item's source_revision and triggers stale_write.
+    refreshed = case.item("external")
+    case.returned(ref)
+    with pytest.raises(WorkbenchCommandRejected) as rejected:
+        case.command(refreshed, follow(remark="After return mutation"), key="external-stale-after-return-01")
+    assert rejected.value.code == "stale_write"

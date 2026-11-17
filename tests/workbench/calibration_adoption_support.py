@@ -1,18 +1,20 @@
 """CO-only fixtures: frozen schema, real copies/reports and temporary SQLite files."""
 
-import sqlite3
+from datetime import datetime
 
 import pytest
 from flask import Blueprint, Flask, g
 
 from core.models.workbench_template_lineage import typed_value
 from core.services.workbench.calibration.adoption import WorkbenchCalibrationAdoptionService
+from tests._support.sqlite_connection import open_test_connection
 from tests.workbench.execution_ledger_support import NOW
 from tests.workbench.template_lineage_support import completed
 from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
 from tests.workbench.template_lineage_support import lineage_case as _lineage_case  # noqa: F401
 from web.routes.workbench.calibration_adoption import register_calibration_adoption_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
+from web.runtime_host import install_wall_clock
 
 PREVIEW_INTENT = {"reason": "Adopt verified completed production samples", "declared_operator": "Declared reviewer"}
 INTENT = {**PREVIEW_INTENT, "confirm": True}
@@ -30,6 +32,7 @@ def adoption_case(lineage_case, monkeypatch):
     case = lineage_case
     case.conn.execute("PRAGMA foreign_keys=ON")
     case.app = Flask(__name__)
+    install_wall_clock(case.app, datetime.now)
     case.app.config.update(TESTING=True, SECRET_KEY="co-calibration-adoption-only", WORKBENCH_CALIBRATION_ADOPTION_ENABLED=True)
     bp = Blueprint("workbench", __name__)
     register_calibration_adoption_routes(bp)
@@ -62,13 +65,7 @@ def token(case, *, ref=None, intent=None):
 
 
 def connect(case):
-    from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
-
-    conn = sqlite3.connect(case.db_path, timeout=5)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys=ON")
-    register_schedule_time_sql_functions(conn)
-    return conn
+    return open_test_connection(case.db_path)
 
 
 def snapshot(conn):

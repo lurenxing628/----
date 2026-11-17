@@ -18,13 +18,13 @@ def test_piece_candidates_reuse_proof_but_adoption_rechecks_current_quantities(t
     case = trial_case
     split(case)
     quantity_checks = []
-    original = input_execution._quantities
+    original = input_execution.verify_piece_quantities
 
     def count_quantities(scope, refs, projections):
         quantity_checks.append(scope)
         return original(scope, refs, projections)
 
-    monkeypatch.setattr(input_execution, "_quantities", count_quantities)
+    monkeypatch.setattr(input_execution, "verify_piece_quantities", count_quantities)
     prepared = lower_input(case)
     payload = slot_payload(prepared)
     with candidate_read_snapshot(case.conn):

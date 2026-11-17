@@ -2,6 +2,7 @@
 
 import importlib
 from contextlib import contextmanager
+from datetime import datetime
 
 import pytest
 from flask import Flask, g
@@ -34,8 +35,11 @@ def test_export_encodes_after_releasing_the_shared_plan_read_slot(monkeypatch, k
         snapshot = _kwargs["bind_snapshot"]({"saved": "scope"}, {"saved": "state"})
         return ({"saved": "rows"}, snapshot) if kind == "run" else ({"saved": "rows"}, snapshot, {"saved": "state"})
 
-    def bind(scope, state, token):
+    moment = datetime(2026, 10, 18, 4, 0)
+
+    def bind(scope, state, token, *, as_of, binding):
         assert active and scope == {"saved": "scope"} and state == {"saved": "state"} and token == "current"
+        assert (as_of, binding) == (moment, "saved binding")
         steps.append("bind")
         return {"snapshot_ref": "current"}
 
@@ -45,8 +49,9 @@ def test_export_encodes_after_releasing_the_shared_plan_read_slot(monkeypatch, k
         steps.append("encode")
         return FileDownload("saved.csv", "application/octet-stream", b"complete-saved-file", 17)
 
-    def write_xlsx(export_kind, data, snapshot, _section):
-        assert fmt == "xlsx" and export_kind == kind
+    def write_xlsx(writer, data, snapshot, _section):
+        # The spawned encoder runs the route's own writer, the one CSV uses.
+        assert fmt == "xlsx" and writer is write
         assert not active and data == {"saved": "rows"} and snapshot == {"snapshot_ref": "current"}
         steps.append("encode")
         return FileDownload("saved.xlsx", "application/octet-stream", b"complete-saved-file", 17)
@@ -55,7 +60,9 @@ def test_export_encodes_after_releasing_the_shared_plan_read_slot(monkeypatch, k
     monkeypatch.setattr(reader_owner, reader_name, read)
     monkeypatch.setattr(writer_owner, writer_name, write)
     monkeypatch.setattr(routes, "write_decision_xlsx", write_xlsx)
-    monkeypatch.setattr(importlib.import_module("web.routes.workbench.read_context"), "bind_read_snapshot", bind)
+    read_context = importlib.import_module("web.routes.workbench.read_context")
+    monkeypatch.setattr(read_context, "read_snapshot_time", lambda token: (moment, "saved binding"))
+    monkeypatch.setattr(read_context, "bind_read_snapshot", bind)
     app = Flask(__name__)
 
     @app.before_request

@@ -2,14 +2,17 @@
 
 from io import BytesIO
 
+import pytest
 from flask import Blueprint
 from openpyxl import load_workbook
 
+from core.shared.refs import new_ref
 from data.repositories.operator_machine_repo import OperatorMachineRepository
-from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository, new_ref
+from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.field_workspace_support import BASE, FieldAPI, _ledger_fixture, success  # noqa: F401
 from tests.workbench.field_workspace_support import field_api as _field_api  # noqa: F401
+from tests.workbench.plan_catalog_support import update_schedule_rows
 from web.routes.workbench.reports import register_report_routes
 
 
@@ -34,12 +37,13 @@ def test_unreported_null_zero_partial_finish_and_readonly(field_api):
     api.create(api.case.values(6, actual_start='2026-09-01T14:00:00', actual_end='2026-09-01T16:00:00'))
     p = api.task()['execution']
     assert p['execution_state'] == 'complete' and p['known_completed_quantity'] == 10 and p['remaining_quantity'] == 0
-    api.case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M2','Lathe','T1'),('M3','M1','T1')")
+    api.case.conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('M2','Lathe'),('M3','M1')")
+    api.case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M2','T1'),('M3','T1')")
     api.case.conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O2','Operator'),('O3','O1')")
     api.case.conn.commit()
     reading = api.read()
     before = all_rows(api.case.conn)
-    exported = api.client.get(BASE + '/files/export', query_string={**reading['data']['scope'],
+    exported = api.client.post(BASE + '/files/export', json={**reading['data']['scope'],
         'snapshot_ref': reading['meta']['snapshot_ref']})
     assert exported.status_code == 200
     book = load_workbook(BytesIO(exported.data))
@@ -64,12 +68,13 @@ def test_supplement_keeps_known_facts_through_correction(ledger_case):
     api.app.register_blueprint(reports)
     task = api.task()
     api.create(case.values(10, effective_processing_hours=None, actual_operator_ref=None), task)
-    case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M2','New planned machine','T1')")
+    case.conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('M2','New planned machine')")
+    case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M2','T1')")
     case.plan(2, [case.op_id])
-    case.conn.execute("UPDATE Schedule SET machine_id='M2' WHERE version=2")
+    update_schedule_rows(case.conn, 2, machine_id="M2", sync_history=False)
     case.conn.commit()
     case.conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T2','New craft')")
-    case.conn.execute("UPDATE Machines SET op_type_id='T2' WHERE machine_id='M1'")
+    case.conn.execute("UPDATE MachineOpTypes SET op_type_id='T2' WHERE machine_id='M1'")
     OperatorMachineRepository(case.conn).remove("O1", "M1")
     case.conn.commit()
     task = api.task()
@@ -132,15 +137,15 @@ def test_file_confirmation_retains_source_after_read_expiry_and_rechecks_write_e
     from datetime import datetime
 
     from core.services.workbench.commands import WorkbenchCommandService
-    from core.services.workbench.execution.production_report import WorkbenchProductionReportService
     from web import public_token_registry
     from web.routes.workbench.execution_files import PREVIEW_NAMESPACE
     from web.routes.workbench.read_context import _SCOPE
+    from web.runtime_host import install_wall_clock
 
     api = field_api
     api.create()
     reading = api.read()
-    exported = api.client.get(BASE + '/files/export', query_string={**reading['data']['scope'],
+    exported = api.client.post(BASE + '/files/export', json={**reading['data']['scope'],
         'snapshot_ref': reading['meta']['snapshot_ref']})
     assert exported.status_code == 200
     preview = success(api.upload(exported.data, reading))
@@ -165,25 +170,74 @@ def test_file_confirmation_retains_source_after_read_expiry_and_rechecks_write_e
     assert response.status_code == 409 and response.get_json()['error']['code'] == 'stale_write'
     assert all_rows(api.case.conn) == before
 
-    orig_init = WorkbenchProductionReportService.__init__
     current_clock = datetime(2026, 9, 8, 12)
+    install_wall_clock(api.client.application, lambda: current_clock)
+    rejected_preview = success(api.upload(exported.data))
+    assert not rejected_preview['data']['can_confirm']
+    current_clock = datetime(2026, 9, 10, 12)
+    response = api.client.post(BASE + '/files/confirm', json=api.confirm_body(rejected_preview))
+    assert response.status_code == 409 and response.get_json()['error']['code'] == 'stale_write'
 
-    def init_with_clock(self, conn, *, clock=None, **kwargs):
-        orig_init(self, conn, clock=clock or (lambda: current_clock), **kwargs)
+    valid_preview = success(api.upload(exported.data))
+    assert valid_preview['data']['can_confirm']
+    current_clock = datetime(2026, 9, 8, 12)
+    rollback_response = api.client.post(BASE + '/files/confirm', json=api.confirm_body(valid_preview))
+    assert rollback_response.status_code == 409 and rollback_response.get_json()['error']['code'] == 'stale_write'
+    assert all_rows(api.case.conn) == before
 
-    with monkeypatch.context() as patch:
-        patch.setattr(WorkbenchProductionReportService, '__init__', init_with_clock)
-        rejected_preview = success(api.upload(exported.data))
-        assert not rejected_preview['data']['can_confirm']
-        current_clock = datetime(2026, 9, 10, 12)
-        response = api.client.post(BASE + '/files/confirm', json=api.confirm_body(rejected_preview))
-        assert response.status_code == 409 and response.get_json()['error']['code'] == 'stale_write'
 
-        valid_preview = success(api.upload(exported.data))
-        assert valid_preview['data']['can_confirm']
-        current_clock = datetime(2026, 9, 8, 12)
-        rollback_response = api.client.post(BASE + '/files/confirm', json=api.confirm_body(valid_preview))
-        assert rollback_response.status_code == 409 and rollback_response.get_json()['error']['code'] == 'stale_write'
+def test_report_hours_beyond_the_stored_number_domain_are_rejected_without_writes(field_api):
+    api = field_api
+    task = api.task()
+    before = all_rows(api.case.conn)
+    body = api.body(task['execution']['write_context'], {'effective_processing_hours': 1e308})
+    response = api.client.post(BASE + '/tasks/' + task['task_ref'] + '/reports', json=body)
+    assert response.status_code == 422
+    error = response.get_json()['error']
+    assert (error['code'], error['message']) == ('invalid_input', '有效加工小时请填 0 或正数；不填就留空。')
+    assert error['fields'] == [{'path': 'effective_processing_hours', 'message': error['message']}]
+    assert all_rows(api.case.conn) == before
+
+
+def _report_rejection(response, paths, message):
+    assert response.status_code == 422, response.get_data(as_text=True)
+    error = response.get_json()['error']
+    assert (error['code'], error['message']) == ('invalid_input', message)
+    assert error['fields'] == [{'path': path, 'message': message} for path in paths]
+
+
+@pytest.mark.parametrize(('patch', 'paths', 'message'), [
+    ({'completed_quantity': 1.5}, ['completed_quantity'], '完成数量请填 0 或正整数；不填就留空。'),
+    ({'actual_start': '2026-09-09 08:00'}, ['actual_start'], '实际时间格式不对，请按 2026-09-13 08:30:00 这样填写。'),
+    ({'actual_end': '2026-02-30T08:00:00'}, ['actual_end'], '实际时间不是有效日期。'),
+    ({'remark': 'x' * 2001}, ['remark'], '报工里的文字填写不对或太长。'),
+    ({'declared_operator': 7}, ['declared_operator'], '报工里的文字填写不对或太长。'),
+    ({'actual_start': '2099-01-01T08:00:00', 'actual_end': '2099-01-01T09:00:00'}, ['actual_start', 'actual_end'],
+     '实际时间不能晚于当前时间。'),
+    ({'actual_end': '2026-09-09T07:00:00'}, ['actual_end'], '实际结束不能早于实际开始。'),
+    ({'effective_processing_hours': 3}, ['effective_processing_hours'], '有效加工小时不能超过实际起止时间的时长。'),
+], ids=['quantity', 'time-shape', 'time-day', 'remark', 'operator', 'future', 'reversed', 'over-span'])
+def test_report_rejection_points_at_the_report_field(field_api, patch, paths, message):
+    api = field_api
+    task = api.task()
+    before = all_rows(api.case.conn)
+    body = api.body(task['execution']['write_context'], api.case.values(2, **patch))
+    _report_rejection(api.client.post(BASE + '/tasks/' + task['task_ref'] + '/reports', json=body), paths, message)
+    assert all_rows(api.case.conn) == before
+
+
+def test_report_supplement_and_void_reasons_point_at_the_reason_field(field_api):
+    api = field_api
+    api.create({'actual_start': '2026-09-01T08:00:00'})
+    record = api.task()['execution']['reports'][0]
+    before = all_rows(api.case.conn)
+    body = api.body(record['write_context'], {'original_revision_ref': record['revision_ref'], 'reason': ' ',
+                                              'completed_quantity': 1})
+    _report_rejection(api.client.post(BASE + '/reports/' + record['report_ref'] + '/supplement', json=body),
+                      ['reason'], '补齐或更正必须填写原因，并选好要改的那条记录。')
+    payload = {'original_revision_ref': record['revision_ref'], 'reason': ' ', 'declared_operator': '班组长'}
+    _report_rejection(api.client.post(BASE + '/reports/' + record['report_ref'] + '/void-preview', json={'input': payload}),
+                      ['reason'], '请填写撤销原因，原报工和更正记录会保留。')
     assert all_rows(api.case.conn) == before
 
 
@@ -193,20 +247,21 @@ def test_field_workspace_pagination_rejects_oversized_non_ascii_and_leading_zero
     from core.models.workbench_command import WorkbenchCommandRejected
     from core.services.workbench.execution.field_workspace_scope import page_input
 
+    # The read body is JSON: page and size are numbers, so digit strings are refused like any other text.
     for bad_query in (
-        {'page': '0'},
-        {'page': '01'},
+        {'page': 0},
+        {'page': '1'},
         {'page': '１'},
-        {'page': '-1'},
-        {'page': '100001'},
-        {'page': '9' * 6000},
-        {'size': '0'},
-        {'size': '020'},
+        {'page': -1},
+        {'page': 100001},
+        {'page': int('9' * 6000)},
+        {'size': 0},
+        {'size': '20'},
         {'size': '２０'},
-        {'size': '101'},
-        {'size': '9' * 6000},
+        {'size': 101},
+        {'size': int('9' * 6000)},
     ):
-        response = field_api.client.get(BASE + '/tasks', query_string=bad_query)
+        response = field_api.client.post(BASE + '/tasks', json=bad_query)
         assert response.status_code == 400
         assert response.get_json()['error']['code'] == 'invalid_input'
 
@@ -215,7 +270,7 @@ def test_field_workspace_pagination_rejects_oversized_non_ascii_and_leading_zero
             page_input(bad_raw)
         assert exc_info.value.status == 400 and exc_info.value.code == 'invalid_input'
 
-    assert page_input({'page': '100000', 'size': '100'}) == (100000, 100)
+    assert page_input({'page': 100000, 'size': 100}) == (100000, 100)
     first_wide = field_api.read(page=1, size=100)['data']
     assert first_wide['page']['number'] == 1 and first_wide['page']['size'] == 100
 
@@ -251,9 +306,9 @@ def test_external_operation_template_preserves_incomplete_row_and_allocates_new_
     assert api.task()['execution']['records_complete'] is False
 
     reading = api.read()
-    template_incomplete = api.client.get(
+    template_incomplete = api.client.post(
         BASE + '/files/template',
-        query_string={**reading['data']['scope'], 'snapshot_ref': reading['meta']['snapshot_ref']},
+        json={**reading['data']['scope'], 'snapshot_ref': reading['meta']['snapshot_ref']},
     )
     assert template_incomplete.status_code == 200
     book = load_workbook(BytesIO(template_incomplete.data))
@@ -280,9 +335,9 @@ def test_external_operation_template_preserves_incomplete_row_and_allocates_new_
     assert after_first['records_complete'] is True and after_first['execution_state'] == 'partial'
 
     reading = api.read()
-    template_complete = api.client.get(
+    template_complete = api.client.post(
         BASE + '/files/template',
-        query_string={**reading['data']['scope'], 'snapshot_ref': reading['meta']['snapshot_ref']},
+        json={**reading['data']['scope'], 'snapshot_ref': reading['meta']['snapshot_ref']},
     )
     assert template_complete.status_code == 200
     book2 = load_workbook(BytesIO(template_complete.data))
@@ -350,3 +405,69 @@ def test_void_preview_does_not_issue_write_tokens_for_downstream_operations(ledg
         after_tokens = set(public_token_registry._registry()[WRITE_SCOPE]["tokens"])
 
     assert after_tokens - before_tokens == {preview["write_context"]["write_token"]}
+
+
+def test_unreported_task_stays_unreported_and_summary_sums_decimal_hours_exactly(ledger_case):
+    # 批次数量由 Batches 的 CHECK 定为正整数，没有目标数量为 0 的工序。
+    case = ledger_case
+    case.conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('B_IDLE','P1',1)")
+    idle_op = case.op("OP_IDLE", seq=1, batch="B_IDLE")
+    second_op = case.op("OP2", seq=2, batch="B1")
+    case.plan(2, [case.op_id, second_op, idle_op])
+    api = FieldAPI(case)
+
+    idle_reading = api.read(batch_ids=["B_IDLE"])["data"]
+    assert idle_reading["summary"]["state_counts"]["unreported"] == 1
+    assert idle_reading["summary"]["complete"] == 0
+    assert idle_reading["tasks"][0]["execution"]["execution_state"] == "unreported"
+
+    first_task = next(row for row in api.read()["data"]["tasks"] if row["batch_id"] == "B1" and row["sequence"] == 1)
+    second_task = next(row for row in api.read()["data"]["tasks"] if row["batch_id"] == "B1" and row["sequence"] == 2)
+    api.create(case.values(1, effective_processing_hours=0.1), first_task)
+    api.create(case.values(1, effective_processing_hours=0.2), second_task)
+
+    partial_filtered = api.read(state="partial")["data"]
+    assert partial_filtered["summary"]["state_scope_tasks"] == 3
+    assert partial_filtered["summary"]["state_counts"] == {
+        "unreported": 1,
+        "started": 0,
+        "partial": 2,
+        "complete": 0,
+    }
+    assert partial_filtered["summary"]["tasks"] == 2
+    assert partial_filtered["summary"]["reports"] == 2
+    assert partial_filtered["summary"]["known_effective_processing_hours"] == 0.3
+    assert partial_filtered["summary"]["effective_processing_hours"] == 0.3
+
+
+def test_max_date_finish_filter_succeeds_across_list_detail_and_cohort(ledger_case):
+    from core.services.workbench.execution.field_workspace import FieldWorkspaceService
+    from data.repositories.workbench_report_facts_repo import WorkbenchReportFactsRepository
+
+    case = ledger_case
+    case.plan(2, [case.op_id], start="9999-12-31T08:00:00", end="9999-12-31T23:59:59")
+    api = FieldAPI(case)
+
+    date_scope = {"plan_finish_date_from": "9999-12-30", "plan_finish_date_to": "9999-12-31"}
+    listing = api.read(**date_scope)
+    assert len(listing["data"]["tasks"]) == 1
+    task_ref = listing["data"]["tasks"][0]["task_ref"]
+
+    detail = api.read("/tasks/" + task_ref, **date_scope)
+    assert detail["data"]["task"]["task_ref"] == task_ref
+
+    query = {**listing["data"]["scope"], "snapshot_ref": listing["meta"]["snapshot_ref"]}
+    exported = api.client.post(BASE + "/files/export", json=query)
+    assert exported.status_code == 200
+    template = api.client.post(BASE + "/files/template", json=query)
+    assert template.status_code == 200
+
+    service = FieldWorkspaceService(case.conn)
+    with service.read_snapshot() as ws_scope:
+        cohort_data, _ = service.cohort(ws_scope, service.prepare_read(ws_scope, dict(date_scope)))
+    assert [row["task_ref"] for row in cohort_data["tasks"]] == [task_ref]
+
+    plan_rows = WorkbenchReportFactsRepository(case.conn).plan_rows(
+        2, date_from="9999-12-30", date_to="9999-12-31", batch_id=None, limit=10
+    )
+    assert [row["task_ref"] for row in plan_rows] == [task_ref]

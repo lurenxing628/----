@@ -1,12 +1,11 @@
 """Retain exact process previews in memory; only confirmed commands write SQLite."""
 
-from flask import g
-
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_process_file import INSTRUCTIONS, TEMPLATE_VERSION, public_columns
 from core.models.workbench_resource_action import public_action_row
+from core.shared.key_sets import keys_conform
 
-from .process_json import read_process_json
+from .process_json import process_command_body
+from .request_json import rejecter
 from .resource_action_context import EXPIRED_MESSAGE
 from .write_context import preview_write_context, resolve_action_preview, retain_action_preview
 
@@ -34,14 +33,15 @@ def action_preview(preview, command, *, kind=None, extra):
     return result
 
 
+PROCESS_INCOMPLETE = "提交的内容不完整或有多余项，工艺资料还没有保存。请刷新页面后重新填写。"
+PROCESS_STALE = "本页数据已过期，工艺资料还没有保存。请点「刷新资料」后重新核对再保存。"
+
+
 def confirmed_body(input_keys):
-    body = read_process_json("工艺操作", 4 * 1024 * 1024)
-    if set(body) != {"request_key", "write_token", "input"} or type(body["input"]) is not dict or set(body["input"]) != set(input_keys):
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，工艺资料还没有保存。请刷新页面后重新填写。", 400)
-    validate_request_key(body["request_key"])
-    g.workbench_request_key = body["request_key"]
-    if type(body["write_token"]) is not str or not body["write_token"]:
-        raise WorkbenchCommandRejected("invalid_input", "本页数据已过期，工艺资料还没有保存。请点「刷新资料」后重新核对再保存。", 400)
+    """Confirm a process preview: the command envelope whose input holds exactly the entry's ``input_keys``."""
+    body = process_command_body("工艺操作", 4 * 1024 * 1024, incomplete=PROCESS_INCOMPLETE, stale=PROCESS_STALE)
+    if not keys_conform(body["input"], input_keys):
+        rejecter(PROCESS_INCOMPLETE)()
     return body
 
 

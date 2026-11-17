@@ -2,11 +2,20 @@
 
 from datetime import datetime
 
-from .conditions import (
+from core.services.workbench.history_entries.conditions import (
     analyze_prepared_history_conditions,
     compare_history_configurations,
     materialize_history_conditions,
+    objective_comparison_state,
 )
+from core.services.workbench.history_entries.metric_window import history_window
+from core.services.workbench.history_entries.packets import (
+    LightRunPacket,
+    RunPacket,
+    TrialPacket,
+    UnavailablePacket,
+)
+
 from .metric_gate import gate_history_metric
 from .metrics import project_history_metrics
 
@@ -20,31 +29,52 @@ def reason(code, message):
 
 def chronological_key(entry):
     value = entry["occurred_at"]
-    return (value is None, datetime.fromisoformat(value.replace(" ", "T")) if value is not None else datetime.min,
-            entry["entry_ref"])
+    return (
+        value is None,
+        datetime.fromisoformat(value.replace(" ", "T")) if value is not None else datetime.min,
+        entry["entry_ref"],
+    )
 
 
 def _navigation(reader, descriptor):
     refs, kind = descriptor["source"], descriptor["source_kind"]
-    packet = reader.read(descriptor)
+    packet = reader.metric_packet(descriptor)
     result = []
 
     def add(label, view, context, present):
         enabled = bool(present)
-        result.append({"label": label, "view": view, "context": context, "enabled": enabled,
-                       "reason": None if enabled else "原记录缺少可打开的来源资料。"})
+        result.append(
+            {
+                "label": label,
+                "view": view,
+                "context": context,
+                "enabled": enabled,
+                "reason": None if enabled else "原记录缺少可打开的来源资料。",
+            }
+        )
 
     if kind in ("run", "candidate_adoption"):
         # Runs are permanent; a run reference in a verified catalog entry always opens.
         add("打开原运行", "run", {"run_ref": refs["run_ref"]}, True)
-        add("打开原候选分析", "analysis", {"run_ref": refs["run_ref"], "candidate_ref": refs["candidate_ref"]},
-            refs["run_ref"] and refs["candidate_ref"] and packet.get("candidate") is not None)
+        has_candidate = isinstance(packet, (RunPacket, LightRunPacket)) and packet.candidate_ref is not None
+        add(
+            "打开原候选分析",
+            "analysis",
+            {"run_ref": refs["run_ref"], "candidate_ref": refs["candidate_ref"]},
+            refs["run_ref"] and refs["candidate_ref"] and has_candidate,
+        )
     elif kind == "trial_adoption":
-        add("打开原试调", "trial", {"scenario_ref": refs["scenario_ref"]},
-            refs["scenario_ref"] and packet.get("saved") is not None)
+        add(
+            "打开原试调",
+            "trial",
+            {"scenario_ref": refs["scenario_ref"]},
+            refs["scenario_ref"] and isinstance(packet, TrialPacket),
+        )
     if kind != "run":
         # Formal version identity comes from the saved binding, never the current plan.
-        bound = refs["plan_ref"] is not None and not any(row["field"] == "official_plan" for row in descriptor["evidence_gaps"])
+        bound = refs["plan_ref"] is not None and not any(
+            row["field"] == "official_plan" for row in descriptor["evidence_gaps"]
+        )
         add("打开正式甘特", "gantt", {"plan_ref": refs["plan_ref"]}, bound)
     return result
 
@@ -56,35 +86,65 @@ def project_entry(reader, descriptor, query):
     read_query = {**query, "metric_keys": list(dict.fromkeys(query["metric_keys"] + list(capacity_keys)))}
     raw = project_history_metrics(reader, descriptor, read_query)
     projected = {**raw, "metrics": {key: raw["metrics"][key] for key in query["metric_keys"]}}
-    reader.history_range_facts[descriptor["entry_ref"]] = {key: {field: raw["metrics"][key][field]
-        for field in ("value", "known_subtotal", "state", "known_count", "unknown_count", "total_count", "covered_resource_refs")}
-        for key in capacity_keys}
+    reader.history_range_facts[descriptor["entry_ref"]] = {
+        key: {
+            field: raw["metrics"][key][field]
+            for field in (
+                "value",
+                "known_subtotal",
+                "state",
+                "known_count",
+                "unknown_count",
+                "total_count",
+                "covered_resource_refs",
+            )
+        }
+        for key in capacity_keys
+    }
     refs = descriptor["source"]
-    identity = {key: refs[key] for key in ("run_ref", "candidate_ref", "scenario_ref", "draft_ref", "plan_ref",
-                "history_id", "receipt_ref", "request_key")}
+    identity = {
+        key: refs[key]
+        for key in (
+            "run_ref",
+            "candidate_ref",
+            "scenario_ref",
+            "draft_ref",
+            "plan_ref",
+            "history_id",
+            "receipt_ref",
+            "request_key",
+        )
+    }
     identity["plan_version"] = refs["version"]
-    baseline = dict(descriptor["baseline"])
-    if descriptor["source_kind"] == "run":
-        capture = reader.read(descriptor).get("capture")
-        if capture is not None:
-            baseline = {key: capture["baseline"].get(key) for key in ("plan_ref", "version")}
     issues = [{key: row[key] for key in ("code", "message")} for row in descriptor["evidence_gaps"]]
     if projected["source"]["reason"] is not None and projected["source"]["reason"] not in issues:
         issues.append(projected["source"]["reason"])
-    return {"entry_ref": descriptor["entry_ref"], "timeline": descriptor["timeline"],
-            "source_kind": descriptor["source_kind"], "label": descriptor["label"],
-            "occurred_at": descriptor["occurred_at"], "time_basis": descriptor["time_basis"],
-            "state": descriptor["state"], "identity": identity,
-            "times": {key: value if type(value) is str else None for key, value in descriptor["times"].items()},
-            "baseline": baseline, **projected, "navigation": _navigation(reader, descriptor), "issues": issues}
+    return {
+        "entry_ref": descriptor["entry_ref"],
+        "timeline": descriptor["timeline"],
+        "source_kind": descriptor["source_kind"],
+        "label": descriptor["label"],
+        "occurred_at": descriptor["occurred_at"],
+        "time_basis": descriptor["time_basis"],
+        "state": descriptor["state"],
+        "identity": identity,
+        "times": {key: value if type(value) is str else None for key, value in descriptor["times"].items()},
+        "baseline": descriptor["baseline"],
+        **projected,
+        "navigation": _navigation(reader, descriptor),
+        "issues": issues,
+    }
 
 
 def window_comparable(before, after, definition):
     if definition["scope"] not in ("fixed_resource_window", "fixed_changeover_window"):
         return True
     previous, selected = (entry["reading_context"]["resource_window"] for entry in (before, after))
-    return (previous["start"] is not None and previous["end"] is not None
-            and all(previous[key] == selected[key] for key in ("start", "end", "time_basis", "boundary", "cohort")))
+    return (
+        previous["start"] is not None
+        and previous["end"] is not None
+        and all(previous[key] == selected[key] for key in ("start", "end", "time_basis", "boundary", "cohort"))
+    )
 
 
 def range_changed(before, after, capacity_before, capacity_after):
@@ -101,7 +161,7 @@ def range_changed(before, after, capacity_before, capacity_after):
 
 def missing_packet(code="reference_required", message="请选择明确基准运行。"):
     """A comparison side without a chosen history entry; it carries no saved conditions."""
-    return {"kind": "empty", "ref": None, "entry_ref": None, "source_issue": reason(code, message)}
+    return UnavailablePacket("empty", None, None, reason(code, message))
 
 
 def _shared_window(entry, query, *, descriptor=None, reader=None):
@@ -110,9 +170,7 @@ def _shared_window(entry, query, *, descriptor=None, reader=None):
     if entry is not None and "reading_context" in entry:
         window = entry["reading_context"]["resource_window"]
     elif descriptor is not None and reader is not None:
-        from .metric_window import history_window
-
-        window = history_window(reader.read(descriptor), query)
+        window = history_window(reader.metric_packet(descriptor), query)
     else:
         window = {}
     return {"start": window.get("start"), "end": window.get("end")}
@@ -120,8 +178,11 @@ def _shared_window(entry, query, *, descriptor=None, reader=None):
 
 def _comparison_packets(reader, before_descriptor, after_descriptor):
     before = reader.read(before_descriptor) if before_descriptor is not None else missing_packet()
-    selected = reader.read(after_descriptor) if after_descriptor is not None else missing_packet(
-        "selection_required", "请选择实际历史条目。")
+    selected = (
+        reader.read(after_descriptor)
+        if after_descriptor is not None
+        else missing_packet("selection_required", "请选择实际历史条目。")
+    )
     return before, selected
 
 
@@ -131,39 +192,95 @@ def configuration_pair(reader, before_descriptor, after_descriptor):
         reader.prepared_condition_source(before),
         reader.prepared_condition_source(selected),
     )
-    return {"conditions": {"state": "unavailable", "summary": None},
-            "configurations": configurations, "objective": objective}
+    return {
+        "conditions": {"state": "unavailable", "summary": None},
+        "configurations": configurations,
+        "objective": objective,
+    }
 
 
-def condition_pair(reader, before_descriptor, after_descriptor, after, query, cache, *, include_rows=True,
-                   include_configurations=True, all_rows=False):
+def condition_pair(
+    reader,
+    before_descriptor,
+    after_descriptor,
+    after,
+    query,
+    cache,
+    *,
+    include_rows=True,
+    include_configurations=True,
+    all_rows=False,
+):
     window = _shared_window(after, query, descriptor=after_descriptor, reader=reader)
-    key = (before_descriptor["entry_ref"] if before_descriptor else None,
-           after_descriptor["entry_ref"] if after_descriptor else None, window["start"], window["end"])
+    key = (
+        before_descriptor["entry_ref"] if before_descriptor else None,
+        after_descriptor["entry_ref"] if after_descriptor else None,
+        window["start"],
+        window["end"],
+    )
     if key not in cache:
         before, selected = _comparison_packets(reader, before_descriptor, after_descriptor)
-        cache[key] = analyze_prepared_history_conditions(reader.condition_side(before, window),
-                                                         reader.condition_side(selected, window),
-                                                         include_configurations=include_configurations)
+        cache[key] = analyze_prepared_history_conditions(
+            reader.condition_side(before, window),
+            reader.condition_side(selected, window),
+            include_configurations=include_configurations,
+        )
     before_side, after_side, cond_analysis, configurations, objective = cache[key]
     if include_configurations and configurations is None:
         configurations, objective = compare_history_configurations(before_side, after_side)
         cache[key] = (before_side, after_side, cond_analysis, configurations, objective)
     if not include_rows:
-        return {"conditions": {"state": cond_analysis["state"], "summary": cond_analysis["summary"]},
-                "configurations": configurations, "objective": objective}
-    conditions = materialize_history_conditions(before_side, after_side, cond_analysis,
-                                                condition_page=query["condition_page"],
-                                                condition_size=query["condition_size"],
-                                                all_rows=all_rows)
+        return {
+            "conditions": {"state": cond_analysis["state"], "summary": cond_analysis["summary"]},
+            "configurations": configurations,
+            "objective": objective,
+        }
+    conditions = materialize_history_conditions(
+        before_side,
+        after_side,
+        cond_analysis,
+        condition_page=query["condition_page"],
+        condition_size=query["condition_size"],
+        all_rows=all_rows,
+    )
     return {"conditions": conditions, "configurations": configurations, "objective": objective}
 
 
 def _observed_connection(before, after):
-    return (before["value"] is not None and after["value"] is not None
-            and before["state"] in ("complete", "partial", "not_applicable")
-            and after["state"] in ("complete", "partial", "not_applicable")
-            and all(before[key] is not None and before[key] == after[key] for key in ("unit", "metric_version", "scope")))
+    return (
+        before["value"] is not None
+        and after["value"] is not None
+        and before["state"] in ("complete", "partial", "not_applicable")
+        and after["state"] in ("complete", "partial", "not_applicable")
+        and all(before[key] is not None and before[key] == after[key] for key in ("unit", "metric_version", "scope"))
+    )
+
+
+def _trend_condition_gate(reader, reference_descriptor, after_descriptor, entry, query, cache):
+    if reference_descriptor is None:
+        return "unknown", "unknown"
+    ref_static = reference_descriptor["static_condition_digest"]
+    cur_static = after_descriptor["static_condition_digest"]
+    is_default_7d = query["range_start"] is None and query["resource_window_days"] == 7
+    if ref_static is not None and cur_static is not None:
+        if ref_static != cur_static:
+            return "different", objective_comparison_state(
+                reference_descriptor["objective"], after_descriptor["objective"]
+            )
+        if is_default_7d:
+            ref_cal7d = reference_descriptor["default_7d_calendar_digest"]
+            cur_cal7d = after_descriptor["default_7d_calendar_digest"]
+            if ref_cal7d is not None and cur_cal7d is not None:
+                return (
+                    ("equal" if ref_cal7d == cur_cal7d else "different"),
+                    objective_comparison_state(
+                        reference_descriptor["objective"], after_descriptor["objective"]
+                    ),
+                )
+    pair = condition_pair(
+        reader, reference_descriptor, after_descriptor, entry, query, cache, include_rows=False
+    )
+    return pair["conditions"]["state"], pair["objective"]["state"]
 
 
 def trend_projection(reader, entries, descriptors, reference, reference_descriptor, query, definitions, cache):
@@ -171,23 +288,55 @@ def trend_projection(reader, entries, descriptors, reference, reference_descript
     for entry in sorted(entries, key=chronological_key):
         state, allowed = "not_compared", {}
         if query["comparison"] == "same_conditions":
-            pair = condition_pair(reader, reference_descriptor, descriptors[entry["entry_ref"]], entry, query, cache,
-                                  include_rows=False)
-            state = pair["conditions"]["state"]
+            state, objective_state = _trend_condition_gate(
+                reader,
+                reference_descriptor,
+                descriptors[entry["entry_ref"]],
+                entry,
+                query,
+                cache,
+            )
             for key in query["metric_keys"]:
-                allowed[key] = reference is not None and gate_history_metric(definitions[key], reference["metrics"][key],
-                    entry["metrics"][key], production_state=state, objective_state=pair["objective"]["state"],
-                    window_comparable=window_comparable(reference, entry, definitions[key]))["state"] == "comparable"
+                allowed[key] = (
+                    reference is not None
+                    and gate_history_metric(
+                        definitions[key],
+                        reference["metrics"][key],
+                        entry["metrics"][key],
+                        production_state=state,
+                        objective_state=objective_state,
+                        window_comparable=window_comparable(reference, entry, definitions[key]),
+                    )["state"]
+                    == "comparable"
+                )
         else:
             allowed = {key: True for key in query["metric_keys"]}
-        connections = {key: bool(previous is not None and previous["occurred_at"] is not None
-            and entry["occurred_at"] is not None and previous_allowed.get(key) and allowed[key]
-            and _observed_connection(previous["metrics"][key], entry["metrics"][key])) for key in query["metric_keys"]}
-        points.append({key: entry[key] for key in ("entry_ref", "occurred_at", "time_basis", "label", "state", "metrics", "scope")})
-        points[-1].update(resource_window=entry["reading_context"]["resource_window"],
-                         range_changed=previous is not None and range_changed(previous, entry,
-                             reader.history_range_facts[previous["entry_ref"]], reader.history_range_facts[entry["entry_ref"]]),
-                         condition_state=state, connections=connections)
+        connections = {
+            key: bool(
+                previous is not None
+                and previous["occurred_at"] is not None
+                and entry["occurred_at"] is not None
+                and previous_allowed.get(key)
+                and allowed[key]
+                and _observed_connection(previous["metrics"][key], entry["metrics"][key])
+            )
+            for key in query["metric_keys"]
+        }
+        points.append(
+            {key: entry[key] for key in ("entry_ref", "occurred_at", "time_basis", "label", "state", "metrics", "scope")}
+        )
+        points[-1].update(
+            resource_window=entry["reading_context"]["resource_window"],
+            range_changed=previous is not None
+            and range_changed(
+                previous,
+                entry,
+                reader.history_range_facts[previous["entry_ref"]],
+                reader.history_range_facts[entry["entry_ref"]],
+            ),
+            condition_state=state,
+            connections=connections,
+        )
         previous, previous_allowed = entry, allowed
     return {"point_scope": "current_page", "order": "asc", "points": points}
 
@@ -198,14 +347,23 @@ def comparison_conclusion(mode, pair, deltas, has_pair):
     state, message, cause = "observed", "显示原保存结果的业务走势。", None
     if mode == "same_conditions":
         if not has_pair:
-            state, message, cause = "unavailable", "选择实际历史条目和明确基准后查看同条件对照。", reason(
-                "history_pair_required", "同条件对照需要实际历史条目和明确基准运行。")
+            state, message, cause = (
+                "unavailable",
+                "选择实际历史条目和明确基准后查看同条件对照。",
+                reason("history_pair_required", "同条件对照需要实际历史条目和明确基准运行。"),
+            )
         elif pair["conditions"]["state"] == "different":
-            state, message, cause = "different_conditions", "生产条件有变化，查看逐字段差异和实际观测值。", reason(
-                "history_production_conditions_different", "两侧保存的生产条件不同。")
+            state, message, cause = (
+                "different_conditions",
+                "生产条件有变化，查看逐字段差异和实际观测值。",
+                reason("history_production_conditions_different", "两侧保存的生产条件不同。"),
+            )
         elif pair["conditions"]["state"] == "unknown":
-            state, message, cause = "unavailable", "生产条件缺少归档依据，保留实际观测值。", reason(
-                "history_production_conditions_unknown", "两侧生产条件缺少充分归档依据。")
+            state, message, cause = (
+                "unavailable",
+                "生产条件缺少归档依据，保留实际观测值。",
+                reason("history_production_conditions_unknown", "两侧生产条件缺少充分归档依据。"),
+            )
         elif pair["objective"]["state"] != "equal":
             different = pair["objective"]["state"] == "different"
             state = "different_objective" if different else "unavailable"
@@ -213,8 +371,10 @@ def comparison_conclusion(mode, pair, deltas, has_pair):
             cause = reason("history_objective_" + pair["objective"]["state"], message)
         elif not deltas or any(item["state"] != "comparable" for item in deltas.values()):
             state, message = "unavailable", "部分指标的版本、覆盖或资源窗口缺少可比较依据。"
-            cause = next((item["reason"] for item in deltas.values() if item["state"] != "comparable"),
-                         reason("history_metric_unavailable", message))
+            cause = next(
+                (item["reason"] for item in deltas.values() if item["state"] != "comparable"),
+                reason("history_metric_unavailable", message),
+            )
         elif improved and worsened:
             state, message = "comparable", "同条件下部分指标改善、部分指标变差，按实际指标作取舍。"
         elif worsened:
@@ -225,6 +385,10 @@ def comparison_conclusion(mode, pair, deltas, has_pair):
             state, message = "equal", "所选指标在同条件下相同。"
         else:
             state, message = "comparable", "所选指标具备同条件比较依据。"
-    return {"state": state, "message": message, "reason": cause,
-            "improved_metric_keys": improved if mode == "same_conditions" else [],
-            "worsened_metric_keys": worsened if mode == "same_conditions" else []}
+    return {
+        "state": state,
+        "message": message,
+        "reason": cause,
+        "improved_metric_keys": improved if mode == "same_conditions" else [],
+        "worsened_metric_keys": worsened if mode == "same_conditions" else [],
+    }

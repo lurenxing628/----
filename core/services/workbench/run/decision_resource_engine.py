@@ -6,41 +6,36 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List
 
 from core.models.workbench_run_candidate import local_time, reject
-from core.services.workbench.facts.archived_calendar import ArchivedCalendar
-from core.services.workbench.facts.decision_metrics import RESOURCE_METRICS, metric_value
+from core.services.workbench.facts.archived_calendar import ArchivedCalendar, archived_calendar_tables
+from core.services.workbench.facts.decision_read_models import build_resource_metrics_from_summaries
 from core.services.workbench.facts.official_scope_coverage import official_scope_coverage
 from core.services.workbench.facts.resource_calendar import normalize_resource_calendar
 from core.services.workbench.facts.resource_pressure import DEFAULT_PRESSURE_THRESHOLD
-from core.services.workbench.facts.resource_projection import (
-    RESOURCE_METRIC_VERSION,
-    ResourceTaskIndex,
-    resource_summary,
-)
+from core.services.workbench.facts.resource_projection import ResourceTaskIndex, resource_summary
 
 from .decision_impact import drill_target
 
 KINDS = ("machine", "operator")
 DELTA_FIELDS = ("available_hours", "occupied_hours", "summed_load_hours", "outside_calendar_hours", "overlap_hours",
                 "utilization_ratio", "demand_ratio", "peak_utilization", "span_occupied_hours", "span_summed_hours", "span_overlap_hours", "overlap_span_hours")
-_FLAGS = {"high_pressure_count": "high_pressure", "zero_capacity_task_count": "zero_capacity_task", "conflict_resource_count": "conflict"}
-
-
-def _metric_known(row, field):
-    if field in _FLAGS:
-        return row[_FLAGS[field]] is not None
-    if field == "unknown_day_resource_count":
-        return row["unknown_days"] is not None
-    if field == "used_resource_count":
-        return row["operation_count"] is not None
-    if field == "utilization_ratio":
-        return row["available_hours"] is not None and row["occupied_hours"] is not None
-    if field == "balance_cv":
-        return row["available_hours"] is not None and (row["available_hours"] == 0 or row["occupied_hours"] is not None)
-    return row[field] is not None
 
 
 def resource_deltas(before, after, fields=DELTA_FIELDS):
     return {key: after[key] - before[key] if before.get(key) is not None and after.get(key) is not None else None for key in fields}
+
+
+class _LazyArchivedCalendar:
+    """Load and decode calendar_json only when non-precomputed window or period slicing runs."""
+
+    def __init__(self, source):
+        self._source = source
+        self._inner = None
+
+    def iter_resources(self, resources, start, end):
+        if self._inner is None:
+            self._inner = ArchivedCalendar(archived_calendar_tables(self._source.calendar_archive),
+                                           source_ref=self._source.run["run_ref"])
+        return self._inner.iter_resources(resources, start, end)
 
 
 @dataclass(frozen=True)
@@ -49,22 +44,20 @@ class ResourceWindowInput:
     start: Any
     end: Any
     calendar: Any
-    resources: List[Dict[str, Any]]  # cohort rows, each carrying its calendar binding ``saved_id``
-    available: Dict[str, bool]  # computation key -> that side's arrangement is complete
-    side_tasks: Callable[[str], List[Dict[str, Any]]]  # computation key -> the side's resource tasks
-    task_intervals: Callable[[str], Dict[str, Any]]  # computation key -> the side's parsed task intervals
+    resources: List[Dict[str, Any]]
+    reference_available: bool
+    side_tasks: Callable[[str], List[Dict[str, Any]]]
+    task_intervals: Callable[[str], Dict[str, Any]]
     computation_key: Callable[[str], str]
 
 
 def decision_window_input(source):
     """A decision read's window: archived calendar, admission cohort and the reference/candidate sides."""
-    calendar = ArchivedCalendar(source.calendar_archive, source_ref=source.run["run_ref"])
+    calendar = _LazyArchivedCalendar(source)
     saved = {(item["kind"], item["ref"]): item["saved_id"] for item in source.context["resources"] if item["kind"] in KINDS}
     resources = [{**item, "saved_id": saved.get((item["kind"], item["ref"]))} for item in source.resource_cohort["resources"]]
-    available = {source.computation_key(row["candidate_ref"]): row["status"] == "completed" for row in source.rows}
-    available[source.computation_key("reference")] = source.baseline["state"] == "available"
     return ResourceWindowInput(
-        source.scope["range_start"], source.scope["range_end"], calendar, resources, available,
+        source.scope["range_start"], source.scope["range_end"], calendar, resources, source.arrangement_available("reference"),
         side_tasks=lambda key: source.resource_before_tasks if key == "reference" else source.resource_tasks(key),
         task_intervals=source.task_intervals, computation_key=source.computation_key)
 
@@ -82,14 +75,18 @@ class ResourceWindowMetrics:
         self.indexes, self._window_rows, self._summaries, self._groups = {}, {}, {}, {}
         self._calendars = {}
 
+    def _work_available(self, key):
+        """Every compared candidate has its saved tasks; only the reference side may have no arrangement source."""
+        return key != "reference" or self.inputs.reference_available
+
     def index(self, key):
         key = self.inputs.computation_key(key)
         if key not in self.indexes:
             if key not in self.tasks:
                 self.tasks[key] = self.inputs.side_tasks(key)
-            self.indexes[key] = ResourceTaskIndex(self.tasks[key], self.start, self.end, work_available=self.inputs.available[key],
-                                                 task_intervals=self.inputs.task_intervals(key),
-                                                 retain_statistics_values=False)
+            self.indexes[key] = ResourceTaskIndex(
+                self.tasks[key], self.start, self.end, work_available=self._work_available(key),
+                task_intervals=self.inputs.task_intervals(key), retain_statistics_values=False)
         return self.indexes[key]
 
     def resource(self, ref, kind):
@@ -140,39 +137,9 @@ class ResourceWindowMetrics:
 
     def metrics(self, key):
         key = self.inputs.computation_key(key)
-        result = {}
-        for kind in KINDS:
-            summary = self.summary(key, kind)
-            total = summary["resource_count"]
-            resources = [row for row in self.resources if row["kind"] == kind]
-            for field, _label, _unit, _precision, _improvement, _common in RESOURCE_METRICS:
-                value = summary[field]
-                missing_work = summary["unknown_workload_count"] > 0 or not self.index(key).work_available
-                empty = (total == 0 and not missing_work or field == "balance_cv" and summary["balance_state"] == "not_applicable"
-                         or field == "utilization_ratio" and summary["available_hours"] == 0 and not missing_work)
-                known_refs = [row["ref"] for row in resources
-                              if _metric_known(self._window_rows[key, row["ref"], DEFAULT_PRESSURE_THRESHOLD], field)]
-                unknown = total - len(known_refs)
-                state = "not_applicable" if empty else "complete" if value is not None else "partial" if known_refs else "unavailable"
-                if field == "balance_cv":
-                    state = summary["balance_state"]
-                issues = summary["issues"]
-                reason = (summary["balance_reason"] if field == "balance_cv" else
-                          {"code": "resource_evidence_incomplete", "message": "归档班表、任务时间或资源身份缺项，显示可核对的已知小计。"}
-                          if value is None and not empty else {"code": "zero_available_capacity", "message": "共同资源窗口内没有正容量，占用率不适用。"}
-                          if field == "utilization_ratio" and empty else None)
-                if field == "zero_capacity_task_count" and value is None and any(
-                    self._window_rows[key, row["ref"], DEFAULT_PRESSURE_THRESHOLD]["zero_capacity_reason"] is not None for row in resources):
-                    reason = {"code": "actual_work_fragments_not_recorded", "message": "零容量时段的安排跨度未提供实际工作片段，工作证据未知。"}
-                item = metric_value(value, total=total, unknown=unknown, subtotal=summary.get("known_" + field), state=state,
-                                    scope="fixed_resource_window", reason=reason, metric_version=RESOURCE_METRIC_VERSION)
-                item.update(covered_resource_refs=known_refs, resource_kind=kind, issues=issues,
-                            unknown_workload_count=summary["unknown_workload_count"])
-                if field == "utilization_ratio":
-                    item.update(numerator_hours=summary["numerator_hours"], denominator_hours=summary["denominator_hours"])
-                result[kind + "_" + field] = item
-        return result
-
+        summaries = {kind: self.summary(key, kind) for kind in KINDS}
+        w_rows = {row["ref"]: self._window_rows[key, row["ref"], DEFAULT_PRESSURE_THRESHOLD] for row in self.resources}
+        return build_resource_metrics_from_summaries(summaries, w_rows, self.resources, self._work_available(key))
 
 
 class DecisionResources(ResourceWindowMetrics):
@@ -181,31 +148,112 @@ class DecisionResources(ResourceWindowMetrics):
     def __init__(self, source):
         super().__init__(decision_window_input(source))
         self.source = source
+        self._seeded_cohorts = set()
+        self._seeded_details = set()
+        self._precomputed_metrics = {}
+        self._precomputed_day_filter_summaries = {}
+        self._precomputed_day_periods = {}
+
+    def _seed_cohort(self, key):
+        comp = self.inputs.computation_key(key)
+        if comp in self._seeded_cohorts:
+            return
+        self._seeded_cohorts.add(comp)
+        cohort = self.source.precomputed_resource_cohort(comp)
+        if cohort is None:
+            return
+        for kind in KINDS:
+            self._summaries[comp, kind, DEFAULT_PRESSURE_THRESHOLD] = cohort["summaries"][kind]
+        self._precomputed_metrics[comp] = cohort["metrics"]
+
+    def _seed_details(self, key):
+        comp = self.inputs.computation_key(key)
+        if comp in self._seeded_details:
+            return
+        self._seeded_details.add(comp)
+        details = self.source.precomputed_resource_details(comp)
+        if details is None:
+            return
+        for ref, row in details["window_rows"].items():
+            if ref in self._resource_by_ref:
+                row["label"] = self._resource_by_ref[ref]["label"]
+            self._window_rows[comp, ref, DEFAULT_PRESSURE_THRESHOLD] = row
+        for ref, d_summary in details["day_filter_summaries"].items():
+            self._precomputed_day_filter_summaries[comp, ref] = d_summary
+        for ref, periods in details["day_periods"].items():
+            if ref in self._resource_by_ref:
+                label = self._resource_by_ref[ref]["label"]
+                for period in periods:
+                    period["label"] = label
+            self._precomputed_day_periods[comp, ref] = periods
+
+    def prepare_keys(self, keys):
+        missing = []
+        for key in keys:
+            comp = self.inputs.computation_key(key)
+            self._seed_cohort(comp)
+            if comp not in self._precomputed_metrics:
+                missing.append(key)
+        if missing:
+            super().prepare_keys(missing)
+
+    def window_row(self, key, ref, threshold=DEFAULT_PRESSURE_THRESHOLD):
+        if threshold == DEFAULT_PRESSURE_THRESHOLD:
+            self._seed_details(key)
+        return super().window_row(key, ref, threshold)
+
+    def summary(self, key, kind, threshold=DEFAULT_PRESSURE_THRESHOLD):
+        if threshold == DEFAULT_PRESSURE_THRESHOLD:
+            self._seed_cohort(key)
+        return super().summary(key, kind, threshold)
+
+    def metrics(self, key):
+        comp = self.inputs.computation_key(key)
+        self._seed_cohort(comp)
+        if comp in self._precomputed_metrics:
+            return self._precomputed_metrics[comp]
+        return super().metrics(comp)
 
     def pair(self, resource, threshold):
         before, after = (self.window_row(key, resource["ref"], threshold) for key in ("reference", self.source.selected_ref))
-        return {"before": dict(before), "after": dict(after), "deltas": resource_deltas(before, after)}
+        return {"before": before, "after": after, "deltas": resource_deltas(before, after)}
 
-    def coverage(self, key, *, details=False):
+    def _coverage_sets(self, key):
         source = self.source
         members = source.official_members
         official = set(members["operation_refs"])
         arranged = official if key == "reference" and source.comparison_mode == "admission_official" else (
             source.scheduled_refs(key) if key != "reference" or source.reference_ref else set())
         values = official_scope_coverage(official, arranged)
-        admitted = set(source.scope["operation_refs"])
+        admitted = source.operation_refs
         deferred = source.deferred_refs if key != "reference" or source.comparison_mode == "candidates" else source.reference_deferred_refs & admitted
-        result = {"formal_state": members["identity"]["state"],
-                  "formal_operation_count": values["official_operation_count"],
-                  "covered_formal_operation_count": values["covered_official_operation_count"],
-                  "missing_formal_operation_refs": values["missing_official_operations"],
-                  "formal_coverage_complete": values["covers_official_scope"],
-                  "unplanned_operation_refs": sorted(admitted - arranged - deferred), "deferred_operation_refs": sorted(deferred)}
+        return members, values, admitted - arranged - deferred, deferred
+
+    def coverage_operation_refs(self, key):
+        _members, values, unplanned, deferred = self._coverage_sets(key)
+        return {
+            "missing_formal_operation_refs": values["missing_official_operations"],
+            "unplanned_operation_refs": sorted(unplanned),
+            "deferred_operation_refs": sorted(deferred),
+        }
+
+    def coverage(self, key, *, details=False):
+        members, values, unplanned, deferred = self._coverage_sets(key)
+        missing_refs = values["missing_official_operations"]
+        result = {
+            "formal_state": members["identity"]["state"],
+            "formal_operation_count": values["official_operation_count"],
+            "covered_formal_operation_count": values["covered_official_operation_count"],
+            "missing_formal_operation_count": len(missing_refs),
+            "formal_coverage_complete": values["covers_official_scope"],
+            "unplanned_operation_count": len(unplanned),
+            "deferred_operation_count": len(deferred),
+        }
         if details:
-            missing = set(values["missing_official_operations"])
-            result["missing_formal_arrangements"] = [{key: row[key] for key in (
+            missing = set(missing_refs)
+            result["missing_formal_arrangements"] = [{k: row[k] for k in (
                 "operation_ref", "row_ref", "batch_ref", "batch_label", "process_label", "start", "end")}
-                for row in source.official_tasks if row["operation_ref"] in missing] if missing else []
+                for row in self.source.official_tasks if row["operation_ref"] in missing] if missing else []
         return result
 
     def overview_coverage(self, key):
@@ -235,24 +283,11 @@ class DecisionResources(ResourceWindowMetrics):
             low, high = local_time(start or self.start), local_time(end or self.end)
         intervals = source.task_intervals(key)
         if tasks is None:
-            tasks = self.task_group(key)[resource["ref"]]
-            filtered = []
-            for row in tasks:
-                if row["start"] is None or row["end"] is None or not row["interval_comparable"]:
-                    filtered.append(row)
-                    continue
-                row_start, row_end = intervals[row["row_ref"]]
-                if row_start < high and row_end > low:
-                    filtered.append(row)
-            tasks = filtered
+            tasks = [row for row in self.task_group(key)[resource["ref"]]
+                     if intervals[row["row_ref"]][0] < high and intervals[row["row_ref"]][1] > low]
         value = drill_target(
-            source,
-            tasks=tasks,
-            batch_ref=None,
-            before=key == "reference",
-            window=(low.isoformat(), high.isoformat()),
-            window_bounds=(low, high),
-            task_intervals=intervals,
+            source, tasks=tasks, batch_ref=None, before=key == "reference",
+            window=(low.isoformat(), high.isoformat()), window_bounds=(low, high), task_intervals=intervals,
         )
         if value is None:
             return None
@@ -260,14 +295,13 @@ class DecisionResources(ResourceWindowMetrics):
         return value
 
     def rows(self, kind, threshold):
+        if threshold == DEFAULT_PRESSURE_THRESHOLD:
+            self._seed_details(self.source.selected_ref)
+            self._seed_details("reference")
         resources = [resource for resource in self.resources if resource["kind"] == kind]
         self._ensure_windows([self.source.selected_ref, "reference"], resources, threshold)
-        result = []
-        for resource in resources:
-            ref = resource["ref"]
-            row = {"resource_ref": ref, "resource_kind": kind, "label": resource["label"], **self.pair(resource, threshold)}
-            result.append(row)
-        return result
+        return [{"resource_ref": res["ref"], "resource_kind": kind, "label": res["label"], **self.pair(res, threshold)}
+                for res in resources]
 
     def period_facts(self, resource, *, threshold, grain="day", start=None, end=None):
         return self.index(self.source.selected_ref).period_facts(resource, self.resource_calendar(resource),
@@ -275,6 +309,14 @@ class DecisionResources(ResourceWindowMetrics):
 
     def filter_summary(self, resource, *, threshold, grain, start, end, daily_peak):
         if grain == "day" and start == self.start and end == self.end:
+            if threshold == DEFAULT_PRESSURE_THRESHOLD:
+                comp = self.inputs.computation_key(self.source.selected_ref)
+                self._seed_details(comp)
+                if (comp, resource["ref"]) in self._precomputed_day_filter_summaries:
+                    summary = self._precomputed_day_filter_summaries[comp, resource["ref"]]
+                    if summary is not None:
+                        return summary
+                    return _period_summary(self._precomputed_day_periods[comp, resource["ref"]], daily_peak)
             summary = self.index(self.source.selected_ref).day_filter_summary(
                 resource, self.resource_calendar(resource), threshold=threshold)
             if summary is not None:
@@ -283,12 +325,30 @@ class DecisionResources(ResourceWindowMetrics):
 
     def periods(self, resource, *, threshold, grain="day", start=None, end=None, details=False, group_keys=None):
         low, high = start or self.start, end or self.end
+        ref_comp = self.inputs.computation_key("reference")
+        sel_comp = self.inputs.computation_key(self.source.selected_ref)
+        if not details and threshold == DEFAULT_PRESSURE_THRESHOLD and grain == "day" and low == self.start and high == self.end:
+            self._seed_details(ref_comp)
+            self._seed_details(sel_comp)
+            res_ref = resource["ref"]
+            if (ref_comp, res_ref) in self._precomputed_day_periods and (sel_comp, res_ref) in self._precomputed_day_periods:
+                before = [
+                    row for row in self._precomputed_day_periods[ref_comp, res_ref]
+                    if group_keys is None or row["group_key"] in group_keys
+                ]
+                after = before if ref_comp == sel_comp else [
+                    row for row in self._precomputed_day_periods[sel_comp, res_ref]
+                    if group_keys is None or row["group_key"] in group_keys
+                ]
+                return [
+                    {**{key: selected[key] for key in ("key", "bucket_key", "group_key", "date", "grain", "start", "end", "placeholder")},
+                     "before": previous, "after": selected, "deltas": resource_deltas(previous, selected)}
+                    for previous, selected in zip(before, after)
+                ]
         calendar = self.resource_calendar(resource)
         before = self.index("reference").periods(resource, calendar, threshold=threshold, grain=grain, start=low, end=high,
                                                 details=details, group_keys=group_keys)
-        if self.source.computation_key("reference") == self.source.computation_key(self.source.selected_ref):
-            # Detailed sides receive separate drill locations written in place below,
-            # so each side owns its task/conflict dicts; plain cells are read-only.
+        if ref_comp == sel_comp:
             after = deepcopy(before) if details else before
         else:
             after = self.index(self.source.selected_ref).periods(resource, calendar, threshold=threshold, grain=grain, start=low, end=high,

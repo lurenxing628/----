@@ -1,5 +1,6 @@
 """CD-only real temporary SQLite, calendar, ledger, engine and API fixtures."""
 
+import logging
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -8,27 +9,24 @@ import pytest
 from flask import Blueprint, Flask, g
 
 from core.infrastructure.database import ensure_schema
-from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 from core.models.content import same
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.services.workbench.facts.system_journal import system_journal_directory
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from core.services.workbench.trial.service import WorkbenchTrialService
+from tests._support.sqlite_connection import open_test_connection
 from tests.workbench.run_jobs_support import JobCase, data_context
 from web.routes.workbench.trial import register_trial_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
+from web.runtime_host import install_wall_clock
 
 NOW = datetime(2026, 9, 10, 12)
 BASE = "/api/workbench/v1/trial"
 
 
 def connect(path, factory=sqlite3.Connection):
-    conn = sqlite3.connect(str(path), timeout=20, factory=factory)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys=ON")
-    register_schedule_time_sql_functions(conn)
-    return conn
+    return open_test_connection(path, timeout=20, factory=factory)
 
 
 def service(conn):
@@ -40,7 +38,7 @@ def service(conn):
 @pytest.fixture
 def trial_case(tmp_path):
     path = tmp_path / "trial.sqlite"
-    ensure_schema(str(path), schema_path=str(Path(__file__).resolve().parents[2] / "schema.sql"))
+    ensure_schema(str(path), logging.getLogger(__name__), schema_path=str(Path(__file__).resolve().parents[2] / "schema.sql"))
     conn = connect(path)
     # The saved plans in this fixture explicitly use the historical eight-hour shift.
     conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",
@@ -48,7 +46,8 @@ def trial_case(tmp_path):
     conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
     conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('P1','Original part')")
     for i in (1, 2, 3):
-        conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES (?,?, 'T1')", ("M" + str(i), "Lathe " + str(i)))
+        conn.execute("INSERT INTO Machines(machine_id,name) VALUES (?,?)", ("M" + str(i), "Lathe " + str(i)))
+        conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES (?,'T1')", ("M" + str(i),))
         conn.execute("INSERT INTO Operators(operator_id,name) VALUES (?,?)", ("O" + str(i), "Operator " + str(i)))
         conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES (?,?)", ("O" + str(i), "M" + str(i)))
     for key, value in default_snapshot_values().items():
@@ -57,9 +56,9 @@ def trial_case(tmp_path):
     case.path = path
     case.batch("B1")
     case.op_id = case.operation(setup_hours=0, unit_hours=1)
-    case.config(algo_mode="greedy", time_budget_seconds=60,
-                ortools_enabled="no", freeze_window_enabled="no")
+    case.config(algo_mode="greedy", time_budget_seconds=60, freeze_window_enabled="no")
     case.app = Flask("trial-tests")
+    install_wall_clock(case.app, datetime.now)
     case.app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"] = system_journal_directory(str(path))
     with case.app.app_context():
         yield case
@@ -73,7 +72,7 @@ def official(case, *, ids=None, start="2026-09-09T08:00:00", end="2026-09-09T11:
 
 def candidate(case):
     accepted = case.accept()
-    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
     assert result["state"] == "complete", result
     return {"base": {"candidate_ref": result["candidates"][0]["candidate_ref"]}}
 

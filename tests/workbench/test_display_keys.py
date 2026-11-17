@@ -5,16 +5,22 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from core.models.workbench_calibration import normalize_calibration_filters
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_master_overview import MasterOverviewScope
-from core.models.workbench_process_table_query import normalize_process_column_filters
+from core.models.workbench_process_table_query import ProcessTablePageRequest, normalize_process_column_filters
 from core.models.workbench_resource_table_query import normalize_column_filters
 from core.services.system import runtime_log_reader
+from core.services.workbench.calibration.table import facet_data
+from core.services.workbench.facts import table_index
 from core.services.workbench.facts.system_reads import _runtime_rows, backup_records
 from core.services.workbench.facts.table_cells import number_cell, relation_cell, text_cell
 from core.services.workbench.facts.table_index import ResourceTableIndex
 from core.services.workbench.master.overview import MasterOverviewReadScope
 from core.services.workbench.master.overview_graph import MasterOverviewGraph
+from core.services.workbench.process.table import ProcessTable, process_table_cells
 from core.services.workbench.system.maintenance_records import _event
 from core.shared.strict_json import canonical_json
 from tests._support.node_runtime_support import node_runtime
@@ -50,7 +56,7 @@ def test_exact_issue_and_cell_keys_filter_and_restore_the_same_business_values()
     graph.issue(entity, "hours.missing", "相关项", "关联不同", operation_ref=operation, related_ref="d" * 48)
     assert json.loads(issue["issue_ref"]) == [entity["key"], "hours.missing", operation, None, None]
     assert len(graph._issue_index) == 2 and all(isinstance(key, tuple) for key in graph._issue_index)
-    scope_view = MasterOverviewReadScope.from_graph(SimpleNamespace(available=lambda *_: True, gaps=[]), graph)
+    scope_view = MasterOverviewReadScope.from_graph(SimpleNamespace(gaps=[]), graph)
     master = scope_view.page(MasterOverviewScope())
 
     cell = text_cell("  e\u0301 \t A  ")
@@ -103,6 +109,37 @@ assert.equal(current.selected.entity_ref,ref); assert.equal(current.selected.iss
 const empty=MasterOverviewWorkspace.readContext({read_view:{...saved,selected:null}});
 assert.equal(empty.selected,null);
 """)
+
+
+def _part(ref, label, stage):
+    return {"ref": ref, "business_code": ref.upper(), "label": label, "fields": {"route_raw": None},
+            "workflow": {"stage": stage}, "relationships": {"operation_count": 1}}
+
+
+def test_process_and_calibration_facets_count_rows_passing_every_other_column_filter(monkeypatch):
+    entities = [_part("p1", "甲", "route"), _part("p2", "甲", "ready"), _part("p3", "乙", "route")]
+    cells = {entity["ref"]: process_table_cells(entity) for entity in entities}
+    query = ProcessTablePageRequest(column_filters={"label": {"mode": "include", "values": [cells["p1"]["label"].key]},
+                                                    "stage": {"mode": "include", "values": [cells["p1"]["stage"].key]}})
+    table = ProcessTable(entities)
+    # 本列的筛选不算：数“名称”时只套“阶段”筛选（p1、p3），数“阶段”时只套“名称”筛选（p1、p2）。
+    labels = table.facets(query, "label", "", 1, 100)
+    assert labels["row_count"] == 2 and [(row["label"], row["count"]) for row in labels["options"]] == [("乙", 1), ("甲", 1)]
+    stages = table.facets(query, "stage", "", 1, 100)
+    assert stages["row_count"] == 2 and [row["count"] for row in stages["options"]] == [1, 1]
+    assert table.facet_selection(query, "label", "")["keys"] == [cells["p3"]["label"].key, cells["p1"]["label"].key]
+    # 四张表共用一份筛选值信封：翻过头、全选超上限，文案和状态都一样。
+    with pytest.raises(WorkbenchCommandRejected) as stale:
+        table.facets(query, "label", "", 2, 100)
+    assert (stale.value.code, str(stale.value)) == ("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
+    monkeypatch.setattr(table_index, "MAX_FACET_KEYS", 1)
+    rows = [{"suggestion_ref": ref, "part_no": "P", "part_name": name, "sequence": 1, "operation_label": "车", "source": "unknown",
+             "old_unit_hours": None, "suggested_unit_hours": None, "sample_count": 0, "deviation_percent": None,
+             "status": "insufficient_data"} for ref, name in (("s1", "甲"), ("s2", "乙"))]
+    for selection in (table.facet_selection, lambda *_: facet_data(rows, "part_no", "", 1, 100, selection=True, cell_cache={})):
+        with pytest.raises(WorkbenchCommandRejected) as capped:
+            selection(query, "label", "")
+        assert (capped.value.code, capped.value.status) == ("capacity_exceeded", 413)
 
 
 def test_runtime_file_origins_distinguish_duplicates_and_survive_append_and_truncation(tmp_path, monkeypatch):

@@ -63,7 +63,7 @@ def catalog_facts(reader, plan_context, scope, *, bind_snapshot):
     identities = {}
     for kind, rows in collections:
         keys = {str(row[kind + "_id"]) for row in rows}
-        mapping = plan_context.active_map(kind, sorted(keys))
+        mapping = plan_context.active_map(kind, keys)
         if set(mapping) != keys:
             raise WorkbenchCommandRejected("identity_missing", "这张报表里有批次或资源的编号读不到，报表没有生成。请到资料总览核对后再打开。")
         identities[kind] = {key: {"ref": value.ref, "revision": value.revision} for key, value in mapping.items()}
@@ -128,8 +128,8 @@ def catalog_workspace(facts, page, *, as_of: datetime, include_sources: bool = F
             "provenance": provenance, "data_gaps": [gap]}
     if scope.kind == "utilization":
         data["scope"].update(metric_source=rep["metric_source"], metric_version=rep["metric_version"])
-    if rep and rep.get("report_degraded"):
-        data["data_gaps"].append("有一部分原始数据不可用，没有参与本表计算，请核对原始记录。")
+        if rep["report_degraded"]:
+            data["data_gaps"].append("有一部分原始数据不可用，没有参与本表计算，请核对原始记录。")
     return data, ordered, selected
 
 

@@ -7,20 +7,13 @@
         "delivery": {
           "batch_count": 1,
           "complete_batch_count": 1,
-          "complete_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
           "deferred_batch_count": 0,
-          "deferred_batch_refs": [],
           "delivery_state": "complete",
           "due_eligible_count": 1,
           "due_evaluation_count": 1,
           "excluded_due_count": 0,
           "incomplete_batch_count": 0,
           "invalid_due_count": 0,
-          "known_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
           "known_due_count": 1,
           "known_on_time_count": 1,
           "known_overdue_count": 0,
@@ -29,7 +22,6 @@
           "overdue_count": 0,
           "state": "complete",
           "total_tardiness_hours": 0.0,
-          "unknown_batch_refs": [],
           "unknown_count": 0,
           "unknown_due_count": 0
         },
@@ -54,7 +46,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "record"
         },
         "deferred_operation_count": {
           "known_count": 1,
@@ -65,7 +58,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operation"
         },
         "elapsed_seconds": {
           "known_count": 0,
@@ -80,7 +74,8 @@
           "state": "not_applicable",
           "total_count": 0,
           "unknown_count": 0,
-          "value": null
+          "value": null,
+          "member_unit": "record"
         },
         "expected_operation_count": {
           "known_count": 1,
@@ -91,7 +86,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 1
+          "value": 1,
+          "member_unit": "operation"
         },
         "machine_busy_hours_total": {
           "known_count": 1,
@@ -102,7 +98,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0.75
+          "value": 0.75,
+          "member_unit": "record"
         },
         "machine_used_count": {
           "known_count": 1,
@@ -113,7 +110,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 1
+          "value": 1,
+          "member_unit": "record"
         },
         "machine_util_avg": {
           "known_count": 1,
@@ -124,7 +122,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 1.0
+          "value": 1.0,
+          "member_unit": "record"
         },
         "makespan_hours": {
           "known_count": 1,
@@ -135,7 +134,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0.75
+          "value": 0.75,
+          "member_unit": "record"
         },
         "operator_busy_hours_total": {
           "known_count": 1,
@@ -146,7 +146,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0.75
+          "value": 0.75,
+          "member_unit": "record"
         },
         "operator_used_count": {
           "known_count": 1,
@@ -157,7 +158,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 1
+          "value": 1,
+          "member_unit": "record"
         },
         "operator_util_avg": {
           "known_count": 1,
@@ -168,12 +170,10 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 1.0
+          "value": 1.0,
+          "member_unit": "record"
         },
         "overdue_count": {
-          "covered_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
           "due_eligible_count": 1,
           "due_evaluation_count": 1,
           "excluded_due_count": 0,
@@ -186,7 +186,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "batch"
         },
         "scheduled_operation_count": {
           "known_count": 1,
@@ -197,12 +198,10 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 1
+          "value": 1,
+          "member_unit": "operation"
         },
         "total_tardiness_hours": {
-          "covered_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
           "due_eligible_count": 1,
           "due_evaluation_count": 1,
           "excluded_due_count": 0,
@@ -215,7 +214,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0.0
+          "value": 0.0,
+          "member_unit": "batch"
         },
         "unplanned_operation_count": {
           "known_count": 1,
@@ -226,12 +226,10 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operation"
         },
         "weighted_tardiness_hours": {
-          "covered_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
           "known_count": 1,
           "known_subtotal": 0.0,
           "metric_version": "decision-preparation-v4",
@@ -240,7 +238,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0.0
+          "value": 0.0,
+          "member_unit": "batch"
         }
       },
       "source_candidate_ref": null,
@@ -262,20 +261,13 @@
           "delivery": {
             "batch_count": 1,
             "complete_batch_count": 1,
-            "complete_batch_refs": [
-              "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-            ],
             "deferred_batch_count": 0,
-            "deferred_batch_refs": [],
             "delivery_state": "complete",
             "due_eligible_count": 1,
             "due_evaluation_count": 1,
             "excluded_due_count": 0,
             "incomplete_batch_count": 0,
             "invalid_due_count": 0,
-            "known_batch_refs": [
-              "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-            ],
             "known_due_count": 1,
             "known_on_time_count": 1,
             "known_overdue_count": 0,
@@ -284,7 +276,6 @@
             "overdue_count": 0,
             "state": "complete",
             "total_tardiness_hours": 0.0,
-            "unknown_batch_refs": [],
             "unknown_count": 0,
             "unknown_due_count": 0
           },
@@ -295,11 +286,6 @@
             "scheduled_count": 1,
             "skipped_count": 0,
             "state": "complete"
-          },
-          "search": {
-            "completed_count": 1,
-            "state": "complete",
-            "total_count": 1
           }
         },
         "deltas": {
@@ -416,98 +402,7 @@
             "value": 0.0
           }
         },
-        "evaluations": {
-          "min_changeover": {
-            "field_order": [
-              "failed_ops",
-              "changeover_count",
-              "overdue_count",
-              "total_tardiness_hours",
-              "weighted_tardiness_hours",
-              "makespan_hours"
-            ],
-            "score": [
-              0,
-              0.0,
-              0.0,
-              0.0,
-              0.0,
-              0.75
-            ],
-            "scoring_scope": {
-              "complete_batch_refs": [
-                "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-              ],
-              "components_known": true,
-              "is_complete": true,
-              "objective_scope": "all_batches",
-              "scheduled_operation_refs": [
-                "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-              ]
-            }
-          },
-          "min_overdue": {
-            "field_order": [
-              "failed_ops",
-              "overdue_count",
-              "weighted_tardiness_hours",
-              "total_tardiness_hours",
-              "makespan_hours",
-              "changeover_count"
-            ],
-            "score": [
-              0,
-              0.0,
-              0.0,
-              0.0,
-              0.75,
-              0.0
-            ],
-            "scoring_scope": {
-              "complete_batch_refs": [
-                "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-              ],
-              "components_known": true,
-              "is_complete": true,
-              "objective_scope": "all_batches",
-              "scheduled_operation_refs": [
-                "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-              ]
-            }
-          },
-          "min_tardiness": {
-            "field_order": [
-              "failed_ops",
-              "total_tardiness_hours",
-              "overdue_count",
-              "weighted_tardiness_hours",
-              "makespan_hours",
-              "changeover_count"
-            ],
-            "score": [
-              0,
-              0.0,
-              0.0,
-              0.0,
-              0.75,
-              0.0
-            ],
-            "scoring_scope": {
-              "complete_batch_refs": [
-                "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-              ],
-              "components_known": true,
-              "is_complete": true,
-              "objective_scope": "all_batches",
-              "scheduled_operation_refs": [
-                "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-              ]
-            }
-          }
-        },
         "first_found_elapsed_ms": 50,
-        "generation_policy_version": "unified_search_v1",
-        "kind": "business_objective",
         "label": "交期优先 · 拖期更轻 · 切换更少",
         "metrics": {
           "changeover_count": {
@@ -519,7 +414,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "record"
           },
           "deferred_operation_count": {
             "known_count": 1,
@@ -530,7 +426,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operation"
           },
           "elapsed_seconds": {
             "known_count": 0,
@@ -545,7 +442,8 @@
             "state": "not_applicable",
             "total_count": 0,
             "unknown_count": 0,
-            "value": null
+            "value": null,
+            "member_unit": "record"
           },
           "expected_operation_count": {
             "known_count": 1,
@@ -556,7 +454,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 1
+            "value": 1,
+            "member_unit": "operation"
           },
           "machine_busy_hours_total": {
             "known_count": 1,
@@ -567,7 +466,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0.75
+            "value": 0.75,
+            "member_unit": "record"
           },
           "machine_used_count": {
             "known_count": 1,
@@ -578,7 +478,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 1
+            "value": 1,
+            "member_unit": "record"
           },
           "machine_util_avg": {
             "known_count": 1,
@@ -589,7 +490,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 1.0
+            "value": 1.0,
+            "member_unit": "record"
           },
           "makespan_hours": {
             "known_count": 1,
@@ -600,7 +502,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0.75
+            "value": 0.75,
+            "member_unit": "record"
           },
           "operator_busy_hours_total": {
             "known_count": 1,
@@ -611,7 +514,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0.75
+            "value": 0.75,
+            "member_unit": "record"
           },
           "operator_used_count": {
             "known_count": 1,
@@ -622,7 +526,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 1
+            "value": 1,
+            "member_unit": "record"
           },
           "operator_util_avg": {
             "known_count": 1,
@@ -633,12 +538,10 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 1.0
+            "value": 1.0,
+            "member_unit": "record"
           },
           "overdue_count": {
-            "covered_batch_refs": [
-              "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-            ],
             "due_eligible_count": 1,
             "due_evaluation_count": 1,
             "excluded_due_count": 0,
@@ -651,7 +554,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "batch"
           },
           "scheduled_operation_count": {
             "known_count": 1,
@@ -662,12 +566,10 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 1
+            "value": 1,
+            "member_unit": "operation"
           },
           "total_tardiness_hours": {
-            "covered_batch_refs": [
-              "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-            ],
             "due_eligible_count": 1,
             "due_evaluation_count": 1,
             "excluded_due_count": 0,
@@ -680,7 +582,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0.0
+            "value": 0.0,
+            "member_unit": "batch"
           },
           "unplanned_operation_count": {
             "known_count": 1,
@@ -691,12 +594,10 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operation"
           },
           "weighted_tardiness_hours": {
-            "covered_batch_refs": [
-              "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-            ],
             "known_count": 1,
             "known_subtotal": 0.0,
             "metric_version": "decision-preparation-v4",
@@ -705,7 +606,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0.0
+            "value": 0.0,
+            "member_unit": "batch"
           }
         },
         "origin": {
@@ -720,7 +622,6 @@
           "source_event_ref": 1,
           "strategy": "priority_first"
         },
-        "persisted_status": "completed",
         "representative_objectives": [
           "min_overdue",
           "min_tardiness",
@@ -1500,7 +1401,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "deferred_setup_hours": {
                   "coverage_groups": [
@@ -1514,7 +1416,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "pending_processing_hours": {
                   "coverage_groups": [
@@ -1531,7 +1434,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "pending_setup_hours": {
                   "coverage_groups": [
@@ -1548,7 +1452,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "scheduled_processing_hours": {
                   "coverage_groups": [
@@ -1563,7 +1468,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "scheduled_setup_hours": {
                   "coverage_groups": [
@@ -1578,7 +1484,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "unplanned_processing_hours": {
                   "coverage_groups": [
@@ -1592,7 +1499,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "unplanned_setup_hours": {
                   "coverage_groups": [
@@ -1606,19 +1514,12 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 }
               },
               "operation_count": 0,
               "unplanned_operation_count": 0
-            },
-            "sample_batch_refs": {
-              "complete": [
-                "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-              ],
-              "deferred": [],
-              "incomplete": [],
-              "unknown": []
             },
             "scope": "full_admission",
             "source_available": true,
@@ -1633,11 +1534,6 @@
             "scheduled_count": 1,
             "skipped_count": 0,
             "state": "complete"
-          },
-          "search": {
-            "completed_count": 1,
-            "state": "complete",
-            "total_count": 1
           }
         },
         "preflight": {
@@ -1682,7 +1578,8 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             },
             "deferred_setup_hours": {
               "coverage_groups": [
@@ -1696,7 +1593,8 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             },
             "pending_processing_hours": {
               "coverage_groups": [
@@ -1713,7 +1611,8 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             },
             "pending_setup_hours": {
               "coverage_groups": [
@@ -1730,7 +1629,8 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             },
             "scheduled_processing_hours": {
               "coverage_groups": [
@@ -1745,7 +1645,8 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             },
             "scheduled_setup_hours": {
               "coverage_groups": [
@@ -1760,7 +1661,8 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             },
             "unplanned_processing_hours": {
               "coverage_groups": [
@@ -1774,7 +1676,8 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             },
             "unplanned_setup_hours": {
               "coverage_groups": [
@@ -1788,19 +1691,12 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             }
           },
           "operation_count": 0,
           "unplanned_operation_count": 0
-        },
-        "sample_batch_refs": {
-          "complete": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
-          "deferred": [],
-          "incomplete": [],
-          "unknown": []
         },
         "scope": "full_admission",
         "source_available": true,
@@ -3842,9 +3738,6 @@
           },
           "delay_delta_hours": 0.0,
           "overdue_delta_count": 0,
-          "sample_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
           "scope": "common_completed_batches",
           "state": "complete"
         },
@@ -3865,150 +3758,6 @@
       "reason_code": "primary_objective_best_found",
       "recommendation_type": "complete",
       "recommendation_version": "decision-recommendation-v1",
-      "selection_basis": {
-        "evidence_state": "complete",
-        "explanation": {
-          "entries": [
-            {
-              "key": "shared_objectives",
-              "label": "共同优化",
-              "scope": "shared_search",
-              "selected_value": null,
-              "source": "saved_selection",
-              "state": "complete",
-              "text": "多个业务方向共用一次求解和一份安排档案。",
-              "unit": null
-            },
-            {
-              "key": "score_failed_ops",
-              "label": "未安排工序",
-              "scope": "saved_scoring_scope",
-              "selected_value": 0,
-              "source": "saved_selection",
-              "state": "complete",
-              "text": "按计算时保存的完整指标顺序选择。",
-              "unit": "道"
-            },
-            {
-              "key": "score_overdue_count",
-              "label": "超期批次",
-              "scope": "saved_scoring_scope",
-              "selected_value": 0.0,
-              "source": "saved_selection",
-              "state": "complete",
-              "text": "按计算时保存的完整指标顺序选择。",
-              "unit": "批次"
-            },
-            {
-              "key": "score_weighted_tardiness_hours",
-              "label": "加权拖期",
-              "scope": "saved_scoring_scope",
-              "selected_value": 0.0,
-              "source": "saved_selection",
-              "state": "complete",
-              "text": "按计算时保存的完整指标顺序选择。",
-              "unit": "小时"
-            },
-            {
-              "key": "score_total_tardiness_hours",
-              "label": "总拖期",
-              "scope": "saved_scoring_scope",
-              "selected_value": 0.0,
-              "source": "saved_selection",
-              "state": "complete",
-              "text": "按计算时保存的完整指标顺序选择。",
-              "unit": "小时"
-            },
-            {
-              "key": "score_makespan_hours",
-              "label": "安排总时长",
-              "scope": "saved_scoring_scope",
-              "selected_value": 0.75,
-              "source": "saved_selection",
-              "state": "complete",
-              "text": "按计算时保存的完整指标顺序选择。",
-              "unit": "小时"
-            },
-            {
-              "key": "score_changeover_count",
-              "label": "换型次数",
-              "scope": "saved_scoring_scope",
-              "selected_value": 0.0,
-              "source": "saved_selection",
-              "state": "complete",
-              "text": "按计算时保存的完整指标顺序选择。",
-              "unit": "次"
-            }
-          ],
-          "headline": "按“最少超期”推荐本次找到的最佳完整方案。",
-          "issues": []
-        },
-        "generation_policy_version": "unified_search_v1",
-        "objective_field_order": {
-          "min_changeover": [
-            "failed_ops",
-            "changeover_count",
-            "overdue_count",
-            "total_tardiness_hours",
-            "weighted_tardiness_hours",
-            "makespan_hours"
-          ],
-          "min_overdue": [
-            "failed_ops",
-            "overdue_count",
-            "weighted_tardiness_hours",
-            "total_tardiness_hours",
-            "makespan_hours",
-            "changeover_count"
-          ],
-          "min_tardiness": [
-            "failed_ops",
-            "total_tardiness_hours",
-            "overdue_count",
-            "weighted_tardiness_hours",
-            "makespan_hours",
-            "changeover_count"
-          ]
-        },
-        "objective_winner_reasons": {
-          "min_changeover": null,
-          "min_overdue": null,
-          "min_tardiness": null
-        },
-        "objective_winners": {
-          "min_changeover": "c1aaada283ad6fda885226d47fd780d572f550be14e5db66",
-          "min_overdue": "c1aaada283ad6fda885226d47fd780d572f550be14e5db66",
-          "min_tardiness": "c1aaada283ad6fda885226d47fd780d572f550be14e5db66"
-        },
-        "primary_objective": "min_overdue",
-        "reason_code": "primary_objective_best_found",
-        "scoring_scope": {
-          "complete_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
-          "components_known": true,
-          "is_complete": true,
-          "objective_scope": "all_batches",
-          "scheduled_operation_refs": [
-            "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-          ]
-        },
-        "selected_candidate_ref": "c1aaada283ad6fda885226d47fd780d572f550be14e5db66",
-        "selected_score": [
-          0,
-          0.0,
-          0.0,
-          0.0,
-          0.75,
-          0.0
-        ],
-        "selection_policy_version": "business_objectives_v1",
-        "target_objectives": [
-          "min_overdue",
-          "min_tardiness",
-          "min_changeover"
-        ]
-      },
       "state": "available",
       "viewed_candidate_ref": "c1aaada283ad6fda885226d47fd780d572f550be14e5db66"
     },
@@ -4041,15 +3790,11 @@
       "state": "complete"
     },
     "scope": {
-      "batch_refs": [
-        "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-      ],
+      "batch_count": 1,
       "comparison_mode": "candidates",
       "delta_basis": "candidate_minus_reference",
       "metric_scope": "full_admission",
-      "operation_refs": [
-        "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-      ],
+      "operation_count": 1,
       "range_end": "2026-09-26T00:00:00",
       "range_start": "2026-09-09T00:00:00",
       "reference": {
@@ -4068,7 +3813,6 @@
       "resource_view": "selected_batches",
       "run_options": {
         "algo_mode": "greedy",
-        "generation_policy_version": "unified_search_v1",
         "graph_analysis_mode": "on",
         "primary_objective": "min_overdue",
         "target_objectives": [
@@ -4160,7 +3904,6 @@
         "headline": "按“最少超期”推荐本次找到的最佳完整方案。",
         "issues": []
       },
-      "generation_policy_version": "unified_search_v1",
       "objective_field_order": {
         "min_changeover": [
           "failed_ops",
@@ -4200,15 +3943,11 @@
       "primary_objective": "min_overdue",
       "reason_code": "primary_objective_best_found",
       "scoring_scope": {
-        "complete_batch_refs": [
-          "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-        ],
-        "components_known": true,
-        "is_complete": true,
+        "scheduled_operation_count": 1,
+        "complete_batch_count": 1,
         "objective_scope": "all_batches",
-        "scheduled_operation_refs": [
-          "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-        ]
+        "components_known": true,
+        "is_complete": true
       },
       "selected_candidate_ref": "c1aaada283ad6fda885226d47fd780d572f550be14e5db66",
       "selected_score": [
@@ -4219,7 +3958,6 @@
         0.75,
         0.0
       ],
-      "selection_policy_version": "business_objectives_v1",
       "target_objectives": [
         "min_overdue",
         "min_tardiness",
@@ -4687,15 +4425,11 @@
       },
       "run_ref": "7be8e83f5f0ac8888cd008a8d51be40c71a933d73588e69c",
       "scope": {
-        "batch_refs": [
-          "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-        ],
+        "batch_count": 1,
         "comparison_mode": "candidates",
         "delta_basis": "candidate_minus_reference",
         "metric_scope": "full_admission",
-        "operation_refs": [
-          "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-        ],
+        "operation_count": 1,
         "range_end": "2026-09-26T00:00:00",
         "range_start": "2026-09-09T00:00:00",
         "reference": {
@@ -4714,7 +4448,6 @@
         "resource_view": "selected_batches",
         "run_options": {
           "algo_mode": "greedy",
-          "generation_policy_version": "unified_search_v1",
           "graph_analysis_mode": "on",
           "primary_objective": "min_overdue",
           "target_objectives": [
@@ -4730,15 +4463,11 @@
       },
       "scopes": {
         "1": {
-          "complete_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
-          "components_known": true,
-          "is_complete": true,
+          "scheduled_operation_count": 1,
+          "complete_batch_count": 1,
           "objective_scope": "all_batches",
-          "scheduled_operation_refs": [
-            "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-          ]
+          "components_known": true,
+          "is_complete": true
         }
       },
       "selected_objective": {
@@ -4871,7 +4600,6 @@
         },
         "event_id": 2,
         "event_type": "archive_observation",
-        "evidence_updated": false,
         "execution_kind": "new_decision",
         "improved_objectives": [],
         "initialized_objectives": [
@@ -5378,15 +5106,11 @@
       },
       "run_ref": "7be8e83f5f0ac8888cd008a8d51be40c71a933d73588e69c",
       "scope": {
-        "batch_refs": [
-          "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-        ],
+        "batch_count": 1,
         "comparison_mode": "candidates",
         "delta_basis": "candidate_minus_reference",
         "metric_scope": "full_admission",
-        "operation_refs": [
-          "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-        ],
+        "operation_count": 1,
         "range_end": "2026-09-26T00:00:00",
         "range_start": "2026-09-09T00:00:00",
         "reference": {
@@ -5405,7 +5129,6 @@
         "resource_view": "selected_batches",
         "run_options": {
           "algo_mode": "greedy",
-          "generation_policy_version": "unified_search_v1",
           "graph_analysis_mode": "on",
           "primary_objective": "min_overdue",
           "target_objectives": [
@@ -5421,15 +5144,11 @@
       },
       "scopes": {
         "1": {
-          "complete_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
-          "components_known": true,
-          "is_complete": true,
+          "scheduled_operation_count": 1,
+          "complete_batch_count": 1,
           "objective_scope": "all_batches",
-          "scheduled_operation_refs": [
-            "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-          ]
+          "components_known": true,
+          "is_complete": true
         }
       },
       "selected_objective": {
@@ -5562,7 +5281,6 @@
         },
         "event_id": 2,
         "event_type": "archive_observation",
-        "evidence_updated": false,
         "execution_kind": "new_decision",
         "improved_objectives": [],
         "initialized_objectives": [
@@ -6035,15 +5753,11 @@
       },
       "run_ref": "7be8e83f5f0ac8888cd008a8d51be40c71a933d73588e69c",
       "scope": {
-        "batch_refs": [
-          "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-        ],
+        "batch_count": 1,
         "comparison_mode": "candidates",
         "delta_basis": "candidate_minus_reference",
         "metric_scope": "full_admission",
-        "operation_refs": [
-          "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-        ],
+        "operation_count": 1,
         "range_end": "2026-09-26T00:00:00",
         "range_start": "2026-09-09T00:00:00",
         "reference": {
@@ -6062,7 +5776,6 @@
         "resource_view": "selected_batches",
         "run_options": {
           "algo_mode": "greedy",
-          "generation_policy_version": "unified_search_v1",
           "graph_analysis_mode": "on",
           "primary_objective": "min_overdue",
           "target_objectives": [
@@ -6078,15 +5791,11 @@
       },
       "scopes": {
         "1": {
-          "complete_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
-          "components_known": true,
-          "is_complete": true,
+          "scheduled_operation_count": 1,
+          "complete_batch_count": 1,
           "objective_scope": "all_batches",
-          "scheduled_operation_refs": [
-            "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-          ]
+          "components_known": true,
+          "is_complete": true
         }
       },
       "selected_objective": {
@@ -6219,7 +5928,6 @@
         },
         "event_id": 2,
         "event_type": "archive_observation",
-        "evidence_updated": false,
         "execution_kind": "new_decision",
         "improved_objectives": [],
         "initialized_objectives": [
@@ -6258,20 +5966,13 @@
         "delivery": {
           "batch_count": 1,
           "complete_batch_count": 1,
-          "complete_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
           "deferred_batch_count": 0,
-          "deferred_batch_refs": [],
           "delivery_state": "complete",
           "due_eligible_count": 1,
           "due_evaluation_count": 1,
           "excluded_due_count": 0,
           "incomplete_batch_count": 0,
           "invalid_due_count": 0,
-          "known_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
           "known_due_count": 1,
           "known_on_time_count": 1,
           "known_overdue_count": 0,
@@ -6280,23 +5981,10 @@
           "overdue_count": 0,
           "state": "complete",
           "total_tardiness_hours": 0.0,
-          "unknown_batch_refs": [],
           "unknown_count": 0,
           "unknown_due_count": 0
         },
         "preparation": {
-          "allocation_groups": {
-            "completed": [],
-            "deferred": [],
-            "execution": [],
-            "external": [],
-            "new_schedule": [
-              "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-            ],
-            "retained": [],
-            "unknown": [],
-            "unplanned": []
-          },
           "role_totals": {
             "completed": {
               "count": 0,
@@ -6309,7 +5997,8 @@
                 "state": "not_applicable",
                 "total_count": 0,
                 "unknown_count": 0,
-                "value": 0
+                "value": 0,
+                "member_unit": "operation"
               },
               "required_standard_hours": {
                 "known_count": 0,
@@ -6320,7 +6009,8 @@
                 "state": "not_applicable",
                 "total_count": 0,
                 "unknown_count": 0,
-                "value": 0
+                "value": 0,
+                "member_unit": "operation"
               },
               "setup_standard_hours": {
                 "known_count": 0,
@@ -6331,7 +6021,8 @@
                 "state": "not_applicable",
                 "total_count": 0,
                 "unknown_count": 0,
-                "value": 0
+                "value": 0,
+                "member_unit": "operation"
               }
             },
             "execution": {
@@ -6345,7 +6036,8 @@
                 "state": "not_applicable",
                 "total_count": 0,
                 "unknown_count": 0,
-                "value": 0
+                "value": 0,
+                "member_unit": "operation"
               },
               "required_standard_hours": {
                 "known_count": 0,
@@ -6356,7 +6048,8 @@
                 "state": "not_applicable",
                 "total_count": 0,
                 "unknown_count": 0,
-                "value": 0
+                "value": 0,
+                "member_unit": "operation"
               },
               "setup_standard_hours": {
                 "known_count": 0,
@@ -6367,7 +6060,8 @@
                 "state": "not_applicable",
                 "total_count": 0,
                 "unknown_count": 0,
-                "value": 0
+                "value": 0,
+                "member_unit": "operation"
               }
             },
             "retained": {
@@ -6381,7 +6075,8 @@
                 "state": "not_applicable",
                 "total_count": 0,
                 "unknown_count": 0,
-                "value": 0
+                "value": 0,
+                "member_unit": "operation"
               },
               "required_standard_hours": {
                 "known_count": 0,
@@ -6392,7 +6087,8 @@
                 "state": "not_applicable",
                 "total_count": 0,
                 "unknown_count": 0,
-                "value": 0
+                "value": 0,
+                "member_unit": "operation"
               },
               "setup_standard_hours": {
                 "known_count": 0,
@@ -6403,7 +6099,8 @@
                 "state": "not_applicable",
                 "total_count": 0,
                 "unknown_count": 0,
-                "value": 0
+                "value": 0,
+                "member_unit": "operation"
               }
             }
           },
@@ -6412,12 +6109,12 @@
         "resources": {
           "formal": {
             "covered_formal_operation_count": 0,
-            "deferred_operation_refs": [],
+            "deferred_operation_count": 0,
             "formal_coverage_complete": true,
             "formal_operation_count": 0,
             "formal_state": "absent",
-            "missing_formal_operation_refs": [],
-            "unplanned_operation_refs": []
+            "missing_formal_operation_count": 0,
+            "unplanned_operation_count": 0
           },
           "machine": {
             "available_hours": 104.0,
@@ -6537,11 +6234,6 @@
           "scheduled_count": 1,
           "skipped_count": 0,
           "state": "complete"
-        },
-        "search": {
-          "completed_count": 1,
-          "state": "complete",
-          "total_count": 1
         }
       },
       "kind": "candidate",
@@ -6556,7 +6248,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operation"
         },
         "changed_operation_count": {
           "known_count": 1,
@@ -6567,7 +6260,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operation"
         },
         "changeover_count": {
           "known_count": 1,
@@ -6578,7 +6272,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "record"
         },
         "deferred_operation_count": {
           "known_count": 1,
@@ -6589,7 +6284,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operation"
         },
         "deferred_processing_hours": {
           "coverage_groups": [
@@ -6603,7 +6299,8 @@
           "state": "not_applicable",
           "total_count": 0,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operation"
         },
         "deferred_setup_hours": {
           "coverage_groups": [
@@ -6617,7 +6314,8 @@
           "state": "not_applicable",
           "total_count": 0,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operation"
         },
         "elapsed_seconds": {
           "known_count": 0,
@@ -6632,7 +6330,8 @@
           "state": "not_applicable",
           "total_count": 0,
           "unknown_count": 0,
-          "value": null
+          "value": null,
+          "member_unit": "record"
         },
         "expected_operation_count": {
           "known_count": 1,
@@ -6643,41 +6342,36 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 1
+          "value": 1,
+          "member_unit": "operation"
         },
         "machine_available_hours": {
-          "covered_resource_refs": [
-            "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 104.0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "machine",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 104.0
+          "value": 104.0,
+          "member_unit": "machine"
         },
         "machine_balance_cv": {
-          "covered_resource_refs": [
-            "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0.0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "machine",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0.0
+          "value": 0.0,
+          "member_unit": "machine"
         },
         "machine_busy_hours_total": {
           "known_count": 1,
@@ -6688,7 +6382,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0.75
+          "value": 0.75,
+          "member_unit": "record"
         },
         "machine_change_count": {
           "known_count": 1,
@@ -6699,126 +6394,106 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operation"
         },
         "machine_conflict_resource_count": {
-          "covered_resource_refs": [
-            "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "machine",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "machine"
         },
         "machine_high_pressure_count": {
-          "covered_resource_refs": [
-            "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "machine",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "machine"
         },
         "machine_occupied_hours": {
-          "covered_resource_refs": [
-            "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0.75,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "machine",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0.75
+          "value": 0.75,
+          "member_unit": "machine"
         },
         "machine_outside_calendar_hours": {
-          "covered_resource_refs": [
-            "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0.0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "machine",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0.0
+          "value": 0.0,
+          "member_unit": "machine"
         },
         "machine_overlap_hours": {
-          "covered_resource_refs": [
-            "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0.0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "machine",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0.0
+          "value": 0.0,
+          "member_unit": "machine"
         },
         "machine_summed_load_hours": {
-          "covered_resource_refs": [
-            "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0.75,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "machine",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0.75
+          "value": 0.75,
+          "member_unit": "machine"
         },
         "machine_unknown_day_resource_count": {
-          "covered_resource_refs": [
-            "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "machine",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "machine"
         },
         "machine_used_count": {
           "known_count": 1,
@@ -6829,24 +6504,22 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 1
+          "value": 1,
+          "member_unit": "record"
         },
         "machine_used_resource_count": {
-          "covered_resource_refs": [
-            "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 1,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "machine",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 1
+          "value": 1,
+          "member_unit": "machine"
         },
         "machine_util_avg": {
           "known_count": 1,
@@ -6857,12 +6530,10 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 1.0
+          "value": 1.0,
+          "member_unit": "record"
         },
         "machine_utilization_ratio": {
-          "covered_resource_refs": [
-            "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-          ],
           "denominator_hours": 104.0,
           "issues": [],
           "known_count": 1,
@@ -6870,30 +6541,27 @@
           "metric_version": "decision-resource-v4",
           "numerator_hours": 0.75,
           "reason": null,
-          "resource_kind": "machine",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0.007211538461538462
+          "value": 0.007211538461538462,
+          "member_unit": "machine"
         },
         "machine_zero_capacity_task_count": {
-          "covered_resource_refs": [
-            "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "machine",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "machine"
         },
         "makespan_hours": {
           "known_count": 1,
@@ -6904,41 +6572,36 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0.75
+          "value": 0.75,
+          "member_unit": "record"
         },
         "operator_available_hours": {
-          "covered_resource_refs": [
-            "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 104.0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "operator",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 104.0
+          "value": 104.0,
+          "member_unit": "operator"
         },
         "operator_balance_cv": {
-          "covered_resource_refs": [
-            "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0.0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "operator",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0.0
+          "value": 0.0,
+          "member_unit": "operator"
         },
         "operator_busy_hours_total": {
           "known_count": 1,
@@ -6949,126 +6612,106 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0.75
+          "value": 0.75,
+          "member_unit": "record"
         },
         "operator_conflict_resource_count": {
-          "covered_resource_refs": [
-            "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "operator",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operator"
         },
         "operator_high_pressure_count": {
-          "covered_resource_refs": [
-            "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "operator",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operator"
         },
         "operator_occupied_hours": {
-          "covered_resource_refs": [
-            "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0.75,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "operator",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0.75
+          "value": 0.75,
+          "member_unit": "operator"
         },
         "operator_outside_calendar_hours": {
-          "covered_resource_refs": [
-            "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0.0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "operator",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0.0
+          "value": 0.0,
+          "member_unit": "operator"
         },
         "operator_overlap_hours": {
-          "covered_resource_refs": [
-            "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0.0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "operator",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0.0
+          "value": 0.0,
+          "member_unit": "operator"
         },
         "operator_summed_load_hours": {
-          "covered_resource_refs": [
-            "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0.75,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "operator",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0.75
+          "value": 0.75,
+          "member_unit": "operator"
         },
         "operator_unknown_day_resource_count": {
-          "covered_resource_refs": [
-            "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "operator",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operator"
         },
         "operator_used_count": {
           "known_count": 1,
@@ -7079,24 +6722,22 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 1
+          "value": 1,
+          "member_unit": "record"
         },
         "operator_used_resource_count": {
-          "covered_resource_refs": [
-            "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 1,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "operator",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 1
+          "value": 1,
+          "member_unit": "operator"
         },
         "operator_util_avg": {
           "known_count": 1,
@@ -7107,12 +6748,10 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 1.0
+          "value": 1.0,
+          "member_unit": "record"
         },
         "operator_utilization_ratio": {
-          "covered_resource_refs": [
-            "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-          ],
           "denominator_hours": 104.0,
           "issues": [],
           "known_count": 1,
@@ -7120,35 +6759,29 @@
           "metric_version": "decision-resource-v4",
           "numerator_hours": 0.75,
           "reason": null,
-          "resource_kind": "operator",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0.007211538461538462
+          "value": 0.007211538461538462,
+          "member_unit": "operator"
         },
         "operator_zero_capacity_task_count": {
-          "covered_resource_refs": [
-            "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-          ],
           "issues": [],
           "known_count": 1,
           "known_subtotal": 0,
           "metric_version": "decision-resource-v4",
           "reason": null,
-          "resource_kind": "operator",
           "scope": "fixed_resource_window",
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
           "unknown_workload_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operator"
         },
         "overdue_count": {
-          "covered_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
           "due_eligible_count": 1,
           "due_evaluation_count": 1,
           "excluded_due_count": 0,
@@ -7161,7 +6794,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "batch"
         },
         "pending_processing_hours": {
           "coverage_groups": [
@@ -7178,7 +6812,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0.75
+          "value": 0.75,
+          "member_unit": "operation"
         },
         "pending_setup_hours": {
           "coverage_groups": [
@@ -7195,7 +6830,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0.0
+          "value": 0.0,
+          "member_unit": "operation"
         },
         "scheduled_operation_count": {
           "known_count": 1,
@@ -7206,7 +6842,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 1
+          "value": 1,
+          "member_unit": "operation"
         },
         "scheduled_processing_hours": {
           "coverage_groups": [
@@ -7221,7 +6858,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0.75
+          "value": 0.75,
+          "member_unit": "operation"
         },
         "scheduled_setup_hours": {
           "coverage_groups": [
@@ -7236,12 +6874,10 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0.0
+          "value": 0.0,
+          "member_unit": "operation"
         },
         "total_tardiness_hours": {
-          "covered_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
           "due_eligible_count": 1,
           "due_evaluation_count": 1,
           "excluded_due_count": 0,
@@ -7254,7 +6890,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0.0
+          "value": 0.0,
+          "member_unit": "batch"
         },
         "type_changeover_count": {
           "known_count": 1,
@@ -7265,7 +6902,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operation"
         },
         "unplanned_operation_count": {
           "known_count": 1,
@@ -7276,7 +6914,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operation"
         },
         "unplanned_processing_hours": {
           "coverage_groups": [
@@ -7290,7 +6929,8 @@
           "state": "not_applicable",
           "total_count": 0,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operation"
         },
         "unplanned_setup_hours": {
           "coverage_groups": [
@@ -7304,12 +6944,10 @@
           "state": "not_applicable",
           "total_count": 0,
           "unknown_count": 0,
-          "value": 0
+          "value": 0,
+          "member_unit": "operation"
         },
         "weighted_tardiness_hours": {
-          "covered_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
           "known_count": 1,
           "known_subtotal": 0.0,
           "metric_version": "decision-preparation-v4",
@@ -7318,7 +6956,8 @@
           "state": "complete",
           "total_count": 1,
           "unknown_count": 0,
-          "value": 0.0
+          "value": 0.0,
+          "member_unit": "batch"
         }
       },
       "source_candidate_ref": null,
@@ -7340,20 +6979,13 @@
           "delivery": {
             "batch_count": 1,
             "complete_batch_count": 1,
-            "complete_batch_refs": [
-              "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-            ],
             "deferred_batch_count": 0,
-            "deferred_batch_refs": [],
             "delivery_state": "complete",
             "due_eligible_count": 1,
             "due_evaluation_count": 1,
             "excluded_due_count": 0,
             "incomplete_batch_count": 0,
             "invalid_due_count": 0,
-            "known_batch_refs": [
-              "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-            ],
             "known_due_count": 1,
             "known_on_time_count": 1,
             "known_overdue_count": 0,
@@ -7362,23 +6994,10 @@
             "overdue_count": 0,
             "state": "complete",
             "total_tardiness_hours": 0.0,
-            "unknown_batch_refs": [],
             "unknown_count": 0,
             "unknown_due_count": 0
           },
           "preparation": {
-            "allocation_groups": {
-              "completed": [],
-              "deferred": [],
-              "execution": [],
-              "external": [],
-              "new_schedule": [
-                "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-              ],
-              "retained": [],
-              "unknown": [],
-              "unplanned": []
-            },
             "role_totals": {
               "completed": {
                 "count": 0,
@@ -7391,7 +7010,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "required_standard_hours": {
                   "known_count": 0,
@@ -7402,7 +7022,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "setup_standard_hours": {
                   "known_count": 0,
@@ -7413,7 +7034,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 }
               },
               "execution": {
@@ -7427,7 +7049,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "required_standard_hours": {
                   "known_count": 0,
@@ -7438,7 +7061,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "setup_standard_hours": {
                   "known_count": 0,
@@ -7449,7 +7073,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 }
               },
               "retained": {
@@ -7463,7 +7088,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "required_standard_hours": {
                   "known_count": 0,
@@ -7474,7 +7100,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "setup_standard_hours": {
                   "known_count": 0,
@@ -7485,7 +7112,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 }
               }
             },
@@ -7494,12 +7122,12 @@
           "resources": {
             "formal": {
               "covered_formal_operation_count": 0,
-              "deferred_operation_refs": [],
+              "deferred_operation_count": 0,
               "formal_coverage_complete": true,
               "formal_operation_count": 0,
               "formal_state": "absent",
-              "missing_formal_operation_refs": [],
-              "unplanned_operation_refs": []
+              "missing_formal_operation_count": 0,
+              "unplanned_operation_count": 0
             },
             "machine": {
               "available_hours": 104.0,
@@ -7619,11 +7247,6 @@
             "scheduled_count": 1,
             "skipped_count": 0,
             "state": "complete"
-          },
-          "search": {
-            "completed_count": 1,
-            "state": "complete",
-            "total_count": 1
           }
         },
         "deltas": {
@@ -8011,15 +7634,11 @@
               0.75
             ],
             "scoring_scope": {
-              "complete_batch_refs": [
-                "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-              ],
-              "components_known": true,
-              "is_complete": true,
+              "scheduled_operation_count": 1,
+              "complete_batch_count": 1,
               "objective_scope": "all_batches",
-              "scheduled_operation_refs": [
-                "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-              ]
+              "components_known": true,
+              "is_complete": true
             }
           },
           "min_overdue": {
@@ -8040,15 +7659,11 @@
               0.0
             ],
             "scoring_scope": {
-              "complete_batch_refs": [
-                "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-              ],
-              "components_known": true,
-              "is_complete": true,
+              "scheduled_operation_count": 1,
+              "complete_batch_count": 1,
               "objective_scope": "all_batches",
-              "scheduled_operation_refs": [
-                "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-              ]
+              "components_known": true,
+              "is_complete": true
             }
           },
           "min_tardiness": {
@@ -8069,21 +7684,15 @@
               0.0
             ],
             "scoring_scope": {
-              "complete_batch_refs": [
-                "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-              ],
-              "components_known": true,
-              "is_complete": true,
+              "scheduled_operation_count": 1,
+              "complete_batch_count": 1,
               "objective_scope": "all_batches",
-              "scheduled_operation_refs": [
-                "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-              ]
+              "components_known": true,
+              "is_complete": true
             }
           }
         },
         "first_found_elapsed_ms": 50,
-        "generation_policy_version": "unified_search_v1",
-        "kind": "business_objective",
         "label": "交期优先 · 拖期更轻 · 切换更少",
         "metrics": {
           "changed_machine_count": {
@@ -8095,7 +7704,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operation"
           },
           "changed_operation_count": {
             "known_count": 1,
@@ -8106,7 +7716,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operation"
           },
           "changeover_count": {
             "known_count": 1,
@@ -8117,7 +7728,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "record"
           },
           "deferred_operation_count": {
             "known_count": 1,
@@ -8128,7 +7740,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operation"
           },
           "deferred_processing_hours": {
             "coverage_groups": [
@@ -8142,7 +7755,8 @@
             "state": "not_applicable",
             "total_count": 0,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operation"
           },
           "deferred_setup_hours": {
             "coverage_groups": [
@@ -8156,7 +7770,8 @@
             "state": "not_applicable",
             "total_count": 0,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operation"
           },
           "elapsed_seconds": {
             "known_count": 0,
@@ -8171,7 +7786,8 @@
             "state": "not_applicable",
             "total_count": 0,
             "unknown_count": 0,
-            "value": null
+            "value": null,
+            "member_unit": "record"
           },
           "expected_operation_count": {
             "known_count": 1,
@@ -8182,41 +7798,36 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 1
+            "value": 1,
+            "member_unit": "operation"
           },
           "machine_available_hours": {
-            "covered_resource_refs": [
-              "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 104.0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "machine",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 104.0
+            "value": 104.0,
+            "member_unit": "machine"
           },
           "machine_balance_cv": {
-            "covered_resource_refs": [
-              "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0.0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "machine",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0.0
+            "value": 0.0,
+            "member_unit": "machine"
           },
           "machine_busy_hours_total": {
             "known_count": 1,
@@ -8227,7 +7838,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0.75
+            "value": 0.75,
+            "member_unit": "record"
           },
           "machine_change_count": {
             "known_count": 1,
@@ -8238,126 +7850,106 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operation"
           },
           "machine_conflict_resource_count": {
-            "covered_resource_refs": [
-              "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "machine",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "machine"
           },
           "machine_high_pressure_count": {
-            "covered_resource_refs": [
-              "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "machine",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "machine"
           },
           "machine_occupied_hours": {
-            "covered_resource_refs": [
-              "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0.75,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "machine",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0.75
+            "value": 0.75,
+            "member_unit": "machine"
           },
           "machine_outside_calendar_hours": {
-            "covered_resource_refs": [
-              "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0.0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "machine",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0.0
+            "value": 0.0,
+            "member_unit": "machine"
           },
           "machine_overlap_hours": {
-            "covered_resource_refs": [
-              "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0.0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "machine",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0.0
+            "value": 0.0,
+            "member_unit": "machine"
           },
           "machine_summed_load_hours": {
-            "covered_resource_refs": [
-              "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0.75,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "machine",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0.75
+            "value": 0.75,
+            "member_unit": "machine"
           },
           "machine_unknown_day_resource_count": {
-            "covered_resource_refs": [
-              "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "machine",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "machine"
           },
           "machine_used_count": {
             "known_count": 1,
@@ -8368,24 +7960,22 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 1
+            "value": 1,
+            "member_unit": "record"
           },
           "machine_used_resource_count": {
-            "covered_resource_refs": [
-              "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 1,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "machine",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 1
+            "value": 1,
+            "member_unit": "machine"
           },
           "machine_util_avg": {
             "known_count": 1,
@@ -8396,12 +7986,10 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 1.0
+            "value": 1.0,
+            "member_unit": "record"
           },
           "machine_utilization_ratio": {
-            "covered_resource_refs": [
-              "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-            ],
             "denominator_hours": 104.0,
             "issues": [],
             "known_count": 1,
@@ -8409,30 +7997,27 @@
             "metric_version": "decision-resource-v4",
             "numerator_hours": 0.75,
             "reason": null,
-            "resource_kind": "machine",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0.007211538461538462
+            "value": 0.007211538461538462,
+            "member_unit": "machine"
           },
           "machine_zero_capacity_task_count": {
-            "covered_resource_refs": [
-              "4eb7fe95991242e801b603a466f1d9b5a4964dce99b01afc"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "machine",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "machine"
           },
           "makespan_hours": {
             "known_count": 1,
@@ -8443,41 +8028,36 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0.75
+            "value": 0.75,
+            "member_unit": "record"
           },
           "operator_available_hours": {
-            "covered_resource_refs": [
-              "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 104.0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "operator",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 104.0
+            "value": 104.0,
+            "member_unit": "operator"
           },
           "operator_balance_cv": {
-            "covered_resource_refs": [
-              "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0.0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "operator",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0.0
+            "value": 0.0,
+            "member_unit": "operator"
           },
           "operator_busy_hours_total": {
             "known_count": 1,
@@ -8488,126 +8068,106 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0.75
+            "value": 0.75,
+            "member_unit": "record"
           },
           "operator_conflict_resource_count": {
-            "covered_resource_refs": [
-              "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "operator",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operator"
           },
           "operator_high_pressure_count": {
-            "covered_resource_refs": [
-              "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "operator",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operator"
           },
           "operator_occupied_hours": {
-            "covered_resource_refs": [
-              "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0.75,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "operator",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0.75
+            "value": 0.75,
+            "member_unit": "operator"
           },
           "operator_outside_calendar_hours": {
-            "covered_resource_refs": [
-              "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0.0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "operator",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0.0
+            "value": 0.0,
+            "member_unit": "operator"
           },
           "operator_overlap_hours": {
-            "covered_resource_refs": [
-              "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0.0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "operator",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0.0
+            "value": 0.0,
+            "member_unit": "operator"
           },
           "operator_summed_load_hours": {
-            "covered_resource_refs": [
-              "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0.75,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "operator",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0.75
+            "value": 0.75,
+            "member_unit": "operator"
           },
           "operator_unknown_day_resource_count": {
-            "covered_resource_refs": [
-              "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "operator",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operator"
           },
           "operator_used_count": {
             "known_count": 1,
@@ -8618,24 +8178,22 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 1
+            "value": 1,
+            "member_unit": "record"
           },
           "operator_used_resource_count": {
-            "covered_resource_refs": [
-              "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 1,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "operator",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 1
+            "value": 1,
+            "member_unit": "operator"
           },
           "operator_util_avg": {
             "known_count": 1,
@@ -8646,12 +8204,10 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 1.0
+            "value": 1.0,
+            "member_unit": "record"
           },
           "operator_utilization_ratio": {
-            "covered_resource_refs": [
-              "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-            ],
             "denominator_hours": 104.0,
             "issues": [],
             "known_count": 1,
@@ -8659,35 +8215,29 @@
             "metric_version": "decision-resource-v4",
             "numerator_hours": 0.75,
             "reason": null,
-            "resource_kind": "operator",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0.007211538461538462
+            "value": 0.007211538461538462,
+            "member_unit": "operator"
           },
           "operator_zero_capacity_task_count": {
-            "covered_resource_refs": [
-              "54192e34d293fa41ed525ace6142e69ddad0ba94bc24028d"
-            ],
             "issues": [],
             "known_count": 1,
             "known_subtotal": 0,
             "metric_version": "decision-resource-v4",
             "reason": null,
-            "resource_kind": "operator",
             "scope": "fixed_resource_window",
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
             "unknown_workload_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operator"
           },
           "overdue_count": {
-            "covered_batch_refs": [
-              "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-            ],
             "due_eligible_count": 1,
             "due_evaluation_count": 1,
             "excluded_due_count": 0,
@@ -8700,7 +8250,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "batch"
           },
           "pending_processing_hours": {
             "coverage_groups": [
@@ -8717,7 +8268,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0.75
+            "value": 0.75,
+            "member_unit": "operation"
           },
           "pending_setup_hours": {
             "coverage_groups": [
@@ -8734,7 +8286,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0.0
+            "value": 0.0,
+            "member_unit": "operation"
           },
           "scheduled_operation_count": {
             "known_count": 1,
@@ -8745,7 +8298,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 1
+            "value": 1,
+            "member_unit": "operation"
           },
           "scheduled_processing_hours": {
             "coverage_groups": [
@@ -8760,7 +8314,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0.75
+            "value": 0.75,
+            "member_unit": "operation"
           },
           "scheduled_setup_hours": {
             "coverage_groups": [
@@ -8775,12 +8330,10 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0.0
+            "value": 0.0,
+            "member_unit": "operation"
           },
           "total_tardiness_hours": {
-            "covered_batch_refs": [
-              "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-            ],
             "due_eligible_count": 1,
             "due_evaluation_count": 1,
             "excluded_due_count": 0,
@@ -8793,7 +8346,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0.0
+            "value": 0.0,
+            "member_unit": "batch"
           },
           "type_changeover_count": {
             "known_count": 1,
@@ -8804,7 +8358,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operation"
           },
           "unplanned_operation_count": {
             "known_count": 1,
@@ -8815,7 +8370,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operation"
           },
           "unplanned_processing_hours": {
             "coverage_groups": [
@@ -8829,7 +8385,8 @@
             "state": "not_applicable",
             "total_count": 0,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operation"
           },
           "unplanned_setup_hours": {
             "coverage_groups": [
@@ -8843,12 +8400,10 @@
             "state": "not_applicable",
             "total_count": 0,
             "unknown_count": 0,
-            "value": 0
+            "value": 0,
+            "member_unit": "operation"
           },
           "weighted_tardiness_hours": {
-            "covered_batch_refs": [
-              "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-            ],
             "known_count": 1,
             "known_subtotal": 0.0,
             "metric_version": "decision-preparation-v4",
@@ -8857,7 +8412,8 @@
             "state": "complete",
             "total_count": 1,
             "unknown_count": 0,
-            "value": 0.0
+            "value": 0.0,
+            "member_unit": "batch"
           }
         },
         "origin": {
@@ -8872,7 +8428,6 @@
           "source_event_ref": 1,
           "strategy": "priority_first"
         },
-        "persisted_status": "completed",
         "representative_objectives": [
           "min_overdue",
           "min_tardiness",
@@ -8894,19 +8449,6 @@
     ],
     "capture_ref": "7be8e83f5f0ac8888cd008a8d51be40c71a933d73588e69c",
     "catalog_complete": true,
-    "completion_groups": [
-      {
-        "candidate_refs": [
-          "c1aaada283ad6fda885226d47fd780d572f550be14e5db66"
-        ],
-        "complete_batch_count": 1,
-        "group_index": 1,
-        "sample_complete_batch_refs": [
-          "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-        ],
-        "source_available": true
-      }
-    ],
     "difference_summary": {
       "items": [
         {
@@ -9665,7 +9207,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "deferred_setup_hours": {
                   "coverage_groups": [
@@ -9679,7 +9222,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "pending_processing_hours": {
                   "coverage_groups": [
@@ -9696,7 +9240,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "pending_setup_hours": {
                   "coverage_groups": [
@@ -9713,7 +9258,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "scheduled_processing_hours": {
                   "coverage_groups": [
@@ -9728,7 +9274,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "scheduled_setup_hours": {
                   "coverage_groups": [
@@ -9743,7 +9290,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "unplanned_processing_hours": {
                   "coverage_groups": [
@@ -9757,7 +9305,8 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 },
                 "unplanned_setup_hours": {
                   "coverage_groups": [
@@ -9771,19 +9320,12 @@
                   "state": "not_applicable",
                   "total_count": 0,
                   "unknown_count": 0,
-                  "value": 0
+                  "value": 0,
+                  "member_unit": "operation"
                 }
               },
               "operation_count": 0,
               "unplanned_operation_count": 0
-            },
-            "sample_batch_refs": {
-              "complete": [
-                "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-              ],
-              "deferred": [],
-              "incomplete": [],
-              "unknown": []
             },
             "scope": "full_admission",
             "source_available": true,
@@ -9798,11 +9340,6 @@
             "scheduled_count": 1,
             "skipped_count": 0,
             "state": "complete"
-          },
-          "search": {
-            "completed_count": 1,
-            "state": "complete",
-            "total_count": 1
           }
         },
         "preflight": {
@@ -9847,7 +9384,8 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             },
             "deferred_setup_hours": {
               "coverage_groups": [
@@ -9861,7 +9399,8 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             },
             "pending_processing_hours": {
               "coverage_groups": [
@@ -9878,7 +9417,8 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             },
             "pending_setup_hours": {
               "coverage_groups": [
@@ -9895,7 +9435,8 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             },
             "scheduled_processing_hours": {
               "coverage_groups": [
@@ -9910,7 +9451,8 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             },
             "scheduled_setup_hours": {
               "coverage_groups": [
@@ -9925,7 +9467,8 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             },
             "unplanned_processing_hours": {
               "coverage_groups": [
@@ -9939,7 +9482,8 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             },
             "unplanned_setup_hours": {
               "coverage_groups": [
@@ -9953,19 +9497,12 @@
               "state": "not_applicable",
               "total_count": 0,
               "unknown_count": 0,
-              "value": 0
+              "value": 0,
+              "member_unit": "operation"
             }
           },
           "operation_count": 0,
           "unplanned_operation_count": 0
-        },
-        "sample_batch_refs": {
-          "complete": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
-          "deferred": [],
-          "incomplete": [],
-          "unknown": []
         },
         "scope": "full_admission",
         "source_available": true,
@@ -12007,9 +11544,6 @@
           },
           "delay_delta_hours": 0.0,
           "overdue_delta_count": 0,
-          "sample_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
           "scope": "common_completed_batches",
           "state": "complete"
         },
@@ -12030,150 +11564,6 @@
       "reason_code": "primary_objective_best_found",
       "recommendation_type": "complete",
       "recommendation_version": "decision-recommendation-v1",
-      "selection_basis": {
-        "evidence_state": "complete",
-        "explanation": {
-          "entries": [
-            {
-              "key": "shared_objectives",
-              "label": "共同优化",
-              "scope": "shared_search",
-              "selected_value": null,
-              "source": "saved_selection",
-              "state": "complete",
-              "text": "多个业务方向共用一次求解和一份安排档案。",
-              "unit": null
-            },
-            {
-              "key": "score_failed_ops",
-              "label": "未安排工序",
-              "scope": "saved_scoring_scope",
-              "selected_value": 0,
-              "source": "saved_selection",
-              "state": "complete",
-              "text": "按计算时保存的完整指标顺序选择。",
-              "unit": "道"
-            },
-            {
-              "key": "score_overdue_count",
-              "label": "超期批次",
-              "scope": "saved_scoring_scope",
-              "selected_value": 0.0,
-              "source": "saved_selection",
-              "state": "complete",
-              "text": "按计算时保存的完整指标顺序选择。",
-              "unit": "批次"
-            },
-            {
-              "key": "score_weighted_tardiness_hours",
-              "label": "加权拖期",
-              "scope": "saved_scoring_scope",
-              "selected_value": 0.0,
-              "source": "saved_selection",
-              "state": "complete",
-              "text": "按计算时保存的完整指标顺序选择。",
-              "unit": "小时"
-            },
-            {
-              "key": "score_total_tardiness_hours",
-              "label": "总拖期",
-              "scope": "saved_scoring_scope",
-              "selected_value": 0.0,
-              "source": "saved_selection",
-              "state": "complete",
-              "text": "按计算时保存的完整指标顺序选择。",
-              "unit": "小时"
-            },
-            {
-              "key": "score_makespan_hours",
-              "label": "安排总时长",
-              "scope": "saved_scoring_scope",
-              "selected_value": 0.75,
-              "source": "saved_selection",
-              "state": "complete",
-              "text": "按计算时保存的完整指标顺序选择。",
-              "unit": "小时"
-            },
-            {
-              "key": "score_changeover_count",
-              "label": "换型次数",
-              "scope": "saved_scoring_scope",
-              "selected_value": 0.0,
-              "source": "saved_selection",
-              "state": "complete",
-              "text": "按计算时保存的完整指标顺序选择。",
-              "unit": "次"
-            }
-          ],
-          "headline": "按“最少超期”推荐本次找到的最佳完整方案。",
-          "issues": []
-        },
-        "generation_policy_version": "unified_search_v1",
-        "objective_field_order": {
-          "min_changeover": [
-            "failed_ops",
-            "changeover_count",
-            "overdue_count",
-            "total_tardiness_hours",
-            "weighted_tardiness_hours",
-            "makespan_hours"
-          ],
-          "min_overdue": [
-            "failed_ops",
-            "overdue_count",
-            "weighted_tardiness_hours",
-            "total_tardiness_hours",
-            "makespan_hours",
-            "changeover_count"
-          ],
-          "min_tardiness": [
-            "failed_ops",
-            "total_tardiness_hours",
-            "overdue_count",
-            "weighted_tardiness_hours",
-            "makespan_hours",
-            "changeover_count"
-          ]
-        },
-        "objective_winner_reasons": {
-          "min_changeover": null,
-          "min_overdue": null,
-          "min_tardiness": null
-        },
-        "objective_winners": {
-          "min_changeover": "c1aaada283ad6fda885226d47fd780d572f550be14e5db66",
-          "min_overdue": "c1aaada283ad6fda885226d47fd780d572f550be14e5db66",
-          "min_tardiness": "c1aaada283ad6fda885226d47fd780d572f550be14e5db66"
-        },
-        "primary_objective": "min_overdue",
-        "reason_code": "primary_objective_best_found",
-        "scoring_scope": {
-          "complete_batch_refs": [
-            "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-          ],
-          "components_known": true,
-          "is_complete": true,
-          "objective_scope": "all_batches",
-          "scheduled_operation_refs": [
-            "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-          ]
-        },
-        "selected_candidate_ref": "c1aaada283ad6fda885226d47fd780d572f550be14e5db66",
-        "selected_score": [
-          0,
-          0.0,
-          0.0,
-          0.0,
-          0.75,
-          0.0
-        ],
-        "selection_policy_version": "business_objectives_v1",
-        "target_objectives": [
-          "min_overdue",
-          "min_tardiness",
-          "min_changeover"
-        ]
-      },
       "state": "available",
       "viewed_candidate_ref": "c1aaada283ad6fda885226d47fd780d572f550be14e5db66"
     },
@@ -12206,15 +11596,11 @@
       "state": "complete"
     },
     "scope": {
-      "batch_refs": [
-        "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-      ],
+      "batch_count": 1,
       "comparison_mode": "candidates",
       "delta_basis": "candidate_minus_reference",
       "metric_scope": "full_admission",
-      "operation_refs": [
-        "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-      ],
+      "operation_count": 1,
       "range_end": "2026-09-26T00:00:00",
       "range_start": "2026-09-09T00:00:00",
       "reference": {
@@ -12233,7 +11619,6 @@
       "resource_view": "selected_batches",
       "run_options": {
         "algo_mode": "greedy",
-        "generation_policy_version": "unified_search_v1",
         "graph_analysis_mode": "on",
         "primary_objective": "min_overdue",
         "target_objectives": [
@@ -12325,7 +11710,6 @@
         "headline": "按“最少超期”推荐本次找到的最佳完整方案。",
         "issues": []
       },
-      "generation_policy_version": "unified_search_v1",
       "objective_field_order": {
         "min_changeover": [
           "failed_ops",
@@ -12365,15 +11749,11 @@
       "primary_objective": "min_overdue",
       "reason_code": "primary_objective_best_found",
       "scoring_scope": {
-        "complete_batch_refs": [
-          "c5723dbbb51a2eb1dfcdb4662d16e93170b190e3a37740a2"
-        ],
-        "components_known": true,
-        "is_complete": true,
+        "scheduled_operation_count": 1,
+        "complete_batch_count": 1,
         "objective_scope": "all_batches",
-        "scheduled_operation_refs": [
-          "7089ee9ba1c29546d979c2ea927bce17345d36254efae69f"
-        ]
+        "components_known": true,
+        "is_complete": true
       },
       "selected_candidate_ref": "c1aaada283ad6fda885226d47fd780d572f550be14e5db66",
       "selected_score": [
@@ -12384,7 +11764,6 @@
         0.75,
         0.0
       ],
-      "selection_policy_version": "business_objectives_v1",
       "target_objectives": [
         "min_overdue",
         "min_tardiness",

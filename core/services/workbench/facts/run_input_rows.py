@@ -4,20 +4,18 @@ from collections import defaultdict
 from dataclasses import fields, replace
 from typing import NoReturn
 
-from core.algorithm_contracts.value_domains import INTERNAL, OPERATION_SOURCES
+from core.algorithm_contracts.value_domains import INTERNAL
 from core.models.batch import Batch
 from core.models.batch_operation import BatchOperation
 from core.models.workbench_preflight import issue
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.shared.stored_dates import stored_date
-from core.shared.strict_parse import is_stored_number
+from core.shared.strict_parse import is_exact_positive_int, is_stored_number
 
 from .preflight_dependencies import link_predecessors
 
-_BATCH_STATES = {"pending", "scheduled", "processing", "completed", "cancelled"}
-_NO_RELEASE_CODES = {"operation_skipped", "batch_closed", "zero_quantity", "material_after_window"}
+_NO_RELEASE_CODES = {"operation_skipped", "batch_closed", "material_after_window"}
 _SCHEDULED = ("eligible", "auto_assign_required")
-OPERATION_STATES = {"pending", "scheduled", "processing", "completed", "skipped"}
 
 
 def fail(reason, message, **context) -> NoReturn:
@@ -45,14 +43,9 @@ def _optional_resource_id(value, field):
 
 
 def batch_model(row):
+    """``row`` is a stored batch: its quantity is a 1..2**53-1 integer (the Batches CHECK and archive admission)."""
     for key in ("batch_id", "part_no"):
         _required_text(row[key], key)
-    if row["status"] not in _BATCH_STATES or row["priority"] not in ("normal", "urgent", "critical"):
-        fail("invalid_batch_state", "有批次的状态或优先级读不出来，这次排产没有开始。请到批次管理核对这些批次。", batch_id=row["batch_id"])
-    if row["ready_status"] not in ("yes", "no", "partial"):
-        fail("invalid_ready_status", "有批次的齐套情况读不出来，这次排产没有开始。请到批次管理核对齐套状态。", batch_id=row["batch_id"])
-    if not is_stored_number(row["quantity"], integer=True):
-        fail("quantity_unknown", "批次数量缺失，本次未开始排产。请到批次管理补填。", batch_id=row["batch_id"])
     for key in ("due_date", "ready_date"):
         if row[key] is not None and stored_date(row[key]) is None:
             fail("invalid_batch_date", "有批次的交期或齐套日期填得不对，这次排产没有开始。请到批次管理按 2026-09-13 这样改好。", batch_id=row["batch_id"], field=key)
@@ -60,7 +53,7 @@ def batch_model(row):
 
 
 def operation_model(row):
-    if not is_stored_number(row["id"], integer=True, positive=True) or not is_stored_number(row["seq"], integer=True, positive=True):
+    if not is_exact_positive_int(row["id"]) or not is_exact_positive_int(row["seq"]):
         fail("invalid_operation_identity", "有工序的编号或工序号不是正整数，这次排产没有开始。请到批次管理核对工序。")
     for key in ("op_code", "batch_id", "op_type_name"):
         _required_text(row[key], key)
@@ -68,14 +61,10 @@ def operation_model(row):
     _optional_text(row["piece_id"], "piece_id")
     for key in ("machine_id", "operator_id", "supplier_id"):
         _optional_resource_id(row[key], key)
-    if row["status"] not in OPERATION_STATES or row["source"] not in OPERATION_SOURCES:
-        fail("invalid_operation_state", "有工序的状态或来源资料不完整，这次排产没有开始。请到批次管理核对。", op_id=row["id"])
     if row["source"] == INTERNAL:
         for key in ("setup_hours", "unit_hours"):
             if not is_stored_number(row[key]):
                 fail("hours_missing", "工序工时缺失，本次未开始排产。请到工艺资料补填。", op_id=row["id"], field=key)
-    if row["ext_days"] is not None and not is_stored_number(row["ext_days"], positive=True):
-        fail("external_days_invalid", "有外协工序单独设置的周期不是正数，这次排产没有开始。请把周期改成大于 0 的天数。", op_id=row["id"])
     return BatchOperation(**{item.name: row[item.name] for item in fields(BatchOperation)})
 
 
@@ -136,7 +125,7 @@ def preflight_classification(operations, projections, guarded_ids, preflight_row
             release = None
         else:
             status = source["status"]
-            reasons = [dict(item) for item in source["issues"]]
+            reasons = source["issues"]
             release = (
                 None
                 if status in ("blocked", "protected")
@@ -153,7 +142,7 @@ def preflight_classification(operations, projections, guarded_ids, preflight_row
             "status": status,
             "issues": reasons,
             "material_ready_date": release,
-            "predecessor_refs": list(source["predecessor_refs"]),
+            "predecessor_refs": source["predecessor_refs"],
             "execution": projections[ref].to_dict(),
         }
         if op.id in cycles:
@@ -217,11 +206,7 @@ def _classification(checks, batch, op, projection, settings, guarded_ids, cycles
         return "blocked", gaps, None
     if op["id"] in cycles:
         return "protected", [issue("external_group_actuals_preserved", "合并外协组已有实际记录，整组保留同一固定周期。")], None
-    if (
-        op["status"] == "skipped"
-        or batch["status"] in ("completed", "cancelled")
-        or (batch["quantity"] == 0 and op["source"] != "internal")
-    ):
+    if op["status"] == "skipped" or batch["status"] in ("completed", "cancelled"):
         status, reasons = mutable_classification(checks, batch, op, settings, ())
         return status, reasons, None
     ready, release = checks.operation_readiness(batch, op, settings)
@@ -236,8 +221,6 @@ def mutable_classification(checks, batch, op, settings, ready_reasons):
         return "skipped", [issue("operation_skipped", "这道工序标了跳过，本次不排它。")]
     if batch["status"] in ("completed", "cancelled"):
         return "skipped", [issue("batch_closed", "批次已完成或取消，不进入本次排产。")]
-    if batch["quantity"] == 0 and op["source"] != "internal":
-        return "skipped", [issue("zero_quantity", "这道外协工序的目标数量是 0，本次不排它。")]
     if ready_reasons:
         return "skipped", ready_reasons
     ready_day = stored_date(batch["ready_date"])

@@ -2,7 +2,7 @@
 
 from io import BytesIO
 
-from flask import g, request, send_file
+from flask import current_app, g, request, send_file
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_field_report_source import PreparedFieldReportSource
@@ -11,16 +11,18 @@ from core.services.workbench.execution.field_report_files import FieldReportFile
 from core.services.workbench.execution.field_report_files_codec import BYTE_LIMIT, MIME, decode_reports, encode_issues
 from core.services.workbench.execution.field_workspace import FieldWorkspaceService
 from core.services.workbench.execution.field_workspace_scope import normalize_scope
+from core.shared.key_sets import keys_conform
 from core.shared.strict_json import load_strict_json
 from web.api_responses import json_response, query_success
 from web.routes.workbench.api_responses import api_endpoint
 from web.routes.workbench.read_budget import PLAN_READ_SLOTS
-from web.routes.workbench.read_context import bind_read_snapshot, fact_value
-from web.routes.workbench.request_json import read_upload_form, rejecter
+from web.routes.workbench.read_context import fact_value, rebind_read_snapshot
+from web.routes.workbench.request_json import read_upload_form, rejecter, single_value_arguments
 from web.routes.workbench.resource_action_context import read_endpoint, resolve_context, retain_context
 from web.routes.workbench.write_context import preview_write_context, validate_preview_confirmation
+from web.runtime_host import wall_clock
 
-from .execution import arguments, command_body
+from .execution_request import field_command, field_read
 
 # 报工文件弹窗：没有预检结果时按钮叫「开始预检」，出了预检结果后改为「重新预检」；换文件要点「选择文件」。
 PREVIEW_NAMESPACE = 'workbench-field-file-preview-v1'
@@ -41,12 +43,12 @@ def field_file_preview():
     # 文件先在读事务外解析，再排队读取整份现场范围。
     decoded = decode_reports(content)
     source = PreparedFieldReportSource.build(decoded)
-    files = FieldReportFileService(g.db, production=WorkbenchProductionReportService(g.db))
+    files = FieldReportFileService(g.db, production=WorkbenchProductionReportService(g.db, clock=wall_clock(current_app)))
     reader = FieldWorkspaceService(g.db, ledger=files.production.ledger)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot() as ws_scope:
             read_state = reader.prepare_read(ws_scope, scope)
-            snapshot = bind_read_snapshot({'kind': 'field', **read_state.effective_scope}, read_state.state, token)
+            snapshot = rebind_read_snapshot({'kind': 'field', **read_state.effective_scope}, read_state.state, token)
             cohort, _ = reader.cohort(ws_scope, read_state)
             preview, _ = files.prepare_source(ws_scope.ledger_scope, source, cohort)
     document = {
@@ -67,12 +69,12 @@ def field_file_preview():
 def field_file_confirm():
     from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 
-    body = command_body()
-    if set(body['input']) != {'preview_ref'}:
+    body = field_command()
+    if not keys_conform(body['input'], ('preview_ref',)):
         raise WorkbenchCommandRejected('invalid_input', '只能确认刚才预检过的那份文件，报工还没有写入。请点「重新预检」。', 400)
     ref = body['input']['preview_ref']
     # Replay must remain possible after the retained source and edit tokens expire.
-    service = WorkbenchProductionReportService(g.db)
+    service = WorkbenchProductionReportService(g.db, clock=wall_clock(current_app))
     files = FieldReportFileService(g.db, production=service)
     reader = FieldWorkspaceService(g.db, ledger=service.ledger)
 
@@ -102,15 +104,15 @@ def field_file_confirm():
 
 @read_endpoint
 def field_file_errors():
-    if set(request.args) != {'preview_ref'} or len(request.args.getlist('preview_ref')) != 1:
-        raise WorkbenchCommandRejected('invalid_input', '预检结果已过期，没有开始下载。请点「重新预检」。', 400)
-    document, _ = resolve_context(PREVIEW_NAMESPACE, request.args['preview_ref'], 'snapshot_stale')
+    arguments = single_value_arguments({'preview_ref'}, required={'preview_ref'},
+                                       message='预检结果已过期，没有开始下载。请点「重新预检」。')
+    document, _ = resolve_context(PREVIEW_NAMESPACE, arguments['preview_ref'], 'snapshot_stale')
     content = encode_issues(document['rows'])
     return send_file(BytesIO(content), mimetype=MIME, as_attachment=True, download_name='报工导入问题.xlsx', max_age=0)
 
 
 def download(template):
-    args = arguments()
+    args = field_read()
     token = args.get('snapshot_ref')
     if not token:
         raise WorkbenchCommandRejected('snapshot_required', messages.STALE, 400)
@@ -118,7 +120,7 @@ def download(template):
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot() as ws_scope:
             read_state = reader.prepare_read(ws_scope, normalize_scope(args))
-            snapshot = bind_read_snapshot({'kind': 'field', **read_state.effective_scope}, read_state.state, token)
+            snapshot = rebind_read_snapshot({'kind': 'field', **read_state.effective_scope}, read_state.state, token)
             cohort, resource_codes = reader.cohort(ws_scope, read_state)
     # 读事务和读额度都已释放：XLSX 只用已读出的现场范围生成。
     content, count = FieldReportFileService.download(cohort, template, resource_codes=resource_codes)
@@ -142,6 +144,6 @@ def field_file_export():
 def register_execution_file_routes(bp):
     root = '/api/workbench/v1/execution/files/'
     for path, view, method in [('preview', field_file_preview, 'POST'), ('confirm', field_file_confirm, 'POST'),
-                               ('template', field_file_template, 'GET'), ('export', field_file_export, 'GET'),
+                               ('template', field_file_template, 'POST'), ('export', field_file_export, 'POST'),
                                ('errors', field_file_errors, 'GET')]:
         bp.add_url_rule(root + path, view_func=view, methods=[method])

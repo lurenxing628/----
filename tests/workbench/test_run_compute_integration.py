@@ -8,6 +8,7 @@ import pytest
 from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_capture
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
+from core.shared.local_datetime import datetime_to_us
 from tests.workbench.identity_metadata_support import insert_row
 from tests.workbench.run_compute_support import admitted_dispositions, compute_admitted, compute_run, unchanged
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
@@ -46,7 +47,9 @@ def test_night_operator_calendar_efficiency_and_downtime_are_real(run_case, quan
                efficiency=0.5, allow_normal="yes", allow_urgent="yes",
                periods_json='[{"start":"23:00","end":"07:00","day_offset":0}]'))
     insert_row(case.conn, "MachineDowntimes", dict(machine_id="M1", scope_type="machine", scope_value="M1",
-               start_time="2026-09-09 22:00:00", end_time="2026-09-10 00:00:00", reason_code="maintenance", status="active"))
+               start_time="2026-09-09 22:00:00", end_time="2026-09-10 00:00:00",
+               start_us=datetime_to_us(datetime(2026, 9, 9, 22)), end_us=datetime_to_us(datetime(2026, 9, 10)),
+               reason_code="maintenance", status="active"))
     case.conn.commit()
     result = unchanged(case, lambda: compute_run(case.conn, case.settings(end_date="2026-09-10"), case.projections()))
     for outcome in result.candidate_outcomes.values():

@@ -6,7 +6,14 @@ import math
 from collections import Counter
 from statistics import median
 
-from core.services.execution.processing_hours import hour_totals
+from core.models.hours import public_hours, sum_hours
+
+
+def hour_fields(records):
+    """Exact reported hours of a set of records: the total only when every record's hours are known."""
+    hours = sum_hours(row["effective_processing_hours"] for row in records)
+    return {"effective_processing_hours": public_hours(hours.total),
+            "known_effective_processing_hours": public_hours(hours.known), "unknown_hour_events": hours.unknown}
 
 
 def _completion_summary(operations):
@@ -33,7 +40,7 @@ def summary(operations, records):
             "late_open": sum(row["late_open"] for row in operations), "finish_late": sum(row["finish_late"] for row in operations),
             "unreported": sum(row["execution_state"] == "unreported" for row in operations),
             "reported_operations": sum(row["production_report_count"] > 0 for row in operations),
-            **hour_totals(records)}
+            **hour_fields(records)}
 
 
 def resource_rows(records, kind):
@@ -49,7 +56,7 @@ def resource_rows(records, kind):
         group["production_reports"] += 1
         events_by_key.setdefault(key, []).append(event)
     return [{**group, "operations": len(group["operations"]), "batches": len(group["batches"]),
-             **hour_totals(events_by_key[key])} for key, group in groups.items()]
+             **hour_fields(events_by_key[key])} for key, group in groups.items()]
 
 
 def _trend(operations, as_of):

@@ -30,16 +30,19 @@ from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .material_actions_context import (
+    BODY,
+    CONFIRM_MISMATCH_MESSAGE,
     EXPIRED_MESSAGE,
     PREVIEW_SCOPE,
+    STALE_REF_MESSAGE,
     issue_preview,
     json_body,
     read_endpoint,
     scope_input,
 )
-from .read_context import bind_read_snapshot
-from .request_json import read_upload_file, read_upload_form
-from .resource_action_context import confirm_body
+from .material_actions_export import material_export, material_export_preview, material_template
+from .read_context import bind_read_snapshot, current_snapshot_time, rebind_read_snapshot
+from .request_json import preview_confirm_body, read_upload_file, read_upload_form
 from .write_context import resolve_action_preview
 
 
@@ -51,7 +54,7 @@ def material_bulk_preview():
     page_request, query_scope, token = scope_input(body)
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as scope:
-        snapshot = bind_read_snapshot(query_scope, scope.state_fingerprint(), token)
+        snapshot = rebind_read_snapshot(query_scope, scope.state_fingerprint(), token)
         preview = WorkbenchMaterialBulkService(g.db, current_app.logger).preview_delete(
             body["refs"], scope=page_request)
         data = issue_preview(preview)
@@ -71,11 +74,12 @@ def _upload():
 @read_endpoint
 def material_import_preview():
     content, file_format, mode = _upload()
+    as_of = current_snapshot_time()
     service = WorkbenchMaterialFileService(g.db, current_app.logger)
     preview = service.preview_import(content, file_format=file_format, mode=mode)
     data = issue_preview(preview)
     snapshot = bind_read_snapshot({"kind": "material", "operation": "material.import",
-                                   "preview_ref": data["preview_ref"]}, data["preview_ref"])
+                                   "preview_ref": data["preview_ref"]}, data["preview_ref"], as_of=as_of)
     return query_success(data, snapshot, preview.as_dict()["notices"])
 
 
@@ -87,7 +91,7 @@ def _apply_preview(action, preview):
 
 @api_endpoint
 def material_action_confirm(action):
-    body = confirm_body("只能确认刚才预检过的那一批，物料没有改动。请点「重新预检」。")
+    body = preview_confirm_body(BODY, stale_ref=STALE_REF_MESSAGE, mismatch=CONFIRM_MISMATCH_MESSAGE)
     ref = body["input"]["preview_ref"]
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=action, context_ref=ref,
@@ -100,8 +104,6 @@ def material_action_confirm(action):
 
 
 def register_material_action_routes(bp):
-    from .material_actions_export import material_export, material_export_preview, material_template
-
     base = "/api/workbench/v1"
     bp.add_url_rule(base + "/entities/material/bulk-preview", view_func=material_bulk_preview, methods=["POST"])
     bp.add_url_rule(base + "/imports/material/preview", view_func=material_import_preview, methods=["POST"])

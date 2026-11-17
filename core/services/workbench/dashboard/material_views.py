@@ -1,25 +1,24 @@
 """Current-day material projection; dated arrivals never require a write-on-read."""
 
-from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.material.stage_availability import MaterialAvailability, covers_quantity, quantity
+from core.services.material.stage_availability import MaterialReadiness
+
+
+def _public(amount):
+    return None if amount is None else float(amount)
 
 
 def current_material_views(raw, day):
-    availability = MaterialAvailability({name: raw[name] for name in ("BatchMaterials", "BatchMaterialReviews", "BatchMaterialArrivals")})
+    """Each requirement shows the amounts readiness admitted (None when unknown), never the stored columns."""
+    availability = MaterialReadiness.from_tables(raw)
     batches, requirements = [], []
     for batch in raw["Batches"]:
-        status, problems = availability.readiness_state(batch, day)
-        batches.append(dict(batch, ready_status=status))
+        diagnosis = availability.readiness_diagnostics(batch, day)
+        batches.append(dict(batch, ready_status=diagnosis["status"]))
         for row in availability.requirements[batch["batch_id"]]:
-            view = dict(row)
-            if row["id"] in availability.reviews:
-                try:
-                    amount = availability.available(row, day)
-                    view.update(available_qty=float(amount), ready_status="yes" if covers_quantity(amount, quantity(row["required_qty"], positive=True)) else "no")
-                except WorkbenchCommandRejected:
-                    # The public row retains an explicit unknown quantity; it is never a ready fact.
-                    view.update(available_qty=None, ready_status=None)
-                if problems:
-                    view["ready_status"] = None
-            requirements.append(view)
+            item = diagnosis["requirements"][row["id"]]
+            # A reviewed batch's status is None exactly when a problem leaves its readiness unknown.
+            status = ((None if diagnosis["status"] is None else "yes" if item["ready"] else "no")
+                      if row["id"] in availability.reviews else row["ready_status"])
+            requirements.append(dict(row, required_qty=_public(item["required"]), available_qty=_public(item["available"]),
+                                     ready_status=status))
     return batches, requirements, availability

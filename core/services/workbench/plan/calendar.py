@@ -19,7 +19,8 @@ from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES, MAX_
 from core.services.capacity.plan_calendar_windows import (
     policy_projection,
     project_resource_calendars,
-    public_projection,
+    public_global_projection,
+    public_resource_projection,
     unavailable,
 )
 from core.services.scheduler.calendar.engine import CalendarEngine
@@ -70,8 +71,8 @@ def project_plan_calendar(conn, *, scope, resources, selected, include_windows: 
     state = "available" if all(item == "available" for item in states) else "unavailable" if all(
         item == "unavailable" for item in states) else "partial"
     wired = {}
-    global_dto = public_projection(global_calendar, wired, include_windows=include_windows)
-    public_dto = [public_projection(item, wired, include_windows=include_windows) for item in public]
+    global_dto = public_global_projection(global_calendar, wired, include_windows=include_windows)
+    public_dto = [public_resource_projection(item, wired, include_windows=include_windows) for item in public]
     if include_windows:
         windows_complete = state != "unavailable"
     else:

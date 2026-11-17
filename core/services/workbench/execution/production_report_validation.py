@@ -1,12 +1,18 @@
 """Resource and lifecycle constraints, rechecked under the outer command lock."""
 
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
-from core.models.resource_capabilities import machine_types
 from core.models.workbench_execution_input import reject
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.services.execution.projection import actual_period, actual_period_basis
-from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
+from core.services.personnel.operator_qualification import (
+    OperatorQualificationError,
+    OperatorQualificationService,
+    require_machine_authorization,
+    require_work_type_qualification,
+)
+from core.shared.local_datetime import us_to_datetime, us_to_iso
 from data.repositories.operator_machine_repo import OperatorMachineRepository
+from data.repositories.operator_qualification_repo import OperatorQualificationRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_report_validation_repo import WorkbenchReportValidationRepository
 
@@ -24,7 +30,7 @@ class ReportResourceValidator:
         self.identities = WorkbenchIdentityRepository(conn)
         self.repo = WorkbenchReportValidationRepository(conn)
         self.authorizations = OperatorMachineRepository(conn)
-        self.qualification_service = OperatorQualificationService(conn, authorizations=self)
+        self.skill_facts = OperatorQualificationRepository(conn)
         self.entities = {}
         self.checked = set()
         self.machine_types = {}
@@ -37,9 +43,9 @@ class ReportResourceValidator:
 
     def preload(self, refs):
         for row in self.repo.entity_rows_with_machine_type(refs):
-            self.entities[row["ref"]] = WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"], row["revision"], bool(row["active"]))
+            self.entities[row["ref"]] = WorkbenchEntityIdentity.from_row(row)
             if row["kind"] == "machine":
-                self.machine_types[row["entity_key"]] = set(machine_types({"op_type_id": row["machine_type"], "op_type_ids": row["op_type_ids"]}))
+                self.machine_types[row["entity_key"]] = set(row["op_type_ids"])
 
     def _pending_operators(self, loaded, operator_id):
         return sorted(
@@ -55,20 +61,21 @@ class ReportResourceValidator:
         if operator_id in self._skills_loaded:
             return
         operators = self._pending_operators(self._skills_loaded, operator_id)
-        profiles, skills = self.qualification_service.repo.read_skill_facts(operators)
+        profiles, skills = self.skill_facts.read_skill_facts(operators)
         for row in profiles:
             self._skill_profiles.setdefault(row["operator_id"], []).append(row)
         for row in skills:
             self._skill_rows.setdefault(row["operator_id"], []).append(row)
         self._skills_loaded.update(operators)
 
-    def exists(self, operator_id, machine_id):
+    def _authorized_pairs_for(self, operator_id):
+        """Every pending operator's authorizations, read in one batch the first time one of them is checked."""
         if operator_id not in self._authorizations_loaded:
             operators = self._pending_operators(self._authorizations_loaded, operator_id)
             for row in self.authorizations.list_simple_rows_for_operators(operators):
                 self._authorized_pairs.add((row["operator_id"], row["machine_id"]))
             self._authorizations_loaded.update(operators)
-        return (operator_id, machine_id) in self._authorized_pairs
+        return self._authorized_pairs
 
     def resolve(self, ref, kind):
         if ref is None:
@@ -107,16 +114,15 @@ class ReportResourceValidator:
                 if operator not in self.operator_qualifications:
                     self._ensure_skill_facts(operator)
                     self.operator_qualifications.update(
-                        self.qualification_service.project_facts(
+                        OperatorQualificationService.project_facts(
                             [operator],
                             self._skill_profiles.get(operator, []),
                             self._skill_rows.get(operator, []),
                         )
                     )
-                self.qualification_service.require(
-                    operator_id=operator, op_type_id=operation["op_type_id"], machine_id=machine,
-                    qualifications=self.operator_qualifications,
-                )
+                if machine is not None:
+                    require_machine_authorization(self._authorized_pairs_for(operator), operator, machine)
+                require_work_type_qualification(self.operator_qualifications, operator, operation["op_type_id"])
             except OperatorQualificationError as exc:
                 reject(str(exc), "constraint_conflict", 409)
         self.checked.add(key)
@@ -277,24 +283,26 @@ def execution_facts_changed(before, after):
 def _downstream_conflicts(before, after, downstream, plans):
     conflicts = []
     reopened = before.execution_state == "complete" and after.execution_state != "complete"
+    finish = actual_period(after)[1]
     for projection in downstream:
         planned = plans.get(projection.operation_ref)
         if reopened and (projection.execution_state != "unreported" or planned is not None):
             conflicts.append({"code": "downstream_requires_completion", "operation_ref": projection.operation_ref})
-        finish = after.confirmed_finish
-        starts = [projection.first_actual_start]
-        if planned:
-            starts.append(planned["start_time"].replace(" ", "T"))
-        if finish and any(start and finish > start for start in starts):
+        starts = [actual_period(projection)[0]]
+        if planned is not None:
+            starts.append(us_to_datetime(planned["start_us"]))
+        if finish is not None and any(start is not None and finish > start for start in starts):
             conflicts.append({"code": "downstream_time_conflict", "operation_ref": projection.operation_ref})
     return conflicts
 
 
 def _upstream_conflicts(after, upstream):
-    if after.first_actual_start is None:
+    start = actual_period(after)[0]
+    if start is None:
         return []
-    return [{"code": "upstream_time_conflict", "operation_ref": row.operation_ref} for row in upstream
-            if row.confirmed_finish and row.confirmed_finish > after.first_actual_start]
+    finishes = ((row, actual_period(row)[1]) for row in upstream)
+    return [{"code": "upstream_time_conflict", "operation_ref": row.operation_ref} for row, finish in finishes
+            if finish is not None and finish > start]
 
 
 def _actual_resources_changed(before, after, source):
@@ -369,8 +377,7 @@ def execution_conflict_details(ledger, ledger_scope, facts, conflicts):
         operation = operations[item["operation_ref"]]
         task = plans.get(item["operation_ref"])
         plan = None if task is None else {"plan_ref": task["plan_ref"], "task_ref": task["task_ref"],
-            "version": task["version"], "start": task["start_time"].replace(" ", "T"),
-            "end": task["end_time"].replace(" ", "T")}
+            "version": task["version"], "start": us_to_iso(task["start_us"]), "end": us_to_iso(task["end_us"])}
         result.append(dict(item, batch_id=operation["batch_id"], operation_code=operation["op_code"],
             piece_id=operation["piece_id"], operation_label=str(operation["seq"]) + " " + operation["op_type_name"],
             message=messages[item["code"]], plan=plan))

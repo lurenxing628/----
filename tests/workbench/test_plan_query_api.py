@@ -13,7 +13,7 @@ def test_workspace_real_night_interval_and_real_full_projections(plan_api):
     assert data["task_count"] == len(data["tasks"]) == 1 and data["tasks_complete"] is True
     assert data["tasks"][0]["start"] == NIGHT_START and data["tasks"][0]["end"] == NIGHT_END
     assert data["projections"]["baseline"]["state"] == "unavailable"
-    assert data["projections"]["baseline"]["reason_code"] == "adoption_evidence_missing"
+    assert data["projections"]["baseline"]["reason_code"] == "no_adoption_baseline"
     assert data["projections"]["calendar"]["state"] == "available"
     assert data["projections"]["occupancy"]["state"] == "available"
     for resource in data["projections"]["occupancy"]["resources"]:
@@ -21,9 +21,9 @@ def test_workspace_real_night_interval_and_real_full_projections(plan_api):
         assert resource["issues"] == [{"code": "zero_available_capacity", "message": "此时段没有可排时间，无法计算占用比例。"}]
     assert data["projections"]["delivery_risks"]["state"] == "unavailable"
     assert set(data["projections"]) == {"baseline", "calendar", "occupancy", "delivery_risks", "process_order"}
-    assert data["projections"]["process_order"]["state"] == "unavailable"
-    assert data["provenance"]["state"] == "unavailable" and data["provenance"]["reason"]
-    assert data["gantt_graph"]["state"] == "unavailable" and data["gantt_graph"]["reason"]
+    assert data["projections"]["process_order"]["state"] == "available"
+    assert data["provenance"]["state"] == "available"
+    assert data["gantt_graph"]["state"] == "available" and data["gantt_graph"]["node_count"] == 1
     detail = plan_api.read("/" + ref, snapshot_ref=result["meta"]["snapshot_ref"])
     assert detail["data"] == data and detail["meta"]["snapshot_ref"] == result["meta"]["snapshot_ref"]
 

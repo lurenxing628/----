@@ -7,7 +7,8 @@ from typing import Iterator
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_identity import WorkbenchEntityIdentity, is_entity_ref
+from core.models.workbench_identity import WorkbenchEntityIdentity
+from core.shared.refs import is_ref
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_resource_query_repo import WorkbenchResourceQueryRepository
 from data.repositories.workbench_resource_table_repo import WorkbenchResourceTableRepository
@@ -96,8 +97,6 @@ class WorkbenchResourceQueryService:
 
     def resolve_refs(self, refs):
         """refs 已由 resource_refs 准入；这里只核对每个身份仍在且属于本类资源。"""
-        if not refs:
-            return []
         by_ref = {
             row["ref"]: row
             for row in WorkbenchResourceTableRepository(self.conn, self.logger).identities_by_refs(refs)
@@ -107,13 +106,11 @@ class WorkbenchResourceQueryService:
             row = by_ref.get(ref)
             if row is None or row["kind"] != self.kind:
                 raise WorkbenchCommandRejected("entity_not_found", "这条资源已经删除了。请从列表重新选择。", 404)
-            result.append(
-                WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"], row["revision"], True)
-            )
+            result.append(WorkbenchEntityIdentity.from_row(row))
         return result
 
     def resolve(self, ref) -> WorkbenchEntityIdentity:
-        if not is_entity_ref(ref):
+        if not is_ref(ref):
             raise WorkbenchCommandRejected(
                 "entity_not_found", "这条资源记录已失效，页面没有打开。请从列表重新选择。", 404
             )

@@ -6,7 +6,6 @@ from fractions import Fraction
 from statistics import median
 from typing import Any, Dict, Mapping, NamedTuple, Optional
 
-from core.models.content import content_text
 from core.models.workbench_calibration import (
     MAX_SAMPLES,
     METHOD_VERSION,
@@ -17,7 +16,7 @@ from core.models.workbench_calibration import (
     write_blockers,
 )
 
-from .samples import ensure_sample_revision, number, quantize
+from .samples import number, quantize
 
 _MAX_FLOAT_FRACTION = Fraction(Decimal("1.7976931348623157e308"))
 
@@ -48,8 +47,6 @@ def _exclusion_counts(samples):
 
 def summarize_samples(samples, exact_unit_hours: Mapping[str, Fraction]) -> SampleSummary:
     selected, eligible_count = _select_recent(samples)
-    for row in selected:
-        ensure_sample_revision(row)
     values = [exact_unit_hours[row["sample_ref"]] for row in selected]
     raw_suggested = median(values) if len(values) >= MIN_SAMPLES else None
     suggested = quantize(raw_suggested)
@@ -59,15 +56,6 @@ def summarize_samples(samples, exact_unit_hours: Mapping[str, Fraction]) -> Samp
         "candidate_count": len(samples),
         "excluded_count": len(samples) - len(selected),
         "sample_refs": [row["sample_ref"] for row in selected],
-        "sample_revisions": [
-            {
-                "sample_ref": row["sample_ref"],
-                "sample_revision": row["sample_revision"],
-                "template_revision": row["template_revision"],
-                "report_revision_refs": row["report_revision_refs"],
-            }
-            for row in selected
-        ],
         "suggested_unit_hours": float(suggested) if suggested is not None else None,
         "exclusion_reasons": _exclusion_counts(samples),
     }
@@ -100,7 +88,6 @@ def build_suggestion(template, summary: SampleSummary, *, generated_at):
         reasons.append(issue("processing_basis_unconfirmed", "当前模板不是已确认的自制加工工序。"))
     return {"suggestion_ref": template.operation_ref, "operation_ref": template.operation_ref,
             "template_operation_ref": template.operation_ref, "template_revision": template.revision,
-            "template_snapshot": content_text({"source_ref": template.operation_ref, "revision": template.revision}),
             "part_ref": template.part_ref,
             "part_no": template.part_no, "part_name": template.part_name, "sequence": template.sequence,
             "operation_label": template.operation_label, "source": template.source,

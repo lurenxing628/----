@@ -11,6 +11,7 @@ from core.models.workbench_trial import reference
 from core.models.workbench_trial_adoption import ADOPT_ACTION, TrialAdoptionBlocked
 from core.services.workbench.commands import command_lookup_payload
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
+from core.services.workbench.history_entries.writer import stage_official_adoption_entry
 from core.services.workbench.messages import UNAVAILABLE
 from core.services.workbench.plan.official_persistence import persist_official_plan_in_tx
 from core.services.workbench.run.adoption_host import AdoptionCommandHost
@@ -19,33 +20,43 @@ from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 from .adoption_validation import validate_trial_adoption
 
 
-def _persist_trial_adoption_in_tx(conn, evidence, intent, request_key, *, application_operator):
+def _persist_trial_adoption_in_tx(conn, evidence, intent, request_key, *, application_operator, adopted_at):
     audit = {
         "source": "workbench_trial_adoption",
         "action": "adopt_trial_scenario",
         "request_key": request_key,
         "scenario_ref": evidence.scenario_ref,
         "draft_ref": evidence.draft_ref,
-        "proof": evidence.proof,
         "reason": intent["reason"],
         "declared_operator": intent["declared_operator"],
     }
-    result = persist_official_plan_in_tx(
+    written = persist_official_plan_in_tx(
         conn,
         prepared=evidence.prepared,
         payload=evidence.outcome.validated_payload,
         baseline=evidence.baseline,
+        provenance=evidence.provenance,
+        task_snapshots=evidence.task_snapshots,
         audit=audit,
         application_operator=application_operator,
+        adopted_at=adopted_at,
         run_window=evidence.run_window,
     )
-    result["official_plan"].update(
-        source_scenario_ref=evidence.scenario_ref,
-        source_draft_ref=evidence.draft_ref,
+    plan = {**written.official_plan, "source_scenario_ref": evidence.scenario_ref,
+            "source_draft_ref": evidence.draft_ref}
+    stage_official_adoption_entry(
+        conn,
+        request_key=request_key,
+        provenance=evidence.provenance,
+        plan_ref=plan["plan_ref"],
+        plan_version=plan["version"],
+        adopted_at=written.adopted_at,
+        schedule_time=written.schedule_time,
     )
     return WorkbenchCommandOutcome(
         "committed",
-        {"scenario_ref": evidence.scenario_ref, "draft_ref": evidence.draft_ref, **result},
+        {"scenario_ref": evidence.scenario_ref, "draft_ref": evidence.draft_ref, "official_plan": plan,
+         "row_count": written.row_count},
     )
 
 
@@ -55,7 +66,6 @@ class WorkbenchTrialAdoptionService(AdoptionCommandHost):
     _disabled_code = "scenario_adoption_not_connected"
     _outer_message = "Scenario adoption must own the outer transaction"
     _point_message = UNAVAILABLE
-    _stale_message = "请先点「预检」并核对试调方案，再采用。"
     _busy_message = "正在排产，这次采用没有执行。请等排产结束后重新点「确认正式采用」。"
     _conflict_message = "这个操作编号不是本试调方案的采用结果，请回到试调列表重新打开。"
 

@@ -1,13 +1,7 @@
 """Public facts keep receipt confirmation separate from production reporting."""
 
-from typing import NoReturn
-
+from core.models.content import read_stored_json
 from core.models.workbench_outsourcing import STATES
-from core.shared.strict_json import load_strict_json
-
-
-def _corrupt_fact() -> NoReturn:
-    raise ValueError("已保存的外协确认事实无法读取。")
 
 
 def values(row):
@@ -15,7 +9,9 @@ def values(row):
 
 
 def fact(row):
-    before = load_strict_json(row["before_json"], on_malformed=_corrupt_fact)
+    # 首条确认没有前值，写侧存的是 canonical_json(None)，即字面 "null"；其余是前一条的确认值对象。
+    raw = row["before_json"]
+    before = None if raw == "null" else read_stored_json(raw, dict)
     return {"fact_ref": row["fact_ref"], "before": before, "after": values(row),
             "declared_operator": row["declared_operator"], "local_operator": row["local_operator"],
             "reason": row["reason"], "confirmed_at": row["recorded_at"], "previous_fact_ref": row["previous_fact_ref"]}

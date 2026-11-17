@@ -1,6 +1,7 @@
 """Real threaded HTTP waits until SQLite commit/rollback AND response close."""
 
 import sqlite3
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -9,7 +10,7 @@ import pytest
 
 from tests.workbench.request_lifecycle_support import PATHS, http_json, http_server
 from tests.workbench.request_lifecycle_support import request_case as _request_case  # noqa: F401
-from web.bootstrap.launcher_paths import db_scope_lock_path
+from web.bootstrap.launcher_paths import current_runtime_owner, db_scope_lock_path
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
 
 
@@ -20,7 +21,7 @@ def test_http_transaction_and_close_finish_before_lock_release(request_case, tmp
     case.rollback = rollback
     case.close_release.clear()
     scope = str(tmp_path / "launcher")
-    payload = acquire_runtime_lock(scope, db_path=case.path)
+    payload = acquire_runtime_lock(scope, owner=current_runtime_owner(), exe_path=sys.executable, db_path=case.path)
     lock = Path(db_scope_lock_path(case.path))
     original = lock.read_bytes()
     done = threading.Event()

@@ -48,7 +48,7 @@ def prepare_candidate_admission(conn, *, prepared: PreparedPreflight) -> Prepare
             config_snapshot=prepared.config_snapshot,
             baseline=baseline,
             held=prepared.held_arrangements,
-            preflight_rows=prepared.evaluation_rows,
+            preflight=prepared,
         )
     except (CandidateRunInputError, CandidateAdoptionBlocked) as exc:
         return PreparedAdmission(

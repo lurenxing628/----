@@ -6,10 +6,12 @@ from threading import Barrier
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
+from core.services.workbench.facts.candidate_facts import TABLE_KEYS
 from core.services.workbench.facts.run_data_context import restored_context_ref
 from tests.workbench.run_candidate_adoption_support import BASE, INTENT, KEY, api, candidate, preview, service, snapshot
 from tests.workbench.run_candidate_adoption_support import candidate_case as _case  # noqa: F401
 from tests.workbench.run_candidate_support import connect
+from tests.workbench.trial_adoption_support import BAD_RESOURCE_NAMES
 
 
 def test_receipt_insert_failure_rolls_back_candidate_adoption(candidate_case):
@@ -253,24 +255,22 @@ def test_internal_adoption_proof_errors_remain_system_failures(candidate_case, m
 
 
 def test_archive_column_order_corruption_is_rejected_at_admission_boundary(candidate_case, monkeypatch):
-    import json
+    from copy import deepcopy
 
-    from core.models.workbench_run_adoption import CandidateAdoptionBlocked
     from core.services.workbench.facts.candidate_store import CandidateStore
     from core.services.workbench.run.candidate_adoption_validation import validate_adoption
-    from core.shared.strict_json import canonical_json
 
     case = candidate_case
     ref = candidate(case)
     read = CandidateStore.capture
 
     def reordered(store, run_ref):
-        # 列与行同步倒序违背存档内嵌 DDL 列序，在读取候选准入源头即拦截并阻断采用。
+        # 列与行同步倒序违背存档内嵌 DDL 列序，在读取候选准入源头即拦截；采用预览与采用都原样报 500。
         capture = dict(read(store, run_ref))
-        facts = json.loads(capture["facts_text"])
+        facts = deepcopy(capture["facts"])
         facts["columns"]["Parts"] = facts["columns"]["Parts"][::-1]
         facts["tables"]["Parts"] = [row[::-1] for row in facts["tables"]["Parts"]]
-        capture["facts_text"] = canonical_json(facts)
+        capture["facts"] = facts
         return capture
 
     monkeypatch.setattr(CandidateStore, "capture", reordered)
@@ -280,14 +280,90 @@ def test_archive_column_order_corruption_is_rejected_at_admission_boundary(candi
         with store.snapshot():
             store.generation_facts(store.capture(store.candidate_run(ref)))
     assert (read_rejected.value.code, read_rejected.value.status) == ("candidate_artifact_invalid", 500)
-    with pytest.raises(CandidateAdoptionBlocked) as blocked:
-        validate_adoption(case.conn, ref)
-    assert blocked.value.code == "candidate_artifact_invalid"
-    assert isinstance(blocked.value.__cause__, ValueError)
-    checked = service(case.conn).preview(ref)
-    assert checked["validation"]["can_adopt"] is False
-    assert [row["code"] for row in checked["validation"]["issues"]] == ["candidate_artifact_invalid"]
+    for adoption in (lambda: validate_adoption(case.conn, ref), lambda: service(case.conn).preview(ref)):
+        with pytest.raises(WorkbenchCommandRejected) as rejected:
+            adoption()
+        assert (rejected.value.code, rejected.value.status) == ("candidate_artifact_invalid", 500)
+    response = api(case).post(BASE + ref + "/adopt-preview", json={})
+    assert response.status_code == 500 and response.get_json()["error"]["code"] == "candidate_artifact_invalid"
     assert snapshot(case.conn) == before
+
+
+def _drop_rows(archive, name, **match):
+    columns = archive["columns"][name]
+    positions = {columns.index(column): value for column, value in match.items()}
+    archive["tables"][name] = [row for row in archive["tables"][name]
+                               if any(row[position] != value for position, value in positions.items())]
+
+
+def _swap_operation_ids(archive):
+    position = archive["columns"]["WorkbenchPlanSourceRefs"].index("source_key")
+    first, second = archive["tables"]["WorkbenchPlanSourceRefs"]
+    first[position], second[position] = second[position], first[position]
+
+
+def _rename(archive, table, key, value):
+    columns = archive["columns"][table]
+    (row,) = [row for row in archive["tables"][table] if row[columns.index(TABLE_KEYS[table])] == key]
+    row[columns.index("name")] = value
+
+
+# A stored generation archive the admission boundary takes whole, lacking one relation an adopted task records,
+# naming each operation's ref with the other operation's id, or naming the arranged machine or the operations' type
+# with a name readers do not show.
+_ARCHIVE_DAMAGE = {
+    "machine_row_missing": lambda archive: _drop_rows(archive, "Machines", machine_id="M1"),
+    "machine_ref_missing": lambda archive: _drop_rows(archive, "WorkbenchEntityRefs", kind="machine", entity_key="M1"),
+    "batch_row_missing": lambda archive: _drop_rows(archive, "Batches", batch_id="B1"),
+    "operation_ref_misbound": _swap_operation_ids,
+    **{"machine_name_" + kind: lambda archive, value=value: _rename(archive, "Machines", "M1", value)
+       for kind, value in BAD_RESOURCE_NAMES.items()},
+    **{"op_type_name_" + kind: lambda archive, value=value: _rename(archive, "OpTypes", "T1", value)
+       for kind, value in BAD_RESOURCE_NAMES.items()},
+}
+
+
+@pytest.mark.parametrize("damage", sorted(_ARCHIVE_DAMAGE))
+def test_adoption_reads_archive_relations_and_rejects_a_missing_misbound_or_unshowable_one(candidate_case, monkeypatch,
+                                                                                         damage):
+    import json
+
+    from core.shared.strict_json import canonical_json
+    from data.repositories.workbench_run_candidate_repo import WorkbenchRunCandidateRepository
+
+    case = candidate_case
+    case.operation(seq=2)
+    case.conn.commit()
+    ref = candidate(case)
+    token = preview(case, ref)
+    read = WorkbenchRunCandidateRepository.job_capture
+
+    def damaged(repo, run_ref):
+        row = dict(read(repo, run_ref))
+        archive = json.loads(row["conditions_archive_json"])
+        _ARCHIVE_DAMAGE[damage](archive)
+        text = canonical_json(archive)
+        row.update(conditions_archive_json=text, conditions_archive_bytes=len(text.encode("utf-8")))
+        return row
+
+    monkeypatch.setattr(WorkbenchRunCandidateRepository, "job_capture", damaged)
+    before = snapshot(case.conn)
+    with pytest.raises(WorkbenchCommandRejected) as rejected:
+        service(case.conn).adopt(ref, token, KEY, INTENT)
+    assert (rejected.value.code, rejected.value.status) == ("candidate_artifact_invalid", 500)
+    response = api(case).post(BASE + ref + "/adopt-preview", json={})
+    assert response.status_code == 500 and response.get_json()["error"]["code"] == "candidate_artifact_invalid"
+    assert snapshot(case.conn) == before
+
+
+def test_adoption_records_the_operation_type_name_as_the_run_archived_it(candidate_case):
+    # 工种名与资源名同一准入：合法名称首尾的空白原样写进正式计划，不裁剪。
+    case = candidate_case
+    case.conn.execute("UPDATE OpTypes SET name=' Turning ' WHERE op_type_id='T1'")
+    case.conn.commit()
+    ref = candidate(case)
+    service(case.conn).adopt(ref, preview(case, ref), KEY, INTENT)
+    assert [row[0] for row in case.conn.execute("SELECT DISTINCT op_type_label FROM Schedule")] == [" Turning "]
 
 
 def test_http_candidate_adopt_binds_adoption_command_result_target_on_lost_ack(candidate_case):
@@ -342,3 +418,78 @@ def test_http_candidate_adopt_binds_adoption_command_result_target_on_lost_ack(c
     receipt = resolved.get_json()
     assert receipt["state"] == "recorded" and receipt["may_be_in_flight"] is False and receipt["resolution"] == "recorded"
     assert receipt["receipt"]["data"]["candidate_ref"] == ref
+
+
+
+@pytest.mark.parametrize(("field", "value"), [("reason", " "), ("declared_operator", "x" * 101)])
+def test_http_candidate_adopt_rejection_points_at_the_reason_or_operator_field(candidate_case, field, value):
+    case = candidate_case
+    ref = candidate(case)
+    client = api(case)
+    token = client.post(BASE + ref + "/adopt-preview", json={}).get_json()["data"]["write_context"]["write_token"]
+    before = snapshot(case.conn)
+    response = client.post(BASE + ref + "/adopt", json={"write_token": token, "request_key": KEY,
+                                                         "input": {**INTENT, field: value}})
+    assert response.status_code == 422, response.get_json()
+    error = response.get_json()["error"]
+    message = "采用原因或声明操作人为空、过长或含无效字符。"
+    assert (error["code"], error["message"], error["fields"]) == ("invalid_input", message, [{"path": field, "message": message}])
+    assert snapshot(case.conn) == before
+
+
+def test_one_adoption_records_one_reading_of_the_app_clock(candidate_case):
+    import json
+    from datetime import datetime, timedelta
+
+    from web.runtime_host import install_wall_clock
+
+    case = candidate_case
+    ref = candidate(case)
+    client = api(case)
+    token = client.post(BASE + ref + "/adopt-preview", json={}).get_json()["data"]["write_context"]["write_token"]
+    readings = []
+
+    def clock():
+        # Every reading moves one second on, crossing midnight after the first.
+        readings.append(datetime(2026, 10, 7, 23, 59, 59, 900000) + timedelta(seconds=len(readings)))
+        return readings[-1]
+
+    install_wall_clock(case.app, clock)
+    response = client.post(BASE + ref + "/adopt", json={"write_token": token, "request_key": KEY, "input": INTENT})
+    assert response.status_code == 200, response.get_json()
+    assert len(readings) == 1
+    head = case.conn.execute("SELECT adopted_at FROM ScheduleHistory ORDER BY version DESC LIMIT 1").fetchone()[0]
+    logged = json.loads(case.conn.execute(
+        "SELECT detail FROM OperationLogs WHERE action='adopt_run_candidate'").fetchone()[0])["adopted_at"]
+    entry = json.loads(case.conn.execute(
+        "SELECT times_json FROM WorkbenchHistoryEntries WHERE request_key=?", (KEY,)).fetchone()[0])["adopted_at"]
+    assert head == logged == entry == "2026-10-07T23:59:59"
+
+def test_unreadable_archive_json_blocks_adoption_while_other_storage_failures_surface(candidate_case, monkeypatch):
+    from core.models.content import StoredJsonCorrupt
+    from core.models.workbench_run_adoption import CandidateAdoptionBlocked
+    from core.services.workbench.run import candidate_adoption_validation
+
+    case = candidate_case
+    ref = candidate(case)
+    case.conn.execute("UPDATE WorkbenchCommandReceipts SET outcome_json='{' WHERE action='scheduling.run'")
+    case.conn.commit()
+    before = snapshot(case.conn)
+    with pytest.raises(CandidateAdoptionBlocked) as blocked:
+        candidate_adoption_validation.validate_adoption(case.conn, ref)
+    assert blocked.value.code == "candidate_artifact_invalid"
+    assert isinstance(blocked.value.__cause__, StoredJsonCorrupt)
+    checked = service(case.conn).preview(ref)
+    assert checked["validation"]["can_adopt"] is False
+    assert [row["code"] for row in checked["validation"]["issues"]] == ["candidate_artifact_invalid"]
+    assert snapshot(case.conn) == before
+
+    failure = WorkbenchCommandRejected("storage_failure", "注入的其他存储失败", 500)
+
+    def other_failure(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(candidate_adoption_validation, "load_adoption_candidate", other_failure)
+    with pytest.raises(WorkbenchCommandRejected) as raised:
+        candidate_adoption_validation.validate_adoption(case.conn, ref)
+    assert raised.value is failure

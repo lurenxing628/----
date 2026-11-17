@@ -7,16 +7,17 @@ from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidate
 
 from .api_responses import api_endpoint
 from .read_context import snapshot_binder
-from .run_candidates import _WORKSPACE_ARGS, _arguments, _response
+from .request_json import single_value_arguments
+from .run_candidates import ARGUMENTS_REJECTED, WORKSPACE_ARGS, candidate_response
 
 
 @api_endpoint
 def run_candidate_baseline(candidate_ref):
-    _arguments(_WORKSPACE_ARGS)
+    single_value_arguments(WORKSPACE_ARGS, message=ARGUMENTS_REJECTED)
     scope = RunCandidateBaselineScope(candidate_ref, request.args.get("range_start"), request.args.get("range_end"),
                                       request.args.get("batch_ref"), request.args.get("sort", "sequence"),
                                       request.args.get("order", "asc"))
-    return _response(*WorkbenchRunCandidateBaselineQueryService(g.db).baseline(
+    return candidate_response(*WorkbenchRunCandidateBaselineQueryService(g.db).baseline(
         scope, bind_snapshot=snapshot_binder(request.args.get("snapshot_ref"))))
 
 

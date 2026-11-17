@@ -7,6 +7,7 @@ from dataclasses import fields
 from typing import Any, Dict, NoReturn, Optional
 
 from core.errors import AppError
+from core.models.enums import RUN_RESOURCE_VIEW_VALUES
 from core.models.workbench_batch_query import batch_scope
 from core.models.workbench_calendar import calendar_date
 from core.models.workbench_decision_history import normalize_history_query, validate_history_entry_ref
@@ -15,13 +16,11 @@ from core.models.workbench_report import TOPICS, ReportScope
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.models.workbench_run_job import validate_run_ref
 from core.models.workbench_trial import create_input, reference
+from core.shared.key_sets import keys_conform
 from core.shared.strict_json import canonical_json, load_strict_json
 
-SUPPORTED_VIEWS = frozenset((
-    "dashboard", "process", "batches", "run", "analysis", "gantt", "delay", "field", "fieldgantt",
-    "review", "reports", "calib", "basedata", "system", "trial",
-))
-EMPTY_CONTEXT_VIEWS = frozenset(("dashboard", "field", "fieldgantt", "calib", "basedata", "system"))
+from .navigation_metadata import NAVIGATION_RULES
+
 _RESOURCE_KINDS = frozenset(("material", "op_type", "machine", "operator", "supplier", "part", "calendar"))
 
 
@@ -33,9 +32,12 @@ def _invalid(message: str) -> NoReturn:
     raise WorkbenchNavigationInvalid(message)
 
 
+_INCOMPLETE = "页面地址里的定位内容不完整或有不支持的项，页面没有打开，也没有丢掉任何条件。请从侧栏重新进入。"
+
+
 def _object(value, allowed, required=()):
-    if type(value) is not dict or set(value) - set(allowed) or not set(required) <= set(value):
-        _invalid("页面地址里的定位内容不完整或有不支持的项，页面没有打开，也没有丢掉任何条件。请从侧栏重新进入。")
+    if not keys_conform(value, required, allowed):
+        _invalid(_INCOMPLETE)
 
 
 _UNREADABLE = "页面地址里的定位或范围不对，页面没有打开；系统没有恢复上次选择，也没有换记录或放宽范围。请从侧栏重新进入。"
@@ -92,7 +94,7 @@ def _plan_context(context):
         if "comparison_tab" in context and context["comparison_tab"] not in (
                 "delivery", "differences", "resources", "process", "preparation", "metrics", "completion", "changeovers"):
             _invalid("方案影响页签无效，请从本次排产重新选择。")
-        if "resource_view" in context and context["resource_view"] not in ("selected_batches", "full_candidate"):
+        if "resource_view" in context and context["resource_view"] not in RUN_RESOURCE_VIEW_VALUES:
             _invalid("资源安排视角无效，请从方案对比重新选择。")
         if "resource_kind" in context and context["resource_kind"] not in ("machine", "operator"):
             _invalid("资源类别无效，请从方案对比重新选择。")
@@ -239,19 +241,50 @@ def _history_context(context):
         _invalid("运行记录条件无效，请从排产记录重新打开。")
 
 
+def _matches(when, context):
+    if when is None:
+        return True
+    if "has" in when:
+        return any(key in context for key in when["has"])
+    return all(context.get(key) in expected if type(expected) is list else context.get(key) == expected
+               for key, expected in when["is"].items())
+
+
+def _restore(view, context):
+    """Admit a restorable page state by NAVIGATION_RULES; WorkbenchNavigation.admit reads the same declaration."""
+    # 每页最后一个变体不带 when，总能选中。
+    variant = next(row for row in NAVIGATION_RULES[view]["restore"] if _matches(row["when"], context))
+    if not keys_conform(context, variant["required"], variant["fields"]):
+        _invalid(_INCOMPLETE)
+    keys = set(context)
+    if (any(key in keys and not set(others) <= keys for key, others in variant["requires"].items())
+            or any(key in keys and keys & set(others) for key, others in variant["excludes"].items())):
+        _invalid(_INCOMPLETE)
+    if "return_to" in context:
+        target = context["return_to"]
+        if not keys_conform(target, ("view",), ("context",)) or target["view"] not in NAVIGATION_RULES:
+            _invalid(_INCOMPLETE)
+        if "context" in target:
+            if type(target["context"]) is not dict:
+                _invalid(_INCOMPLETE)
+            _restore(target["view"], target["context"])
+
+
 def _context(view, context):
     if type(context) is not dict:
         _invalid("页面地址里的定位内容格式不对，页面没有打开。请从侧栏重新进入。")
     if not context:
         return
-    if "return_decision_history_context" in context:
-        _decision_history_state(context["return_decision_history_context"])
-        context = {key: value for key, value in context.items() if key != "return_decision_history_context"}
+    if not NAVIGATION_RULES[view]["url"]:
+        _invalid("这个页面还不支持用网址定位，页面没有打开，也没有丢掉传入的条件。请从侧栏重新进入。")
+    # 地址打开的状态之后会被页面记住，所以先按可恢复状态准入（含 return_to 链），再由各页地址解析器核对可定位的键和取值。
+    _restore(view, context)
+    context = {key: value for key, value in context.items() if key != "return_to"}
+    if not context:
+        return
     if view in ("analysis", "gantt", "delay") and context.get("source") == "run_history" and context.get("history_topic") == "decision_history":
         _history_context(context)
         return
-    if view in EMPTY_CONTEXT_VIEWS:
-        _invalid("这个页面还不支持用网址定位，页面没有打开，也没有丢掉传入的条件。请从侧栏重新进入。")
     if view in ("gantt", "analysis", "delay"):
         _plan_context(context)
     elif view == "process":
@@ -281,7 +314,7 @@ def read_navigation(view: str, args: Any) -> Optional[Dict[str, Any]]:
         _object(value, ("version", "view", "context"), ("version", "view", "context"))
         if type(value["version"]) is not int or value["version"] != 1:
             _invalid("页面地址里的定位版本不支持，页面没有打开。请从侧栏重新进入。")
-        if type(view) is not str or view not in SUPPORTED_VIEWS or value["view"] != view:
+        if type(view) is not str or view not in NAVIGATION_RULES or value["view"] != view:
             _invalid("页面地址里的定位目标不属于当前页面，页面没有打开。请从侧栏重新进入。")
         _context(view, value["context"])
         canonical_json(value).encode("utf-8")

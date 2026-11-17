@@ -19,13 +19,11 @@ from web.api_responses import query_success
 
 from .api_responses import api_endpoint
 from .read_context import snapshot_binder
+from .request_json import single_value_arguments
+from .run_decision import register_run_decision_routes
 
-_WORKSPACE_ARGS = ("range_start", "range_end", "batch_ref", "sort", "order", "snapshot_ref")
-
-
-def _arguments(allowed):
-    if set(request.args) - set(allowed) or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        reject("invalid_input", "候选方案的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
+WORKSPACE_ARGS = ("range_start", "range_end", "batch_ref", "sort", "order", "snapshot_ref")
+ARGUMENTS_REJECTED = "候选方案的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。"
 
 
 def _integer(name, default: str):
@@ -40,38 +38,39 @@ def _scope(candidate_ref):
                                  request.args.get("batch_ref"), request.args.get("sort", "sequence"), request.args.get("order", "asc"))
 
 
-def _response(data, snapshot):
+def candidate_response(data, snapshot):
+    """候选读取一族（列表、工作区、身份、分析、基准对照）共用的 413 上限与文案。"""
     return query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded",
         too_large_message="这次要读的候选方案数据太多，系统没有给出不完整结果。请缩小筛选范围后点「刷新」。")
 
 
 @api_endpoint
 def run_candidate_list(run_ref):
-    _arguments(("status", "sort", "order", "page", "size", "snapshot_ref"))
+    single_value_arguments(("status", "sort", "order", "page", "size", "snapshot_ref"), message=ARGUMENTS_REJECTED)
     scope = RunCandidateCatalogScope(run_ref, request.args.get("status", "all"), request.args.get("sort", "sequence"),
                                      request.args.get("order", "asc"), _integer("page", "1"), _integer("size", "20"))
-    return _response(*WorkbenchRunCandidateQueryService(g.db).catalog(
+    return candidate_response(*WorkbenchRunCandidateQueryService(g.db).catalog(
         scope, bind_snapshot=snapshot_binder(request.args.get("snapshot_ref"))))
 
 
 @api_endpoint
 def run_candidate_workspace(candidate_ref):
-    _arguments(_WORKSPACE_ARGS)
+    single_value_arguments(WORKSPACE_ARGS, message=ARGUMENTS_REJECTED)
     scope = _scope(candidate_ref)
-    return _response(*WorkbenchRunCandidateQueryService(g.db).workspace(
+    return candidate_response(*WorkbenchRunCandidateQueryService(g.db).workspace(
         scope, bind_snapshot=snapshot_binder(request.args.get("snapshot_ref"))))
 
 
 @api_endpoint
 def run_candidate_identity(candidate_ref):
-    _arguments(("snapshot_ref",))
-    return _response(*WorkbenchRunCandidateQueryService(g.db).identity(
+    single_value_arguments(("snapshot_ref",), message=ARGUMENTS_REJECTED)
+    return candidate_response(*WorkbenchRunCandidateQueryService(g.db).identity(
         candidate_ref, bind_snapshot=snapshot_binder(request.args.get("snapshot_ref"))))
 
 
 @api_endpoint
 def run_candidate_export(candidate_ref):
-    _arguments(_WORKSPACE_ARGS + ("format",))
+    single_value_arguments(WORKSPACE_ARGS + ("format",), message=ARGUMENTS_REJECTED)
     fmt, token = request.args.get("format"), request.args.get("snapshot_ref")
     if fmt not in ("csv", "xlsx") or not token:
         reject("invalid_input", "没有选好导出格式，或数据已更新，没有开始下载。请点「刷新」后重新点「导出」。", 400)
@@ -90,8 +89,8 @@ def run_candidate_export(candidate_ref):
 
 
 def _analysis_response(candidate_ref, reader):
-    _arguments(("snapshot_ref",))
-    return _response(*reader(g.db, candidate_ref, bind_snapshot=snapshot_binder(request.args.get("snapshot_ref"))))
+    single_value_arguments(("snapshot_ref",), message=ARGUMENTS_REJECTED)
+    return candidate_response(*reader(g.db, candidate_ref, bind_snapshot=snapshot_binder(request.args.get("snapshot_ref"))))
 
 
 @api_endpoint
@@ -105,8 +104,6 @@ def run_candidate_adoptions(candidate_ref):
 
 
 def register_run_candidate_routes(bp):
-    from .run_decision import register_run_decision_routes
-
     bp.add_url_rule("/api/workbench/v1/scheduling/runs/<run_ref>/candidates", view_func=run_candidate_list, methods=["GET"])
     base = "/api/workbench/v1/scheduling/candidates/<candidate_ref>"
     bp.add_url_rule(base, endpoint="run_candidate_detail", view_func=run_candidate_workspace, methods=["GET"])

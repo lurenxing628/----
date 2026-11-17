@@ -1,13 +1,15 @@
-"""Resource fields follow existing explicit profiles, not inferred UI status."""
+"""Resource fields follow existing explicit profiles; status words come from the shared resource status rule."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from core.models.enums import MERGE_MODE_LABELS, OP_TYPE_CATEGORY_LABELS, RESOURCE_STATUS_LABELS
 from core.models.resource_capabilities import machine_type_index, supports_source
-from core.shared.strict_parse import is_exact_non_negative_number
+from core.models.workbench_resource_status import SPECIAL_INACTIVE_REASONS, reasoned_resource_state, table_status_label
+from core.shared.strict_parse import is_stored_number
 
-from .overview_graph import text
+from .overview_graph import KINDS, text
 
 if TYPE_CHECKING:
     from .overview_graph import MasterOverviewGraph
@@ -15,13 +17,15 @@ if TYPE_CHECKING:
 CATALOGS = (("opType", "OpTypes", "op_type_id"), ("equipment", "Machines", "machine_id"),
             ("personnel", "Operators", "operator_id"), ("material", "Materials", "material_id"),
             ("supplier", "Suppliers", "supplier_id"))
-STATUS_TEXT = {"active": "启用", "maintain": "停机", "inactive": "停用"}
-REASON_TEXT = {"disabled": "已停用", "leave": "请假", "pending_review": "待复核"}
-
-
-def _shown(value, labels):
-    """英文枚举换成中文显示值；系统不认识的原值照抄，好让用户回去改。"""
-    return labels.get(value, value)
+#: 有停用原因的两类资料各自的档案表。
+_PROFILES = {"operator": ("WorkbenchOperatorProfiles", "operator_id"), "supplier": ("WorkbenchSupplierProfiles", "supplier_id")}
+#: 暂时用不了、需要有人跟进的对外状态；停用的资料不算待办。
+_PAUSED = {
+    "maintain": ("machine.maintain", "设备处于停机", "设备状态为停机，但没有登记停机结束日期。"),
+    "leave": ("status.leave", "人员处于请假状态", "资料里单独登记的停用原因是" + RESOURCE_STATUS_LABELS["leave"] + "。"),
+    "pending_review": ("status.pending_review", "供应商待复核",
+                       "资料里单独登记的停用原因是" + RESOURCE_STATUS_LABELS["pending_review"] + "。"),
+}
 
 
 def add_resources(graph: MasterOverviewGraph):
@@ -40,57 +44,34 @@ def add_resources(graph: MasterOverviewGraph):
             if domain == "material":
                 _material(graph, entity, row)
             if domain == "supplier":
-                days = row["default_days"]
-                graph.field(entity, "默认周期（天）", days, "Suppliers.default_days", valid=is_exact_non_negative_number(days, positive=True))
-                if not is_exact_non_negative_number(days, positive=True):
-                    graph.issue(entity, "supplier.days", "供应商默认周期待核对", "默认周期现在是" + text(days) + "，应该填大于 0 的天数。")
+                # 默认周期由表约束定为必填且在 (0, 36500] 天。
+                graph.field(entity, "默认周期（天）", row["default_days"], "Suppliers.default_days")
 
 
 def _status(graph: MasterOverviewGraph, entity, row, domain, table):
-    raw = row["status"]
-    graph.field(entity, "状态", _shown(raw, STATUS_TEXT), table + ".status")
-    if raw == "active":
-        return
-    if domain == "equipment" and raw == "maintain":
-        graph.issue(entity, "machine.maintain", "设备处于停机", "设备状态为停机，但没有登记停机结束日期。")
-        return
-    if raw == "inactive" and domain in ("equipment", "material"):
+    kind = KINDS[domain]
+    status = row["status"]
+    graph.field(entity, "状态", table_status_label(kind, status), table + ".status")
+    if kind in SPECIAL_INACTIVE_REASONS:
+        profile_table, key = _PROFILES[kind]
+        state = reasoned_resource_state(kind, status, graph.facts.index(profile_table, key).get(row[key]))
+        status = state["status"]
+        if state["inactive_reason"] is not None:
+            graph.field(entity, "停用原因", RESOURCE_STATUS_LABELS[status], profile_table + ".inactive_reason")
+    if status == "inactive":
         entity["inactive"] = True
-        return
-    if raw == "inactive" and domain in ("personnel", "supplier"):
-        profile_table, key = (("WorkbenchOperatorProfiles", "operator_id") if domain == "personnel"
-                              else ("WorkbenchSupplierProfiles", "supplier_id"))
-        profile = graph.facts.index(profile_table, key).get(row[key])
-        reason = profile["inactive_reason"] if profile else None
-        graph.field(entity, "停用原因", _shown(reason, REASON_TEXT), profile_table + ".inactive_reason")
-        if reason == "disabled":
-            entity["inactive"] = True
-            return
-        if reason in ("leave", "pending_review"):
-            graph.issue(entity, "status." + reason, "人员处于请假状态" if reason == "leave" else "供应商待复核",
-                        "资料里单独登记的停用原因是" + REASON_TEXT[reason] + "。")
-            return
-    graph.unknown(entity, "状态含义", table + ".status")
-    graph.issue(entity, "status.unknown", "状态或停用原因不明确",
-                "资料里记的状态是「" + text(raw) + "」，系统不认识，判断不出是启用、停用、请假还是待复核。")
+    elif status != "active":
+        graph.issue(entity, *_PAUSED[status])
 
 
 def _op_type(graph: MasterOverviewGraph, entity, row):
     category = row["category"]
-    graph.field(entity, "工种归属", {"internal": "自制", "external": "外协", "both": "自制、外协均可"}.get(category, category), "OpTypes.category",
-                valid=category in ("internal", "external", "both"))
-    if category not in ("internal", "external", "both"):
-        graph.issue(entity, "category.unknown", "工种归属未明确", "资料里记的工种归属是「" + text(category) + "」，只能填自制或外协。")
-        entity["target"]["unavailable_reason"] = "工种归属还没填自制或外协，系统不知道该跳到哪个维护页。"
+    graph.field(entity, "工种归属", OP_TYPE_CATEGORY_LABELS[category], "OpTypes.category")
     if supports_source(category, "external"):
-        if not graph.facts.available("WorkbenchOpTypePolicies"):
-            graph.unknown(entity, "周期算法", "WorkbenchOpTypePolicies")
-            return
         policy = graph.facts.index("WorkbenchOpTypePolicies", "op_type_id").get(row["op_type_id"])
-        mode = policy["default_merge_mode"] if policy else None
-        label = {"separate": "分别设置", "merged": "合并设置"}.get(mode, mode) if mode is not None else None
-        graph.field(entity, "周期算法", label, "WorkbenchOpTypePolicies.default_merge_mode")
-        if mode not in ("separate", "merged"):
+        graph.field(entity, "周期算法", MERGE_MODE_LABELS[policy["default_merge_mode"]] if policy else None,
+                    "WorkbenchOpTypePolicies.default_merge_mode")
+        if policy is None:
             graph.issue(entity, "policy.missing", "外协周期算法未设置", "请设置该工种的外协周期算法。")
 
 
@@ -100,8 +81,9 @@ def _material(graph: MasterOverviewGraph, entity, row):
         if not isinstance(row[name], str) or not row[name].strip():
             graph.issue(entity, "material." + name, label + "未填写", "这条物料的" + label + "未填写，请补充。")
     value = row["stock_qty"]
-    graph.field(entity, "库存数量", value, "Materials.stock_qty", valid=is_exact_non_negative_number(value))
-    if not is_exact_non_negative_number(value):
+    valid = is_stored_number(value)
+    graph.field(entity, "库存数量", value, "Materials.stock_qty", valid=valid)
+    if not valid:
         graph.issue(entity, "material.stock", "库存数量待核对", "库存数量现在是" + text(value) + "，请填写有效数量，可填 0。")
 
 
@@ -111,12 +93,8 @@ def resource_links(graph: MasterOverviewGraph):
     for row in facts.rows("Machines"):
         entity = graph.by_key[("equipment", row["machine_id"])]
         codes = sorted(machine_types[row["machine_id"]])
-        if not facts.available("MachineOpTypes"):
-            graph.unknown(entity, "可做工种", "MachineOpTypes", relation=True)
-            if not codes:
-                continue
         for code in codes or [None]:
-            target = graph.related(entity, "opType", code, "可做工种", "Machines + MachineOpTypes", "关联设备", required=True)
+            target = graph.related(entity, "opType", code, "可做工种", "MachineOpTypes", "关联设备", required=True)
             if target and not supports_source(facts.index("OpTypes", "op_type_id")[code]["category"], "internal"):
                 graph.issue(entity, "machine.category", "设备能力不支持自制", "请核对设备所选工种的适用归属。")
     _explicit_links(graph, "OperatorSkill", "personnel", "operator_id", "opType", "op_type_id", "登记技能", "技能人员")
@@ -127,11 +105,6 @@ def resource_links(graph: MasterOverviewGraph):
 
 
 def _explicit_links(graph: MasterOverviewGraph, table, domain, owner, other_domain, other_key, label, reverse):
-    if not graph.facts.available(table):
-        for entity in graph.entities:
-            if entity["domain"] in (domain, other_domain):
-                graph.unknown(entity, label, table, relation=True)
-        return
     for row in graph.facts.rows(table):
         entity = graph.by_key.get((domain, row[owner]))
         if entity:
@@ -169,27 +142,23 @@ def _qualification_fields(graph: MasterOverviewGraph):
 
 def _person_fields(graph: MasterOverviewGraph, entity, row, profiles, shifts):
     profile = profiles.get(row["operator_id"])
-    if graph.facts.available("WorkbenchOperatorProfiles", "WorkbenchShiftProfiles"):
-        shift = shifts.get(profile["shift_profile_id"]) if profile else None
-        graph.field(entity, "班次", shift["name"] if shift else None, "WorkbenchOperatorProfiles.shift_profile_id -> WorkbenchShiftProfiles.name")
-        if shift is None:
-            graph.issue(entity, "shift.missing", "人员班次待设置", "请为该人员选择有效班次。")
-        else:
-            graph.field(entity, "班次状态", _shown(shift["status"], STATUS_TEXT), "WorkbenchShiftProfiles.status")
-            if shift["status"] != "active":
-                graph.issue(entity, "shift.inactive", "人员班次未启用", "所在班次是" + text(shift["name"]) + "，这个班次当前不是启用状态。")
-        declared = bool(profile and profile["skills_declared"] or any(item["relation"] == "登记技能" for item in entity["relations"]))
-        graph.field(entity, "技能登记情况", "已明确登记" if declared else "老数据，未单独登记", "WorkbenchOperatorProfiles.skills_declared + OperatorSkill")
-        if not declared:
-            graph.unknown(entity, "技能登记", "WorkbenchOperatorProfiles.skills_declared")
+    shift = shifts.get(profile["shift_profile_id"]) if profile else None
+    graph.field(entity, "班次", shift["name"] if shift else None, "WorkbenchOperatorProfiles.shift_profile_id -> WorkbenchShiftProfiles.name")
+    if shift is None:
+        graph.issue(entity, "shift.missing", "人员班次待设置", "请为该人员选择有效班次。")
     else:
-        graph.unknown(entity, "班次与技能登记", "WorkbenchOperatorProfiles / WorkbenchShiftProfiles")
-    if graph.facts.available("OperatorMachine"):
-        count = sum(item["relation"] == "设备操作授权" for item in entity["relations"])
-        graph.field(entity, "设备授权数", count, "OperatorMachine")
-        if not count:
-            graph.issue(entity, "authorization.empty", "人员未获设备操作授权",
-                        "请为该人员设置可操作设备。")
+        graph.field(entity, "班次状态", table_status_label("shift_profile", shift["status"]), "WorkbenchShiftProfiles.status")
+        if shift["status"] != "active":
+            graph.issue(entity, "shift.inactive", "人员班次未启用", "所在班次是" + text(shift["name"]) + "，这个班次当前不是启用状态。")
+    declared = bool(profile and profile["skills_declared"] or any(item["relation"] == "登记技能" for item in entity["relations"]))
+    graph.field(entity, "技能登记情况", "已明确登记" if declared else "老数据，未单独登记", "WorkbenchOperatorProfiles.skills_declared + OperatorSkill")
+    if not declared:
+        graph.unknown(entity, "技能登记", "WorkbenchOperatorProfiles.skills_declared")
+    count = sum(item["relation"] == "设备操作授权" for item in entity["relations"])
+    graph.field(entity, "设备授权数", count, "OperatorMachine")
+    if not count:
+        graph.issue(entity, "authorization.empty", "人员未获设备操作授权",
+                    "请为该人员设置可操作设备。")
 
 
 def _op_resources(graph: MasterOverviewGraph):
@@ -198,17 +167,14 @@ def _op_resources(graph: MasterOverviewGraph):
         checks = []
         if supports_source(row["category"], "internal"):
             checks.extend((
-                ("关联设备", ("Machines", "MachineOpTypes"), "Machines", "设备"),
-                ("技能人员", ("OperatorSkill",), "OperatorSkill", "技能人员"),
+                ("关联设备", "Machines", "设备"),
+                ("技能人员", "OperatorSkill", "技能人员"),
             ))
         if supports_source(row["category"], "external"):
-            checks.append(("关联供应商", ("Suppliers", "WorkbenchSupplierOpTypes"), "Suppliers", "供应商"))
-        for relation, sources, source, label in checks:
-            if not graph.facts.available(*sources):
-                graph.unknown(entity, label + "关联数", " + ".join(sources), relation=True)
-            else:
-                count = sum(item["relation"] == relation for item in entity["relations"])
-                graph.field(entity, label + "关联数", count, source)
-                if count == 0:
-                    graph.issue(entity, "op.resources." + source, "未找到关联" + label,
-                                "这个工种下没有登记任何" + label + "，请补充关联。")
+            checks.append(("关联供应商", "Suppliers", "供应商"))
+        for relation, source, label in checks:
+            count = sum(item["relation"] == relation for item in entity["relations"])
+            graph.field(entity, label + "关联数", count, source)
+            if count == 0:
+                graph.issue(entity, "op.resources." + source, "未找到关联" + label,
+                            "这个工种下没有登记任何" + label + "，请补充关联。")

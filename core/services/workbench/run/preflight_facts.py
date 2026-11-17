@@ -1,18 +1,33 @@
 """Raw SQLite facts and complete content bound to an in-process read snapshot."""
 
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.execution.ledger_reader import ExecutionLedgerReadScope
+from core.services.scheduler.calendar.engine import CalendarEngine
+from core.services.scheduler.execution.execution_ledger_adapter import ledger_read_snapshot
+from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_capture
+from core.services.workbench.facts.history_documents import HistoryDocuments
+from core.services.workbench.facts.preflight_checks import PreflightChecks
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.source_revisions import PREFLIGHT_SOURCE_KEYS, read_source_revisions
+from core.services.workbench.facts.zero_duration import schedule_row_point_evidence
 
 if TYPE_CHECKING:
     from core.errors import ValidationError
     from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
+
+
+def _official_point_work_for_rows(rows: List[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
+    result: Dict[int, Dict[str, Any]] = {}
+    for row in rows:
+        witness = schedule_row_point_evidence(row)
+        if witness is not None:
+            result[row["op_id"]] = {"witness": witness}
+    return result
 
 
 class PreflightFacts:
@@ -32,15 +47,13 @@ class PreflightFacts:
         self.external_groups = {}
         self._checks = None
         self._calendars: dict = {}
-        self._official_sources, self._source_resolver = {}, None
+        self._official_sources: Dict[Any, Any] = {}
         self._configuration_ready = False
         self.config_snapshot, self.config_error = None, None
 
     @classmethod
     @contextmanager
     def open(cls, conn, *, capture=None) -> Iterator["PreflightFacts"]:
-        from core.services.scheduler.execution.execution_ledger_adapter import ledger_read_snapshot
-
         with candidate_read_snapshot(conn), ledger_read_snapshot(conn) as ledger:
             yield cls(conn, ledger=ledger, capture=capture)
 
@@ -105,8 +118,6 @@ class PreflightFacts:
 
     def checks(self):
         if self._checks is None:
-            from core.services.workbench.facts.preflight_checks import PreflightChecks
-
             self._checks = PreflightChecks(self.tables)
         return self._checks
 
@@ -120,9 +131,6 @@ class PreflightFacts:
                 for existing_scope, existing_engine in self._calendars.items():
                     if existing_scope is not None and scoped <= existing_scope:
                         return existing_engine
-            from core.services.scheduler.calendar.engine import CalendarEngine
-            from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_capture
-
             inputs = calendar_inputs_from_capture(self.capture, operator_ids=scoped)
             engine = self._calendars[scoped] = CalendarEngine(inputs)
         return engine
@@ -142,24 +150,28 @@ class PreflightFacts:
         return self.config_snapshot
 
     def official_source(self, version):
-        """One saved-source preparation serves retained effort and point evidence."""
+        """One saved-source preparation over ScheduleHistory and Schedule."""
         if version not in self._official_sources:
-            histories = [row for row in self.capture.table("ScheduleHistory") if row["version"] == version]
-            refs = [row["ref"] for row in self.tables["WorkbenchPlanSourceRefs"]
-                    if row["kind"] == "official" and row["active"] == 1 and row["version"] == version]
-            if len(histories) != 1 or len(refs) != 1:
+            history = next(
+                (row for row in self.capture.table("ScheduleHistory") if row["version"] == version),
+                None,
+            )
+            if history is None:
                 self._official_sources[version] = None
             else:
-                if self._source_resolver is None:
-                    from core.services.workbench.facts.decision_baseline_source import decision_baseline_source_resolver
-
-                    self._source_resolver = decision_baseline_source_resolver(self.conn)
-                self._official_sources[version] = self._source_resolver(
-                    plan_ref=refs[0], version=version, history=histories[0])
+                version_rows = [row for row in self.tables["Schedule"] if row["version"] == version]
+                self._official_sources[version] = {
+                    "documents": HistoryDocuments(history),
+                    "point_work": lambda rows=version_rows: _official_point_work_for_rows(rows),
+                }
         return self._official_sources[version]
 
     def public_issue(self, item, op):
         """预检原因只带永久编号：内部工序 id 换成工序、批次编号，页面据此标出是哪批哪道。"""
-        result = {key: value for key, value in item.items() if key != "op_id"}
-        result.update(operation_ref=self.operation_ref(op), batch_ref=self.refs.get(("batch", op["batch_id"])), batch_id=op["batch_id"])
+        result = {key: value for key in item if key != "op_id" for value in (item[key],)}
+        result.update(
+            operation_ref=self.operation_ref(op),
+            batch_ref=self.refs.get(("batch", op["batch_id"])),
+            batch_id=op["batch_id"],
+        )
         return result

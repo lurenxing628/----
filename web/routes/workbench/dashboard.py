@@ -1,19 +1,21 @@
 """Exclusive route hook. Mainline owns registration, receipt endpoint and schema."""
 
-from flask import g, request
+from flask import current_app, g, request
 
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import MAX_BYTES, DashboardQuery
 from core.services.workbench import messages
 from core.services.workbench.dashboard.commands import WorkbenchDashboardCommandService
 from core.services.workbench.dashboard.facts import DashboardFacts
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from web.api_responses import json_response, query_success
+from web.runtime_host import wall_clock
 
 from .api_responses import api_endpoint
 from .dashboard_analysis import dashboard_analysis, dashboard_candidate_comparison
 from .read_budget import PLAN_READ_SLOTS
 from .read_context import bind_read_snapshot, page_integer, read_snapshot_time
+from .request_json import BodyTexts, command_body, rejecter, single_value_arguments
 from .write_context import issue_write_context, validate_write_context
 
 
@@ -21,8 +23,7 @@ def _arguments(detail, history):
     allowed = {"category", "status", "query", "sort", "direction", "page", "size", "source", "snapshot_ref"}
     if history:
         allowed.add("history_page")
-    if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "值班台的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
+    single_value_arguments(allowed, message="值班台的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。")
     numbers = {}
     for key, default in (("page", "1"), ("size", "20"), ("history_page", "1")):
         value = request.args.get(key, default)
@@ -56,7 +57,8 @@ def _read(item_ref=None, history=False):
         # 读事务到此结束：整份看板的投影和指纹只用已读出的事实，算多久都不挡别人提交写入。
         sources.facts.project()
         snapshot = bind_read_snapshot(query.scope(), sources.facts.snapshot_contents(), token,
-                                      as_of=sources.facts.now.isoformat(timespec="seconds"), binding=binding)
+                                      as_of=sources.facts.now.isoformat(timespec="seconds"), binding=binding,
+                                      revisions=revisions)
         data = reader.project(sources)
         analysis, analysis_error = None, None
         if item_ref is None:
@@ -93,15 +95,16 @@ def dashboard_history(item_ref):
     return _read(item_ref, history=True)
 
 
+_UNREADABLE = "提交的内容格式不正确，处置还没有保存。请刷新页面后重新填写。"
+_COMMAND = BodyTexts(transport=_UNREADABLE, malformed=_UNREADABLE,
+                     incomplete="提交的内容不完整或有多余项，处置还没有保存。请刷新页面后重新填写。")
+
+
 def _command(item_ref, action):
-    if request.args or not request.is_json:
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容格式不正确，处置还没有保存。请刷新页面后重新填写。", 400)
-    body = request.get_json()
-    if type(body) is not dict or set(body) != {"request_key", "write_token", "input"} or type(body["input"]) is not dict:
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，处置还没有保存。请刷新页面后重新填写。", 400)
-    validate_request_key(body["request_key"])
-    g.workbench_request_key = body["request_key"]
-    service = WorkbenchDashboardCommandService(g.db)
+    body = command_body(_COMMAND, stale="本页数据已过期，处置还没有保存。请刷新页面后重新填写。")
+    if type(body["input"]) is not dict:
+        rejecter(_COMMAND.incomplete)()
+    service = WorkbenchDashboardCommandService(g.db, clock=wall_clock(current_app))
     result = service.execute(action, item_ref, body["input"], request_key=body["request_key"], admission=PLAN_READ_SLOTS.slot,
         validate_context=lambda subject, verb, facts: validate_write_context(body["write_token"], subject, verb, facts))
     return json_response(result)

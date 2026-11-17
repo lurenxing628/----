@@ -1,19 +1,23 @@
-"""Read one verified candidate source inside the caller's existing snapshot."""
+"""Read one run's saved results and one verified candidate source inside the caller's existing snapshot."""
 
 from dataclasses import dataclass, field
 from functools import cached_property
+from typing import Any, Dict, Optional, Sequence, cast
 
 from core.models.workbench_run_candidate import reference
+from core.models.workbench_run_receipt import PersistedReceipt, RunReceipt
 
 from .candidate_effort import candidate_operation_effort_projection
 from .candidate_facts import GenerationFacts
-from .candidate_projection import validate_manifest
+from .candidate_projection import completed_dispositions, validate_manifest
 from .candidate_tasks import (
+    ValidatedCandidateTasks,
     project_validated_tasks,
     unplanned_projection,
-    validate_saved_tasks,
+    validate_candidate_tasks,
 )
 from .candidate_values import corrupt
+from .decision_metrics import admission_operation_refs
 from .gantt_graph import candidate_gantt_graph
 
 
@@ -23,21 +27,61 @@ def candidate_snapshot_identity(run_ref, candidate_ref):
 
 
 @dataclass(frozen=True)
-class CandidateReadSource:
-    run: dict
-    candidate: dict
-    disposition: dict
-    capture: dict
+class SavedRun:
+    """One run's saved archive as this snapshot read it: its head, its receipt (None while the run is queued or
+    running) bound to the run's candidate list, its capture and the capture's generation facts."""
+
+    run: Dict[str, Any]
+    receipt: Optional[RunReceipt]
+    capture: Dict[str, Any]
     facts: GenerationFacts
+
+    @property
+    def persisted(self) -> PersistedReceipt:
+        """The receipt of a run with candidates: only a persisted receipt lists any (``validate_manifest``)."""
+        return cast(PersistedReceipt, self.receipt)
+
+    @cached_property
+    def disposition(self) -> Dict[str, Dict[str, Any]]:
+        """The dispositions saved with the run's candidate results, covering its admitted operations; only a run
+        that saved results has them."""
+        return completed_dispositions(self.persisted.dispositions,
+                                      expected_refs=admission_operation_refs(self.facts, self.capture["input"]))
+
+
+def load_saved_run(store, run, catalog: Sequence[Dict[str, Any]]) -> SavedRun:
+    """The one load of a run's saved archive. ``catalog`` is the run's candidate list (store rows or the saved
+    decision header's); the receipt must list exactly those candidates."""
+    receipt = store.receipt(run)
+    validate_manifest(catalog, receipt)
+    capture = store.capture(run["run_ref"])
+    return SavedRun(run, receipt, capture, store.generation_facts(capture))
+
+
+@dataclass(frozen=True)
+class CandidateReadSource:
+    run: Dict[str, Any]
+    candidate: Dict[str, Any]
+    disposition: Dict[str, Dict[str, Any]]
+    capture: Dict[str, Any]
+    facts: GenerationFacts
+    receipt: PersistedReceipt
     raw_tasks: list
-    catalog: list
     scheduled_op_ids: set
-    # validate_manifest rejects a missing receipt whenever its candidate rows exist.
-    receipt: dict
     task_intervals: dict
     prepared_tasks: dict
     _task_by_row_ref: dict = field(default_factory=dict, repr=False)
     _unplanned_by_ref: dict = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def of(cls, run: SavedRun, candidate, tasks: ValidatedCandidateTasks, projected=()) -> "CandidateReadSource":
+        """A candidate of a run already read in this snapshot. ``projected`` are task views the caller already
+        projected from these validated rows; they seed the source's own projections."""
+        return cls(
+            run.run, candidate, run.disposition, run.capture, run.facts, run.persisted,
+            tasks.raw_tasks, tasks.scheduled_op_ids, tasks.task_intervals, tasks.prepared_tasks,
+            _task_by_row_ref={task["row_ref"]: task for task in projected},
+        )
 
     @property
     def snapshot_identity(self):
@@ -55,8 +99,7 @@ class CandidateReadSource:
         missing = [row for row in rows if row["row_ref"] not in self._task_by_row_ref]
         if missing:
             for task in project_validated_tasks(
-                missing, self.candidate, self.facts, self.task_intervals,
-                prepared_tasks=self.prepared_tasks,
+                missing, self.facts, self.task_intervals, prepared_tasks=self.prepared_tasks,
             ):
                 self._task_by_row_ref[task["row_ref"]] = task
         return [self._task_by_row_ref[row["row_ref"]] for row in rows]
@@ -78,7 +121,7 @@ class CandidateReadSource:
     @cached_property
     def gantt_graph(self):
         resource_keys = {
-            row["row_ref"]: (row["payload"]["machine_id"], row["payload"]["operator_id"])
+            row["row_ref"]: (row["machine_id"], row["operator_id"])
             for row in self.raw_tasks
         }
         return candidate_gantt_graph(
@@ -95,55 +138,13 @@ class CandidateReadSource:
         return candidate_operation_effort_projection(self)
 
 
-def candidate_manifest(store, run_ref):
-    run = store.run(run_ref)
-    receipt = store.receipt(run)
-    rows = store.candidates(run_ref)
-    validate_manifest(run, rows, receipt)
-    return run, rows, receipt
-
-
-def read_candidate_source(store, candidate_ref, *, prepared=None):
-    """Reuse the caller's verified packet, or load an independent source once.
-
-    A prepared packet belongs to this caller's current SQLite snapshot. Its
-    run/catalog/receipt have already passed the common manifest check and its
-    disposition was parsed from that receipt; raw and projected tasks may also
-    be handed over together after validation.
-    """
+def read_candidate_source(store, candidate_ref) -> CandidateReadSource:
+    """Load one candidate's source on its own: its run, the run's candidates and the candidate's saved tasks."""
     reference(candidate_ref)
-    if prepared is None:
-        run_ref = store.candidate_run(candidate_ref)
-        run, rows, receipt = candidate_manifest(store, run_ref)
-        candidate = next((row for row in rows if row["candidate_ref"] == candidate_ref), None)
-        if candidate is None:
-            corrupt()
-        capture = store.capture(run_ref)
-        facts = store.generation_facts(capture)
-        disposition = store.dispositions(receipt, facts, capture)
-        raw_tasks = store.tasks(candidate_ref)
-    else:
-        run, rows, receipt = prepared["run"], prepared["rows"], prepared["receipt"]
-        candidate = prepared["candidate"]
-        capture = prepared["capture"]
-        facts = prepared["facts"]
-        disposition = prepared["disposition"]
-        raw_tasks = prepared["raw_tasks"] if "raw_tasks" in prepared else store.tasks(candidate_ref)
-    if prepared is not None and "task_intervals" in prepared and "scheduled_op_ids" in prepared:
-        ids = prepared["scheduled_op_ids"]
-        intervals = prepared["task_intervals"]
-        prepared_tasks = prepared["prepared_tasks"]
-    else:
-        if len(raw_tasks) != candidate["task_count"]:
-            corrupt()
-        prepared_tasks = {}
-        _, intervals, ids = validate_saved_tasks(raw_tasks, candidate, facts, prepared_tasks=prepared_tasks)
-    source = CandidateReadSource(
-        run, candidate, disposition, capture, facts, raw_tasks, rows, ids,
-        receipt=receipt, task_intervals=intervals, prepared_tasks=prepared_tasks,
-    )
-    if prepared is not None and "tasks" in prepared:
-        object.__setattr__(source, "tasks", prepared["tasks"])
-        for task in prepared["tasks"]:
-            source._task_by_row_ref[task["row_ref"]] = task
-    return source
+    run_ref = store.candidate_run(candidate_ref)
+    run, catalog = store.run(run_ref), store.candidates(run_ref)
+    saved = load_saved_run(store, run, catalog)
+    candidate = next((row for row in catalog if row["candidate_ref"] == candidate_ref), None)
+    if candidate is None:
+        corrupt()
+    return CandidateReadSource.of(saved, candidate, validate_candidate_tasks(store, candidate, saved.facts))

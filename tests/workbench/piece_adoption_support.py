@@ -7,7 +7,6 @@ explicit per-operation work.
 
 from datetime import datetime
 
-from core.algorithm_runtime.algo_stats import make_algo_stats
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
 from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_results
@@ -49,7 +48,7 @@ def slot_payload(prepared, *, placements=None):
     scope = build_piece_adoption_scope(prepared.operations, {key: batch.quantity for key, batch in prepared.batches.items()})
     work = {row.op_id: row for row in scope.operations}
     downtimes = runtime_resource_inputs(prepared.facts).downtimes
-    result = {row.op_id: row for row in coerce_seed_results(prepared.seeds.seed_results, optimizer_algo_stats=make_algo_stats())}
+    result = {row.op_id: row for row in coerce_seed_results(prepared.seeds.seed_results)}
     for op in sorted(prepared.algo_ops, key=lambda item: (item.seq, item.id)):
         if op.id in result:
             continue

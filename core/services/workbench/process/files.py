@@ -1,4 +1,5 @@
-"""Atomic process-file commands bound to the retained parsed source and full read facts."""
+"""Atomic process-file commands bound to the retained parsed source and one read-snapshot scope; each file
+domain reads the facts it needs from that scope."""
 
 from core.models.workbench_action_values import AtomicActionPreview
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
@@ -6,6 +7,7 @@ from core.models.workbench_resource_action import resource_refs
 from core.models.workbench_resource_file_source import PreparedImportSource
 
 from .file_codec import decode_process_file
+from .file_route import ProcessRouteFileOperations
 from .queries import WorkbenchProcessQueryService
 
 
@@ -20,8 +22,6 @@ class WorkbenchProcessFileService:
 
     def _domain(self, kind):
         if kind == "route":
-            from .file_route import ProcessRouteFileOperations
-
             return ProcessRouteFileOperations(self.conn, self.logger)
         from .file_hours import ProcessHoursFileOperations
 
@@ -47,11 +47,7 @@ class WorkbenchProcessFileService:
             if target_ref is not None:
                 scope.identity_of(target_ref)
             domain = self._domain(kind)
-            rows, extra = (
-                domain.preview_rows(decoded, scope, target_ref)
-                if kind == "route"
-                else domain.preview_rows(decoded, scope.facts(), target_ref)
-            )
+            rows, extra = domain.preview_rows(decoded, scope, target_ref)
             for row in rows:
                 row.setdefault("route_summary", None)
             request.update(state=scope.state_fingerprint(), acknowledgements={
@@ -59,7 +55,8 @@ class WorkbenchProcessFileService:
                 "zero_review_required": extra["zero_review_required"]})
             return AtomicActionPreview.build(file_operation(kind), request, rows, notices, source=prepared), extra, domain, rows
 
-    def confirm_import(self, preview, *, discard_group_refs, confirm_zero_unit_hours):
+    def confirm_import(self, preview, *, discard_group_refs, confirm_zero_unit_hours, confirmed_at):
+        """``confirmed_at`` is the command's one confirmation stamp; only a route file confirms what it saves."""
         if not self.conn.in_transaction:
             raise RuntimeError("工艺文件确认必须位于外层命令与回执事务中。")
         refs = resource_refs(discard_group_refs, allow_empty=True)
@@ -72,7 +69,10 @@ class WorkbenchProcessFileService:
             raise WorkbenchCommandRejected("group_discard_required", "请逐项核对全部受影响外协组，不能漏选或多选。")
         if extra["zero_review_required"] and not confirm_zero_unit_hours:
             raise WorkbenchCommandRejected("zero_review_required", "单件工时为 0，排产只计算换型工时，数量增加不会增加加工时长。请按 0 导入。")
-        rows, affected_refs = domain.apply_rows(prepared_rows)
+        if isinstance(domain, ProcessRouteFileOperations):
+            rows, affected_refs = domain.apply_rows(prepared_rows, confirmed_at=confirmed_at)
+        else:
+            rows, affected_refs = domain.apply_rows(prepared_rows)
         data = {"kind": kind, "rows": rows, "summary": body["summary"], "affected_refs": affected_refs}
         unchanged = all(row["result"] == "unchanged" for row in rows)
         return WorkbenchCommandOutcome("unchanged" if unchanged else "committed", data)

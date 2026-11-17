@@ -1,17 +1,24 @@
 """Real SQLite and isolated Flask read routes; no production app startup or paths."""
 
-import sqlite3
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 from flask import Blueprint, Flask, g
 
-from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
-from tests.workbench.plan_catalog_support import history, seed_operation
+from tests._support.sqlite_connection import open_test_connection
+from tests.workbench.plan_catalog_support import (
+    ensure_history_head,
+    history,
+    insert_schedule_row,
+    insert_schedule_rows,
+    seed_operation,
+)
 from web.routes.workbench.plan_reads import register_plan_read_routes
+from web.runtime_host import install_wall_clock
 
 BASE = "/api/workbench/v1/plans"
 NIGHT_START = "2026-09-09T22:30:00"
@@ -21,33 +28,36 @@ PRIVATE_FIELDS = {"schedule_id", "op_id", "candidate_id", "candidate_key", "scen
                   "machine_id", "operator_id", "supplier_id", "entity_key", "fingerprint", "row_ref"}
 
 
-def connect(path):
-    conn = sqlite3.connect(str(path))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    register_schedule_time_sql_functions(conn)
-    return conn
-
-
 def seed_plans(conn):
     op = seed_operation(conn)
     conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('PRIVATE-M1','Machine one')")
     conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('PRIVATE-O1','Operator one')")
-    for version in (1, 2, 3):
-        history(conn, version, op_id=op)
-    conn.execute("UPDATE Schedule SET start_time=?,end_time=?,machine_id='PRIVATE-M1',operator_id='PRIVATE-O1' WHERE version=3",
-                 (NIGHT_START, NIGHT_END))
+    history(conn, 1, op_id=op)
+    history(conn, 2, op_id=op)
+    ensure_history_head(conn, 3, baseline_version=None, baseline_ref=None)
+    insert_schedule_row(
+        conn,
+        3,
+        op,
+        NIGHT_START,
+        NIGHT_END,
+        machine_id="PRIVATE-M1",
+        operator_id="PRIVATE-O1",
+    )
     conn.commit()
     return op
 
 
-def add_tasks(conn, count, *, start="2026-09-11 22:00:00", end="2026-09-12 02:00:00"):
+def add_tasks(conn, count, *, start="2026-09-11T22:00:00", end="2026-09-12T02:00:00"):
     first = conn.execute("SELECT COALESCE(MAX(id),0)+1 FROM BatchOperations").fetchone()[0]
-    ids = range(first, first + count)
+    ids = list(range(first, first + count))
     conn.executemany("INSERT INTO BatchOperations(id,op_code,batch_id,seq,op_type_name) VALUES (?,?,'CAT-B',?,'Extra op')",
                      ((op, "EXTRA-" + str(op), op) for op in ids))
-    conn.executemany("INSERT INTO Schedule(version,op_id,start_time,end_time) VALUES (3,?,?,?)",
-                     ((op, start, end) for op in ids))
+    insert_schedule_rows(
+        conn,
+        3,
+        ({"op_id": op, "start_time": start, "end_time": end} for op in ids),
+    )
 
 
 class PlanReadApi:
@@ -58,7 +68,7 @@ class PlanReadApi:
 
     @contextmanager
     def db(self):
-        conn = connect(self.path)
+        conn = open_test_connection(self.path)
         try:
             with conn:
                 yield conn
@@ -89,6 +99,7 @@ class PlanReadApi:
 
 def make_api(path):
     app = Flask("plan-read-test")
+    install_wall_clock(app, datetime.now)
     app.config["TESTING"] = True
     bp = Blueprint("plan_read_test", __name__)
     register_plan_read_routes(bp)
@@ -97,7 +108,7 @@ def make_api(path):
 
     @app.before_request
     def database():
-        g.db = connect(path)
+        g.db = open_test_connection(path)
         g.db.execute("PRAGMA query_only = ON")
         g.db.set_trace_callback(api.statements.append)
 
@@ -111,7 +122,7 @@ def make_api(path):
 @pytest.fixture(name="plan_api")
 def plan_read_api(tmp_path):
     path = tmp_path / "plan-reads.db"
-    conn = connect(path)
+    conn = open_test_connection(path)
     try:
         conn.executescript((Path(__file__).resolve().parents[2] / "schema.sql").read_text(encoding="utf-8"))
         conn.commit()

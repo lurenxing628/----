@@ -12,7 +12,7 @@ from .preparation_projection import preparation_summary
 def _remaining_operation(row: Mapping[str, Any]) -> Dict[str, Any]:
     result = {key: value for key, value in row.items() if key != "disposition"}
     disposition = row["disposition"]
-    result.update(disposition_status=disposition["status"], reasons=[dict(item) for item in disposition["issues"]])
+    result.update(disposition_status=disposition["status"], reasons=disposition["issues"])
     return result
 
 
@@ -38,7 +38,7 @@ def _remaining_reasons(rows):
         if "disposition" in row:
             for reason in row["disposition"]["issues"]:
                 if reason not in reasons:
-                    reasons.append(dict(reason))
+                    reasons.append(reason)
     return reasons
 
 
@@ -71,7 +71,7 @@ def project_completion_summary(
         row = by_batch[ref]
         rows = missing[ref]
         batches.append({"batch_ref": ref, "completion_state": row["completion_state"] if available else DeliveryCompletionState.UNKNOWN.value,
-                        "issues": list(row.get("issues", [])),
+                        "issues": row["issues"],
                         "unplanned_operation_refs": sorted(item["operation_ref"] for item in rows if item["allocation_state"] != "deferred"),
                         "deferred_operation_refs": sorted(item["operation_ref"] for item in rows if item["allocation_state"] == "deferred"),
                         "operation_count": len(rows) if available else None,
@@ -83,7 +83,7 @@ def project_completion_summary(
               "unplanned_operation_refs": sorted(unplanned_refs), "deferred_operation_refs": sorted(deferred_refs),
               "remaining_batches": batches, "remaining_work": preparation_summary(pending, available=available)}
     if schedulable_coverage is not None:
-        result["schedulable"] = dict(schedulable_coverage)
+        result["schedulable"] = schedulable_coverage
     return result
 
 

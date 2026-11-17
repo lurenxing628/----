@@ -14,7 +14,7 @@ from core.models.workbench_piece_adoption import (
     PieceAdoptionScope,
     PieceOperationWork,
 )
-from core.shared.strict_parse import is_stored_number
+from core.shared.strict_parse import is_exact_positive_int, is_stored_number
 
 
 def block(code, message, *, batch_id=None) -> NoReturn:
@@ -29,8 +29,8 @@ def build_piece_adoption_scope(operations, quantities):
     by_batch = defaultdict(list)
     ids = set()
     for op in operations:
-        if (not is_stored_number(op.id, integer=True, positive=True) or op.id in ids
-                or not is_stored_number(op.seq, integer=True, positive=True) or op.batch_id not in quantities):
+        if (not is_exact_positive_int(op.id) or op.id in ids
+                or not is_exact_positive_int(op.seq) or op.batch_id not in quantities):
             block("piece_identity_invalid", "工序编号或工序顺序号无效、重复，本次没有采用。请到批次管理核对本批工序。", batch_id=op.batch_id)
         if op.piece_id is not None and (
             type(op.piece_id) is not str or not op.piece_id or op.piece_id.strip() != op.piece_id

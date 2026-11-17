@@ -2,7 +2,9 @@
 
 from core.errors import ValidationError
 from core.models.workbench_batch import number
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.template_source import SOURCE_MESSAGES, TemplateSourceFacts
+from core.services.process.workflow_state import project_part_workflow
 
 from .projection import issue
 
@@ -46,7 +48,10 @@ def template_status(facts, batch, resources, *, rows=None):
     """The detail and replacement preview apply the same completeness policy."""
     if rows is None:
         rows = [row for row in facts["PartOperations"] if row["part_no"] == batch["part_no"] and row["status"] == "active"]
-    workflow = facts["workflow"][batch["part_no"]]["workflow"]
+    part = next((item for item in facts["Parts"] if item["part_no"] == batch["part_no"]), None)
+    if part is None:
+        raise WorkbenchCommandRejected("storage_failure", "这个批次对应的零件已经不在了。请刷新重试；仍不行请联系维护人员。", 500)
+    workflow = project_part_workflow(part, bool(rows))
     diagnostics = template_diagnostics(rows, facts, resources)
     if not rows:
         diagnostics.insert(0, issue("尚未录入有效工序，请先完善工艺路线。"))
@@ -56,14 +61,17 @@ def template_status(facts, batch, resources, *, rows=None):
     return {**workflow, "operation_count": len(rows), "complete": not diagnostics, "diagnostics": diagnostics}
 
 
-def _number_diagnostic(value, sequence, label, *, positive=False):
-    prefix = "工序 " + str(sequence) + " 的" + label
+def _missing(sequence, label):
+    return [issue("工序 " + str(sequence) + " 的" + label + "未填写，请先补齐工艺。")]
+
+
+def _number_diagnostic(value, sequence, label):
     if value is None:
-        return [issue(prefix + "未填写，请先补齐工艺。")]
+        return _missing(sequence, label)
     try:
-        number(value, label, positive=positive)
+        number(value, label)
     except ValidationError:
-        return [issue(prefix + ("必须大于 0。" if positive else "必须为非负数。"))]
+        return [issue("工序 " + str(sequence) + " 的" + label + "必须为非负数。")]
     return []
 
 
@@ -75,7 +83,7 @@ def _internal_diagnostics(row):
 
 
 def _external_diagnostics(row, group):
-    diagnostics = []
-    days = group["total_days"] if group and group["merge_mode"] == "merged" else row["ext_days"]
-    diagnostics.extend(_number_diagnostic(days, row["seq"], "整组外协周期" if group and group["merge_mode"] == "merged" else "外协周期", positive=True))
-    return diagnostics
+    # 外协周期与整组周期的值域由表约束保证，只剩没填一种情况。
+    merged = group and group["merge_mode"] == "merged"
+    days = group["total_days"] if merged else row["ext_days"]
+    return _missing(row["seq"], "整组外协周期" if merged else "外协周期") if days is None else []

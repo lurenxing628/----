@@ -1,16 +1,15 @@
 """Snapshot-only route-file preparation; only parser references need database reads."""
 
-from collections import defaultdict
-
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_actions import normalize_process_part_create
 from core.models.workbench_process_file import COLUMNS
 from core.models.workbench_resource_action import action_row, reject_action_row
 from core.models.workbench_resource_input import resource_text
+from core.shared.strict_parse import wire_int, wire_sequence
 
 from .part_actions_facts import check_process_template
-from .projection import project_group, public_sequence, require_ref
+from .projection import project_group, require_ref
 from .route_apply import affected_group_rows
 from .route_choices import changed_route_sequences, preview_existing_route, route_choice_context
 from .route_facts import ProcessRouteFacts
@@ -22,19 +21,6 @@ def canonical_part(part):
             "route_raw": part["route_raw"], "remark": part["remark"]}
 
 
-def reject_duplicates(rows):
-    occurrences = defaultdict(list)
-    for row in rows:
-        if row["business_code"] is not None:
-            occurrences[row["business_code"]].append(row)
-    for repeated in occurrences.values():
-        if len(repeated) > 1:
-            for row in repeated:
-                if not any(error["code"] == "duplicate_entry" for error in row["errors"]):
-                    reject_action_row(row, "同一图号在文件中重复，这批不能导入。请合并重复行后重新导入。",
-                                      field="business_code", code="duplicate_entry")
-
-
 def _same_template_route(part, existing, preview):
     return (part is not None and part["route_parsed"] == "yes"
             and sorted((op["seq"], op["op_type_name"]) for op in existing if op["status"] == "active")
@@ -42,7 +28,7 @@ def _same_template_route(part, existing, preview):
 
 
 def _route_summary(preview, existing):
-    diagnostics = [{**row, **({"sequence": public_sequence(row["sequence"])} if "sequence" in row else {})}
+    diagnostics = [{**row, **({"sequence": wire_int(row["sequence"])} if "sequence" in row else {})}
                    for row in preview["diagnostics"]]
     before = {row["seq"]: row["op_type_name"] for row in existing if row["status"] == "active"}
     after = {row["sequence"]: row["op_type_name"] for row in preview["operations"]}
@@ -50,11 +36,11 @@ def _route_summary(preview, existing):
     for sequence in sorted(set(before) | set(after)):
         change = "added" if sequence not in before else "removed" if sequence not in after else \
             "retained" if before[sequence] == after[sequence] else "changed"
-        differences.append({"sequence": public_sequence(sequence), "change": change,
+        differences.append({"sequence": wire_sequence(sequence), "change": change,
                             "before": before.get(sequence), "after": after.get(sequence)})
     return {"counts": preview["counts"], "diagnostics": diagnostics,
             "can_confirm_route": preview["can_confirm_route"], "differences": differences,
-            "operations": [{"sequence": public_sequence(row["sequence"]), "op_type_name": row["op_type_name"],
+            "operations": [{"sequence": wire_int(row["sequence"]), "op_type_name": row["op_type_name"],
                             "source_suggestion": row["source_suggestion"], "supplier_label": row["supplier_label"],
                             "external_days": row["external_days"]} for row in preview["operations"]]}
 
@@ -63,7 +49,7 @@ class RouteFilePreview:
     def __init__(self, logger, scope, target_ref):
         self.logger = logger
         self.scope = scope
-        self.facts = ProcessRouteFacts(scope.raw_facts())
+        self.facts = ProcessRouteFacts(scope.raw_facts(), references=None)
         self.parser = None
         self.parts = self.facts.parts
         self.identities = self.facts.identities
@@ -76,10 +62,12 @@ class RouteFilePreview:
         row = action_row(source["row"])
         row.update(errors=list(source["errors"]), related={"route": None, "affected_groups": []},
                    route_summary=None)
+        values = source["values"]
+        if "business_code" not in values:
+            # 解码层已报过图号这一格的错，认不出是哪个零件。
+            return row
         try:
-            values = source["values"]
-            raw_code = values.get("business_code")
-            resource_text(raw_code, "business_code")
+            raw_code = values["business_code"]
             row["business_code"] = raw_code
             part = self._resolve(row)
             if part is None and raw_code != raw_code.strip():

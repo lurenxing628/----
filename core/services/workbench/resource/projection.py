@@ -5,14 +5,13 @@ from typing import Any, Dict, List, Mapping, Tuple
 from core.models.calendar_periods import shift_pattern_fields
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_resource_status import public_resource_status
-from core.services.personnel.operator_machine_normalizers import normalize_operator_machine_row
 
 
 def resource_state_referenced(kind: str, state: Mapping[str, Any]) -> bool:
     if kind in ("machine_group", "shift_profile"):
-        return bool(state["members"])
+        return state["member_count"] > 0
     if kind == "supplier":
-        return any(state["supplier"]["references"].values())
+        return any(state["supplier"]["counts"].values())
     return any(state["dependencies"].values())
 
 
@@ -36,6 +35,14 @@ def resource_action_policy(
         else []
     )
     return actions, capabilities, blocked_reasons
+
+
+def permission_rows(state):
+    machines = {item["record"]["machine_id"]: item for item in state["authorized_machines"]}
+    return [{"machine_ref": machines[row["machine_id"]]["identity"]["ref"],
+             "business_code": row["machine_id"], "label": machines[row["machine_id"]]["record"]["name"],
+             "skill_level": row["skill_level"], "is_primary": row["is_primary"]}
+            for row in state["machine_authorizations"]]
 
 
 def _related(value):
@@ -70,10 +77,8 @@ def _machine(entity, raw, state):
     entity["fields"]["category"] = raw["category"]
     relations = entity["relationships"]
     relations["counts"] = state["dependencies"]
-    for name in ("op_type", "group"):
-        related = _related(state[name])
-        relations[name] = related
-        relations[name + "_ref"] = related["ref"] if related else None
+    relations["group"] = _related(state["group"])
+    relations["group_ref"] = relations["group"]["ref"] if relations["group"] else None
     relations["op_types"] = [_related(item) for item in state["op_types"]]
     relations["op_type_refs"] = [item["ref"] for item in relations["op_types"]]
     if any(not supports_source(item["record"]["category"], "internal") for item in state["op_types"]):
@@ -89,9 +94,7 @@ def _operator(entity, raw, state):
     relations["shift_profile"] = _related(state["shift"])
     relations["shift_profile_ref"] = relations["shift_profile"]["ref"] if relations["shift_profile"] else None
     relations["machine_authorization_count"] = len(state["machine_authorizations"])
-    from .operator_machine_permissions import permission_rows
     relations["machine_permissions"] = permission_rows(state)
-    entity["issues"].extend(_authorization_issues(state["machine_authorizations"]))
     if any(not supports_source(item["record"]["category"], "internal") for item in state["skill_types"]):
         entity["issues"].append({"code": "operator_skill_invalid", "message": "这个人登记的技能里有不是自制的工种，没有算成自制资格。请核对技能登记。"})
     if relations["skills_declared"] and not relations["skill_refs"]:
@@ -101,13 +104,13 @@ def _operator(entity, raw, state):
 
 
 def _machine_group(entity, raw, state):
-    entity["relationships"]["machine_count"] = len(state["members"])
+    entity["relationships"]["machine_count"] = state["member_count"]
 
 
 def _shift_profile(entity, raw, state):
     entity["fields"].update({key: raw[key] for key in ("anchor_date", "cycle_days")})
     entity["fields"]["pattern"] = [shift_pattern_fields(row) for row in state["pattern"]]
-    entity["relationships"]["operator_count"] = len(state["members"])
+    entity["relationships"]["operator_count"] = state["member_count"]
 
 
 def _supplier(entity, raw):
@@ -118,19 +121,6 @@ def _supplier(entity, raw):
         if not supports_source(row["category"], "external"):
             entity["issues"].append({"code": "supplier_capability_invalid", "message": "这家供应商关联的工种不是外协工种，没有算成外协能力。请重新选一个外协工种。"})
     entity["relationships"] = {"op_types": refs, "op_type_refs": [row["ref"] for row in refs],
-                                "counts": {key: len(rows) for key, rows in raw["references"].items()}}
+                                "counts": raw["counts"]}
     return entity
 
-
-def _authorization_issues(rows):
-    """Expose affected link fields without changing raw authorization values."""
-    issues = []
-    labels = {"skill_level": "技能等级", "is_primary": "主操设备"}
-    for row in rows:
-        normalized = normalize_operator_machine_row(row)
-        fields = normalized.get("dirty_fields", [])
-        if fields:
-            message = "设备“{}”的授权记录要核对，涉及：{}。系统只是按兼容规则解释，原值没有被改。".format(
-                row["machine_id"], "、".join(labels[field] for field in fields))
-            issues.append({"code": "machine_authorization_dirty", "fields": list(fields), "message": message})
-    return issues

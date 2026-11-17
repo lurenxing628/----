@@ -10,7 +10,7 @@ from dataclasses import asdict
 from flask import current_app, g, request
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.facts.source_revisions import (
     OPERATOR_CALENDAR_SOURCE_KEYS,
@@ -22,8 +22,9 @@ from data.repositories.workbench_resource_table_repo import WorkbenchResourceTab
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
-from .read_context import bind_read_snapshot
-from .resource_action_context import json_body, read_endpoint
+from .read_context import bind_read_snapshot, current_snapshot_time, read_snapshot_time
+from .request_json import command_body, single_value_arguments
+from .resource_action_context import BODY, PAGE_STALE_MESSAGE, json_body, read_endpoint
 from .write_context import issue_write_context, validate_write_context
 
 ACTIONS = {"upsert": "operator.calendar_upsert", "delete": "operator.calendar_delete",
@@ -47,8 +48,7 @@ def _operator_state(reader, ref):
 
 
 def _month_input():
-    if set(request.args) - {"year", "month", "snapshot_ref"} or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "个人日历的查询条件有重复或不支持的项，当前月份没有变化。请刷新页面后重新选择月份。", 400)
+    single_value_arguments({"year", "month", "snapshot_ref"}, message="个人日历的查询条件有重复或不支持的项，当前月份没有变化。请刷新页面后重新选择月份。")
     values = {}
     for key in ("year", "month"):
         text = request.args.get(key, "")
@@ -68,16 +68,17 @@ def _month_binding(resource_state, month):
 
 @read_endpoint
 def operator_calendar_month(ref):
-    values = _month_input()
+    values, token = _month_input(), request.args.get("snapshot_ref")
     reader = _reader()
+    as_of, read_binding = read_snapshot_time(token)
     with TransactionManager(g.db).transaction():
         identity, resource_state = _operator_state(reader, ref)
         revisions = read_source_revisions(g.db, OPERATOR_CALENDAR_SOURCE_KEYS)
         snapshot = bind_read_snapshot({"kind": "operator_calendar", "ref": ref, **values},
                                       {"operator": asdict(identity), "revisions": revisions},
-                                      request.args.get("snapshot_ref"))
+                                      token, as_of=as_of, binding=read_binding)
         service = _service(identity.entity_key)
-        month = service.month(**values)
+        month = service.month(**values, as_of=as_of)
         days = []
         for day in month["days"]:
             public = {**WorkbenchOperatorCalendarService.public_day(day), "default_periods": month["default_periods"],
@@ -92,18 +93,11 @@ def operator_calendar_month(ref):
     return query_success(data, snapshot)
 
 
-def _command_body():
-    body = json_body({"request_key", "write_token", "input"})
-    validate_request_key(body["request_key"])
-    g.workbench_request_key = body["request_key"]
-    return body
-
-
 def _guarded_day(ref, action, write_token, day):
     """Bind the original month, including calendar revisions and absence history."""
     identity, resource_state = _operator_state(_reader(), ref)
     service = _service(identity.entity_key)
-    month = service.month(int(day[:4]), int(day[5:7]))
+    month = service.month(int(day[:4]), int(day[5:7]), as_of=current_snapshot_time())
     validate_write_context(write_token, ref, ACTIONS[action], _month_binding(resource_state, month))
     state = next(item for item in month["days"] if item["date"] == day)
     checked_state = {key: state[key] for key in ("date", "explicit", "calendar_ref", "revision", "row", "identity", "history")}
@@ -120,7 +114,7 @@ def _guarded_range(ref, write_token, payload):
 
 @api_endpoint
 def operator_calendar_command(ref, action):
-    body = _command_body()
+    body = command_body(BODY, stale=PAGE_STALE_MESSAGE)
     payload = WorkbenchOperatorCalendarService.normalize(action, body["input"])
 
     def mutate(checked):
@@ -138,6 +132,7 @@ def operator_calendar_command(ref, action):
 @read_endpoint
 def operator_calendar_range_preview(ref):
     body = json_body({"input"})
+    as_of = current_snapshot_time()
     reader = _reader()
     # 在同一读事务内核对人员并绑定这段日期的个人日历快照。
     with TransactionManager(g.db).transaction():
@@ -149,13 +144,13 @@ def operator_calendar_range_preview(ref):
                 "days": [WorkbenchOperatorCalendarService.public_day(day) for day in preview["days"]],
                 "write_context": issue_write_context(ref, [ACTIONS["range_clear"]], {"resource": resource_state, "preview": preview})}
         snapshot = bind_read_snapshot({"kind": "operator_calendar_range", "ref": ref, **preview["request"]},
-                                      {"operator": asdict(identity), "revisions": revisions})
+                                      {"operator": asdict(identity), "revisions": revisions}, as_of=as_of)
     return query_success(data, snapshot)
 
 
 @api_endpoint
 def operator_calendar_range_clear(ref):
-    body = _command_body()
+    body = command_body(BODY, stale=PAGE_STALE_MESSAGE)
     payload = WorkbenchOperatorCalendarService.normalize("range_clear", body["input"])
 
     def mutate(checked):

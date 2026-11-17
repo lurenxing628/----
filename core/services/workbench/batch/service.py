@@ -1,8 +1,8 @@
-"""Prepare batch changes from one capture, then apply them in the command transaction."""
+"""Prepare batch changes from bounded captures, then apply them in the command transaction."""
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, Optional, Sequence, cast
 
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models.batch import Batch
@@ -15,8 +15,9 @@ from .facts import index_relations, require_deletable, require_unreferenced
 from .scope import BatchFactScope
 
 # 齐套状态不在这里：复制、拆分写入的齐套状态都是本次算出的内部值，不读原批次。
-_STORED_LABELS = {"fields.quantity": "数量", "fields.due_date": "交期", "fields.priority": "优先级",
-                  "fields.ready_date": "齐套日期", "fields.remark": "备注", "part_name": "零件名称"}
+# 优先级也不在这里：库里的优先级由 Batches.priority 的值域约束保证合法，复制、拆分沿用时不会被拒。
+_STORED_LABELS = {"fields.quantity": "数量", "fields.due_date": "交期", "fields.ready_date": "齐套日期",
+                  "fields.remark": "备注", "part_name": "零件名称"}
 
 
 @contextmanager
@@ -25,7 +26,6 @@ def stored_batch_values(ref, source, verb):
     try:
         yield
     except ValidationError as exc:
-        # normalize_batch_fields 和 text 报错时都带字段路径。
         field = cast(str, exc.field)
         code, label = source["batch_id"], _STORED_LABELS[field]
         remedy = ("零件名称在批次里改不了，请联系维护人员核对这个批次的资料。" if field == "part_name"
@@ -50,27 +50,39 @@ class BatchChangePreparation:
     scope: BatchFactScope
     facts: Any
 
-    def __init__(self, scope: BatchFactScope):
+    def __init__(
+        self,
+        scope: BatchFactScope,
+        *,
+        tables: Optional[Dict[str, Any]] = None,
+        relation_refs: Optional[Sequence[str]] = None,
+    ):
         self.scope = scope
         self.facts = scope.current_facts()
-        if self.facts is None and scope.mode == "single_instance":
+        self._relation_refs = tuple(relation_refs) if relation_refs is not None else None
+        if self.facts is None and tables is None and scope.mode in ("single_instance", "single_create"):
             self.identities = {}
             self.batches = {}
             self.parts = {}
             self.used_codes = set()
         else:
-            tables = self.facts if self.facts is not None else scope.entity_tables()
-            self.identities = {row["ref"]: row for row in tables["WorkbenchEntityRefs"] if row["active"]}
-            self.batches = {row["batch_id"]: row for row in tables["Batches"]}
-            self.parts = {row["part_no"]: row for row in tables["Parts"]}
-            self.used_codes = set(tables.get("batch_codes", self.batches))
+            loaded = tables if tables is not None else (self.facts if self.facts is not None else scope.entity_tables())
+            self.identities = {row["ref"]: row for row in loaded["WorkbenchEntityRefs"] if row["active"]}
+            self.batches = {row["batch_id"]: row for row in loaded["Batches"]}
+            self.parts = {row["part_no"]: row for row in loaded["Parts"]}
+            self.used_codes = set(loaded.get("batch_codes", self.batches))
         self._relations = None
 
     @property
     def relations(self):
         if self._relations is None:
             if self.facts is None:
-                self.facts = self.scope.load()
+                if self._relation_refs is not None:
+                    revisions = self.scope.revisions or self.scope.reader.read_revisions()
+                    raw = self.scope.reader.capture_closure(self._relation_refs, revisions=revisions)
+                    self.facts = self.scope.reader.project_captured(raw, material_day=self.scope.material_day)
+                else:
+                    self.facts = self.scope.load()
             self._relations = index_relations(self.facts)
         return self._relations
 
@@ -84,6 +96,16 @@ class BatchChangePreparation:
             raise WorkbenchCommandRejected("constraint_conflict", "批次号或图号不能为空，请先核对原记录。")
         return key
 
+    def _resolve_single_part(self, part_ref: str) -> Dict[str, Any]:
+        identity = self.scope.resolve(part_ref, "part")
+        part_no = identity.entity_key
+        if not part_no.strip():
+            raise WorkbenchCommandRejected("constraint_conflict", "批次号或图号不能为空，请先核对原记录。")
+        part = self.scope.reader.repo.part_row(part_no)
+        if part is None:
+            raise WorkbenchCommandRejected("storage_failure", "零件和系统编号对不上，请联系维护人员核对资料。", 500)
+        return part
+
     def batch(self, ref):
         if self.scope.mode == "single_instance":
             return self.scope.batch(ref)
@@ -96,10 +118,16 @@ class BatchChangePreparation:
     def prepare(self, action, payload, ref=None):
         """Consume the normalized command input; no further input conversion during apply."""
         if action == "create":
-            part_no = self.resolve(payload["part_ref"], "part")
-            part = self.parts.get(part_no)
-            if part is None:
-                raise WorkbenchCommandRejected("storage_failure", "零件和系统编号对不上，请联系维护人员核对资料。", 500)
+            if self.scope.mode == "single_create" and self.facts is None and not self.identities:
+                part = self._resolve_single_part(payload["part_ref"])
+                part_no = part["part_no"]
+                if self.scope.reader.repo.batch_exists(payload["business_code"]):
+                    self.used_codes.add(payload["business_code"])
+            else:
+                part_no = self.resolve(payload["part_ref"], "part")
+                part = self.parts.get(part_no)
+                if part is None:
+                    raise WorkbenchCommandRejected("storage_failure", "零件和系统编号对不上，请联系维护人员核对资料。", 500)
             return self.create(Batch(batch_id=payload["business_code"], part_no=part_no,
                                      part_name=part["part_name"], **payload["fields"]))
         batch = self.batch(ref)
@@ -128,10 +156,7 @@ class BatchChangePreparation:
         return BatchChange("create", batch.batch_id, None, {}, batch)
 
     def copy(self, source, code, *, quantity=None, ready_status="no", ready_date=None):
-        """Copies admit the stored source fields like user input; callers wrap this in stored_batch_values.
-
-        零件号不再核对：Batches.part_no 外键指向 Parts，parts 是同一快照的整表。
-        """
+        """Copies admit the stored source fields like user input; callers wrap this in stored_batch_values."""
         fields = normalize_batch_fields({
             "quantity": source["quantity"] if quantity is None else quantity,
             "due_date": source["due_date"],
@@ -152,6 +177,22 @@ class WorkbenchBatchService:
 
     def preparation(self, scope: BatchFactScope):
         return BatchChangePreparation(scope)
+
+    def import_preparation(
+        self,
+        scope: BatchFactScope,
+        *,
+        batch_refs: Sequence[str],
+        relation_refs: Sequence[str],
+        part_refs: Sequence[str],
+        create_codes: Sequence[str],
+    ) -> BatchChangePreparation:
+        tables = scope.reader.repo.import_apply_tables(
+            batch_refs=batch_refs,
+            part_refs=part_refs,
+            create_codes=create_codes,
+        )
+        return BatchChangePreparation(scope, tables=tables, relation_refs=relation_refs)
 
     def apply_prepared_many(self, changes):
         if not self.conn.in_transaction:

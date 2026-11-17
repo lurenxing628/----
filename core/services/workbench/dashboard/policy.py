@@ -1,42 +1,21 @@
-"""Service-side rulings over dashboard storage facts; the repositories only read and write rows."""
+"""Service-side rulings over dashboard storage facts; the repository only reads and writes rows."""
 
+from core.models.content import read_stored_json
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_dashboard import HANDLING_FIELDS, MAX_ROWS, STATUSES, bounded, reference
-from core.shared.strict_json import load_strict_json
-
-
-def corrupt():
-    raise WorkbenchCommandRejected("dashboard_storage_invalid", "处置记录或关联记录不完整，请联系维护人员核对。", 409)
-
-
-def _load_object(raw):
-    """存储边界只解码一次：不是严格 JSON 对象（含重复键、非有限数字）就按存储损坏拒绝。"""
-    return load_strict_json(raw, on_malformed=corrupt, expected=dict)
-
-
-def load_handling(raw):
-    value = _load_object(raw)
-    if (set(value) != {"status"} | set(HANDLING_FIELDS) or value["status"] not in STATUSES
-            or any(value[key] is not None and type(value[key]) is not str for key in HANDLING_FIELDS)):
-        corrupt()
-    return value
+from core.models.workbench_dashboard import MAX_ROWS, bounded, reference
 
 
 def mapped_anchors(loaded, refs):
     """loaded 是读快照里按候选来源读出的映射；这次真正评估到的来源必须每条都有映射。"""
     result = {ref: loaded[ref] for ref in refs if ref in loaded}
     if set(result) != set(refs):
-        corrupt()
+        raise WorkbenchCommandRejected("identity_missing", "值班台条目关联缺失，请联系维护人员核对。")
     return result
 
 
 def read_receipt_mappings(repo, refs):
-    result = {row["outsourcing_ref"]: row for row in bounded(repo.external_items(MAX_ROWS))}
-    if set(result) != set(refs):
-        corrupt()
-    if repo.shares_item_ref_with_dashboard_items():
-        corrupt()
-    return result
+    loaded = {row["outsourcing_ref"]: row for row in bounded(repo.external_items(MAX_ROWS))}
+    return mapped_anchors(loaded, refs)
 
 
 def read_stored(repo):
@@ -46,27 +25,11 @@ def read_stored(repo):
         count += 1
         bounded(range(count), MAX_ROWS)
         identity = row.pop("_identity")
-        row["handling"] = load_handling(row.pop("handling_json"))
-        row["origin"] = _load_object(row.pop("origin_json"))
-        if (row["origin"].get("item_ref") != row["item_ref"]
-                or row["origin"].get("category") != row["category"]
-                or type(row["origin"].get("source")) is not dict):
-            corrupt()
+        row["handling"] = read_stored_json(row.pop("handling_json"), dict)
+        row["origin"] = read_stored_json(row.pop("origin_json"), dict)
         result[row["item_ref"]] = row
         identities[row["item_ref"]] = identity
     return result, identities
-
-
-def read_external_stored(repo, receipts):
-    stored, identities = read_stored(repo)
-    for ref, row in stored.items():
-        source = row["origin"]["source"]
-        outsourcing_ref = identities[ref]["outsourcing_ref"]
-        captured = receipts.get(outsourcing_ref)
-        members = captured["header"]["target"]["operation_refs"] if captured is not None else []
-        if source.get("outsourcing_ref") != outsourcing_ref or source.get("operation_refs") != members or not members:
-            corrupt()
-    return stored
 
 
 def require_identity(repo, item_ref):
@@ -81,32 +44,35 @@ def read_history(repo, item_ref, number, size):
         raise WorkbenchCommandRejected("invalid_input", "历史页码超过范围。", 400)
     public = []
     for row in repo.history_rows(item_ref, size, (number - 1) * size):
-        source, before, after = history_contents(row)
-        public.append({"history_ref": row["history_ref"], "sequence": row["sequence"], "action": row["action"],
-                       "before": before, "after": after,
-                       "reason": row["reason"], "local_operator": row["local_operator"], "recorded_at": row["recorded_at"],
-                       "receipt_ref": row["receipt_ref"], "source_snapshot": {
-                           "snapshot_ref": row["history_ref"], "as_of": row["recorded_at"],
-                           "time_basis": "factory_local", "source": source}})
-    return {"items": public, "page": {"number": number, "size": size, "total": total, "pages": pages,
-                                       "sort": [{"field": "sequence", "direction": "desc"}]}}
+        before, after = read_stored_json(row["before_json"], dict), read_stored_json(row["after_json"], dict)
+        source = read_stored_json(row["source_json"], dict)
+        public.append(
+            {
+                "history_ref": row["history_ref"],
+                "sequence": row["sequence"],
+                "action": row["action"],
+                "before": before,
+                "after": after,
+                "reason": row["reason"],
+                "local_operator": row["local_operator"],
+                "recorded_at": row["recorded_at"],
+                "receipt_ref": row["receipt_ref"],
+                "source_snapshot": {
+                    "snapshot_ref": row["history_ref"],
+                    "as_of": row["recorded_at"],
+                    "time_basis": "factory_local",
+                    "source": source,
+                },
+            }
+        )
+    return {
+        "items": public,
+        "page": {
+            "number": number,
+            "size": size,
+            "total": total,
+            "pages": pages,
+            "sort": [{"field": "sequence", "direction": "desc"}],
+        },
+    }
 
-
-def history_contents(row):
-    """Decode archived history contents."""
-    before, after = load_handling(row["before_json"]), load_handling(row["after_json"])
-    source = _load_object(row["source_json"])
-    if row["receipt_ref"] is None or source.get("item_ref") != row["item_ref"]:
-        corrupt()
-    return source, before, after
-
-
-def entity_refs_from_rows(rows, keys):
-    result = {}
-    for row in rows:
-        if row["entity_key"] in result:
-            raise WorkbenchCommandRejected("identity_missing", "来源关联资料重复，暂时无法评估，请联系维护人员核对。")
-        result[row["entity_key"]] = row
-    if set(result) != set(keys):
-        raise WorkbenchCommandRejected("identity_missing", "来源关联资料缺失，暂时无法评估，请联系维护人员核对。")
-    return result

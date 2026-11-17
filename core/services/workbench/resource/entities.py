@@ -7,7 +7,10 @@ from core.models.operator import Operator
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_input import normalize_resource_input
-from data.repositories import MachineRepository, OperatorRepository, OpTypeRepository
+from core.services.process.workflow_state import invalidate_op_type_confirmations
+from data.repositories.machine_repo import MachineRepository
+from data.repositories.op_type_repo import OpTypeRepository
+from data.repositories.operator_repo import OperatorRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_resource_state_repo import WorkbenchResourceStateRepository
 
@@ -82,16 +85,12 @@ class WorkbenchResourceService:
                 related["group"] = group
         if "op_type_refs" in relations:
             existing = {row["op_type_id"] for row in preparation.facts.grouped("machine_capabilities", "machine_id")[code]}
-            existing_all = existing | ({raw.get("op_type_id")} if raw.get("op_type_id") else set())
-            codes = []
+            desired = set()
             for ref in relations["op_type_refs"]:
                 identity = preparation.identity("op_type", ref)
-                if identity.entity_key not in existing_all:
+                if identity.entity_key not in existing:
                     preparation.selected_record("op_type", identity, category="internal")
-                codes.append(identity.entity_key)
-            primary = raw.get("op_type_id") if raw.get("op_type_id") in codes else (codes[0] if codes else None)
-            fields["op_type_id"] = primary
-            desired = set(codes) - {primary}
+                desired.add(identity.entity_key)
             if existing != desired:
                 related["capabilities"] = existing, desired
 
@@ -129,22 +128,11 @@ class WorkbenchResourceService:
         if profile != previous or original is None and profile != default:
             related["profile"] = profile
 
-    def apply_prepared(self, change, *, read_identity: bool = True):
-        if not self.conn.in_transaction:
-            raise RuntimeError("资源保存必须由工作台最外层事务负责。")
-        code, identity = change.business_code, change.identity
-        if change.action == "delete":
-            self.rows.delete(code)
-        elif change.action == "create":
-            model, key = {"op_type": (OpType, "op_type_id"), "machine": (Machine, "machine_id"), "operator": (Operator, "operator_id")}[self.kind]
-            self.rows.create(model(**{key: code, **change.fields}))
-            if read_identity:
-                identity = self.identities.find_active(self.kind, code)
-                if identity is None:
-                    raise RuntimeError("新增资源没有永久引用。")
-        elif change.fields:
-            self.rows.update(code, change.fields)
-        related = change.related
+    def _invalidate_op_type_if_changed(self, code: str, fields) -> None:
+        if self.kind == "op_type" and "name" in fields:
+            invalidate_op_type_confirmations(self.conn, code)
+
+    def _apply_related(self, code: str, related) -> None:
         if "policy" in related:
             self.repo.set_op_type_policy(code, related["policy"])
         if "group" in related:
@@ -155,7 +143,29 @@ class WorkbenchResourceService:
             self.repo.replace_skills(code, *related["skills"])
         if "profile" in related:
             self.repo.set_operator_profile(code, **related["profile"])
-        changed = change.action != "update" or bool(change.fields or related)
+
+    def apply_prepared(self, change, *, read_identity: bool = True):
+        if not self.conn.in_transaction:
+            raise RuntimeError("资源保存必须由工作台最外层事务负责。")
+        code, identity = change.business_code, change.identity
+        if change.action == "delete":
+            self.rows.delete(code)
+        elif change.action == "create":
+            model, key = {"op_type": (OpType, "op_type_id"), "machine": (Machine, "machine_id"), "operator": (Operator, "operator_id")}[self.kind]
+            values = {key: code, **change.fields}
+            if self.kind == "machine":
+                # 工种集合随 related["capabilities"] 写进 MachineOpTypes；没有选工种就是空集合。
+                values["op_type_ids"] = tuple(sorted(change.related["capabilities"][1])) if "capabilities" in change.related else ()
+            self.rows.create(model(**values))
+            if read_identity:
+                identity = self.identities.find_active(self.kind, code)
+                if identity is None:
+                    raise RuntimeError("新增资源没有永久引用。")
+        elif change.fields:
+            self.rows.update(code, change.fields)
+            self._invalidate_op_type_if_changed(code, change.fields)
+        self._apply_related(code, change.related)
+        changed = change.action != "update" or bool(change.fields or change.related)
         return WorkbenchCommandOutcome(
             "committed" if changed else "unchanged",
             {"entity_ref": None if identity is None else identity.ref, "business_code": code},

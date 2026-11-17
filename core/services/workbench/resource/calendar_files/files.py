@@ -84,14 +84,19 @@ def file_error_field(field: Optional[str], values: Dict[str, Any]) -> str:
 
 
 def check_range(start_date: str, end_date: str) -> None:
+    """导出请求体 ``range`` 的两端日期；拒绝指向请求体里的 ``range.start_date`` / ``range.end_date``。"""
     start, end = stored_day(start_date), stored_day(end_date)
     if start is None or end is None:
-        raise WorkbenchCommandRejected("invalid_input", "日期范围必须填成 2026-10-01 这样的年月日，没有开始下载。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "日期范围必须填成 2026-10-01 这样的年月日，没有开始下载。", 400,
+                                       fields=tuple("range." + key for key, day in (("start_date", start), ("end_date", end))
+                                                    if day is None))
     if end < start:
-        raise WorkbenchCommandRejected("invalid_input", "结束日期不能早于开始日期，没有开始下载。请重新选择范围。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "结束日期不能早于开始日期，没有开始下载。请重新选择范围。", 400,
+                                       fields=("range.end_date",))
     if (end - start).days + 1 > MAX_RANGE_DAYS:
         raise WorkbenchCommandRejected(
-            "invalid_input", "一次最多处理 " + str(MAX_RANGE_DAYS) + " 天，没有开始下载。请把范围缩小后重试。", 400)
+            "invalid_input", "一次最多处理 " + str(MAX_RANGE_DAYS) + " 天，没有开始下载。请把范围缩小后重试。", 400,
+            fields=("range.end_date",))
 
 
 class WorkbenchCalendarFileService:
@@ -135,10 +140,8 @@ class WorkbenchCalendarFileService:
     def _parse_row(self, source) -> Dict[str, Any]:
         row = action_row(source["row"])
         row["errors"] = list(source["errors"])
-        row["notes"] = []
         values = source["values"]
         row["reference_fields"] = [key for key in READONLY[self.kind] if key in values]
-        row["input"] = None
         parsed: Dict[str, Any] = {}
         for key in file_columns(self.kind):
             if key in READONLY[self.kind] or key not in values:

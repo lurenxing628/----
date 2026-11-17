@@ -5,45 +5,29 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import Dict, Union
 
-from flask import g, request
-
 from core.errors import ValidationError
-from core.models.workbench_batch import object_fields
-from core.models.workbench_batch_query import batch_scope
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_batch_query import SCOPE_FIELDS, batch_scope
+from core.models.workbench_command import SHAPE_REJECTED, WorkbenchCommandRejected
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
 from .read_context import fact_value
+from .request_json import BodyTexts, single_value_arguments
 
 PREVIEW_SCOPE = "workbench-batch-preview-v1"
+BODY = BodyTexts(transport="提交的内容不完整或有多余项，还没有保存。请刷新页面后重新填写。",
+                 malformed="提交的内容不完整或有多余项，还没有保存。请刷新页面后重新填写。",
+                 incomplete=SHAPE_REJECTED)
+STALE = "本页数据已过期，还没有保存。请点「刷新资料」后重新填写。"
 
 
 def read_scope():
-    values: Dict[str, Union[str, int]] = dict(request.args)
-    if any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "筛选条件有重复项，列表没有变化。请刷新页面后重新选择。", 400)
+    arguments = single_value_arguments(SCOPE_FIELDS, message="筛选条件有重复或不支持的项，列表没有变化。请刷新页面后重新选择。")
     for key in ("page", "size"):
-        if key in values:
-            raw = request.args[key]
-            if re.fullmatch(r"[1-9][0-9]{0,6}", raw) is None:
-                raise WorkbenchCommandRejected("invalid_input", "页码或每页条数填写不对，列表没有变化。请回到第 1 页重新查询。", 400)
-            values[key] = int(raw)
+        if key in arguments and re.fullmatch(r"[1-9][0-9]{0,6}", arguments[key]) is None:
+            raise WorkbenchCommandRejected("invalid_input", "页码或每页条数填写不对，列表没有变化。请回到第 1 页重新查询。", 400)
+    values: Dict[str, Union[str, int]] = {key: int(value) if key in ("page", "size") else value
+                                          for key, value in arguments.items()}
     return batch_scope(values)
-
-
-def json_body():
-    if request.args or not request.is_json:
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，还没有保存。请刷新页面后重新填写。", 400)
-    return request.get_json()
-
-
-def command_body():
-    body = object_fields(json_body(), ("request_key", "write_token", "input"), ("request_key", "write_token", "input"))
-    validate_request_key(body["request_key"])
-    g.workbench_request_key = body["request_key"]
-    if not isinstance(body["write_token"], str) or not body["write_token"]:
-        raise WorkbenchCommandRejected("invalid_input", "本页数据已过期，还没有保存。请点「刷新资料」后重新填写。", 400)
-    return body
 
 
 def save_preview(action, ref, payload, fingerprint, *, with_expiry=False):

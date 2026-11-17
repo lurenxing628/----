@@ -10,8 +10,10 @@ from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLim
 from core.services.workbench.dashboard import calendar_capture
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from core.services.workbench.plan.occupancy_constraints import TaskConstraints
+from core.shared.local_datetime import datetime_to_us, row_interval
 from tests.workbench.dashboard_support import NOW
 from tests.workbench.dashboard_support import dashboard_case as dashboard_case  # noqa: F401
+from tests.workbench.plan_catalog_support import insert_schedule_rows, update_schedule_rows
 
 
 @pytest.fixture(autouse=True)
@@ -23,35 +25,48 @@ def factory_shift(dashboard_case):
 
 
 def _capture(case):
-    reader = WorkbenchDashboardService(case.conn, clock=lambda: NOW)
+    reader = WorkbenchDashboardService(case.conn)
     with reader.read_snapshot():
-        sources = reader.load()
+        sources = reader.load(NOW)
     return reader, sources
 
 
-def _captured_calendar(conn, facts):
+def _calendar_facts(conn, facts):
     row = facts.task_rows[0]
-    start, end = facts.task_intervals[row["schedule_id"]]
-    reader = CalendarFacts(conn, captured=facts.calendar_inputs)
+    start, end = row_interval(row)
+    reader = CalendarFacts(conn)
     reader.calendar((start.date() - timedelta(days=1)).isoformat(), end.date().isoformat(), [row["operator_id"]])
-    reader.resources([row["machine_id"]], [row["operator_id"]], [row["op_id"]],
-                     facts.pressure["time_scope"]["range_start"], facts.pressure["time_scope"]["range_end"])
+    reader.resources(
+        [row["machine_id"]],
+        [row["operator_id"]],
+        [row["op_id"]],
+        datetime.fromisoformat(facts.pressure["time_scope"]["range_start"]),
+        datetime.fromisoformat(facts.pressure["time_scope"]["range_end"]),
+    )
     return {"sources": reader.rows, "resources": None}
 
 
 def _large_plan(case):
     low = datetime(2026, 1, 5, 8)
     high = (low + timedelta(days=100)).replace(hour=16)
-    case.conn.execute("UPDATE Schedule SET start_time=?,end_time=?", (low.isoformat(), high.isoformat()))
+    update_schedule_rows(case.conn, 1, start_time=low.isoformat(), end_time=high.isoformat(), sync_history=False)
+    extra_items = []
     for index in range(2, 202):
         machine, operator = "DM" + str(index), "DO" + str(index)
-        case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES (?,?,'DT1')", (machine, machine))
+        case.conn.execute("INSERT INTO Machines(machine_id,name) VALUES (?,?)", (machine, machine))
+        case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES (?,'DT1')", (machine,))
         case.conn.execute("INSERT INTO Operators(operator_id,name) VALUES (?,?)", (operator, operator))
         case.conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES (?,?)", (operator, machine))
         operation = case.conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source,unit_hours,setup_hours) "
             "VALUES (?,'DB1',?,'DT1','Turning','internal',0.5,0)", ("DOP" + str(index), index)).lastrowid
-        case.conn.execute("INSERT INTO Schedule(version,op_id,machine_id,operator_id,start_time,end_time) VALUES (1,?,?,?,?,?)",
-                          (operation, machine, operator, low.isoformat(), high.isoformat()))
+        extra_items.append({
+            "op_id": operation,
+            "machine_id": machine,
+            "operator_id": operator,
+            "start_time": low.isoformat(),
+            "end_time": high.isoformat(),
+        })
+    insert_schedule_rows(case.conn, 1, extra_items, sync_history=True)
     case.conn.commit()
 
 
@@ -103,7 +118,7 @@ def test_over_40000_resource_dates_keep_complete_sources_and_current_resource_ca
 
 def test_streamed_constraints_keep_qualification_type_calendar_and_downtime_issues(dashboard_case):
     case = dashboard_case
-    case.conn.execute("UPDATE Schedule SET start_time='2026-09-09T07:00:00'")
+    update_schedule_rows(case.conn, 1, start_time="2026-09-09T07:00:00")
     case.conn.execute("INSERT INTO WorkbenchOperatorProfiles(operator_id,skills_declared) VALUES ('DO1',1)")
     case.conn.execute("DELETE FROM OperatorMachine WHERE operator_id='DO1'")
     case.conn.execute("UPDATE OpTypes SET category='external' WHERE op_type_id='DT1'")
@@ -127,13 +142,13 @@ def test_streamed_constraints_keep_qualification_type_calendar_and_downtime_issu
 def test_capture_retains_real_calendar_date_and_source_fact_limits(dashboard_case, monkeypatch, failure):
     case = dashboard_case
     if failure == "calendar_range_limit":
-        case.conn.execute("UPDATE Schedule SET start_time='2010-01-04T08:00:00',end_time='2026-09-09T10:00:00'")
+        update_schedule_rows(case.conn, 1, start_time="2010-01-04T08:00:00", end_time="2026-09-09T10:00:00")
         case.conn.commit()
     else:
         def over_budget(*args, **kwargs):
             raise ProjectionLimit("calendar_fact_limit")
 
-        monkeypatch.setattr(CalendarFacts, "resources", over_budget)
+        monkeypatch.setattr(CalendarFacts, "assignments", over_budget)
     _, sources = _capture(case)
     facts = sources.facts
     assert facts.pressure_metrics is not None and facts.pressure_metrics.factory is None
@@ -141,9 +156,22 @@ def test_capture_retains_real_calendar_date_and_source_fact_limits(dashboard_cas
     assert {item["code"] for item in facts.pressure["issues"]} == {"assignment_calendar_unavailable"}
 
 
+@pytest.mark.parametrize("internal_resources", [False, True])
+def test_a_broken_global_policy_day_leaves_only_its_own_days_unknown(dashboard_case, internal_resources):
+    """全局日历与资源同按自然日投影：中间一天的全局政策坏了，整段窗口是部分可用，不是整窗不可用。"""
+    case = dashboard_case
+    resources = {} if internal_resources else {"machine_id": None, "operator_id": None}
+    update_schedule_rows(case.conn, 1, start_time="2026-09-09T08:00:00", end_time="2026-09-11T16:00:00", **resources)
+    case.conn.execute("INSERT INTO WorkCalendar(date,day_type,efficiency,allow_normal,allow_urgent,periods_json) "
+                      "VALUES ('2026-09-10','workday',1,'yes','yes','[{\"start\":\"08:00\",\"day_offset\":0}]')")
+    case.conn.commit()
+    _, sources = _capture(case)
+    assert sources.facts.pressure["calendar_state"] == "partial"
+
+
 def test_unstreamed_pressure_builds_one_index_and_repeats_identity_gaps(dashboard_case, monkeypatch):
     case = dashboard_case
-    case.conn.execute("UPDATE Schedule SET machine_id=NULL")
+    update_schedule_rows(case.conn, 1, machine_id=None)
     case.conn.commit()
     index_type, indexes = calendar_capture.ResourceTaskIndex, []
 
@@ -154,7 +182,7 @@ def test_unstreamed_pressure_builds_one_index_and_repeats_identity_gaps(dashboar
     def over_budget(*args, **kwargs):
         raise ProjectionLimit("calendar_fact_limit")
 
-    monkeypatch.setattr(CalendarFacts, "resources", over_budget)
+    monkeypatch.setattr(CalendarFacts, "assignments", over_budget)
     monkeypatch.setattr(calendar_capture, "ResourceTaskIndex", resource_task_index)
     reader, sources = _capture(case)
     assert sources.facts.pressure["calendar_state"] == "unavailable"
@@ -170,7 +198,7 @@ def test_unstreamed_pressure_builds_one_index_and_repeats_identity_gaps(dashboar
 
 def test_one_streamed_operator_window_supplies_both_priorities(dashboard_case):
     _, sources = _capture(dashboard_case)
-    calendar = _captured_calendar(dashboard_case.conn, sources.facts)
+    calendar = _calendar_facts(dashboard_case.conn, sources.facts)
     scope = sources.facts.pressure["time_scope"]
     assert sources.facts.pressure_metrics is not None
     factory = sources.facts.pressure_metrics.factory
@@ -187,7 +215,7 @@ def test_one_streamed_operator_window_supplies_both_priorities(dashboard_case):
     row = sources.facts.task_rows[0]
     start, end = (datetime.fromisoformat(row[key]) for key in ("start_time", "end_time"))
     for priority in ("normal", "urgent", "critical", "normal"):
-        constraints.check(dict(row, priority=priority), start, end, row_start=start, row_end=end)
+        constraints.check(dict(row, batch_priority=priority), start, end, row_start=start, row_end=end)
     assert calls == [("operator", "DO1")]
     assert [(item["code"], item["operation_count"]) for item in constraints.public()] == [
         ("assignment_machine_downtime", 1)
@@ -216,15 +244,15 @@ def test_point_event_calendar_catches_shift_validation_and_business_errors(dashb
     assert sources.facts.pressure_metrics is not None
     factory = sources.facts.pressure_metrics.factory
     assert factory is not None
-    calendar = _captured_calendar(case.conn, sources.facts)
+    calendar = _calendar_facts(case.conn, sources.facts)
     constraints = TaskConstraints(calendar, point_calendar=factory.engine)
     row = dict(
         sources.facts.task_rows[0],
-        _point_work={
-            "operation": {"setup_hours": 0.0, "unit_hours": 0.0},
-            "batch": {"priority": "normal"},
-            "quantity": 2,
-        },
+        is_point_event=1,
+        setup_hours=0.0,
+        unit_hours=0.0,
+        quantity=2,
+        batch_priority="normal",
     )
     at = datetime.fromisoformat(row["start_time"])
     constraints.check(row, at, at, row_start=at, row_end=at)
@@ -236,7 +264,7 @@ def test_dashboard_capture_consumes_selected_calendar_days_for_earlier_point_bef
     from core.services.workbench.plan.read_context import PlanReadContext
 
     case = dashboard_case
-    case.conn.execute("UPDATE Schedule SET start_time='2026-09-09T08:00:00',end_time='2026-09-10T00:00:00'")
+    update_schedule_rows(case.conn, 1, start_time="2026-09-09T08:00:00", end_time="2026-09-10T00:00:00")
     case.conn.commit()
     calendar_ranges = []
     original_calendar = CalendarFacts.calendar
@@ -248,20 +276,22 @@ def test_dashboard_capture_consumes_selected_calendar_days_for_earlier_point_bef
 
     def select_with_earlier_point(self, entry, scope, plan_span):
         selected = original_selection(self, entry, scope, plan_span)
+        point_us = datetime_to_us(datetime(2026, 9, 9, 10, 0))
         point_row = dict(
             selected.rows[0],
-            _point_work={
-                "operation": {"setup_hours": 0.0, "unit_hours": 0.0},
-                "batch": {"priority": "normal"},
-                "quantity": 1,
-            },
+            is_point_event=1,
+            start_us=point_us,
+            end_us=point_us,
+            setup_hours=0.0,
+            unit_hours=0.0,
+            quantity=1,
+            batch_priority="normal",
         )
         return SelectedPlanContext(
             rows=[point_row],
             start=selected.start,
             end=selected.end,
             time_scope=selected.time_scope,
-            intervals={selected.rows[0]["schedule_id"]: (datetime(2026, 9, 9, 10, 0), datetime(2026, 9, 9, 10, 0))},
         )
 
     monkeypatch.setattr(CalendarFacts, "calendar", record_calendar)
@@ -273,14 +303,14 @@ def test_dashboard_capture_consumes_selected_calendar_days_for_earlier_point_bef
 def test_explicit_none_point_calendar_marks_point_unavailable(dashboard_case):
     case = dashboard_case
     _, sources = _capture(case)
-    calendar = _captured_calendar(case.conn, sources.facts)
+    calendar = _calendar_facts(case.conn, sources.facts)
     point_row = dict(
         sources.facts.task_rows[0],
-        _point_work={
-            "operation": {"setup_hours": 0.0, "unit_hours": 0.0},
-            "batch": {"priority": "normal"},
-            "quantity": 1,
-        },
+        is_point_event=1,
+        setup_hours=0.0,
+        unit_hours=0.0,
+        quantity=1,
+        batch_priority="normal",
     )
     at = datetime.fromisoformat(point_row["start_time"])
     explicit_none = TaskConstraints(calendar, point_calendar=None)

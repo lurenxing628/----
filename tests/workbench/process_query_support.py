@@ -16,7 +16,7 @@ def seed_process(conn):
         ("PROC-001", 10, "PROC-IN", "车削", "internal", None, None, None, .5, .125, "active"),
         ("PROC-001", 20, "PROC-EX", "热处理", "external", "PROC-S", 3.25, "PROC-G", 0, 0, "active"),
         ("PROC-001", 30, "PROC-Q", "检验", "internal", None, None, None, 0, 0, "active"),
-        ("PROC-003", 10, None, "待归类", "legacy", None, None, None, None, None, "active"),
+        ("PROC-003", 10, None, "待归类", None, None, None, None, None, None, "active"),
         ("PROC-004", 10, "PROC-IN", "车削", "internal", None, None, None, 1.75, .375, "deleted")])
     conn.execute("INSERT INTO Batches(batch_id,part_no,part_name,quantity,due_date) VALUES ('PROC-B','PROC-001','旧批次名称',17,'2026-10-01')")
     conn.commit()

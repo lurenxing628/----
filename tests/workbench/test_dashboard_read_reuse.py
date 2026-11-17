@@ -1,28 +1,25 @@
 """One dashboard capture supplies its projections and calendar source reads."""
 
-import sqlite3
+import json
 from collections import Counter
 from datetime import date, datetime, timedelta
 
 import pytest
 
-from core.infrastructure.sqlite_udf import SQL_PARSE_FUNCTION, parse_dt_for_sql, register_schedule_time_sql_functions
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import DashboardAnalysisQuery
-from core.services.capacity.plan_calendar_io import CalendarFacts, CapturedCalendarInputs, ProjectionLimit
+from core.services.capacity.plan_calendar_io import MAX_FACT_ROWS, CalendarFacts, ProjectionLimit
 from core.services.capacity.plan_calendar_windows import project_resource_calendars
 from core.services.scheduler.calendar.engine import CalendarEngine
-from core.services.workbench.dashboard import downtime, execution
+from core.services.workbench.dashboard import calendar_capture, downtime
 from core.services.workbench.dashboard import facts as facts_module
 from core.services.workbench.dashboard.analysis import read_dashboard_analysis
 from core.services.workbench.dashboard.analysis_projection import project_dashboard_analysis
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_facts
-from core.services.workbench.plan.queries import WorkbenchPlanQueryService
-from core.services.workbench.plan.read_context import PlanReadContext
+from core.shared.local_datetime import datetime_to_us
 from data.repositories.calendar_facts_repo import _DOWNTIMES_SQL, CalendarFactsRepository
-from data.repositories.workbench_dashboard_source_repo import DashboardSourceRepository
-from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
+from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 
 
 @pytest.fixture
@@ -34,42 +31,34 @@ def dashboard_case(tmp_path):
 def test_one_capture_reuses_projections_and_only_reads_new_identity_keys(dashboard_case, monkeypatch):
     from tests.workbench.dashboard_support import NOW
     case, calls, keys, sql = dashboard_case, Counter(), [], []
-    for name, module in (("actual", execution), ("downtime", downtime)):
-        original = getattr(module, name)
+    for name in ("actual", "downtime"):
+        original = getattr(facts_module, name)
 
         def tracked(*args, _name=name, _original=original):
             calls[_name] += 1
             return _original(*args)
 
-        monkeypatch.setattr(module, name, tracked)
-    original_refs = DashboardSourceRepository.entity_ref_rows
+        monkeypatch.setattr(facts_module, name, tracked)
+    original_refs = WorkbenchIdentityRepository.active_map
 
     def refs(repo, kind, requested):
         keys.append((kind, list(requested)))
         return original_refs(repo, kind, requested)
 
-    monkeypatch.setattr(DashboardSourceRepository, "entity_ref_rows", refs)
-    enriched, enrich = [], WorkbenchPlanCatalogRepository.enrich_arrangements
-
-    def enrich_once(repo, arrangements, *, captured_machines=None):
-        enriched.append(captured_machines)
-        return enrich(repo, arrangements, captured_machines=captured_machines)
-
-    monkeypatch.setattr(WorkbenchPlanCatalogRepository, "enrich_arrangements", enrich_once)
+    monkeypatch.setattr(WorkbenchIdentityRepository, "active_map", refs)
     case.conn.set_trace_callback(sql.append)
-    reader = WorkbenchDashboardService(case.conn, clock=lambda: NOW)
+    reader = WorkbenchDashboardService(case.conn)
     with reader.read_snapshot():
-        sources = reader.load()
+        sources = reader.load(NOW)
         facts, material = sources.facts, sources.material
         assert facts.plan_state == "loaded" and len(facts.tasks) == 1
-        assert facts.entity_refs("batch", ["DB1"]) is not facts.entity_refs("batch", ["DB1"])
+        assert facts.entity_refs("batch", ["DB1"]) == facts.entity_refs("batch", ["DB1"])
         with pytest.raises(WorkbenchCommandRejected, match="来源关联资料缺失"):
             facts.entity_refs("batch", ["DB1", "missing-batch"])
         with pytest.raises(WorkbenchCommandRejected, match="来源关联资料缺失"):
             facts.entity_refs("batch", ["missing-batch"])
     monkeypatch.setattr(facts_module, "candidate_catalog", lambda _: pytest.fail("Analysis read candidate catalog"))
     data = reader.project(sources)
-    assert len(enriched) == 1 and enriched[0] is facts.raw["Machines"]
     assert sorted(item["category"] for item in data["items"]) == ["actual", "delivery", "downtime", "material"]
     assert data["categories"]["external"]["state"] == "no_data"
     assert [requested for kind, requested in keys if kind == "batch"] == [["DB1"], ["missing-batch"]]
@@ -81,212 +70,143 @@ def test_one_capture_reuses_projections_and_only_reads_new_identity_keys(dashboa
     normalized = [" ".join(statement.upper().replace('"', '').split()) for statement in sql]
     assert sum(" FROM SQLITE_MASTER" in statement for statement in normalized) == 0
     assert sum("FROM MACHINEDOWNTIMES " in statement for statement in normalized) == 1
-    assert sum("FROM MACHINES " in statement for statement in normalized) == 1
     assert sum("FROM SCHEMAVERSION " in statement for statement in normalized) == 1
 
 
-@pytest.mark.parametrize("captured_machines,expected_name,reads", [
-    (None, "Lathe", 1), ([], None, 0), ([{"machine_id": "other", "name": "Other machine"}], None, 0)])
-def test_plan_details_respect_complete_machine_capture(dashboard_case, captured_machines, expected_name, reads):
-    case, sql = dashboard_case, []
-    plan_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='official' AND version=1 AND active=1").fetchone()[0]
-    case.conn.set_trace_callback(sql.append)
-    with WorkbenchPlanQueryService(case.conn).read_snapshot():
-        context = PlanReadContext(case.conn, captured_machines=captured_machines)
-        with context.read_scope():
-            _, entry, _ = context.selected(plan_ref)
-            row, = context.detail_rows(entry)
-    assert row["machine_name"] == expected_name and row["operator_name"] == "Operator"
-    normalized = [" ".join(statement.upper().replace('"', '').split()) for statement in sql]
-    assert sum("FROM MACHINES " in statement for statement in normalized) == reads
+def _us(*args):
+    return datetime_to_us(datetime(*args))
 
 
-def test_captured_calendar_preserves_sql_status_time_types_order_and_budget():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    register_schedule_time_sql_functions(conn)
-    conn.executescript("""CREATE TABLE Machines(machine_id TEXT,name TEXT,status TEXT,op_type_id TEXT);
-        CREATE TABLE MachineDowntimes(id INTEGER PRIMARY KEY,machine_id TEXT,start_time,end_time,status);
-        CREATE TABLE SchemaVersion(id INTEGER,version INTEGER);
-        INSERT INTO SchemaVersion VALUES(1,35); INSERT INTO Machines VALUES('M1','Lathe','active','T1');""")
-    rows = [("M1", "2026-09-10T08:00:00", "2026-09-10T10:00:00", "active"),
-            ("M1", "2026-09-10T09:00:00", "2026-09-10T11:00:00", "active"),
-            ("M1", "2026-09-10T09:00:00", "2026-09-10T11:00:00", "cancelled"),
-            ("M2", "2026-09-10T09:00:00", "2026-09-10T11:00:00", "active")]
-    conn.executemany("INSERT INTO MachineDowntimes(machine_id,start_time,end_time,status) VALUES(?,?,?,?)", rows)
-    parsed = []
+def _iso_us(text):
+    return datetime_to_us(datetime.fromisoformat(text))
 
-    def parse_once(value):
-        parsed.append(value)
-        return parse_dt_for_sql(value)
 
-    conn.create_function(SQL_PARSE_FUNCTION, 1, parse_once)
-    repo = DashboardSourceRepository(conn)
-    raw, prepared = repo.downtime_capture(machine_ids=["M1"])
-    # Two admitted rows, each endpoint once inside SQLite; cancelled/unselected rows stay unparsed.
-    assert sorted(parsed) == sorted([rows[0][1], rows[0][2], rows[1][1], rows[1][2]])
-    captured = CapturedCalendarInputs(machines=repo.table("Machines"), downtimes=prepared,
-        schema_version=repo.table("SchemaVersion"), downtime_machine_ids=["M1"])
-    expected = CalendarFactsRepository(conn).downtimes(["M1"], "2026-09-10T11:00:00", "2026-09-10T09:00:00", limit=100)
-    assert captured.downtimes(["M1"], "2026-09-10T11:00:00", "2026-09-10T09:00:00", limit=100) == expected
-    assert [tuple(row[key] for key in ("machine_id", "start_time", "end_time", "status")) for row in raw] == rows
-    limited = CalendarFacts(conn, captured=captured)
-    limited.count = 49999
+def test_captured_rows_count_against_the_same_calendar_fact_budget(schema_conn):
+    reader = CalendarFacts(schema_conn)
+    reader.count = MAX_FACT_ROWS - 2
+    reader.captured("machines", [{"machine_id": "M1"}])
     with pytest.raises(ProjectionLimit, match="calendar_fact_limit"):
-        limited.read_downtimes(["M1"], "2026-09-10T09:00:00", "2026-09-10T11:00:00")
-    assert "downtimes" not in limited.rows
-    with pytest.raises(ProjectionLimit, match="calendar_unavailable"):
-        captured.downtimes(["M2"], "2026-09-10T11:00:00", "2026-09-10T09:00:00", limit=100)
-    conn.close()
+        reader.captured("downtimes", [{"machine_id": "M1"}, {"machine_id": "M1"}])
+    assert "downtimes" not in reader.rows and reader.count == MAX_FACT_ROWS - 1
 
 
-def test_captured_calendar_orders_mixed_storage_types_like_the_calendar_sql():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    register_schedule_time_sql_functions(conn)
-    conn.execute("CREATE TABLE MachineDowntimes(id INTEGER PRIMARY KEY,machine_id TEXT,start_time,end_time,status)")
-    rows = [("M1", "2026-09-10T09:00:00", "2026-09-10T10:00:00", "active"),
-            ("M1", 20260910, "2026-09-10T10:00:00", "active"),
-            ("M1", sqlite3.Binary(b"2026-09-10 08:00:00"), "2026-09-10T08:30:00", "active"),
-            ("M1", sqlite3.Binary(b"\xff\xfe2026"), "2026-09-10T10:00:00", "active"),
-            ("M1", 1.5, "2026-09-10T10:00:00", None),
-            ("M1", "2026-09-10T08:00:00", sqlite3.Binary(b"2026-09-10 09:00:00"), "active"),
-            ("M1", "2026-09-10T08:00:00", "2026-09-10T09:00:00", "weird")]
-    conn.executemany("INSERT INTO MachineDowntimes(machine_id,start_time,end_time,status) VALUES(?,?,?,?)", rows)
-    raw, prepared = DashboardSourceRepository(conn).downtime_capture(machine_ids=["M1"])
-    assert [row["id"] for row in raw] == list(range(1, len(rows) + 1))
-    captured = CapturedCalendarInputs(machines=[], downtimes=prepared, schema_version=[], downtime_machine_ids=["M1"])
-    window = ("2026-09-10T11:00:00", "2026-09-10T07:00:00")
-    expected_capture = CalendarFactsRepository(conn).downtimes(["M1"], *window, limit=100)
-    assert captured.downtimes(["M1"], *window, limit=100) == expected_capture
-    assert [(row["start_time"], row["end_time"]) for row in expected_capture] == [(row[1], row[2]) for row in rows]
-    admitted = CalendarFacts(conn).read_downtimes(["M1"], window[1], window[0])
-    assert CalendarFacts(conn, captured=captured).read_downtimes(["M1"], window[1], window[0]) == admitted
-    # SQLite's storage-class order after admission: numbers, then TEXT, then BLOB; equal starts by end, TEXT before BLOB.
-    assert [(row["start_time"], row["end_time"]) for row in admitted] == [
-        (rows[index][1], rows[index][2]) for index in (4, 1, 6, 5, 0, 2, 3)]
-    conn.close()
-
-
-def test_mixed_storage_downtimes_on_a_plan_machine_read_like_the_calendar_sql(dashboard_case, monkeypatch):
-    from tests.workbench.dashboard_support import NOW, api
+def test_dashboard_calendar_takes_the_calendar_downtime_set_from_its_one_capture(dashboard_case, monkeypatch):
+    from tests.workbench.dashboard_support import NOW
 
     case = dashboard_case
-    case.conn.executemany("INSERT INTO MachineDowntimes(machine_id,start_time,end_time,reason_detail) VALUES ('DM1',?,?,?)",
-                          [(20260909, "2026-09-09T11:00:00", "integer"),
-                           (sqlite3.Binary(b"2026-09-09 08:30:00"), "2026-09-09T09:30:00", "utf8 blob"),
-                           (sqlite3.Binary(b"\xff\xfe2026"), "2026-09-09T11:00:00", "non-utf8 blob")])
+    case.conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('DM2','Mill')")
+    rows = [("DM1", 8, 9, "cancelled"), ("DM1", 6, 7, "active"), ("DM1", 8, 8, "active"), ("DM2", 8, 9, "active")]
+    case.conn.executemany(
+        "INSERT INTO MachineDowntimes(machine_id,start_time,end_time,start_us,end_us,reason_code,status) "
+        "VALUES (?,?,?,?,?,'maintenance',?)",
+        [(machine, f"2026-09-09 {start:02d}:00:00", f"2026-09-09 {end:02d}:30:00", _us(2026, 9, 9, start),
+          _us(2026, 9, 9, end, 30), status) for machine, start, end, status in rows])
     case.conn.commit()
-    reader = WorkbenchDashboardService(case.conn, clock=lambda: NOW)
-    window = ("2026-09-10T00:00:00", "2026-09-09T00:00:00")
+    seen, original = [], calendar_capture.calendar_from_sources
+
+    def tracked(sources, **kwargs):
+        seen.append(sources)
+        return original(sources, **kwargs)
+
+    monkeypatch.setattr(calendar_capture, "calendar_from_sources", tracked)
+    sql = []
+    case.conn.set_trace_callback(sql.append)
+    reader = WorkbenchDashboardService(case.conn)
     with reader.read_snapshot():
-        facts = reader.load().facts
-        expected = CalendarFactsRepository(case.conn).downtimes(["DM1"], *window, limit=100)
-        admitted = CalendarFacts(case.conn).read_downtimes(["DM1"], window[1], window[0])
-    assert facts.plan_state == "loaded" and len(expected) == 4
-    assert facts.calendar_inputs.downtimes(["DM1"], *window, limit=100) == expected
-    assert CalendarFacts(case.conn, captured=facts.calendar_inputs).read_downtimes(["DM1"], window[1], window[0]) == admitted
-    client = api(case, monkeypatch)
-    for path, params in (("/api/workbench/v1/dashboard", {}), ("/api/workbench/v1/dashboard/analysis", {"section": "downtime"})):
-        response = client.get(path, query_string=params)
-        assert response.status_code == 200, response.get_json()
+        sources = reader.load(NOW)
+    case.conn.set_trace_callback(None)
+    captured, = seen
+    scope = sources.facts.pressure["time_scope"]
+    start, end = datetime.fromisoformat(scope["range_start"]), datetime.fromisoformat(scope["range_end"])
+    expected = CalendarFactsRepository(case.conn).downtimes(["DM1"], end, start, limit=100)
+    # Only the window's machine, its active rows that overlap the window: the calendar repository's own condition.
+    assert len(expected) == 2
+    assert (sorted((row["machine_id"], row["start_us"], row["end_us"]) for row in captured["downtimes"])
+            == sorted((row["machine_id"], row["start_us"], row["end_us"]) for row in expected))
+    assert [row["machine_id"] for row in captured["machines"]] == ["DM1"]
+    normalized = [" ".join(statement.upper().replace('"', '').split()) for statement in sql]
+    assert sum("FROM MACHINEDOWNTIMES " in statement for statement in normalized) == 1
 
 
-def test_downtime_capture_avoids_temp_btree_and_unifies_admitted_resource_projections(dashboard_case):
+def test_downtime_reads_avoid_temp_btree_and_both_read_modes_project_the_same_windows(dashboard_case):
     case = dashboard_case
-    for marks, keys in (("?", ("DM1",)), ("?,?", ("DM1", "DM2"))):
+    for keys in (("DM1",), ("DM1", "DM2")):
         plan_rows = case.conn.execute(
-            "EXPLAIN QUERY PLAN " + _DOWNTIMES_SQL.format(marks=marks) + " LIMIT ?",
-            (*keys, "2026-09-10T00:00:00", "2026-09-09T00:00:00", 1),
+            "EXPLAIN QUERY PLAN " + _DOWNTIMES_SQL,
+            (json.dumps(list(keys)), _us(2026, 9, 10), _us(2026, 9, 9)),
         ).fetchall()
         assert all("TEMP B-TREE" not in " ".join(str(col) for col in row).upper() for row in plan_rows), plan_rows
 
     case.conn.executemany(
-        "INSERT INTO MachineDowntimes(machine_id,start_time,end_time,status,reason_detail) VALUES ('DM1',?,?,'active',?)",
+        "INSERT INTO MachineDowntimes(machine_id,start_time,end_time,start_us,end_us,status,reason_code,reason_detail) "
+        "VALUES ('DM1',?,?,?,?,'active','maintenance',?)",
         [
-            ("2026-09-09T15:00:00", "2026-09-09T16:00:00", "Afternoon calibration"),
-            ("2026-09-09T10:00:00", "2026-09-09T12:00:00", "Late morning overlap"),
-            ("2026-09-09T08:00:00", "2026-09-09T09:30:00", "Early morning overlap"),
+            ("2026-09-09 15:00:00", "2026-09-09 16:00:00", _us(2026, 9, 9, 15), _us(2026, 9, 9, 16), "Afternoon calibration"),
+            ("2026-09-09 10:00:00", "2026-09-09 12:00:00", _us(2026, 9, 9, 10), _us(2026, 9, 9, 12), "Late morning overlap"),
+            ("2026-09-09 08:00:00", "2026-09-09 09:30:00", _us(2026, 9, 9, 8), _us(2026, 9, 9, 9, 30), "Early morning overlap"),
         ],
     )
     case.conn.commit()
 
-    repo = DashboardSourceRepository(case.conn)
-    _, prepared = repo.downtime_capture(machine_ids=["DM1"])
-    captured = CapturedCalendarInputs(
-        machines=repo.table("Machines"),
-        downtimes=prepared,
-        schema_version=repo.table("SchemaVersion"),
-        downtime_machine_ids=["DM1"],
-    )
-    start_str, end_str = "2026-09-09T00:00:00", "2026-09-10T00:00:00"
-    direct_head = CalendarFactsRepository(case.conn).downtimes(["DM1"], end_str, start_str, limit=2)
-    assert captured.downtimes(["DM1"], end_str, start_str, limit=2) == direct_head
-    assert [(row["start_time"], row["end_time"]) for row in direct_head] == [
-        ("2026-09-09T09:00:00", "2026-09-09T11:00:00"),
-        ("2026-09-09T15:00:00", "2026-09-09T16:00:00"),
-    ]
-
     first, last = date(2026, 9, 8), date(2026, 9, 9)
     start, end = datetime(2026, 9, 9, 0, 0), datetime(2026, 9, 10, 0, 0)
     expected_sorted = [
-        ("2026-09-09T08:00:00", "2026-09-09T09:30:00"),
-        ("2026-09-09T09:00:00", "2026-09-09T11:00:00"),
-        ("2026-09-09T10:00:00", "2026-09-09T12:00:00"),
-        ("2026-09-09T15:00:00", "2026-09-09T16:00:00"),
+        (_us(2026, 9, 9, 8), _us(2026, 9, 9, 9, 30)),
+        (_us(2026, 9, 9, 9), _us(2026, 9, 9, 11)),
+        (_us(2026, 9, 9, 10), _us(2026, 9, 9, 12)),
+        (_us(2026, 9, 9, 15), _us(2026, 9, 9, 16)),
     ]
+    direct_head = CalendarFactsRepository(case.conn).downtimes(["DM1"], end, start, limit=2)
+    assert [(row["start_us"], row["end_us"]) for row in direct_head] == expected_sorted[:2]
     expected_merged = [
         {"start": datetime(2026, 9, 9, 8, 0), "end": datetime(2026, 9, 9, 12, 0)},
         {"start": datetime(2026, 9, 9, 15, 0), "end": datetime(2026, 9, 9, 16, 0)},
     ]
     projections = []
     for mode in ("resources", "resource_states"):
-        for source in (None, captured):
-            reader = CalendarFacts(case.conn, captured=source)
-            reader.calendar(first.isoformat(), last.isoformat(), ["DO1"])
-            if mode == "resources":
-                reader.resources(["DM1"], ["DO1"], [case.op], start, end)
-            else:
-                reader.resource_states(["DM1"], ["DO1"], start, end)
-            assert [(row["start_time"], row["end_time"]) for row in reader.rows["downtimes"]] == expected_sorted
-            engine = CalendarEngine(calendar_inputs_from_facts(reader.rows))
-            projected = {
-                (kind, key): item
-                for kind, key, _raw, item in project_resource_calendars(
-                    engine, reader.rows, {"machine": ["DM1"], "operator": ["DO1"]}, first, last, start, end
-                )
-            }
-            assert projected["machine", "DM1"]["downtime_windows"] == expected_merged
-            projections.append(projected["machine", "DM1"])
-    assert all(item == projections[0] for item in projections[1:])
+        reader = CalendarFacts(case.conn)
+        reader.calendar(first.isoformat(), last.isoformat(), ["DO1"])
+        if mode == "resources":
+            reader.resources(["DM1"], ["DO1"], [case.op], start, end)
+        else:
+            reader.resource_states(["DM1"], ["DO1"], start, end)
+        assert [(row["start_us"], row["end_us"]) for row in reader.rows["downtimes"]] == expected_sorted
+        engine = CalendarEngine(calendar_inputs_from_facts(reader.rows))
+        projected = {
+            (kind, key): item
+            for kind, key, _raw, item in project_resource_calendars(
+                engine, reader.rows, {"machine": ["DM1"], "operator": ["DO1"]}, first, last, start, end
+            )
+        }
+        assert projected["machine", "DM1"]["downtime_windows"] == expected_merged
+        projections.append(projected["machine", "DM1"])
+    assert projections[0] == projections[1]
 
 
 def test_nonrisk_tasks_share_complete_machine_downtime_identity_evidence():
     from tests.workbench.dashboard_support import NOW
     records = [
-        {"id": 1, "machine_id": "M1", "status": "cancelled", "start_time": "2020-01-01T08:00:00",
-         "end_time": "2020-01-01T09:00:00", "reason_detail": "Cancelled history"},
-        {"id": 2, "machine_id": "M1", "status": "active", "start_time": "2020-01-02T08:00:00",
-         "end_time": "2020-01-02T09:00:00", "reason_detail": "Earlier maintenance"},
+        {"id": 1, "machine_id": "M1", "status": "cancelled", "start_us": _us(2020, 1, 1, 8),
+         "end_us": _us(2020, 1, 1, 9), "reason_detail": "Cancelled history"},
+        {"id": 2, "machine_id": "M1", "status": "active", "start_us": _us(2020, 1, 2, 8),
+         "end_us": _us(2020, 1, 2, 9), "reason_detail": "Earlier maintenance"},
     ]
-    identities = [{"source_id": source_id, "ref": format(index, "048x"), "active": active}
+    identities = [{"source_id": source_id, "ref": format(index, "048x"), "active": active, "revision": 1}
                   for index, (source_id, active) in enumerate(((1, 1), (1, 0), (2, 1)), start=1)]
     task = {"plan_ref": "a" * 48, "operation_ref": "b" * 48, "machine_ref": "c" * 48,
             "start": "2026-10-17T08:00:00", "end": "2026-10-17T09:00:00", "batch_id": "B1", "process_label": "Turning"}
     facts = facts_module.DashboardFacts(None, NOW)
     facts.plan_state = "loaded"
     facts.tasks = [dict(task, task_ref=format(index, "048x")) for index in range(10, 13)]
-    facts.task_rows = [{"schedule_id": index, "source": "internal", "machine_id": key}
+    facts.task_rows = [{"schedule_id": index, "source": "internal", "machine_id": key,
+                        "start_us": _us(2026, 10, 17, 8), "end_us": _us(2026, 10, 17, 9)}
                        for index, key in enumerate(("M1", "M1", "M2"), start=1)]
-    facts.task_intervals = {index: (datetime(2026, 10, 17, 8), datetime(2026, 10, 17, 9)) for index in range(1, 4)}
     facts.raw = {"MachineDowntimes": records, "WorkbenchDashboardDowntimeRefs": identities,
                  "Machines": [{"machine_id": key} for key in ("M1", "M2")]}
     rows, state = downtime.downtime(facts)
     assert state["assessed_count"] == 3 and all(row["risk"]["active"] is False for row in rows)
-    first, second, other = (row["_facts"] for row in rows)
-    assert first["downtimes"] == records and first["identity"] == identities
-    assert first["identity"] is second["identity"]
-    assert other["identity"] == other["downtimes"] == []
+    assert all("_facts" not in row and "source_revision" in row["_guard"] for row in rows)
+    assert rows[0]["_guard"]["source_revision"] != rows[2]["_guard"]["source_revision"]
 
 
 @pytest.mark.parametrize("section", ["delivery", "downtime"])
@@ -299,47 +219,64 @@ def test_analysis_records_counts_and_overlaps_share_one_downtime_parse(dashboard
         built.append(len(raw))
         return original(raw, refs)
 
-    monkeypatch.setattr(downtime, "downtime_index", tracked)
+    monkeypatch.setattr(facts_module, "downtime_index", tracked)
     data, _ = read_dashboard_analysis(dashboard_case.conn, query=DashboardAnalysisQuery(section), as_of=NOW)
     assert built == [1]
     assert (data["pagination"]["totals"]["downtimes"], data["pagination"]["totals"]["overlaps"]) == (1, 1)
 
 
-def test_unreadable_downtime_end_keeps_its_start_and_leaves_the_overlap_unknown(dashboard_case):
+def test_dashboard_and_its_delivery_read_decode_the_plan_deferred_operations_once(dashboard_case, monkeypatch):
+    """看板和它调用的交付读取共读同一版正式计划的延后清单：一次看板读取只解码一次，单条交付项读取也只解码一次。"""
     from tests.workbench.dashboard_support import NOW
 
     case = dashboard_case
-    case.conn.execute("UPDATE MachineDowntimes SET end_time='not a time'")
+    case.conn.execute(
+        "INSERT INTO BatchOperations(id,op_code,batch_id,seq,op_type_id,op_type_name,source,unit_hours,setup_hours) "
+        "VALUES (9001,'DOP2','DB1',2,'DT1','Turning','internal',0.5,0)"
+    )
+    deferred_text = "[9001]"
+    case.conn.execute("UPDATE ScheduleHistory SET deferred_operation_ids_json=? WHERE version=1", (deferred_text,))
     case.conn.commit()
-    data, _ = read_dashboard_analysis(case.conn, query=DashboardAnalysisQuery("downtime"), as_of=NOW)
-    record, = data["downtimes"]
-    assert (record["start"], record["end"], record["valid"]) == ("2026-09-09T09:00:00", None, False)
-    assert "downtime_invalid" in [issue["code"] for issue in data["issues"]]
-    assert data["pagination"]["totals"]["downtimes"] == 1 and data["overlaps"] == []
-    reader = WorkbenchDashboardService(case.conn, clock=lambda: NOW)
-    with reader.read_snapshot():
-        facts = reader.load().facts
-    rows, state = facts.observations("downtime")
-    assert [row["risk"]["code"] for row in rows] == ["downtime_unknown"] and state["unknown_count"] == 1
+    decoded = []
+    original_decode = json.JSONDecoder.decode
+
+    def counted(decoder, text, *args, **kwargs):
+        if text == deferred_text:
+            decoded.append(text)
+        return original_decode(decoder, text, *args, **kwargs)
+
+    # 按文本计数：json.loads 与存储严格解码都经 JSONDecoder.decode，哪条路解都会被数到。
+    monkeypatch.setattr(json.JSONDecoder, "decode", counted)
+    data, _ = read_dashboard_analysis(case.conn, query=DashboardAnalysisQuery("delivery"), as_of=NOW)
+    assert len(decoded) == 1
+    delivery, = data["deliveries"]
+    assert delivery["deferred_operation_count"] == 1
+
+    decoded.clear()
+    single = facts_module.DashboardFacts(case.conn, NOW)
+    with WorkbenchDashboardService(case.conn).read_snapshot():
+        single.load_plan_item({"category": "delivery", "batch_ref": delivery["batch_ref"]})
+    assert len(decoded) == 1
+    assert [item["deferred_operation_count"] for item in single.delivery_items] == [1]
 
 
-def test_non_utf8_blob_downtime_is_an_invalid_row_not_a_read_failure(dashboard_case, monkeypatch):
-    from tests.workbench.dashboard_support import api
+def test_single_material_item_reads_its_batch_identity_once_by_ref(dashboard_case):
+    """单条齐套项按条目里的永久编号读一次批次身份；随后按批次号找身份直接用这一次读到的，不按业务键再查。"""
+    from tests.workbench.dashboard_support import NOW
 
     case = dashboard_case
-    case.conn.execute("UPDATE MachineDowntimes SET start_time=?", (sqlite3.Binary(b"\xff\xfe2026"),))
-    case.conn.commit()
-    client = api(case, monkeypatch)
-    listed = client.get("/api/workbench/v1/dashboard")
-    assert listed.status_code == 200, listed.get_json()
-    downtime_row = listed.get_json()["data"]["categories"]["downtime"]
-    assert downtime_row["unknown_count"] == 1
-    analyzed = client.get("/api/workbench/v1/dashboard/analysis", query_string={"section": "downtime"})
-    assert analyzed.status_code == 200, analyzed.get_json()
-    data = analyzed.get_json()["data"]
-    record, = data["downtimes"]
-    assert (record["start"], record["end"], record["valid"]) == (None, "2026-09-09T11:00:00", False)
-    assert "downtime_invalid" in [issue["code"] for issue in data["issues"]]
+    reader = WorkbenchDashboardService(case.conn)
+    with reader.read_snapshot():
+        item = next(row for row in reader.read(NOW)["items"] if row["category"] == "material")
+    sql = []
+    case.conn.set_trace_callback(sql.append)
+    with reader.read_snapshot():
+        single = reader.read_command_item(item["item_ref"], NOW)
+    case.conn.set_trace_callback(None)
+    identity_reads = [stmt for stmt in sql if "FROM WorkbenchEntityRefs" in stmt]
+    assert not any("kind = 'batch'" in stmt for stmt in identity_reads), identity_reads
+    assert sum(" WHERE ref = " in stmt for stmt in identity_reads) == 1
+    assert single["item_ref"] == item["item_ref"] and single["source_state"] == "current"
 
 
 def test_stale_snapshot_rejects_before_loading_sources_and_projects_outside_transaction(dashboard_case, monkeypatch):
@@ -359,7 +296,7 @@ def test_stale_snapshot_rejects_before_loading_sources_and_projects_outside_tran
         conn.set_trace_callback(sql.append)
         return conn
 
-    client = api(case, monkeypatch, connect_factory=traced_connect)
+    client = api(case, connect_factory=traced_connect)
     listed = client.get("/api/workbench/v1/dashboard")
     assert listed.status_code == 200, listed.get_json()
     list_token = listed.get_json()["meta"]["snapshot_ref"]
@@ -389,23 +326,23 @@ def test_downtime_binary_search_finds_enclosing_interval_and_preserves_capture_o
     from tests.workbench.dashboard_support import NOW
 
     records = [
-        {"id": 10, "machine_id": "M1", "status": "active", "start_time": "2026-10-17T09:30:00",
-         "end_time": "2026-10-17T10:30:00", "reason_detail": "Captured first"},
-        {"id": 11, "machine_id": "M1", "status": "active", "start_time": "2026-10-17T08:00:00",
-         "end_time": "2026-10-17T18:00:00", "reason_detail": "Long enclosing downtime"},
-        {"id": 12, "machine_id": "M1", "status": "active", "start_time": "2026-10-17T08:10:00",
-         "end_time": "2026-10-17T08:20:00", "reason_detail": "Nested early 1"},
-        {"id": 13, "machine_id": "M1", "status": "active", "start_time": "2026-10-17T08:30:00",
-         "end_time": "2026-10-17T08:40:00", "reason_detail": "Nested early 2"},
-        {"id": 14, "machine_id": "M1", "status": "active", "start_time": "2026-10-17T09:15:00",
-         "end_time": "2026-10-17T09:45:00", "reason_detail": "Left touching"},
-        {"id": 15, "machine_id": "M1", "status": "active", "start_time": "2026-10-17T10:15:00",
-         "end_time": "2026-10-17T10:45:00", "reason_detail": "Right touching"},
-        {"id": 16, "machine_id": "M1", "status": "active", "start_time": "2026-10-17T10:00:00",
-         "end_time": "2026-10-17T10:20:00", "reason_detail": "Partial overlap"},
+        {"id": 10, "machine_id": "M1", "status": "active", "start_us": _iso_us("2026-10-17T09:30:00"),
+         "end_us": _iso_us("2026-10-17T10:30:00"), "reason_detail": "Captured first"},
+        {"id": 11, "machine_id": "M1", "status": "active", "start_us": _iso_us("2026-10-17T08:00:00"),
+         "end_us": _iso_us("2026-10-17T18:00:00"), "reason_detail": "Long enclosing downtime"},
+        {"id": 12, "machine_id": "M1", "status": "active", "start_us": _iso_us("2026-10-17T08:10:00"),
+         "end_us": _iso_us("2026-10-17T08:20:00"), "reason_detail": "Nested early 1"},
+        {"id": 13, "machine_id": "M1", "status": "active", "start_us": _iso_us("2026-10-17T08:30:00"),
+         "end_us": _iso_us("2026-10-17T08:40:00"), "reason_detail": "Nested early 2"},
+        {"id": 14, "machine_id": "M1", "status": "active", "start_us": _iso_us("2026-10-17T09:15:00"),
+         "end_us": _iso_us("2026-10-17T09:45:00"), "reason_detail": "Left touching"},
+        {"id": 15, "machine_id": "M1", "status": "active", "start_us": _iso_us("2026-10-17T10:15:00"),
+         "end_us": _iso_us("2026-10-17T10:45:00"), "reason_detail": "Right touching"},
+        {"id": 16, "machine_id": "M1", "status": "active", "start_us": _iso_us("2026-10-17T10:00:00"),
+         "end_us": _iso_us("2026-10-17T10:20:00"), "reason_detail": "Partial overlap"},
     ]
     identities = [
-        {"source_id": row["id"], "ref": format(row["id"], "048x"), "active": 1}
+        {"source_id": row["id"], "ref": format(row["id"], "048x"), "active": 1, "revision": 1}
         for row in records
     ]
     base_task = {"plan_ref": "a" * 48, "operation_ref": "b" * 48, "machine_ref": "c" * 48, "batch_id": "B1", "process_label": "Turning"}
@@ -416,13 +353,11 @@ def test_downtime_binary_search_finds_enclosing_interval_and_preserves_capture_o
         {**base_task, "task_ref": format(2, "048x"), "start": "2026-10-17T09:45:00", "end": "2026-10-17T10:15:00"},
     ]
     facts.task_rows = [
-        {"schedule_id": 1, "source": "internal", "machine_id": "M1"},
-        {"schedule_id": 2, "source": "internal", "machine_id": "M1"},
+        {"schedule_id": 1, "source": "internal", "machine_id": "M1",
+         "start_us": _us(2026, 10, 17, 15, 0), "end_us": _us(2026, 10, 17, 16, 0)},
+        {"schedule_id": 2, "source": "internal", "machine_id": "M1",
+         "start_us": _us(2026, 10, 17, 9, 45), "end_us": _us(2026, 10, 17, 10, 15)},
     ]
-    facts.task_intervals = {
-        1: (datetime(2026, 10, 17, 15, 0), datetime(2026, 10, 17, 16, 0)),
-        2: (datetime(2026, 10, 17, 9, 45), datetime(2026, 10, 17, 10, 15)),
-    }
     facts.raw = {
         "MachineDowntimes": records,
         "WorkbenchDashboardDowntimeRefs": identities,
@@ -476,30 +411,29 @@ def test_downtime_binary_search_finds_enclosing_interval_and_preserves_capture_o
 
     first = datetime(2026, 1, 1)
     bulk_records = [
-        {"id": 1, "machine_id": "M1", "status": "active", "start_time": first.isoformat(),
-         "end_time": (first + timedelta(minutes=10000)).isoformat(), "reason_detail": "Full-span enclosing"}
+        {"id": 1, "machine_id": "M1", "status": "active", "start_us": datetime_to_us(first),
+         "end_us": datetime_to_us(first + timedelta(minutes=10000)), "reason_detail": "Full-span enclosing"}
     ]
     for n in range(1, 5000):
         start = first + timedelta(minutes=2 * n)
         bulk_records.append({
             "id": n + 1, "machine_id": "M1", "status": "active",
-            "start_time": start.isoformat(), "end_time": (start + timedelta(minutes=1)).isoformat(),
+            "start_us": datetime_to_us(start), "end_us": datetime_to_us(start + timedelta(minutes=1)),
             "reason_detail": "Short window",
         })
-    bulk_identities = [{"source_id": n, "ref": format(n, "048x"), "active": 1} for n in range(1, 5001)]
+    bulk_identities = [{"source_id": n, "ref": format(n, "048x"), "active": 1, "revision": 1} for n in range(1, 5001)]
     bulk_facts = facts_module.DashboardFacts(None, NOW)
     bulk_facts.plan_state = "loaded"
     bulk_facts.tasks = []
     bulk_facts.task_rows = []
-    bulk_facts.task_intervals = {}
     for n in range(1, 1001):
         start = first + timedelta(minutes=2 * n)
         end = start + timedelta(minutes=1)
         bulk_facts.tasks.append({
             **base_task, "task_ref": format(n, "048x"), "start": start.isoformat(), "end": end.isoformat(),
         })
-        bulk_facts.task_rows.append({"schedule_id": n, "source": "internal", "machine_id": "M1"})
-        bulk_facts.task_intervals[n] = (start, end)
+        bulk_facts.task_rows.append({"schedule_id": n, "source": "internal", "machine_id": "M1",
+                                     "start_us": datetime_to_us(start), "end_us": datetime_to_us(end)})
     bulk_facts.raw = {
         "MachineDowntimes": bulk_records,
         "WorkbenchDashboardDowntimeRefs": bulk_identities,
@@ -526,13 +460,12 @@ def test_report_catalog_and_calibration_exports_reject_invalid_format_before_sna
     from web.routes.workbench import calibration as calibration_routes
     from web.routes.workbench import reports_catalog
     from web.routes.workbench.calibration import register_calibration_routes
-    from web.routes.workbench.read_budget import CALIBRATION_READ_SLOTS, PLAN_READ_SLOTS
+    from web.routes.workbench.read_budget import PLAN_READ_SLOTS
     from web.routes.workbench.reports import register_report_routes
 
     monkeypatch.setattr(reports_catalog, "read_snapshot_time", lambda *_: pytest.fail("Resolved report snapshot before format check"))
     monkeypatch.setattr(calibration_routes, "resolve_read_snapshot", lambda *_: pytest.fail("Resolved calibration snapshot before format check"))
     monkeypatch.setattr(PLAN_READ_SLOTS, "slot", lambda *_: pytest.fail("Acquired PLAN_READ_SLOTS before format check"))
-    monkeypatch.setattr(CALIBRATION_READ_SLOTS, "slot", lambda *_: pytest.fail("Acquired CALIBRATION_READ_SLOTS before format check"))
 
     app = Flask("export-format-gate")
     app.config.update(TESTING=True, SECRET_KEY="temporary-export-format-gate")

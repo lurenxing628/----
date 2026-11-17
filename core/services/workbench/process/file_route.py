@@ -12,39 +12,43 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.workflow_state import record_confirmation
 from data.repositories.part_repo import PartRepository
 
-from .file_route_preview import RouteFilePreview, reject_duplicates
+from .file_route_preview import RouteFilePreview
 from .group_defaults import default_suppliers
 from .part_actions import WorkbenchProcessPartActionService
 from .route_apply import apply_route, discard_groups
+from .scope import ProcessFactScope
 
 
 class ProcessRouteFileOperations:
     def __init__(self, conn, logger):
         self.conn, self.logger = conn, logger
 
-    def preview_rows(self, decoded_rows, scope, target_ref):
+    def preview_rows(self, decoded_rows, scope: ProcessFactScope, target_ref):
         if not self.conn.in_transaction:
             raise RuntimeError("路线文件预检必须在调用方的完整事实快照事务中执行。")
         preview = RouteFilePreview(self.logger, scope, target_ref)
         rows = [preview.row(source) for source in decoded_rows]
-        reject_duplicates(rows)
         extra = {"affected_groups": preview.affected_groups(rows), "zero_review_required": False}
         active_facts = preview.facts
         self.parts = active_facts.parts
-        # This command's cross-part group index; record_confirmation updates it row by row.
-        self.group_members = active_facts.group_members
         self.current_identities = active_facts.identities
         self.references = active_facts.references
         return rows, extra
 
-    def apply_rows(self, rows):
+    def apply_rows(self, rows, *, confirmed_at):
+        """Every row whose route is saved is confirmed with ``confirmed_at``, the command's one stamp."""
         if not self.conn.in_transaction:
             raise RuntimeError("路线文件保存必须在外层BEGIN IMMEDIATE事务中执行。")
         creator = WorkbenchProcessPartActionService(self.conn, self.logger)
-        self.creations = {row["row"]: creator.prepare_create(row["input"],
-            parts=self.parts,
-            route_parsed="yes" if row["related"]["route"] is not None else "no")
-            for row in rows if row["action"] == "create"}
+        self.creations = {
+            row["row"]: creator.prepare_create(
+                row["input"],
+                parts=self.parts,
+                route_parsed="yes" if row["related"]["route"] is not None else "no",
+            )
+            for row in rows
+            if row["action"] == "create"
+        }
         catalog = None
 
         def default_catalog():
@@ -55,19 +59,23 @@ class ProcessRouteFileOperations:
 
         results, affected_refs = [], set()
         for row in rows:
-            result = self._apply_row(row, default_catalog, creator, cross_part_by_group=self.group_members)
+            result = self._apply_row(row, default_catalog, creator, confirmed_at)
             results.append(result)
             affected_refs.add(result["entity_ref"])
         return results, sorted(affected_refs)
 
-    def _apply_row(self, row, default_catalog_reader, creator, *, cross_part_by_group):
+    def _apply_row(self, row, default_catalog_reader, creator, confirmed_at):
         route = row["related"]["route"]
         fields = {}
         if row["action"] == "create":
             if route is None:
                 outcome = creator.apply_create(self.creations[row["row"]])
-                return {"row": row["row"], "result": "committed",
-                        "entity_ref": outcome.data["entity_ref"], "business_code": row["business_code"]}
+                return {
+                    "row": row["row"],
+                    "result": "committed",
+                    "entity_ref": outcome.data["entity_ref"],
+                    "business_code": row["business_code"],
+                }
             PartRepository(self.conn).create(self.creations[row["row"]])
             part = {"part_no": row["business_code"], "route_raw": row["after"]["route_raw"], "route_parsed": "yes"}
             operations = []
@@ -77,22 +85,30 @@ class ProcessRouteFileOperations:
             fields = self._text_fields(row)
         if route is not None:
             discard_groups(self.conn, row["business_code"], row["related"]["affected_groups"])
-            apply_route(self.conn, part, operations, route, self.current_identities,
-                        part_updates=fields, default_catalog_reader=default_catalog_reader)
+            apply_route(
+                self.conn,
+                part,
+                operations,
+                route,
+                self.current_identities,
+                part_updates=fields,
+                discarded_groups=bool(row["related"]["affected_groups"]),
+                default_catalog_reader=default_catalog_reader,
+            )
             try:
-                ref = record_confirmation(
-                    self.conn,
-                    row["business_code"],
-                    "route",
-                    cross_part_by_group=cross_part_by_group,
-                    old_operations=operations,
-                )
+                ref = record_confirmation(self.conn, row["business_code"], "route", confirmed_at=confirmed_at)
             except RuntimeError as exc:
-                raise WorkbenchCommandRejected("storage_failure", "工艺确认流程没有建立，这次没有保存零件。请刷新重试；仍不行请联系维护人员。", 500) from exc
+                raise WorkbenchCommandRejected(
+                    "storage_failure", "工艺确认流程没有建立，这次没有保存零件。请刷新重试；仍不行请联系维护人员。", 500
+                ) from exc
         elif fields:
             PartRepository(self.conn).update(row["business_code"], fields)
-        return {"row": row["row"], "result": "unchanged" if row["result"] == "unchanged" else "committed",
-                "entity_ref": ref, "business_code": row["business_code"]}
+        return {
+            "row": row["row"],
+            "result": "unchanged" if row["result"] == "unchanged" else "committed",
+            "entity_ref": ref,
+            "business_code": row["business_code"],
+        }
 
     @staticmethod
     def _text_fields(row):

@@ -185,11 +185,12 @@ def test_permission_capture_includes_complete_old_machine_states_before_removal(
     conn = resource_conn
     for code in ("OLD-MAIN", "OLD-CAP", "NEW-TYPE"):
         insert_row(conn, "OpTypes", {"op_type_id": code, "name": code, "category": "internal"})
-    conn.execute("UPDATE Machines SET op_type_id='OLD-MAIN' WHERE machine_id='M1'")
+    conn.execute("UPDATE MachineOpTypes SET op_type_id='OLD-MAIN' WHERE machine_id='M1'")
     insert_row(conn, "MachineOpTypes", {"machine_id": "M1", "op_type_id": "OLD-CAP"})
     insert_row(conn, "WorkbenchMachineGroups", {"group_id": "OLD-GROUP", "name": "old machine group"})
     insert_row(conn, "WorkbenchMachineGroupMembers", {"machine_id": "M1", "group_id": "OLD-GROUP"})
-    insert_row(conn, "Machines", {"machine_id": "M2", "name": "replacement", "op_type_id": "NEW-TYPE"})
+    insert_row(conn, "Machines", {"machine_id": "M2", "name": "replacement"})
+    insert_row(conn, "MachineOpTypes", {"machine_id": "M2", "op_type_id": "NEW-TYPE"})
     insert_row(conn, "OperatorMachine", {"operator_id": "EMPTY", "machine_id": "M2", "skill_level": "normal", "is_primary": "no"})
     conn.commit()
     operator = identity_for(conn, "operator")

@@ -90,7 +90,7 @@ def _daily_signals(capacity, span, *, calendar_available, work_complete, potenti
 
 
 class _ResourceMeasurement:
-    def __init__(self, resource, intervals, calendar, low, high, work_available, source, unknown_issues,
+    def __init__(self, resource, intervals, calendar, low, high, work_available, source,
                  *, retain_statistics_values=True):
         self.resource, self.intervals = resource, intervals
         self.low, self.high, self.work_available, self.source = low, high, work_available, source
@@ -100,13 +100,11 @@ class _ResourceMeasurement:
         self.windows = self.calendar.windows
         self.metrics = ResourceUtilizationMetrics.from_normalized_availability(intervals.intervals, self.windows)
         self.known_span = IntervalIndex.from_normalized(intersection(self.metrics.span.intervals, self.calendar.known_coverage))
-        self.work_complete = work_available and not intervals.unknown
-        self.work_state = "complete" if self.work_complete else "partial" if work_available and intervals.rows else "unavailable"
+        # Every indexed task carries its permanent operation, so the workload is complete exactly when arrangements are.
+        self.work_state = "complete" if work_available else "unavailable"
         self.work_issues = []
         if not work_available:
             self.work_issues.append(_issue("arrangements_unavailable", "比较对象的安排归档缺项，占用和负荷未知。"))
-        elif intervals.unknown:
-            self.work_issues.extend(unknown_issues)
         self._value_cache, self._window_statistics_cache, self._period_statistics_cache = {}, {}, {}
         self._day_filter_summaries = {}
 
@@ -120,13 +118,13 @@ class _ResourceMeasurement:
         variants = self._value_cache.get(key)
         if variants:
             original = next(iter(variants.values()))
-            potential_work = (original.raw["span_occupied_hours"] > 0 or not self.work_complete
+            potential_work = (original.raw["span_occupied_hours"] > 0 or not self.work_available
                               if potential_work is None else potential_work)
             if potential_work in variants:
                 return variants[potential_work]
         value = self._values(low, high, calendar_days, potential_work=potential_work, prepared=prepared)
         if retain:
-            potential_work = (value.raw["span_occupied_hours"] > 0 or not self.work_complete
+            potential_work = (value.raw["span_occupied_hours"] > 0 or not self.work_available
                               if potential_work is None else potential_work)
             self._value_cache.setdefault(key, {})[potential_work] = value
         return value
@@ -145,7 +143,7 @@ class _ResourceMeasurement:
         raw["outside_calendar_hours"] = known_span_hours - raw["occupied_hours"]
         known_capacity = raw["available_hours"] if known_day_count else None
         capacity = known_capacity if capacity_complete else None
-        occupied, load = (raw[key] if capacity_complete and self.work_complete else None
+        occupied, load = (raw[key] if capacity_complete and self.work_available else None
                           for key in ("occupied_hours", "summed_load_hours"))
         known_occupied, known_load = (raw[key] if known_day_count and self.work_available else None
                                       for key in ("occupied_hours", "summed_load_hours"))
@@ -154,13 +152,13 @@ class _ResourceMeasurement:
         known_ratio = known_occupied / known_capacity if known_occupied is not None and known_capacity is not None and known_capacity > 0 else None
         known_demand = known_load / known_capacity if known_load is not None and known_capacity is not None and known_capacity > 0 else None
         if potential_work is None:
-            potential_work = raw["span_occupied_hours"] > 0 or not self.work_complete
+            potential_work = raw["span_occupied_hours"] > 0 or not self.work_available
         zero_capacity_task = _daily_signals(
             raw["available_hours"], raw["span_occupied_hours"], calendar_available=capacity_complete,
-            work_complete=self.work_complete, potential_work=potential_work)
+            work_complete=self.work_available, potential_work=potential_work)
         if self.work_available and raw["outside_calendar_hours"] > 0:
             zero_capacity_task = None
-        signal_unknown = potential_work and (not capacity_complete or not self.work_complete)
+        signal_unknown = potential_work and (not capacity_complete or not self.work_available)
         conflict = True if self.work_available and raw["overlap_hours"] > 0 else None if signal_unknown else False
         demand_overload = True if demand is not None and demand > 1 else None if signal_unknown else False
         zero_capacity_reason = _issue("actual_work_fragments_not_recorded", "此时段无可排容量；安排跨度未提供实际工作片段。") if (
@@ -177,14 +175,14 @@ class _ResourceMeasurement:
         values = self.values(low, high, calendar_days, potential_work=self.potential_work(low, high, whole=whole))
         raw, capacity_complete = values.raw, values.calendar_complete
         known_days, capacity, known_capacity = values.known_day_count, values.capacity, values.known_capacity
-        result: Dict[str, Any] = {key: raw[key] if capacity_complete and self.work_complete else None for key in _INSIDE_FIELDS}
-        result.update({key: raw[key] if self.work_complete else None for key in _SPAN_FIELDS})
+        result: Dict[str, Any] = {key: raw[key] if capacity_complete and self.work_available else None for key in _INSIDE_FIELDS}
+        result.update({key: raw[key] if self.work_available else None for key in _SPAN_FIELDS})
         result.update({"known_" + key: raw[key] if known_days and self.work_available else None for key in _INSIDE_FIELDS})
         result.update({"known_" + key: raw[key] if self.work_available else None for key in _SPAN_FIELDS})
         occupied = result["occupied_hours"]
-        complete = capacity_complete and self.work_complete
+        complete = capacity_complete and self.work_available
         state = "complete" if complete else "partial" if known_days or self.work_available else "unavailable"
-        result.update({"resource_ref": self.resource["ref"], "resource_kind": self.resource["kind"], "label": self.resource.get("label"),
+        result.update({"resource_ref": self.resource["ref"], "resource_kind": self.resource["kind"], "label": self.resource["label"],
                        "state": state, "available_hours": capacity, "known_available_hours": known_capacity,
                        "utilization_ratio": values.ratio, "demand_ratio": values.demand,
                        "known_utilization_ratio": values.known_ratio, "known_demand_ratio": values.known_demand,
@@ -198,12 +196,11 @@ class _ResourceMeasurement:
                        "zero_capacity_reason": values.zero_capacity_reason,
                        "unknown_days": len(calendar_days) - known_days,
                        "zero_capacity_days": 0 if whole else int(capacity_complete and capacity == 0),
-                       "task_count": task_count if self.work_complete else None,
-                       "operation_count": operation_count if self.work_complete else None,
+                       "task_count": task_count if self.work_available else None,
+                       "operation_count": operation_count if self.work_available else None,
                        "known_task_count": task_count if self.work_available else None,
                        "known_operation_count": operation_count if self.work_available else None,
                        "work_available": self.work_available, "work_state": self.work_state,
-                       "unknown_workload_count": len(self.intervals.unknown),
                        "numerator_hours": occupied, "denominator_hours": capacity,
                        "issues": _issues([item for day in calendar_days for item in day.issues] + self.work_issues),
                        "metric_version": RESOURCE_METRIC_VERSION, "source": self.source})
@@ -216,7 +213,7 @@ class _ResourceMeasurement:
             task_count = 0
         else:
             task_count = bisect_left(self.intervals.starts, high) - bisect_right(self.intervals.ends, low)
-        return task_count > 0 or not self.work_complete
+        return task_count > 0 or not self.work_available
 
     def window(self, low, high, threshold):
         low, high = self.low if low is None else low, self.high if high is None else high
@@ -241,7 +238,7 @@ class _ResourceMeasurement:
         key = low, high, self._day_key(days), threshold
         if key in self._window_statistics_cache:
             return self._window_statistics_cache[key]
-        complete = all(day.available for day in days) and self.work_complete
+        complete = all(day.available for day in days) and self.work_available
         # Peak and pressure cover every archived day, independently of the UI page.
         peak, high_pressure, zero_capacity_task, zero_days = None, False, False, 0
         high_periods, overload_count, conflict_count = [], 0, 0
@@ -265,7 +262,7 @@ class _ResourceMeasurement:
                 previous_known = current_known
             value = self.values(first, last, [day], prepared=prepared,
                                 retain=self.retain_statistics_values if prepared is not None else True)
-            day_complete = value.calendar_complete and self.work_complete
+            day_complete = value.calendar_complete and self.work_available
             unknown_periods += int(not day_complete)
             unavailable_periods += int(not day_complete and not value.known_day_count and not self.work_available)
             ratio, zero_task = value.known_ratio, value.zero_capacity_task
@@ -275,8 +272,8 @@ class _ResourceMeasurement:
             if pressure is True:
                 high_periods.append({"date": day.date, "start": first.isoformat(), "end": last.isoformat(),
                     "available_hours": value.capacity,
-                    "occupied_hours": value.raw["occupied_hours"] if value.calendar_complete and self.work_complete else None,
-                    "summed_load_hours": value.raw["summed_load_hours"] if value.calendar_complete and self.work_complete else None,
+                    "occupied_hours": value.raw["occupied_hours"] if value.calendar_complete and self.work_available else None,
+                    "summed_load_hours": value.raw["summed_load_hours"] if value.calendar_complete and self.work_available else None,
                     "utilization_ratio": value.ratio, "demand_ratio": value.demand})
             overload_count += int(value.demand_overload is True)
             conflict_count += int(value.conflict is True)
@@ -316,7 +313,7 @@ class _ResourceMeasurement:
         if key in self._period_statistics_cache:
             return self._period_statistics_cache[key]
         value = self.values(low, high, days, potential_work=self.potential_work(low, high, whole=whole))
-        complete = value.calendar_complete and self.work_complete
+        complete = value.calendar_complete and self.work_available
         pressure = pressure_signal(value.pressure_ratio, value.signal_unknown, threshold)
         result = {"state": "complete" if complete else "partial" if value.known_day_count or self.work_available else "unavailable",
                   "available_hours": value.capacity,
@@ -343,11 +340,11 @@ class _ResourceMeasurement:
 
     def details(self, low, high, days):
         rows = self.intervals.overlapping(low, high)
-        natural = sweep_details(rows, self.intervals.unknown, low, high)
+        natural = sweep_details(rows, low, high)
         windows = union(value for day in days if day.available for value in day.windows)
         clipped = [(first, last, task) for start, end, task in rows
                    for first, last in intersection([(max(start, low), min(end, high))], windows)]
-        working = sweep_details(clipped, self.intervals.unknown, low, high)
+        working = sweep_details(clipped, low, high)
         complete = all(day.available for day in days)
         known_calendar = any(day.available for day in days)
         tasks, reservations = [], []
@@ -359,12 +356,10 @@ class _ResourceMeasurement:
             reservations.append(item)
             if occupied > 0 or not complete:
                 tasks.append(item)
-        tasks.extend({**task, "span_hours": None, "occupied_hours": None, "known_occupied_hours": None, "locked": None}
-                     for task in natural["tasks"][len(rows):])
         known_contributors = {task["operation_ref"] for task in tasks
-                              if task["operation_ref"] is not None and task["known_occupied_hours"] is not None and task["known_occupied_hours"] > 0}
+                              if task["known_occupied_hours"] is not None and task["known_occupied_hours"] > 0}
         return {"conflicts": working["conflicts"], "tasks": tasks, "reservation_overlaps": natural["conflicts"],
-                "reservations": reservations, "contribution_operation_count": len(known_contributors) if complete and self.work_complete else None,
+                "reservations": reservations, "contribution_operation_count": len(known_contributors) if complete and self.work_available else None,
                 "known_contribution_operation_count": len(known_contributors) if known_calendar else None,
                 "reservation_overlap_basis": "reservation_span_overlap"}
 
@@ -383,23 +378,16 @@ class ResourceTaskIndex:
         self.work_available, self.source = work_available, source
         self.retain_statistics_values = retain_statistics_values
         self.identity_issues = []
-        self._unknown_issues = defaultdict(list)
-        rows, unknown = defaultdict(list), defaultdict(list)
+        rows = defaultdict(list)
         for task, interval in occupying_tasks(tasks, self.low, self.high, task_intervals=task_intervals):
             for kind in KINDS:
                 value = task.get(kind)
                 if value is None or value.get("ref") is None:
                     self.identity_issues.append(identity_issue(kind))
                     continue
-                key = (kind, value["ref"])
-                if interval is None or task.get("operation_ref") is None:
-                    unknown[key].append(task)
-                    self._unknown_issues[key].append(_issue("task_time_unknown", "保存任务的时间或点事件依据缺项，占用和负荷保留已知小计。", "task_time")
-                        if interval is None else _issue("operation_identity_unknown", "保存任务缺少永久工序身份，独立工序负荷未知。", "operation_ref"))
-                else:
-                    rows[key].append((max(interval[0], self.low), min(interval[1], self.high), task))
-        self._resources = {key: ResourceIntervals(rows[key], unknown[key]) for key in rows.keys() | unknown.keys()}
-        self._empty = ResourceIntervals([], [])
+                rows[kind, value["ref"]].append((max(interval[0], self.low), min(interval[1], self.high), task))
+        self._resources = {key: ResourceIntervals(value) for key, value in rows.items()}
+        self._empty = ResourceIntervals([])
         self._last_sweep = None
         self._measurements = {}
 
@@ -411,8 +399,7 @@ class ResourceTaskIndex:
             return current[1]
         intervals = self._resources.get(key, self._empty)
         measurement = _ResourceMeasurement(resource, intervals, calendar, self.low, self.high, self.work_available,
-                                           self.source, self._unknown_issues.get(key, []),
-                                           retain_statistics_values=retain_statistics_values)
+                                           self.source, retain_statistics_values=retain_statistics_values)
         # Keep the current resource's sweep for an immediately requested legacy
         # segment DTO. Full-cohort summaries do not retain every resource sweep.
         self._last_sweep = key, measurement.metrics.segments

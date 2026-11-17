@@ -1,27 +1,46 @@
-"""Allowlisted planned-delivery DTOs; missing evidence is never a zero delay."""
+"""Allowlisted planned-delivery DTOs; missing evidence is never a zero delay.
+
+Every delivery view (official plan, dashboard, candidate, decision, trial) admits its own source into
+``DeliveryBatch`` values once and projects them here with one whole-batch rule.
+"""
 
 from __future__ import annotations
 
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, datetime
+from typing import AbstractSet, Any, List, Mapping, Tuple
 
 from core.algorithm_contracts.date_parsers import due_exclusive
 from core.models.enums import DeliveryCompletionState, DeliveryRisk, DueState
-from core.services.workbench.facts.zero_duration_evidence import overlaps
 from core.shared.local_datetime import parse_local_datetime as parse_dt
 from core.shared.stored_dates import stored_day
 from core.shared.strict_parse import is_stored_number
 
 
-def selected_batch_keys(rows, intervals, scope):
-    if scope.range_start is None:
-        return sorted({row["batch_id"] for row in rows})
-    start, end = parse_dt(scope.range_start), parse_dt(scope.range_end)
-    keys = set()
-    for row in rows:
-        interval = intervals[row["schedule_id"]]
-        if interval is None or overlaps(interval[0], interval[1], start, end):
-            keys.add(row["batch_id"])
-    return sorted(keys)
+@dataclass(frozen=True)
+class DeliveryTask:
+    """One arranged task of a batch: its operation and its planned finish."""
+
+    op_id: int
+    finish: datetime
+
+
+@dataclass(frozen=True)
+class DeliveryBatch:
+    """One batch's admitted delivery input.
+
+    ``batch`` is the batch's stored row (``batch_id``, ``part_no``, ``part_name``, ``quantity``, ``priority``,
+    ``due_date``); ``operation_ids`` are all of its operations and ``tasks`` its arranged ones in the full plan.
+    ``batch_issues`` hold reasons that concern this batch only; reasons that concern the whole scope are the
+    caller's ``scope_issues``.
+    """
+
+    batch: Mapping[str, Any]
+    batch_ref: str
+    operation_ids: AbstractSet[int]
+    tasks: Tuple[DeliveryTask, ...]
+    incomplete: bool
+    batch_issues: Tuple[str, ...]
 
 
 def parse_stored_due_date(raw):
@@ -39,8 +58,60 @@ def _text(value):
     return value if isinstance(value, str) and value.strip() else None
 
 
-def project_delivery_batch(batch, batch_ref, rows, operations, intervals, incomplete, uncertain, *, deferred_operation_ids=()):
-    schedule, finish, reasons = _schedule_completion(rows, operations, intervals, incomplete, uncertain, deferred_operation_ids)
+def project_delivery_batch(item: DeliveryBatch, *, deferred_operation_ids: AbstractSet[int],
+                           scope_issues: Tuple[str, ...]):
+    """``scope_issues`` keep every batch of the scope from claiming completion; ``()`` evaluates the batch alone."""
+    expected, scheduled, deferred, ordinary_missing, reasons = _operation_reasons(
+        item.operation_ids, {task.op_id for task in item.tasks}, deferred_operation_ids)
+    uncertain = scope_issues + item.batch_issues
+    reasons = list(uncertain) + reasons
+    if item.incomplete and not (deferred and not ordinary_missing):
+        reasons.append("saved_plan_incomplete")
+    complete = bool(expected) and not reasons
+    if complete:
+        state = DeliveryCompletionState.COMPLETE.value
+    elif deferred and not ordinary_missing and not uncertain:
+        state = DeliveryCompletionState.DEFERRED.value
+    elif ordinary_missing or item.incomplete:
+        state = DeliveryCompletionState.INCOMPLETE.value
+    else:
+        state = DeliveryCompletionState.UNKNOWN.value
+    finish = max((task.finish for task in item.tasks), default=None)
+    schedule = {"schedule_complete": complete, "operation_count": len(expected),
+                "scheduled_operation_count": len(scheduled),
+                "unscheduled_operation_count": len(expected - scheduled), "task_count": len(item.tasks),
+                "completion_state": state, "deferred_operation_count": len(deferred),
+                "ordinary_unscheduled_operation_count": len(ordinary_missing)}
+    return _delivery_row(item.batch, item.batch_ref, schedule, finish, reasons)
+
+
+def project_unbased_delivery_batch(batch, batch_ref, operation_ids: AbstractSet[int], *,
+                                   deferred_operation_ids: AbstractSet[int]):
+    """A batch with no admission baseline: nothing is arranged against it, so its arrangement counts and
+    completion are unknown, not zero."""
+    expected, _, _, _, reasons = _operation_reasons(operation_ids, frozenset(), deferred_operation_ids)
+    schedule = {"schedule_complete": False, "operation_count": len(expected), "scheduled_operation_count": None,
+                "unscheduled_operation_count": None, "task_count": None,
+                "completion_state": DeliveryCompletionState.UNKNOWN.value, "deferred_operation_count": None,
+                "ordinary_unscheduled_operation_count": None}
+    return _delivery_row(batch, batch_ref, schedule, None, ["no_admission_baseline"] + reasons)
+
+
+def _operation_reasons(expected, scheduled, deferred_operation_ids):
+    missing = expected - scheduled
+    deferred = missing & deferred_operation_ids
+    ordinary_missing = missing - deferred
+    reasons = []
+    if ordinary_missing:
+        reasons.append("operations_unscheduled")
+    if deferred:
+        reasons.append("material_deferred")
+    if not expected:
+        reasons.append("operations_missing")
+    return expected, scheduled, deferred, ordinary_missing, reasons
+
+
+def _delivery_row(batch, batch_ref, schedule, finish, reasons):
     due_date, deadline, due_state, due_issue = parse_stored_due_date(batch["due_date"])
     if due_issue:
         reasons.append(due_issue)
@@ -51,51 +122,15 @@ def project_delivery_batch(batch, batch_ref, rows, operations, intervals, incomp
         reasons.append("part_label_missing")
     completeness = ("incomplete" if schedule["completion_state"] == DeliveryCompletionState.DEFERRED.value
                     else schedule["completion_state"])
-    quantity = batch.get("quantity")
+    quantity = batch["quantity"]
     return {"batch_ref": batch_ref, "batch_id": batch["batch_id"], "part_no": part_no, "part_label": part_label,
-            "priority": _text(batch.get("priority")),
+            "priority": _text(batch["priority"]),
             "quantity": quantity if is_stored_number(quantity, integer=True) else None,
             **schedule, **_finish_fields(schedule["schedule_complete"], finish),
             **_delivery_risk(schedule["schedule_complete"], finish, deadline, due_state),
             "due_date": due_date, "due_state": due_state, "due_issue": due_issue,
             "delivery_deadline_exclusive": deadline.isoformat(timespec="seconds") if deadline else None,
             "completeness": completeness, "issues": sorted(set(reasons))}
-
-
-def _schedule_completion(rows, operations, intervals, incomplete, uncertain, deferred_operation_ids):
-    expected = {row["op_id"] for row in operations}
-    scheduled = {row["op_id"] for row in rows}
-    valid = [intervals[row["schedule_id"]] for row in rows if intervals[row["schedule_id"]] is not None]
-    missing = expected - scheduled
-    deferred = missing & set(deferred_operation_ids)
-    ordinary_missing = missing - deferred
-    missing_count, invalid_count = len(missing), len(rows) - len(valid)
-    reasons = list(uncertain)
-    if ordinary_missing:
-        reasons.append("operations_unscheduled")
-    if deferred:
-        reasons.append("material_deferred")
-    if not expected:
-        reasons.append("operations_missing")
-    if invalid_count:
-        reasons.append("schedule_time_invalid")
-    if incomplete and not (deferred and not ordinary_missing):
-        reasons.append("saved_plan_incomplete")
-    complete = bool(expected) and not reasons
-    if complete:
-        state = DeliveryCompletionState.COMPLETE.value
-    elif deferred and not ordinary_missing and not invalid_count and not uncertain:
-        state = DeliveryCompletionState.DEFERRED.value
-    elif ordinary_missing or incomplete:
-        state = DeliveryCompletionState.INCOMPLETE.value
-    else:
-        state = DeliveryCompletionState.UNKNOWN.value
-    finish = max((value[1] for value in valid), default=None)
-    return {"schedule_complete": complete, "operation_count": len(expected), "scheduled_operation_count": len(scheduled),
-            "unscheduled_operation_count": missing_count, "task_count": len(rows),
-            "invalid_task_count": invalid_count, "completion_state": state,
-            "deferred_operation_count": len(deferred),
-            "ordinary_unscheduled_operation_count": len(ordinary_missing)}, finish, reasons
 
 
 def _finish_fields(complete, finish):
@@ -116,7 +151,16 @@ def _delivery_risk(complete, finish, deadline, due_state):
             "delay_days": delay / 86400.0 if delay is not None else None}
 
 
-def delivery_summary(items, missing_count=0):
+def known_delivery_batch_refs(items) -> List[str]:
+    return sorted(
+        row["batch_ref"]
+        for row in items
+        if row["due_state"] == DueState.SPECIFIED.value
+        and row["risk"] in (DeliveryRisk.ON_TIME.value, DeliveryRisk.OVERDUE.value)
+    )
+
+
+def delivery_summary(items):
     """Whole-chain and due coverage; invalid due values remain unknown evidence.
 
     Eligible means a specified due date. Evaluation also includes invalid due
@@ -125,7 +169,7 @@ def delivery_summary(items, missing_count=0):
     """
     eligible = [row for row in items if row["due_state"] == DueState.SPECIFIED.value]
     excluded = sum(row["due_state"] == DueState.UNSPECIFIED.value for row in items)
-    invalid = sum(row["due_state"] == DueState.INVALID.value for row in items) + missing_count
+    invalid = sum(row["due_state"] == DueState.INVALID.value for row in items)
     known = [row for row in eligible if row["risk"] in (DeliveryRisk.ON_TIME.value, DeliveryRisk.OVERDUE.value)]
     evaluated = len(eligible) + invalid
     unknown = evaluated - len(known)
@@ -133,9 +177,9 @@ def delivery_summary(items, missing_count=0):
              else "partial" if known else "unavailable")
     overdue = sum(row["is_overdue"] is True for row in known)
     tardiness = sum(row["delay_hours"] for row in known)
-    complete_refs = sorted(row["batch_ref"] for row in items if row["schedule_complete"])
-    deferred_refs = sorted(row["batch_ref"] for row in items if row["completion_state"] == DeliveryCompletionState.DEFERRED.value)
-    batch_count = len(items) + missing_count
+    complete_count = sum(bool(row["schedule_complete"]) for row in items)
+    deferred_count = sum(row["completion_state"] == DeliveryCompletionState.DEFERRED.value for row in items)
+    batch_count = len(items)
     return {"state": state, "batch_count": batch_count, "due_eligible_count": len(eligible),
             "excluded_due_count": excluded, "invalid_due_count": invalid, "due_evaluation_count": evaluated,
             "known_due_count": len(known), "unknown_due_count": unknown, "unknown_count": unknown,
@@ -144,11 +188,8 @@ def delivery_summary(items, missing_count=0):
             "known_tardiness_hours": tardiness if evaluated else None,
             "on_time_count": len(known) - overdue if state == "complete" else None,
             "known_on_time_count": len(known) - overdue,
-            "complete_batch_count": len(complete_refs), "incomplete_batch_count": batch_count - len(complete_refs),
-            "deferred_batch_count": len(deferred_refs), "complete_batch_refs": complete_refs,
-            "deferred_batch_refs": deferred_refs,
-            "known_batch_refs": sorted(row["batch_ref"] for row in known),
-            "unknown_batch_refs": sorted(row["batch_ref"] for row in items if row["risk"] == DeliveryRisk.UNKNOWN.value)}
+            "complete_batch_count": complete_count, "incomplete_batch_count": batch_count - complete_count,
+            "deferred_batch_count": deferred_count}
 
 
 def delivery_batch_delta(before, after):

@@ -119,6 +119,7 @@ def test_calibration_prebinds_snapshot_once_per_part_and_defers_report_dto_until
     calls = Counter()
     orig_part_identity = WorkbenchCalibrationQueryRepository.part_identity
     orig_template_rows = WorkbenchCalibrationQueryRepository.template_rows
+    orig_template_row = WorkbenchCalibrationQueryRepository.template_row
     orig_report_to_dict = ProductionReport.to_dict
 
     monkeypatch.setattr(
@@ -129,7 +130,12 @@ def test_calibration_prebinds_snapshot_once_per_part_and_defers_report_dto_until
     monkeypatch.setattr(
         WorkbenchCalibrationQueryRepository,
         "template_rows",
-        lambda repo, part_no, limit: (calls.__setitem__("template_rows", calls["template_rows"] + 1), orig_template_rows(repo, part_no, limit))[1],
+        lambda repo, *a, **kw: (calls.__setitem__("template_rows", calls["template_rows"] + 1), orig_template_rows(repo, *a, **kw))[1],
+    )
+    monkeypatch.setattr(
+        WorkbenchCalibrationQueryRepository,
+        "template_row",
+        lambda repo, *a, **kw: (calls.__setitem__("template_row", calls["template_row"] + 1), orig_template_row(repo, *a, **kw))[1],
     )
     monkeypatch.setattr(
         ProductionReport,
@@ -167,13 +173,41 @@ def test_calibration_prebinds_snapshot_once_per_part_and_defers_report_dto_until
             as_of=NOW,
             bind_snapshot=lambda _content: {"snapshot_ref": "snap-1", "as_of": NOW.isoformat(timespec="seconds")},
         )
-    assert calls["part_identity"] == 1 and calls["template_rows"] == 1
-    assert calls["report_to_dict"] == 0 and calls["correction_history"] == 0
-    list_data, _ = cal.workspace(facts, CalibrationQuery(part_ref=part_ref), facts["snapshot"], suggestion_ref=None, export=False)
+        assert calls["part_identity"] == 1 and calls["template_rows"] == 1
+        assert calls["report_to_dict"] == 0 and calls["correction_history"] == 0
+        list_data, _ = cal.workspace(facts, CalibrationQuery(part_ref=part_ref), facts["snapshot"], export=False)
+        _, export_rows = cal.workspace(facts, CalibrationQuery(part_ref=part_ref), facts["snapshot"], export=True)
     assert calls["report_to_dict"] == 0 and calls["correction_history"] == 0 and len(list_data["items"]) == 1
-    detail_data, _ = cal.workspace(
-        facts, CalibrationQuery(part_ref=part_ref), facts["snapshot"], suggestion_ref=case.template_ref, export=False
+    assert not {"sample_refs", "sample_revisions", "exclusion_reasons", "template_snapshot"}.intersection(
+        list_data["items"][0]
     )
+
+    calls.clear()
+    with cal.read_snapshot() as ledger_scope:
+        with pytest.raises(WorkbenchCommandRejected) as filtered_out:
+            cal.read_detail(
+                ledger_scope,
+                CalibrationQuery(part_ref=part_ref, status="insufficient_data"),
+                case.template_ref,
+                as_of=NOW,
+            )
+        assert filtered_out.value.code == "entity_not_found" and filtered_out.value.status == 404
+        assert calls["template_rows"] == 0 and calls["template_row"] == 1
+        assert calls["report_to_dict"] == 0 and calls["correction_history"] == 0
+
+        detail_data, _ = cal.read_detail(
+            ledger_scope,
+            CalibrationQuery(part_ref=part_ref),
+            case.template_ref,
+            as_of=NOW,
+            bind_snapshot=lambda _content: {"snapshot_ref": "snap-1", "as_of": NOW.isoformat(timespec="seconds")},
+        )
+    assert calls["template_rows"] == 0 and calls["template_row"] == 2
+    assert {"sample_refs", "sample_revisions", "exclusion_reasons", "template_snapshot"}.issubset(
+        detail_data["suggestion"]
+    )
+    assert detail_data["suggestion"]["sample_revisions"] == export_rows[0]["sample_revisions"]
+    assert detail_data["suggestion"]["template_snapshot"] == export_rows[0]["template_snapshot"]
     assert calls["report_to_dict"] == sum(len(sample["reports"]) for sample in detail_data["samples"]) > 0
     assert calls["correction_history"] == calls["report_to_dict"]
     assert all(isinstance(sample["reports"][0], dict) for sample in detail_data["samples"] if sample["reports"])

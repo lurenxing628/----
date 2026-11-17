@@ -20,9 +20,9 @@ TASK_FIELDS = {"kind", "plan_ref", "operation_ref", "batch_id", "planned_start",
 
 
 def source_and_analysis(case):
-    reader = WorkbenchDashboardService(case.conn, clock=lambda: NOW)
+    reader = WorkbenchDashboardService(case.conn)
     with reader.read_snapshot():
-        sources = reader.load()
+        sources = reader.load(NOW)
     reader.project(sources)
     original = copy.deepcopy(actual(sources.facts)[0][0]["source"])
     compact = reader.analysis(sources, DashboardAnalysisQuery("actual"))
@@ -74,9 +74,9 @@ def test_zero_unit_hours_reports_evaluate_quota_and_reuse_planned_end_interval(
     case.conn.execute("UPDATE BatchOperations SET unit_hours=0 WHERE id=?", (case.op,))
     case.conn.commit()
     case.report(quantity=2, effective_processing_hours=reported_hours, actual_end="2026-09-09T10:00:00")
-    reader = WorkbenchDashboardService(case.conn, clock=lambda: NOW)
+    reader = WorkbenchDashboardService(case.conn)
     with reader.read_snapshot():
-        sources = reader.load()
+        sources = reader.load(NOW)
     sources.facts.project()
     parsed_inputs = []
     real_parse = execution_values.parse_local_datetime
@@ -101,10 +101,10 @@ def test_zero_unit_hours_reports_evaluate_quota_and_reuse_planned_end_interval(
     }
 
 
-def test_http_analysis_dedup_does_not_reduce_list_or_detail_evidence(dashboard_case, monkeypatch):
+def test_http_analysis_dedup_does_not_reduce_list_or_detail_evidence(dashboard_case):
     case = dashboard_case
     case.report()
-    client = api(case, monkeypatch)
+    client = api(case)
     listing = client.get(BASE)
     assert listing.status_code == 200
     document = listing.get_json()
@@ -124,8 +124,8 @@ def test_http_analysis_dedup_does_not_reduce_list_or_detail_evidence(dashboard_c
     assert analysis["pagination"]["total"] == overview["pagination"]["totals"]["execution"]
 
 
-def test_shipped_react_analysis_uses_task_identity_for_both_navigation_handlers(dashboard_case, monkeypatch):
-    client = api(dashboard_case, monkeypatch)
+def test_shipped_react_analysis_uses_task_identity_for_both_navigation_handlers(dashboard_case):
+    client = api(dashboard_case)
     document = client.get(BASE + "/analysis", query_string={"section": "actual"}).get_json()
     program = r"""
 const DashboardAnalysisAPI = h.module('DashboardAnalysisAPI.js'),

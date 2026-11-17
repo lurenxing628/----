@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import logging
 import os
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -14,11 +14,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from core.infrastructure.database import ensure_schema  # noqa: E402,I001
-from tests._support.excel_templates import point_env_at_shared, publish_shared_dir, reset_shared_dir  # noqa: E402,I001
-from tools.full_test_debt_shards import classify_nodeid  # noqa: E402,I001
-from tools.test_debt_registry import active_xfail_entries_by_nodeid  # noqa: E402,I001
-from tools.test_registry import iter_required_tests  # noqa: E402
+from core.infrastructure.database import ensure_schema
+from tests._support.excel_templates import point_env_at_shared, publish_shared_dir, reset_shared_dir
+from tests._support.sqlite_connection import open_test_connection
+from tools.full_test_debt_shards import classify_nodeid
+from tools.long_gate_paths import GateContext, resolve_repo_root
+from tools.test_debt_registry import active_xfail_entries_by_nodeid
+from tools.test_registry import iter_required_tests
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
@@ -32,7 +34,7 @@ def _required_test_paths() -> frozenset:
 
 
 def pytest_collection_modifyitems(items):
-    entries_by_nodeid = active_xfail_entries_by_nodeid()
+    entries_by_nodeid = active_xfail_entries_by_nodeid(GateContext(resolve_repo_root()).ledger_path)
     required_paths = _required_test_paths()
     for item in items:
         entry = entries_by_nodeid.get(str(item.nodeid))
@@ -61,7 +63,6 @@ def pytest_sessionfinish(session, exitstatus):
     """
     try:
         import atexit
-        import logging
 
         from web.bootstrap import factory as _factory
 
@@ -121,19 +122,14 @@ def _isolate_factory_exit_backup_globals():
 # ---- 共享 DB/app fixture ----
 # 设计依据（最根因路径）：全仓唯一建表入口 ensure_schema（空库→executescript(schema.sql)
 # →快进 SchemaVersion=CURRENT，不进迁移、不撞 MigrationContractError，与生产 create_app 同路）；
-# 唯一连接工厂 get_connection（FK ON + Row）。app 必须经 importlib 延迟导入，
+# 测试连接经 open_test_connection 走产品的打开后配置（DATE 转换、Row、外键、SQL 函数）。app 必须经 importlib 延迟导入，
 # 保证 APS_* 环境变量先于 create_app 生效（test_app_factory_runtime_env_refresh 守护的契约）。
 
 
 @pytest.fixture
 def schema_conn():
-    """:memory: 连接 + 全量 schema.sql（FK ON + Row，对齐生产连接行为）。"""
-    from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
-
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    register_schedule_time_sql_functions(conn)
+    """:memory: 连接 + 全量 schema.sql（打开后配置与生产连接一致）。"""
+    conn = open_test_connection(":memory:")
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
     conn.commit()
     yield conn
@@ -142,13 +138,8 @@ def schema_conn():
 
 @pytest.fixture
 def mem_conn():
-    """空 :memory: 连接（FK ON + Row），建表交给测试自己（手写最小表场景）。"""
-    from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
-
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    register_schedule_time_sql_functions(conn)
+    """空 :memory: 连接（打开后配置与生产连接一致），建表交给测试自己（手写最小表场景）。"""
+    conn = open_test_connection(":memory:")
     yield conn
     conn.close()
 
@@ -157,7 +148,7 @@ def mem_conn():
 def db_path(tmp_path):
     """临时文件库路径（str），经生产 ensure_schema 建好全部表并满足迁移契约。"""
     path = tmp_path / "aps_test.db"
-    ensure_schema(str(path), logger=None, schema_path=str(SCHEMA_PATH))
+    ensure_schema(str(path), logging.getLogger(__name__), schema_path=str(SCHEMA_PATH))
     return str(path)
 
 

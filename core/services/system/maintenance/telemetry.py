@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, Mapping, Optional
 
 from core.infrastructure.logging import safe_log
 from core.infrastructure.transaction import TransactionManager
-from core.shared.strict_parse import is_exact_non_negative_number
+from core.shared.strict_parse import is_stored_number
 
 _PARTIAL_ERROR_COUNT_KEYS = (
     "mtime_error_count",
@@ -83,7 +85,7 @@ def extract_maintenance_result_values(detail: Mapping[str, Any]) -> Dict[str, An
     }
     if "size_mb" in detail:
         value = detail["size_mb"]
-        if value is not None and not is_exact_non_negative_number(value):
+        if value is not None and not is_stored_number(value):
             raise ValueError("Invalid task result number: size_mb")
         values["size_mb"] = value
     for field in _RESULT_TEXT_KEYS:
@@ -171,9 +173,41 @@ def write_oplog(conn, *, op_logger, logger, level: str, **kwargs) -> None:
         safe_log(logger, "warning", f"系统维护 telemetry 写入 OperationLogs 失败：{exc}")
 
 
-def write_job_state(conn, *, job_repo, job_key: str, last_run_time: str, last_run_detail: str, logger) -> None:
+_JOB_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+@dataclass(frozen=True)
+class ParsedJobTime:
+    value: Optional[datetime]
+    state: str  # missing（NULL）/ invalid / valid
+
+
+def format_job_time(moment: datetime) -> str:
+    """维护任务写库的时刻文本：上次执行时间与清理截止时刻共用。
+
+    形状与 SQLite CURRENT_TIMESTAMP 相同；操作日志清理拿截止时刻直接和 log_time 比较，形状不能改。
+    """
+    return moment.strftime(_JOB_TIME_FORMAT)
+
+
+def parse_job_time(value: object) -> ParsedJobTime:
+    """读回 SystemJobState.last_run_time，只认 format_job_time 写出的文本；NULL 是 missing，其余写法都是 invalid。"""
+    if value is None:
+        return ParsedJobTime(value=None, state="missing")
+    if type(value) is not str:
+        return ParsedJobTime(value=None, state="invalid")
+    try:
+        moment = datetime.strptime(value, _JOB_TIME_FORMAT)
+    except ValueError:
+        return ParsedJobTime(value=None, state="invalid")
+    return ParsedJobTime(value=moment, state="valid")
+
+
+def write_job_state(conn, *, job_repo, job_key: str, last_run_time: datetime, last_run_detail: str, logger) -> None:
     try:
         with TransactionManager(conn).transaction():
-            job_repo.set_last_run(job_key, last_run_time=last_run_time, last_run_detail=last_run_detail)
+            job_repo.set_last_run(
+                job_key, last_run_time=format_job_time(last_run_time), last_run_detail=last_run_detail
+            )
     except Exception as exc:
         safe_log(logger, "warning", f"系统维护 telemetry 写入 SystemJobState 失败：{exc}")

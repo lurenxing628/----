@@ -1,4 +1,8 @@
-"""Whole-cell AND/OR filtering and toolbar-only distincts, independent of SQL."""
+"""Whole-cell AND/OR filtering and distincts over the rows a table hands in, independent of SQL.
+
+Facets count the rows of this index: resources and materials index their toolbar scope, process and calibration
+tables index the rows that pass every other column's filter. The facet envelope is the same for all four tables.
+"""
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_table_query import MAX_FACET_KEYS
@@ -20,7 +24,7 @@ class ResourceTableIndex:
     def _order(self, code, query):
         return self.cells[code][query.sort].order
 
-    def _options(self, column, search):
+    def options(self, column, search):
         options = {}
         for code in self.rows:
             cell = self.cells[code][column]
@@ -34,17 +38,17 @@ class ResourceTableIndex:
 
     def facets(self, column, search="", number=1, size=100):
         """``column``/``search``/``number``/``size`` were validated at the request boundary."""
-        selected = self._options(column, search)
+        selected = self.options(column, search)
         total = len(selected)
         pages = max(1, (total + size - 1) // size)
         if number > pages:
-            raise WorkbenchCommandRejected("snapshot_stale", "筛选值页码已超出当前范围，请刷新。")
+            raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
         values = [{key: row[key] for key in ("key", "label", "count")} for row in selected[(number - 1) * size:number * size]]
         return {"column": column, "basis": "toolbar_scope", "options": values, "row_count": len(self.rows),
                 "page": {"number": number, "size": size, "total": total, "pages": pages}}
 
     def facet_selection(self, column, search=""):
-        options = self._options(column, search)
+        options = self.options(column, search)
         if len(options) > MAX_FACET_KEYS:
             raise WorkbenchCommandRejected("capacity_exceeded", "搜索命中的不同值超过50000个，请缩小范围后重试；未截断结果。", 413)
         keys = [row["key"] for row in options]

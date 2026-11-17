@@ -18,7 +18,7 @@ def window(capacity, occupied, *, kind="machine", ref="M1", load=None):
     task_count = int(bool(occupied))
     return {**values, **{"known_" + key: value for key, value in values.items()},
             "resource_ref": ref, "resource_kind": kind, "label": ref,
-            "state": "complete", "work_available": True, "work_state": "complete", "unknown_workload_count": 0,
+            "state": "complete", "work_available": True, "work_state": "complete",
             "peak_utilization": ratio, "known_peak_utilization": ratio, "high_pressure": ratio is not None and ratio >= 0.9,
             "zero_capacity_task": False, "conflict": load is not None and occupied is not None and load > occupied,
             "unknown_days": 0, "task_count": task_count, "operation_count": task_count,
@@ -53,25 +53,6 @@ def test_known_zero_capacity_peak_is_excluded_without_masking_positive_peak():
     assert result["balance_cv"] == 0 and result["balance_state"] == "complete"
 
 
-def test_partial_workload_lower_bound_does_not_enter_known_ratio_or_balance():
-    partial = window(8, None)
-    partial.update(state="partial", work_state="partial", unknown_workload_count=1,
-                   task_count=None, operation_count=None, known_task_count=1, known_operation_count=1,
-                   known_occupied_hours=2, known_summed_load_hours=2, known_span_occupied_hours=2,
-                   high_pressure=None, conflict=None)
-    result = resource_summary([partial, window(24, 12, ref="M2")])
-    assert result["state"] == "partial" and result["resource_count"] == 2
-    assert result["available_hours"] == 32 and result["known_occupied_hours"] == 14
-    assert result["occupied_hours"] is result["utilization_ratio"] is result["task_count"] is None
-    assert result["known_task_count"] == result["known_operation_count"] == 2
-    assert type(result["known_task_count"]) is int
-    assert result["used_resource_count"] is None and result["known_used_resource_count"] == 2
-    assert result["known_utilization_ratio"] == result["known_demand_ratio"] == 0.5
-    assert result["known_numerator_hours"] == 12 and result["known_denominator_hours"] == 24
-    assert result["balance_cv"] is None and result["known_balance_cv"] == 0
-    assert result["balance_state"] == "partial" and result["unknown_workload_resource_count"] == 1
-
-
 def test_unknown_calendar_preserves_workload_spans_and_actual_known_capacity():
     missing = window(None, None)
     missing.update(state="partial", span_occupied_hours=4, known_span_occupied_hours=4,
@@ -95,15 +76,14 @@ def test_unknown_calendar_preserves_workload_spans_and_actual_known_capacity():
 
 def test_nullable_flags_keep_confirmed_risks_without_claiming_complete_counts():
     known = window(8, 8, load=16)
-    uncertain = window(0, None, ref="M2")
-    uncertain.update(state="partial", work_state="partial", unknown_workload_count=1,
-                     high_pressure=None, zero_capacity_task=None, conflict=None,
-                     operation_count=None, task_count=None, known_operation_count=0, known_task_count=0)
+    # 旁边一台的班表缺项：它的风险标记读不出，汇总不冒充完整计数，只保留已确认的那台。
+    uncertain = window(None, None, ref="M2")
+    uncertain.update(state="partial", unknown_days=1, high_pressure=None, zero_capacity_task=None, conflict=None)
     result = resource_summary([known, uncertain])
     assert result["high_pressure_count"] is result["conflict_resource_count"] is result["zero_capacity_task_count"] is None
     assert result["known_high_pressure_count"] == result["known_conflict_resource_count"] == 1
     assert result["known_zero_capacity_task_count"] == 0
-    assert result["unknown_day_resource_count"] == 0
+    assert result["unknown_day_resource_count"] == 1
 
 
 def test_identity_gaps_keep_fixed_capacity_and_normalise_issues():

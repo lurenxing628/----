@@ -20,7 +20,6 @@ class BatchFactScope:
         *,
         command: bool = False,
         revisions: Optional[Dict[str, Any]] = None,
-        material_day: Optional[str] = None,
         mode: str = "collection",
         target_ref: Optional[str] = None,
         target_refs: Optional[Tuple[str, ...]] = None,
@@ -32,7 +31,7 @@ class BatchFactScope:
         self.command = command
         self.facts: Optional[Dict[str, Any]] = None
         self.revisions = revisions
-        self.material_day = material_day if material_day is not None else reader.current_material_day()
+        self.material_day = reader.material_day
         self.mode = mode
         self.target_ref = target_ref
         self.target_refs = target_refs
@@ -124,13 +123,7 @@ class BatchFactScope:
             identity = self.reader.identities.get(ref)
         else:
             row = self.row(facts, "WorkbenchEntityRefs", "ref", ref)
-            identity = (
-                WorkbenchEntityIdentity(
-                    row["ref"], row["kind"], row["entity_key"], row["revision"], bool(row["active"])
-                )
-                if row
-                else None
-            )
+            identity = WorkbenchEntityIdentity.from_row(row) if row else None
         if identity is None or not identity.active or identity.kind != kind:
             raise WorkbenchCommandRejected("entity_not_found", "这条记录已经不在了，请重新选择。请刷新后重新选择。", 404)
         if facts is None and self._can_cache_unloaded():

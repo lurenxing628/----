@@ -109,11 +109,11 @@ const files = ['resource-contract.js', 'ResourceTableFilterModel.js', 'ResourceM
 for (const out of compile({ sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(input.root, 'frontend/workbench/app', name), 'utf8') })) }).outputs)
   vm.runInContext(out.code, ctx, { filename: out.path });
 const F = ctx.__wbRuntime.getModule('ProcessFileContract.js'), calls = [];
-ctx.__wbRuntime.setStub('resource-api.js', { create: () => Object.fromEntries(['query', 'execute', 'preview', 'download'].map(
+ctx.__wbRuntime.setStub('resource-api.js', { forNamespace: () => Object.fromEntries(['query', 'execute', 'preview', 'download'].map(
   method => [method, (...args) => calls.push({ method, args })])) });
 for (const out of compile({ sources: [{ path: 'ProcessAPI.js', code: fs.readFileSync(path.join(input.root, 'frontend/workbench/app/ProcessAPI.js'), 'utf8') }] }).outputs)
   vm.runInContext(out.code, ctx, { filename: out.path });
-const api = ctx.__wbRuntime.getModule('ProcessAPI.js').create(), plain = value => JSON.parse(JSON.stringify(value));
+const api = ctx.__wbRuntime.getModule('ProcessAPI.js').APSProcessAPI, plain = value => JSON.parse(JSON.stringify(value));
 if (input.mode === 'export-body') {
   console.log(JSON.stringify(F.exportBody(input.body, input.body.selection, input.body.format)));
 } else if (input.mode === 'preview') {

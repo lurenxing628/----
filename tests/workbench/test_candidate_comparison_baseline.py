@@ -1,8 +1,8 @@
 """Current comparison consumers share the assembled admission official source."""
 
 from copy import deepcopy
+from datetime import datetime
 
-from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_run_baseline import RunCandidateBaselineScope
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
@@ -10,18 +10,19 @@ from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.run.candidate_analysis import read_candidate_analysis
 from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidateBaselineQueryService
 from core.services.workbench.run.candidate_comparison import read_candidate_comparison
-from core.services.workbench.run.decision_impact import batch_impacts
+from core.services.workbench.run.decision_queries import decision_details, normalize_filters
 from core.services.workbench.run.decision_source import DecisionSource
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_adoption_support import INTENT, service
 from tests.workbench.run_candidate_support import api
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
-from tests.workbench.test_run_decision_impact_api import detail, operation_ref
+from tests.workbench.run_decision_support import operation_ref
+from tests.workbench.test_run_decision_impact_api import detail
 
 
 def run(case, key):
     accepted = case.accept(key="shared-formal-run-" + key, settings=case.settings("B1", "B2"))
-    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
     assert result["state"] == "complete", result
     return result["run_ref"], result["candidates"][0]["candidate_ref"]
 
@@ -41,7 +42,7 @@ def test_formal_versions_current_analysis_dashboard_and_decision_share_whole_bat
     preview = adopter.preview(original)
     adopter.adopt(original, preview["write_context"]["write_token"], "shared-formal-adoption", INTENT)
     accepted = case.accept(key="shared-formal-run-selected", settings=case.settings("B1"))
-    selected_run = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    selected_run = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
     assert selected_run["state"] == "complete"
     selected_ref = selected_run["candidates"][0]["candidate_ref"]
     client, _ = api(case)
@@ -73,14 +74,15 @@ def test_formal_versions_current_analysis_dashboard_and_decision_share_whole_bat
     captured = deepcopy(source.capture)
     baseline_view, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(candidate), bind_snapshot=lambda scope, state: state)
     assert baseline_view["baseline"]["captured_task_count"] == 2
-    assert all(row["baseline_segments"] for row in baseline_view["comparisons"])
+    assert all(row["baseline_segment"] is not None for row in baseline_view["comparisons"])
     analysis, _ = read_candidate_analysis(case.conn, candidate, bind_snapshot=lambda scope, state: state)
     dashboard, _ = read_candidate_comparison(case.conn, RunCandidateReadScope(
         candidate, "2026-09-09T00:00:00", "2026-09-26T00:00:00"), bind_snapshot=lambda scope, state: state)
     store = CandidateStore(case.conn)
-    with store.snapshot(), read_evidence_scope(case.conn):
+    with store.snapshot():
         decision = DecisionSource(store, run_ref, comparison_mode="admission_official", selected_candidate_ref=candidate)
-        rows, summary = batch_impacts(decision)
+        batches = decision_details(decision, "batches", normalize_filters("batches"), all_rows=True)
+    rows, summary = batches["items"], batches["summary"]
     expected = {row["batch_ref"]: row["before"] for row in rows}
     for data in (analysis, dashboard):
         assert {row["batch_ref"]: row["before"] for row in data["batches"]} == expected

@@ -86,16 +86,6 @@ def decode_value(value, field, number, file_format):
     return typed_value(value, field, number, file_format)
 
 
-def numeric_diagnostic(field, value):
-    if value is None or field not in NUMBER_FIELDS:
-        return None
-    if field in ("setup_hours", "unit_hours") and value < 0:
-        return LABELS[field] + "不能填负数。"
-    if field in ("external_days", "group_total_days") and value <= 0:
-        return LABELS[field] + "必须填正数。"
-    return None
-
-
 def _check_text(value, field, number, file_format):
     if file_format == "xlsx" and (_ILLEGAL_XML.search(value) or len(value) > XLSX_MAX_CELL_CHARACTERS):
         raise file_error("这段文字含 XLSX 不支持的字符，或者超过单元格 32767 字上限。请缩短后重新导入。", number, field)

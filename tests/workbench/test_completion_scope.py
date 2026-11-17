@@ -13,7 +13,12 @@ from core.services.workbench.facts.completion_scope import (
     completion_groups,
     project_completion_summary,
 )
-from core.services.workbench.facts.delivery_projection import delivery_summary, project_delivery_batch
+from core.services.workbench.facts.delivery_projection import (
+    DeliveryBatch,
+    DeliveryTask,
+    delivery_summary,
+    project_delivery_batch,
+)
 from core.services.workbench.facts.preparation_projection import project_operation_effort
 from tests._support.algo_operations import make_algo_op, make_batch
 
@@ -24,15 +29,14 @@ def batch_item(
     arranged=(1,),
     expected=(1,),
     deferred=(),
-    finish: Optional[str] = "2026-10-13T12:00:00",
+    finish="2026-10-13T12:00:00",
     due: Optional[str] = "2026-10-13",
+    uncertain=(),
 ):
     batch = {"batch_id": ref, "part_no": "P1", "part_name": "零件", "quantity": 10, "priority": "normal", "due_date": due}
-    rows = [{"schedule_id": key, "op_id": key, "batch_id": ref} for key in arranged]
-    span = (datetime(2026, 10, 13, 8, 0), datetime.fromisoformat(finish)) if finish is not None else None
-    intervals = {key: span for key in arranged}
-    return project_delivery_batch(batch, ref, rows, [{"op_id": key} for key in expected], intervals,
-                                  False, [], deferred_operation_ids=deferred)
+    tasks = tuple(DeliveryTask(key, datetime.fromisoformat(finish)) for key in arranged)
+    return project_delivery_batch(DeliveryBatch(batch, ref, frozenset(expected), tasks, False, ()),
+                                  deferred_operation_ids=frozenset(deferred), scope_issues=tuple(uncertain))
 
 
 def work_item(ref, batch_ref, *, arranged=False, allocation="unplanned", runtime=True, sequence=1):
@@ -92,7 +96,7 @@ def test_same_completed_group_preserves_distinct_unfinished_operation_prefixes()
 
 def test_remaining_work_keeps_ordinary_deferred_unknown_and_original_measurements_separate():
     items = [batch_item("A"), batch_item("B", expected=(1, 2), deferred=(2,)),
-             batch_item("C", arranged=()), batch_item("D", finish=None)]
+             batch_item("C", arranged=()), batch_item("D", uncertain=("trial_constraints_blocked",))]
     work = [work_item("ordinary", "C"), work_item("waiting", "B", allocation="deferred", runtime=False, sequence=2)]
     original = deepcopy((items, work))
     scope = project_completion_summary(items, work, schedulable_coverage={"state": "partial", "missing_count": 1, "deferred_count": 1})
@@ -108,7 +112,7 @@ def test_remaining_work_keeps_ordinary_deferred_unknown_and_original_measurement
     assert waiting["remaining_quantity"] == ordinary["remaining_quantity"] == 10
     assert ordinary["setup_standard_hours"] == 2 and ordinary["processing_standard_hours"] == 5 and ordinary["required_standard_hours"] == 7
     assert waiting["disposition_status"] == "skipped" and waiting["reasons"][0]["code"] == "material_not_ready"
-    assert batches["D"]["operations"] == [] and "schedule_time_invalid" in batches["D"]["issues"]
+    assert batches["D"]["operations"] == [] and "trial_constraints_blocked" in batches["D"]["issues"]
     metrics = scope["remaining_work"]["metrics"]
     assert metrics["pending_setup_hours"]["value"] is None and metrics["pending_setup_hours"]["known_subtotal"] == 2
     assert metrics["pending_setup_hours"]["unknown_count"] == 1

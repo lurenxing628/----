@@ -1,17 +1,15 @@
 """Raw, SELECT-only facts used by batch projections and transaction guards."""
 
 from contextlib import contextmanager
-from datetime import date
 from typing import Any, Callable, Dict, Iterator, Mapping, Optional, Tuple
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.process.workflow_state import load_workflow_snapshot, project_workflow_snapshot
 from core.services.scheduler.template_lineage import instance_lineage_facts
 from core.services.scheduler.template_lineage_query import TemplateLineageQuery
 from core.services.workbench.facts.source_revisions import BATCH_SOURCE_KEYS, read_source_revisions
-from data.repositories.workbench_batch_facts_repo import WorkbenchBatchFactsRepository
+from data.repositories.workbench_batch_facts_repo import BATCH_FACT_TABLES, WorkbenchBatchFactsRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
@@ -20,7 +18,7 @@ from .scope import BatchFactScope
 
 
 @contextmanager
-def _read_transaction(conn):
+def read_transaction(conn):
     if conn.in_transaction:
         yield
         return
@@ -29,32 +27,52 @@ def _read_transaction(conn):
 
 
 class BatchFacts:
-    def __init__(self, conn, logger=None):
+    def __init__(self, conn, logger=None, *, material_day: str):
+        """``material_day`` is the factory-local day this reader counts arrivals up to; every snapshot and
+        command scope it opens shares it."""
         self.conn = conn
+        self.material_day = material_day
         self.repo = WorkbenchBatchFactsRepository(conn, logger=logger)
         self.identities = WorkbenchIdentityRepository(conn, logger=logger)
         self.plan_refs = WorkbenchPlanIdentityRepository(conn, logger=logger)
 
-    @staticmethod
-    def current_material_day() -> str:
-        return date.today().isoformat()
-
     def read_revisions(self) -> Dict[str, Any]:
-        with _read_transaction(self.conn):
+        with read_transaction(self.conn):
             return read_source_revisions(self.conn, BATCH_SOURCE_KEYS)
 
     def load_choices(self):
-        with _read_transaction(self.conn):
+        with read_transaction(self.conn):
             return self.repo.choice_tables()
 
     def _populate_bounded_operation_facts(
         self, tables: Dict[str, Any]
-    ) -> Tuple[None, Dict[int, str], Dict[str, Any]]:
+    ) -> Tuple[Dict[int, str], Dict[str, Any]]:
         op_ids = [row["id"] for row in tables["BatchOperations"]]
-        tables["plan_reference_counts"] = self.repo.plan_reference_counts(op_ids) if op_ids else {}
-        operation_refs = self.plan_refs.get_operation_refs(op_ids) if op_ids else {}
-        execution = load_execution(self.conn, operation_refs.values())
-        return None, operation_refs, execution
+        tables["plan_reference_counts"] = self.repo.plan_reference_counts(op_ids)
+        operation_refs = self.plan_refs.get_operation_refs(op_ids)
+        execution = load_execution(self.conn, operation_refs.values()) if op_ids else {"facts": {"operations": {}}}
+        return operation_refs, execution
+
+    def capture_closure(self, target_refs: Tuple[str, ...], *, revisions: Dict[str, Any]) -> Dict[str, Any]:
+        """Capture stage-2 bounded closure for <=100 page refs inside the caller's read transaction."""
+        if not target_refs:
+            return {
+                "tables": {
+                    **{table: [] for table in BATCH_FACT_TABLES},
+                    "plan_reference_counts": {},
+                },
+                "operation_refs": {},
+                "execution": {"facts": {"operations": {}}},
+                "revisions": revisions,
+            }
+        tables = self.repo.closure_batch_tables(target_refs)
+        operation_refs, execution = self._populate_bounded_operation_facts(tables)
+        return {
+            "tables": tables,
+            "operation_refs": operation_refs,
+            "execution": execution,
+            "revisions": revisions,
+        }
 
     def _capture_in_transaction(
         self,
@@ -81,8 +99,7 @@ class BatchFacts:
             tables["plan_reference_counts"] = (
                 {} if mode == "single_choices" else self.repo.plan_reference_counts(op_ids)
             )
-            workflow = load_workflow_snapshot(self.conn, tables=tables) if mode == "single_template" else None
-            operation_refs = self.plan_refs.get_operation_refs(op_ids) if op_ids else {}
+            operation_refs = self.plan_refs.get_operation_refs(op_ids)
             if mode == "single_split":
                 tables["template_lineage_capture"] = TemplateLineageQuery.capture_partial_facts(
                     self.conn,
@@ -90,28 +107,43 @@ class BatchFacts:
                     current_by_ref=instance_lineage_facts(tables, operation_refs),
                 )
             execution = None if mode == "single_choices" else load_execution(self.conn, operation_refs.values())
+        elif mode == "import_preview":
+            if scope.query_filter is None:
+                raise ValueError("Mode 'import_preview' requires query_filter")
+            tables = self.repo.import_preview_tables(
+                scope.query_filter["batch_codes"],
+                scope.query_filter["part_nos"],
+            )
+            operation_refs, execution = self._populate_bounded_operation_facts(tables)
+        elif mode == "batch_refs":
+            if scope.target_refs is None:
+                raise ValueError("Mode 'batch_refs' requires target_refs")
+            tables = {
+                **{table: [] for table in BATCH_FACT_TABLES},
+                **self.repo.scoped_entity_tables(scope.target_refs),
+                "plan_reference_counts": {},
+            }
+            operation_refs = {}
+            execution = None
         elif scope.target_refs is not None:
-            tables = self.repo.closure_batch_tables(scope.target_refs)
-            workflow, operation_refs, execution = self._populate_bounded_operation_facts(tables)
-        elif scope.query_filter is not None:
-            tables = self.repo.filtered_batch_tables(scope.query_filter)
-            workflow, operation_refs, execution = self._populate_bounded_operation_facts(tables)
+            tables = self.repo.closure_batch_tables(
+                scope.target_refs, include_batch_codes=(mode == "batch_copy")
+            )
+            operation_refs, execution = self._populate_bounded_operation_facts(tables)
         else:
             tables = self.repo.whole_tables()
             tables["plan_reference_counts"] = self.repo.plan_reference_counts()
-            workflow = None
             operation_refs = self.plan_refs.get_operation_refs(row["id"] for row in tables["BatchOperations"])
             execution = load_execution(self.conn, operation_refs.values())
         return {
             "tables": tables,
-            "workflow": workflow,
             "operation_refs": operation_refs,
             "execution": execution,
             "revisions": revisions,
         }
 
     @staticmethod
-    def _project_captured(raw: Dict[str, Any], *, material_day: str) -> Dict[str, Any]:
+    def project_captured(raw: Dict[str, Any], *, material_day: str) -> Dict[str, Any]:
         facts: Dict[str, Any] = {
             **raw["tables"],
             "operation_refs": raw["operation_refs"],
@@ -120,12 +152,10 @@ class BatchFacts:
         }
         if raw["execution"] is not None:
             facts["execution"] = project_execution_snapshot(raw["execution"])
-        if raw["workflow"] is not None:
-            facts["workflow"] = project_workflow_snapshot(raw["workflow"])
         return facts
 
     def load_for_scope(self, scope: BatchFactScope) -> Dict[str, Any]:
-        with _read_transaction(self.conn):
+        with read_transaction(self.conn):
             revisions = (
                 scope.revisions
                 if scope.revisions is not None
@@ -136,7 +166,7 @@ class BatchFacts:
                 else None
             )
             raw = self._capture_in_transaction(scope, revisions=revisions)
-        facts = self._project_captured(raw, material_day=scope.material_day)
+        facts = self.project_captured(raw, material_day=scope.material_day)
         scope.facts = facts
         scope.revisions = facts["revisions"]
         if scope.command and self.conn.in_transaction:
@@ -157,8 +187,8 @@ class BatchFacts:
 
         An existing caller transaction is never committed or released here.
         """
-        day = self.current_material_day()
-        with _read_transaction(self.conn):
+        day = self.material_day
+        with read_transaction(self.conn):
             revisions = read_source_revisions(self.conn, BATCH_SOURCE_KEYS)
             fingerprint = content_text(["batch-facts-v3", revisions, day])
             if bind is not None:
@@ -166,14 +196,13 @@ class BatchFacts:
             scope = BatchFactScope(
                 self,
                 revisions=revisions,
-                material_day=day,
                 mode=mode,
                 target_ref=target_ref,
                 target_refs=target_refs,
                 query_filter=query_filter,
             )
             raw = self._capture_in_transaction(scope, revisions=revisions)
-        scope.facts = self._project_captured(raw, material_day=day)
+        scope.facts = self.project_captured(raw, material_day=day)
         try:
             yield scope
         finally:
@@ -187,17 +216,7 @@ class BatchFacts:
         target_ref: Optional[str] = None,
         target_refs: Optional[Tuple[str, ...]] = None,
     ) -> Iterator[BatchFactScope]:
-        """Let one write command reuse the facts its guard loaded instead of reloading them.
-
-        Loads are kept only inside the command's own BEGIN IMMEDIATE transaction, where
-        no other connection can commit. Any write by this connection, or the end of the
-        transaction, drops the copy and the next read loads again; so does leaving here.
-
-        Precondition: a command must not write inside a savepoint, read through this
-        reader, roll that savepoint back and swallow the error, then read again.
-        total_changes does not go back on rollback, so that later read would still get
-        the facts cached from the rolled-back writes. Let such failures abort the command.
-        """
+        """Let one write command reuse the facts its guard loaded instead of reloading them."""
         scope = BatchFactScope(self, command=True, mode=mode, target_ref=target_ref, target_refs=target_refs)
         try:
             yield scope

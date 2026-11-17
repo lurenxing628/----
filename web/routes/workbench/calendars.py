@@ -21,17 +21,19 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.facts.source_revisions import CALENDAR_SOURCE_KEYS, read_source_revisions
 from core.services.workbench.resource.calendars import WorkbenchCalendarService
+from core.shared.key_sets import keys_conform
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint, read_endpoint
 from .calendar_defaults import register_calendar_defaults_routes
 from .calendars_preview import release_preview, resolve_preview, retain_preview
 from .calendars_projection import calendar_day, calendar_preview, calendar_snapshot
-from .read_context import bind_read_snapshot
+from .read_context import bind_read_snapshot, current_snapshot_time, read_snapshot_time
+from .request_json import BodyTexts, read_json_body, rejecter, single_value_arguments
 from .write_context import (
-    command_body,
     issue_write_context,
     preview_write_context,
+    subject_command_body,
     validate_preview_confirmation,
     validate_write_context,
 )
@@ -42,8 +44,7 @@ def _service():
 
 
 def _month_input():
-    if set(request.args) - {"year", "month", "snapshot_ref"} or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "工作日历的查询条件有重复或不支持的项，当前月份没有变化。请刷新页面后重新选择月份。", 400)
+    single_value_arguments({"year", "month", "snapshot_ref"}, message="工作日历的查询条件有重复或不支持的项，当前月份没有变化。请刷新页面后重新选择月份。")
     values = {}
     for key in ("year", "month"):
         text = request.args.get(key, "")
@@ -62,11 +63,13 @@ def _day_subject(day):
 
 @api_endpoint
 def calendar_month():
-    values = _month_input()
+    values, token = _month_input(), request.args.get("snapshot_ref")
+    as_of, read_binding = read_snapshot_time(token)
     with TransactionManager(g.db).transaction():
         revisions = read_source_revisions(g.db, CALENDAR_SOURCE_KEYS)
-        snapshot = bind_read_snapshot({"kind": "calendar", **values}, revisions, request.args.get("snapshot_ref"))
-        month = _service().month(**values)
+        snapshot = bind_read_snapshot({"kind": "calendar", **values}, revisions, token, as_of=as_of,
+                                      binding=read_binding)
+        month = _service().month(**values, as_of=as_of)
     states = [calendar_snapshot(day) for day in month["days"]]
     days = []
     for day, state in zip(month["days"], states):
@@ -81,7 +84,7 @@ def calendar_month():
 
 @api_endpoint
 def calendar_day_command(action):
-    body = command_body("日历")
+    body = subject_command_body("日历")
     domain = _service()
     payload = domain.normalize(action, body["input"])
     subject, command = _day_subject(payload["date"]), "calendar." + action
@@ -97,12 +100,15 @@ def calendar_day_command(action):
     return json_response(outcome)
 
 
+_PREVIEW_UNREADABLE = "提交的内容格式不正确，日历还没有修改。请刷新页面后重新点「预览变更」。"
+_PREVIEW = BodyTexts(transport=_PREVIEW_UNREADABLE, malformed=_PREVIEW_UNREADABLE,
+                     incomplete="提交的内容有多余项，日历还没有修改。请刷新页面后重新点「预览变更」。")
+
+
 def _preview_input():
-    if request.args or not request.is_json:
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容格式不正确，日历还没有修改。请刷新页面后重新点「预览变更」。", 400)
-    body = request.get_json()
-    if not isinstance(body, dict) or set(body) != {"input"}:
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容有多余项，日历还没有修改。请刷新页面后重新点「预览变更」。", 400)
+    body = read_json_body(_PREVIEW)
+    if not keys_conform(body, ("input",)):
+        rejecter(_PREVIEW.incomplete)()
     return body["input"]
 
 
@@ -112,18 +118,21 @@ def calendar_range_preview():
 
 
 def _build_preview(domain, payload):
-    preview = domain.preview(payload)
+    # 创建时刻、过期起点、快照时刻和登记表清理同用这一次取时。
+    now = current_snapshot_time()
+    preview = domain.preview(payload, now=now)
     context = preview_write_context(preview.preview_ref, preview.expires_at, ["calendar.confirm"])
     data = calendar_preview(preview)
     data["write_context"] = context
-    snapshot = bind_read_snapshot({"kind": "calendar_preview", "preview_ref": preview.preview_ref}, preview.preview_ref)
+    snapshot = bind_read_snapshot({"kind": "calendar_preview", "preview_ref": preview.preview_ref}, preview.preview_ref,
+                                  as_of=now)
     retain_preview(preview)
     return query_success(data, snapshot)
 
 
 @api_endpoint
 def calendar_range_confirm():
-    body = command_body("日历")
+    body = subject_command_body("日历")
     domain = _service()
     payload = domain.normalize("confirm", body["input"])
     ref = payload["preview_ref"]
@@ -135,7 +144,7 @@ def calendar_range_confirm():
 
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action="calendar.confirm", context_ref=ref, normalized_input=payload,
-        guard=guard, mutate=lambda preview: domain.apply_checked("confirm", payload, preview))
+        guard=guard, mutate=lambda preview: domain.confirm(payload, preview, now=current_snapshot_time()))
     release_preview(ref)
     return json_response(outcome)
 

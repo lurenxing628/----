@@ -6,13 +6,14 @@ import sqlite3
 from contextlib import contextmanager
 
 from core.services.workbench.process.route_facts import ProcessRouteFacts
+from core.services.workbench.process.template_facts import ProcessRawFacts
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
 
 def load_route_reference_facts(conn):
     repo = WorkbenchProcessQueryRepository(conn)
-    return ProcessRouteFacts({"parts": repo.parts(), "operations": repo.operations(), "groups": repo.groups(),
-                              "references": repo.references(), "identities": repo.identities()})
+    return ProcessRouteFacts(ProcessRawFacts(repo.parts(), repo.operations(), repo.groups(), repo.identities()),
+                             references=repo.catalog_references())
 
 
 def all_table_snapshot(conn):

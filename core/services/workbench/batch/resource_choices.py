@@ -86,7 +86,7 @@ class BatchResourceFacts:
             issues = self.operator_qualification_issues(code, op["op_type_id"])
             return issues[0]["message"] if issues else ""
         if kind == "machine":
-            return "" if op["op_type_id"] in self.machine_types.get(code, ()) else "未具备该工序工种能力"
+            return "" if op["op_type_id"] in self.machine_types[code] else "未具备该工序工种能力"
         return "" if self.supplier_capable(code, op["op_type_id"]) else "未具备该工序工种能力"
 
 

@@ -25,10 +25,7 @@ def resource_export_state(facts: ResourceTableFacts, kind, code):
         state["profile"] = facts.raw_lookup("policies", "op_type_id").get(code)
     elif kind == "machine":
         profile = facts.raw_lookup("groups", "machine_id").get(code)
-        types = {row["op_type_id"] for row in facts.grouped("machine_capabilities", "machine_id")[code]}
-        if raw["op_type_id"] is not None:
-            types.add(raw["op_type_id"])
-        state["op_types"] = [facts.raw_related("op_type", item) for item in sorted(types)]
+        state["op_types"] = [facts.raw_related("op_type", item) for item in facts.machine_types(code)]
         state["group"] = facts.raw_related("machine_group", profile["group_id"]) if profile else None
     elif kind == "operator":
         state["profile"] = facts.raw_lookup("operator_profiles", "operator_id").get(code)
@@ -67,7 +64,7 @@ def _authorization(row):
             "created_at": local_created_at(row["created_at"])}
 
 
-def flat_resource(kind, identity, state, authorizations=()):
+def flat_resource(kind, identity, state, authorizations):
     raw = state["supplier"] if kind == "supplier" else state["record"]
     result = {key: raw.get(key) for key in file_columns(kind)}
     result.update({key: local_created_at(result[key]) for key in _STORED_TIMES if key in result})

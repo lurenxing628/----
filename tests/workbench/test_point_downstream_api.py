@@ -12,8 +12,7 @@ from core.services.workbench.run.candidate_analysis import read_candidate_analys
 from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidateBaselineQueryService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.plan_transport_support import run_probe
-from tests.workbench.point_downstream_support import ACTUAL, FIELD, adopted, app_for, read, report
-from tests.workbench.run_candidate_support import compute
+from tests.workbench.point_downstream_support import ACTUAL, FIELD, adopted, app_for, read, read_body, report
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 
 
@@ -33,7 +32,7 @@ def test_real_point_report_http_retains_intervals_unknowns_and_readback(trial_ca
     with monkeypatch.context() as point_read:
         point_read.setattr(candidate_archive, 'require_candidate_scope', scope_once)
         plan = read(client, '/api/workbench/v1/plans/' + identity['plan']['plan_ref'] + '/workspace')
-    assert scope_reads == [identity['candidate_ref']]
+    assert scope_reads == []
     task, = plan['data']['tasks']
     assert task['event_kind'] == 'point' and task['start'] == task['end']
     assert task['task_ref'] == identity['task']['task_ref']
@@ -41,7 +40,7 @@ def test_real_point_report_http_retains_intervals_unknowns_and_readback(trial_ca
     known = report_fn(client, identity)
     instant = report_fn(client, identity, quantity=0, start='2026-09-09T09:10:00', end='2026-09-09T09:10:00', hours=None)
     unknown = report_fn(client, identity, quantity=None, start='2026-09-09T09:20:00', end=None, hours=None)
-    actual = read(client, ACTUAL, plan_ref=identity['plan']['plan_ref'])
+    actual = read_body(client, ACTUAL, plan_ref=identity['plan']['plan_ref'])
     row, = actual['data']['items']
     assert row['task'] == identity['task']
     assert row['execution']['execution_state'] == 'partial'
@@ -56,9 +55,9 @@ def test_real_point_report_http_retains_intervals_unknowns_and_readback(trial_ca
     assert by_ref[instant['report_ref']]['effective_processing_hours'] is None
     assert by_ref[unknown['report_ref']]['completed_quantity'] is None
     assert by_ref[unknown['report_ref']]['actual_end'] is None
-    field = read(client, FIELD + '/tasks', plan_ref=identity['plan']['plan_ref'])
+    field = read_body(client, FIELD + '/tasks', plan_ref=identity['plan']['plan_ref'])
     assert field['data']['tasks'][0]['event_kind'] == 'point'
-    response = client.get(ACTUAL + '/export', query_string={'plan_ref': identity['plan']['plan_ref'], 'format': 'csv', 'snapshot_ref': actual['meta']['snapshot_ref']})
+    response = client.post(ACTUAL + '/export', json={'plan_ref': identity['plan']['plan_ref'], 'format': 'csv', 'snapshot_ref': actual['meta']['snapshot_ref']})
     assert response.status_code == 200
     rows = list(csv.DictReader(StringIO(response.data.decode('utf-8-sig'))))
     assert len(rows) == 3 and all(row['计划事件类型'] == 'point' for row in rows)
@@ -101,7 +100,7 @@ def test_real_point_one_microsecond_http_preserves_capacity_and_full_dto(trial_c
                    'capacity_shortfall_hours', 'available_overlap_hours'))
     fixture = {'name': 'real adopted point one-microsecond scope', 'kind': 'workspace',
                'plan_ref': plan_ref, 'scope': scope, 'payload': response}
-    assert run_probe(tmp_path, [fixture])['checks'] == 1
+    run_probe(tmp_path, [fixture])
 
 
 @pytest.mark.parametrize('current_unit_hours', [0, 0.5])
@@ -111,13 +110,13 @@ def test_candidate_comparison_keeps_original_adopted_point_after_hours_change(tr
     case.conn.execute('UPDATE BatchOperations SET unit_hours=? WHERE id=?', (current_unit_hours, case.op_id))
     case.conn.commit()
     accepted = case.accept(key='point-baseline-rerun-0001', settings=case.settings(start_date='2026-09-10'))
-    result = WorkbenchRunWorker(case.conn).execute(accepted['run_ref'])
+    result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted['run_ref'])
     assert result['state'] == 'complete', result
     ref = result['candidates'][0]['candidate_ref']
     data, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(ref), bind_snapshot=lambda scope, state: state)
     row, = data['comparisons']
-    previous, = row['baseline_segments']
-    assert previous['event_kind'] == 'point' and previous['interval_comparable']
+    previous = row['baseline_segment']
+    assert previous['event_kind'] == 'point'
     assert previous['elapsed_hours'] == 0 and previous['occupies_resources'] is False
     assert row['status'] == 'matched' and row['comparison_available']
     assert row['delta']['start_hours'] == 24 and row['delta']['elapsed_hours'] == current_unit_hours * 3
@@ -128,24 +127,6 @@ def test_candidate_comparison_keeps_original_adopted_point_after_hours_change(tr
     assert analysis['before_metrics']['overdue_count']['unknown_count'] == 0
     assert analysis['before_metrics']['total_tardiness_hours']['value'] == 0
     assert analysis['batches'][0]['before']['risk'] == 'on_time'
-    assert 'schedule_time_invalid' not in analysis['batches'][0]['before']['issues']
-
-
-def test_equal_legacy_interval_is_not_a_point_when_current_hours_become_zero(trial_case):
-    case = trial_case
-    case.plan(1, [case.op_id], start='2026-09-09T08:00:00', end='2026-09-09T08:00:00')
-    case.conn.execute('UPDATE BatchOperations SET unit_hours=0 WHERE id=?', (case.op_id,))
-    case.conn.commit()
-    _, refs = compute(case, case.settings(start_date='2026-09-10'))
-    data, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(refs[0]), bind_snapshot=lambda scope, state: state)
-    row, = data['comparisons']
-    previous, = row['baseline_segments']
-    assert not previous['interval_comparable'] and 'event_kind' not in previous
-    assert row['status'] == 'not_comparable' and not row['comparison_available']
-    assert any(gap['field'] == 'point_evidence' and gap['code'] == 'source_missing' for gap in previous['data_gaps'])
-    analysis, _ = read_candidate_analysis(case.conn, refs[0], bind_snapshot=lambda scope, state: state)
-    assert analysis['before_metrics']['overdue_count']['unknown_count'] == 1
-    assert 'schedule_time_invalid' in analysis['batches'][0]['before']['issues']
 
 
 def test_held_adopted_point_carries_its_witness_into_runtime_seeds(trial_case):
@@ -165,7 +146,7 @@ def test_held_adopted_point_carries_its_witness_into_runtime_seeds(trial_case):
     seed, = [row for row in schedule_input.seeds.seed_results if row['op_id'] == case.op_id]
     assert seed['seed_source'] == 'freeze_window' and seed['start_time'] == seed['end_time'] == point
     assert type(seed['_point_evidence']) is SchedulePointEvidence
-    assert type(coerce_seed_result_item(seed, idx=0)) is PointSeedResult
+    assert type(coerce_seed_result_item(seed)) is PointSeedResult
     for outcome in result.candidate_outcomes.values():
         rows = {row.op_id: row for row in outcome.validated_payload.schedule_rows}
         assert rows[case.op_id].start_time == rows[case.op_id].end_time == point

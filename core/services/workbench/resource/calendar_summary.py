@@ -97,9 +97,9 @@ def _week_stats(days):
     return result
 
 
-def resource_calendar_summary(conn, logger=None):
-    now = datetime.now()
-    today = now.date()
+def resource_calendar_summary(conn, logger=None, *, as_of: datetime):
+    """``as_of`` is the request's read time; its factory-local date is this week's "today"."""
+    today = as_of.date()
     first = today - timedelta(days=today.weekday())
     last = first + timedelta(days=6)
     rows = WorkbenchResourceSummaryRepository(conn, logger=logger).calendar_rows(
@@ -109,7 +109,7 @@ def resource_calendar_summary(conn, logger=None):
             for index in range(7)]
     stats = _week_stats(days)
     return {"status": "partial" if stats["unavailable_days"] or stats["issues"] else "known",
-            "factory_today": today.isoformat(), "as_of": now.replace(microsecond=0).isoformat(),
+            "factory_today": today.isoformat(), "as_of": as_of.isoformat(timespec="seconds"),
             "time_basis": "factory_local", "week_start": first.isoformat(), "week_end": last.isoformat(),
             "basis": "全局班次按起始日期归到那一天；有效工时 = 班次时长 × 效率，普通件和急件按许可分别算。"
                      "跨夜不拆成两天，但与次日班次重叠的部分归次日，不重复计算；"

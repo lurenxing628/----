@@ -28,7 +28,7 @@ class MasterOverviewGraph:
     def add(self, domain, key, code, label, *, category=None):
         ref = self.facts.ref(KINDS[domain], key)
         context = {"source": "production", "kind": KINDS[domain], "entity_ref": ref}
-        if category in ("internal", "external", "both"):
+        if category is not None:
             context["category"] = "internal" if category == "both" else category
         if domain == "calendar":
             context = {"source": "production", "kind": "calendar", "month": text(code)[:7], "date": text(code)}
@@ -69,10 +69,8 @@ class MasterOverviewGraph:
         self._issue_index[signature] = item
         return item
 
-    def unknown(self, entity, label, source, *, relation=False):
+    def unknown(self, entity, label, source):
         entity["checks_complete"] = False
-        if relation:
-            entity["relations_complete"] = False
         entity["fields"].append({"label": label, "value": None, "source": source, "state": "unknown", "checked": False, "filled": False})
 
     def link(self, entity, other, label, source, reverse=None):
@@ -96,13 +94,8 @@ class MasterOverviewGraph:
             return None
         target = self.by_key.get((domain, key))
         if target is None:
-            from .overview_facts import SOURCES
-
-            if not self.facts.available(*SOURCES[domain]):
-                self.unknown(entity, label, source, relation=True)
-            else:
-                self.issue(entity, source + ".missing", label + "指向的记录不存在", "关联记录已不存在，请重新选择。", operation_ref=operation_ref, stage=stage)
-                entity["relations_complete"] = False
+            self.issue(entity, source + ".missing", label + "指向的记录不存在", "关联记录已不存在，请重新选择。", operation_ref=operation_ref, stage=stage)
+            entity["relations_complete"] = False
             return None
         self.link(entity, target, label, source, reverse)
         return target

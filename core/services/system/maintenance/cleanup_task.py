@@ -14,6 +14,7 @@ from data.repositories.operation_log_repo import OperationLogRepository
 
 from .telemetry import (
     classify_maintenance_result,
+    format_job_time,
     maintenance_oplog_level,
     write_job_state,
     write_oplog,
@@ -58,13 +59,12 @@ def cleanup_backups_with_limit(
     *,
     keep_days: int,
     max_delete: int,
-    fmt_db_dt_fn: Callable[[datetime], str],
     min_keep: int = MIN_KEEP_BACKUPS,
 ) -> Tuple[int, Dict[str, Any]]:
     cutoff = datetime.now() - timedelta(days=int(keep_days))
     min_keep = max(0, int(min_keep))
     if not os.path.exists(backup_dir):
-        return 0, {"cutoff": fmt_db_dt_fn(cutoff), "skipped": True, "reason": "backup_dir_not_exists"}
+        return 0, {"cutoff": format_job_time(cutoff), "skipped": True, "reason": "backup_dir_not_exists"}
 
     survey, scan_meta = _survey_backup_files(backup_dir)
 
@@ -92,7 +92,7 @@ def cleanup_backups_with_limit(
             continue
 
     return removed, {
-        "cutoff": fmt_db_dt_fn(cutoff),
+        "cutoff": format_job_time(cutoff),
         "candidates": len(candidates),
         "min_keep": int(min_keep),
         "kept_recent_count": int(kept_recent_count),
@@ -109,7 +109,6 @@ def cleanup_operation_logs_with_limit(
     keep_days: int,
     min_keep_logs: int,
     max_delete: int,
-    fmt_db_dt_fn: Callable[[datetime], str],
 ) -> Tuple[int, Dict[str, Any]]:
     log_repo = OperationLogRepository(conn)
     total = log_repo.count_all()
@@ -117,7 +116,7 @@ def cleanup_operation_logs_with_limit(
         return 0, {"total": int(total), "skipped": True, "reason": "total_le_min_keep"}
 
     cutoff_dt = datetime.utcnow() - timedelta(days=int(keep_days))
-    cutoff = fmt_db_dt_fn(cutoff_dt)
+    cutoff = format_job_time(cutoff_dt)
 
     cand = int(log_repo.count_before(cutoff))
     if cand <= 0:
@@ -145,7 +144,6 @@ def maybe_run_auto_backup_cleanup(
     logger,
     op_logger,
     is_due_fn: Callable[..., bool],
-    fmt_db_dt_fn: Callable[[datetime], str],
     min_keep_backups: int = MIN_KEEP_BACKUPS,
 ) -> bool:
     if not is_due_fn(job_repo, job_key, now, interval_minutes):
@@ -157,7 +155,6 @@ def maybe_run_auto_backup_cleanup(
             backup_dir=str(backup_dir),
             keep_days=int(keep_days),
             max_delete=int(max_backup_delete_per_run),
-            fmt_db_dt_fn=fmt_db_dt_fn,
             min_keep=int(min_keep_backups),
         )
         time_cost_ms = int((time.time() - t0) * 1000)
@@ -186,7 +183,7 @@ def maybe_run_auto_backup_cleanup(
             conn,
             job_repo=job_repo,
             job_key=job_key,
-            last_run_time=fmt_db_dt_fn(now),
+            last_run_time=now,
             last_run_detail=canonical_json({"removed_count": removed, "status": status, "time_cost_ms": time_cost_ms, **meta}),
             logger=logger,
         )
@@ -211,7 +208,7 @@ def maybe_run_auto_backup_cleanup(
             conn,
             job_repo=job_repo,
             job_key=job_key,
-            last_run_time=fmt_db_dt_fn(now),
+            last_run_time=now,
             last_run_detail=canonical_json({"error": str(e), "time_cost_ms": time_cost_ms}),
             logger=logger,
         )
@@ -231,7 +228,6 @@ def maybe_run_auto_log_cleanup(
     logger,
     op_logger,
     is_due_fn: Callable[..., bool],
-    fmt_db_dt_fn: Callable[[datetime], str],
 ) -> bool:
     if not is_due_fn(job_repo, job_key, now, interval_minutes):
         return False
@@ -244,7 +240,6 @@ def maybe_run_auto_log_cleanup(
                 keep_days=int(keep_days),
                 min_keep_logs=int(min_keep_logs),
                 max_delete=int(max_log_delete_per_run),
-                fmt_db_dt_fn=fmt_db_dt_fn,
             )
         time_cost_ms = int((time.time() - t0) * 1000)
         detail = {
@@ -273,7 +268,7 @@ def maybe_run_auto_log_cleanup(
             conn,
             job_repo=job_repo,
             job_key=job_key,
-            last_run_time=fmt_db_dt_fn(now),
+            last_run_time=now,
             last_run_detail=canonical_json({"deleted_count": deleted, "status": status, "time_cost_ms": time_cost_ms, **meta}),
             logger=logger,
         )
@@ -298,7 +293,7 @@ def maybe_run_auto_log_cleanup(
             conn,
             job_repo=job_repo,
             job_key=job_key,
-            last_run_time=fmt_db_dt_fn(now),
+            last_run_time=now,
             last_run_detail=canonical_json({"error": str(e), "time_cost_ms": time_cost_ms}),
             logger=logger,
         )

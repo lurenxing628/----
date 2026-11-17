@@ -13,17 +13,21 @@ from core.services.workbench.resource.queries import WorkbenchResourceQueryServi
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
-from .read_context import bind_read_snapshot
-from .request_json import read_upload_file, read_upload_form
+from .operator_machine_permissions import register_operator_machine_routes
+from .read_context import bind_read_snapshot, current_snapshot_time, rebind_read_snapshot
+from .request_json import preview_confirm_body, read_upload_file, read_upload_form
 from .resource_action_context import (
+    BODY,
+    CONFIRM_MISMATCH_MESSAGE,
     EXPIRED_MESSAGE,
     PREVIEW_SCOPE,
-    confirm_body,
+    STALE_REF_MESSAGE,
     issue_preview,
     json_body,
     read_endpoint,
     scope_input,
 )
+from .resource_file_exports import resource_export, resource_export_preview, resource_template
 from .write_context import resolve_action_preview
 
 _MISMATCH_MESSAGE = "预检结果和这次操作或这条记录对不上，数据没有改动。请点「重新预检」。"
@@ -38,7 +42,7 @@ def resource_bulk_preview(kind):
     page_request, query_scope, token = scope_input(kind, body)
     reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
     with reader.read_snapshot() as scope:
-        snapshot = bind_read_snapshot(query_scope, scope.state_fingerprint(), token)
+        snapshot = rebind_read_snapshot(query_scope, scope.state_fingerprint(), token)
         preview = WorkbenchResourceBulkService(g.db, kind, current_app.logger, reader=reader).preview_delete(body["refs"], scope=page_request)
         data = issue_preview(kind, preview)
     return query_success(data, snapshot)
@@ -59,11 +63,13 @@ def _upload(kind):
 def resource_import_preview(kind):
     action_kind(kind)
     content, fmt, mode, category = _upload(kind)
+    as_of = current_snapshot_time()
     service = WorkbenchResourceFileService(g.db, kind, current_app.logger)
     preview = service.preview_import(content, file_format=fmt, mode=mode, category=category)
     data = issue_preview(kind, preview)
     scope = {"category": category} if kind == "op_type" else {}
-    snapshot = bind_read_snapshot({"kind": kind, "operation": kind + ".import", "preview_ref": data["preview_ref"], **scope}, data["preview_ref"])
+    snapshot = bind_read_snapshot({"kind": kind, "operation": kind + ".import", "preview_ref": data["preview_ref"], **scope},
+                                  data["preview_ref"], as_of=as_of)
     return query_success(data, snapshot, preview.as_dict()["notices"])
 
 
@@ -76,7 +82,7 @@ def _apply(kind, action, preview):
 @api_endpoint
 def resource_action_confirm(kind, action):
     action_kind(kind)
-    body = confirm_body()
+    body = preview_confirm_body(BODY, stale_ref=STALE_REF_MESSAGE, mismatch=CONFIRM_MISMATCH_MESSAGE)
     ref, operation = body["input"]["preview_ref"], kind + "." + action
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=operation, context_ref=ref, normalized_input={"preview_ref": ref},
@@ -87,9 +93,6 @@ def resource_action_confirm(kind, action):
 
 
 def register_resource_action_routes(bp):
-    from .operator_machine_permissions import register_operator_machine_routes
-    from .resource_file_exports import resource_export, resource_export_preview, resource_template
-
     register_operator_machine_routes(bp)
 
     base = "/api/workbench/v1"

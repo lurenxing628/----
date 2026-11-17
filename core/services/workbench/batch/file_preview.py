@@ -1,11 +1,12 @@
 """Per-row batch import validation and the complete replacement deletion set."""
 
 from core.errors import ValidationError
-from core.models.workbench_batch import FIELDS, MAX_INTEGER, PRIORITIES, READY, normalize_batch_input
+from core.models.enums import BATCH_PRIORITY_LABELS, READY_STATUS_LABELS
+from core.models.workbench_batch import FIELDS, normalize_batch_input
 from core.models.workbench_batch_file import HEADER_FIELDS, HEADERS
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.common.enum_normalizers import batch_priority_label, ready_status_label
 from core.services.common.excel_validators import get_batch_row_validate_and_normalize
+from core.shared.strict_parse import JS_SAFE_INT_MAX
 
 from .facts import require_deletable, require_unreferenced
 from .projection import BatchProjection
@@ -17,10 +18,8 @@ _COMPARED = HEADERS[2:]
 def file_values(entity):
     """批次在导出文件里八列的写法；回导时据此判断哪一格原样没动。"""
     values = {"business_code": entity["business_code"], "part_no": entity["relationships"]["part_no"], **entity["fields"]}
-    if values["priority"] in PRIORITIES:
-        values["priority"] = batch_priority_label(values["priority"])
-    if values["ready_status"] in READY:
-        values["ready_status"] = ready_status_label(values["ready_status"])
+    values["priority"] = BATCH_PRIORITY_LABELS[values["priority"]]
+    values["ready_status"] = READY_STATUS_LABELS[values["ready_status"]]
     return values
 
 
@@ -33,7 +32,7 @@ class BatchImportPreview:
         self.existing = {row["batch_id"]: row for row in facts["Batches"]}
         self.validator = get_batch_row_validate_and_normalize(
             parts_cache=self.projection.parts,
-            max_quantity=MAX_INTEGER,
+            max_quantity=JS_SAFE_INT_MAX,
         )
         self.seen = set()
 
@@ -49,7 +48,7 @@ class BatchImportPreview:
 
     def row(self, parsed):
         row = {"row": parsed["row"], "business_code": parsed["values"].get("批次号"),
-               "errors": list(parsed["errors"]), "action": "rejected", "input": None,
+               "errors": parsed["errors"], "action": "rejected", "input": None,
                "entity_ref": None, "before": None}
         try:
             if row["errors"]:
@@ -97,7 +96,7 @@ class BatchImportPreview:
         return source
 
     def _validated(self, source, kept):
-        # 原样没动的旧值不校验也不写回：带时间的交期、旧优先级 high 之类照旧保留，备注首尾空格也不被去掉。
+        # 原样没动的旧值不校验也不写回：带时间的交期照旧保留，备注首尾空格也不被去掉。
         # 数量是必填项，没改也照常校验。
         checked = {key: None if key in kept and key != "数量" else value for key, value in source.items()}
         error = self.validator(checked)

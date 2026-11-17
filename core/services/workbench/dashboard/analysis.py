@@ -22,7 +22,7 @@ def read_dashboard_analysis(conn, plan_ref=None, *, query, as_of, binding=None, 
     facts.project()
     state = facts.snapshot_contents()
     if bind_snapshot is not None:
-        bind_snapshot(state, facts.now.isoformat(timespec="seconds"))
+        bind_snapshot(state, facts.now.isoformat(timespec="seconds"), revisions)
     data = project_dashboard_analysis(facts, material, query=query)
     # A page changes only the view. The binding covers complete source facts,
     # including revisions and voids, so later pages cannot mix source snapshots.

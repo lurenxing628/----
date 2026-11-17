@@ -1,8 +1,9 @@
 """Saved calendar facts projected through the existing factory-local rules.
 
-Run and trial captures contain whole business tables. A caller with a bounded
-calendar archive declares its evaluable ``coverage`` instead. Nothing is read
-from a connection or filled from a current resource/calendar directory.
+``tables`` names the rows of each of ``CALENDAR_TABLES``: a run or trial archive's own copy
+(``archived_calendar_tables``) or this transaction's current reads. A caller with a bounded
+calendar declares its evaluable ``coverage`` instead. Nothing is read from a connection or
+filled from a current resource/calendar directory.
 """
 
 from bisect import bisect_left, bisect_right
@@ -19,14 +20,23 @@ from core.services.capacity.plan_calendar_windows import (
     unavailable,
 )
 from core.services.scheduler.calendar.engine import CalendarEngine
-from core.shared.stored_dates import stored_local_iso_datetime
+from core.shared.local_datetime import row_interval
+from core.shared.strict_parse import is_exact_positive_int
 
 from .calendar_inputs import calendar_inputs_from_archive_tables
-from .candidate_facts import archived_table
+from .production_capture import table_rows
 from .resource_calendar import natural_days
 
+CALENDAR_TABLES = ("SchemaVersion", "WorkbenchEntityRefs", "Machines", "Operators", "MachineDowntimes", "WorkCalendar",
+                   "OperatorCalendar", "WorkbenchOperatorProfiles", "WorkbenchShiftProfiles", "WorkbenchShiftPatternDays",
+                   "WorkbenchCalendarDefaults")
 _MEASURES = ("available_hours", "effective_hours", "normal_available_hours", "normal_effective_hours",
              "urgent_available_hours", "urgent_effective_hours")
+
+
+def archived_calendar_tables(archive):
+    """The calendar tables of an admitted archive, or of its saved calendar part, with named rows."""
+    return {name: table_rows(archive, name) for name in CALENDAR_TABLES}
 
 
 def _bounds(start, end):
@@ -40,46 +50,13 @@ def _bounds(start, end):
 
 
 class DowntimeIndex:
-    """Parse a machine's saved intervals once; retain raw error rows in source order.
+    """One machine's downtime rows read once: ``intervals`` is the sorted, disjoint union of its active windows.
 
-    ``intervals`` is the sorted, disjoint union of the valid windows. Any ``errors``
-    row (bad time, empty span or a status other than active) leaves the machine's
-    downtime unproven; cancelled rows are not downtime at all.
+    Cancelled rows are not downtime.
     """
 
     def __init__(self, rows):
-        intervals, self.errors = [], []
-        self.invalid_interval = False
-        self.unknown_status = False
-        for row in rows:
-            status = row.get("status")
-            if status == "cancelled":
-                continue
-            if status != "active":
-                self.unknown_status = True
-            try:
-                start, end = instant(row["start_time"]), instant(row["end_time"])
-            except (ValueError, KeyError):
-                if status == "active":
-                    self.invalid_interval = True
-                self.errors.append((row, None, None))
-                continue
-            if start >= end:
-                if status == "active":
-                    self.invalid_interval = True
-                self.errors.append((row, None, None))
-            elif status != "active":
-                self.errors.append((row, start, end))
-            else:
-                if (
-                    stored_local_iso_datetime(row["start_time"], allow_space=True, allow_minutes_only=True) is None
-                    or stored_local_iso_datetime(row["end_time"], allow_space=True, allow_minutes_only=True) is None
-                ):
-                    self.invalid_interval = True
-                intervals.append((start, end))
-        # apply_resource exposes only the union of valid downtime windows; no
-        # record identity or other row metadata is part of this projection.
-        self.intervals = union(intervals)
+        self.intervals = union(row_interval(row) for row in rows if row["status"] == "active")
         self.starts = [start for start, _end in self.intervals]
         self.ends = [end for _start, end in self.intervals]
 
@@ -87,14 +64,8 @@ class DowntimeIndex:
         return bisect_right(self.ends, low) < bisect_left(self.starts, high)
 
     def between(self, low, high):
-        for row, start, end in self.errors:
-            if start is None or start < high and end > low:
-                # The first applicable raw error keeps the original error and
-                # missing-field precedence; later valid rows cannot change it.
-                return [row]
-        first, last = bisect_right(self.ends, low), bisect_left(self.starts, high)
-        return [{"status": "active", "start_time": start, "end_time": end}
-                for start, end in self.intervals[first:last]]
+        """The union's windows intersecting ``[low, high)``."""
+        return self.intervals[bisect_right(self.ends, low):bisect_left(self.starts, high)]
 
 
 def _aggregate(days, basis, source):
@@ -118,62 +89,40 @@ def _aggregate(days, basis, source):
 
 
 class ArchivedCalendar:
-    """One archive/index/engine for streaming resource projections in one read.
+    """One calendar table set/index/engine for streaming resource projections in one read.
 
     ``resources`` contain ``kind``, permanent ``ref`` and the archive's ``saved_id``.
     Every day is available (including true zero) or unavailable. A partial whole
     window retains its known days/windows; its total capacity remains unknown.
     """
 
-    def __init__(self, archive, *, source_ref=None, coverage=None, metadata_basis="saved_archive", facts=None):
-        self.archive, self._tables, self.facts = archive, {}, facts
+    def __init__(self, tables, *, source_ref=None, coverage=None, metadata_basis="saved_archive"):
+        self.tables = tables
         self.coverage = _bounds(coverage["start"], coverage["end"]) if coverage is not None else None
-        versions = self.table("SchemaVersion") or []
-        rows = [row for row in versions if row.get("id") == 1]
-        self.version = rows[0].get("version") if len(rows) == 1 else None
-        if type(self.version) is not int or self.version < 1:
-            self.version = None
+        versions = [row for row in tables["SchemaVersion"] if row["id"] == 1]
+        self.version = (versions[0]["version"]
+                        if len(versions) == 1 and is_exact_positive_int(versions[0]["version"]) else None)
         self.source = {"source_ref": source_ref, "schema_version": self.version,
                        "time_basis": "factory_local", "metadata_basis": metadata_basis,
                        "coverage": {"start": self.coverage[0].isoformat(), "end": self.coverage[1].isoformat()}
                        if self.coverage is not None else None}
-        refs = self.table("WorkbenchEntityRefs") or []
-        self.bindings = {(row["kind"], row["ref"]): row["entity_key"] for row in refs if row.get("active") == 1}
-        self.records = {kind: {row[kind + "_id"]: row for row in self.table(name) or []}
+        self.bindings = {(row["kind"], row["ref"]): row["entity_key"]
+                         for row in tables["WorkbenchEntityRefs"] if row["active"] == 1}
+        self.records = {kind: {row[kind + "_id"]: row for row in tables[name]}
                         for kind, name in (("machine", "Machines"), ("operator", "Operators"))}
         self.downtimes = defaultdict(list)
-        rows = self.table("MachineDowntimes")
-        self.downtimes_known = rows is not None
-        for row in rows or []:
+        for row in tables["MachineDowntimes"]:
             self.downtimes[row["machine_id"]].append(row)
         self._downtime_indexes = {}
-        tables = {name: self.table(name) for name in (
-            "WorkCalendar", "OperatorCalendar", "WorkbenchOperatorProfiles", "WorkbenchShiftProfiles",
-            "WorkbenchShiftPatternDays", "WorkbenchCalendarDefaults")}
-        # 坏日期等日历内容错误由引擎留到读取那天再报；这里只剩保存表结构损坏（缺列 KeyError、取值类型不对 TypeError）
-        # 让整份引擎不可用，下游逐日投影为 calendar_invalid、试调核对报 calendar_unproven。
-        try:
-            self.engine = CalendarEngine(calendar_inputs_from_archive_tables(tables))
-        except (KeyError, TypeError):
-            self.engine = None
+        # 坏日期等日历内容错误由引擎留到读取那天再报，逐日投影为 calendar_invalid。建引擎要用的表、列与班次轮换日
+        # 偏移，归档在准入处已核过（production_capture.validate_production_archive），本事务读的是库里的行；
+        # 决策读模型存的日历是自派生副本，坏了照原样报错。
+        self.engine = CalendarEngine(calendar_inputs_from_archive_tables(tables))
         self._global_days = {}
         self._shift_days = {}
 
-    def table(self, name):
-        """Decode each saved table once; trial dictionary rows are already decoded."""
-        if name not in self._tables:
-            if self.facts is not None:
-                self._tables[name] = self.facts.table(name)
-                return self._tables[name]
-            rows = self.archive["tables"].get(name)
-            if rows is None or type(rows) is list and all(type(row) is dict for row in rows):
-                self._tables[name] = rows
-            else:
-                self._tables[name] = archived_table(self.archive, name)
-        return self._tables[name]
-
-    def _policy_day(self, low, high, operator_id=None, *, engine: CalendarEngine):
-        key = (low, high)
+    def _policy_day(self, low, high, operator_id=None):
+        engine, key = self.engine, (low, high)
         if operator_id is None and key in self._global_days:
             return self._global_days[key]
         first = low.date() - timedelta(days=1) if low.date() > date.min else low.date()
@@ -188,7 +137,7 @@ class ArchivedCalendar:
                             for day in (first.isoformat(), low.date().isoformat()))):
                 profile_id = profile["shift_profile_id"] if profile is not None else None
                 if profile_id is None:
-                    return self._policy_day(low, high, engine=engine)
+                    return self._policy_day(low, high)
                 else:
                     shift_key = (low, high, profile_id)
                     if shift_key in self._shift_days:
@@ -209,18 +158,13 @@ class ArchivedCalendar:
         elif self.coverage is not None and not (self.coverage[0] <= low and high <= self.coverage[1]):
             result = unavailable(basis, "calendar_unavailable")
             result["issues"][0]["missing_fact"] = "calendar_coverage"
-        elif self.engine is None:
-            result = unavailable(basis, "calendar_invalid")
-        elif kind == "machine" and not self.downtimes_known:
-            result = unavailable(basis, "calendar_unavailable")
-            result["issues"][0]["missing_fact"] = "MachineDowntimes"
         else:
             raw_record = self.records[kind].get(saved_id)
-            rejected = resource_record_unavailable(raw_record, kind, basis)
+            rejected = resource_record_unavailable(raw_record, basis)
             if rejected is not None:
                 result = rejected
             else:
-                base = self._policy_day(low, high, saved_id if kind == "operator" else None, engine=self.engine)
+                base = self._policy_day(low, high, saved_id if kind == "operator" else None)
                 result = apply_resource(
                     base,
                     raw_record,
@@ -231,6 +175,16 @@ class ArchivedCalendar:
                 )
         return {**result, "date": low.date().isoformat(), "start": low, "end": high,
                 "source": self.source}
+
+    def global_summary(self, start, end):
+        """The global calendar over a window by natural day, aggregated like a resource's window.
+
+        A machine's day is this same global day with its downtime applied, so the days resources
+        already streamed are reused; a broken policy leaves only its own days unknown.
+        """
+        low, high = _bounds(start, end)
+        days = [self._policy_day(first, last) for first, last in natural_days(low, high)]
+        return _aggregate(days, "global_calendar", self.source)
 
     def downtime_index(self, machine_id):
         """The machine's parsed downtime, shared by resource days and task feasibility checks."""
@@ -248,5 +202,5 @@ class ArchivedCalendar:
                                     "resource_type": resource["kind"]}
             # Global policies remain reusable; personnel policy cells do not
             # accumulate across a complete streaming cohort.
-            if self.engine is not None and resource["kind"] == "operator":
+            if resource["kind"] == "operator":
                 self.engine.discard_operator_policy(resource.get("saved_id"))

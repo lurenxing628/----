@@ -1,12 +1,12 @@
 """Dashboard analysis projected from an already captured source snapshot."""
 
-from core.models.workbench_batch import STATUSES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import page
 from core.services.capacity.plan_calendar_intervals import wire
 from core.services.workbench import messages
 from core.services.workbench.facts.resource_pressure import pressure_summary
 from core.services.workbench.facts.resource_projection import RESOURCE_METRIC_VERSION, resource_summary
+from core.shared.local_datetime import row_interval
 
 from .downtime import downtime_overlap_count
 
@@ -19,17 +19,13 @@ def _stored_time(value):
         return None
 
 
-def _pending(facts, material):
+def _pending(material):
     observations, state = material
-    batches = facts.raw["Batches"]
     if state["state"] == "unavailable":
         return {"state": "unavailable", "count": None, "known_count": 0, "items": [],
                 "issues": state["issues"], "basis": "stored_pending_batch_pool"}, []
     rows = [row["source"] for row in observations if row["source"]["stored_status"] == "pending"]
-    unknown = sum(row["status"] not in STATUSES for row in batches)
-    return {"state": "partial" if unknown else "available", "count": None if unknown else len(rows),
-            "known_count": len(rows), "unknown_status_count": unknown, "items": [],
-            "issues": [] if not unknown else [{"code": "batch_status_unknown", "message": "有批次的状态填得不对，待排总数算不出来。"}],
+    return {"state": "available", "count": len(rows), "known_count": len(rows), "items": [], "issues": [],
             "basis": "stored_pending_batch_pool", "scheduling_input": None}, rows
 
 
@@ -48,10 +44,10 @@ def _tasks(facts, *, selected_refs=None, slice_range=None):
     for task, raw in zip(tasks, raw_rows):
         if selected_refs is not None and task["task_ref"] not in selected_refs:
             continue
-        start_dt, end_dt = facts.task_intervals[raw["schedule_id"]]
-        result.append({**task, "batch_ref": refs[task["batch_id"]]["ref"],
+        start_dt, end_dt = row_interval(raw)
+        result.append({**task, "batch_ref": refs[task["batch_id"]].ref,
                        "machine_label": raw["machine_name"], "operator_label": raw["operator_name"],
-                       "source": raw["source"] if type(raw["source"]) is str else None,
+                       "source": raw["source"],
                        "span_hours": (end_dt - start_dt).total_seconds() / 3600})
     return result
 
@@ -70,9 +66,9 @@ def _resources(facts, scope, query):
     return result, common
 
 
-def _downtime_record(raw, ref, machine_ref, machine_label, start, end, valid):
+def _downtime_record(raw, ref, machine_ref, machine_label, start, end):
     return {"downtime_ref": ref, "machine_ref": machine_ref, "machine_label": machine_label,
-            "start": start, "end": end, "valid": valid, "reason": raw["reason_detail"],
+            "start": start, "end": end, "reason": raw["reason_detail"],
             "recorded_at": _stored_time(raw["created_at"]), "recorded_at_basis": "local_time"}
 
 
@@ -92,29 +88,24 @@ def _downtime_records(facts, *, include_records):
     labels = {str(row["machine_id"]): row["machine_name"] for row in facts.task_rows} if include_records else {}
     index = facts.downtime_index()
     identities = index["identities"]
-    records, count, issues = [], 0, []
-    # Every non-cancelled row, invalid ones included: an unreadable endpoint still yields its record and issue.
-    for raw, low, high in index["parsed"]:
+    records, count = [], 0
+    for raw, low, high in index["windows"]:
         machine_id = str(raw["machine_id"])
         if machine_id not in machines:
             continue
         if raw["id"] not in identities:
             raise WorkbenchCommandRejected("identity_missing", "停机登记编号缺失，请刷新重试。")
-        valid = raw["status"] == "active" and low is not None and high is not None and low < high
         count += 1
         if include_records:
-            records.append((raw, identities[raw["id"]]["ref"], machines[machine_id], labels[machine_id],
-                            wire(low) if low is not None else None, wire(high) if high is not None else None, valid))
-        if not valid:
-            issues.append({"code": "downtime_invalid", "message": "有停机记录的起止时间或状态填得不对，没有画成有效的停机条。"})
-    return records, count, issues
+            records.append((raw, identities[raw["id"]]["ref"], machines[machine_id], labels[machine_id], wire(low), wire(high)))
+    return records, count
 
 
 def _downtimes(facts):
-    records, _count, issues = _downtime_records(facts, include_records=True)
+    records, _count = _downtime_records(facts, include_records=True)
     observations, state = facts.observations("downtime")
     overlaps = [item["source"] for item in observations if item["source"]["known_overlap_hours"]]
-    return records, overlaps, issues + state["issues"]
+    return records, overlaps, state["issues"]
 
 
 def _project_execution_slice(selected_execution, tasks):
@@ -127,7 +118,7 @@ def _project_execution_slice(selected_execution, tasks):
 
 
 def project_dashboard_analysis(facts, material, *, query):
-    pending, pending_rows = _pending(facts, material)
+    pending, pending_rows = _pending(material)
     section = query.section
     if facts.plan_state != "loaded":
         resources, downtimes, overlaps, deliveries, execution_obs = [], [], [], [], []
@@ -142,8 +133,8 @@ def project_dashboard_analysis(facts, material, *, query):
             downtimes, overlaps, issues = _downtimes(facts)
             downtime_count, overlap_count = len(downtimes), len(overlaps)
         else:
-            downtimes, overlaps = [], []
-            _, downtime_count, issues = _downtime_records(facts, include_records=False)
+            downtimes, overlaps, issues = [], [], []
+            _, downtime_count = _downtime_records(facts, include_records=False)
             overlap_count = downtime_overlap_count(facts)
         deliveries = facts.delivery["items"]
         execution_obs, execution_state = facts.observations("actual")
@@ -176,7 +167,7 @@ def project_dashboard_analysis(facts, material, *, query):
     if query.locate_batch_ref is not None:
         refs = facts.raw["analysis_batch_refs"] if facts.plan_state == "loaded" else {}
         index = next((index for index, (task, raw) in enumerate(zip(facts.tasks, facts.task_rows))
-                      if refs[task["batch_id"]]["ref"] == query.locate_batch_ref
+                      if refs[task["batch_id"]].ref == query.locate_batch_ref
                       and raw["source"] == "internal" and task["machine_ref"]), None) if facts.plan_state == "loaded" else None
         if index is None:
             raise WorkbenchCommandRejected("entity_not_found", "所选批次在当前正式计划中没有可显示的设备安排。", 404)

@@ -13,19 +13,23 @@ from collections import defaultdict
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from core.errors import AppError
+from core.errors import BusinessError
 from core.models.operation_execution_scope import parse_operation_event_time
-from core.models.workbench_preflight import issue, local_date
+from core.models.workbench_preflight import issue
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.scheduler.run.schedule_payload_contract import arrangement_row
 from core.services.workbench.facts.stored_algo_inputs import stored_batch, stored_batch_operation, stored_operation
 from core.services.workbench.facts.table_cells import number_text
 from core.services.workbench.facts.zero_duration import PointEventError, estimate_point_event
-from core.shared.strict_parse import is_stored_number
 
 from .input_config import window_label
 from .input_runtime import downtime_overlap, held_arrangements, held_machine_downtimes
-from .schedule_row_constraints import arrangement_problem, calendar_duration_conflict, external_holds_resources
+from .schedule_row_constraints import (
+    ArrangementProblem,
+    arrangement_problem,
+    calendar_duration_conflict,
+    external_holds_resources,
+)
 
 if TYPE_CHECKING:
     from core.services.workbench.facts.preflight_checks import PreflightChecks
@@ -63,28 +67,31 @@ class _Held:
     def action(fix):
         return f"请{fix}，或{_SHORTEN}。"
 
+    def calendar_unproven(self):
+        """按现在的日历或外协周期算不出这条保留安排的完工时间（班次里找不到可排时间、越过可表示日期）。"""
+        return issue("locked_calendar_unproven", f"{self.text}，但按现在的工作日历或外协周期算不出这道工序的完工时间。"
+                     + _KEEP + self.action("核对相关的工作日历、个人日历、班次或外协周期"))
+
 
 class _Context:
-    def __init__(self, checks: PreflightChecks, calendar, downtimes, settings, batches, operations, finished):
+    def __init__(self, checks: PreflightChecks, calendar, downtimes, settings, batches, finished):
         self.checks, self.calendar, self.downtimes, self.settings = checks, calendar, downtimes, settings
         self.finished = finished
         self.batches = {row["batch_id"]: row for row in batches}
-        # 分件批次与分件采用同口径：分件工序按 1 件、共同工序按整批数量算工时。
-        self.piece_batches = {op["batch_id"] for op in operations if op["piece_id"] is not None}
         self.external_contexts = checks.external_contexts
 
     def quantity(self, op, batch):
+        """与分件采用同口径：分件工序按 1 件、共同工序按整批数量。"""
         return 1 if op["piece_id"] is not None else batch["quantity"]
 
     def external_days(self, op):
-        """与排产输入同口径：合并外协组按整组周期，其余按本道外协周期；读不出有效天数返回 None（由资料检查另行拦下）。"""
+        """与排产输入同口径：合并外协组按整组周期，其余按本道外协周期；没设周期返回 None（由资料检查另行拦下）。"""
         context = self.external_contexts.get(op["id"]) or {}
-        days = context.get("total_days") if context.get("merge_mode") == "merged" else op["ext_days"]
-        return days if is_stored_number(days, positive=True) else None
+        return context.get("total_days") if context.get("merge_mode") == "merged" else op["ext_days"]
 
 
-def _resource_problem(context: _Context, held: _Held, batch, raw):
-    found = [item["code"] for item in context.checks.fields(batch, raw) + context.checks.resources(raw)]
+def _resource_problem(held: _Held, gaps):
+    found = [item["code"] for item in gaps]
     reasons = [_RESOURCE_REASONS[code] for code in found if code in _RESOURCE_REASONS]
     if len(reasons) < len(found):
         reasons.append("这道工序的工种、自制外协或供应商资料和原安排对不上")
@@ -94,11 +101,11 @@ def _resource_problem(context: _Context, held: _Held, batch, raw):
         + "、".join(reasons) + "。" + _KEEP + held.action("到资料总览核对设备、人员和工种"))
 
 
-def _release_problem(context: _Context, held: _Held, batch, raw, code):
-    if code == "before_ready_date":
+def _release_problem(held: _Held, batch, problem: ArrangementProblem):
+    if problem.code == "before_ready_date":
         return issue("locked_before_ready_date", f"{held.text}，但这批的齐套日期是 {batch['ready_date']}，比原安排晚。"
                      + _KEEP + held.action("到批次管理核对齐套日期"))
-    _issues, day = context.checks.operation_readiness(batch, raw, context.settings)
+    day = problem.material_day
     late = f"本序物料要到 {day} 才到齐" if day else "本序物料还没到齐"
     return issue("locked_material_late", f"{held.text}，但{late}。" + _KEEP + held.action("到批次管理核对物料到料"))
 
@@ -112,7 +119,11 @@ def _timing_problem(context: _Context, held: _Held, op, batch):
             "保留的安排排产时原样保留、不会避开停机，排出的方案都不能采用。" + held.action("到工作日历核对这条停机"))
     if seed["start_time"] == seed["end_time"]:
         return _point_problem(context, held, op, batch)
-    if _duration_conflict(context, seed, op, batch):
+    try:
+        conflict = _duration_conflict(context, seed, op, batch)
+    except BusinessError:
+        return held.calendar_unproven()
+    if conflict:
         return issue("locked_calendar_conflict",
             f"{held.text}（设备 {seed['machine_id']}、人员 {seed['operator_id']}），但按现在的工作日历、个人日历和效率重算，"
             "这道工序的开工、完工时间和这段安排对不上（例如其间改成了休息或请假，或工时、效率改过）。" + _KEEP + held.action("到工作日历或这个人的个人日历核对这几天"))
@@ -121,13 +132,8 @@ def _timing_problem(context: _Context, held: _Held, op, batch):
 
 def _duration_conflict(context: _Context, seed, op, batch):
     downtimes = context.downtimes.get(seed["machine_id"], ())
-    try:
-        return calendar_duration_conflict(context.calendar, arrangement_row(seed), stored_operation(op),
-                                          stored_batch(batch), downtimes, quantity=context.quantity(op, batch))
-    except PointEventError:
-        if op["batch_id"] not in context.piece_batches:
-            raise
-        return False  # 工时或数量读不出来由资料检查和分件范围检查拦下，这里不重复报成时间对不上
+    return calendar_duration_conflict(context.calendar, arrangement_row(seed), stored_operation(op),
+                                      stored_batch(batch), downtimes)
 
 
 def _point_problem(context: _Context, held: _Held, op, batch):
@@ -139,6 +145,8 @@ def _point_problem(context: _Context, held: _Held, op, batch):
             priority=batch["priority"], start=seed["start_time"])
     except PointEventError as exc:
         reason = "这道工序现在有工时，不再是零工时工序。" if exc.code == "point_duration_nonzero" else str(exc)
+    except BusinessError:
+        return held.calendar_unproven()
     else:
         if start == seed["start_time"]:
             return None
@@ -156,7 +164,11 @@ def _external_problem(context: _Context, held: _Held, op):
     days = context.external_days(op)
     if days is None:
         return None
-    expected = context.calendar.add_calendar_days(seed["start_time"], days)
+    try:
+        expected = context.calendar.add_calendar_days(seed["start_time"], days)
+    except BusinessError:
+        # 周期由表约束定在 (0, 36500] 天，这里只剩回厂时刻越过可表示日期。
+        return held.calendar_unproven()
     if expected == seed["end_time"]:
         return None
     return issue("locked_external_cycle_conflict",
@@ -250,11 +262,10 @@ def _seed_problem(context: _Context, held: _Held, op):
     seed = held.seed
     batch = context.batches[op["batch_id"]]
     raw = dict(op, machine_id=seed["machine_id"], operator_id=seed["operator_id"])
-    code = arrangement_problem(context.checks, batch, raw, seed["start_time"], context.settings)
-    if code == "resource_invalid":
-        return _resource_problem(context, held, batch, raw)
-    if code is not None:
-        return _release_problem(context, held, batch, raw, code)
+    problem = arrangement_problem(context.checks, batch, raw, seed["start_time"], context.settings)
+    if problem is not None:
+        return (_resource_problem(held, problem.gaps) if problem.code == "resource_invalid"
+                else _release_problem(held, batch, problem))
     if seed["source"] == "internal":
         return _timing_problem(context, held, op, batch)
     return _external_problem(context, held, op)
@@ -271,11 +282,6 @@ def _cycle_problem(held: _Held, cycle):
                  f"请到现场记录核对同组报工的实际时间；报工无误时，请{_SHORTEN}。")
 
 
-def _unreadable():
-    return issue("freeze_window_unavailable", "排产要原样保留不重排时段里的原安排，但正式计划里这段时间的安排"
-                 f"读不出来或者对不上，排产会被拦下。请{_SHORTEN}，或联系维护人员核对正式计划。")
-
-
 def _skipped_freeze(meta, batches):
     refs = {row["batch_id"]: row["ref"] for row in batches}
     message = (f"这批后面工序的原安排在不重排时段（{window_label(meta.get('hold_window'))}）内，但前面还有没报工的工序原安排"
@@ -285,11 +291,10 @@ def _skipped_freeze(meta, batches):
             for batch_id in sorted(meta.get("freeze_skipped_batch_ids") or ())]
 
 
-def _held(facts, settings, version, operations, held_ids, *, hold_window_bounds):
+def _held(facts, version, operations, held_ids, *, start, hold_window_bounds):
     models = [stored_batch_operation(op) for op in operations]
     held = held_arrangements(
-        prev_version=version, facts=facts,
-        start_dt=datetime.combine(local_date(settings["start_date"]), datetime.min.time()),
+        prev_version=version, facts=facts, start_dt=start,
         reschedulable_operations=[op for op in models if op.id in held_ids],
         hold_window=hold_window_bounds)
     return held.seed_results, held.meta, held
@@ -302,19 +307,19 @@ def _marks(seeds):
 
 
 def held_arrangement_reasons(facts, checks, settings, version, batches, operations, held_ids, cycles, projections,
-                             *, hold_window_bounds):
+                             *, start, hold_window_bounds):
     """返回 (阻断原因, 提醒, {工序: 保留标记}, 保留安排结果)。
 
     held_ids 是这次要重排的工序（资料有效、自动分配待补）加上合并外协组派生保留的成员，与排产计算查不重排时段的范围一致；
     cycles 是这些成员的实际周期；其余外协按现在的外协周期、零工时按现在的班次、分件按每件数量复核，与采用同口径；
-    projections 是这些工序的执行投影，已完工前道的实际完工按它核对。
+    projections 是这些工序的执行投影，已完工前道的实际完工按它核对；start 是调用方从 settings 转换出的排产起日 00:00。
     """
     # 排产参数本身读不出来时，排产计算会直接报出是哪项参数；排产检查不替它核对保留安排。
     if not held_ids or facts.config_error is not None:
         return [], [], {}, None
     by_id = {op["id"]: op for op in operations}
     try:
-        seeds, meta, held_obj = _held(facts, settings, version, operations, held_ids, hold_window_bounds=hold_window_bounds)
+        seeds, meta, held_obj = _held(facts, version, operations, held_ids, start=start, hold_window_bounds=hold_window_bounds)
         if not seeds:
             return [], _skipped_freeze(meta, batches), {}, held_obj
         held_operators = (
@@ -327,14 +332,11 @@ def held_arrangement_reasons(facts, checks, settings, version, batches, operatio
             held_machine_downtimes(seeds, facts=facts),
             settings,
             batches,
-            operations,
             _completed(facts, operations, projections),
         )
         blockers = _seed_blockers(facts, context, seeds, by_id, meta.get("hold_window"), cycles)
     except CandidateRunInputError as exc:
         return [facts.public_issue(item, by_id[item["op_id"]]) if item.get("op_id") in by_id else item for item in exc.issues], [], {}, None
-    except AppError:
-        return [_unreadable()], [], {}, None
     # 合并外协组成员只在不在保留安排里时才由排产按实际周期派生、排产照常出结果；全都在保留安排里排产会直接停下。
     if held_ids <= {seed["op_id"] for seed in seeds}:
         blockers.append(_all_held())

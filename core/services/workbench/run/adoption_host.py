@@ -2,7 +2,8 @@
 
 import getpass
 import threading
-from typing import Type
+from datetime import datetime
+from typing import Any, Callable, Dict, Protocol, Type
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
@@ -12,19 +13,32 @@ from core.services.workbench.commands import WorkbenchCommandService
 _ADOPTION_LOCK = threading.Lock()
 
 
+class AdoptionEvidence(Protocol):
+    """What the shared session reads from CandidateAdoptionEvidence and TrialAdoptionEvidence."""
+
+    @property
+    def baseline(self) -> Dict[str, Any]: ...
+
+    @property
+    def snapshot(self) -> Dict[str, Any]: ...
+
+    @property
+    def outcome(self) -> Any: ...
+
+
 class AdoptionCommandHost:
     _action: str
     _blocked_error: Type[WorkbenchCommandRejected]
     _disabled_code: str
     _outer_message: str
     _point_message: str
-    _stale_message: str
     _busy_message: str
     _conflict_message: str
 
     def __init__(self, conn, *, integration_enabled=False, context_factory, context_validator,
-                 point_rendering_enabled=False, data_context):
+                 point_rendering_enabled=False, data_context, clock: Callable[[], datetime]):
         self.conn = conn
+        self.clock = clock
         self.integration_enabled = integration_enabled is True
         self.context_factory = context_factory
         self.context_validator = context_validator
@@ -32,7 +46,7 @@ class AdoptionCommandHost:
         self.data_context = data_context
         self.commands = WorkbenchCommandService(conn)
 
-    def _point_surface(self, evidence):
+    def _point_surface(self, evidence: AdoptionEvidence):
         if not self.point_rendering_enabled and any(
             start == end for start, end in evidence.outcome.resolved_intervals.values()
         ):
@@ -54,7 +68,7 @@ class AdoptionCommandHost:
                             if "data_context_ref" in evidence.snapshot else self.data_context.ref())
         return evidence, data_context_ref
 
-    def _preview_result(self, context_ref, evidence, data_context_ref):
+    def _preview_result(self, context_ref, evidence: AdoptionEvidence, data_context_ref):
         return {"baseline": {"plan_ref": evidence.baseline["plan_ref"], "version": evidence.baseline["version"]},
                 "task_count": len(evidence.outcome.validated_payload.schedule_rows), "scope_complete": True,
                 "validation": {"status": "valid", "can_adopt": True, "issues": []},
@@ -64,15 +78,15 @@ class AdoptionCommandHost:
     def _execute_adoption(self, context_ref, write_token, request_key, intent, *, validate, persist):
         def guard():
             self._enabled()
-            if type(write_token) is not str or not write_token:
-                raise WorkbenchCommandRejected("stale_write", self._stale_message)
             evidence = validate(self.conn, context_ref)
             self._point_surface(evidence)
             self.context_validator(write_token, context_ref, self._action, evidence.snapshot)
             return evidence
 
         def mutate(evidence):
-            return persist(self.conn, evidence, intent, request_key, application_operator=getpass.getuser())
+            # The adoption time is read once here; the plan head, its log and the history entry all record it.
+            return persist(self.conn, evidence, intent, request_key, application_operator=getpass.getuser(),
+                           adopted_at=self.clock())
 
         # A committed intent replays even while the scheduler refuses new work.
         replayed = self.commands.replay(request_key=request_key, action=self._action, context_ref=context_ref,

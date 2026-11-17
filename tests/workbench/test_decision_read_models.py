@@ -30,13 +30,14 @@ def test_delivery_projections_share_one_static_batch_group_and_reverse_identity_
                                    (("B1", "batch-a"), ("B2", "batch-b"), ("B3", "batch-c"))})
     facts.tables = {
         "BatchOperations": OperationRows({1: {"id": 1, "batch_id": "B1"}, 2: {"id": 2, "batch_id": "B2"}}),
-        "Batches": {key: {"batch_id": key, "part_no": "P1", "part_name": "零件", "due_date": "2026-10-15"}
-                    for key in ("B1", "B2", "B3")}}
+        "Batches": {key: {"batch_id": key, "part_no": "P1", "part_name": "零件", "quantity": 1, "priority": "normal",
+                          "due_date": "2026-10-15"} for key in ("B1", "B2", "B3")}}
     tasks = [{"row_ref": "row-a", "operation_ref": "op-a", "sequence": 0, "piece_id": None,
               "process_label": "车削", "start": "2026-10-15T08:00:00", "end": "2026-10-15T09:00:00",
               "machine": None, "operator": None}]
     batch_refs = ["batch-a", "batch-b", "batch-c"]
-    candidate = {"artifact": {"metrics": {}}}
+    # The admitted artifact always records its incomplete batches (candidate_artifact.admit_artifact).
+    candidate = {"artifact": {"metrics": {"completion": {"incomplete_batch_ids": []}}}}
     settings = {"batch_refs": batch_refs}
     before = canonical_json(facts.tables)
     intervals = {"row-a": (datetime(2026, 10, 15, 8), datetime(2026, 10, 15, 9))}
@@ -45,32 +46,30 @@ def test_delivery_projections_share_one_static_batch_group_and_reverse_identity_
     assert [{key: value for key, value in row.items() if key != "last_operations"} for row in detail] == delivery
     assert [row["completion_state"] for row in delivery] == ["complete", "deferred", "unknown"]
     assert detail[0]["last_operations"] == tasks and detail[1]["last_operations"] == []
-    assert scans == ["operations", "identities"]
+    assert sorted(scans) == ["identities", "operations"]
     assert canonical_json(facts.tables) == before
 
 
-def test_known_memberships_restore_scoring_metrics_and_preparation_roles_once():
+def test_known_memberships_restore_completion_metrics_and_preparation_roles_once():
     operations = ["a" * 48, "b" * 48, "c" * 48]
     batches = ["d" * 48, "e" * 48]
     decoder = Memberships({"operation_refs": operations, "batch_refs": batches,
         "operation_sets": [[2, 0], [], [1]], "batch_sets": [[1, 0], []]})
     members = lambda kind, index: {"membership_kind": kind, "membership_index": index}
-    saved = {"scoring_scope": {"scheduled_operation_refs": members("operation", 0),
-                             "complete_batch_refs": members("batch", 0), "components_known": False},
+    saved = {"completion": {"unplanned_operation_refs": members("operation", 0),
+                            "complete_batch_refs": members("batch", 0), "state": "partial"},
         "metrics": {"required": {"covered_operation_refs": members("operation", 0), "unknown_count": 2},
                     "due": {"covered_batch_refs": members("batch", 1)}},
         "preparation": {"coverage": {"new_schedule": members("operation", 0), "unknown": members("operation", 2)}}}
     original = canonical_json(saved)
     restored = decoder.expand(saved)
-    assert restored["scoring_scope"] == {"scheduled_operation_refs": [operations[2], operations[0]],
-        "complete_batch_refs": [batches[1], batches[0]], "components_known": False}
+    assert restored["completion"] == {"unplanned_operation_refs": [operations[2], operations[0]],
+        "complete_batch_refs": [batches[1], batches[0]], "state": "partial"}
     assert restored["metrics"]["required"] == {"covered_operation_refs": [operations[2], operations[0]], "unknown_count": 2}
     assert restored["metrics"]["due"]["covered_batch_refs"] == []
     assert restored["preparation"]["coverage"] == {"new_schedule": [operations[2], operations[0]], "unknown": [operations[1]]}
     assert decoder.refs(members("operation", 0), "operation") is decoder.refs(members("operation", 0), "operation")
     assert canonical_json(saved) == original
-    restored["scoring_scope"]["scheduled_operation_refs"].clear()
-    assert decoder.refs(members("operation", 0), "operation") == [operations[2], operations[0]]
 
 
 def test_core_and_catalog_expand_only_their_consumed_saved_fields():
@@ -92,14 +91,13 @@ def test_core_and_catalog_expand_only_their_consumed_saved_fields():
     source.rows = [{"candidate_ref": candidate_ref}]
     source.memberships = TrackedMemberships({"operation_refs": ["a" * 48], "batch_refs": [],
         "operation_sets": [[0]], "batch_sets": []})
+    eval_payload = {"due": {"scoring_scope": {"scheduled_operation_count": 1, "complete_batch_count": 0}}}
     source._candidate_models = {candidate_ref: {"summary": {"candidate_ref": candidate_ref, "metrics": {},
-        "catalog": {"candidate_ref": candidate_ref, "label": "saved"}, "run_ref": "b" * 48,
+        "evaluations": eval_payload,
+        "catalog": {"candidate_ref": candidate_ref, "label": "saved", "evaluations": eval_payload}, "run_ref": "b" * 48,
         "scheduled_operation_refs": {"membership_kind": "operation", "membership_index": 0}, "resource_views": {}}}}
-    assert _core_candidates(source) == [{"candidate_ref": candidate_ref, "metrics": {}}]
-    assert source.saved_candidate_catalog(candidate_ref) == {"candidate_ref": candidate_ref, "label": "saved"}
-    assert source.memberships.expanded == 0
-    source._candidate_models[candidate_ref]["summary"]["catalog"]["evaluations"] = {
-        "due": {"scoring_scope": {"scheduled_operation_refs": {"membership_kind": "operation", "membership_index": 0}}}}
+    assert _core_candidates(source) == [{"candidate_ref": candidate_ref, "metrics": {}, "evaluations": eval_payload}]
+    assert _core_candidates(source, include_evaluations=False) == [{"candidate_ref": candidate_ref, "metrics": {}}]
     assert source.saved_candidate_catalog(candidate_ref, fields=("candidate_ref", "label")) == {
         "candidate_ref": candidate_ref, "label": "saved"}
     assert source.memberships.expanded == 0
@@ -117,7 +115,7 @@ def test_analysis_arrangements_keep_unknown_identity_and_each_sources_resource_l
     base = {"row_ref": "a" * 48, "operation_ref": "b" * 48, "batch_ref": "c" * 48,
         "batch_label": "B1", "process_label": "委外", "process_type_ref": None, "process_type_label": None,
         "start": "2026-10-15T08:00:00", "end": "2026-10-15T09:00:00", "source": "external",
-        "locked": False, "interval_comparable": True, "data_gaps": [{"field": "machine.ref", "code": "not_recorded"}],
+        "locked": False, "data_gaps": [{"field": "machine.ref", "code": "not_recorded"}],
         "machine": {"ref": None, "label": "已知设备"}, "operator": None,
         "supplier": {"ref": supplier_ref, "label": "来源一名称"}}
     second = {**base, "row_ref": "e" * 48, "supplier": {"ref": supplier_ref, "label": "来源二名称"}}
@@ -125,7 +123,9 @@ def test_analysis_arrangements_keep_unknown_identity_and_each_sources_resource_l
         "end": base["start"], "event_kind": "point", "occupies_resources": False}
     original = [base, second, point]
     saved = _arrangements(original)
-    assert analysis_arrangements(saved) == original
+    rows, intervals = analysis_arrangements(saved)
+    assert rows == original
+    assert intervals == {row["row_ref"]: (datetime.fromisoformat(row["start"]), datetime.fromisoformat(row["end"])) for row in original}
     assert saved["resource_values"] == [
         {"kind": "machine", "ref": None, "label": "已知设备"},
         {"kind": "supplier", "ref": supplier_ref, "label": "来源一名称"},
@@ -142,18 +142,20 @@ def test_analysis_arrangements_keep_unknown_identity_and_each_sources_resource_l
     source: Any = DecisionSource.__new__(DecisionSource)
     source.run = {"run_ref": run_ref}
     source.comparison_mode, source.reference_ref = "candidates", candidate_ref
-    source._candidate_models, source._analysis, source._projected = {candidate_ref: {}}, {}, {}
+    source._candidate_models, source._analysis, source._projected, source._task_intervals = {candidate_ref: {}}, {}, {}, {}
     source.memberships = TrackedMemberships({"operation_refs": [base["operation_ref"]], "batch_refs": [base["batch_ref"]],
                                             "operation_sets": [[0]], "batch_sets": [[0]]})
 
     def read_model(key, fields):
         loaded_fields.append((key, fields))
-        return {"run_ref": run_ref, "projection_version": "decision-read-v1", "arrangements_json": canonical_json(saved)}
+        return {"run_ref": run_ref, "arrangements_json": canonical_json(saved)}
 
     source.repo = SimpleNamespace(candidate_read_model=read_model)
     tasks = source.analysis_tasks("reference")
     assert tasks == original and source.analysis_tasks(candidate_ref) is tasks
     assert expansion_calls == [] and loaded_fields == [(candidate_ref, ("arrangements",))]
+    # One decode serves the rows and their intervals; no second read or parse.
+    assert source.task_intervals("reference") == intervals and len(loaded_fields) == 1
     raw = source._saved_projection(candidate_ref, "arrangements")
     assert raw is source._candidate_models[candidate_ref]["arrangements"]
     assert tasks[0] is not raw["rows"][0]

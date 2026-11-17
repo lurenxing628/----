@@ -2,28 +2,40 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from functools import wraps
 from types import MappingProxyType
 
-from werkzeug.exceptions import HTTPException
-
-from core.errors import AppError, ValidationError
+from core.errors import ValidationError
 from core.models.workbench_action_values import UPSERT_IMPORT_MODES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_action import public_action_row, resource_scope_request, wire_resource_scope
 from core.models.workbench_resource_file import INSTRUCTIONS, TEMPLATE_VERSION, public_columns
 from core.models.workbench_table_descriptor import FILE_FORMATS
+from core.shared.key_sets import keys_conform
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
-from .api_responses import api_endpoint
-from .material_actions_context import json_body, opaque_ref
-from .request_json import read_upload_file, read_upload_form
+from .api_responses import worded_read_endpoint
+from .request_json import (
+    BodyTexts,
+    opaque_ref,
+    read_json_body,
+    read_upload_file,
+    read_upload_form,
+    rejecter,
+    single_value_arguments,
+)
 from .write_context import preview_write_context, retain_action_preview
 
 PREVIEW_SCOPE = "workbench-resource-preview-v1"
 EXPORT_SCOPE = "workbench-resource-export-v1"
 EXPIRED_MESSAGE = "预检结果已过期，数据没有改动，范围也没有自动更换。请重新预检。"
 IMPORT_MISMATCH_MESSAGE = "预检结果和这次操作对不上，数据没有改动。请点「重新预检」。"
+STALE_REF_MESSAGE = "这次操作的编号已失效，数据没有改动。请关掉弹窗后重新打开。"
+CONFIRM_MISMATCH_MESSAGE = "只能确认刚才预检过的那一批，数据没有改动。请点「重新预检」。"
+PAGE_STALE_MESSAGE = "本页数据已过期，数据没有改动。请刷新页面后重新填写。"
+# Duplicate keys share the syntax-error text rather than silently taking the last scope or ref.
+BODY = BodyTexts(transport="提交的内容格式不正确，数据没有改动。请刷新页面后重新填写。",
+                 malformed="提交的内容格式不正确或有重复项，数据没有改动。请刷新页面后重新填写。",
+                 incomplete="提交的内容不完整或有多余项，数据没有改动。请刷新页面后重新填写。")
 
 
 @dataclass(frozen=True)
@@ -32,22 +44,20 @@ class RetainedContext:
     content: object
 
 
-def read_endpoint(function):
-    @wraps(function)
-    def wrapped(*args, **kwargs):
-        try:
-            return function(*args, **kwargs)
-        except (AppError, HTTPException, WorkbenchCommandRejected):
-            raise
-        except Exception as exc:
-            raise WorkbenchCommandRejected("storage_failure", "资源预检或下载没有完成，数据没有改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500) from exc
-    return api_endpoint(wrapped, readonly=True)
+read_endpoint = worded_read_endpoint("资源预检或下载没有完成，数据没有改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。")
+
+
+def json_body(required, optional=()):
+    body = read_json_body(BODY)
+    if not keys_conform(body, required, optional):
+        rejecter(BODY.incomplete)()
+    return body
 
 
 def scope_input(kind, body):
     """The viewed list's validated request, its read-binding scope and snapshot token."""
     request = resource_scope_request(kind, body["scope"], size=body.get("page_size", 20))
-    return request, request.scope(), opaque_ref(body["snapshot_ref"])
+    return request, request.scope(), opaque_ref(body["snapshot_ref"], STALE_REF_MESSAGE)
 
 
 def export_identity(arguments):
@@ -132,17 +142,12 @@ def admit_export_selection(body, *, explicit_value="selected", message):
 
 def download_query(required):
     """A download's query string: exactly the required keys, each given once."""
-    from flask import request
-
-    if set(request.args) != required or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "下载条件不完整或有多余项，没有开始下载。请刷新页面后重新点「导出」。", 400)
+    return single_value_arguments(required, required=required,
+                                  message="下载条件不完整或有多余项，没有开始下载。请刷新页面后重新点「导出」。")
 
 
 def download_args(required):
-    from flask import request
-
-    download_query(required)
-    fmt = request.args["format"]
+    fmt = download_query(required)["format"]
     if fmt not in FILE_FORMATS:
         raise WorkbenchCommandRejected("invalid_input", "下载只支持 CSV 或 XLSX 格式，没有开始下载。请重新选择格式后点「导出」。", 400)
     return fmt
@@ -158,19 +163,3 @@ def file_response(download):
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Workbench-Row-Count"] = str(download.row_count)
     return response
-
-
-def confirm_body(mismatch_message="只能确认刚才预检过的那一批，数据没有改动。请点「重新预检」。"):
-    """确认导入的 JSON 请求体：只能确认刚预检过的那一批。"""
-    from flask import g
-
-    from core.models.workbench_command import validate_request_key
-
-    body = json_body({"request_key", "write_token", "input"})
-    validate_request_key(body["request_key"])
-    g.workbench_request_key = body["request_key"]
-    opaque_ref(body["write_token"])
-    if type(body["input"]) is not dict or set(body["input"]) != {"preview_ref"}:
-        raise WorkbenchCommandRejected("invalid_input", mismatch_message, 400)
-    opaque_ref(body["input"]["preview_ref"])
-    return body

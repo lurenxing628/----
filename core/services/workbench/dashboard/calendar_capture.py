@@ -6,9 +6,7 @@ only interval indexes, states and compact pressure metrics survive each streamed
 """
 
 from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLimit
-from core.services.capacity.plan_calendar_issues import issue
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES
-from core.services.capacity.plan_calendar_windows import policy_projection
 from core.services.workbench.facts.current_resource_calendar import calendar_from_sources
 from core.services.workbench.facts.resource_intervals import resource_identity_issues
 from core.services.workbench.facts.resource_pressure import (
@@ -18,6 +16,7 @@ from core.services.workbench.facts.resource_pressure import (
 from core.services.workbench.facts.resource_projection import ResourceTaskIndex, resource_cohort
 from core.services.workbench.plan.calendar_context import public_resource, resource_ids
 from core.services.workbench.plan.occupancy_constraints import TaskConstraints
+from core.shared.local_datetime import datetime_to_us, row_interval
 
 
 def _state(states):
@@ -25,24 +24,28 @@ def _state(states):
         value == "unavailable" for value in states) else "partial"
 
 
-def _check_tasks(rows, start, end, constraints, *, dt_intervals):
-    unknown = set()
+def _check_tasks(rows, start, end, constraints):
     for row in rows:
-        source = "internal" if row.get("_point_work") else str(row["source"]).strip().lower()
-        if source == "external":
+        if row["source"] == "external":
             continue
-        if source != "internal":
-            unknown.add(row["op_id"])
-            continue
-        row_start, row_end = dt_intervals[row["schedule_id"]]
+        row_start, row_end = row_interval(row)
         constraints.check(row, max(start, row_start), min(end, row_end), row_start=row_start, row_end=row_end)
-    return sorted(unknown)
 
 
-def _capture(conn, ids, rows, first, last, start, end, captured_calendar):
-    reader = CalendarFacts(conn, captured=captured_calendar)
+def _capture(conn, ids, rows, first, last, start, end, machines, downtimes):
+    """The calendar sources of the window's resources: the snapshot's own machine and downtime rows, the rest read.
+
+    Downtimes are the selected machines' active rows overlapping [start, end), the condition the
+    calendar repository reads them under.
+    """
+    reader = CalendarFacts(conn)
     reader.calendar(first.isoformat(), last.isoformat(), ids["operator"])
-    reader.resources(ids["machine"], ids["operator"], [row["op_id"] for row in rows], start, end)
+    selected = set(ids["machine"])
+    reader.captured("machines", [row for row in machines if row["machine_id"] in selected])
+    reader.assignments(ids["machine"], ids["operator"], [row["op_id"] for row in rows])
+    start_us, end_us = datetime_to_us(start), datetime_to_us(end)
+    reader.captured("downtimes", [row for row in downtimes if row["machine_id"] in selected and row["status"] == "active"
+                                  and row["start_us"] < end_us and row["end_us"] > start_us])
     return reader
 
 
@@ -54,10 +57,9 @@ class ResourcePressureMetrics:
     resources capture could not stream, plus the daily rows of one requested resource.
     """
 
-    def __init__(self, plan_tasks, time_scope, factory, *, dt_intervals):
+    def __init__(self, plan_tasks, time_scope, factory):
         # Projected official tasks paired one-to-one with their stored rows.
         self._plan_tasks = plan_tasks
-        self._dt_intervals = dt_intervals
         self.start, self.end = time_scope["range_start"], time_scope["range_end"]
         self.factory = factory
         self.summaries = {}
@@ -70,10 +72,7 @@ class ResourcePressureMetrics:
                                 **{kind: {"ref": task[kind + "_ref"], "label": raw[kind + "_name"]}
                                    if task[kind + "_ref"] is not None else None for kind in ("machine", "operator")})
                            for task, raw in zip(tasks, rows)]
-            self._intervals = {
-                task["row_ref"]: self._dt_intervals[raw["schedule_id"]]
-                for task, raw in zip(self._tasks, rows)
-            }
+            self._intervals = {task["row_ref"]: row_interval(raw) for task, raw in zip(self._tasks, rows)}
         return self._tasks, self._intervals
 
     def _cohort_members(self):
@@ -142,19 +141,20 @@ class ResourcePressureMetrics:
 
 
 def _constraint_projection(
-    calendar, ids, resources, identities, rows, start, end, schema_version, plan_ref, time_scope, plan_tasks, *, dt_intervals
+    calendar, ids, resources, identities, rows, start, end, schema_version, plan_ref, time_scope, plan_tasks
 ):
+    """Task constraints, each resource's window state and the global calendar's window state (None unread)."""
     factory = calendar_from_sources(calendar["sources"], schema_version=schema_version, identities=identities,
                                     plan_ref=plan_ref, scope=time_scope)
-    metrics = ResourcePressureMetrics(plan_tasks, time_scope, factory, dt_intervals=dt_intervals)
+    metrics = ResourcePressureMetrics(plan_tasks, time_scope, factory)
     specs = {(kind, key): {"kind": kind, "saved_id": key,
                           "ref": public_resource(kind, key, resources, None)["resource_ref"]}
              for kind in ("machine", "operator") for key in ids[kind]}
     states = {}
     if factory is None:
         constraints = TaskConstraints(calendar)
-        unknown = _check_tasks(rows, start, end, constraints, dt_intervals=dt_intervals)
-        return constraints, unknown, ["unavailable" for _ in specs], metrics
+        _check_tasks(rows, start, end, constraints)
+        return constraints, ["unavailable" for _ in specs], None, metrics
 
     def lookup(kind, key):
         # Exhaust this one-resource stream so its operator policy cache is
@@ -170,43 +170,38 @@ def _constraint_projection(
         downtime_lookup=factory.downtime_index,
         point_calendar=factory.engine,
     )
-    unknown = _check_tasks(rows, start, end, constraints, dt_intervals=dt_intervals)
+    _check_tasks(rows, start, end, constraints)
     remaining = [(key, spec) for key, spec in specs.items() if key not in states]
     for (key, spec), (_, projected) in zip(remaining, factory.iter_resources(
             [spec for _, spec in remaining], start, end)):
         states[key] = projected["state"]
         metrics.record(spec["kind"], spec["ref"], projected)
-    return constraints, unknown, list(states.values()), metrics
+    # 全局日历与资源同按自然日投影：坏政策只让它自己那几天未知。
+    return constraints, list(states.values()), factory.global_summary(start, end)["state"], metrics
 
 
-def capture_resource_pressure(conn, *, entry, scope, resources, identities, plan_span, context, captured_calendar, plan_tasks):
+def capture_resource_pressure(conn, *, entry, scope, resources, identities, plan_span, context,
+                              machines, downtimes, schema_version, plan_tasks):
+    """``machines``/``downtimes``/``schema_version`` are the rows this dashboard snapshot already read."""
     selected = context.calendar_selection(entry, scope, plan_span)
     rows, start, end, time_scope = selected.rows, selected.start, selected.end, selected.time_scope
-    dt_intervals = selected.intervals
     first, last, dates = selected.calendar_days
     ids = {kind: resource_ids(rows, kind) for kind in ("machine", "operator")}
     calendar = {"state": "unavailable", "sources": None, "resources": None}
     try:
         if dates > MAX_CALENDAR_DATES:
             raise ProjectionLimit("calendar_range_limit")
-        reader = _capture(conn, ids, rows, first, last, start, end, captured_calendar)
-        calendar.update(sources=reader.rows, fact_count=reader.count)
+        calendar["sources"] = _capture(conn, ids, rows, first, last, start, end, machines, downtimes).rows
     except ProjectionLimit as exc:
         calendar["reason"] = str(exc)
-    constraints, unknown, states, metrics = _constraint_projection(calendar, ids, resources, identities, rows, start, end,
-                                                                  captured_calendar.schema_rows, scope.plan_ref, time_scope, plan_tasks,
-                                                                  dt_intervals=dt_intervals)
-    if calendar["sources"] is not None:
-        # 保存的日历表结构坏了（factory.engine 为 None）时全局班表同样算不出，不再拿空引擎去投影；坏日期等内容错误由引擎投影成不可用。
-        global_state = (policy_projection(constraints.point_calendar, first, last, start, end)["state"]
-                        if constraints.point_calendar is not None else "unavailable")
+    constraints, states, global_state, metrics = _constraint_projection(
+        calendar, ids, resources, identities, rows, start, end,
+        schema_version, scope.plan_ref, time_scope, plan_tasks,
+    )
+    if global_state is not None:
         calendar["state"] = _state([global_state] + states)
     issues = constraints.public()
-    if unknown:
-        issues.append(issue("assignment_source_unknown", operation_count=len(unknown)))
     state = _state(states)
-    if unknown:
-        state = "partial" if states else "unavailable"
     dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope, "basis": "selected_plan_only",
            "resource_count": sum(len(keys) for keys in ids.values()), "issues": issues,
            "calendar_state": calendar["state"]}

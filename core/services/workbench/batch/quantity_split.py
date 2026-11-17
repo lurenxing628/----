@@ -5,7 +5,7 @@ from decimal import Decimal
 from core.models.workbench_batch import normalize_batch_fields, number, object_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_preflight import local_date
-from core.services.material.stage_availability import MaterialAvailability, covers_quantity, quantity
+from core.services.material.stage_availability import MaterialReadiness, MaterialRelease, covers_quantity, quantity
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from data.repositories.batch_material_repo import BatchMaterialRepository
 from data.repositories.batch_material_stage_repo import BatchMaterialStageRepository
@@ -22,7 +22,7 @@ def normalize_split(payload):
     count = payload.get("quantity")
     if count is not None:
         count = number(count, "quantity", integer=True, positive=True)
-    return {"as_of_date": local_date(payload["as_of_date"]).isoformat(), "quantity": count}
+    return {"as_of_date": local_date(payload["as_of_date"], "as_of_date").isoformat(), "quantity": count}
 
 
 def allocate(row, entries, needed, day):
@@ -47,7 +47,7 @@ def allocate(row, entries, needed, day):
 def _require_splittable_batch(batch, operations):
     if batch["status"] != "pending" or not operations or any(op["status"] != "pending" or op["piece_id"] is not None for op in operations):
         raise WorkbenchCommandRejected("constraint_conflict", "仅支持已有整批工序、尚未排产和开工的待排批次拆分数量。")
-    if type(batch["quantity"]) is not int or batch["quantity"] <= 1:
+    if batch["quantity"] <= 1:
         raise WorkbenchCommandRejected("constraint_conflict", "批次数量必须是大于 1 的整数。")
 
 
@@ -66,8 +66,9 @@ class WorkbenchQuantitySplitService:
         require_unreferenced(relations)
         _require_splittable_batch(batch, relations["operations"])
         original = batch["quantity"]
-        availability = MaterialAvailability(facts)
-        maximum = availability.splittable_quantity(batch, payload["as_of_date"])
+        readiness = MaterialReadiness.from_tables(facts)
+        release = MaterialRelease.from_tables(readiness, facts)
+        maximum = release.splittable_quantity(batch, payload["as_of_date"])
         count = payload["quantity"] if payload["quantity"] is not None else maximum
         if not 0 < count < original or count > maximum:
             raise WorkbenchCommandRejected("constraint_conflict", f"当前可开工 {maximum} 件，原批 {original} 件；拆分数量须大于 0、小于原批且不超过可开工数量。")
@@ -75,10 +76,10 @@ class WorkbenchQuantitySplitService:
         code = WorkbenchBatchBulkService._copy_code(batch["batch_id"], preparation.used_codes, {})
         materials, source_rows, child_rows = [], [], []
         names = {row["material_id"]: row["name"] for row in facts["Materials"]}
-        for row in availability.requirements[batch["batch_id"]]:
+        for row in readiness.requirements[batch["batch_id"]]:
             needed = quantity(row["required_qty"], positive=True) * Decimal(count) / Decimal(original)
-            initial, remainder, child_arrivals, source_arrivals = allocate(row, availability.arrivals[row["id"]], needed, payload["as_of_date"])
-            operation_id = availability.stages.get(row["id"])
+            initial, remainder, child_arrivals, source_arrivals = allocate(row, readiness.arrivals[row["id"]], needed, payload["as_of_date"])
+            operation_id = release.stages.get(row["id"])
             source_required = float(quantity(row["required_qty"]) - needed)
             child_required = float(needed)
             materials.append({"requirement_id": row["id"], "material_id": row["material_id"], "label": names[row["material_id"]],

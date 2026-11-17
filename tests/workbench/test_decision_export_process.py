@@ -5,6 +5,7 @@ import io
 import os
 from concurrent.futures.process import BrokenProcessPool
 from copy import deepcopy
+from typing import Any, Dict, Optional, Tuple
 
 import pytest
 from openpyxl import load_workbook
@@ -49,11 +50,12 @@ def test_spawned_xlsx_matches_direct_writer_values_types_and_metadata(materializ
     label = "=原方案001"
     if kind == "run":
         data["candidates"][0]["label"] = label
-        direct = write_run_decision_export(data, snapshot, "xlsx", section)
+        writer = write_run_decision_export
     else:
         data["entries"][0]["label"] = label
-        direct = write_history_export(data, snapshot, "xlsx", section)
-    spawned = write_decision_xlsx(kind, data, snapshot, section)
+        writer = write_history_export
+    direct = writer(data, snapshot, "xlsx", section)
+    spawned = write_decision_xlsx(writer, data, snapshot, section)
     assert isinstance(spawned, FileDownload)
     assert (spawned.filename, spawned.mime_type, spawned.row_count) == (direct.filename, direct.mime_type, direct.row_count)
     expected, actual = workbook_values_and_types(direct.content), workbook_values_and_types(spawned.content)
@@ -69,11 +71,11 @@ def test_spawned_xlsx_restores_writer_rejection_code_message_and_status(material
     with pytest.raises(WorkbenchCommandRejected) as direct:
         write_history_export(data, snapshot, "xlsx", section)
     with pytest.raises(WorkbenchCommandRejected) as spawned:
-        write_decision_xlsx("history", data, snapshot, section)
+        write_decision_xlsx(write_history_export, data, snapshot, section)
     expected = direct.value
     assert expected.code == "export_format_limit" and expected.status == 422
-    assert (spawned.value.code, str(spawned.value), spawned.value.status, spawned.value.operation_refs) == (
-        expected.code, str(expected), expected.status, expected.operation_refs)
+    assert (spawned.value.code, str(spawned.value), spawned.value.status, spawned.value.fields) == (
+        expected.code, str(expected), expected.status, expected.fields)
     assert spawned.value.committed is expected.committed is False
 
 
@@ -96,7 +98,7 @@ def test_history_files_keep_large_scope_and_metric_reference_collections(materia
     entry["metrics"]["overdue_count"]["covered_batch_refs"] = [batch_ref]
     entry["metrics"]["makespan_hours"]["covered_operation_refs"] = operations
     entry["metrics"]["machine_utilization_ratio"]["covered_resource_refs"] = resources
-    expected = {(entry["entry_ref"], None, path): value for path, value in (
+    expected: Dict[Tuple[Any, Optional[str], str], Any] = {(entry["entry_ref"], None, path): value for path, value in (
         ("scope.batch_quantity.covered_batch_refs", [batch_ref]), ("scope.batch_refs", entry["scope"]["batch_refs"]),
         ("scope.operation_refs", operations), ("reading_context.resource_window.cohort.machine_refs", resources),
         ("reading_context.resource_window.cohort.operator_refs", []))}
@@ -130,5 +132,5 @@ class ExitDuringWorkerUnpickle:
 def test_spawned_xlsx_reports_worker_exit_as_broken_process_pool():
     # The parent pickles this normally; only child deserialization exits.
     with pytest.raises(BrokenProcessPool):
-        write_decision_xlsx("history", {"exit_in_worker": ExitDuringWorkerUnpickle()},
+        write_decision_xlsx(write_history_export, {"exit_in_worker": ExitDuringWorkerUnpickle()},
                             {"snapshot_ref": "s" * 32, "as_of": "2026-10-17T12:00:00"}, "all")

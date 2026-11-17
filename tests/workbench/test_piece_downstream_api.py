@@ -6,7 +6,7 @@ import io
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from tests.workbench.piece_chain_support import adopt_candidate, piece_layout
-from tests.workbench.point_downstream_support import ACTUAL, FIELD, app_for, read
+from tests.workbench.point_downstream_support import ACTUAL, FIELD, app_for, read_body
 from tests.workbench.run_candidate_support import compute
 from tests.workbench.test_piece_chain_end_to_end import workspace
 from tests.workbench.trial_support import snapshot
@@ -42,8 +42,8 @@ def verify_chain(client, case, plan):
     svc = WorkbenchPlanQueryService(case.conn)
     with svc.read_snapshot() as context:
         formal_graph = svc.gantt_graph(context, PlanReadScope(plan['plan_ref']))[0]['gantt_graph']
-    field = read(client, FIELD + '/tasks', plan_ref=plan['plan_ref'])
-    actual = read(client, ACTUAL, plan_ref=plan['plan_ref'])
+    field = read_body(client, FIELD + '/tasks', plan_ref=plan['plan_ref'])
+    actual = read_body(client, ACTUAL, plan_ref=plan['plan_ref'])
     assert formal['gantt_graph']['nodes_complete'] is False
     assert formal['gantt_graph']['node_count'] == len(formal_graph['nodes'])
     assert actual['data']['gantt_graph'] == {
@@ -56,15 +56,17 @@ def verify_chain(client, case, plan):
         source, item = original[task['task_ref']], actual_items[task['task_ref']]
         for key in FIELDS + ('operation_ref', 'task_ref', 'plan_ref'):
             assert task[key] == source[key] == item['task'][key], key
-        detail = read(client, FIELD + '/tasks/' + task['task_ref'],
+        detail = read_body(client, FIELD + '/tasks/' + task['task_ref'],
                       plan_ref=plan['plan_ref'], snapshot_ref=field['meta']['snapshot_ref'])
         assert detail['data']['task'] == task
         assert task['execution']['execution_state'] == item['execution']['execution_state']
         # Field adds labels/write contexts, but never rewrites report identities or facts.
         assert len(task['execution']['reports']) == len(item['execution']['reports'])
         for left, right in zip(task['execution']['reports'], item['execution']['reports']):
+            assert right['correction_history'] == []
+            assert left['revision_count'] == right['revision_count'] == len(left['correction_history'])
             for key, value in right.items():
-                if key != 'write_context':
+                if key not in ('write_context', 'correction_history', 'effective_processing_hours_exact'):
                     assert left[key] == value, key
     assert snapshot(case.conn) == before
     return formal, field, actual
@@ -81,9 +83,9 @@ def test_piece_downstream_exact_identity_quantity_and_search(trial_case):
     common = [t for t in field['data']['tasks'] if t['batch_id'] == 'B1' and t['piece_id'] is None]
     assert len(common) == 2 and all(t['quantity'] == t['execution']['target_quantity'] == 3 for t in common)
     for piece in PIECES:
-        filtered = read(client, FIELD + '/tasks', plan_ref=plan['plan_ref'], query=piece)['data']['tasks']
+        filtered = read_body(client, FIELD + '/tasks', plan_ref=plan['plan_ref'], query=piece)['data']['tasks']
         assert len(filtered) == 2 and {t['piece_id'] for t in filtered} == {piece}
-        response = client.get(ACTUAL + '/export', query_string=dict(plan_ref=plan['plan_ref'],
+        response = client.post(ACTUAL + '/export', json=dict(plan_ref=plan['plan_ref'],
             snapshot_ref=actual['meta']['snapshot_ref'], format='csv', local_query=piece))
         assert response.status_code == 200, response.get_data(as_text=True)
         rows = list(csv.DictReader(io.StringIO(response.data.decode('utf-8-sig'))))

@@ -4,7 +4,6 @@ from typing import Dict
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_query import PROCESS_STAGES
-from core.models.workbench_resource_table_query import MAX_FACET_KEYS
 from core.services.workbench.facts.table_cells import TableCell, number_cell, text_cell
 from core.services.workbench.facts.table_index import ResourceTableIndex
 
@@ -71,28 +70,14 @@ class ProcessTable:
             "pages": max(1, (len(rows) + query.size - 1) // query.size), "sort": query.ordering()},
             "metrics": {"scope": "filtered", "counts": counts}}
 
-    def _facet_options(self, query, column, search):
+    def _facet_index(self, query, column):
+        """Facets of a column count the rows passing every other column's filter (process_facet_scope binds that scope)."""
         refs = self._matching_refs(query, exclude_column=column)
-        index = ResourceTableIndex({ref: self.rows[ref] for ref in refs}, self.cells)
-        return index._options(column, search), len(refs)
+        return ResourceTableIndex({ref: self.rows[ref] for ref in refs}, self.cells)
 
     def facets(self, query, column, search, number, size):
         """``column``/``search``/``number``/``size`` were validated at the request boundary."""
-        options, row_count = self._facet_options(query, column, search)
-        total = len(options)
-        pages = max(1, (total + size - 1) // size)
-        if number > pages:
-            raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
-        values = [{key: row[key] for key in ("key", "label", "count")}
-                  for row in options[(number - 1) * size:number * size]]
-        # Keep ResourceTableFilterModel's envelope; process_facet_scope binds the
-        # effective toolbar scope, including every column except this one.
-        return {"column": column, "basis": "toolbar_scope", "options": values, "row_count": row_count,
-                "page": {"number": number, "size": size, "total": total, "pages": pages}}
+        return self._facet_index(query, column).facets(column, search, number, size)
 
     def facet_selection(self, query, column, search):
-        options, _ = self._facet_options(query, column, search)
-        if len(options) > MAX_FACET_KEYS:
-            raise WorkbenchCommandRejected("capacity_exceeded", "搜索命中的不同值超过 50000 个。请缩小范围后重试。", 413)
-        keys = [row["key"] for row in options]
-        return {"column": column, "basis": "toolbar_scope", "keys": keys, "total": len(keys)}
+        return self._facet_index(query, column).facet_selection(column, search)

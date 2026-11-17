@@ -4,14 +4,14 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 
 from core.models.objective import normalize_objective_name, target_objectives_for
-from core.models.workbench_preflight import hold_window_bounds, local_date
+from core.models.workbench_preflight import hold_window_bounds
 
 
 def run_options(settings, snapshot):
     """Fix this admission's actual budget and shared search directions once."""
     primary = normalize_objective_name(snapshot.objective)
     budget = settings.get("time_budget_seconds", snapshot.time_budget_seconds)
-    return {"generation_policy_version": "unified_search_v1", "primary_objective": primary,
+    return {"primary_objective": primary,
             "target_objectives": list(target_objectives_for(primary)), "time_budget_seconds": budget,
             "algo_mode": snapshot.algo_mode, "graph_analysis_mode": snapshot.graph_analysis_mode}
 
@@ -20,24 +20,23 @@ def candidate_config(settings, *, snapshot):
     # 工作台不按配置里的冻结开关和天数推算窗口：不重排时段由 hold_window() 定好后显式交给冻结逻辑。
     return replace(
         snapshot, time_budget_seconds=settings.get("time_budget_seconds", snapshot.time_budget_seconds),
-        enforce_ready_default="yes" if settings["ready_check"] else "no",
-        auto_assign_enabled="yes" if settings["missing_resource_policy"] == "auto_assign" else "no",
-        freeze_window_enabled="no",
+        auto_assign_enabled=settings["missing_resource_policy"] == "auto_assign",
+        freeze_window_enabled=False,
         freeze_window_days=0,
     )
 
 
-def hold_window(settings, *, snapshot):
+def hold_window(settings, *, start, snapshot):
     """本次不重排时段 ((开始, 结束) 或 None, 来源)。
 
     本次参数带了 hold_window 就照它（null 即不设，来源 explicit）；没带这个键（旧调用、旧排产记录、页面还没动过）
     按交付设置推算：「锁定近期排程」开着且天数 N>0 时为 [排产起日 00:00, 起日后 N 天 00:00)，来源 default。
+    start 是调用方从同一份 settings 转换出的排产起日 00:00（run_dates）。
     """
     if "hold_window" in settings:
         return hold_window_bounds(settings["hold_window"]), "explicit"
-    if snapshot.freeze_window_enabled != "yes" or snapshot.freeze_window_days <= 0:
+    if not snapshot.freeze_window_enabled or snapshot.freeze_window_days <= 0:
         return None, "default"
-    start = datetime.combine(local_date(settings["start_date"]), datetime.min.time())
     try:
         end = start + timedelta(days=snapshot.freeze_window_days)
     except OverflowError:

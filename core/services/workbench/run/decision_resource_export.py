@@ -84,8 +84,8 @@ def resource_rows(documents):
     for data in documents:
         coverage = data["coverage"]["after"]
         suffix = [coverage["formal_operation_count"], coverage["covered_formal_operation_count"], boolean_text(coverage["formal_coverage_complete"]),
-                  len(coverage["missing_formal_operation_refs"]), len(coverage["unplanned_operation_refs"]),
-                  len(coverage["deferred_operation_refs"])]
+                  coverage["missing_formal_operation_count"], coverage["unplanned_operation_count"],
+                  coverage["deferred_operation_count"]]
         for row in data["items"]:
             resource = {"ref": row["resource_ref"], "kind": row["resource_kind"], "label": row["label"]}
             before, after = row["before"], row["after"]
@@ -101,11 +101,11 @@ def coverage_operation_rows(source, coverage):
     """Keep every saved coverage identity in its own Excel row."""
     baseline = source.baseline
     common = [source.run["run_ref"], baseline_ref(baseline), source.selected_ref]
+    sides = (("before", "基准"), ("after", "所选")) if baseline["state"] == "available" else (("after", "所选"),)
+    wanted_refs = {ref for side, _ in sides for field, _ in _COVERAGE_KINDS for ref in coverage[side][field]}
+    labels_by_ref = source.repo.operation_catalog_labels(source.run["run_ref"], wanted_refs) if wanted_refs else {}
     official_labels = None
-    labels_by_ref = {}
-    for side, side_label in (("before", "基准"), ("after", "所选")):
-        if side == "before" and baseline["state"] != "available":
-            continue
+    for side, side_label in sides:
         for field, category in _COVERAGE_KINDS:
             for ref in coverage[side][field]:
                 if ref not in labels_by_ref and ref in source.facts.operations:

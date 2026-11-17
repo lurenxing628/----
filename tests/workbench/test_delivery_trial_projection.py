@@ -1,6 +1,7 @@
 """Trial delivery keeps saved route facts and uses the shared due contract."""
 
 from copy import deepcopy
+from datetime import date, datetime
 
 import pytest
 
@@ -11,8 +12,8 @@ from core.services.workbench.batch.facts import BatchFacts
 from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
 from core.services.workbench.batch.scope import BatchFactScope
 from core.services.workbench.facts.trial_origin import TrialOrigin
-from core.services.workbench.facts.trial_policy import load_draft, load_scenario
-from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
+from core.services.workbench.facts.trial_policy import load_draft, load_scenario_with_resources
+from core.services.workbench.facts.trial_scenario_archive import load_verified_scenario
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from core.services.workbench.trial import projection
 from core.services.workbench.trial.constraints import build_archived_trial_intervals
@@ -21,6 +22,7 @@ from core.services.workbench.trial.service import WorkbenchTrialService
 from tests.workbench.run_candidate_adoption_support import INTENT
 from tests.workbench.run_candidate_adoption_support import service as adoption_service
 from tests.workbench.test_material_stage_release import add_requirement
+from tests.workbench.test_trial_effort_projection import compact_scenario_snapshot
 from tests.workbench.trial_adoption_support import service as trial_adoption_service
 from tests.workbench.trial_support import change, create, official, service
 from tests.workbench.trial_support import trial_case as trial_case
@@ -57,10 +59,10 @@ def test_unspecified_trial_due_is_excluded_without_losing_complete_finish(trial_
 def test_trial_route_coverage_keeps_creation_snapshot_after_current_route_grows(trial_case):
     case = trial_case
     draft = create(case)
-    head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
+    head, rows, source = load_draft(service(case.conn).repo, draft["draft_ref"])
     case.operation(seq=2)
     current = projection.comparison(
-        draft["tasks"], {"constraints_status": "valid"}, rows, TrialOrigin(head["admission"], rows),
+        draft["tasks"], {"constraints_status": "valid"}, rows, TrialOrigin.saved(head["admission"], rows, source),
         trial_intervals=build_archived_trial_intervals(rows, execution=head["admission"]["execution"]),
     )
     row, = current["batches"]
@@ -93,9 +95,9 @@ def test_trial_missing_origin_operation_never_claims_whole_batch_finish(trial_ca
     case = trial_case
     second = case.operation(seq=2)
     draft = create(case, official(case, ids=[case.op_id]))
-    head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
+    head, rows, source = load_draft(service(case.conn).repo, draft["draft_ref"])
     comparison = projection.comparison(
-        draft["tasks"], {"constraints_status": "valid"}, rows, TrialOrigin(head["admission"], rows),
+        draft["tasks"], {"constraints_status": "valid"}, rows, TrialOrigin.saved(head["admission"], rows, source),
         trial_intervals=build_archived_trial_intervals(rows, execution=head["admission"]["execution"]),
     )
     row, = comparison["batches"]
@@ -121,7 +123,7 @@ def test_trial_missing_origin_operation_never_claims_whole_batch_finish(trial_ca
     saved = service(case.conn).save(draft["draft_ref"], {"name": "Ordinary unplanned work"},
         draft["write_context"]["write_token"], "ordinary-unplanned-trial-save")["data"]
     with pytest.raises(TrialAdoptionBlocked) as blocked:
-        load_saved_scenario(case.conn, saved["scenario_ref"])
+        load_verified_scenario(case.conn, saved["scenario_ref"])
     assert blocked.value.code == "scenario_scope_incomplete"
     preflight = trial_adoption_service(case.conn).preview(saved["scenario_ref"])
     assert preflight["validation"]["can_adopt"] is False
@@ -133,7 +135,7 @@ def test_candidate_trial_retains_explicit_material_deferral_from_run_capture(tri
     second = case.operation(seq=2)
     add_requirement(case, second, [])
     accepted = case.accept(settings=case.settings(material_strategy="stage"))
-    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
     ref = result["candidates"][0]["candidate_ref"]
     draft = create(case, {"base": {"candidate_ref": ref}})
     assert draft["validation"]["constraints_status"] != "blocked", draft["validation"]
@@ -162,12 +164,13 @@ def test_candidate_trial_retains_explicit_material_deferral_from_run_capture(tri
     for item in (candidate_pending, pending):
         assert_current_execution_quantities(item)
     assert official_draft["scope_complete"] is False
-    official_head, official_rows = load_draft(service(case.conn).repo, official_draft["draft_ref"])
+    official_head, official_rows, official_source = load_draft(service(case.conn).repo, official_draft["draft_ref"])
     historical = deepcopy(official_head["admission"])
     historical["source"]["operation_effort"] = None
-    pairs, unknown = preparation_projection(historical, None,
+    # A historical source without a requirement ledger, and no current ledger: both sides admit to an empty index.
+    pairs, unknown = preparation_projection(historical, {}, {},
                                             current_evidence={"kind": "trial", "draft_ref": official_draft["draft_ref"]},
-                                            contexts=TrialOrigin(historical, official_rows).contexts(official_rows))
+                                            contexts=TrialOrigin.saved(historical, official_rows, official_source).contexts(official_rows))
     assert pairs[pending["operation_ref"]]["after"]["allocation_state"] == "deferred"
     assert pairs[pending["operation_ref"]]["after"]["required_standard_hours"] is None
     assert unknown["after"]["deferred_setup_hours"]["value"] is None
@@ -190,7 +193,8 @@ def test_candidate_trial_retains_explicit_material_deferral_from_run_capture(tri
         saved = service(case.conn).save(official_draft["draft_ref"], {"name": "Original formal material deferral"},
             official_draft["write_context"]["write_token"], "stage-source-official-trial-save")["data"]
     assert saved["unplanned_operations"] == [] and saved["scope_complete"] is True
-    original_archive = load_scenario(service(case.conn).repo, saved["scenario_ref"])
+    _, original_archive, _ = load_scenario_with_resources(service(case.conn).repo, saved["scenario_ref"])
+    assert original_archive == compact_scenario_snapshot(saved)
     changes = case.conn.total_changes
     reread = service(case.conn).scenario(saved["scenario_ref"])
     assert reread["scope_complete"] is False
@@ -199,14 +203,15 @@ def test_candidate_trial_retains_explicit_material_deferral_from_run_capture(tri
     assert reread["comparison"]["preparation_common"]["coverage"]["after"]["deferred"] == [pending["operation_ref"]]
     assert [(task["task_ref"], task["row_ref"], task["start"], task["end"]) for task in reread["tasks"]] == [
         (task["task_ref"], task["row_ref"], task["start"], task["end"]) for task in saved["tasks"]]
-    assert load_scenario(service(case.conn).repo, saved["scenario_ref"]) == original_archive
+    assert load_scenario_with_resources(service(case.conn).repo, saved["scenario_ref"])[1] == original_archive
     assert case.conn.total_changes == changes
     current = create(case, {"base": {"plan_ref": adopted["official_plan"]["plan_ref"]}}, key="stage-source-current-formal-trial")
     current_saved = service(case.conn).save(current["draft_ref"], {"name": "Current formal material deferral"},
         current["write_context"]["write_token"], "stage-source-current-formal-save")["data"]
-    raw = load_saved_scenario(case.conn, current_saved["scenario_ref"])
+    assert service(case.conn).scenario(current_saved["scenario_ref"]) == current_saved
+    raw = load_verified_scenario(case.conn, current_saved["scenario_ref"])
     raw_saved, raw_head, raw_rows = raw.saved, raw.head, raw.rows
-    assert raw_saved == current_saved and raw_saved["scope_complete"] is False
+    assert raw_saved == compact_scenario_snapshot(current_saved) and raw_saved["scope_complete"] is False
     assert {item["operation_ref"] for item in raw_saved["unplanned_operations"]} == {pending["operation_ref"]}
     assert raw_saved["task_count"] == len(raw_saved["tasks"]) == len(raw_rows) == len(current["tasks"])
     assert len(raw_rows) + len(raw_saved["unplanned_operations"]) == current["comparison"]["batches"][0]["after"]["operation_count"]
@@ -214,10 +219,10 @@ def test_candidate_trial_retains_explicit_material_deferral_from_run_capture(tri
     preflight = trial_adoption_service(case.conn).preview(current_saved["scenario_ref"])
     assert preflight["validation"]["can_adopt"] is True, preflight
     assert preflight["task_count"] == len(raw_rows)
-    head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
+    head, rows, source = load_draft(service(case.conn).repo, draft["draft_ref"])
     case.operation(seq=3)
     comparison = projection.comparison(
-        draft["tasks"], {"constraints_status": "valid"}, rows, TrialOrigin(head["admission"], rows),
+        draft["tasks"], {"constraints_status": "valid"}, rows, TrialOrigin.saved(head["admission"], rows, source),
         trial_intervals=build_archived_trial_intervals(rows, execution=head["admission"]["execution"]),
     )
     row, = comparison["batches"]
@@ -239,12 +244,12 @@ def test_trial_includes_selected_batch_with_only_material_deferred_operations(tr
                                       (str(second),)).fetchone()[0]
     with TransactionManager(case.conn).transaction():
         batch_ref = case.ref("batch", "B2")
-        scope = BatchFactScope(BatchFacts(case.conn), command=True, mode="single_instance", target_ref=batch_ref)
+        scope = BatchFactScope(BatchFacts(case.conn, material_day=date.today().isoformat()), command=True, mode="single_instance", target_ref=batch_ref)
         WorkbenchBatchMaterialService(case.conn).apply_normalized(scope, batch_ref, normalize_material_changes({"removed_keys": [], "rows": [{
             "row_key": None, "material_ref": case.ref("material", "STEEL"), "required_quantity": 3,
             "available_quantity": 0, "operation_ref": operation_ref, "arrivals": []}]}))
     accepted = case.accept(settings=case.settings("B1", "B2", material_strategy="stage"))
-    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
     draft = create(case, {"base": {"candidate_ref": result["candidates"][0]["candidate_ref"]}})
     assert {task["batch_id"] for task in draft["tasks"]} == {"B1"}
     delivery = {row["batch_id"]: row for row in draft["comparison"]["batches"]}
@@ -253,11 +258,11 @@ def test_trial_includes_selected_batch_with_only_material_deferred_operations(tr
     assert delivery["B2"]["after"]["scheduled_operation_count"] == 0
     assert delivery["B2"]["after"]["deferred_operation_count"] == 1
     assert delivery["B2"]["changed"] is False and delivery["B2"]["moved"] is False
-    head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
+    head, rows, source = load_draft(service(case.conn).repo, draft["draft_ref"])
     checked = {"constraints_status": "blocked", "issues": [{"code": "calendar_duration_conflict", "severity": "blocker",
                                                              "task_ref": draft["tasks"][0]["task_ref"]}]}
     scoped = projection.comparison(
-        draft["tasks"], checked, rows, TrialOrigin(head["admission"], rows),
+        draft["tasks"], checked, rows, TrialOrigin.saved(head["admission"], rows, source),
         trial_intervals=build_archived_trial_intervals(rows, execution=head["admission"]["execution"]),
     )
     deliveries = {row["batch_id"]: row for row in scoped["batches"]}
@@ -310,13 +315,11 @@ context.__wbRuntime.setStubs({
   'RunOperationEffort.jsx': { Effort: 'effort' },
 });
 vm.runInContext(compile({ sources: [{ path: 'TrialDetails.jsx', code: source('TrialDetails.jsx') }] }).outputs[0].code, context);
-const TrialContract = context.__wbRuntime.getModule('TrialContract.js');
 const TrialDetails = context.__wbRuntime.getModule('TrialDetails.jsx').TrialDetails;
 const text = node => node == null ? '' : typeof node !== 'object' ? String(node) : node.children.map(text).join('');
 const walk = node => !node || typeof node !== 'object' ? [] : [node, ...node.children.flatMap(walk)];
 const shown = {};
 for (const [state, data] of Object.entries(JSON.parse(fs.readFileSync(0, 'utf8')))) {
-  TrialContract.workspace(data);
   const task = data.tasks[0];
   const tree = TrialDetails({ data, selected: task.task_ref, commands: {}, onSelect() {}, onEditing() {}, onRecheck() {},
     guardOwner: 'trial', editorRevision: 0, inspectFocus: { current: null }, onCollapse() {} });

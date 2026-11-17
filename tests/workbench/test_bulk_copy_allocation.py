@@ -4,15 +4,15 @@ import re
 
 import pytest
 
-from core.models.workbench_batch import MAX_INTEGER
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.batch.bulk import WorkbenchBatchBulkService
+from core.shared.strict_parse import JS_SAFE_INT_MAX
 
 
 def _nearest(code, used):
     match = re.search(r"([0-9]+)$", code)
     prefix, width = (code[:match.start()], len(match[1])) if match else (code + "-copy-", 1)
-    for serial in range((int(match[1]) if match else 0) + 1, MAX_INTEGER + 1):
+    for serial in range((int(match[1]) if match else 0) + 1, JS_SAFE_INT_MAX + 1):
         candidate = prefix + str(serial).zfill(width)
         if len(candidate) > 200:
             break
@@ -52,10 +52,10 @@ def test_copy_numbering_checks_occupied_codes_linearly(record_property):
 
 
 def test_copy_numbering_keeps_integer_and_length_limits():
-    used, successors = {"B" + str(MAX_INTEGER - 1)}, {}
-    assert WorkbenchBatchBulkService._copy_code("B" + str(MAX_INTEGER - 1), used, successors) == "B" + str(MAX_INTEGER)
-    used.add("B" + str(MAX_INTEGER))
+    used, successors = {"B" + str(JS_SAFE_INT_MAX - 1)}, {}
+    assert WorkbenchBatchBulkService._copy_code("B" + str(JS_SAFE_INT_MAX - 1), used, successors) == "B" + str(JS_SAFE_INT_MAX)
+    used.add("B" + str(JS_SAFE_INT_MAX))
     with pytest.raises(WorkbenchCommandRejected, match="无法为复制批次分配"):
-        WorkbenchBatchBulkService._copy_code("B" + str(MAX_INTEGER - 1), used, successors)
+        WorkbenchBatchBulkService._copy_code("B" + str(JS_SAFE_INT_MAX - 1), used, successors)
     with pytest.raises(WorkbenchCommandRejected, match="无法为复制批次分配"):
         WorkbenchBatchBulkService._copy_code("A" * 200, set(), {})

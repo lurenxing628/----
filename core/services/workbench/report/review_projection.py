@@ -2,36 +2,37 @@
 
 from __future__ import annotations
 
-from core.models.enums import read_source_type
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.execution.processing_hours import hour_totals
 from core.services.report.plan_labels import planned_review_labels
 from core.services.workbench.execution.actual_gantt_scope import matches_execution_resource
-from core.services.workbench.facts.execution_values import execution_deviation, local_dt, local_time
+from core.services.workbench.facts.execution_values import execution_deviation, local_dt
+from core.shared.local_datetime import us_to_datetime, us_to_iso
 
 from .review_export_labels import export_labels
 from .review_records import actual_resource, project_records, resource_directory
+from .review_summary import hour_fields
 
 STATUS_LABELS = {"complete": "已完工", "partial": "部分完成", "started": "已开工", "unreported": "待报工"}
 
 
 def resource(facts, kind, key):
-    return facts["resources"][kind].get(str(key), {"ref": None, "label": "未填写"})
+    if key is None:
+        return {"ref": None, "label": "未填写"}
+    return facts["resources"][kind][key]
 
 
 def project_operation(row, projection, label, facts, as_of):
-    planned_start = local_time(row["start_time"])
-    planned_end_dt = local_dt(row["end_time"])
-    planned_end = planned_end_dt.isoformat() if planned_end_dt is not None else None
+    planned_end_dt = us_to_datetime(row["end_us"])
     confirmed_finish = projection["confirmed_finish"]
     deviation = execution_deviation(planned_end_dt, projection, as_of)
     batch = resource(facts, "batch", row["batch_id"])
     machine, operator = resource(facts, "machine", row["machine_id"]), resource(facts, "operator", row["operator_id"])
     status = projection["execution_state"]
-    return {"operation_ref": projection["operation_ref"], "task_ref": facts["task_refs"][row["schedule_id"]],
+    return {"operation_ref": projection["operation_ref"], "task_ref": row["task_ref"],
             "batch_ref": batch["ref"], "batch_label": batch["label"], "operation_label": label["operation_label"],
-            "operation_source": read_source_type(row["source"]),
-            "planned_start": planned_start, "planned_end": planned_end, "actual_start": projection["first_actual_start"],
+            "operation_source": row["source"],
+            "planned_start": us_to_iso(row["start_us"]), "planned_end": us_to_iso(row["end_us"]),
+            "actual_start": projection["first_actual_start"],
             "confirmed_finish": confirmed_finish, "completion_basis": projection["completion_basis"],
             "execution_state": status,
             "execution_label": STATUS_LABELS[status],
@@ -66,7 +67,7 @@ def _selected(scope, operation, projection, *, needle):
 
 def _complete_entry(operation, projection, directory):
     events = project_records(projection, operation, directory)
-    operation.update(hour_totals(events))
+    operation.update(hour_fields(events))
     operation["production_report_count"] = len(projection["reports"])
     for kind in ("machine", "operator"):
         refs = list(dict.fromkeys(event[kind + "_ref"] for event in events if event[kind + "_ref"] is not None))
@@ -86,7 +87,7 @@ def project_cohort(facts, as_of):
     for row in facts["rows"]:
         # 工序名参与关键字筛选，所以每行都算标签；只有选中的行留给导出。
         label = planned_review_labels(row)
-        projection = projections[facts["operation_refs"][row["op_id"]]]
+        projection = projections[row["operation_ref"]]
         operation = project_operation(row, projection, label, facts, clock)
         if _selected(facts["scope"], operation, projection, needle=needle):
             operation, events = _complete_entry(operation, projection, directory)
@@ -102,7 +103,7 @@ def project_export_rows(rows, labels):
 
 def project_detail(facts, as_of, operation_ref):
     needle = facts["scope"].query.strip().casefold()
-    row = next((row for row in facts["rows"] if facts["operation_refs"][row["op_id"]] == operation_ref), None)
+    row = next((row for row in facts["rows"] if row["operation_ref"] == operation_ref), None)
     if row is not None:
         projection = next(item for item in facts["ledger"]["projections"] if item["operation_ref"] == operation_ref)
         operation = project_operation(row, projection, planned_review_labels(row), facts, local_dt(as_of))

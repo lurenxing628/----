@@ -1,6 +1,8 @@
 """Observe the existing restore flow without replacing its protection or rollback logic."""
 
 import os
+from datetime import datetime
+from typing import Callable
 
 from core.infrastructure.backup import BackupManager
 from core.models.content import same
@@ -9,16 +11,17 @@ from core.services.workbench.facts.system_reads import backup_signature
 
 
 class SystemRestoreManager(BackupManager):
-    def __init__(self, *, journal, record, source_content, **kwargs):
+    def __init__(self, *, journal, record, clock: Callable[[], datetime], source_content, **kwargs):
         super().__init__(**kwargs)
         self.journal = journal
         self.record = record
+        self.clock = clock
         self.rolling_back = False
         self._source_content = {"target": source_content}
 
     def backup(self, suffix=None):
         if suffix == "before_restore":
-            self.journal.record(self.record, "protecting")
+            self.journal.record(self.record, "protecting", now=self.clock())
         # A second restore in the same second must not overwrite its selected source.
         actual_suffix = self.record["job_ref"] + "_before_restore" if suffix == "before_restore" else suffix
         path = super().backup(suffix=actual_suffix)
@@ -26,7 +29,7 @@ class SystemRestoreManager(BackupManager):
             signature = backup_signature(path)
             self._source_content["protection"] = file_content(path)
             verification = {**self.record["source_verification"], "protection": "captured"}
-            self.journal.record(self.record, "protecting", protection={
+            self.journal.record(self.record, "protecting", now=self.clock(), protection={
                 "filename": os.path.basename(path), "signature": signature}, source_verification=verification)
         return path
 
@@ -34,15 +37,15 @@ class SystemRestoreManager(BackupManager):
         role = "protection" if self.rolling_back else "target"
         source = self.record[role]
         self._require_source(source_path, source, self._source_content.get(role))
-        self.journal.record(self.record, "rolling_back" if self.rolling_back else "restoring")
+        self.journal.record(self.record, "rolling_back" if self.rolling_back else "restoring", now=self.clock())
         super()._copy_db_file(source_path, locked_warning_message=locked_warning_message)
         # A source changed during copying cannot authorize success, even if SQLite opened it.
         self._require_source(source_path, source, self._source_content.get(role))
         verification = {**self.record["source_verification"], role: "verified"}
         if not self.rolling_back:
-            self.journal.record(self.record, "verifying", source_verification=verification)
+            self.journal.record(self.record, "verifying", now=self.clock(), source_verification=verification)
         else:
-            self.journal.record(self.record, "rolling_back", source_verification=verification)
+            self.journal.record(self.record, "rolling_back", now=self.clock(), source_verification=verification)
 
     @staticmethod
     def _require_source(path, source, original):
@@ -53,7 +56,7 @@ class SystemRestoreManager(BackupManager):
 
     def _auto_rollback(self, before_restore_path, **kwargs):
         self.rolling_back = True
-        self.journal.record(self.record, "rolling_back")
+        self.journal.record(self.record, "rolling_back", now=self.clock())
         return super()._auto_rollback(before_restore_path, **kwargs)
 
 

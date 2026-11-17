@@ -4,6 +4,7 @@ import codecs
 import csv
 from tempfile import SpooledTemporaryFile
 
+from core.models.enums import OP_TYPE_CATEGORY_LABELS
 from core.models.workbench_action_values import FileDownload
 from core.models.workbench_resource_file import (
     ENUM_CODES,
@@ -34,8 +35,6 @@ from .table_cells import number_text
 
 XLSX_MAX_ROWS = 1048576
 XLSX_MAX_CELL_CHARACTERS = 32767
-# 下载文件名按界面上的叫法写，不用内部代号；工种还要分自制与外协。
-_CATEGORY_NAMES = {"internal": "自制", "external": "外协"}
 
 
 def check_capacity(count, fmt):
@@ -43,7 +42,7 @@ def check_capacity(count, fmt):
         raise file_error("行数超过 XLSX 能放的 1048576 行（含表头），请改用 CSV。", count + 1)
 
 
-def _value(value, field, row, fmt, kind=None):
+def export_cell_value(value, field, row, fmt, kind=None):
     if value is None:
         return r"\N"
     if field in MULTI_CODES:
@@ -60,7 +59,7 @@ def _value(value, field, row, fmt, kind=None):
     elif type(value) is not str:
         raise file_error("这个格子里存的内容不是文字，没有导出。请到资料总览修正后重试。", row, field)
     if kind is not None and field in ENUM_CODES[kind]:
-        value = ENUM_LABELS[field].get(value, value)
+        value = ENUM_LABELS[field][value]
     return _escaped_text(value, field, row, fmt)
 
 
@@ -83,13 +82,14 @@ def _escaped_text(value, field, row, fmt):
 
 def write_resource_file(kind, rows, fmt, *, template=False, category=None):
     descriptor = table_descriptor(kind)
-    filename = ((_CATEGORY_NAMES[category] if category else "") + descriptor["file_stem"]
+    # 下载文件名按界面上的叫法写，不用内部代号；工种还要分自制与外协。
+    filename = ((OP_TYPE_CATEGORY_LABELS[category] if category else "") + descriptor["file_stem"]
                 + ("导入模板" if template else "清单"))
     if fmt == "csv":
         return _csv(kind, rows, filename, descriptor)
     return write_template_xlsx(
         rows, filename, template, descriptor,
-        cell_value=lambda raw, field, row_no: _cell_text(_value(raw, field, row_no, "xlsx", kind)),
+        cell_value=lambda raw, field, row_no: _cell_text(export_cell_value(raw, field, row_no, "xlsx", kind)),
         min_width=24,
     )
 
@@ -103,7 +103,7 @@ def _csv(kind, rows, filename, descriptor):
         writer = csv.writer(text, lineterminator="\r\n")
         writer.writerow([item["label"] for item in columns])
         for count, row in enumerate(rows, 1):
-            values = [_value(row[field], field, count + 1, "csv", kind) for field in fields]
+            values = [export_cell_value(row[field], field, count + 1, "csv", kind) for field in fields]
             # 文字前加撇号防公式和自动转换；数字不加，回导照样认。
             writer.writerow(["'" + value if type(value) is str else _cell_text(value) for value in values])
         text.flush()

@@ -22,10 +22,6 @@ def _issues(items):
     return result
 
 
-def _work_complete(row):
-    return row["work_available"] and row["work_state"] == "complete" and not row["unknown_workload_count"]
-
-
 def _sum(values, *, empty=False):
     known = [value for value in values if value is not None]
     return fsum(known) if known or empty else None
@@ -44,13 +40,13 @@ def _known(row, field, work_available=True):
 
 def _full_window_pairs(rows):
     """Balance compares complete resource windows, including their idle capacity."""
-    return [row for row in rows if _work_complete(row) and row["available_hours"] is not None
+    return [row for row in rows if row["work_available"] and row["available_hours"] is not None
             and row["occupied_hours"] is not None]
 
 
 def _known_day_totals(rows, field):
     """Ratio subtotals share the known calendar days; incomplete work stays excluded."""
-    values = [(_known(row, field), _known(row, "available_hours")) for row in rows if _work_complete(row)]
+    values = [(_known(row, field), _known(row, "available_hours")) for row in rows if row["work_available"]]
     pairs = [(numerator, denominator) for numerator, denominator in values
              if numerator is not None and denominator is not None]
     return _sum([numerator for numerator, _ in pairs]), _sum([denominator for _, denominator in pairs])
@@ -78,7 +74,7 @@ def _balance_fields(rows, identity_unknown, work_available):
     pairs = _full_window_pairs(rows if work_available else [])
     known, reason = _balance(pairs)
     complete = work_available and not identity_unknown and all(row.get("available_hours") is not None
-                and (row["available_hours"] == 0 or _work_complete(row) and row.get("occupied_hours") is not None)
+                and (row["available_hours"] == 0 or row["work_available"] and row.get("occupied_hours") is not None)
                 for row in rows)
     if not complete:
         state = "partial" if pairs else "unavailable"
@@ -96,12 +92,12 @@ def resource_summary(windows, *, kind=None, identity_issues=(), work_available=T
     """Sum complete facts and known lower bounds independently over a fixed cohort."""
     rows = [row for row in windows if kind is None or row["resource_kind"] == kind]
     identity = [item for item in identity_issues if kind is None or item.get("kind") in (None, kind)]
-    workload_unknown = not work_available or bool(identity) or any(not _work_complete(row) for row in rows)
+    workload_unknown = not work_available or bool(identity) or any(not row["work_available"] for row in rows)
     result: Dict[str, Any] = {"resource_count": len(rows),
               "known_capacity_count": sum(row["available_hours"] is not None for row in rows),
               "unknown_capacity_count": sum(row["available_hours"] is None for row in rows),
-              "unknown_workload_count": sum(row["unknown_workload_count"] for row in rows) + len(identity),
-              "unknown_workload_resource_count": len(rows) if identity or not work_available else sum(not _work_complete(row) for row in rows)}
+              "unknown_workload_count": len(identity),
+              "unknown_workload_resource_count": len(rows) if identity or not work_available else sum(not row["work_available"] for row in rows)}
     for field in HOUR_FIELDS:
         values = [row[field] for row in rows]
         result[field] = None if (field != "available_hours" and workload_unknown) or None in values else fsum(values)
@@ -113,7 +109,7 @@ def resource_summary(windows, *, kind=None, identity_issues=(), work_available=T
         known_counts = [value for value in (_known(row, field, work_available) for row in rows)
                         if value is not None]
         result["known_" + field] = sum(known_counts) if known_counts or not rows and work_available and not identity else None
-    used = [None if row["operation_count"] is None or not _work_complete(row) else row["operation_count"] > 0 for row in rows]
+    used = [None if row["operation_count"] is None or not row["work_available"] else row["operation_count"] > 0 for row in rows]
     result["used_resource_count"], _ = _count(used)
     if identity or not work_available:
         result["used_resource_count"] = None
@@ -129,7 +125,7 @@ def resource_summary(windows, *, kind=None, identity_issues=(), work_available=T
     peak_rows = [row for row in rows if row["available_hours"] != 0]
     peaks = [row["peak_utilization"] for row in peak_rows]
     known_peaks = [_known(row, "peak_utilization", work_available) for row in rows]
-    peak_unknown = any(row["available_hours"] is None or not _work_complete(row) for row in peak_rows)
+    peak_unknown = any(row["available_hours"] is None or not row["work_available"] for row in peak_rows)
     result["peak_utilization"] = None if identity or not work_available or peak_unknown or None in peaks or not peaks else max(peaks)
     result["known_peak_utilization"] = max((value for value in known_peaks if value is not None), default=None)
     numerator, denominator = result["occupied_hours"], result["available_hours"]

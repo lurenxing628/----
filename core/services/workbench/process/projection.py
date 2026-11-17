@@ -1,15 +1,13 @@
 """Truthful legacy template projection, with no inferred human confirmations."""
 
-import re
-
-from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.template_source import SOURCE_MESSAGES, external_group_issues
-from core.shared.strict_parse import is_exact_non_negative_number
+from core.shared.strict_parse import is_stored_number, wire_sequence
 
 
 def require_ref(value, label):
-    if type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None:
+    """``value`` is a ref column of a LEFT JOIN on WorkbenchEntityRefs (its CHECK pins the form): only absence fails."""
+    if value is None:
         raise WorkbenchCommandRejected("storage_failure", label + "记录找不到编号，请联系维护人员核对资料。", 500)
     return value
 
@@ -18,40 +16,61 @@ def issue(code, message):
     return {"code": code, "message": message}
 
 
-def public_sequence(value):
-    # Keep full SQLite integers readable without JavaScript rounding their displayed sequence.
-    return value if type(value) is int and abs(value) <= (1 << 53) - 1 else str(value)
+def project_part_counts(row, *, active_count, internal_count, external_count, workflow):
+    issues = []
+    if workflow["origin"] == "managed" and not workflow["ready"]:
+        stage = {"route": "请保存工艺路线。", "source": "请补齐并保存工序归属。", "hours": "请补齐并保存工时定额。"}
+        issues.append(issue("workflow_pending", stage[workflow["stage"]]))
+    if row["route_parsed"] == "yes" and not active_count:
+        issues.append(issue("template_missing", "标记是已解析，但没有有效的模板工序。请到基础资料核对。"))
+    if active_count and row["route_parsed"] != "yes":
+        issues.append(issue("template_route_state_mismatch", "已有模板工序与路线解析标记不一致，请核对。"))
+    return {
+        "ref": require_ref(row["ref"], "零件"),
+        "business_code": row["part_no"],
+        "label": row["part_name"],
+        "status": None,
+        "fields": {name: row[name] for name in ("route_raw", "route_parsed", "remark")},
+        "relationships": {
+            "batch_count": row["batch_count"],
+            "operation_count": active_count,
+            "internal_count": internal_count,
+            "external_count": external_count,
+            "unclassified_count": active_count - internal_count - external_count,
+        },
+        "workflow": workflow,
+        "issues": issues,
+        "write_context": None,
+    }
 
 
 def project_part(row, operations, workflow):
     active = [op for op in operations if op["status"] == "active"]
     internal = sum(op["source"] == "internal" for op in active)
     external = sum(op["source"] == "external" for op in active)
-    issues = []
-    if workflow["origin"] == "managed" and not workflow["ready"]:
-        stage = {"route": "请保存工艺路线。", "source": "请补齐并保存工序归属。", "hours": "请补齐并保存工时定额。"}
-        issues.append(issue("workflow_pending", stage[workflow["stage"]]))
-    if row["route_parsed"] not in ("yes", "no"):
-        issues.append(issue("route_parsed_unknown", "原来的工艺路线解析状态说不清，这里保留原值。"))
-    if row["route_parsed"] == "yes" and not active:
-        issues.append(issue("template_missing", "标记是已解析，但没有有效的模板工序。请到基础资料核对。"))
-    if active and row["route_parsed"] != "yes":
-        issues.append(issue("template_route_state_mismatch", "已有模板工序与路线解析标记不一致，请核对。"))
-    return {"ref": require_ref(row["ref"], "零件"), "business_code": row["part_no"], "label": row["part_name"], "status": None,
-            "fields": {name: row[name] for name in ("route_raw", "route_parsed", "remark")},
-            "relationships": {"batch_count": row["batch_count"], "operation_count": len(active),
-                              "internal_count": internal, "external_count": external,
-                              "unclassified_count": len(active) - internal - external},
-            "workflow": workflow, "issues": issues, "write_context": None}
+    return project_part_counts(
+        row,
+        active_count=len(active),
+        internal_count=internal,
+        external_count=external,
+        workflow=workflow,
+    )
 
 
-def _number(value, label, issues, *, positive=False):
+def _number(value, label, issues):
     if value is None:
         issues.append(issue("value_missing", label + "未填写。"))
         return None
-    if not is_exact_non_negative_number(value, positive=positive):
+    if not is_stored_number(value):
         issues.append(issue("value_invalid", label + "填的值不合法，请核对。"))
         return None
+    return value
+
+
+def _days(value, label, issues):
+    # 外协周期与合并周期的值域由表约束保证，只剩没填一种情况。
+    if value is None:
+        issues.append(issue("value_missing", label + "未填写。"))
     return value
 
 
@@ -80,7 +99,7 @@ def project_external_days(row, source, group_ref, group, issues):
     # The scheduler uses the merged total even when a historical member value exists.
     if group_cycle:
         return None, "group"
-    days = _number(row["ext_days"], "外协周期", issues, positive=source == "external") if source == "external" or row["ext_days"] is not None else None
+    days = _days(row["ext_days"], "外协周期", issues) if source == "external" else row["ext_days"]
     return days, "operation" if days is not None else None
 
 
@@ -88,7 +107,7 @@ def project_operation(row, confirmation, source_facts, group):
     issues = []
     if type(row["seq"]) is not int or row["seq"] <= 0:
         issues.append(issue("sequence_invalid", "原工序号不合法，当前按原值展示；未自动改号。"))
-    source = row["source"] if row["source"] in OPERATION_SOURCES else None
+    source = row["source"]
     source_codes = {"source_missing": "source_unknown", "type_missing": "op_type_unbound",
                     "type_source_mismatch": "source_category_mismatch"}
     for code in source_facts.issues(row, type_name=row["op_type_label"], category=row["op_type_category"]):
@@ -103,9 +122,7 @@ def project_operation(row, confirmation, source_facts, group):
     days, days_source = project_external_days(row, source, group_ref, group, issues)
     if source == "internal" and unit == 0 and confirmation["hours"]["state"] != "confirmed":
         issues.append(issue("zero_unit_hours_review", "单件工时为 0，排产只计算换型工时。"))
-    if row["status"] not in ("active", "deleted"):
-        issues.append(issue("operation_status_unknown", "原工序状态不明确，未计为有效模板工序。"))
-    return {"ref": require_ref(row["ref"], "模板工序"), "sequence": public_sequence(row["seq"]), "label": row["op_type_name"],
+    return {"ref": require_ref(row["ref"], "模板工序"), "sequence": wire_sequence(row["seq"]), "label": row["op_type_name"],
             "source": source, "op_type_ref": op_ref, "op_type_label": row["op_type_label"],
             "supplier_ref": supplier_ref, "supplier_label": row["supplier_label"], "external_group_ref": group_ref,
             "setup_hours": setup, "unit_hours": unit, "external_days": days, "external_days_source": days_source,
@@ -118,7 +135,7 @@ def project_group(row, members):
     supplier = _relation(row, "supplier_id", "supplier_exists", "supplier_ref", "供应商", issues)
     for code in external_group_issues(row, members):
         issues.append(issue("external_" + code, "这个外协组" + SOURCE_MESSAGES[code]))
-    days = _number(row["total_days"], "合并周期", issues, positive=True) if row["merge_mode"] == "merged" or row["total_days"] is not None else None
-    return {"ref": require_ref(row["ref"], "模板外协组"), "start_sequence": public_sequence(row["start_seq"]), "end_sequence": public_sequence(row["end_seq"]),
+    days = _days(row["total_days"], "合并周期", issues) if row["merge_mode"] == "merged" else row["total_days"]
+    return {"ref": require_ref(row["ref"], "模板外协组"), "start_sequence": wire_sequence(row["start_seq"]), "end_sequence": wire_sequence(row["end_seq"]),
             "merge_mode": row["merge_mode"], "total_days": days, "supplier_ref": supplier,
             "supplier_label": row["supplier_label"], "remark": row["remark"], "issues": issues}

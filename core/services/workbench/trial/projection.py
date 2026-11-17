@@ -6,6 +6,8 @@ from collections import defaultdict
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial import ACTIONS
 from core.services.workbench.facts.delivery_projection import (
+    DeliveryBatch,
+    DeliveryTask,
     delivery_batch_delta,
     delivery_summary,
     parse_stored_due_date,
@@ -13,36 +15,55 @@ from core.services.workbench.facts.delivery_projection import (
 )
 from core.services.workbench.facts.operation_effort_evidence import saved_operation_efforts
 from core.services.workbench.facts.trial_origin import invalid_trial_snapshot
+from core.services.workbench.facts.trial_policy import public_source_identity
 from core.services.workbench.facts.zero_duration import point_event_dto
 from core.shared.stored_dates import stored_date
-from core.shared.strict_json import clone_json
 
 from .arrangements import same_arrangement
 from .calendar import original_duration
 from .capacity import trial_capacity
 from .effort import operation_effort_ledger
-from .preparation import apply_changeovers, apply_preparation, preparation_projection, trial_changeovers
+from .preparation import DraftLabels, apply_changeovers, apply_preparation, preparation_projection, trial_changeovers
 
 
 def tasks_projection(rows, draft_ref, checked, live, protection, *, trial_intervals):
     """protection: 与 checked 同一次核对得到的 TrialProtection。"""
     by_operation = {row["operation_ref"]: row["task_ref"] for row in rows}
     by_task = _task_issue_index(checked["issues"])
-    current_by_row = trial_intervals["current_by_row"]
-    original_points_by_row = trial_intervals["original_points_by_row"]
-    return [
-        _task_projection(
-            row,
-            draft_ref,
-            by_operation,
-            protection,
-            by_task,
-            live,
-            current_by_row=current_by_row,
-            original_points_by_row=original_points_by_row,
-        )
-        for row in rows
-    ]
+    tasks = []
+    for row in rows:
+        blocked = protection.check(row)
+        task = _task_projection(row, draft_ref, by_operation, by_task, trial_intervals,
+                                source_task_ref=row["source_task_ref"], source_row_ref=row["source_row_ref"],
+                                locked=bool(blocked), execution=live["execution"][row["operation_ref"]])
+        reason = task["duration_reason"]
+        task["edit_context"] = {"can_change": blocked is None and reason is None,
+                                "blocked_reasons": [value for value in (blocked, reason) if value]}
+        tasks.append(task)
+    return tasks
+
+
+def scenario_tasks(saved, rows, *, trial_intervals):
+    """A saved scenario's public tasks, projected again by the draft's task projection from its bound draft rows
+    (``rows`` is ``bind_scenario_rows`` of ``saved["tasks"]``, in the same order). The stored task holds only what
+    the save saw live, its execution and lock; the issues are the saved validation's, under the scenario's refs, and
+    the lineage names the draft row each task came from."""
+    by_operation = {row["operation_ref"]: row["task_ref"] for row in rows}
+    by_task = _task_issue_index(saved["validation"]["issues"])
+    tasks = []
+    for stored, row in zip(saved["tasks"], rows):
+        task = _task_projection(row, saved["draft_ref"], by_operation, by_task, trial_intervals,
+                                source_task_ref=row["draft_task_ref"], source_row_ref=row["draft_row_ref"],
+                                locked=stored["locked"], execution=stored["execution"])
+        task["edit_context"] = scenario_edit_context()
+        tasks.append(task)
+    return tasks
+
+
+def scenario_edit_context():
+    """Every task of a saved scenario is read-only."""
+    return {"can_change": False,
+            "blocked_reasons": [{"code": "scenario_readonly", "message": "试调方案已保存，只能查看不能改。"}]}
 
 
 def _task_issue_index(issues):
@@ -54,40 +75,29 @@ def _task_issue_index(issues):
     return by_task
 
 
-def _task_projection(
-    row,
-    draft_ref,
-    by_operation,
-    protected_rows,
-    by_task,
-    live,
-    *,
-    current_by_row,
-    original_points_by_row,
-):
+def _task_projection(row, draft_ref, by_operation, by_task, trial_intervals, *, source_task_ref, source_row_ref,
+                     locked, execution):
+    """One trial row as a task: everything but its edit context comes from the row, its draft and these facts."""
     original, current = row["original"], row["current"]
     op, batch = original["operation"], original["batch"]
-    hours, duration_reason = _hours(original, point_proven=row["row_ref"] in original_points_by_row)
-    blocked = protected_rows.check(row)
-    editable = blocked is None and duration_reason is None
+    hours, duration_reason = _hours(original, point_proven=row["row_ref"] in trial_intervals["original_points_by_row"])
     task = {"task_ref": row["task_ref"], "row_ref": row["row_ref"], "draft_ref": draft_ref,
-        "operation_ref": row["operation_ref"], "source_task_ref": row["source_task_ref"],
-        "source_row_ref": row["source_row_ref"], "batch_ref": original["batch_ref"],
-        "batch_id": batch["batch_id"], "part_no": batch["part_no"], "part_name": (original.get("part") or {}).get("part_name"),
+        "operation_ref": row["operation_ref"], "source_task_ref": source_task_ref,
+        "source_row_ref": source_row_ref, "batch_ref": original["batch_ref"],
+        "batch_id": batch["batch_id"], "part_no": batch["part_no"], "part_name": original["part"]["part_name"],
         "process_label": op["op_type_name"], "sequence": op["seq"], "piece_id": op["piece_id"],
         "source": op["source"], "quantity": hours.get("quantity"), "priority": batch["priority"],
         "batch_quantity": _public_value(batch["quantity"]),
         # 不能改的才画成锁定：正式计划里的锁定标记不再起作用，不拿它当依据。
-        "due_date": batch["due_date"], "locked": bool(blocked),
+        "due_date": batch["due_date"], "locked": locked,
         **{key: current[key] for key in ("machine_ref", "operator_ref", "start", "end")},
         "original": {key: original["arrangement"][key] for key in ("machine_ref", "operator_ref", "start", "end")},
         "hours": hours, "duration_reason": duration_reason,
         "changed": not same_arrangement(current, original["arrangement"]),
         "predecessor_refs": [by_operation[ref] for ref in original["predecessor_operation_refs"] if ref in by_operation],
-        "predecessor_operation_refs": list(original["predecessor_operation_refs"]),
-        "execution_at_creation": clone_json(original["execution"]),
-        "execution": live["execution"][row["operation_ref"]],
-        "edit_context": {"can_change": editable, "blocked_reasons": [value for value in (blocked, duration_reason) if value]},
+        "predecessor_operation_refs": original["predecessor_operation_refs"],
+        "execution_at_creation": original["execution"],
+        "execution": execution,
         "issues": by_task[row["task_ref"]]}
     _display_fields(task)
     # 原值先由 _display_fields 记下读不出的存储类型（如 BLOB）；交期再与候选、基线、正式参考同一解析，
@@ -97,10 +107,10 @@ def _task_projection(
     if anchor is not None:
         task["execution_anchor"] = {key: anchor["arrangement"][key] for key in ("machine_ref", "operator_ref", "start", "end")}
         task["execution_anchor"].update(basis=anchor["basis"], message=anchor["message"])
-    if current["start"] == current["end"] and duration_reason is None:
-        span = current_by_row.get(row["row_ref"])
-        if span is not None and span[0] == span[1]:
-            task.update(point_event_dto(span[0], span[1]))
+    # Only a zero-length row its point basis proves is a point event; an unproven one stays a plain arrangement.
+    witness = trial_intervals["current_points_by_row"].get(row["row_ref"])
+    if witness is not None and duration_reason is None:
+        task.update(point_event_dto(witness.at, witness.at))
     return task
 
 
@@ -130,29 +140,56 @@ def resources_projection(live):
     return result
 
 
-def _delivery_arrangements(rows, field, *, intervals_by_row):
+def scenario_resources_snapshot(live):
+    public = resources_projection(live)
+    tables = live["facts"]["tables"]
+    refs = live["preflight_facts"].refs
+    return {
+        **public,
+        "suppliers": [
+            {
+                "supplier_id": row["supplier_id"],
+                "ref": refs.get(("supplier", row["supplier_id"])),
+                "name": row["name"],
+                "status": row["status"],
+            }
+            for row in tables["Suppliers"]
+        ],
+        "op_types": [
+            {
+                "op_type_id": row["op_type_id"],
+                "ref": refs.get(("op_type", row["op_type_id"])),
+                "name": row["name"],
+            }
+            for row in tables["OpTypes"]
+        ],
+    }
+
+
+def public_scenario_resources(saved_resources):
+    """The saved resources a scenario shows; ``saved_resources`` was read for this request only."""
+    return {key: saved_resources[key] for key in ("machines", "operators", "authorizations")}
+
+
+def _delivery_arrangements(rows):
+    """Each batch's arranged ``(row_ref, op_id)``; both sides share them and differ only in their intervals."""
     by_batch = defaultdict(list)
     for row in rows:
         original = row["original"]
-        arrangement = original["arrangement"] if field == "original" else row["current"]
-        projected = {"schedule_id": row["row_ref"], "op_id": original["operation"]["id"],
-                     "batch_id": original["batch"]["batch_id"], "start_time": arrangement["start"],
-                     "end_time": arrangement["end"]}
-        if arrangement["start"] == arrangement["end"]:
-            span = intervals_by_row.get(row["row_ref"])
-            if span is not None and span[0] == span[1]:
-                projected["_point_work"] = True
-        by_batch[projected["batch_id"]].append(projected)
+        by_batch[original["batch"]["batch_id"]].append((row["row_ref"], original["operation"]["id"]))
     return by_batch
 
 
-def _delivery_side(batches, operations, arrangements, deferred, uncertain, blocked_batches=(), *, intervals):
-    return {ref: project_delivery_batch(batch, ref, arrangements[batch["batch_id"]],
-                                       operations[batch["batch_id"]], intervals, False,
-                                       uncertain + (["trial_constraints_blocked"] if None in blocked_batches
-                                                    or batch["batch_id"] in blocked_batches else []),
-                                       deferred_operation_ids=deferred)
-            for ref, batch in batches.items()}
+def _delivery_side(batches, operations, arrangements, deferred, scope_issues, blocked_batches=(), *, intervals):
+    result = {}
+    for ref, batch in batches.items():
+        key = batch["batch_id"]
+        blocked = ("trial_constraints_blocked",) if None in blocked_batches or key in blocked_batches else ()
+        item = DeliveryBatch(batch, ref, frozenset(row["op_id"] for row in operations[key]),
+                             tuple(DeliveryTask(op_id, intervals[row_ref][1]) for row_ref, op_id in arrangements[key]),
+                             False, blocked)
+        result[ref] = project_delivery_batch(item, deferred_operation_ids=deferred, scope_issues=scope_issues)
+    return result
 
 
 def _blocked_delivery_batches(checked, rows):
@@ -171,7 +208,7 @@ def _blocked_delivery_batches(checked, rows):
                 continue
             original = originals.get(item.get("task_ref"))
             if "field" not in item and original is not None:
-                ready = original["batch"].get("ready_date")
+                ready = original["batch"]["ready_date"]
                 if ready is None or isinstance(ready, str) and stored_date(ready) is not None:
                     continue
         related = [originals[key]["batch"]["batch_id"] for key in (item.get("task_ref"), item.get("related_task_ref"))
@@ -187,11 +224,12 @@ def comparison(tasks, checked, rows, origin, *, trial_intervals):
     for task in tasks:
         groups[task["batch_ref"]].append(task)
     batches, operations = origin.batches, origin.operations
-    deferred, deferred_issues = origin.deferred, origin.deferred_issues
+    deferred, deferred_issues = origin.deferred, tuple(origin.deferred_issues)
+    arranged = _delivery_arrangements(rows)
     before = _delivery_side(
         batches,
         operations,
-        _delivery_arrangements(rows, "original", intervals_by_row=original_by_row),
+        arranged,
         deferred,
         deferred_issues,
         intervals=original_by_row,
@@ -200,7 +238,7 @@ def comparison(tasks, checked, rows, origin, *, trial_intervals):
     after = _delivery_side(
         batches,
         operations,
-        _delivery_arrangements(rows, "current", intervals_by_row=current_by_row),
+        arranged,
         deferred,
         deferred_issues,
         blocked,
@@ -226,19 +264,6 @@ def comparison(tasks, checked, rows, origin, *, trial_intervals):
             "late_count": summary["overdue_count"], "total_delay_hours": summary["total_tardiness_hours"],
             "delivery_summary": summary, "before_delivery_summary": original_summary,
             "changeovers": None, "changeover_reason": "原试调来源的工种资料缺失。"}
-
-
-def scenario_rows(saved, rows):
-    originals = {row["row_ref"]: row for row in rows}
-    if {task["source_row_ref"] for task in saved["tasks"]} != set(originals):
-        from core.models.workbench_trial import reject
-
-        reject("trial_snapshot_invalid", "保存的试调工序与原草稿范围不一致，请核对保存记录。")
-    projected = [dict(originals[task["source_row_ref"]], row_ref=task["row_ref"], task_ref=task["task_ref"],
-                      current=dict(originals[task["source_row_ref"]]["current"],
-                                   **{key: task[key] for key in ("start", "end", "machine_ref", "operator_ref")}))
-                 for task in saved["tasks"]]
-    return projected
 
 
 def _public_value(value):
@@ -280,27 +305,28 @@ def draft_projection(head, rows, checked, live, context_factory, protection, *, 
             task["edit_context"]["blocked_reasons"].extend(context["blocked_reasons"])
     unplanned = unplanned_operations(contexts)
     before_efforts = saved_operation_efforts(admission["source"]["operation_effort"], on_corrupt=invalid_trial_snapshot)
-    ledger = operation_effort_ledger(rows, admission, before_efforts=before_efforts)
-    pairs, preparation = preparation_projection(admission, ledger,
-        current_evidence=current_evidence, contexts=contexts, before_efforts=before_efforts)
+    ledger, after_efforts = operation_effort_ledger(rows, admission, before_efforts=before_efforts)
+    pairs, preparation = preparation_projection(admission, before_efforts, after_efforts,
+        current_evidence=current_evidence, contexts=contexts)
     apply_preparation(tasks, unplanned, pairs)
     compared = comparison(tasks, checked, rows, origin, trial_intervals=trial_intervals)
     compared["preparation_common"] = preparation
     if scenario_ref is None:
-        apply_changeovers(compared, trial_changeovers(rows, origin, trial_intervals=trial_intervals))
-    result = {"draft_ref": ref, "status": head["status"], "base": clone_json(admission["input"]["base"]),
-            "base_identity": clone_json(admission["source"]["identity"]), "scope": clone_json(admission["input"]["scope"]),
+        apply_changeovers(compared, trial_changeovers(rows, DraftLabels(origin), trial_intervals=trial_intervals))
+    # The head, its admission and the ledger belong to this request, and nothing changes them after this projection.
+    result = {"draft_ref": ref, "status": head["status"], "base": admission["input"]["base"],
+            "base_identity": public_source_identity(admission["source"]), "scope": admission["input"]["scope"],
             "baseline": {"plan_ref": admission["baseline"]["plan_ref"], "version": admission["baseline"]["version"]},
             "created_at": head["created_at"], "updated_at": head["updated_at"], "tasks": tasks,
             "task_count": len(tasks), "tasks_complete": True, "validation": checked,
             "unplanned_operations": unplanned, "scope_complete": not unplanned,
-            "validation_at_last_write": clone_json(head["validation"]),
-            "resources": resources_projection(live), "operation_effort": clone_json(ledger),
+            "validation_at_last_write": head["validation"],
+            "resources": resources_projection(live), "operation_effort": ledger,
             "comparison": compared,
             "capacity": trial_capacity(
                 rows,
-                origin.archive,
-                source_ref=admission["source"]["identity"],
+                origin.calendar_tables,
+                source_ref=public_source_identity(admission["source"]),
                 trial_intervals=trial_intervals,
             ),
             "time_scope": {"start": min(row["start"] for row in tasks), "end": max(row["end"] for row in tasks),
@@ -318,7 +344,7 @@ def unplanned_operations(contexts):
             continue
         op = context["operation"]
         disposition = context.get("disposition")
-        item = ({key: list(disposition[key]) if key == "predecessor_refs" and type(disposition[key]) is list else disposition[key] for key in fields} if disposition is not None else
+        item = ({key: disposition[key] for key in fields} if disposition is not None else
                 {"operation_ref": ref, "batch_ref": context["batch_ref"], "piece_id": op["piece_id"],
                  "sequence": op["seq"], "status": op["status"]})
         item["reason"] = {"code": "base_operation_unscheduled", "message":

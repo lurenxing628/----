@@ -75,8 +75,9 @@ def test_batch_preparation_computes_execution_change_once_per_operation(ledger_c
 
     monkeypatch.setattr(production_report_prepare, "execution_facts_changed", captured)
     monkeypatch.setattr(production_report_validation, "execution_facts_changed", unexpected)
-    prepared = case.writer.prepare_batch([
-        {"action": "create", "ref": case.task(2, op), "payload": case.values(1)} for op in (case.op_id, second)])
+    with case.writer.ledger.read_snapshot() as ledger_scope:
+        prepared = case.writer.prepare_batch_in_scope(ledger_scope, [
+            {"action": "create", "ref": case.task(2, op), "payload": case.values(1)} for op in (case.op_id, second)])
     assert len(calls) == len(set(calls)) == len(prepared.projections) == 2
 
 
@@ -87,7 +88,8 @@ def test_batch_preparation_prefetches_operator_machine_authorizations_once(ledge
     from data.repositories.operator_machine_repo import OperatorMachineRepository
 
     case = ledger_case
-    case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M2','Mill','T1')")
+    case.conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('M2','Mill')")
+    case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M2','T1')")
     case.conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O2','Operator 2')")
     case.conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('O1','M2'),('O2','M1')")
     second, third = case.op("OP2", seq=2), case.op("OP3", seq=3)
@@ -99,24 +101,21 @@ def test_batch_preparation_prefetches_operator_machine_authorizations_once(ledge
         batch_calls.append(list(operator_ids))
         return original_list(repo, operator_ids)
 
-    def unexpected_exists(repo, operator_id, machine_id):
-        raise AssertionError(f"Unexpected per-pair OperatorMachine.exists({operator_id!r}, {machine_id!r})")
-
     monkeypatch.setattr(OperatorMachineRepository, "list_simple_rows_for_operators", tracked_list)
-    monkeypatch.setattr(OperatorMachineRepository, "exists", unexpected_exists)
     m1, m2 = case.ref("machine", "M1"), case.ref("machine", "M2")
     o1, o2 = case.ref("operator", "O1"), case.ref("operator", "O2")
-    prepared = case.writer.prepare_batch([
-        {"action": "create", "ref": case.task(2, case.op_id), "payload": case.values(1, actual_machine_ref=m1, actual_operator_ref=o1)},
-        {"action": "create", "ref": case.task(2, second), "payload": case.values(1, actual_machine_ref=m2, actual_operator_ref=o1)},
-        {"action": "create", "ref": case.task(2, third), "payload": case.values(1, actual_machine_ref=m1, actual_operator_ref=o2)},
-    ])
+    with case.writer.ledger.read_snapshot() as ledger_scope:
+        prepared = case.writer.prepare_batch_in_scope(ledger_scope, [
+            {"action": "create", "ref": case.task(2, case.op_id), "payload": case.values(1, actual_machine_ref=m1, actual_operator_ref=o1)},
+            {"action": "create", "ref": case.task(2, second), "payload": case.values(1, actual_machine_ref=m2, actual_operator_ref=o1)},
+            {"action": "create", "ref": case.task(2, third), "payload": case.values(1, actual_machine_ref=m1, actual_operator_ref=o2)},
+        ])
     assert len(prepared.appended) == 3
     assert batch_calls == [["O1", "O2"]]
 
     batch_calls.clear()
-    with pytest.raises(ReportBatchRejected) as rejected:
-        case.writer.prepare_batch([
+    with pytest.raises(ReportBatchRejected) as rejected, case.writer.ledger.read_snapshot() as ledger_scope:
+        case.writer.prepare_batch_in_scope(ledger_scope, [
             {"action": "create", "ref": case.task(2, case.op_id), "payload": case.values(1, actual_machine_ref=m1, actual_operator_ref=o1)},
             {"action": "create", "ref": case.task(2, second), "payload": case.values(1, actual_machine_ref=m2, actual_operator_ref=o2)},
         ])

@@ -5,8 +5,9 @@ from typing import Callable, NoReturn
 from core.algorithm_contracts.operation_effort import RUNTIME_REQUIREMENT_BASIS
 from core.models.enums import OperationQuantityBasis, OperationRequirementRole, OperationSetupState, SourceType
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_run_candidate import MAX_TASKS, reference
-from core.shared.strict_parse import is_exact_non_negative_number
+from core.models.workbench_load_limits import MAX_RUN_RECORD_TASKS
+from core.models.workbench_run_candidate import reference
+from core.shared.strict_parse import is_exact_non_negative_number, is_stored_number
 
 from .candidate_values import bounded_size, corrupt, number
 
@@ -21,7 +22,7 @@ def saved_operation_efforts(record, *, identities=None, on_corrupt: Callable[[],
     if type(record) is not dict or record.get("effort_basis") != RUNTIME_REQUIREMENT_BASIS or type(record.get("items")) is not list:
         on_corrupt()
     try:
-        bounded_size(len(record["items"]), MAX_TASKS)
+        bounded_size(len(record["items"]), MAX_RUN_RECORD_TASKS)
     except WorkbenchCommandRejected:
         if on_corrupt is corrupt:
             raise
@@ -46,9 +47,15 @@ def saved_operation_efforts(record, *, identities=None, on_corrupt: Callable[[],
                 or item.get("execution_quantity_basis", OperationQuantityBasis.UNKNOWN.value) not in bases
                 or identities is not None and identities.get(ref) != op_id):
             on_corrupt()
-        for field in _HOURS + _QUANTITIES:
+        for field in _HOURS:
+            # Derived (quantity × unit hours + setup): finite and non-negative, not one entry's upper bound.
             value = item.get(field)
             if value is not None and not is_exact_non_negative_number(value):
+                on_corrupt()
+        for field in _QUANTITIES:
+            # One entry's exact count, copied from the admitted batch quantity and execution projection.
+            value = item.get(field)
+            if value is not None and not is_stored_number(value, integer=True):
                 on_corrupt()
         gaps = item.get("data_gaps")
         if type(gaps) is not list or any(type(gap) is not dict for gap in gaps):

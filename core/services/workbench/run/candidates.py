@@ -1,6 +1,7 @@
 """Self-contained permanent candidate catalog and full-scope workspace service."""
 
 from core.models.workbench_run_candidate import blocked_reasons, read_capabilities
+from core.services.scheduler.run.schedule_candidate_plan import BUSINESS_FIELDS
 from core.services.workbench.facts.candidate_delivery import candidate_delivery_risks
 from core.services.workbench.facts.candidate_projection import (
     algorithm_facts,
@@ -14,12 +15,7 @@ from core.services.workbench.facts.candidate_tasks import (
     scope_workspace_tasks,
     task_span,
 )
-from core.services.workbench.facts.candidate_values import gap
-from core.services.workbench.facts.run_history_projection import (
-    stored_scope_input_keys,
-    stored_scope_value_valid,
-)
-from core.shared.strict_json import clone_json
+from core.services.workbench.facts.run_history_projection import scope_input_values
 
 
 class WorkbenchRunCandidateQueryService:
@@ -91,17 +87,7 @@ class WorkbenchRunCandidateQueryService:
         candidate_dto = candidate_summary(
             source.candidate, source.disposition, scheduled_op_ids=source.scheduled_op_ids
         )
-        business_fields = {
-            key: candidate_dto[key]
-            for key in (
-                "generation_policy_version",
-                "representative_objectives",
-                "evaluations",
-                "origin",
-                "first_found_elapsed_ms",
-                "search_evidence_ref",
-            )
-        }
+        business_fields = {key: candidate_dto[key] for key in BUSINESS_FIELDS}
         data = {"candidate": candidate_dto,
                 "generation": _generation(source.run, source.capture, source.candidate, business_fields=business_fields),
                 "tasks": tasks, "task_count": len(tasks),
@@ -114,22 +100,14 @@ class WorkbenchRunCandidateQueryService:
                                "interval": "half_open_overlap", "time_basis": "factory_local",
                                "unplanned_policy": "included_without_time_interval"},
                 "batch_ref": scope.batch_ref, "capabilities": read_capabilities(),
-                "blocked_reasons": blocked_reasons(),
-                "data_gaps": [], "delivery_risks": delivery}
+                "blocked_reasons": blocked_reasons(), "delivery_risks": delivery}
         return data
 
 
 def _generation(run, capture, candidate, *, business_fields):
     settings = capture["input"]
-    values, gaps = {}, []
-    for key in stored_scope_input_keys(settings):
-        value = settings.get(key)
-        valid = stored_scope_value_valid(key, value)
-        values[key] = clone_json(value) if valid else None
-        if not valid:
-            gaps.append(gap("input." + key, "not_recorded" if value is None else "invalid_stored_value"))
-    values["time_budget_seconds"] = settings["time_budget_seconds"]
+    values = {**scope_input_values(settings), "time_budget_seconds": settings["time_budget_seconds"]}
     return {"run_ref": run["run_ref"], "accepted_at": run["accepted_at"], "finished_at": run["finished_at"],
             "metadata_basis": "captured_at_run_admission", "execution_basis": "captured_at_run_admission",
-            "input": values, "data_gaps": gaps, "algorithm": algorithm_facts(candidate["artifact"], business_fields=business_fields),
+            "input": values, "algorithm": algorithm_facts(candidate["artifact"], business_fields=business_fields),
             "baseline": baseline_capture(capture["baseline"], run["accepted_at"])}

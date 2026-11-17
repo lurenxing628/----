@@ -7,12 +7,15 @@ from core.algorithm_runtime.operation_effort import external_operation_effort, i
 from core.models.workbench_trial import reject
 from core.services.workbench.facts.stored_algo_inputs import stored_batch, stored_operation
 from core.services.workbench.facts.zero_duration import PointEventError, estimate_point_event
-from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
-from core.shared.strict_parse import is_stored_number
+from core.shared.strict_parse import is_external_days, is_stored_number
 
 
 def original_duration(original, *, effort=None, point_proven):
-    """Saved zero-hour work requires a frozen point witness."""
+    """Saved zero-hour work requires a frozen point witness.
+
+    ``point_proven``: the draft read boundary (``constraints._admitted_interval``) proved the original
+    arrangement a point event, i.e. the row has an original point witness.
+    """
     op = original["operation"]
     if effort is None:
         effort = new_slot_effort(original)
@@ -21,10 +24,7 @@ def original_duration(original, *, effort=None, point_proven):
     quantity = effort.target_quantity
     total = effort.required_standard_hours
     if total == 0 and not point_proven:
-        try:
-            trial_point_evidence(original)
-        except PointEventError:
-            reject("zero_or_invalid_duration", "零工时工序的归档依据缺失。", 422)
+        reject("zero_or_invalid_duration", "零工时工序的归档依据缺失。", 422)
     return {"basis": "effective_processing_hours", "setup_hours": op["setup_hours"],
             "unit_hours": op["unit_hours"], "quantity": quantity, "total_hours": total}
 
@@ -36,7 +36,8 @@ def new_slot_effort(original):
     if op["source"] == "external":
         result = external_operation_effort(stored_operation(op, original["external_group"]), stored_batch(batch),
                                            remaining_quantity=remaining)
-        if not is_stored_number(result.external_cycle_days, positive=True):
+        # 草稿原始行（original_json）是存储副本，表上的 CHECK 管不到；把周期当天数用之前在这里按同一值域准入。
+        if not is_external_days(result.external_cycle_days):
             reject("external_duration_unknown", "原外协周期缺失或无效，不能推测完工时间。", 422)
         return replace(result, execution_target_quantity=execution["target_quantity"],
                        execution_quantity_basis=execution["target_basis"])
@@ -59,7 +60,7 @@ def _original_target(op, batch, execution):
                "原分件或批次目标量缺失。", 422)
 
 
-def estimate(engine, original, arrangement, *, start, effort=None, point_proven=False):
+def estimate(engine, original, arrangement, *, start, point_proven, effort=None):
     """Estimate a slot with saved work and the snapshot-local calendar."""
     duration = original_duration(original, effort=effort, point_proven=point_proven)
     if duration["basis"] == "calendar_days":

@@ -1,8 +1,13 @@
 """The shared actual-type events under the decision's fixed next-start window."""
 
 from core.models.workbench_run_candidate import local_time
-from core.services.workbench.facts.changeovers import changeover_projection, subject_arrangements
-from core.services.workbench.facts.decision_metrics import metric_definitions, metric_delta, metric_value
+from core.services.workbench.facts.changeovers import changeover_projection
+from core.services.workbench.facts.decision_metrics import (
+    COVERAGE_MEMBER_FIELDS,
+    metric_definitions,
+    metric_delta,
+)
+from core.services.workbench.facts.decision_read_models import build_changeover_metrics
 
 from .decision_impact import drill_target
 
@@ -10,45 +15,50 @@ from .decision_impact import drill_target
 class DecisionChangeovers:
     def __init__(self, source):
         self.source = source
+        self._seeded = set()
         self._projections, self._metrics = {}, {}
 
-    def available(self, key):
-        key = self.source.computation_key(key)
-        return self.source.baseline["state"] == "available" if key == "reference" else self.source.result_available(key)
+    def _seed_precomputed(self, key):
+        comp = self.source.computation_key(key)
+        if comp in self._seeded:
+            return
+        self._seeded.add(comp)
+        data = self.source.precomputed_changeovers(comp)
+        if data is None:
+            return
+        self._projections[comp] = data["projection"]
+        self._metrics[comp] = data["metrics"]
 
     def projection(self, key):
         key = self.source.computation_key(key)
+        self._seed_precomputed(key)
         if key not in self._projections:
-            self._projections[key] = changeover_projection(self.source.analysis_tasks(key), start=self.source.scope["range_start"],
-                end=self.source.scope["range_end"], work_available=self.available(key), next_operation_refs=self.source.operation_refs,
-                task_intervals=self.source.task_intervals(key))
+            self._projections[key] = changeover_projection(
+                self.source.analysis_tasks(key), start=self.source.scope["range_start"],
+                end=self.source.scope["range_end"], work_available=self.source.arrangement_available(key),
+                next_operation_refs=self.source.operation_refs, task_intervals=self.source.task_intervals(key),
+            )
         return self._projections[key]
 
     def metrics(self, key):
         key = self.source.computation_key(key)
+        self._seed_precomputed(key)
         if key not in self._metrics:
             projected = self.projection(key)
-            reason = {"code": "changeover_sequence_incomplete", "message": "部分实际设备序列缺少工种身份、时间或存在重叠，切换统计保留已知小计。"} if projected["state"] != "complete" else None
-            arrangements = subject_arrangements(self.source.analysis_tasks(key), self.source.operation_refs,
-                task_intervals=self.source.task_intervals(key))
-            covered = sorted({task["operation_ref"] for task in arrangements})
-            values = {}
-            for name, value, subtotal in (("type_changeover_count", projected["count"], projected["known_count"]),
-                                          ("changed_machine_count", projected["changed_machine_count"], projected["known_changed_machine_count"])):
-                unknown = projected["unknown_count"]
-                item = metric_value(value, total=max(len(arrangements), unknown), unknown=unknown, subtotal=subtotal,
-                                    state=projected["state"], scope="fixed_changeover_window", reason=reason)
-                item["covered_operation_refs"] = covered
-                values[name] = item
-            self._metrics[key] = values
+            self._metrics[key] = build_changeover_metrics(
+                projected, self.source.analysis_tasks(key), self.source.operation_refs, self.source.task_intervals(key),
+            )
         return self._metrics[key]
 
     def _raw_events(self, key, side, *, machine_ref=None):
+        events = self.projection(key)["events"]
+        if machine_ref is not None:
+            events = [value for value in events if value["machine_ref"] == machine_ref]
+        if not events:
+            return []
         lookup = {task["row_ref"]: task for task in self.source.analysis_tasks(key)}
         result = []
-        for value in self.projection(key)["events"]:
-            if machine_ref is not None and value["machine_ref"] != machine_ref:
-                continue
+        for value in events:
             previous, current = lookup[value["previous_row_ref"]], lookup[value["next_row_ref"]]
             result.append({
                 "event_ref": side + ":" + value["previous_row_ref"] + ":" + value["next_row_ref"],
@@ -141,6 +151,8 @@ class DecisionChangeovers:
         sides = {}
         for side, key, metrics in (("before", "reference", before), ("after", self.source.selected_ref, after)):
             projected = self.projection(key)
-            sides[side] = {**{name: {field: value for field, value in item.items() if field != "covered_operation_refs"} for name, item in metrics.items()},
-                           **{name: projected[name] for name in ("state", "conflict", "conflict_count", "unknown_count", "issues")}}
+            sides[side] = {
+                **{name: {field: value for field, value in item.items() if field not in COVERAGE_MEMBER_FIELDS} for name, item in metrics.items()},
+                **{name: projected[name] for name in ("state", "conflict", "conflict_count", "unknown_count", "issues")},
+            }
         return {"scope": "fixed_changeover_window", **sides, "deltas": deltas}

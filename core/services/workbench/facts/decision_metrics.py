@@ -3,7 +3,7 @@
 from typing import Any, Dict, List, Tuple
 
 from .candidate_projection import metrics as saved_metrics
-from .delivery_projection import delivery_summary
+from .delivery_projection import delivery_summary, known_delivery_batch_refs
 from .preflight_dependencies import material_deferred_ids
 from .preparation_projection import (
     PREPARATION_METRIC_VERSION,
@@ -13,6 +13,7 @@ from .preparation_projection import (
 from .resource_projection import RESOURCE_METRIC_VERSION
 
 METRIC_VERSION = PREPARATION_METRIC_VERSION
+COVERAGE_MEMBER_FIELDS = ("covered_batch_refs", "covered_operation_refs", "covered_resource_refs")
 
 # The saved resource statistics use the optimizer's schedule span. Calendar-window
 # capacity statistics belong to the resource-impact stage and have their own scope.
@@ -76,11 +77,11 @@ def metric_definitions() -> List[Dict[str, Any]]:
     return [dict(row) for row in _METRIC_DEFINITIONS]
 
 
-def metric_value(value, *, total=1, unknown=0, subtotal=None, state=None, scope="full_admission", reason=None, covered_refs=None, metric_version=METRIC_VERSION):
+def metric_value(value, *, total=1, unknown=0, subtotal=None, state=None, scope="full_admission", reason=None, covered_refs=None, metric_version=METRIC_VERSION, member_unit: str):
     result = {"value": value, "state": state or ("partial" if unknown and total > unknown else "unavailable" if unknown else "complete"),
               "known_subtotal": value if subtotal is None else subtotal, "known_count": total - unknown,
               "unknown_count": unknown, "total_count": total, "scope": scope, "metric_version": metric_version,
-              "reason": reason}
+              "member_unit": member_unit, "reason": reason}
     if covered_refs is not None:
         result["covered_batch_refs"] = sorted(covered_refs)
     return result
@@ -89,8 +90,7 @@ def metric_value(value, *, total=1, unknown=0, subtotal=None, state=None, scope=
 def admission_operation_refs(facts, settings):
     """Every captured operation of the admitted batches."""
     selected = set(settings["batch_refs"])
-    return {ref for ref, key in facts.operations.items()
-            if facts.entity_refs.get(("batch", facts.tables["BatchOperations"].get(key, {}).get("batch_id"))) in selected}
+    return {ref for ref in facts.operations if facts.operation_batch_ref(ref) in selected}
 
 
 def admission_deferred_refs(facts, settings, refs, disposition: Dict[str, Dict[str, Any]]):
@@ -103,17 +103,17 @@ def delivery_coverage(items):
     summary = delivery_summary(items)
     coverage = {**summary, "state": "complete" if summary["complete_batch_count"] == summary["batch_count"] else "partial",
                 "delivery_state": summary["state"]}
-    return coverage, delivery_metric_values(summary)
+    return coverage, delivery_metric_values(summary, covered_refs=known_delivery_batch_refs(items))
 
 
-def delivery_metric_values(summary):
+def delivery_metric_values(summary, covered_refs=None):
     unknown = summary["unknown_due_count"]
     reason = {"code": "delivery_evidence_incomplete", "message": "部分批次的工序安排或交期资料缺失，已列出资料齐全批次的结果。"} if unknown else None
     result = {}
     for key, subtotal in (("overdue_count", summary["known_overdue_count"]),
                           ("total_tardiness_hours", summary["known_tardiness_hours"])):
         result[key] = metric_value(summary[key], total=summary["due_evaluation_count"], unknown=unknown, subtotal=subtotal,
-                                   state=summary["state"], reason=reason, covered_refs=summary["known_batch_refs"])
+                                   state=summary["state"], reason=reason, covered_refs=covered_refs, member_unit="batch")
         result[key].update({name: summary[name] for name in ("due_eligible_count", "excluded_due_count", "invalid_due_count", "due_evaluation_count")})
     return result
 
@@ -135,29 +135,25 @@ def candidate_metrics(candidate, tasks, facts, batch_refs, *, delivery_items, op
         item = saved[key]
         if key == "elapsed_seconds":
             values[key] = metric_value(None, total=0, state="not_applicable", scope=definition["scope"],
-                                       reason=item["reason"])
+                                       reason=item["reason"], member_unit="record")
             continue
         value = item["value"]
         values[key] = metric_value(value, unknown=int(value is None), scope=definition["scope"],
-                                   reason=item["reason"] if value is None else None)
+                                   reason=item["reason"] if value is None else None, member_unit="record")
         if key == "weighted_tardiness_hours":
-            completion = (candidate["artifact"].get("metrics") or {}).get("completion")
-            incomplete = completion.get("incomplete_batch_ids") if type(completion) is dict else None
-            if type(incomplete) is list:
-                known = set(batch_refs) - {facts.entity_refs.get(("batch", key)) for key in incomplete}
-                values[key] = metric_value(value, subtotal=value, total=len(batch_refs), unknown=len(batch_refs) - len(known),
-                                           scope=definition["scope"], covered_refs=known, state="unavailable" if value is None else None)
-            else:
-                values[key]["state"] = "unavailable"
-                values[key]["value"] = None
-                values[key]["reason"] = {"code": "algorithm_batch_scope_missing", "message": "排产存档缺少算法交付评价的批次范围。"}
+            incomplete = candidate["artifact"]["metrics"]["completion"]["incomplete_batch_ids"]
+            # The decode reports incomplete only batches it scheduled, every one an archived batch with its ref.
+            known = set(batch_refs) - {facts.entity_ref("batch", key) for key in incomplete}
+            values[key] = metric_value(value, subtotal=value, total=len(batch_refs), unknown=len(batch_refs) - len(known),
+                                       scope=definition["scope"], covered_refs=known, state="unavailable" if value is None else None,
+                                       member_unit="batch")
     for key, value in (("expected_operation_count", len(expected)), ("scheduled_operation_count", len(scheduled)),
                        ("unplanned_operation_count", len(missing)), ("deferred_operation_count", len(deferred))):
-        values[key] = metric_value(value, total=len(refs), unknown=0, state="complete")
+        values[key] = metric_value(value, total=len(refs), unknown=0, state="complete", member_unit="operation")
     return {"schedulable": schedulable, "delivery": coverage}, values
 
 
-def project_official_core_metrics(tasks, operation_refs, deferred_refs, available, delivery_items, *, task_intervals, metric_keys=None):
+def project_official_core_metrics(tasks, operation_refs, deferred_refs, available, delivery_items, *, task_intervals):
     """Project the saved official arrangement without reading its source archive."""
     refs = set(operation_refs)
     tasks = [task for task in tasks if task["operation_ref"] in refs]
@@ -165,9 +161,10 @@ def project_official_core_metrics(tasks, operation_refs, deferred_refs, availabl
     coverage = {**summary, "state": "complete" if summary["complete_batch_count"] == summary["batch_count"] else "partial",
                 "delivery_state": summary["state"]}
     reason = {"code": "official_algorithm_metric_missing", "message": "排产时的正式计划未保存这项计算指标。"}
-    values = {definition["key"]: metric_value(None, state="unavailable", unknown=1, scope=definition["scope"], reason=reason)
-              for definition in _METRIC_DEFINITIONS if metric_keys is None or definition["key"] in metric_keys}
-    values.update(delivery_metric_values(summary))
+    values = {definition["key"]: metric_value(None, state="unavailable", unknown=1, scope=definition["scope"],
+              reason=reason, member_unit="record")
+              for definition in _METRIC_DEFINITIONS}
+    values.update(delivery_metric_values(summary, covered_refs=known_delivery_batch_refs(delivery_items)))
     deferred = set(deferred_refs) & refs
     expected = refs - deferred
     scheduled = {task["operation_ref"] for task in tasks} & expected
@@ -178,35 +175,20 @@ def project_official_core_metrics(tasks, operation_refs, deferred_refs, availabl
     for key, value in (("expected_operation_count", len(expected)), ("scheduled_operation_count", len(scheduled)),
                        ("unplanned_operation_count", len(missing)), ("deferred_operation_count", len(deferred)),
                        ("changed_operation_count", 0), ("machine_change_count", 0)):
-        if metric_keys is not None and key not in metric_keys:
-            continue
         values[key] = metric_value(value if available else None, total=len(refs), unknown=0 if available else len(refs),
-                                   state="complete" if available else "unavailable")
-    timed = all(task["interval_comparable"] for task in tasks)
-    spans = [task_intervals[task["row_ref"]] for task in tasks] if available and tasks and timed else []
+                                   state="complete" if available else "unavailable", member_unit="operation")
+    spans = [task_intervals[task["row_ref"]] for task in tasks] if available and tasks else []
     span = (max(end for _, end in spans) - min(start for start, _ in spans)).total_seconds() / 3600.0 if spans else None
-    values["makespan_hours"] = metric_value(span, unknown=int(span is None), scope="full_candidate")
+    values["makespan_hours"] = metric_value(span, unknown=int(span is None), scope="full_candidate", member_unit="record")
     return values, {"schedulable": counts, "delivery": coverage}
 
 
-def operation_change_metrics(comparisons, operation_refs, reference_available, *, selected_available=True):
-    """Count complete admission comparisons with the shared availability rules."""
-    if not reference_available or not selected_available:
-        reason = ({"code": "reference_required", "message": "选择一个已产出候选作为比较基准。"} if not reference_available else
-                  {"code": "candidate_result_unavailable", "message": "该候选没有产出任务安排，工序变化待确定。"})
-        return {key: metric_value(None, unknown=len(operation_refs), total=len(operation_refs), reason=reason)
-                for key in ("changed_operation_count", "machine_change_count")}
-    changed = unknown = machines = machine_unknown = 0
-    for row in comparisons:
-        changed += bool(row["changed_fields"])
-        unknown += not row["changed_fields"] and "unknown" in row["change_kinds"]
-        machines += row["machine_changed"] is True
-        machine_unknown += row["before"] is not None and row["after"] is not None and row["machine_changed"] is None
-    reason = {"code": "arrangement_comparison_incomplete", "message": "部分工序有多段安排，或缺少时间、来源、设备人员编号，已列出可确认的调整数量。"}
-    return {"changed_operation_count": metric_value(None if unknown else changed, total=len(operation_refs), unknown=unknown,
-                                                    subtotal=changed, reason=reason if unknown else None),
-            "machine_change_count": metric_value(None if machine_unknown else machines, total=len(operation_refs), unknown=machine_unknown,
-                                                 subtotal=machines, reason=reason if machine_unknown else None)}
+def unavailable_operation_change_metrics(operation_refs):
+    """Operation-change metrics while the reference has no arrangement to compare (every saved candidate has one);
+    the SQL comparison counts the rest."""
+    reason = {"code": "reference_required", "message": "选择一个已产出候选作为比较基准。"}
+    return {key: metric_value(None, unknown=len(operation_refs), total=len(operation_refs), reason=reason, member_unit="operation")
+            for key in ("changed_operation_count", "machine_change_count")}
 
 
 def metric_delta(definition, selected, previous, *, work_scope_comparable=True):

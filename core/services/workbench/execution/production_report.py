@@ -2,6 +2,8 @@
 
 import getpass
 import re
+from datetime import datetime
+from typing import Callable
 
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_execution_input import reject
@@ -15,9 +17,10 @@ from .production_report_prepare import ReportBatchPreparation, normalize_items
 
 
 class WorkbenchProductionReportService:
-    def __init__(self, conn, *, clock=None, context_factory=None, actor_provider=None):
+    def __init__(self, conn, *, clock: Callable[[], datetime], context_factory=None, actor_provider=None):
         self.conn = conn
-        self.ledger = ExecutionLedgerService(conn, clock=clock, context_factory=context_factory)
+        self.clock = clock
+        self.ledger = ExecutionLedgerService(conn, context_factory=context_factory)
         self.actor_provider = actor_provider or getpass.getuser
         self.commands = WorkbenchCommandService(conn)
 
@@ -27,33 +30,25 @@ class WorkbenchProductionReportService:
             raise ValueError("Local application operator must be supplied by the server.")
         return ReportBatchPreparation(
             self.ledger, ledger_scope, items, actor, parsed_times=parsed_times
-        ).prepare()
+        ).prepare(self.clock)
 
     def _prepare(self, items, *, parsed_times):
         with self.ledger.read_snapshot() as ledger_scope:
             return self._prepare_in_scope(ledger_scope, items, parsed_times=parsed_times)
 
-    def preview(self, action, ref, payload):
-        if action == "report_void":
-            return self._void_service().preview(ref, payload)
-        return self.preview_batch([{"action": action, "ref": ref, "payload": payload}])
+    def preview_void(self, ref, payload, *, now):
+        """Read-only withdrawal preview at ``now``, the request's one clock reading."""
+        return self._void_service().preview(ref, payload, now=now)
 
     def _void_service(self):
         from .production_report_void import WorkbenchReportVoidService
-        return WorkbenchReportVoidService(self.ledger, self.commands, self.actor_provider)
-
-    def preview_batch(self, items):
-        return self.prepare_batch(items).public()
+        return WorkbenchReportVoidService(self.ledger, self.commands, self.actor_provider, self.clock)
 
     def prepare_batch_in_scope(self, ledger_scope: ExecutionLedgerReadScope, items):
         parsed_times = {}
         return self._prepare_in_scope(
             ledger_scope, normalize_items(items, parsed_times=parsed_times), parsed_times=parsed_times
         )
-
-    def prepare_batch(self, items):
-        with self.ledger.read_snapshot() as ledger_scope:
-            return self.prepare_batch_in_scope(ledger_scope, items)
 
     def execute(self, action, ref, payload, *, request_key, validate_context):
         if action == "report_void":
@@ -123,7 +118,7 @@ class WorkbenchProductionReportService:
 
     def _execute(self, items, request_key, action, context_ref, guard):
         def mutate(prepared):
-            prepared.materialize(self.ledger.clock())
+            prepared.materialize(self.clock())
             repo = WorkbenchExecutionReportRepository(self.conn)
             pending_refs = list(dict.fromkeys(row["report_ref"] for row in prepared.appended if row.get("allocate_number")))
             allocated = dict(zip(pending_refs, repo.allocate_numbers(len(pending_refs))))

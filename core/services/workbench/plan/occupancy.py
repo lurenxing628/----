@@ -22,31 +22,25 @@ from core.services.capacity.plan_calendar_issues import issue
 from core.services.capacity.plan_calendar_windows import available_intervals
 from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
 from core.services.workbench.facts.resource_projection import RESOURCE_METRIC_VERSION
+from core.shared.local_datetime import row_interval
 
 from .calendar_context import public_resource
 from .occupancy_constraints import TaskConstraints
 
 
-def _occupancy_groups(rows, start, end, constraints, *, intervals):
+def _occupancy_groups(rows, start, end, constraints):
     groups = defaultdict(lambda: defaultdict(list))
-    unknown = set()
     for row in rows:
-        source = str(row["source"]).strip().lower() if row["source"] is not None else None
-        if row.get("_point_work"):
-            source = "internal"
-        if source == "external":
+        if row["source"] == "external":
             continue
-        if source != "internal":
-            unknown.add(row["op_id"])
-            continue
-        row_start, row_end = intervals[row["schedule_id"]]
+        row_start, row_end = row_interval(row)
         low, high = max(start, row_start), min(end, row_end)
         constraints.check(row, low, high, row_start=row_start, row_end=row_end)
         for kind in ("machine", "operator"):
             key = row[kind + "_id"]
             if key not in (None, ""):
                 groups[kind, str(key)][row["op_id"]].append((low, high))
-    return groups, unknown
+    return groups
 
 
 def _resource_occupancy(kind, key, operations, calendar, resources, label, *, include_segments: bool):
@@ -118,7 +112,7 @@ def project_plan_occupancy(*, scope, resources, calendar_facts, selected, includ
     """calendar_facts is the private result of project_plan_calendar over the same selection."""
     rows, start, end, time_scope = selected.rows, selected.start, selected.end, selected.time_scope
     constraints = TaskConstraints(calendar_facts)
-    groups, unknown = _occupancy_groups(rows, start, end, constraints, intervals=selected.intervals)
+    groups = _occupancy_groups(rows, start, end, constraints)
     calendars = calendar_facts["resources"]
     labels = {(kind, str(row[kind + "_id"])): row[kind + "_name"] for row in rows for kind in ("machine", "operator")}
     public = []
@@ -136,13 +130,9 @@ def project_plan_occupancy(*, scope, resources, calendar_facts, selected, includ
         public.append(row)
         segments_complete = segments_complete and row_complete
     issues = constraints.public()
-    if unknown:
-        issues.append(issue("assignment_source_unknown", operation_count=len(unknown)))
     states = [row["state"] for row in public]
     state = "available" if all(value == "available" for value in states) else "unavailable" if all(
         value == "unavailable" for value in states) else "partial"
-    if unknown:
-        state = "partial" if public else "unavailable"
     return {
         "state": state,
         "plan_ref": scope.plan_ref,

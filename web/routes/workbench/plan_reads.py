@@ -20,12 +20,8 @@ from flask import current_app, g, request, send_file
 
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_plan_scope import (
-    MAX_PLAN_RESPONSE_BYTES,
-    PLAN_READ_TTL_SECONDS,
-    PlanCatalogScope,
-    PlanReadScope,
-)
+from core.models.workbench_load_limits import MAX_WINDOW_RESPONSE_BYTES
+from core.models.workbench_plan_scope import PLAN_READ_TTL_SECONDS, PlanCatalogScope, PlanReadScope
 from core.services.workbench.plan.export import write_plan_export
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from web.api_responses import query_success
@@ -33,18 +29,18 @@ from web.public_token_registry import issue_public_token, resolve_public_token
 
 from .api_responses import api_endpoint
 from .read_budget import PLAN_READ_SLOTS
-from .read_context import bind_read_snapshot
+from .read_context import bind_read_snapshot, read_snapshot_time, rebind_read_snapshot
+from .request_json import single_value_arguments
 
 _CURSOR_SCOPE = "workbench-plan-catalog-cursor-v1"
 
 
 def _arguments(allowed):
-    if set(request.args) - set(allowed) or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "计划的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
+    single_value_arguments(allowed, message="计划的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。")
 
 
 def _response(data, snapshot):
-    return query_success(data, snapshot, byte_limit=MAX_PLAN_RESPONSE_BYTES,
+    return query_success(data, snapshot, byte_limit=MAX_WINDOW_RESPONSE_BYTES,
         too_large_message="这次要读的计划数据太多，系统没有给出不完整结果。请缩小日期范围后点「刷新」。")
 
 
@@ -73,9 +69,10 @@ def plan_list():
     scope = PlanCatalogScope(request.args.get("collection", "history"), int(size))
     scope_dict = scope.scope()
     seek, token = _cursor(scope_dict)
+    as_of, binding = read_snapshot_time(token)
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
-    with reader.read_snapshot(metadata_only=True) as context:
-        snapshot = bind_read_snapshot(scope_dict, context.plan_revision, token)
+    with reader.read_snapshot() as context:
+        snapshot = bind_read_snapshot(scope_dict, context.plan_revision, token, as_of=as_of, binding=binding)
         data, next_seek = reader.catalog_page(context, scope, seek)
         data["page"]["next_cursor"] = None
         if next_seek is not None:
@@ -89,15 +86,16 @@ def plan_workspace(plan_ref):
     _arguments(("range_start", "range_end", "snapshot_ref"))
     scope = PlanReadScope(plan_ref, request.args.get("range_start"), request.args.get("range_end"))
     token = request.args.get("snapshot_ref")
+    as_of, binding = read_snapshot_time(token)
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot() as context:
             if token is not None:
                 scope_dict, state = reader.prebind_scope(context, scope)
-                snapshot = bind_read_snapshot(scope_dict, state, token)
+                snapshot = rebind_read_snapshot(scope_dict, state, token, binding=binding)
             data, state = reader.workspace(context, scope)
     if token is None:
-        snapshot = bind_read_snapshot(data["scope"], state, None)
+        snapshot = bind_read_snapshot(data["scope"], state, as_of=as_of)
     return _response(data, snapshot)
 
 
@@ -118,7 +116,7 @@ def plan_baseline(plan_ref):
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot() as context:
             scope_dict, state = reader.prebind_scope(context, scope)
-            snapshot = bind_read_snapshot(scope_dict, state, token)
+            snapshot = rebind_read_snapshot(scope_dict, state, token)
             data, _, _ = reader.baseline_comparison(context, scope, page=page, size=size)
     return _response(data, snapshot)
 
@@ -140,7 +138,7 @@ def plan_tasks(plan_ref):
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot() as context:
             scope_dict, state = reader.prebind_scope(context, scope)
-            snapshot = bind_read_snapshot(scope_dict, state, token)
+            snapshot = rebind_read_snapshot(scope_dict, state, token)
             data, _, _ = reader.tasks_page(context, scope, page=page, size=size)
     return _response(data, snapshot)
 
@@ -156,7 +154,7 @@ def plan_gantt_graph(plan_ref):
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot() as context:
             scope_dict, state = reader.prebind_scope(context, scope)
-            snapshot = bind_read_snapshot(scope_dict, state, token)
+            snapshot = rebind_read_snapshot(scope_dict, state, token)
             data, _, _ = reader.gantt_graph(context, scope)
     return _response(data, snapshot)
 
@@ -172,7 +170,7 @@ def plan_capacity(plan_ref):
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot() as context:
             scope_dict, state = reader.prebind_scope(context, scope)
-            snapshot = bind_read_snapshot(scope_dict, state, token)
+            snapshot = rebind_read_snapshot(scope_dict, state, token)
             data, _, _ = reader.capacity_projections(context, scope)
     return _response(data, snapshot)
 
@@ -188,12 +186,14 @@ def plan_export(plan_ref):
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot() as context:
             scope_dict, state = reader.prebind_scope(context, scope)
-            snapshot = bind_read_snapshot(scope_dict, state, token)
+            snapshot = rebind_read_snapshot(scope_dict, state, token)
             data, _ = reader.export_workspace(context, scope)
     # 读事务和读额度都已释放：大小检查和生成文件只用已读出的计划，不再占着读锁。
     download = write_plan_export(data, snapshot, fmt)
-    if len(download.content) > MAX_PLAN_RESPONSE_BYTES:
-        raise WorkbenchCommandRejected("query_too_large", "导出文件超过 8 MB，请缩小范围后重新导出。", 413)
+    if len(download.content) > MAX_WINDOW_RESPONSE_BYTES:
+        raise WorkbenchCommandRejected(
+            "query_too_large", f"导出文件超过 {MAX_WINDOW_RESPONSE_BYTES // (1024 * 1024)} MB，请缩小范围后重新导出。", 413
+        )
     response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,
                          download_name=download.filename, max_age=0)
     response.headers["X-Workbench-Row-Count"] = str(download.row_count)

@@ -1,12 +1,11 @@
 """Op-type relation inspection, never a scheduling candidate or write-context API."""
 
-import re
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.resource_capabilities import OP_TYPE_CATEGORIES, supports_source
+from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_resource_query import ResourcePageRequest
@@ -27,10 +26,6 @@ def _matches_query(value, needle, needle_bytes):
     if isinstance(value, bytes):
         return needle_bytes in value.translate(_ASCII_LOWER_BYTES)
     return needle in value.translate(_ASCII_LOWER)
-
-
-def _valid_ref(ref):
-    return type(ref) is str and re.fullmatch(r"[0-9a-f]{48}", ref) is not None
 
 
 def _invalid_facts(message):
@@ -69,8 +64,6 @@ class WorkbenchResourceRelationService:
         parent = self.repo.parent(identity.entity_key)
         if parent is None:
             raise WorkbenchCommandRejected("entity_not_found", "这个工种记录已经不存在，列表没有打开。请从工种列表重新选择。", 404)
-        if parent["category"] not in OP_TYPE_CATEGORIES:
-            _invalid_facts("这个工种的自制或外协归属填得不对")
         allowed = (("machines", "operators") if supports_source(parent["category"], "internal") else ()) + (("suppliers",) if supports_source(parent["category"], "external") else ())
         if relation not in allowed:
             raise WorkbenchCommandRejected("invalid_input", "这个工种的归属看不了这一类关联，查询范围没有变。请换一个关联类型。", 400)
@@ -96,7 +89,7 @@ class WorkbenchResourceRelationService:
                 _invalid_facts("关联的资源编号不合法或者有重复")
             if row["name"] is None:
                 _invalid_facts("关联指向的资源已经不存在")
-            if not _valid_ref(row["ref"]):
+            if row["ref"] is None:
                 _invalid_facts("关联的资源在资料里查不到编号")
             records[code] = row
         return records
@@ -114,8 +107,6 @@ class WorkbenchResourceRelationService:
                 if key in seen or row["machine_name"] is None:
                     _invalid_facts("设备授权有重复，或者指向的设备已经不存在")
                 seen.add(key)
-                if row["op_type_id"] is not None and not supports_source(row["work_type_category"], "internal"):
-                    _invalid_facts("被授权设备的工种不存在，或者不是自制工种")
 
     def _qualifications(self, relation, records, facts):
         if relation != "operators":
@@ -149,11 +140,9 @@ class WorkbenchResourceRelationService:
             machine_types = defaultdict(set)
             for row in facts["machine_capabilities"]:
                 machine_types[row["machine_id"]].add(row["op_type_id"])
-            sorted_machine_types = {machine_id: sorted(types) for machine_id, types in machine_types.items()}
             authorizations = defaultdict(list)
             for row in facts["authorizations"]:
-                authorizations[row["operator_id"]].append(
-                    dict(row, op_type_ids=sorted_machine_types.get(row["machine_id"], [])))
+                authorizations[row["operator_id"]].append(dict(row, op_type_ids=machine_types[row["machine_id"]]))
         entities = []
         for row in page_rows:
             code = row["business_code"]

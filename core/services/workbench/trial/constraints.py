@@ -1,73 +1,103 @@
-"""Trial interval parsing, archived occupancy spans and outside-scope point evidence."""
+"""Trial interval parsing and archived occupancy spans."""
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, Mapping, Sequence, Tuple
+from typing import Any, Dict, Mapping
 
-from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_trial import issue
-from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
-from core.services.workbench.plan.point_evidence import official_point_work
-from core.services.workbench.run.schedule_occupancy_constraints import (
-    OutsidePointVersion,
-    ProvenOutsidePoints,
-    UnprovenOutsidePoints,
-    latest_schedule_rows,
-)
+from core.algorithm_contracts.schedule_point_evidence import SchedulePointEvidence
+from core.models.workbench_trial import reject
+from core.services.scheduler.run.schedule_payload_contract import ValidatedScheduleRow
+from core.services.workbench.facts.zero_duration import PointEventError, point_work_quantity
+from core.shared.stored_dates import stored_local_iso_datetime
 
 from .arrangements import same_arrangement
 from .occupancy import ReportedExecution, arranged_occupancy, reported_archive
 
+_ARRANGEMENT_INVALID = "试调保存的安排时间已损坏，不能继续核对或采用，正式计划没有改变。请从当前正式计划重新发起试调。"
 
-def _interval_with_point(value, *, original):
-    start, end = datetime.fromisoformat(value["start"]), datetime.fromisoformat(value["end"])
-    if start.tzinfo is not None or end.tzinfo is not None or end < start:
-        raise ValueError("Invalid positive factory-local interval")
-    if start == end:
-        return (start, end), trial_point_evidence(original, value)
-    return (start, end), None
+
+def trial_point_witness(original, arrangement, *, at):
+    """The point witness of a zero-length ``arrangement`` of ``original`` at its admitted instant ``at``.
+
+    ``witness.matches`` makes the point-work judgement (``is_point_work``: internal, zero setup and unit hours).
+    """
+    basis = original.get("point_basis")
+    if type(basis) is not dict:
+        raise PointEventError("point_evidence_missing", "这条起止时间相同的历史安排没有留下零工时工序的核对依据。")
+    op, batch, execution = original["operation"], original["batch"], original["execution"]
+    if type(execution) is not dict or op.get("source") != "internal":
+        raise PointEventError("point_identity_unproven", "这道零工时工序缺少当时的报工记录。")
+    operation_ref = basis.get("operation_ref") if op.get("piece_id") is not None else execution.get("operation_ref")
+    quantity = point_work_quantity(op, batch, execution, operation_ref)
+    setup, unit = op.get("setup_hours"), op.get("unit_hours")
+    machine_id, operator_id = arrangement["machine_id"], arrangement["operator_id"]
+    witness = SchedulePointEvidence(op["id"], machine_id, operator_id, at, setup, unit, quantity)
+    row = ValidatedScheduleRow(
+        op_id=op["id"],
+        machine_id=machine_id,
+        operator_id=operator_id,
+        start_time=at,
+        end_time=at,
+        source=op["source"],
+    )
+    if not witness.matches(row):
+        raise PointEventError("point_evidence_invalid", "零工时工序的安排与核对依据不一致。")
+    expected = {
+        "op_id": witness.op_id,
+        "setup_hours": witness.setup_hours,
+        "unit_hours": witness.unit_hours,
+        "quantity": witness.quantity,
+    }
+    if op.get("piece_id") is not None:
+        expected.update(piece_id=op["piece_id"], batch_id=op["batch_id"], operation_ref=operation_ref)
+    if basis != expected or any(type(basis[key]) is not type(val) for key, val in expected.items()):
+        raise PointEventError("point_evidence_invalid", "这道零工时工序的存档内容已被改动，不能作为依据。")
+    return witness
+
+
+def _admitted_interval(value, *, original):
+    """One arrangement's stored interval and, for a zero-length one its point basis proves, its witness.
+
+    Draft rows (``original_json``/``current_json``) and a saved scenario's ``payload_json`` times are JSON copies
+    without a table CHECK; this is their only read boundary, and rows computed in this process for a create or an
+    edit pass here too. It admits only the storage invariants, strict instants and ``start <= end``, and rejects a
+    breach as damaged storage. Whether a zero-length row is a proven point event is a domain judgment, not a storage
+    invariant: an unproven one keeps its ``(start, start)`` interval without a witness, so it is in no points map and
+    validation, adoption and freezing block it by their own rules.
+    """
+    start, end = stored_local_iso_datetime(value["start"]), stored_local_iso_datetime(value["end"])
+    if start is None or end is None or end < start:
+        reject("trial_snapshot_invalid", _ARRANGEMENT_INVALID)
+    if start < end:
+        return (start, end), None
+    try:
+        return (start, end), trial_point_witness(original, value, at=start)
+    except PointEventError:
+        return (start, end), None
 
 
 def build_current_trial_spans(rows):
-    """Each row's current interval and interval parse error, without execution occupancy."""
+    """Each row's admitted current interval and point witness, without execution occupancy."""
     current_by_op = {}
     current_by_row = {}
-    current_errors_by_op = {}
     current_points_by_op = {}
     current_points_by_row = {}
     for row in rows:
-        op_ref = row["operation_ref"]
-        row_ref = row["row_ref"]
-        try:
-            curr_span, witness = _interval_with_point(row["current"], original=row["original"])
-        except (TypeError, ValueError) as exc:
-            curr_span = None
-            witness = None
-            current_errors_by_op[op_ref] = exc.with_traceback(None)
-        if curr_span is not None:
-            current_by_op[op_ref] = curr_span
+        span, witness = _admitted_interval(row["current"], original=row["original"])
+        current_by_op[row["operation_ref"]] = current_by_row[row["row_ref"]] = span
         if witness is not None:
             current_points_by_op[witness.op_id] = witness
-            current_points_by_row[row_ref] = witness
-        current_by_row[row_ref] = curr_span
+            current_points_by_row[row["row_ref"]] = witness
     return {
         "current_by_op": current_by_op,
         "current_by_row": current_by_row,
-        "current_errors_by_op": current_errors_by_op,
         "current_points_by_op": current_points_by_op,
         "current_points_by_row": current_points_by_row,
     }
 
 
 def build_trial_intervals(rows, *, reported: Mapping[str, ReportedExecution]):
-    """Each row's current and original interval and the resources they occupy.
-
-    reported is the current side's parsed execution mapping. The original side keeps its source-time
-    ``row["original"]["execution"]``.
-    原始侧与当前侧是同一个执行快照对象时（正式计划来源在建草稿时核验）共用一次解析；不同快照（已保存草稿、
-    候选归档、点工序证据）各自解析，绝不按工序编号或内容合并。
-    """
+    """Each row's admitted current and original interval and the resources they occupy."""
     spans = build_current_trial_spans(rows)
     current_by_row = spans["current_by_row"]
     current_points_by_row = spans["current_points_by_row"]
@@ -83,11 +113,9 @@ def build_trial_intervals(rows, *, reported: Mapping[str, ReportedExecution]):
         row_ref = row["row_ref"]
         curr_span = current_by_row[row_ref]
         curr_reported = reported[op_ref]
-        if curr_span is not None:
-            current_occupancy[row_ref] = arranged_occupancy(curr_span, current, curr_reported)
+        current_occupancy[row_ref] = arranged_occupancy(curr_span, current, curr_reported)
         if (
-            curr_span is not None
-            and current["start"] == orig_arr["start"]
+            current["start"] == orig_arr["start"]
             and current["end"] == orig_arr["end"]
             and (current["start"] != current["end"] or same_arrangement(current, orig_arr))
         ):
@@ -95,17 +123,12 @@ def build_trial_intervals(rows, *, reported: Mapping[str, ReportedExecution]):
             if row_ref in current_points_by_row:
                 original_points_by_row[row_ref] = current_points_by_row[row_ref]
         else:
-            try:
-                orig_span, orig_witness = _interval_with_point(orig_arr, original=original)
-            except (TypeError, ValueError):
-                orig_span = None
-                orig_witness = None
+            orig_span, orig_witness = _admitted_interval(orig_arr, original=original)
             if orig_witness is not None:
                 original_points_by_row[row_ref] = orig_witness
-        if orig_span is not None:
-            shared = original["execution"] is curr_reported.execution
-            orig_reported = curr_reported if shared else reported_archive(original["execution"])
-            original_occupancy[row_ref] = arranged_occupancy(orig_span, orig_arr, orig_reported)
+        shared = original["execution"] is curr_reported.execution
+        orig_reported = curr_reported if shared else reported_archive(original["execution"])
+        original_occupancy[row_ref] = arranged_occupancy(orig_span, orig_arr, orig_reported)
         original_by_row[row_ref] = orig_span
         original_by_source_row[row["source_row_ref"]] = orig_span
     return {
@@ -124,39 +147,3 @@ def build_archived_trial_intervals(rows, *, execution: Mapping[str, Dict[str, An
         rows,
         reported={row["operation_ref"]: reported_archive(execution[row["operation_ref"]]) for row in rows},
     )
-
-
-def prepare_outside_schedule_state(
-    conn: Any,
-    rows: Sequence[Mapping[str, Any]],
-    live: Mapping[str, Any],
-    reported: Mapping[str, ReportedExecution],
-) -> Tuple[Dict[int, Mapping[str, Any]], Dict[int, OutsidePointVersion]]:
-    """Resolve latest schedule rows once and preload proven official zero-duration point work ids."""
-    selected = {row["operation_ref"] for row in rows}
-    refs = live["preflight_facts"].operation_refs
-    operations = live["execution_operations"]
-    latest = latest_schedule_rows(live["facts"]["tables"]["Schedule"])
-    point_versions: Dict[int, OutsidePointVersion] = {}
-    for op_id, row in latest.items():
-        ref = refs[op_id]
-        if (
-            ref in selected
-            or operations[ref]["source"] == "external"
-            or reported[ref].execution["execution_state"] == "complete"
-            or row["start_time"] != row["end_time"]
-        ):
-            continue
-        version = row["version"]
-        if version in point_versions:
-            continue
-        try:
-            point_versions[version] = ProvenOutsidePoints(frozenset(official_point_work(conn, version)))
-        except WorkbenchCommandRejected as exc:
-            # 读取容量超限是整个请求的 413，不是这道工序“没有依据”。
-            if exc.status == 413:
-                raise
-            point_versions[version] = UnprovenOutsidePoints(
-                issue("outside_scope_point_unproven", "范围外那道零工时工序没有可核对的依据。")
-            )
-    return latest, point_versions

@@ -6,15 +6,17 @@ import os
 import sqlite3
 import stat
 from datetime import datetime
-from typing import Any, Dict, NoReturn, Tuple
+from typing import Any, Dict
 
 from core.errors import AppError
 from core.infrastructure.safe_files import stat_regular_file
 from core.infrastructure.schema_probe import user_table_count
+from core.models.content import StoredJsonCorrupt, read_stored_json
 from core.models.workbench_system import CONFIG_FIELDS
 from core.services.system.maintenance.telemetry import (
     classify_maintenance_result,
     extract_maintenance_result_values,
+    parse_job_time,
 )
 from core.services.system.runtime_log_reader import (
     DIAGNOSTIC_EXTRA_FILES,
@@ -22,8 +24,6 @@ from core.services.system.runtime_log_reader import (
     SECRET_FILE_NAME,
 )
 from core.services.system.system_config_service import SystemConfigService
-from core.services.system.system_maintenance_service import _parse_db_dt
-from core.shared.strict_json import load_strict_json
 from data.repositories.operation_log_repo import OperationLogRepository
 from data.repositories.system_job_state_repo import SystemJobStateRepository
 
@@ -159,27 +159,25 @@ def _config(conn, backup_keep_days_default: int) -> Dict[str, Any]:
     return result
 
 
-def _not_object() -> NoReturn:
-    raise ValueError("Task result must be a strict JSON object")
-
-
-def _result_values(raw: object) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    if not isinstance(raw, str) or len(raw) > _DETAIL_LIMIT:
-        raise ValueError("Task result is not text or exceeds the metadata limit")
-    detail = load_strict_json(raw, on_malformed=_not_object, expected=dict)
-    return detail, extract_maintenance_result_values(detail)
-
-
 def _job_result(raw: Any, kind: str) -> Dict[str, Any]:
+    """系统概况遇到坏记录也要能打开：超长、读不出来或字段值不合要求时，只把这一项记为 invalid。"""
     result = {"status": "not_recorded", "values": None, "error": None}
     if raw is None or raw == "":
         return result
+    if type(raw) is str and len(raw) > _DETAIL_LIMIT:
+        result.update(status="invalid", error={"code": "detail_too_large", "message": "任务结果超过概况的读取上限。"})
+        return result
     try:
-        detail, values = _result_values(raw)
-    except (ValueError, TypeError, OverflowError) as exc:
+        detail = read_stored_json(raw, dict)
+    except StoredJsonCorrupt as exc:
         result.update(status="invalid", error=_error(exc))
-    else:
-        result.update(status=classify_maintenance_result(detail, kind, success_status="completed"), values=values)
+        return result
+    try:
+        values = extract_maintenance_result_values(detail)
+    except ValueError as exc:
+        result.update(status="invalid", error=_error(exc))
+        return result
+    result.update(status=classify_maintenance_result(detail, kind, success_status="completed"), values=values)
     return result
 
 
@@ -195,7 +193,7 @@ def _maintenance_job(records, kind: str, *, error=None):
     if record is None:
         job["status"] = "empty"
         return job, False
-    parsed = _parse_db_dt(record.last_run_time)
+    parsed = parse_job_time(record.last_run_time)
     detail = _job_result(record.last_run_detail, kind)
     incomplete = parsed.state != "valid" or detail["status"] in ("invalid", "unknown", "not_recorded")
     job.update(status="partial" if incomplete else "available",

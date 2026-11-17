@@ -16,20 +16,22 @@ from core.services.workbench.resource.relation_files.files import WorkbenchRelat
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
-from .read_context import bind_read_snapshot, resolve_read_snapshot
+from .read_context import bind_read_snapshot, current_snapshot_time, rebind_read_snapshot, resolve_read_snapshot
+from .request_json import opaque_ref, preview_confirm_body
 from .resource_action_context import (
+    BODY,
+    CONFIRM_MISMATCH_MESSAGE,
     EXPIRED_MESSAGE,
     EXPORT_SCOPE,
     IMPORT_MISMATCH_MESSAGE,
     PREVIEW_SCOPE,
+    STALE_REF_MESSAGE,
     admit_export_selection,
-    confirm_body,
     download_args,
     export_identity,
     file_response,
     issue_file_preview,
     json_body,
-    opaque_ref,
     read_endpoint,
     resolve_context,
     retain_context,
@@ -53,19 +55,20 @@ def _service(kind):
 def relation_import_preview(kind):
     relation_kind(kind)
     content, fmt, mode = upload_body()
+    as_of = current_snapshot_time()
     service = _service(kind)
     preview = service.preview_import(content, file_format=fmt, mode=mode)
     data = issue_file_preview(preview, columns=public_columns(kind),
                               instructions=INSTRUCTIONS, template_version=TEMPLATE_VERSION)
     snapshot = bind_read_snapshot({"kind": kind, "operation": kind + ".import",
-                                   "preview_ref": data["preview_ref"]}, data["preview_ref"])
+                                   "preview_ref": data["preview_ref"]}, data["preview_ref"], as_of=as_of)
     return query_success(data, snapshot, preview.as_dict()["notices"])
 
 
 @api_endpoint
 def relation_import_confirm(kind):
     relation_kind(kind)
-    body = confirm_body()
+    body = preview_confirm_body(BODY, stale_ref=STALE_REF_MESSAGE, mismatch=CONFIRM_MISMATCH_MESSAGE)
     ref, operation = body["input"]["preview_ref"], kind + ".import"
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=operation, context_ref=ref, normalized_input={"preview_ref": ref},
@@ -87,7 +90,7 @@ def relation_export_preview(kind):
     reader = _reader()
     with reader.read_snapshot() as scope:
         read_binding = resolve_read_snapshot(snapshot_ref)
-        snapshot = bind_read_snapshot(query_scope, scope.state_fingerprint(), snapshot_ref, binding=read_binding)
+        snapshot = rebind_read_snapshot(query_scope, scope.state_fingerprint(), snapshot_ref, binding=read_binding)
         service = WorkbenchRelationFileService(g.db, kind, current_app.logger, reader=reader)
         arguments, count = service.preview_export(scope, selection, request=page_request, selected_refs=body.get("refs"))
         identity = export_identity(arguments)
@@ -103,14 +106,14 @@ def relation_export_preview(kind):
 def relation_export(kind):
     relation_kind(kind)
     fmt = download_args({"export_ref", "format"})
-    ref = opaque_ref(request.args["export_ref"])
+    ref = opaque_ref(request.args["export_ref"], STALE_REF_MESSAGE)
     binding, read_binding = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale")
     if binding["kind"] != kind:
         raise WorkbenchCommandRejected("snapshot_stale", "这次导出的编号属于另一类记录，没有开始下载。请刷新页面后重新点「导出」。")
     reader = _reader()
     service = WorkbenchRelationFileService(g.db, kind, current_app.logger, reader=reader)
     with reader.read_snapshot() as scope:
-        snapshot = bind_read_snapshot(binding["query_scope"], scope.state_fingerprint(), binding["snapshot_ref"], binding=read_binding)
+        snapshot = rebind_read_snapshot(binding["query_scope"], scope.state_fingerprint(), binding["snapshot_ref"], binding=read_binding)
         check_capacity(binding["row_count"], fmt)
         rows = service.export_rows(scope, **binding["arguments"])
     # 读事务已结束：生成 CSV/XLSX 只用已读出的行，不再挡别人提交写入。

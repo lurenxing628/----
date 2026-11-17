@@ -1,5 +1,6 @@
 """BN fixtures use real disk SQLite, launcher locks, Flask and engine inputs."""
 
+import sys
 import threading
 import time
 from contextlib import contextmanager
@@ -10,6 +11,7 @@ from flask import Blueprint, g
 from core.infrastructure.database import get_connection
 from core.services.workbench.run import worker as run_worker
 from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
+from web.bootstrap.launcher_paths import current_runtime_owner
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
 from web.bootstrap.workbench_run_runtime import install_workbench_run_runtime
 from web.routes.workbench.preflight import register_preflight_routes
@@ -34,7 +36,9 @@ def owned_case(job_case, tmp_path):
     case.conn.execute("PRAGMA journal_mode=DELETE")
     case.app.config["DATABASE_PATH"] = str(case.path)
     case.runtime_dir = str(tmp_path / "launcher")
-    case.lock_payload = acquire_runtime_lock(case.runtime_dir, db_path=str(case.path))
+    case.lock_payload = acquire_runtime_lock(
+        case.runtime_dir, owner=current_runtime_owner(), exe_path=sys.executable, db_path=str(case.path)
+    )
     try:
         yield case
     finally:

@@ -9,11 +9,14 @@ from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process.mutations import WorkbenchProcessMutationService
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
+from tests.workbench.plan_catalog_support import insert_schedule_row
 from tests.workbench.process_query_support import ref_for, seed_process
 from tests.workbench.process_route_support import all_table_snapshot
 
 PART = "PROC-001"
 KEY = "process-command-00000001"
+# 测试直接调用确认写原语时用的确认时刻，与生产存储格式一致：UTC、微秒、Z 结尾。
+CONFIRMED_AT = "2026-10-18T02:00:00.000000Z"
 
 
 @pytest.fixture(name="stage_conn")
@@ -27,7 +30,7 @@ def stage_database(schema_conn):
     schema_conn.execute("""INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_name,source,setup_hours,unit_hours)
         VALUES ('STAGE-OLD','PROC-B',10,'historical','internal',7,8)""")
     key = schema_conn.execute("SELECT id FROM BatchOperations WHERE op_code='STAGE-OLD'").fetchone()[0]
-    schema_conn.execute("INSERT INTO Schedule(op_id,start_time,end_time) VALUES (?,?,?)", (key, "2026-10-01 08:00:00", "2026-10-01 09:00:00"))
+    insert_schedule_row(schema_conn, 1, key, "2026-10-01T08:00:00", "2026-10-01T09:00:00")
     schema_conn.commit()
     return schema_conn
 
@@ -110,7 +113,7 @@ def run_stage(conn, action, payload, *, key=KEY):
     return WorkbenchCommandService(conn).execute(
         request_key=key, action="process." + action, context_ref=identity.ref,
         normalized_input=normalized, guard=guard,
-        mutate=service.apply_prepared)
+        mutate=lambda prepared: service.apply_prepared(prepared, confirmed_at=CONFIRMED_AT))
 
 
 def prepare_stages(conn, *, source=True):

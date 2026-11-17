@@ -8,6 +8,7 @@ from core.services.workbench.facts.decision_metrics import (
     metric_delta,
     metric_value,
 )
+from core.services.workbench.facts.delivery_projection import known_delivery_batch_refs
 
 from .decision_recommendation import RECOMMENDATION_VERSION
 from .decision_tradeoffs import aggregate_tradeoffs, tradeoff_entry
@@ -18,7 +19,14 @@ def candidate_tradeoffs(data, before_delivery, after_delivery, before_tasks, aft
     candidate_ref, run_ref = data["candidate"]["candidate_ref"], data["generation"]["run_ref"]
     common = common_completed_delivery(before_delivery, after_delivery)
     refs, pair = common["common_completed_batch_refs"], common["common_delivery"]
-    delivery_values = {side: delivery_metric_values(pair[side]) for side in ("before", "after")}
+    common_set = set(refs)
+    delivery_values = {
+        side: delivery_metric_values(
+            pair[side],
+            covered_refs=known_delivery_batch_refs([row for row in rows if row["batch_ref"] in common_set]),
+        )
+        for side, rows in (("before", before_delivery), ("after", after_delivery))
+    }
     definitions = [item for item in metric_definitions() if item["group"] == "delivery" or item["source"] == "archived_resource_calendar"
                    or item["key"] in ("type_changeover_count", "machine_change_count")]
     entries = []
@@ -38,17 +46,21 @@ def candidate_tradeoffs(data, before_delivery, after_delivery, before_tasks, aft
             kind, field = name.split("_", 1)
             values = [data["resource_common"][side][kind] for side in ("before", "after")]
             previous, selected = [metric_value(row[field], total=row["resource_count"], unknown=int(row[field] is None),
-                                                scope=scope, metric_version=definition["metric_version"]) for row in values]
+                                                scope=scope, metric_version=definition["metric_version"], member_unit=kind) for row in values]
             support = resource_support[kind]
         elif name == "type_changeover_count":
             previous, selected = [metric_value(data["summary"][side]["changeovers"]["value"], scope=scope,
-                                               unknown=int(data["summary"][side]["changeovers"]["value"] is None)) for side in ("before", "after")]
+                                               unknown=int(data["summary"][side]["changeovers"]["value"] is None),
+                                               member_unit="operation") for side in ("before", "after")]
             for value, tasks, intervals in ((previous, before_tasks, before_intervals), (selected, after_tasks, after_intervals)):
                 value["covered_operation_refs"] = sorted({row["operation_ref"] for row in subject_arrangements(
                     tasks, subject_operation_refs, task_intervals=intervals)})
         else:
             changes = data["machine_changes"]
-            previous, selected = metric_value(0, scope=scope), metric_value(changes["count"], scope=scope, unknown=changes["unknown_count"])
+            previous, selected = (
+                metric_value(0, scope=scope, member_unit="operation"),
+                metric_value(changes["count"], scope=scope, unknown=changes["unknown_count"], member_unit="operation"),
+            )
             support = [{"kind": "operation", "ref": ref, "query": {"operation_ref": ref}, "tab": "operations"} for ref in changes["operation_refs"][:3]]
         delta = metric_delta(definition, selected, previous)
         if definition["group"] == "delivery" and not refs:

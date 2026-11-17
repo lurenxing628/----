@@ -5,21 +5,24 @@ from collections import defaultdict
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_action import action_row, reject_action_row
+from core.shared.strict_parse import wire_int
 
-from .file_hours_values import HOURS_FIELDS, assertions, flat_hours, hours_values, row_key
+from .file_hours_values import HOURS_FIELDS, assertions, flat_hours, hours_values
 from .part_actions_facts import plain_part_action_facts as _plain
-from .projection import public_sequence, require_ref
+from .projection import require_ref
+from .template_facts import ProcessFacts
 from .zero_hours import zero_confirmation_required
 
 
 class HoursFilePreview:
-    def __init__(self, facts, target_ref):
-        self.facts, self.target_ref = facts, target_ref
-        self.parts = {row["part_no"]: row for row in facts["parts"]}
-        self.identities = {row["ref"]: row for row in facts["identities"]}
-        self.groups = {row["group_id"]: row for row in facts["groups"]}
+    def __init__(self, facts: ProcessFacts, target_ref):
+        self.workflow, self.target_ref = facts.workflow, target_ref
+        raw = facts.raw
+        self.parts = {row["part_no"]: row for row in raw.parts}
+        self.identities = {row["ref"]: row for row in raw.identities}
+        self.groups = {row["group_id"]: row for row in raw.groups}
         self.operations, self.members = defaultdict(list), defaultdict(list)
-        for row in facts["operations"]:
+        for row in raw.operations:
             self.operations[(row["part_no"], row["seq"])].append(row)
             if row["status"] == "active" and row["ext_group_id"] is not None:
                 self.members[row["ext_group_id"]].append(row)
@@ -61,9 +64,8 @@ class HoursFilePreview:
         return group
 
     def _is_source_ready(self, operation):
-        state = self.facts["workflow"][operation["part_no"]]
-        confirmation = state["operations"][operation["ref"]]["source"]
-        return state["workflow"]["route"]["state"] == "confirmed" and confirmation["state"] == "confirmed"
+        route = self.workflow.parts[operation["part_no"]].workflow["route"]
+        return route["state"] == "confirmed" and self.workflow.confirmation(operation)["source"]["state"] == "confirmed"
 
     def source_ready(self, operation):
         if not self._is_source_ready(operation):
@@ -72,10 +74,13 @@ class HoursFilePreview:
     def row(self, decoded):
         row = action_row(decoded["row"], action="update")
         row["errors"] = list(decoded["errors"])
+        values = decoded["values"]
+        if "business_code" not in values or "sequence" not in values:
+            # 解码层已报过这一格的错；认不出是哪道工序，后面的判定都跑不起来。工序确认同样先认编号再判工时。
+            return row
         try:
-            values = decoded["values"]
-            code, sequence = row_key(values)
-            row.update(business_code=code, sequence=public_sequence(sequence))
+            code, sequence = values["business_code"], values["sequence"]
+            row.update(business_code=code, sequence=wire_int(sequence))
             part_ref, operation = self.resolve(code, sequence)
             group = self.group(operation)
             row.update(entity_ref=part_ref, before=flat_hours(operation, group),
@@ -92,7 +97,9 @@ class HoursFilePreview:
         except WorkbenchCommandRejected as exc:
             if exc.status >= 500:
                 raise
-            reject_action_row(row, str(exc), code=exc.code)
+            # A field rejection (the stage-input hours/cycle rules) points at its columns, a whole-row one at input.
+            for field in exc.fields or ("input",):
+                reject_action_row(row, str(exc), field=field, code=exc.code)
         return row
 
     def group_values(self, rows):
@@ -143,8 +150,7 @@ class HoursFilePreview:
         if row["errors"]:
             return
         row["result"] = "update" if row["changes"] else "unchanged"
-        operation = row["expected"]["operation"]
-        confirmation = self.facts["workflow"][operation["part_no"]]["operations"][operation["ref"]]
+        confirmation = self.workflow.confirmation(row["expected"]["operation"])
         row["requires_confirmation"] = zero_confirmation_required(row["before"], after, confirmation)
         if row["requires_confirmation"]:
             row["warnings"] = [{"row": row["row"], "field": "unit_hours", "code": "zero_unit_hours_review",

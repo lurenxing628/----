@@ -14,7 +14,24 @@ from werkzeug.exceptions import HTTPException
 from core.errors import AppError, BusinessError, ValidationError, app_error_http_status
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.services.workbench import messages
-from web.api_responses import failure
+from web.api_responses import failure, failure_payload, json_response
+
+
+def rejection_payload(exc: WorkbenchCommandRejected):
+    """The one mapping of a rejection to the failure envelope: its field paths, conflicts and row identity.
+
+    A 500 rejection tells the user to quote the reference below, so the log records that same reference.
+    """
+    request_ref = uuid.uuid4().hex
+    if exc.status >= 500:
+        current_app.logger.error("工作台请求失败 code=%s request_ref=%s", exc.code, request_ref, exc_info=exc)
+    message = str(exc)
+    return failure_payload(exc.code, message, exc.status, fields=[{"path": path, "message": message} for path in exc.fields],
+                           conflicts=exc.conflicts, row_number=exc.row_number, request_ref=request_ref)
+
+
+def rejection_failure(exc: WorkbenchCommandRejected):
+    return json_response(rejection_payload(exc), status=exc.status)
 
 
 def _outcome(exc, is_write):
@@ -46,12 +63,7 @@ def api_endpoint(function, *, readonly=False):
             response.headers["Cache-Control"] = "no-store"
             return response
         except WorkbenchCommandRejected as exc:
-            # 500 拒绝的文案让用户“告知下方编号”：日志记下的编号就是响应里的这一个。
-            request_ref = uuid.uuid4().hex
-            if exc.status >= 500:
-                current_app.logger.exception("工作台请求失败 code=%s request_ref=%s", exc.code, request_ref)
-            return failure(exc.code, str(exc), exc.status, conflicts=exc.conflicts, row_number=exc.row_number,
-                           request_ref=request_ref)
+            return rejection_failure(exc)
         except WorkbenchCommandUncertain as exc:
             request_ref = uuid.uuid4().hex
             current_app.logger.exception("工作台写入结果待核实 request_key=%s request_ref=%s", exc.request_key, request_ref)
@@ -69,3 +81,22 @@ def api_endpoint(function, *, readonly=False):
 
 def read_endpoint(function):
     return api_endpoint(function, readonly=True)
+
+
+def worded_read_endpoint(failure_message: str):
+    """A read endpoint whose unexpected failure is the route's 500 ``failure_message``.
+
+    POST previews and large read scopes are reads too: rejections and domain errors pass through unchanged, and an
+    unexpected failure never reports a possibly committed write.
+    """
+    def decorate(function):
+        @wraps(function)
+        def wrapped(*args, **kwargs):
+            try:
+                return function(*args, **kwargs)
+            except (AppError, HTTPException, WorkbenchCommandRejected):
+                raise
+            except Exception as exc:
+                raise WorkbenchCommandRejected("storage_failure", failure_message, 500) from exc
+        return api_endpoint(wrapped, readonly=True)
+    return decorate

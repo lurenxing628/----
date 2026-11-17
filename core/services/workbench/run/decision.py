@@ -1,13 +1,14 @@
 """All same-run candidates under one admission archive and one viewing reference."""
 
 from core.services.workbench.facts.decision_metrics import (
+    COVERAGE_MEMBER_FIELDS,
     metric_definitions,
     metric_delta,
+    metric_value,
+    unavailable_operation_change_metrics,
 )
 
-from .decision_impact import operation_changes
 from .decision_recommendation import recommendation
-from .decision_reference import official_reference_metrics
 from .decision_session import decision_read, decision_snapshot_scope
 
 CORE_METRIC_KEYS = (
@@ -16,8 +17,31 @@ CORE_METRIC_KEYS = (
     "changeover_count", "machine_used_count", "operator_used_count", "machine_busy_hours_total",
     "operator_busy_hours_total", "machine_util_avg", "operator_util_avg",
 )
-CORE_CANDIDATE_COVERAGE = ("schedulable", "delivery", "search")
-CORE_BASELINE_COVERAGE = ("schedulable", "delivery")
+# The coverage the summary keeps for its candidates and its baseline.
+CORE_COVERAGE = ("schedulable", "delivery")
+
+
+def operation_change_metrics_from_sql(source, candidate_ref):
+    if source.baseline["state"] != "available":
+        return unavailable_operation_change_metrics(source.admitted_operation_refs)
+    counts = source.repo.operation_change_counts(source.run["run_ref"], source.side_key("reference"), candidate_ref)
+    total = counts["total"]
+    changed, unknown = counts["changed"], counts["unknown"]
+    machines, machine_unknown = counts["machines"], counts["machine_unknown"]
+    reason = {
+        "code": "arrangement_comparison_incomplete",
+        "message": "部分工序缺少设备人员编号，或双方都没有安排，已列出可确认的调整数量。",
+    }
+    return {
+        "changed_operation_count": metric_value(
+            None if unknown else changed, total=total, unknown=unknown, subtotal=changed,
+            reason=reason if unknown else None, member_unit="operation",
+        ),
+        "machine_change_count": metric_value(
+            None if machine_unknown else machines, total=total, unknown=machine_unknown, subtotal=machines,
+            reason=reason if machine_unknown else None, member_unit="operation",
+        ),
+    }
 
 
 def read_run_decision(conn, run_ref, *, bind_snapshot, **query):
@@ -34,8 +58,11 @@ def _read_projection(conn, run_ref, projection, bind_snapshot, query):
         return projection(source), snapshot
 
 
-def _core_candidates(source):
-    return [source.saved_candidate(row["candidate_ref"]) for row in source.rows]
+def _core_candidates(source, *, include_evaluations: bool = True):
+    return [
+        source.saved_candidate(row["candidate_ref"], include_evaluations=include_evaluations)
+        for row in source.rows
+    ]
 
 
 def _enriched_candidates(source, candidates, keys, *, metric_keys=None):
@@ -52,7 +79,6 @@ def _enriched_candidates(source, candidates, keys, *, metric_keys=None):
     need_changes = wanted is None or bool({"changed_operation_count", "machine_change_count"} & wanted)
     if need_resources:
         source.resources.prepare_keys(keys)
-    reference_deferred = source.reference_deferred_refs if need_changes else None
     result = {}
     for candidate in candidates:
         key = candidate["candidate_ref"]
@@ -73,12 +99,7 @@ def _enriched_candidates(source, candidates, keys, *, metric_keys=None):
         if need_changeovers:
             candidate["metrics"].update(source.changeovers.metrics(key))
         if need_changes:
-            candidate["metrics"].update(operation_changes(
-                source.scope["operation_refs"], source.baseline["state"] == "available",
-                selected_available=True, deferred_refs=source.deferred_refs,
-                reference_deferred_refs=reference_deferred, reference_groups=source.analysis_groups("reference"),
-                selected_groups=source.analysis_groups(key), task_intervals=source.task_intervals(key),
-                reference_task_intervals=source.task_intervals("reference")))
+            candidate["metrics"].update(operation_change_metrics_from_sql(source, key))
         result[key] = candidate
     return result
 
@@ -86,16 +107,18 @@ def _enriched_candidates(source, candidates, keys, *, metric_keys=None):
 def _reference_metrics(source, candidates, *, metric_keys=None):
     reference_candidate = next((row for row in candidates if row["candidate_ref"] == source.reference_ref), None)
     if source.comparison_mode == "admission_official":
-        return official_reference_metrics(source, metric_keys=metric_keys)
-    previous = dict(reference_candidate["metrics"]) if reference_candidate else {}
-    before_coverage = dict(reference_candidate["coverage"]) if reference_candidate else {"schedulable": {"state": "unavailable"}}
+        saved = source.official["core_metrics"]
+        raw_metrics = saved if metric_keys is None else {key: value for key, value in saved.items() if key in metric_keys}
+        return source.memberships.expand(raw_metrics), source.memberships.expand(source.official["coverage"])
+    previous = reference_candidate["metrics"] if reference_candidate else {}
+    before_coverage = reference_candidate["coverage"] if reference_candidate else {"schedulable": {"state": "unavailable"}}
     return previous, before_coverage
 
 
 def _enriched_reference(source, previous, before_coverage, candidates):
     reference_candidate = candidates.get(source.computation_key("reference"))
     if reference_candidate is not None:
-        return dict(reference_candidate["metrics"]), dict(reference_candidate["coverage"])
+        return reference_candidate["metrics"], reference_candidate["coverage"]
     previous, before_coverage = dict(previous), dict(before_coverage)
     previous.update(source.resources.metrics("reference"))
     previous.update(source.preparation.metrics("reference"))
@@ -114,13 +137,15 @@ def _set_deltas(source, candidates, previous, definitions):
     for candidate in candidates:
         same_work = source.scheduled_refs(candidate["candidate_ref"]) == before_refs
         candidate["deltas"] = {definition["key"]: metric_delta(definition, candidate["metrics"][definition["key"]],
-            previous.get(definition["key"], {}), work_scope_comparable=same_work)
+            previous[definition["key"]], work_scope_comparable=same_work)
             for definition in definitions if definition["key"] in candidate["metrics"]}
 
 
 def _public_metrics(values):
-    return {key: {field: value for field, value in item.items() if field != "covered_operation_refs"}
-            for key, item in values.items()}
+    return {
+        key: {field: value for field, value in item.items() if field not in COVERAGE_MEMBER_FIELDS}
+        for key, item in values.items()
+    }
 
 
 def _overview_data(source, candidates, previous, before_coverage, definitions, recommendation_candidates):
@@ -144,32 +169,25 @@ def decision_overview(source):
     previous, before_coverage = _reference_metrics(source, candidates)
     previous, before_coverage = _enriched_reference(source, previous, before_coverage, enriched)
     _set_deltas(source, candidates, previous, definitions)
-    data = _overview_data(source, candidates, previous, before_coverage, definitions, candidates)
-    data["completion_groups"] = [{"group_index": index + 1, "source_available": group["source_available"],
-        "candidate_refs": group["candidate_refs"], "complete_batch_count": len(group["complete_batch_refs"]),
-        "sample_complete_batch_refs": group["complete_batch_refs"][:3]}
-        for index, group in enumerate(source.completion.groups(candidates))]
-    return data
+    return _overview_data(source, candidates, previous, before_coverage, definitions, candidates)
 
 
 def decision_history_candidate(source, *, metric_keys=None):
     """Project one history event against the same all-candidate resource cohort."""
-    candidate = source.saved_candidate(source.selected_ref)
+    candidate = source.saved_candidate(source.selected_ref, include_evaluations=False, metric_keys=metric_keys)
     candidates = _enriched_candidates(source, [candidate], [source.selected_ref], metric_keys=metric_keys)
     selected = candidates[source.selected_ref]
-    if metric_keys is None:
-        selected["metrics"] = _public_metrics(selected["metrics"])
     return {"candidates": [selected], "resource_cohort": source.resource_cohort}
 
 
 def decision_summary(source):
     definitions = metric_definitions()
-    candidates = _core_candidates(source)
+    candidates = _core_candidates(source, include_evaluations=False)
     selected = next((row for row in candidates if row["candidate_ref"] == source.basis["selected_candidate_ref"]), None)
     previous, before_coverage = _reference_metrics(source, candidates,
         metric_keys=None if selected is not None else CORE_METRIC_KEYS)
     core_previous = {key: value for key, value in previous.items() if key in CORE_METRIC_KEYS}
-    core_coverage = {key: value for key, value in before_coverage.items() if key in CORE_BASELINE_COVERAGE}
+    core_coverage = {key: before_coverage[key] for key in CORE_COVERAGE if key in before_coverage}
     _set_deltas(source, candidates, core_previous, definitions)
     recommendation_candidates = []
     if selected is not None:
@@ -183,16 +201,26 @@ def decision_summary(source):
                           definitions, recommendation_candidates)
 
 
+_DIFFERENCE_COVERAGE_FIELDS = ("state", "scope", "known_subtotal", "known_count", "unknown_count", "total_count")
+
+
+def _difference_coverage(item):
+    """One side's coverage of a metric; a side with no value of it (no reference, no selected candidate) covers nothing."""
+    return {field: None if item is None else item[field] for field in _DIFFERENCE_COVERAGE_FIELDS}
+
+
 def _difference_summary(selected, previous, definitions):
-    coverage_fields = ("state", "scope", "known_subtotal", "known_count", "unknown_count", "total_count")
+    """``previous`` holds these metrics unless there is no reference to view: a candidate comparison of a run
+    without candidates."""
     definitions = {row["key"]: row for row in definitions}
     items = []
     for key in ("overdue_count", "total_tardiness_hours", "makespan_hours"):
         definition = definitions[key]
-        before, after = previous.get(key, {}), selected["metrics"][key] if selected else {}
+        before, after = previous.get(key), selected["metrics"][key] if selected else None
         delta = selected["deltas"][key] if selected else {
-            "value": None, "state": "unavailable", "direction": "neutral", "reference_value": before.get("value"), "selected_value": None}
+            "value": None, "state": "unavailable", "direction": "neutral",
+            "reference_value": None if before is None else before["value"], "selected_value": None}
         items.append({**{field: definition[field] for field in ("key", "label", "unit", "precision", "scope")}, **delta,
-                      "reference_coverage": {field: before.get(field) for field in coverage_fields},
-                      "selected_coverage": {field: after.get(field) for field in coverage_fields}})
+                      "reference_coverage": _difference_coverage(before),
+                      "selected_coverage": _difference_coverage(after)})
     return {"scope": "full_admission", "items": items}

@@ -46,7 +46,6 @@
           "view": true
         },
         "completeness": "complete",
-        "data_gaps": [],
         "evaluations": {
           "min_changeover": {
             "field_order": [
@@ -66,15 +65,11 @@
               0.75
             ],
             "scoring_scope": {
-              "complete_batch_refs": [
-                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-              ],
-              "components_known": true,
-              "is_complete": true,
+              "scheduled_operation_count": 1,
+              "complete_batch_count": 1,
               "objective_scope": "all_batches",
-              "scheduled_operation_refs": [
-                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
-              ]
+              "components_known": true,
+              "is_complete": true
             }
           },
           "min_overdue": {
@@ -95,15 +90,11 @@
               0.0
             ],
             "scoring_scope": {
-              "complete_batch_refs": [
-                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-              ],
-              "components_known": true,
-              "is_complete": true,
+              "scheduled_operation_count": 1,
+              "complete_batch_count": 1,
               "objective_scope": "all_batches",
-              "scheduled_operation_refs": [
-                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
-              ]
+              "components_known": true,
+              "is_complete": true
             }
           },
           "min_tardiness": {
@@ -124,20 +115,15 @@
               0.0
             ],
             "scoring_scope": {
-              "complete_batch_refs": [
-                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-              ],
-              "components_known": true,
-              "is_complete": true,
+              "scheduled_operation_count": 1,
+              "complete_batch_count": 1,
               "objective_scope": "all_batches",
-              "scheduled_operation_refs": [
-                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
-              ]
+              "components_known": true,
+              "is_complete": true
             }
           }
         },
         "first_found_elapsed_ms": 1,
-        "generation_policy_version": "unified_search_v1",
         "label": "交期优先 · 拖期更轻 · 切换更少",
         "metric_scopes": {
           "delivery": "completed_batches_only",
@@ -210,7 +196,6 @@
           "source_event_ref": 1,
           "strategy": "priority_first"
         },
-        "persisted_status": "completed",
         "representative_objectives": [
           "min_overdue",
           "min_tardiness",
@@ -288,7 +273,6 @@
         "view": true
       },
       "completeness": "complete",
-      "data_gaps": [],
       "evaluations": {
         "min_changeover": {
           "field_order": [
@@ -308,15 +292,11 @@
             0.75
           ],
           "scoring_scope": {
-            "complete_batch_refs": [
-              "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-            ],
-            "components_known": true,
-            "is_complete": true,
+            "scheduled_operation_count": 1,
+            "complete_batch_count": 1,
             "objective_scope": "all_batches",
-            "scheduled_operation_refs": [
-              "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
-            ]
+            "components_known": true,
+            "is_complete": true
           }
         },
         "min_overdue": {
@@ -337,15 +317,11 @@
             0.0
           ],
           "scoring_scope": {
-            "complete_batch_refs": [
-              "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-            ],
-            "components_known": true,
-            "is_complete": true,
+            "scheduled_operation_count": 1,
+            "complete_batch_count": 1,
             "objective_scope": "all_batches",
-            "scheduled_operation_refs": [
-              "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
-            ]
+            "components_known": true,
+            "is_complete": true
           }
         },
         "min_tardiness": {
@@ -366,20 +342,15 @@
             0.0
           ],
           "scoring_scope": {
-            "complete_batch_refs": [
-              "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-            ],
-            "components_known": true,
-            "is_complete": true,
+            "scheduled_operation_count": 1,
+            "complete_batch_count": 1,
             "objective_scope": "all_batches",
-            "scheduled_operation_refs": [
-              "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
-            ]
+            "components_known": true,
+            "is_complete": true
           }
         }
       },
       "first_found_elapsed_ms": 1,
-      "generation_policy_version": "unified_search_v1",
       "label": "交期优先 · 拖期更轻 · 切换更少",
       "metric_scopes": {
         "delivery": "completed_batches_only",
@@ -452,7 +423,6 @@
         "source_event_ref": 1,
         "strategy": "priority_first"
       },
-      "persisted_status": "completed",
       "representative_objectives": [
         "min_overdue",
         "min_tardiness",
@@ -478,7 +448,6 @@
       "report_actual": false,
       "view": true
     },
-    "data_gaps": [],
     "delivery_risks": {
       "basis": {
         "actual_completion": "not_evaluated",
@@ -507,7 +476,6 @@
           "due_date": "2026-09-25",
           "due_issue": null,
           "due_state": "specified",
-          "invalid_task_count": 0,
           "is_overdue": false,
           "issues": [
             "part_label_missing"
@@ -560,19 +528,12 @@
       "summary": {
         "batch_count": 1,
         "complete_batch_count": 1,
-        "complete_batch_refs": [
-          "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-        ],
         "deferred_batch_count": 0,
-        "deferred_batch_refs": [],
         "due_eligible_count": 1,
         "due_evaluation_count": 1,
         "excluded_due_count": 0,
         "incomplete_batch_count": 0,
         "invalid_due_count": 0,
-        "known_batch_refs": [
-          "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-        ],
         "known_due_count": 1,
         "known_on_time_count": 1,
         "known_overdue_count": 0,
@@ -581,7 +542,6 @@
         "overdue_count": 0,
         "state": "complete",
         "total_tardiness_hours": 0.0,
-        "unknown_batch_refs": [],
         "unknown_count": 0,
         "unknown_due_count": 0
       }
@@ -630,15 +590,11 @@
               0.75
             ],
             "scoring_scope": {
-              "complete_batch_refs": [
-                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-              ],
-              "components_known": true,
-              "is_complete": true,
+              "scheduled_operation_count": 1,
+              "complete_batch_count": 1,
               "objective_scope": "all_batches",
-              "scheduled_operation_refs": [
-                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
-              ]
+              "components_known": true,
+              "is_complete": true
             }
           },
           "min_overdue": {
@@ -659,15 +615,11 @@
               0.0
             ],
             "scoring_scope": {
-              "complete_batch_refs": [
-                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-              ],
-              "components_known": true,
-              "is_complete": true,
+              "scheduled_operation_count": 1,
+              "complete_batch_count": 1,
               "objective_scope": "all_batches",
-              "scheduled_operation_refs": [
-                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
-              ]
+              "components_known": true,
+              "is_complete": true
             }
           },
           "min_tardiness": {
@@ -688,20 +640,15 @@
               0.0
             ],
             "scoring_scope": {
-              "complete_batch_refs": [
-                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-              ],
-              "components_known": true,
-              "is_complete": true,
+              "scheduled_operation_count": 1,
+              "complete_batch_count": 1,
               "objective_scope": "all_batches",
-              "scheduled_operation_refs": [
-                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
-              ]
+              "components_known": true,
+              "is_complete": true
             }
           }
         },
         "first_found_elapsed_ms": 1,
-        "generation_policy_version": "unified_search_v1",
         "mode": "greedy",
         "mode_label": "快速计算",
         "origin": {
@@ -741,7 +688,6 @@
         "kind": "admission_official",
         "version": null
       },
-      "data_gaps": [],
       "execution_basis": "captured_at_run_admission",
       "finished_at": "2026-10-15T02:29:46.639621",
       "input": {
@@ -960,7 +906,6 @@
         "basis": {
           "actual_completion": "not_evaluated",
           "actual_delivery": "not_evaluated",
-          "batch_selection": "plan_task_and_deferred_batches",
           "completion_scope": "full_selected_plan",
           "due_boundary": "next_day_exclusive",
           "kind": "planned_delivery",
@@ -982,7 +927,6 @@
             "due_date": "2026-09-25",
             "due_issue": null,
             "due_state": "specified",
-            "invalid_task_count": 0,
             "is_overdue": false,
             "issues": [
               "part_label_missing"
@@ -1015,19 +959,12 @@
         "summary": {
           "batch_count": 1,
           "complete_batch_count": 1,
-          "complete_batch_refs": [
-            "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-          ],
           "deferred_batch_count": 0,
-          "deferred_batch_refs": [],
           "due_eligible_count": 1,
           "due_evaluation_count": 1,
           "excluded_due_count": 0,
           "incomplete_batch_count": 0,
           "invalid_due_count": 0,
-          "known_batch_refs": [
-            "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-          ],
           "known_due_count": 1,
           "known_on_time_count": 1,
           "known_overdue_count": 0,
@@ -1036,7 +973,6 @@
           "overdue_count": 0,
           "state": "complete",
           "total_tardiness_hours": 0.0,
-          "unknown_batch_refs": [],
           "unknown_count": 0,
           "unknown_due_count": 0
         }
@@ -1120,7 +1056,6 @@
       "adopted_at": "2026-10-15T02:32:12",
       "algorithm": {
         "first_found_elapsed_ms": 1,
-        "generation_policy_version": "unified_search_v1",
         "mode": "greedy",
         "mode_label": "快速计算",
         "origin": {

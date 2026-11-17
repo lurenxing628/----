@@ -12,6 +12,7 @@ from core.services.process.workflow_state import record_confirmation
 from core.services.workbench.process.file_codec import encode_process_file
 from core.services.workbench.process.files import WorkbenchProcessFileService
 from core.services.workbench.process.group_defaults import default_suppliers
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from core.services.workbench.process.route_apply import apply_route, prepare_route
 from core.services.workbench.process.stage_apply import (
     apply_prepared_hours,
@@ -24,6 +25,7 @@ from data.repositories.workbench_process_query_repo import WorkbenchProcessQuery
 from tests.workbench.calibration_adoption_support import INTENT, KEY, PREVIEW_INTENT, service, snapshot, token
 from tests.workbench.calibration_adoption_support import adoption_case as _adoption_case  # noqa: F401
 from tests.workbench.calibration_adoption_support import ready_adoption_case as _ready_case  # noqa: F401
+from tests.workbench.process_commands_support import CONFIRMED_AT
 from tests.workbench.process_route_support import load_route_reference_facts
 from tests.workbench.template_lineage_support import completed, create
 from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
@@ -41,7 +43,7 @@ def current(case):
 def confirm_hours(case):
     with TransactionManager(case.conn).transaction():
         for stage in ('route', 'source', 'hours'):
-            record_confirmation(case.conn, 'P1', stage)
+            record_confirmation(case.conn, 'P1', stage, confirmed_at=CONFIRMED_AT)
 
 
 def import_hours(case, value, fmt):
@@ -54,7 +56,7 @@ def import_hours(case, value, fmt):
     assert 'skipped_count' not in extra
     assert body['rows'][0]['changes']['unit_hours']['after'] == value
     with TransactionManager(case.conn).transaction(begin_immediate=True):
-        result = files.confirm_import(preview, discard_group_refs=[], confirm_zero_unit_hours=False)
+        result = files.confirm_import(preview, discard_group_refs=[], confirm_zero_unit_hours=False, confirmed_at=CONFIRMED_AT)
     assert result.result == 'committed'
     assert result.data['rows'][0]['result'] == 'committed'
     assert current(case)['unit_hours'] == value
@@ -71,9 +73,10 @@ def test_all_writers_preserve_existing_batches_and_plans_after_adoption(ready_ad
         ProcessTemplateHours(case.conn).revise_current(old, {'setup_hours': 0, 'unit_hours': 4.5})
     with TransactionManager(case.conn).transaction(begin_immediate=True):
         old = current(case)
+        with WorkbenchProcessQueryService(case.conn, part_ref=case.ref('part', 'P1')).read_snapshot() as scope:
+            workflow = scope.facts().workflow
         prepared = prepare_hours({'operations': [{'ref': ref, 'setup_hours': 0, 'unit_hours': 5.5}],
-                                  'groups': [], 'confirm_zero_unit_hours': False}, [old], [],
-                                 confirmations={'P1': {ref: {'hours': {'state': 'confirmed'}}}})
+                                  'groups': [], 'confirm_zero_unit_hours': False}, [old], [], workflow=workflow)
         assert apply_prepared_hours(case.conn, prepared)
     confirm_hours(case)
     import_hours(case, 6.5, 'csv')
@@ -180,11 +183,11 @@ def test_import_rejects_preview_made_stale_by_a_newer_import_without_a_file_hash
     changed = encode_process_file('hours', [{'business_code': 'P1', 'sequence': 1, 'unit_hours': 6}], 'csv').content
     other, _ = files.preview_import('hours', changed, file_format='csv', mode='upsert', target_ref=None)
     with TransactionManager(case.conn).transaction(begin_immediate=True):
-        files.confirm_import(other, discard_group_refs=[], confirm_zero_unit_hours=False)
+        files.confirm_import(other, discard_group_refs=[], confirm_zero_unit_hours=False, confirmed_at=CONFIRMED_AT)
     assert current(case)['unit_hours'] == 6
     with pytest.raises(WorkbenchCommandRejected) as rejected:
         with TransactionManager(case.conn).transaction(begin_immediate=True):
-            files.confirm_import(preview, discard_group_refs=[], confirm_zero_unit_hours=False)
+            files.confirm_import(preview, discard_group_refs=[], confirm_zero_unit_hours=False, confirmed_at=CONFIRMED_AT)
     assert rejected.value.code == 'stale_write'
     assert current(case)['unit_hours'] == 6
 
@@ -243,8 +246,7 @@ def test_calibration_median_and_deviation_use_exact_decimal_ratios(adoption_case
         )
     revised_facts = calibration(case)
     revised_row = revised_facts['rows'][0]
-    samples = revised_facts['samples_by_template'][case.template_ref]
-    selected_samples = [item for item in samples if item['selected']]
+    selected_samples = [revised_facts['samples_by_ref'][ref] for ref in revised_row['sample_refs']]
     assert len(selected_samples) == 5
     assert all(item['effective_processing_hours'] == 1.2 and item['unit_hours'] == 0.6 for item in selected_samples)
     assert revised_row['suggested_unit_hours'] == 0.6
@@ -274,7 +276,7 @@ def test_calibration_median_and_deviation_use_exact_decimal_ratios(adoption_case
         )
     deep_facts = calibration(case)
     deep_row = deep_facts['rows'][0]
-    deep_selected = [item for item in deep_facts['samples_by_template'][case.template_ref] if item['selected']]
+    deep_selected = [deep_facts['samples_by_ref'][ref] for ref in deep_row['sample_refs']]
     assert len(deep_selected) == 5
     assert all(item['effective_processing_hours'] == 1.2 and item['unit_hours'] == 0.6 for item in deep_selected)
     assert deep_row['suggested_unit_hours'] == 0.6

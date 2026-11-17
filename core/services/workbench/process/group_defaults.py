@@ -3,10 +3,8 @@
 from uuid import uuid4
 
 from core.models.resource_capabilities import supplier_capability_rows, supports_source
-from core.shared.strict_parse import is_exact_non_negative_number
 from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
-from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository
 
 
 def create_group(conn, part_no, members, supplier_id, total_days, *, attach=True):
@@ -17,7 +15,9 @@ def create_group(conn, part_no, members, supplier_id, total_days, *, attach=True
     if attach:
         repo = PartOperationRepository(conn)
         for row in members:
-            repo.update_fields_by_id(row["id"], {"ext_group_id": group_id})
+            repo.update_fields_by_id(
+                row["id"], {"ext_group_id": group_id, "source_confirmed_at": None, "hours_confirmed_at": None}
+            )
     return group_id
 
 
@@ -40,13 +40,11 @@ def _default_candidate(row, eligible):
             and row["ext_group_id"] is None and row["default_merge_mode"] == "merged")
 
 
-def _uses_merged_default(row, candidates, suppliers, capabilities, available):
-    supplier = suppliers.get(row["supplier_id"])
-    days = supplier["default_days"] if supplier else None
+def _uses_merged_default(row, candidates, capabilities, available):
+    # 有承接能力就有供应商行；它的默认周期由表约束定为必填且在 (0, 36500] 天，整段直接取这一个值。
     return (row["seq"] in candidates
             and row["supplier_id"] in available
-            and (row["supplier_id"], row["op_type_id"]) in capabilities
-            and is_exact_non_negative_number(days, positive=True))
+            and (row["supplier_id"], row["op_type_id"]) in capabilities)
 
 
 def apply_default_groups(conn, part_no, operation_sequences, *, catalog_reader):
@@ -54,14 +52,14 @@ def apply_default_groups(conn, part_no, operation_sequences, *, catalog_reader):
     eligible = set(operation_sequences)
     if not eligible:
         return False
-    rows = WorkbenchProcessWorkflowRepository(conn).active_operations(part_no, include_related_groups=False)
+    rows = PartOperationRepository(conn).active_operations_with_policies(part_no)
     candidates = {row["seq"] for row in rows if _default_candidate(row, eligible)}
     if not candidates:
         return False
     suppliers, capabilities, available = catalog_reader()
     segments, segment = [], []
     for row in rows:
-        usable = _uses_merged_default(row, candidates, suppliers, capabilities, available)
+        usable = _uses_merged_default(row, candidates, capabilities, available)
         if segment and (not usable or segment[-1]["supplier_id"] != row["supplier_id"]):
             segments.append(segment)
             segment = []

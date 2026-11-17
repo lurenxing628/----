@@ -1,36 +1,37 @@
 """Request-local reads of original history sources inside one read snapshot."""
 
+from typing import Dict, List, Optional
+
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.facts.adoption_baseline_values import (
-    REASONS,
-    AdoptionBaselineUnavailable,
-    read_adoption_record,
-)
-from core.services.workbench.facts.candidate_projection import (
-    candidate_completeness,
-    dispositions,
-    validate_manifest,
-)
-from core.services.workbench.facts.candidate_read_source import read_candidate_source
+from core.services.workbench.facts.candidate_read_source import CandidateReadSource, SavedRun, load_saved_run
 from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.candidate_tasks import validate_candidate_tasks
 from core.services.workbench.facts.candidate_values import corrupt
-from core.services.workbench.facts.decision_baseline_source import candidate_evidence, trial_evidence
-from core.services.workbench.facts.decision_metrics import admission_operation_refs
-from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
+from core.services.workbench.facts.trial_scenario_archive import load_verified_scenario
+from core.services.workbench.history_entries.conditions import (
+    prepare_history_condition_side,
+    prepare_history_condition_source,
+)
+from core.services.workbench.history_entries.packets import (
+    HistoryPacket,
+    LightRunPacket,
+    RunPacket,
+    TrialPacket,
+    UnavailablePacket,
+)
 from core.services.workbench.run.decision import decision_history_candidate
 from core.services.workbench.run.decision_source import DecisionSource
-
-from .conditions import prepare_history_condition_side, prepare_history_condition_source
+from data.repositories.workbench_history_catalog_repo import WorkbenchHistoryCatalogRepository
 
 
 def _condition_key(packet):
-    issue = packet.get("source_issue")
-    if packet["ref"] is None:
-        return ("empty", issue["code"], issue["message"])
-    if issue is not None:
-        return ("entry", packet["entry_ref"])
-    candidate = packet.get("candidate")
-    return (packet["kind"], packet["ref"], candidate["candidate_ref"] if candidate is not None else None)
+    if isinstance(packet, UnavailablePacket):
+        if packet.ref is None:
+            return ("empty", packet.source_issue["code"], packet.source_issue["message"])
+        return ("entry", packet.entry_ref)
+    if isinstance(packet, RunPacket):
+        return ("run", packet.ref, packet.candidate_ref)
+    return ("trial", packet.ref, None)
 
 
 def _cached(cache, key, load):
@@ -48,7 +49,7 @@ def _cached(cache, key, load):
 
 
 class _HistoryCandidateStore(CandidateStore):
-    """Keep CandidateStore's checks while sharing archived bytes across events."""
+    """Request-local CandidateStore sharing 404 lookups and archives across history events."""
 
     def __init__(self, conn):
         super().__init__(conn)
@@ -64,7 +65,11 @@ class _HistoryCandidateStore(CandidateStore):
         return _cached(self._saved, ("candidates", run_ref), lambda: super(_HistoryCandidateStore, self).candidates(run_ref))
 
     def candidate_run(self, candidate_ref):
-        return _cached(self._saved, ("candidate_run", candidate_ref), lambda: super(_HistoryCandidateStore, self).candidate_run(candidate_ref))
+        return _cached(
+            self._saved,
+            ("candidate_run", candidate_ref),
+            lambda: super(_HistoryCandidateStore, self).candidate_run(candidate_ref),
+        )
 
     def capture(self, run_ref):
         return _cached(self._saved, ("capture", run_ref), lambda: super(_HistoryCandidateStore, self).capture(run_ref))
@@ -73,37 +78,33 @@ class _HistoryCandidateStore(CandidateStore):
         return _cached(self._saved, ("tasks", candidate_ref), lambda: super(_HistoryCandidateStore, self).tasks(candidate_ref))
 
 
-def _packet(kind, ref, entry_ref):
-    data = {"kind": kind, "ref": ref, "entry_ref": entry_ref}
-    if kind == "run":
-        data.update(capture=None, facts=None, candidate=None, receipt=None, raw_tasks=None)
-    elif kind == "trial":
-        data.update(saved=None, head=None, rows=[], origin=None)
-    else:
-        raise ValueError("Unknown saved history source")
-    return data
+def _translate_missing_source(load):
+    try:
+        return load()
+    except WorkbenchCommandRejected as exc:
+        if exc.status != 404:
+            raise
+        raise WorkbenchCommandRejected(
+            "history_source_invalid", "历史记录的保存来源缺失，请联系维护人员核对。", 500
+        ) from exc
 
 
 class HistoryReader:
-    """Load only requested entries; repeated adoption events share their source.
+    """Load only requested entries; repeated adoption events share their source."""
 
-    The caller owns the read transaction and evidence scope. Source packets retain
-    event identity separately from the original candidate or saved scenario.
-    """
-
-    def __init__(self, conn, *, catalog=()):
+    def __init__(self, conn):
         if not conn.in_transaction:
             raise RuntimeError("History sources require the caller's read transaction")
         self.conn = conn
         self.store = _HistoryCandidateStore(conn)
-        self._run_prepared = {descriptor["source"]["run_ref"]: {
-            "head": descriptor["record"]["job"], "admission": descriptor["record"]["admission"],
-            "header": descriptor["record"]["run_header"]} for descriptor in catalog
-            if descriptor["source_kind"] == "run" and "admission" in descriptor["record"]}
+        self.catalog_repo = WorkbenchHistoryCatalogRepository(conn)
         self._runs = {}
+        self._run_batches = {}
         self._candidates = {}
+        self._run_candidates: Dict[str, List[CandidateReadSource]] = {}
         self._scenarios = {}
         self._entries = {}
+        self._metric_packets = {}
         self._sources = {}
         self._decisions = {}
         self._condition_sources = {}
@@ -112,18 +113,15 @@ class HistoryReader:
         self.history_range_facts = {}
 
     def prepared_condition_source(self, packet):
-        """Share a verified saved source and window-free settings while keeping missing-event evidence separate."""
         key = _condition_key(packet)
         if key not in self._condition_sources:
             self._condition_sources[key] = prepare_history_condition_source(packet)
         return self._condition_sources[key]
 
     def condition_source(self, packet):
-        """Share a verified saved source while keeping missing-event evidence separate."""
         return self.prepared_condition_source(packet)["source"]
 
     def condition_side(self, packet, window):
-        """Reuse production by source and window, retaining window-free settings."""
         source_key = _condition_key(packet)
         key = (source_key, window["start"], window["end"])
         if key not in self._condition_sides:
@@ -132,47 +130,65 @@ class HistoryReader:
             )
         return self._condition_sides[key]
 
-    def _run(self, run_ref):
-        def load():
-            prepared = self._run_prepared.get(run_ref, {})
-            head = prepared.get("head")
-            run = ({key: head[key] for key in ("run_ref", "state", "accepted_at", "finished_at")}
-                   if head is not None else self.store.run(run_ref))
-            if head is not None:
-                self.store._saved[("run", run_ref)] = run
-            receipt = self.store.receipt(run)
-            rows = self.store.candidates(run_ref)
-            validate_manifest(run, rows, receipt)
-            capture = self.store.capture(run_ref)
-            facts = self.store.generation_facts(capture)
-            disposition = dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"]))
-            return {**prepared, "run": run, "receipt": receipt, "rows": rows, "capture": capture,
-                    "facts": facts, "disposition": disposition, "candidate_sources": {}}
+    def run_batches(self, run_ref):
+        if run_ref not in self._run_batches:
+            self._run_batches[run_ref] = self.catalog_repo.run_batch_quantities(run_ref)
+        return self._run_batches[run_ref]
 
-        return _cached(self._runs, run_ref, load)
+    def _run(self, run_ref) -> SavedRun:
+        return _cached(
+            self._runs,
+            run_ref,
+            lambda: load_saved_run(self.store, self.store.run(run_ref), self.store.candidates(run_ref)),
+        )
+
+    def _loaded_run(self, run_ref) -> Optional[SavedRun]:
+        """The run this reader already read, or None; a missing source it found is raised again."""
+        return self._run(run_ref) if run_ref in self._runs else None
 
     def _candidate(self, run_ref, candidate_ref):
         def load():
             saved = self._run(run_ref)
-            candidate = next((row for row in saved["rows"] if row["candidate_ref"] == candidate_ref), None)
+            candidate = next((row for row in self.store.candidates(run_ref) if row["candidate_ref"] == candidate_ref), None)
             if candidate is None:
-                # A missing source is distinct from a reference to another run.
                 if self.store.candidate_run(candidate_ref) != run_ref:
                     raise WorkbenchCommandRejected("history_source_invalid", "历史候选与原排产编号不一致。", 500)
                 corrupt()
-            source = read_candidate_source(self.store, candidate_ref, prepared={**saved, "candidate": candidate})
-            candidate_completeness(candidate, saved["disposition"], scheduled_op_ids=source.scheduled_op_ids)
-            saved["candidate_sources"][candidate_ref] = source
+            source = CandidateReadSource.of(saved, candidate, validate_candidate_tasks(self.store, candidate, saved.facts))
+            self._run_candidates.setdefault(run_ref, []).append(source)
             return source
 
         return _cached(self._candidates, (run_ref, candidate_ref), load)
 
     def read(self, descriptor):
-        """Return the frozen private source packet for one catalog descriptor."""
         entry_ref = descriptor["entry_ref"]
         if entry_ref not in self._entries:
             self._entries[entry_ref] = self._read(descriptor)
         return self._entries[entry_ref]
+
+    def metric_packet(self, descriptor) -> HistoryPacket:
+        """Return a lightweight packet for metric projection when full archive deserialization is unnecessary."""
+        entry_ref = descriptor["entry_ref"]
+        if entry_ref in self._entries:
+            return self._entries[entry_ref]
+        if entry_ref not in self._metric_packets:
+            self._metric_packets[entry_ref] = self._build_metric_packet(descriptor)
+        return self._metric_packets[entry_ref]
+
+    def _build_metric_packet(self, descriptor) -> HistoryPacket:
+        _source_kind, refs, kind, ref, source_issue = self._descriptor_identity(descriptor)
+        if source_issue is not None:
+            return UnavailablePacket(kind, ref, descriptor["entry_ref"], source_issue)
+        if kind == "trial":
+            return self.read(descriptor)
+        candidate_ref = refs["candidate_ref"]
+        if candidate_ref is None:
+            return self.read(descriptor)
+        # A run's catalog entry joins its stored input, admitted there (catalog.admitted_run_input).
+        run_input = descriptor["run_input"]
+        if run_input is None:
+            raise WorkbenchCommandRejected("history_source_invalid", "历史记录的保存来源缺失，请联系维护人员核对。", 500)
+        return LightRunPacket(ref, descriptor["entry_ref"], run_input, candidate_ref)
 
     @staticmethod
     def _descriptor_identity(descriptor):
@@ -180,86 +196,83 @@ class HistoryReader:
         kind = "trial" if source_kind == "trial_adoption" else "run"
         ref = refs["run_ref"] if kind == "run" else refs["scenario_ref"]
         source_issue = None
-        if source_kind in ("candidate_adoption", "trial_adoption") and descriptor["record"]["audit"] is None:
-            gap = next((row for row in descriptor["evidence_gaps"] if row["code"] in ("audit_missing", "audit_unproven")), None)
-            source_issue = {"code": gap["code"], "message": gap["message"]} if gap else {
-                "code": "audit_missing", "message": "原采用审计缺失，结果来源无法确认。"}
+        if source_kind in ("candidate_adoption", "trial_adoption"):
+            gap = next(
+                (row for row in descriptor["evidence_gaps"] if row["code"] == "audit_missing"),
+                None,
+            )
+            if gap is not None:
+                source_issue = {"code": gap["code"], "message": gap["message"]}
         return source_kind, refs, kind, ref, source_issue
 
-    def _read(self, descriptor):
+    def _read(self, descriptor) -> HistoryPacket:
         _source_kind, refs, kind, ref, source_issue = self._descriptor_identity(descriptor)
-        packet = _packet(kind, ref, descriptor["entry_ref"])
+        entry_ref = descriptor["entry_ref"]
         if source_issue is not None:
-            packet["source_issue"] = source_issue
-            return packet
-        # Runs, candidates, drafts and scenarios are permanent; a missing source is damaged storage.
-        try:
-            if kind == "run":
-                self._read_run(packet, refs, descriptor)
-            else:
-                self._read_trial(packet, refs, descriptor)
-        except WorkbenchCommandRejected as exc:
-            if exc.status != 404:
-                raise
-            raise WorkbenchCommandRejected("history_source_invalid", "历史记录的保存来源缺失，请联系维护人员核对。", 500) from exc
-        return packet
+            return UnavailablePacket(kind, ref, entry_ref, source_issue)
+        return _translate_missing_source(
+            lambda: self._read_run(ref, entry_ref, refs) if kind == "run" else self._read_trial(ref, entry_ref, refs)
+        )
 
-    def _verify_adoption_record(self, descriptor):
-        record, source = descriptor["record"], descriptor["source"]
-        try:
-            return read_adoption_record(
-                self.conn,
-                plan_ref=source["plan_ref"],
-                version=source["version"],
-                history=record["history"],
-                receipt=record["receipt"],
-                receipt_result=record["outcome"],
-            )[1]
-        except AdoptionBaselineUnavailable as exc:
-            raise WorkbenchCommandRejected("adoption_snapshot_invalid", REASONS[exc.code]) from exc
-
-    def _read_run(self, packet, refs, descriptor):
-        record = descriptor["record"]
-        if descriptor["source_kind"] == "run" and "admission" in record:
-            self._run_prepared[refs["run_ref"]] = {
-                "head": record["job"], "admission": record["admission"], "header": record["run_header"]}
+    def _read_run(self, ref, entry_ref, refs) -> RunPacket:
         saved = self._run(refs["run_ref"])
-        packet.update(capture=saved["capture"], facts=saved["facts"], receipt=saved["receipt"])
         candidate_ref = refs["candidate_ref"]
         if candidate_ref is None:
-            return
+            return RunPacket(ref, entry_ref, saved.capture, saved.facts, saved.receipt, None, None)
         source = self._candidate(refs["run_ref"], candidate_ref)
-        if descriptor["source_kind"] == "candidate_adoption":
-            audit = self._verify_adoption_record(descriptor)
-            candidate_evidence(source, audit)
-            if len(source.raw_tasks) != audit["row_count"]:
-                raise WorkbenchCommandRejected("history_source_invalid", "采用记录与原候选安排条数不一致。", 500)
-        packet.update(candidate=source.candidate, raw_tasks=source.raw_tasks)
+        return RunPacket(ref, entry_ref, saved.capture, saved.facts, saved.receipt, source.candidate, source.raw_tasks)
 
-    def _read_trial(self, packet, refs, descriptor):
-        source = _cached(self._scenarios, refs["scenario_ref"], lambda: load_saved_scenario(self.conn, refs["scenario_ref"]))
-        audit = self._verify_adoption_record(descriptor)
-        trial_evidence(source, audit)
-        if len(source.rows) != audit["row_count"]:
-            raise WorkbenchCommandRejected("history_source_invalid", "采用记录与原试调安排条数不一致。", 500)
-        packet.update(saved=source.saved, head=source.head, rows=source.rows, origin=source.origin)
+    def _read_trial(self, ref, entry_ref, refs) -> TrialPacket:
+        source = _cached(
+            self._scenarios,
+            refs["scenario_ref"],
+            lambda: load_verified_scenario(self.conn, refs["scenario_ref"]),
+        )
+        return TrialPacket(ref, entry_ref, source.saved, source.head, source.rows, source.origin)
 
     def source_state(self, descriptor):
-        """Saved sources bind their permanent references, state and known gaps."""
         _source_kind, _refs, kind, ref, source_issue = self._descriptor_identity(descriptor)
-        return {"kind": kind, "ref": ref, "entry_ref": descriptor["entry_ref"],
-                "source": descriptor["source"], "state": descriptor["state"],
-                "source_issue": source_issue}
+        return {
+            "kind": kind,
+            "ref": ref,
+            "entry_ref": descriptor["entry_ref"],
+            "source": descriptor["source"],
+            "state": descriptor["state"],
+            "source_issue": source_issue,
+        }
 
     def run_source(self, run_ref, candidate_ref, *, range_start, range_end):
-        """Reuse the existing decision source for the actual candidate and window."""
         key = (run_ref, candidate_ref, range_start, range_end)
-        return _cached(self._sources, key, lambda: DecisionSource(self.store, run_ref,
-            selected_candidate_ref=candidate_ref, range_start=range_start, range_end=range_end,
-            resource_view="full_candidate", prepared=self._runs.get(run_ref, self._run_prepared.get(run_ref))))
+
+        def load():
+            source = _translate_missing_source(
+                lambda: DecisionSource(
+                    self.store,
+                    run_ref,
+                    selected_candidate_ref=candidate_ref,
+                    range_start=range_start,
+                    range_end=range_end,
+                    resource_view="full_candidate",
+                    run=self._loaded_run(run_ref),
+                    candidate_sources=tuple(self._run_candidates.get(run_ref, ())),
+                )
+            )
+            if candidate_ref is not None and source.selected is None:
+                owner = _translate_missing_source(lambda: self.store.candidate_run(candidate_ref))
+                if owner != run_ref:
+                    raise WorkbenchCommandRejected("history_source_invalid", "历史候选与原排产编号不一致。", 500)
+                corrupt()
+            return source
+
+        return _cached(self._sources, key, load)
 
     def decision(self, run_ref, range_start, range_end, *, candidate_ref, metric_keys=None):
-        """Read this event's metrics under the workspace's common resource cohort."""
         key = (run_ref, candidate_ref, range_start, range_end, None if metric_keys is None else tuple(metric_keys))
-        return _cached(self._decisions, key, lambda: decision_history_candidate(self.run_source(run_ref, candidate_ref,
-            range_start=range_start, range_end=range_end), metric_keys=metric_keys))
+        return _cached(
+            self._decisions,
+            key,
+            lambda: decision_history_candidate(
+                self.run_source(run_ref, candidate_ref, range_start=range_start, range_end=range_end),
+                metric_keys=metric_keys,
+            ),
+        )

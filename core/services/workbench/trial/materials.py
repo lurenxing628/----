@@ -1,74 +1,44 @@
-"""Carry the chosen material policy into trial moves and adoption."""
+"""Carry the chosen material policy into trial moves and adoption.
+
+Every function reads the run settings the trial's typed source recorded (``TrialSource.settings``): a candidate's
+run input, or the material policy an official plan recorded when it was adopted.
+"""
 
 from datetime import date, timedelta
 
-from core.models.scheduler_history_parser import ResultSummaryParseResult
-from core.models.workbench_preflight import stored_hold_window_valid
-from core.models.workbench_trial import reject
+from core.models.workbench_preflight import normalize_preflight_input
 from core.shared.stored_dates import stored_date
 
 
-def plan_material_policy(parsed: ResultSummaryParseResult):
-    """Read the policy from the caller's one parse of the plan's saved summary."""
-    # Every official plan's adoption audit records the run's material policy and dates.
-    summary = parsed.payload
-    if summary is None or "material_policy" not in summary:
-        reject("material_policy_invalid", "原计划没有记录物料放行方式和排产起止日期，请核对排产记录。")
-    policy = summary["material_policy"]
-    if (not isinstance(policy, dict) or type(policy.get("ready_check")) is not bool
-            or policy.get("material_strategy") not in ("strict", "stage")):
-        reject("material_policy_invalid", "原计划的物料放行方式无效，请核对排产记录。")
-    if not _window_valid(policy):
-        reject("material_policy_invalid", "原计划记录的排产起止日期无效，请核对排产记录。")
-    if "hold_window" in policy and not stored_hold_window_valid(policy["hold_window"]):
-        reject("material_policy_invalid", "原计划记录的不重排时段无效，请核对排产记录。")
-    return policy
+def run_policy(source):
+    settings = source.settings
+    return {"ready_check": settings["ready_check"], "material_strategy": settings["material_strategy"]}
 
 
-def _window_valid(policy):
-    days = [policy.get(key) for key in ("start_date", "end_date")]
-    return all(type(day) is str and stored_date(day) == day for day in days) and days[0] <= days[1]
-
-
-def _run_settings(admission):
-    """A candidate source keeps its run input; an official plan source keeps its validated material policy."""
-    source = admission["source"]
-    return source["capture"]["input"] if "capture" in source else source["material_policy"]
-
-
-def run_policy(admission):
-    settings = _run_settings(admission)
-    # material_strategy is optional in a run input and means whole-batch readiness when omitted.
-    return {"ready_check": settings["ready_check"], "material_strategy": settings.get("material_strategy", "strict")}
-
-
-def run_window(admission):
-    """The run dates that left stage work pending, as the source recorded them.
-
-    A candidate keeps its run input. Official plans record it when adopted.
-    """
-    settings = _run_settings(admission)
+def run_window(source):
+    """The run dates that left stage work pending, as the source recorded them."""
+    settings = source.settings
     # 来源记下的不重排时段随起止日一起带给正式计划；来源没设的不补，按交付设置推算。
     return {"start_date": settings["start_date"], "end_date": settings["end_date"],
             **({"hold_window": settings["hold_window"]} if "hold_window" in settings else {})}
 
 
-def deferral_policy(admission, rows, checks, execution):
+def deferral_policy(source, rows, checks, execution, *, span):
     """Run policy plus the dates that decide which stage work may stay pending.
 
-    Work missing from the saved rows is judged by the source run's own end date,
+    ``span`` is the rows' first start day and last end day, taken from their admitted
+    intervals. Work missing from the saved rows is judged by the source run's own end date,
     not by a later locked or moved row, exactly as the run and a direct adoption
     judge it. The end only moves later for a material or ready day that a saved,
     still unreported row waits for, so such a row is not turned into pending
     work. Rows with actual production keep their arrangement whatever the window
     and add no day. Without stage deferral the saved span is used.
     """
-    policy = run_policy(admission)
-    first = min(row["current"]["start"][:10] for row in rows)
-    last = max(row["current"]["end"][:10] for row in rows)
+    policy = run_policy(source)
+    first, last = span
     if policy["material_strategy"] != "stage" or policy["ready_check"] is not True:
         return dict(policy, start_date=first, end_date=last)
-    recorded = run_window(admission)["end_date"]
+    recorded = run_window(source)["end_date"]
     waits = [recorded]
     for row in rows:
         if not _window_classified(row, execution):
@@ -81,25 +51,27 @@ def deferral_policy(admission, rows, checks, execution):
     return dict(policy, start_date=min(first, end), end_date=end)
 
 
-def adoption_settings(admission, rows, checks, execution):
+def adoption_settings(source, rows, checks, execution, *, span):
     """The one-run input a trial adoption is rechecked with.
 
     试调判断哪些原安排不能改也用这份输入：不重排时段沿用来源排产记下的（裁到这次的起止日内；
     试调各行都在起止日内，裁剪不改变哪些原安排落在时段里）；来源没记的不带这个键，按交付设置推算。
+    ``span`` 是各行准入后的最早开始日与最晚结束日。
+    这份输入在这里按提交侧同一入口（normalize_preflight_input）准入一次，下游（含 prepare_business_input）直接用。
     """
     settings = {"batch_refs": sorted({row["original"]["batch_ref"] for row in rows}),
                 "missing_resource_policy": "auto_assign", "completed_policy": "preserve_actuals",
-                **deferral_policy(admission, rows, checks, execution)}
-    source = _run_settings(admission)
-    if "hold_window" in source:
-        settings["hold_window"] = _within(source["hold_window"], settings["start_date"], settings["end_date"])
-    return settings
+                **deferral_policy(source, rows, checks, execution, span=span)}
+    recorded = source.settings
+    if "hold_window" in recorded:
+        settings["hold_window"] = _within(recorded["hold_window"], settings["start_date"], settings["end_date"])
+    return normalize_preflight_input(settings)
 
 
-def hold_settings(admission, settings):
+def hold_settings(source, settings):
     """判断哪些原安排保留时用的排产输入：冻结从来源排产的起日起算，默认时段也从那天推算，
     与来源排产同一口径，不随试调各行最早的日子挪动。"""
-    window = run_window(admission)
+    window = run_window(source)
     start = window["start_date"]
     out = dict(settings, start_date=start)
     if "hold_window" in window:

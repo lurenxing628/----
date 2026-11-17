@@ -5,6 +5,7 @@ from __future__ import annotations
 from bisect import bisect_left
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.process.workflow_state import reset_part_confirmations_from
 from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
 from data.repositories.part_repo import PartRepository
@@ -82,6 +83,7 @@ def _persist_route_operation(op_repo, part_no, row, old, replaced, identities):
             "op_type_id": _suggested_key(identities, row["op_type_ref"]),
             "supplier_id": _suggested_key(identities, row["supplier_ref"]),
             "ext_days": row["external_days"], "setup_hours": None, "unit_hours": None,
+            "source_confirmed_at": None, "hours_confirmed_at": None,
         })
         return True, row["source_suggestion"] == "external"
     # Cosmetic/unknown renames retain intentional manual choices.
@@ -91,27 +93,43 @@ def _persist_route_operation(op_repo, part_no, row, old, replaced, identities):
     return False, False
 
 
-def apply_route(conn, part, operations, preview, identities, *, default_catalog_reader, part_updates=None):
+def apply_route(
+    conn,
+    part,
+    operations,
+    preview,
+    identities,
+    *,
+    default_catalog_reader,
+    part_updates=None,
+    discarded_groups: bool = False,
+):
     op_repo = PartOperationRepository(conn)
     existing = {row["seq"]: row for row in operations}
     incoming = {row["sequence"] for row in preview["operations"]}
     replaced = {row["sequence"] for row in preview["operations"] if row.get("replace_existing_choices")}
-    changed = _remove_absent_operations(op_repo, operations, incoming)
+    route_changed = _remove_absent_operations(op_repo, operations, incoming)
     defaults = set()
     for row in preview["operations"]:
         row_changed, apply_defaults = _persist_route_operation(
-            op_repo, part["part_no"], row, existing.get(row["sequence"]), row["sequence"] in replaced, identities)
-        changed = row_changed or changed
+            op_repo, part["part_no"], row, existing.get(row["sequence"]), row["sequence"] in replaced, identities
+        )
+        route_changed = row_changed or route_changed
         if apply_defaults:
             defaults.add(row["sequence"])
-    fields = dict(part_updates or {})
+    fields = dict(part_updates) if part_updates else {}
     if part["route_raw"] != preview["route_raw"] or part["route_parsed"] != "yes":
         fields.update(route_raw=preview["route_raw"], route_parsed="yes")
+        route_changed = True
     if fields:
         PartRepository(conn).update(part["part_no"], fields)
-        changed = True
     if defaults:
         from .group_defaults import apply_default_groups
 
-        changed = apply_default_groups(conn, part["part_no"], defaults, catalog_reader=default_catalog_reader) or changed
-    return changed
+        route_changed = (
+            apply_default_groups(conn, part["part_no"], defaults, catalog_reader=default_catalog_reader)
+            or route_changed
+        )
+    if route_changed or discarded_groups:
+        reset_part_confirmations_from(conn, part["part_no"], "route")
+    return route_changed or discarded_groups or bool(part_updates)

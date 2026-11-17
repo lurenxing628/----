@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -11,35 +10,11 @@ from core.models.enums import YesNo
 from core.models.system_job_state import SystemJobState
 from core.services.system.maintenance.backup_task import maybe_run_auto_backup
 from core.services.system.maintenance.cleanup_task import maybe_run_auto_backup_cleanup, maybe_run_auto_log_cleanup
+from core.services.system.maintenance.telemetry import parse_job_time
 from core.services.system.maintenance.throttle import MaintenanceThrottle
-from data.repositories import SystemJobStateRepository
+from data.repositories.system_job_state_repo import SystemJobStateRepository
 
 from .system_config_service import SystemConfigService
-
-
-@dataclass(frozen=True)
-class ParsedJobTime:
-    value: Optional[datetime]
-    state: str
-
-
-def _parse_db_dt(value: Optional[str]) -> ParsedJobTime:
-    raw = None if value is None else str(value)
-    if raw is None:
-        return ParsedJobTime(value=None, state="missing")
-    v = raw.strip().replace("：", ":")
-    if not v:
-        return ParsedJobTime(value=None, state="missing")
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
-        try:
-            return ParsedJobTime(value=datetime.strptime(v, fmt), state="valid")
-        except ValueError:
-            continue
-    return ParsedJobTime(value=None, state="invalid")
-
-
-def _fmt_db_dt(dt: datetime) -> str:
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 class SystemMaintenanceService:
@@ -115,12 +90,10 @@ class SystemMaintenanceService:
                     interval_minutes=int(cfg.auto_backup_interval_minutes),
                     db_path=db_path,
                     backup_dir=backup_dir,
-                    keep_days=int(cfg.auto_backup_keep_days),
                     job_key=cls.JOB_AUTO_BACKUP,
                     logger=logger,
                     op_logger=op_logger,
                     is_due_fn=is_due,
-                    fmt_db_dt_fn=_fmt_db_dt,
                 )
                 # 到期但备份失败时，保留现有好备份，阻止本轮清理。
                 auto_backup_failed_this_round = due and not ok
@@ -152,7 +125,6 @@ class SystemMaintenanceService:
                         logger=logger,
                         op_logger=op_logger,
                         is_due_fn=is_due,
-                        fmt_db_dt_fn=_fmt_db_dt,
                         min_keep_backups=int(cls.MIN_KEEP_BACKUPS),
                     )
 
@@ -172,15 +144,13 @@ class SystemMaintenanceService:
                     logger=logger,
                     op_logger=op_logger,
                     is_due_fn=is_due,
-                    fmt_db_dt_fn=_fmt_db_dt,
                 )
     # -------------------------
     # 内部辅助方法
     # -------------------------
     @classmethod
     def _is_due(cls, st: Optional[SystemJobState], now: datetime, interval_minutes: int) -> bool:
-        parsed = _parse_db_dt(st.last_run_time if st else None)
-        if parsed.state != "valid" or parsed.value is None:
+        last_run = parse_job_time(st.last_run_time if st else None).value
+        if last_run is None:
             return True
-        delta = now - parsed.value
-        return delta >= timedelta(minutes=int(interval_minutes))
+        return now - last_run >= timedelta(minutes=int(interval_minutes))

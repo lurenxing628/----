@@ -6,6 +6,7 @@ from typing import Optional
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
+from data.repositories.workbench_resource_dependencies import counted_references
 
 from .table_states import resource_table_states
 
@@ -60,41 +61,22 @@ class ResourceChangePreparation:
     def states(self, kind, codes):
         current = self._states.setdefault(kind, {})
         pending = sorted(set(codes) - set(current))
-        for offset in range(0, len(pending), 200):
-            chunk = pending[offset:offset + 200]
+        if pending:
+            # 这次命令已读出引用证据就按它数，与证据同一份；否则查一次引用计数。
             references = self._references.get(kind)
+            counts = None if references is None else {code: counted_references(kind, references[code]) for code in pending}
             if kind == "op_type":
-                if references is None:
-                    dependencies = self.facts.op_type_dependencies(chunk)
-                else:
-                    from .table_facts import OP_TYPE_DEPENDENCIES
-
-                    dependencies = {code: {name: len(references[code][source])
-                        for name, source in OP_TYPE_DEPENDENCIES.items()} for code in chunk}
+                dependencies = self.facts.repo.assigned_counts(kind, pending) if counts is None else counts
                 profiles = self.facts.raw_lookup("policies", "op_type_id")
                 current.update({code: {"identity": asdict(self.identity_by_code(kind, code)),
                     "record": self.facts.raw_record(kind, code), "profile": profiles.get(code),
-                    "dependencies": dependencies[code]} for code in chunk})
+                    "dependencies": dependencies[code]} for code in pending})
             else:
-                counts, supplier_refs = None, None
-                if references is not None:
-                    if kind == "supplier":
-                        supplier_refs = {name: {code: references[code][table] for code in chunk}
-                            for name, table in (("part_operations", "PartOperations.supplier_id"),
-                                                ("batch_operations", "BatchOperations.supplier_id"),
-                                                ("external_groups", "ExternalGroups.supplier_id"))}
-                    else:
-                        aliases = {"BatchOperations": "batch_operations", "Schedule": "schedule"}
-                        counts = {code: {aliases.get(table.split(".")[0], table): len(rows)
-                            for table, rows in references[code].items()} for code in chunk}
-                current.update(resource_table_states(self.facts, kind, chunk, dependencies=counts,
-                                                     supplier_references=supplier_refs))
+                current.update(resource_table_states(self.facts, kind, pending, dependencies=counts))
         return {code: current[code] for code in codes}
 
     def capture_references(self, repo, kind, codes):
-        self._references[kind] = repo.references_many(
-            kind, sorted(set(codes)), report_revisions=self.facts.report_revisions
-        )
+        self._references[kind] = repo.references_many(kind, codes)
         return self._references[kind]
 
     def state(self, kind, code):

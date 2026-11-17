@@ -1,24 +1,21 @@
 """Restore AJ's persisted DTOs exactly; no aggregation, coercion or defaults."""
 
-from dataclasses import fields
 from typing import Any, Dict, List
 
 from core.models.content import same
-from core.models.workbench_execution import ExecutionProjection, ProductionReport
+from core.models.workbench_execution import SNAPSHOT_KEYS, ExecutionProjection, ProductionReport
 
 from .run_input_rows import fail
 
-_DTO_FIELDS = {cls: frozenset(field.name for field in fields(cls)) for cls in (ExecutionProjection, ProductionReport)}
-
 
 def execution_snapshots_match(left, right):
-    """Compare every saved field by permanent operation identity, retaining all rows."""
+    """Compare every saved field (``ExecutionProjection.to_dict``) by permanent operation identity, retaining all rows."""
     return same(sorted(left, key=lambda row: row["operation_ref"]),
                 sorted(right, key=lambda row: row["operation_ref"]))
 
 
 def _exact_fields(value, cls) -> None:
-    if not isinstance(value, dict) or value.keys() != _DTO_FIELDS[cls]:
+    if not isinstance(value, dict) or value.keys() != SNAPSHOT_KEYS[cls]:
         fail("execution_snapshot_invalid", "存下来的报工记录内容不完整，这次排产没有开始。请刷新重试；仍不行请联系维护人员。")
 
 

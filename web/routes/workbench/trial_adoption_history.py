@@ -10,14 +10,14 @@ from core.services.workbench.trial.adoption_history_policy import MAX_DIRECTORY_
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
-from .read_context import bind_read_snapshot
+from .read_context import snapshot_binder
+from .request_json import single_value_arguments
 
 
 @api_endpoint
 def trial_adoption_history(scenario_ref):
     allowed = {"page", "size", "status", "snapshot_ref"}
-    if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        reject("invalid_input", "采用记录的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
+    single_value_arguments(allowed, message="采用记录的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。")
     numbers = {}
     for key, default in (("page", "1"), ("size", "20")):
         raw = request.args.get(key, default)
@@ -30,7 +30,7 @@ def trial_adoption_history(scenario_ref):
     data, snapshot = WorkbenchTrialAdoptionHistoryService(g.db).read(
         scenario_ref,
         status=status,
-        bind_snapshot=lambda scope, content: bind_read_snapshot(scope, content, request.args.get("snapshot_ref")),
+        bind_snapshot=snapshot_binder(request.args.get("snapshot_ref")),
         **numbers,
     )
     return query_success(data, snapshot, byte_limit=MAX_DIRECTORY_BYTES)

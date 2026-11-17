@@ -4,8 +4,12 @@ import re
 from typing import Optional
 
 from core.errors import AppError
-from core.models.workbench_preflight import stored_hold_window_valid
-from core.models.workbench_run_history import TERMINAL_STATES, inconsistent, local_date, local_datetime
+from core.models.enums import RunState
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_preflight import check_stored_input
+from core.models.workbench_run_history import inconsistent, local_datetime
+
+from .candidate_values import corrupt
 
 COMPUTATION_FAILED = "本次候选计算失败。请联系维护人员，再重新做排产检查。"
 # 原话指着检查页列出的缺项，排产记录里没有这份清单，改成能照做的说法。
@@ -16,8 +20,6 @@ _FAILURE_GUIDES = {
                              "请重新做排产检查，把不重排时段改短或不设。",
 }
 _HOLD_FAILURES = {
-    "freeze_window": "排产要原样保留不重排时段里的原安排，但正式计划里这段时间的安排读不出来或者对不上，这次排产没有完成。"
-                     "请重新做排产检查，把不重排时段改短或不设；仍不行请联系维护人员核对正式计划。",
     "execution_seed_conflict": "现场报工和不重排时段里要原样保留的原安排对不上，这次排产没有完成。"
                                "请重新做排产检查，按检查结果处理后再排产。",
     "execution_completed_downstream_before_actual_finish": "要原样保留的安排排在同批已完工前道的实际完工之前，这次排产没有完成。"
@@ -27,13 +29,11 @@ _CHINESE = re.compile(r"[\u4e00-\u9fff]")
 
 
 def hold_failure_message(exc: AppError) -> Optional[str]:
-    """旧排产服务按“冻结窗口”说的失败（读原安排、现场报工与原安排对不上）：返回工作台的说法；不是这类返回 None。"""
-    details = exc.details
-    if details is not None:
-        for key in (details.get("reason"), details.get("field")):
-            if key in _HOLD_FAILURES:
-                return _HOLD_FAILURES[key]
-    return None
+    """要原样保留的原安排与现场报工对不上的失败（排产输入按 details["reason"] 报出）：返回工作台的说法；
+    其它失败返回 None。"""
+    # Any AppError may arrive here; only some carry details, and only the ones listed above a reason.
+    reason = None if exc.details is None else exc.details.get("reason")
+    return _HOLD_FAILURES[reason] if reason in _HOLD_FAILURES else None
 
 
 def failure_message(code, message):
@@ -57,16 +57,9 @@ def job_clocks(row):
     return started, finished
 
 
-def job_lifecycle(row, started, finished):
-    state = row["state"]
-    if ((state == "queued" and (started is not None or row["executor_ref"] is not None))
-            or (state == "running" and (started is None or not row["executor_ref"]))
-            or ((state in TERMINAL_STATES) != (finished is not None))):
-        inconsistent()
-
-
 def _stored_error(row, result):
-    error = result.get("error") if result is not None and row["state"] in ("failed", "interrupted") else None
+    error = (result.get("error") if result is not None and row["state"] in (RunState.FAILED.value, RunState.INTERRUPTED.value)
+             else None)
     if type(error) is dict and all(type(error.get(key)) is str and error[key] for key in ("code", "message")):
         return error
     return None
@@ -78,60 +71,25 @@ def failure_reason(row, result):
     return None if error is None else {"code": error["code"], "message": error["message"]}
 
 
-def _gap(field, value):
-    return {"field": field, "code": "not_recorded" if value is None else "invalid_stored_value",
-            "message": "排产时未记录此项。"}
-
-
-SCOPE_INPUT_REQUIRED_KEYS = ("start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy")
-SCOPE_INPUT_OPTIONAL_KEYS = ("material_strategy", "hold_window")
-_SCOPE_INPUT_DOMAINS = {
-    "missing_resource_policy": ("auto_assign", "exclude"),
-    "completed_policy": ("preserve_actuals",),
-    "material_strategy": ("strict", "stage"),
-}
-
-
-def stored_scope_input_keys(settings):
-    return SCOPE_INPUT_REQUIRED_KEYS + tuple(key for key in SCOPE_INPUT_OPTIONAL_KEYS if key in settings)
-
-
-def stored_scope_value_valid(key, value):
-    if key == "hold_window":
-        return stored_hold_window_valid(value)
-    if key in _SCOPE_INPUT_DOMAINS:
-        return type(value) is str and value in _SCOPE_INPUT_DOMAINS[key]
-    if key == "ready_check":
-        return type(value) is bool
+def admitted_run_input(value):
+    """A run's stored normalized input, admitted once wherever it is read: the writer's key set and value
+    domains (``check_stored_input``), with no default filled in; anything else is a corrupt archive."""
     try:
-        local_date(value)
-        return True
-    except (ValueError, TypeError):
-        return False
+        check_stored_input(value)
+    except WorkbenchCommandRejected:
+        corrupt()
+    return value
 
 
-def _scope_batch_count(refs, gaps):
-    valid_refs = (type(refs) is list and bool(refs)
-                  and all(type(ref) is str and re.fullmatch(r"[0-9a-f]{48}", ref) is not None for ref in refs))
-    count = None
-    if valid_refs:
-        if len(set(refs)) != len(refs):
-            inconsistent()
-        count = len(refs)
-    else:
-        gaps.append(_gap("batch_count", refs))
-    return count
+_SCOPE_FIELDS = ("start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy", "material_strategy")
+
+
+def scope_input_values(settings):
+    """The admitted input's public scope settings; ``hold_window`` only when the run set one."""
+    return {**{key: settings[key] for key in _SCOPE_FIELDS},
+            **({"hold_window": settings["hold_window"]} if "hold_window" in settings else {})}
 
 
 def scope_summary(settings):
-    result, gaps = {}, []
-    for key in stored_scope_input_keys(settings):
-        value = settings.get(key)
-        valid = stored_scope_value_valid(key, value)
-        result[key] = value if valid else None
-        if not valid:
-            gaps.append(_gap(key, value))
-    if result["start_date"] is not None and result["end_date"] is not None and result["start_date"] > result["end_date"]:
-        inconsistent()
-    result["batch_count"] = _scope_batch_count(settings.get("batch_refs"), gaps)
-    return {**result, "selection": "explicit_batches", "basis": "captured_at_run_admission", "data_gaps": gaps}
+    return {**scope_input_values(settings), "batch_count": len(settings["batch_refs"]),
+            "selection": "explicit_batches", "basis": "captured_at_run_admission"}

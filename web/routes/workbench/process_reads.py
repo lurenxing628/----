@@ -3,26 +3,23 @@
 import re
 
 from flask import current_app, g, request
-from werkzeug.exceptions import HTTPException
 
-from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_table_query import DUPLICATE_QUERY_MESSAGE, ProcessTablePageRequest
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from core.shared.strict_json import load_strict_json
 from web.api_responses import query_success
 
-from .api_responses import api_endpoint, read_endpoint
+from .api_responses import api_endpoint, worded_read_endpoint
 from .process_json import read_process_json
-from .read_context import bind_read_snapshot
-from .request_json import rejecter
+from .read_context import bind_read_snapshot, current_snapshot_time, read_snapshot_time, rebind_read_snapshot
+from .request_json import rejecter, single_value_arguments
 from .write_context import issue_write_context
 
 
 def _list_query():
     allowed = {"query", "stage", "page", "size", "sort", "direction", "snapshot_ref", "column_filters"}
-    if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "工艺列表的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
+    single_value_arguments(allowed, message="工艺列表的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。")
     values = {}
     for key, default in (("page", "1"), ("size", "20")):
         text = request.args.get(key, default)
@@ -44,10 +41,11 @@ def _list_query():
 def process_list():
     query = _list_query()
     token = request.args.get("snapshot_ref")
+    as_of, binding = read_snapshot_time(token)
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as scope:
         state = scope.state_fingerprint()
-        snapshot = bind_read_snapshot(query.scope(), state, token)
+        snapshot = bind_read_snapshot(query.scope(), state, token, as_of=as_of, binding=binding)
         data = scope.page(query)
         if query.number > data["page"]["pages"]:
             raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
@@ -57,46 +55,43 @@ def process_list():
 
 @api_endpoint
 def process_detail(ref):
-    if set(request.args) - {"snapshot_ref"} or len(request.args.getlist("snapshot_ref")) > 1:
-        raise WorkbenchCommandRejected("invalid_input", "详情的查询条件不对，详情没有打开。请刷新页面后重新点开这一行。", 400)
+    single_value_arguments({"snapshot_ref"}, message="详情的查询条件不对，详情没有打开。请刷新页面后重新点开这一行。")
+    token = request.args.get("snapshot_ref")
+    as_of, binding = read_snapshot_time(token)
     reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=ref)
     with reader.read_snapshot() as scope:
         state = scope.state_fingerprint()
         identity = scope.resolve(ref)
-        snapshot = bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, request.args.get("snapshot_ref"))
+        snapshot = bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, token, as_of=as_of, binding=binding)
         data = scope.resolved_detail(identity)
         if data["workflow"]["source"]["state"] == "confirmed":
             data["write_context"] = issue_write_context(ref, ["process.hours_confirm"], state)
     return query_success(data, snapshot)
 
 
-@read_endpoint
+@worded_read_endpoint("工艺预检没有完成，路线没有保存，模板也没有改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。")
 def process_route_preview(ref):
-    try:
-        body = read_process_json("路线预检", 1024 * 1024)
-        token = body.pop("snapshot_ref", None)
-        if body.get("mode") == "rows" and isinstance(body.get("rows"), list) and any(
-                isinstance(row, dict) and type(row.get("seq")) is int and abs(row["seq"]) > (1 << 53) - 1 for row in body["rows"]):
-            raise WorkbenchCommandRejected("invalid_input", "工序号太大，页面上填不准，路线没有保存；系统没有替你四舍五入。请改用整段路线文字录入。", 422)
-        reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=ref)
-        with reader.read_snapshot() as scope:
-            state = scope.state_fingerprint()
-            identity = scope.resolve(ref)
-            if token is not None:
-                bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, token)
-            data, _, affected = scope.prepare_route(identity, body)
-            data["affected_groups"] = []
-            if data["can_confirm_route"]:
-                affected_refs = {row["ref"] for row in affected}
-                data["affected_groups"] = [row for row in scope.detail(ref)["external_groups"] if row["ref"] in affected_refs]
-                data["write_context"] = issue_write_context(ref, ["process.route_confirm"], {"state": state, "input": body})
-            snapshot = bind_read_snapshot({"kind": "process_route_preview", "entity_ref": ref,
-                                           "input_content": body}, state)
-        return query_success(data, snapshot)
-    except (WorkbenchCommandRejected, AppError, HTTPException):
-        raise
-    except Exception as exc:
-        raise WorkbenchCommandRejected("storage_failure", "工艺预检没有完成，路线没有保存，模板也没有改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500) from exc
+    body = read_process_json("路线预检", 1024 * 1024)
+    token = body.pop("snapshot_ref", None)
+    if body.get("mode") == "rows" and isinstance(body.get("rows"), list) and any(
+            isinstance(row, dict) and type(row.get("seq")) is int and abs(row["seq"]) > (1 << 53) - 1 for row in body["rows"]):
+        raise WorkbenchCommandRejected("invalid_input", "工序号太大，页面上填不准，路线没有保存；系统没有替你四舍五入。请改用整段路线文字录入。", 422)
+    as_of = current_snapshot_time()
+    reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=ref)
+    with reader.read_snapshot() as scope:
+        state = scope.state_fingerprint()
+        identity = scope.resolve(ref)
+        if token is not None:
+            rebind_read_snapshot({"kind": "part", "entity_ref": ref}, state, token)
+        data, _, affected = scope.prepare_route(identity, body)
+        data["affected_groups"] = []
+        if data["can_confirm_route"]:
+            affected_refs = {row["ref"] for row in affected}
+            data["affected_groups"] = [row for row in scope.detail(ref)["external_groups"] if row["ref"] in affected_refs]
+            data["write_context"] = issue_write_context(ref, ["process.route_confirm"], {"state": state, "input": body})
+        snapshot = bind_read_snapshot({"kind": "process_route_preview", "entity_ref": ref,
+                                       "input_content": body}, state, as_of=as_of)
+    return query_success(data, snapshot)
 
 
 def register_process_read_routes(bp):

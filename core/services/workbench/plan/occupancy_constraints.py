@@ -7,35 +7,14 @@ from core.models.resource_capabilities import machine_type_index, supports_sourc
 from core.services.capacity.plan_calendar_intervals import IntervalIndex
 from core.services.capacity.plan_calendar_issues import issue
 from core.services.capacity.plan_calendar_windows import available_intervals
-from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
+from core.services.personnel.operator_qualification import (
+    OperatorQualificationError,
+    OperatorQualificationService,
+    require_machine_authorization,
+    require_work_type_qualification,
+)
 from core.services.workbench.facts.archived_calendar import DowntimeIndex
 from core.services.workbench.facts.zero_duration import estimate_point_event
-
-
-class _SkillFacts:
-    """Connection-free read_skill_facts implementation for the domain service."""
-
-    def __init__(self, facts):
-        self.profiles = defaultdict(list)
-        for row in facts["skill_profiles"]:
-            self.profiles[row["operator_id"]].append(row)
-        self.skills = defaultdict(list)
-        for row in facts["skills"]:
-            self.skills[row["operator_id"]].append(row)
-
-    def read_skill_facts(self, operator_ids):
-        return ([row for key in operator_ids for row in self.profiles[key]],
-                [row for key in operator_ids for row in self.skills[key]])
-
-
-class _Authorizations:
-    """Connection-free authorization lookup for the domain service."""
-
-    def __init__(self, facts):
-        self.links = {(row["operator_id"], row["machine_id"]) for row in facts["authorizations"]}
-
-    def exists(self, operator_id, machine_id):
-        return (operator_id, machine_id) in self.links
 
 
 def _downtime_indexes(rows):
@@ -69,8 +48,11 @@ class TaskConstraints:
         self.operations = {row["id"]: row for row in facts["operations"]}
         self.machine_types = machine_type_index(facts["machines"], facts["machine_capabilities"])
         self.work_types = {row["op_type_id"]: row for row in facts["work_types"]}
-        self.qualification = OperatorQualificationService(None, repo=_SkillFacts(facts),
-                                                          authorizations=_Authorizations(facts))
+        self.skill_profiles, self.skill_rows = defaultdict(list), defaultdict(list)
+        for name, index in (("skill_profiles", self.skill_profiles), ("skills", self.skill_rows)):
+            for row in facts[name]:
+                index[row["operator_id"]].append(row)
+        self.authorized_pairs = {(row["operator_id"], row["machine_id"]) for row in facts["authorizations"]}
         self.downtime_lookup = (downtime_lookup if downtime_lookup is not None
                                 else _downtime_indexes(facts["downtimes"]))
 
@@ -82,42 +64,44 @@ class TaskConstraints:
         if not self.available:
             self._add("assignment_calendar_unavailable", op_id)
             return
-        priority = str(row["priority"]).strip().lower() if row["priority"] is not None else None
-        point = row.get("_point_work")
+        priority = row["batch_priority"]
+        point = bool(row["is_point_event"])
         if point:
-            priority = point["batch"]["priority"]
-            self._check_point_calendar(row, point, start)
-        if priority not in ("normal", "urgent", "critical"):
-            self._add("assignment_priority_unknown", op_id)
+            self._check_point_calendar(row, priority, start)
         for kind in ("machine", "operator"):
             key = row[kind + "_id"]
             if key in (None, ""):
                 self._add("assignment_resource_missing", op_id)
                 continue
             raw = self.records[kind].get(key)
-            allowed = ("active", "inactive", "maintain") if kind == "machine" else ("active", "inactive")
-            if raw is None or raw["status"] not in allowed:
+            if raw is None:
                 self._add("assignment_calendar_unavailable", op_id)
             elif raw["status"] != "active":
                 self._add("assignment_resource_inactive", op_id)
             # CalendarEngine schedules with operator_id, not the global machine
             # capacity denominator. Night-shift personnel do not fail this check
             # merely because their machine's display calendar is a day shift.
-            if not point and kind == "operator" and priority in ("normal", "urgent", "critical"):
+            if not point and kind == "operator":
                 self._check_calendar(kind, key, priority, row, start, end, row_start=row_start, row_end=row_end)
         if not point:
             self._check_downtime(row, start, end)
         self._check_type_and_qualification(row)
 
-    def _check_point_calendar(self, row, work, at):
+    def _check_point_calendar(self, row, priority, at):
         if self.point_calendar is None:
             self._add("assignment_calendar_unavailable", row["op_id"])
             return
-        op, batch = work["operation"], work["batch"]
         try:
-            start, end = estimate_point_event(self.point_calendar, setup_hours=op["setup_hours"],
-                unit_hours=op["unit_hours"], quantity=work["quantity"], priority=batch["priority"],
-                machine_id=row["machine_id"], operator_id=row["operator_id"], start=at)
+            start, end = estimate_point_event(
+                self.point_calendar,
+                setup_hours=row["setup_hours"],
+                unit_hours=row["unit_hours"],
+                quantity=row["quantity"],
+                priority=priority,
+                machine_id=row["machine_id"],
+                operator_id=row["operator_id"],
+                start=at,
+            )
             if start != at or end != at:
                 self._add("assignment_outside_calendar", row["op_id"])
         except (ValidationError, BusinessError, ValueError, TypeError, OverflowError):
@@ -126,14 +110,9 @@ class TaskConstraints:
     def _check_downtime(self, row, start, end):
         key = ("downtime", row["machine_id"])
         if key not in self.indexes:
-            # Any unproven downtime row makes the whole machine's downtime unknown.
-            downtime = self.downtime_lookup(row["machine_id"])
-            self.indexes[key] = None if downtime.errors else IntervalIndex.from_normalized(downtime.intervals)
-        index = self.indexes[key]
-        if index is None:
-            self._add("assignment_calendar_unavailable", row["op_id"])
+            self.indexes[key] = IntervalIndex.from_normalized(self.downtime_lookup(row["machine_id"]).intervals)
         # Clipping a task to the view can leave end < start (a negative span); only positive overlap is downtime.
-        elif index.hours_between(start, end) > 0:
+        if self.indexes[key].hours_between(start, end) > 0:
             self._add("assignment_machine_downtime", row["op_id"])
 
     def _check_calendar(self, kind, key, priority, row, start, end, *, row_start, row_end):
@@ -162,7 +141,7 @@ class TaskConstraints:
         operation, machine = self.operations.get(op_id), self.records["machine"].get(mid)
         code = operation["op_type_id"] if operation is not None else None
         work_type = self.work_types.get(code)
-        if work_type is None or machine is None or not self.machine_types.get(mid):
+        if work_type is None or machine is None or not self.machine_types[mid]:
             self._add("assignment_work_type_unknown", op_id)
         elif not supports_source(work_type["category"], "internal") or code not in self.machine_types[mid]:
             self._add("assignment_work_type_mismatch", op_id)
@@ -172,9 +151,10 @@ class TaskConstraints:
         if cache_key not in self.qualification_cache:
             try:
                 if oid not in self.skills_cache:
-                    self.skills_cache[oid] = self.qualification.load([oid])
-                self.qualification.require(operator_id=oid, op_type_id=code, machine_id=mid,
-                                           qualifications=self.skills_cache[oid])
+                    self.skills_cache.update(OperatorQualificationService.project_facts(
+                        [oid], self.skill_profiles[oid], self.skill_rows[oid]))
+                require_machine_authorization(self.authorized_pairs, oid, mid)
+                require_work_type_qualification(self.skills_cache, oid, code)
                 failure = None
             except OperatorQualificationError as exc:
                 failure = {"operator_machine_not_authorized": "assignment_not_authorized",

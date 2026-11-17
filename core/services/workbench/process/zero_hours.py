@@ -10,16 +10,16 @@ def zero_confirmation_required(before, after, confirmation):
         before[key] != after[key] for key in ("setup_hours", "unit_hours"))
 
 
-def require_zero_confirmation(proposals, acknowledged, *, states):
+def require_zero_confirmation(proposals, acknowledged, *, workflow):
     if acknowledged:
         return
     pending = []
     for before, after in proposals:
-        if zero_confirmation_required(before, after, states[before["part_no"]][before["ref"]]):
+        if zero_confirmation_required(before, after, workflow.confirmation(before)):
             pending.append(before)
     if pending:
         operations = "、".join(str(row["seq"]) for row in pending)
         raise WorkbenchCommandRejected(
             "zero_unit_hours_confirmation_required",
             "工序 " + operations + " 的单件工时为 0，排产只计算换型工时，数量增加不会增加加工时长。请按 0 保存。", 422,
-            operation_refs=[row["ref"] for row in pending])
+            fields=tuple("operations." + row["ref"] + ".unit_hours" for row in pending))

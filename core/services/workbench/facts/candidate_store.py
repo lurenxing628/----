@@ -1,123 +1,100 @@
-"""Bounded SELECTs of the run ledger. No install, repair or live-entity lookup."""
+"""Bounded SELECTs of the run ledger. Request-local reuse only; zero global caches."""
 
-import threading
 from contextlib import contextmanager
+from typing import Optional
 
+from core.models.content import read_stored_json
+from core.models.enums import RUN_RESULT_STATE_VALUES, RUN_UNFINISHED_STATE_VALUES, RunState
+from core.models.workbench_load_limits import MAX_RUN_RECORD_TASKS
 from core.models.workbench_run_candidate import (
     MAX_ARTIFACT_BYTES,
     MAX_CANDIDATES,
     MAX_COLLECTION_BYTES,
     MAX_FACT_BYTES,
-    MAX_TASKS,
     local_time,
-    reference,
     reject,
 )
+from core.models.workbench_run_receipt import (
+    FAILED_RECEIPT_KEYS,
+    FAILED_RECEIPT_OPTIONAL_KEYS,
+    PERSISTED_RECEIPT_KEYS,
+    FailedReceipt,
+    PersistedReceipt,
+    RunReceipt,
+)
+from core.shared.key_sets import keys_conform
+from core.shared.local_datetime import row_interval
 from data.repositories.workbench_run_candidate_repo import WorkbenchRunCandidateRepository
 
-from .candidate_facts import GenerationFacts
-from .candidate_projection import completed_dispositions, scheduled_ids
-from .candidate_values import bounded_size, corrupt, stored_json
-from .decision_metrics import admission_operation_refs
+from .candidate_artifact import admit_artifact
+from .candidate_facts import admit_generation_facts
+from .candidate_projection import scheduled_ids
+from .candidate_values import bounded_size, corrupt
+from .run_history_projection import admitted_run_input
 from .run_input_readonly import candidate_read_snapshot
 
-_CACHE_LOCK = threading.RLock()
-_CANDIDATE_RECORD_CACHE = {}
-_RECEIPT_CACHE = {}
-_CAPTURE_CACHE = {}
-_TASKS_CACHE = {}
-_GENERATION_FACTS_CACHE = {}
-_DISPOSITIONS_CACHE = {}
-_SCHEDULED_IDS_CACHE = {}
-
-
-def cache_get(cache, key):
-    with _CACHE_LOCK:
-        return cache.get(key)
-
-
-def cache_memo(cache, key, value, limit=32):
-    with _CACHE_LOCK:
-        if key in cache:
-            cache.pop(key)
-        elif len(cache) >= limit:
-            cache.pop(next(iter(cache)))
-        cache[key] = value
-        return value
+_CAPTURE_BYTE_KEYS = (
+    "normalized_input_bytes",
+    "execution_bytes",
+    "baseline_bytes",
+    "revisions_bytes",
+    "conditions_archive_bytes",
+)
 
 
 def _candidate_record(row):
-    cached = cache_get(_CANDIDATE_RECORD_CACHE, row)
-    if cached is not None:
-        return cached
-    bounded_size(row[6], MAX_ARTIFACT_BYTES)
-    bounded_size(row[3], MAX_TASKS)
-    if type(row[4]) is not int or row[4] < 0:
+    """The one read boundary of a stored candidate: sizes, the admitted artifact (D3-5), then the row facts the
+    artifact repeats: the same sequence and one validated operation per task row.
+
+    ``WorkbenchRunCandidates`` DDL holds the candidate ref, the sequence and the task count, and its run ref is the
+    key of a ``WorkbenchRunJobs`` row, whose DDL holds that ref.
+    """
+    bounded_size(row[5], MAX_ARTIFACT_BYTES)
+    bounded_size(row[2], MAX_RUN_RECORD_TASKS)
+    artifact = admit_artifact(read_stored_json(row[4], dict))
+    if artifact["sequence"] != row[3] or len(artifact["validated_payload"]["scheduled_op_ids"]) != row[2]:
         corrupt()
-    record = {"candidate_ref": reference(row[0], stored=True), "run_ref": reference(row[1], stored=True),
-              "status": row[2], "task_count": row[3], "sequence": row[4], "artifact": stored_json(row[5])}
-    return cache_memo(_CANDIDATE_RECORD_CACHE, row, record, limit=64)
+    return {
+        "candidate_ref": row[0],
+        "run_ref": row[1],
+        "task_count": row[2],
+        "sequence": row[3],
+        "artifact": artifact,
+    }
 
 
-def _execution_cache_key(execution):
-    if type(execution) is not list:
-        return None
-    items = []
-    for row in execution:
-        if type(row) is not dict:
-            return None
-        items.append((
-            row.get("operation_ref"),
-            row.get("target_quantity"),
-            row.get("known_completed_quantity"),
-            row.get("remaining_quantity"),
-            row.get("execution_state"),
-            row.get("data_quality"),
-            row.get("target_basis"),
-            row.get("first_actual_start"),
-            row.get("confirmed_finish"),
-            row.get("completion_basis"),
-            row.get("quantity_complete"),
-            row.get("records_complete"),
-            row.get("unknown_record_count"),
-        ))
-    return tuple(items)
+def _receipt_record(state, raw) -> RunReceipt:
+    """The one read boundary of a stored receipt: the form its run state allows, with exactly that form's keys.
 
-
-def cached_generation_facts(capture, *, raw_row=None):
-    if type(capture) is not dict or type(capture.get("facts_text")) is not str:
-        return GenerationFacts(capture)
-    facts_text = capture["facts_text"]
-    raw_key = (raw_row[3], raw_row[1]) if raw_row is not None and raw_row[3] == facts_text else None
-    if raw_key is not None:
-        cached = cache_get(_GENERATION_FACTS_CACHE, raw_key)
-        if cached is not None:
-            return cached
-    exec_key = _execution_cache_key(capture.get("execution"))
-    content_key = (facts_text, exec_key) if exec_key is not None else None
-    if content_key is not None:
-        cached = cache_get(_GENERATION_FACTS_CACHE, content_key)
-        if cached is not None:
-            if raw_key is not None:
-                cache_memo(_GENERATION_FACTS_CACHE, raw_key, cached)
-            return cached
-    facts = GenerationFacts(capture)
-    if content_key is not None:
-        cache_memo(_GENERATION_FACTS_CACHE, content_key, facts)
-    if raw_key is not None:
-        cache_memo(_GENERATION_FACTS_CACHE, raw_key, facts)
-    return facts
+    ``WorkbenchRunReceipts`` keeps the state of a finished run; one that saved candidate results is complete or
+    partial, and one that failed or was interrupted saved none (``result_preparation``, ``worker``,
+    ``worker_recovery``). The body records the same state.
+    """
+    body = read_stored_json(raw, dict)
+    if state in RUN_RESULT_STATE_VALUES:
+        if (not keys_conform(body, PERSISTED_RECEIPT_KEYS) or body["result_persisted"] is not True
+                or body["error"] is not None or body["state"] != state):
+            corrupt()
+        return PersistedReceipt(state, body["candidates"], body["selection"], body["dispositions"], body["summary"],
+                                body["unified_process"], body["operation_effort"])
+    if (state not in (RunState.FAILED.value, RunState.INTERRUPTED.value)
+            or not keys_conform(body, FAILED_RECEIPT_KEYS, FAILED_RECEIPT_OPTIONAL_KEYS)
+            or body["result_persisted"] is not False or body["candidates"] != [] or body["state"] != state):
+        corrupt()
+    return FailedReceipt(state, body["error"], body.get("diagnostic"))
 
 
 class CandidateStore:
     def __init__(self, conn):
         self.conn = conn
         self.repo = WorkbenchRunCandidateRepository(conn)
-        self._last_run_row = None
-        self._last_receipt_row = None
-        self._last_candidate_row_by_ref = {}
-        self._last_capture_row = None
-        self._last_task_rows_by_ref = {}
+        self._receipt_by_run = {}
+        self._candidates_by_run = {}
+        self._candidate_by_ref = {}
+        self._capture_by_run = {}
+        self._facts_by_run = {}
+        self._scheduled_ids_by_candidate = {}
+        self._tasks_by_candidate = {}
 
     @contextmanager
     def snapshot(self):
@@ -134,45 +111,58 @@ class CandidateStore:
                 local_time(row[3])
         except (TypeError, ValueError):
             corrupt()
-        self._last_run_row = row
-        return {"run_ref": reference(row[0], stored=True), "state": row[1],
-                "accepted_at": row[2], "finished_at": row[3]}
+        return {
+            "run_ref": row[0],
+            "state": row[1],
+            "accepted_at": row[2],
+            "finished_at": row[3],
+        }
 
-    def receipt(self, run):
-        row = self.repo.receipt_state_and_result(run["run_ref"])
-        self._last_receipt_row = row
-        if row is None:
-            if run["state"] not in ("queued", "running"):
+    def receipt(self, run) -> Optional[RunReceipt]:
+        """The run's receipt, or None while it is queued or running."""
+        run_ref = run["run_ref"]
+        if run_ref in self._receipt_by_run:
+            result = self._receipt_by_run[run_ref]
+            if result is None and run["state"] not in RUN_UNFINISHED_STATE_VALUES:
                 corrupt()
+            if result is not None and result.state != run["state"]:
+                corrupt()
+            return result
+        row = self.repo.receipt_state_and_result(run_ref)
+        if row is None:
+            if run["state"] not in RUN_UNFINISHED_STATE_VALUES:
+                corrupt()
+            self._receipt_by_run[run_ref] = None
             return None
         bounded_size(row[2], MAX_ARTIFACT_BYTES)
-        result = cache_get(_RECEIPT_CACHE, (row[1], row[2]))
-        if result is None:
-            result = cache_memo(_RECEIPT_CACHE, (row[1], row[2]), stored_json(row[1]))
-        if row[0] != run["state"] or result.get("state") != run["state"]:
+        if row[0] != run["state"]:
             corrupt()
+        result = _receipt_record(row[0], row[1])
+        self._receipt_by_run[run_ref] = result
         return result
 
     def candidates(self, run_ref):
-        rows, total_bytes, seen = [], 0, set()
+        if run_ref in self._candidates_by_run:
+            return self._candidates_by_run[run_ref]
+        rows, total_bytes = [], 0
         for row in self.repo.candidate_rows(run_ref, MAX_CANDIDATES + 1):
             bounded_size(len(rows) + 1, MAX_CANDIDATES)
             record = _candidate_record(row)
-            total_bytes += row[6]
+            total_bytes += row[5]
             bounded_size(total_bytes, MAX_COLLECTION_BYTES)
-            if row[0] in seen or row[1] != run_ref:
-                corrupt()
-            seen.add(row[0])
-            self._last_candidate_row_by_ref[record["candidate_ref"]] = row
+            self._candidate_by_ref[record["candidate_ref"]] = record
             rows.append(record)
+        self._candidates_by_run[run_ref] = rows
         return rows
 
     def candidate(self, candidate_ref):
+        if candidate_ref in self._candidate_by_ref:
+            return self._candidate_by_ref[candidate_ref]
         row = self.repo.candidate_row(candidate_ref)
         if row is None:
             reject("entity_not_found", "未找到该永久候选，未改查最新结果。", 404)
         record = _candidate_record(row)
-        self._last_candidate_row_by_ref[record["candidate_ref"]] = row
+        self._candidate_by_ref[record["candidate_ref"]] = record
         return record
 
     def candidate_identity(self, candidate_ref):
@@ -182,92 +172,85 @@ class CandidateStore:
         if row is None:
             reject("entity_not_found", "未找到该永久候选，未改查最新结果。", 404)
         summary = decode_model(row, ("summary",))["summary"]
-        if (summary.get("candidate_ref") != row["candidate_ref"] or summary.get("run_ref") != row["run_ref"]
-                or summary.get("persisted_status") != row["status"]):
+        if summary["candidate_ref"] != row["candidate_ref"] or summary["run_ref"] != row["run_ref"]:
             corrupt()
-        return {"candidate_ref": reference(row["candidate_ref"], stored=True),
-                "run_ref": reference(row["run_ref"], stored=True), "label": summary.get("label"), "status": row["status"]}
+        return {
+            "candidate_ref": row["candidate_ref"],
+            "run_ref": row["run_ref"],
+            "label": summary["label"],
+            "status": summary["catalog"]["status"],
+        }
 
     def candidate_run(self, candidate_ref):
         run_ref = self.repo.candidate_run_ref(candidate_ref)
         if run_ref is None:
             reject("entity_not_found", "未找到该永久候选，未改查最新结果。", 404)
-        return reference(run_ref, stored=True)
+        return run_ref
 
     def capture(self, run_ref):
+        if run_ref in self._capture_by_run:
+            return self._capture_by_run[run_ref]
         row = self.repo.job_capture(run_ref)
         if row is None:
             corrupt()
-        self._last_capture_row = row
-        cached = cache_get(_CAPTURE_CACHE, row)
-        if cached is not None:
-            return cached
-        for size in row[4:]:
-            bounded_size(size, MAX_FACT_BYTES)
-        parsed = {"input": stored_json(row[0]), "execution": stored_json(row[1], list),
-                  "baseline": stored_json(row[2]), "facts_text": row[3]}
-        return cache_memo(_CAPTURE_CACHE, row, parsed)
+        for key in _CAPTURE_BYTE_KEYS:
+            bounded_size(row[key], MAX_FACT_BYTES)
+        parsed = {
+            "run_ref": run_ref,
+            "input": admitted_run_input(read_stored_json(row["normalized_input_json"], dict)),
+            "execution": read_stored_json(row["execution_json"], list),
+            "baseline": read_stored_json(row["baseline_json"], dict),
+            "revisions": read_stored_json(row["revisions_json"], dict),
+            "facts": read_stored_json(row["conditions_archive_json"], dict),
+        }
+        self._capture_by_run[run_ref] = parsed
+        return parsed
 
     def generation_facts(self, capture):
-        return cached_generation_facts(capture, raw_row=self._last_capture_row)
-
-    def dispositions(self, receipt, facts, capture):
-        raw_receipt, raw_capture = self._last_receipt_row, self._last_capture_row
-        if raw_receipt is not None and raw_capture is not None:
-            key = (raw_receipt[1], raw_capture[0], raw_capture[3])
-            cached = cache_get(_DISPOSITIONS_CACHE, key)
-            if cached is not None:
-                return cached
-            scope = completed_dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"]))
-            return cache_memo(_DISPOSITIONS_CACHE, key, scope)
-        return completed_dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"]))
+        """The admitted generation facts of a capture this store read (``capture``)."""
+        run_ref = capture["run_ref"]
+        if run_ref not in self._facts_by_run:
+            self._facts_by_run[run_ref] = admit_generation_facts(capture)
+        return self._facts_by_run[run_ref]
 
     def scheduled_op_ids(self, candidate):
-        raw_row = self._last_candidate_row_by_ref.get(candidate["candidate_ref"])
-        if raw_row is not None:
-            key = (raw_row[0], raw_row[3], raw_row[5])
-            cached = cache_get(_SCHEDULED_IDS_CACHE, key)
-            if cached is not None:
-                return set(cached)
-            ids = scheduled_ids(candidate)
-            cache_memo(_SCHEDULED_IDS_CACHE, key, frozenset(ids), limit=64)
-            return ids
-        return scheduled_ids(candidate)
+        ref = candidate["candidate_ref"]
+        if ref in self._scheduled_ids_by_candidate and self._candidate_by_ref.get(ref) is candidate:
+            return set(self._scheduled_ids_by_candidate[ref])
+        ids = scheduled_ids(candidate)
+        if self._candidate_by_ref.get(ref) is candidate:
+            self._scheduled_ids_by_candidate[ref] = frozenset(ids)
+        return ids
 
     def tasks(self, candidate_ref):
-        raw_rows, total_bytes = [], 0
-        for row in self.repo.task_rows(candidate_ref, MAX_TASKS + 1):
-            bounded_size(len(raw_rows) + 1, MAX_TASKS)
-            bounded_size(row[4], MAX_ARTIFACT_BYTES)
-            total_bytes += row[4]
-            bounded_size(total_bytes, MAX_COLLECTION_BYTES)
-            if row[2] != len(raw_rows):
-                corrupt()
-            raw_rows.append(row)
-        raw_rows = tuple(raw_rows)
-        self._last_task_rows_by_ref[candidate_ref] = raw_rows
-        cached = cache_get(_TASKS_CACHE, (candidate_ref, raw_rows))
-        if cached is not None:
-            return cached
-        result = [
-            {
-                "row_ref": reference(row[0], stored=True),
-                "operation_ref": reference(row[1], stored=True),
-                "payload": stored_json(row[3]),
-            }
-            for row in raw_rows
-        ]
-        return cache_memo(_TASKS_CACHE, (candidate_ref, raw_rows), result)
+        """The candidate's saved arrangements in ordinal order, typed once here.
 
-    def build_adoption_raw_key(self, candidate_ref, admission_head):
-        if self._last_run_row is None or self._last_capture_row is None:
-            return None
-        return (
-            self._last_run_row,
-            admission_head.get("request_key") if type(admission_head) is dict else None,
-            admission_head.get("input_ref") if type(admission_head) is dict else None,
-            self._last_receipt_row,
-            self._last_candidate_row_by_ref.get(candidate_ref),
-            self._last_capture_row,
-            self._last_task_rows_by_ref.get(candidate_ref),
-        )
+        DDL holds the row identities, the source domain, both instants as integers a datetime can hold,
+        start_us <= end_us, the point flag and the lock domain (workbench_run_schema.py:59,64,70-71,73-77);
+        a gapless ordinal and one row per task its candidate row counts are beyond it and are checked here, so the
+        rows are as many as the candidate's validated operations (``_candidate_record``). The text time columns are
+        display only and are not read.
+        """
+        if candidate_ref in self._tasks_by_candidate:
+            return self._tasks_by_candidate[candidate_ref]
+        result = []
+        for row in self.repo.task_rows(candidate_ref, MAX_RUN_RECORD_TASKS + 1):
+            bounded_size(len(result) + 1, MAX_RUN_RECORD_TASKS)
+            if row["ordinal"] != len(result):
+                corrupt()
+            start, end = row_interval(row)
+            result.append({
+                "row_ref": row["row_ref"],
+                "operation_ref": row["operation_ref"],
+                "op_id": row["op_id"],
+                "source": row["source"],
+                "machine_id": row["machine_id"],
+                "operator_id": row["operator_id"],
+                "start_time": start,
+                "end_time": end,
+                "locked": row["locked"] == 1,
+            })
+        if len(result) != self.candidate(candidate_ref)["task_count"]:
+            corrupt()
+        self._tasks_by_candidate[candidate_ref] = result
+        return result

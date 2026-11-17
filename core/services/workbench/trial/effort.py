@@ -1,6 +1,7 @@
 """Saved trial requirement lineage; geometry never manufactures runtime work."""
 
 from core.algorithm_contracts.operation_effort import RUNTIME_REQUIREMENT_BASIS
+from core.services.workbench.facts.candidate_facts import operation_type_identity
 from core.services.workbench.facts.operation_effort_evidence import saved_operation_efforts
 from core.services.workbench.facts.trial_origin import invalid_trial_snapshot
 
@@ -22,14 +23,18 @@ def _retained(value, row, admission):
     state = ("external" if value["source"] == "external" else "already_completed" if role == "completed"
              else "retained_in_execution" if role == "execution" and value["setup_standard_hours"] is not None
              else value["setup_state"])
-    return dict(value, data_gaps=[dict(gap) for gap in value.get("data_gaps", [])],
-                execution_target_quantity=execution["target_quantity"],
+    return dict(value, execution_target_quantity=execution["target_quantity"],
                 execution_quantity_basis=execution["target_basis"],
                 remaining_quantity=execution["remaining_quantity"], requirement_role=role, setup_state=state)
 
 
 def operation_effort_ledger(rows, admission, *, before_efforts):
-    """Collect source records or actual committed slot records, once per operation."""
+    """Collect source records or actual committed slot records, once per operation.
+
+    ``before_efforts`` is the source's ledger admitted by operation. Returns the ledger as a draft stores it (None
+    when neither the source nor any slot records one) and the same records by operation: each was admitted when it
+    was collected, a retained one is built from an admitted source record.
+    """
     source = admission["source"]["operation_effort"]
     current_items = [row["current"]["operation_effort"] for row in rows if "operation_effort" in row["current"]]
     current = saved_operation_efforts({"effort_basis": RUNTIME_REQUIREMENT_BASIS, "items": current_items},
@@ -47,29 +52,16 @@ def operation_effort_ledger(rows, admission, *, before_efforts):
             if value["op_id"] != row["original"]["operation"]["id"]:
                 invalid_trial_snapshot()
             items.append(value)
+    admitted = {item["operation_ref"]: item for item in items}
     if source is None and not items:
-        return None
-    return {"effort_basis": RUNTIME_REQUIREMENT_BASIS, "items": items}
+        return None, admitted
+    return {"effort_basis": RUNTIME_REQUIREMENT_BASIS, "items": items}, admitted
 
 
 def slot_operation_types(rows, refs, work_types):
-    return {
-        row["operation_ref"]: {
-            "ref": refs.get(("op_type", key)),
-            "label": work_types.get(key, {}).get("name"),
-        }
-        for row in rows
-        for key in (row["original"]["operation"]["op_type_id"],)
-    }
-
-
-def recorded_operation_types(rows, refs, work_types, results):
-    trace_types = {row["op_id"]: row["op_type_id"] for row in results}
-    return {
-        row["operation_ref"]: {
-            "ref": refs.get(("op_type", key)),
-            "label": work_types.get(key, {}).get("name"),
-        }
-        for row in rows
-        for key in (trace_types[row["original"]["operation"]["id"]],)
-    }
+    """Each row's operation type, taken from its operation (``operation_type_identity``)."""
+    result = {}
+    for row in rows:
+        ref, label = operation_type_identity(refs, work_types, row["original"]["operation"]["op_type_id"])
+        result[row["operation_ref"]] = {"ref": ref, "label": label}
+    return result

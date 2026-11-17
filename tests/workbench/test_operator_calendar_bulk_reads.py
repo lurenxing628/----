@@ -31,7 +31,7 @@ def test_operator_calendar_bulk_reads_cross_chunks_and_preserve_histories(schema
     finally:
         conn.set_trace_callback(None)
     reads = [sql for sql in trace if sql.lstrip().upper().startswith("SELECT")]
-    assert len(reads) == 8
+    assert len(reads) == 4
     for code in (codes[0], codes[1], codes[-1]):
         assert states[code] == WorkbenchOperatorCalendarService(conn, code).range_states(DAY, DAY)
     assert states[codes[0]][DAY]["row"] is None and states[codes[0]][DAY]["history"]
@@ -44,7 +44,7 @@ def test_operator_calendar_bulk_reads_cross_chunks_and_preserve_histories(schema
             count = service.preview_export(start_date=DAY, end_date=DAY, codes=codes)
         finally:
             conn.set_trace_callback(None)
-    assert count == 400 and len(trace) == 5
+    assert count == 400 and len(trace) == 3
     trace.clear()
     with TransactionManager(conn).transaction():
         conn.set_trace_callback(trace.append)
@@ -53,7 +53,7 @@ def test_operator_calendar_bulk_reads_cross_chunks_and_preserve_histories(schema
             exported = service.export_rows(DAY, DAY, codes=codes)
         finally:
             conn.set_trace_callback(None)
-    assert len(exported) == 400 and len(trace) == 7
+    assert len(exported) == 400 and len(trace) == 4
     assert next(row for row in exported if row["operator_code"] == codes[-1])["operator_label"] == "姓名工:号%"
     record_property("operator_calendar_read_queries_401_people", len(reads))
 

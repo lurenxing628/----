@@ -153,6 +153,23 @@ def test_broken_default_periods_reject_on_date_column_not_unfilled_shift_columns
     assert snapshot(client) == before
 
 
+@pytest.mark.parametrize(("dates", "paths", "message"), [
+    (("2026-10-1", "2026-13-01"), ["range.start_date", "range.end_date"], "日期范围必须填成 2026-10-01 这样的年月日，没有开始下载。"),
+    ((DAY, "2026-02-30"), ["range.end_date"], "日期范围必须填成 2026-10-01 这样的年月日，没有开始下载。"),
+    ((OTHER, DAY), ["range.end_date"], "结束日期不能早于开始日期，没有开始下载。请重新选择范围。"),
+    (("2026-01-01", "2029-01-01"), ["range.end_date"], "一次最多处理 1096 天，没有开始下载。请把范围缩小后重试。"),
+], ids=["shape", "missing-day", "reversed", "over-range"])
+def test_export_range_rejection_stays_400_and_points_at_the_range_dates(client, dates, paths, message):
+    before = snapshot(client)
+    response = client.post(BASE + "/" + KIND + "/export-preview",
+                           json={"range": {"start_date": dates[0], "end_date": dates[1]}})
+    assert response.status_code == 400, response.get_data(as_text=True)
+    error = response.get_json()["error"]
+    assert (error["code"], error["message"]) == ("invalid_input", message)
+    assert error["fields"] == [{"path": path, "message": message} for path in paths]
+    assert snapshot(client) == before
+
+
 def test_stored_calendar_csv_roundtrip_without_false_diff(client):
     preview = preview_ok(client, [(DAY, "工作日", "08:00", "16:00", "100", "是", "是", "初值")])
     assert confirm(client, preview, key="calendar-file-roundtrip-setup").status_code == 200
@@ -209,11 +226,14 @@ def test_stored_calendar_csv_roundtrip_without_false_diff(client):
             (DAY,),
         )
         conn.commit()
+        from datetime import datetime
+
         from core.infrastructure.transaction import TransactionManager
         from core.services.workbench.resource.operator_calendars import WorkbenchOperatorCalendarService
 
         with TransactionManager(conn).transaction():
-            assert WorkbenchOperatorCalendarService(conn, "OP-CSV").month(2026, 10)["stats"]["work_days"] == 1
+            month = WorkbenchOperatorCalendarService(conn, "OP-CSV").month(2026, 10, as_of=datetime(2026, 10, 1))
+            assert month["stats"]["work_days"] == 1
     op_export_prev = client.post(
         BASE + "/operator_calendar/export-preview",
         json={"range": {"start_date": DAY, "end_date": DAY}},

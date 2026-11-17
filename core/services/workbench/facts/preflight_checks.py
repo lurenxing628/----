@@ -1,19 +1,18 @@
 """Field/resource checks preserve NULL; exclusion never masks required fields."""
 
 from collections import defaultdict
-from datetime import date
 
 from core.models.resource_capabilities import machine_type_index, supplier_capability_rows, supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_preflight import issue
-from core.services.material.stage_availability import MaterialAvailability
+from core.services.material.stage_availability import MaterialReadiness, MaterialRelease
 from core.services.scheduler.contracts.external_context import (
     context_group_key,
     context_problem,
     member_index,
     merged_supplier_problem,
 )
-from core.shared.strict_parse import is_stored_number
+from core.shared.strict_parse import is_exact_positive_int, is_stored_number
 
 
 class PreflightChecks:
@@ -34,17 +33,17 @@ class PreflightChecks:
             self.supplier_skills[row["supplier_id"]].add(row["op_type_id"])
         self.external_contexts = {row["operation_id"]: row for row in tables["BatchExternalContexts"]}
         self.external_members = member_index(self.external_contexts, tables["BatchOperations"])
-        self.availability = MaterialAvailability(tables)
-        self.day = date.today().isoformat()
-        # 批级齐套结论按批次算一次，同批每道工序复用。
+        self.availability = MaterialReadiness.from_tables(tables)
+        self.release = MaterialRelease.from_tables(self.availability, tables)
+        # 未复核批次的批级齐套与日期无关，按批次和它的齐套标记算一次，同批每道工序复用。
         self._batch_reviewed = {}
-        self._batch_readiness = {}
+        self._unreviewed_readiness = {}
 
     def fields(self, batch, op):
         gaps = []
         if not is_stored_number(batch["quantity"], integer=True):
             gaps.append(issue("quantity_unknown", "批次数量未填写或无效，请到批次管理补填。"))
-        if not is_stored_number(op["seq"], integer=True, positive=True):
+        if not is_exact_positive_int(op["seq"]):
             gaps.append(issue("sequence_invalid", "工序顺序号不合法，排不出前后关系。请到批次管理核对工序号。"))
         work_type = self.catalogs["op_type"].get(op["op_type_id"])
         if work_type is None:
@@ -79,8 +78,9 @@ class PreflightChecks:
             if problem:
                 gaps.append(issue("external_context_invalid", problem))
         days = context["total_days"] if context and context["merge_mode"] == "merged" else op["ext_days"]
-        if not is_stored_number(days, positive=True):
-            gaps.append(issue("external_days_missing", "外协周期没填或无效，缺设备人员时的规则也补不上。请到基础资料补填周期。"))
+        # The schema bounds stored cycle days to (0, 36500]; the only gap left is an unset cycle.
+        if days is None:
+            gaps.append(issue("external_days_missing", "外协周期没填，缺设备人员时的规则也补不上。请到基础资料补填周期。"))
         return gaps
 
     def resources(self, op):
@@ -89,7 +89,7 @@ class PreflightChecks:
         missing = []
         machine = self.catalogs["machine"].get(op["machine_id"])
         operator = self.catalogs["operator"].get(op["operator_id"])
-        if not machine or machine["status"] != "active" or op["op_type_id"] not in self.machine_types.get(op["machine_id"], set()):
+        if not machine or machine["status"] != "active" or op["op_type_id"] not in self.machine_types[op["machine_id"]]:
             missing.append(issue("machine_missing", "设备没填、已停用，或者工种对不上。请改派设备，或到资料总览核对。"))
         if not operator or operator["status"] != "active":
             missing.append(issue("operator_missing", "人员没填或不在岗。请改派人员，或到资料总览核对。"))
@@ -128,25 +128,28 @@ class PreflightChecks:
                 row["id"] in self.availability.reviews for row in self.availability.requirements[batch_id])
         return reviewed
 
-    def readiness(self, batch):
-        batch_id = batch["batch_id"]
-        reasons = self._batch_readiness.get(batch_id)
-        if reasons is None:
-            reasons = self._batch_readiness[batch_id] = self._batch_reasons(batch)
-        # 每个调用方拿到自己的列表：排产检查会把它当作行的问题，之后还会往里追加批级问题。
-        return list(reasons)
-
-    def _batch_reasons(self, batch):
+    def readiness(self, batch, day):
+        """批级齐套原因：已复核的批次按 day 当天的到料判定，未复核的批次只看保存的数量和齐套标记。"""
         if self._reviewed(batch["batch_id"]):
-            status, problems = self.availability.readiness_state(batch, self.day)
+            status, problems = self.availability.readiness_state(batch, day)
             return [issue(problem["code"], problem["message"]) for problem in problems] or (
                 [] if status == "yes" else [issue("material_not_ready", "按当前日期的到料，物料尚未全部齐套。")]
             )
-        diagnosis = self.availability.readiness_diagnostics(batch, self.day)
+        return self._unreviewed_reasons(batch)
+
+    def _unreviewed_reasons(self, batch):
+        key = batch["batch_id"], batch["ready_status"]
+        reasons = self._unreviewed_readiness.get(key)
+        if reasons is None:
+            reasons = self._unreviewed_readiness[key] = self._stored_mark_reasons(batch)
+        # 每个调用方拿到自己的列表：排产检查会把它当作行的问题，之后还会往里追加批级问题。
+        return list(reasons)
+
+    def _stored_mark_reasons(self, batch):
         reasons = []
         if batch["ready_status"] != "yes":
             reasons.append(issue("batch_not_ready", "这批还没确认齐套。请到批次管理确认齐套状态。"))
-        for requirement in diagnosis["requirements"].values():
+        for requirement in self.availability.unreviewed_requirements(batch).values():
             if requirement["problems"]:
                 reasons.extend(issue(problem["code"], problem["message"]) for problem in requirement["problems"])
             elif not requirement["ready"]:
@@ -157,9 +160,9 @@ class PreflightChecks:
         if not settings["ready_check"]:
             return [], None
         if not self._reviewed(batch["batch_id"]):
-            return self.readiness(batch), None
+            return self._unreviewed_reasons(batch), None
         try:
-            day = self.availability.operation_release(batch, op, settings.get("material_strategy", "strict"))
+            day = self.release.operation_release(batch, op, settings["material_strategy"])
         except WorkbenchCommandRejected as exc:
             return [issue(exc.code, str(exc))], None
         if day is None:

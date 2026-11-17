@@ -1,6 +1,6 @@
 """Real candidate decoding respects stage dates and never splits quantities itself."""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -11,7 +11,7 @@ from core.models.workbench_batch_material import normalize_material_changes
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.material import stage_availability
-from core.services.material.stage_availability import MaterialAvailability, covers_quantity
+from core.services.material.stage_availability import MaterialReadiness, MaterialRelease, covers_quantity
 from core.services.workbench.batch.facts import BatchFacts
 from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
 from core.services.workbench.batch.scope import BatchFactScope
@@ -27,7 +27,7 @@ def add_requirement(case, second, arrivals):
     operation_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1", (str(second),)).fetchone()[0]
     with TransactionManager(case.conn).transaction():
         batch_ref = case.ref("batch", "B1")
-        scope = BatchFactScope(BatchFacts(case.conn), command=True, mode="single_instance", target_ref=batch_ref)
+        scope = BatchFactScope(BatchFacts(case.conn, material_day=date.today().isoformat()), command=True, mode="single_instance", target_ref=batch_ref)
         WorkbenchBatchMaterialService(case.conn).apply_normalized(scope, batch_ref, normalize_material_changes({"removed_keys": [], "rows": [{
             "row_key": None, "material_ref": case.ref("material", "STEEL"), "required_quantity": 3,
             "available_quantity": 0, "operation_ref": operation_ref, "arrivals": arrivals}]}))
@@ -37,6 +37,10 @@ def material_tables(case):
     return {name: [dict(row) for row in case.conn.execute("SELECT * FROM " + name)] for name in (
         "BatchMaterials", "BatchMaterialReviews", "BatchMaterialArrivals", "BatchMaterialStages",
         "BatchOperations", "BatchExternalContexts")}
+
+
+def material_release(tables):
+    return MaterialRelease.from_tables(MaterialReadiness.from_tables(tables), tables)
 
 
 def test_stage_arrivals_wait_at_use_operation_in_all_real_candidates(run_case):
@@ -53,20 +57,21 @@ def test_stage_arrivals_wait_at_use_operation_in_all_real_candidates(run_case):
     strict = prepare_run_input(case.conn, case.settings(material_strategy="strict"), case.projections())
     assert {op.material_ready_date for op in strict.algo_ops} == {datetime(2026, 9, 11)}
     assert case.conn.execute("SELECT quantity FROM Batches WHERE batch_id='B1'").fetchone()[0] == 3
-    availability = MaterialAvailability(material_tables(case))
+    release = material_release(material_tables(case))
+    readiness = release.readiness
     batch = dict(case.conn.execute("SELECT * FROM Batches WHERE batch_id='B1'").fetchone())
-    requirement = availability.requirements["B1"][0]
+    requirement = readiness.requirements["B1"][0]
     with patch.object(stage_availability, "arrival_day", wraps=stage_availability.arrival_day) as parse_day, \
             patch.object(stage_availability, "quantity", wraps=stage_availability.quantity) as parse_quantity, \
             patch.object(stage_availability, "sorted", wraps=sorted, create=True) as sort_rows:
-        assert [availability.operation_release(batch, {"seq": sequence}, "stage") for sequence in (2, 1, 2, 1)] == [
+        assert [release.operation_release(batch, {"seq": sequence}, "stage") for sequence in (2, 1, 2, 1)] == [
             "2026-09-11", "1900-01-01", "2026-09-11", "1900-01-01"]
-        assert availability.operation_release(batch, {"seq": 1}, "strict") == "2026-09-11"
-        assert availability.operation_release(batch, {"seq": 2}, "strict") == "2026-09-11"
-        assert availability.readiness_state(batch, "2026-09-10") == ("partial", [])
-        assert availability.available(requirement, "2026-09-10") == Decimal(1)
-        assert availability.available(requirement, "2026-09-11") == Decimal(3)
-        assert availability.splittable_quantity(batch, "2026-09-10") == 1
+        assert release.operation_release(batch, {"seq": 1}, "strict") == "2026-09-11"
+        assert release.operation_release(batch, {"seq": 2}, "strict") == "2026-09-11"
+        assert readiness.readiness_state(batch, "2026-09-10") == ("partial", [])
+        assert readiness.available(requirement, "2026-09-10") == Decimal(1)
+        assert readiness.available(requirement, "2026-09-11") == Decimal(3)
+        assert release.splittable_quantity(batch, "2026-09-10") == 1
         assert parse_day.call_count == 2
         assert parse_quantity.call_count == 5  # two arrivals, required/base amounts, batch quantity
         assert sum(not call.kwargs for call in sort_rows.call_args_list) == 1
@@ -76,7 +81,7 @@ def test_missing_later_material_only_allows_earlier_stage_and_quantity_change_re
     case = run_case
     second = case.operation(seq=2)
     add_requirement(case, second, [])
-    data, _ = PreflightService(case.conn).evaluate(case.settings(material_strategy="stage"))
+    data, _ = PreflightService(case.conn).evaluate(case.settings(material_strategy="stage"), material_day=date.today().isoformat())
     assert [row["status"] for row in data["tasks"]] == ["eligible", "skipped"]
     prepared = prepare_run_input(case.conn, case.settings(material_strategy="stage"), case.projections())
     assert [op.id for op in prepared.algo_ops] == [case.op_id]
@@ -85,19 +90,19 @@ def test_missing_later_material_only_allows_earlier_stage_and_quantity_change_re
     tables = material_tables(case)
     requirement = tables["BatchMaterials"][0]
     tables["BatchMaterialArrivals"] = [{"requirement_id": requirement["id"], "arrival_date": "bad-day", "quantity": 1}]
-    availability = MaterialAvailability(tables)
+    release = material_release(tables)
     batch = {"batch_id": "B1", "quantity": 3}
-    assert availability.operation_release(batch, {"seq": 1}, "stage") == "1900-01-01"
+    assert release.operation_release(batch, {"seq": 1}, "stage") == "1900-01-01"
     with pytest.raises(WorkbenchCommandRejected, match="到料日期"):
-        availability.operation_release(batch, {"seq": 2}, "stage")
-    assert availability.operation_release(batch, {"seq": 1}, "stage") == "1900-01-01"
+        release.operation_release(batch, {"seq": 2}, "stage")
+    assert release.operation_release(batch, {"seq": 1}, "stage") == "1900-01-01"
     earlier = dict(requirement, id=requirement["id"] + 1)
     tables["BatchMaterials"] = [earlier, requirement]
     tables["BatchMaterialReviews"].append({"requirement_id": earlier["id"], "batch_quantity": 3})
     with pytest.raises(WorkbenchCommandRejected, match="到料日期"):
-        MaterialAvailability(tables).operation_release(batch, {"seq": 1}, "strict")
+        material_release(tables).operation_release(batch, {"seq": 1}, "strict")
     tables["BatchMaterials"] = [dict(requirement, available_qty=3)]
-    stocked = MaterialAvailability(tables)
+    stocked = MaterialReadiness.from_tables(tables)
     assert stocked.release(tables["BatchMaterials"][0]) == "1900-01-01"
     with pytest.raises(WorkbenchCommandRejected, match="到料日期"):
         stocked.available(tables["BatchMaterials"][0], "2026-09-10")
@@ -126,25 +131,29 @@ def test_merged_material_facts_keep_cross_piece_sequence_and_decimal_boundaries(
         "BatchExternalContexts": [dict(context, operation_id=number, group_id=number) for number in (5, 3, 6)]
                                  + [{"operation_id": 99, "merge_mode": "merged"}],
     }
-    availability = MaterialAvailability(tables)
+    release = material_release(tables)
     with patch.object(stage_availability, "context_group_key", wraps=stage_availability.context_group_key) as group_key:
-        assert availability.use_sequence(first) == availability.use_sequence(second) == 3
-        assert [availability.operation_release(batch, {"seq": sequence}, "stage") for sequence in (6, 2, 3)] == [
+        assert release.use_sequence(first) == release.use_sequence(second) == 3
+        assert [release.operation_release(batch, {"seq": sequence}, "stage") for sequence in (6, 2, 3)] == [
             "2026-09-11", "1900-01-01", "2026-09-11"]
-        assert availability.operation_release(batch, {"seq": 1}, "strict") == "2026-09-11"
-        assert availability.splittable_quantity(batch, "2026-09-11") == 3
+        assert release.operation_release(batch, {"seq": 1}, "strict") == "2026-09-11"
+        assert release.splittable_quantity(batch, "2026-09-11") == 3
         assert group_key.call_count == 3  # once per current-batch member; OTHER stays unconsumed
-    assert availability.available(first, "2026-09-10") == Decimal("0.3")
+    assert release.readiness.available(first, "2026-09-10") == Decimal("0.3")
     assert covers_quantity(Decimal("0.3"), Decimal(str(0.1 + 0.2)))
     assert not covers_quantity(Decimal(9999999999999999), Decimal(10000000000000000))
-    large = dict(first, required_qty=1.0000000000000002e28, available_qty=1e28)
-    large_arrivals = [{"requirement_id": 1, "arrival_date": day, "quantity": 999999999997.0}
+    # Inside the 2**53-1 storage bound a float below 2**52 still carries half units: the 0.5 left after the
+    # second arrival is within two relative epsilons, the 3.0 left after the first is not.
+    large = dict(first, required_qty=4503599627370495.5, available_qty=4503599627370490.0)
+    large_arrivals = [{"requirement_id": 1, "arrival_date": day, "quantity": 2.5}
                       for day in ("2026-09-10", "2026-09-11")]
-    assert MaterialAvailability({"BatchMaterialArrivals": large_arrivals}).release(large) == "2026-09-11"
+    assert MaterialReadiness(requirements=(), reviews=(), arrivals=large_arrivals).release(large) == "2026-09-11"
     tables["BatchMaterialStages"][0] = {"requirement_id": 1, "operation_id": 3}
     with pytest.raises(WorkbenchCommandRejected, match="单件分支"):
-        MaterialAvailability(tables).use_sequence(first)
-    assert MaterialAvailability({}).operation_release(batch, {"seq": 1}, "stage") == "1900-01-01"
+        material_release(tables).use_sequence(first)
+    nothing = MaterialReadiness(requirements=(), reviews=(), arrivals=())
+    assert MaterialRelease(nothing, stages=(), operations=(), contexts=()).operation_release(
+        batch, {"seq": 1}, "stage") == "1900-01-01"
 
 
 def test_unreviewed_batch_ready_status_matches_preflight_without_stage_probe(run_case):
@@ -159,7 +168,7 @@ def test_unreviewed_batch_ready_status_matches_preflight_without_stage_probe(run
     case.conn.execute("UPDATE BatchMaterialStages SET operation_id=?", (other_op,))
     case.conn.commit()
     settings = case.settings(material_strategy="stage")
-    data, _ = PreflightService(case.conn).evaluate(settings)
+    data, _ = PreflightService(case.conn).evaluate(settings, material_day=date.today().isoformat())
     assert [row["status"] for row in data["tasks"]] == ["eligible", "eligible"]
     assert [row["material_ready_date"] for row in data["tasks"]] == [None, None]
     prepared = prepare_run_input(case.conn, settings, case.projections("B1"))

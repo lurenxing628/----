@@ -7,7 +7,7 @@ from datetime import date
 
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_report import MAX_REPORT_EVENTS, MAX_REPORT_OPERATIONS
+from core.models.workbench_load_limits import MAX_WINDOW_OPERATIONS, MAX_WINDOW_REPORTS
 from core.services.report.date_range_limits import ensure_report_date_range_within_limit
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.source_revisions import REPORT_SOURCE_KEYS, read_source_revisions
@@ -29,7 +29,7 @@ class WorkbenchReportFacts:
         self.engine = ReportEngine(conn, logger)
 
     def read_snapshot(self):
-        return self.plans.read_snapshot(metadata_only=True)
+        return self.plans.read_snapshot()
 
     def current_plan_metadata(self, plan_context: PlanReadContext, scope):
         ref = scope.plan_ref
@@ -49,6 +49,7 @@ class WorkbenchReportFacts:
         maps = {}
         for kind, key in (("machine", "machine_id"), ("operator", "operator_id"), ("batch", "batch_id")):
             keys = {row[key] for row in rows if row[key] is not None}
+            # 按编号排序：筛选选项按名称稳定排序，同名资源的先后取这里的顺序。
             identities = plan_context.active_map(kind, sorted(keys))
             if set(identities) != keys:
                 raise WorkbenchCommandRejected("identity_missing", "有批次或实际用到的设备人员在资料里查不到编号，分析没有生成。请到资料总览核对后重试。")
@@ -58,7 +59,16 @@ class WorkbenchReportFacts:
                           for key, identity in identities.items()}
         return maps
 
-    def read(self, plan_context: PlanReadContext, scope, *, bind_snapshot, include_choices=True, operation_ref=None):
+    def read(
+        self,
+        plan_context: PlanReadContext,
+        scope,
+        *,
+        bind_snapshot,
+        include_choices=True,
+        include_history: bool = False,
+        operation_ref=None,
+    ):
         if scope.plan_finish_date_from:
             ensure_report_date_range_within_limit(date.fromisoformat(scope.plan_finish_date_from), date.fromisoformat(scope.plan_finish_date_to))
         scope, plan, resolution, span = self.current_plan_metadata(plan_context, scope)
@@ -87,26 +97,26 @@ class WorkbenchReportFacts:
             bind_snapshot(scope.scope(), fingerprint)
             rows = self.repo.plan_rows(version, date_from=scope.plan_finish_date_from,
                 date_to=scope.plan_finish_date_to, batch_id=batch.entity_key if batch else None,
-                limit=MAX_REPORT_OPERATIONS + 1)
-            if len(rows) > MAX_REPORT_OPERATIONS:
+                limit=MAX_WINDOW_OPERATIONS + 1)
+            if len(rows) > MAX_WINDOW_OPERATIONS:
                 raise WorkbenchCommandRejected("query_too_large", "这个范围的正式计划工序太多，一次读不完，没有生成结果。请缩小计划完工日期范围后重试。", 413)
-            if len({row["op_id"] for row in rows}) != len(rows):
-                raise WorkbenchCommandRejected("plan_unavailable", "正式计划里有重复的工序，完成率算不出来，没有生成结果。请联系维护人员核对这份计划。")
-            task_refs = plan_context.task_refs(scope.plan_ref, rows)
-            operation_refs = plan_context.operation_refs(row["op_id"] for row in rows)
-            tasks = [{"plan_ref": scope.plan_ref, "operation_ref": operation_refs[row["op_id"]],
-                      "task_ref": task_refs[row["schedule_id"]]} for row in rows]
+            tasks = [
+                {"plan_ref": scope.plan_ref, "operation_ref": row["operation_ref"], "task_ref": row["task_ref"]}
+                for row in rows
+            ]
             if operation_ref is not None:
                 ledger, events_count = ledger_reader.operation_workspace_projection(
                     ledger_scope, scope.plan_ref, tasks, operation_ref
                 )
             else:
-                ledger = ledger_reader.workspace_projection(ledger_scope, scope.plan_ref, tasks)
+                ledger = ledger_reader.workspace_projection(
+                    ledger_scope, scope.plan_ref, tasks, include_history=include_history
+                )
                 events_count = sum(
-                    sum(len(report["correction_history"]) for report in row["reports"])
+                    sum(report["revision_count"] for report in row["reports"])
                     for row in ledger["projections"]
                 )
-            if events_count > MAX_REPORT_EVENTS:
+            if events_count > MAX_WINDOW_REPORTS:
                 raise WorkbenchCommandRejected("query_too_large", "这个范围里的报工和更正记录太多，一次读不完，没有生成结果。请缩小计划完工日期范围后重试。", 413)
             if not include_choices:
                 resources = self._resource_maps(plan_context, rows)
@@ -128,8 +138,14 @@ class WorkbenchReportFacts:
                     "operators": [row for row in actual_rows if row["kind"] == "operator"],
                 }
                 choices = choice_directory(choice_resources, actual_resources)
-        facts = {"plan": plan, "scope": scope, "span": span, "rows": rows,
-                 "ledger": ledger, "resources": resources,
-                 "operation_refs": operation_refs, "task_refs": task_refs, "choices": choices,
-                 "fingerprint": fingerprint}
+        facts = {
+            "plan": plan,
+            "scope": scope,
+            "span": span,
+            "rows": rows,
+            "ledger": ledger,
+            "resources": resources,
+            "choices": choices,
+            "fingerprint": fingerprint,
+        }
         return facts

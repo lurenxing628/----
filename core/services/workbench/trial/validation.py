@@ -6,7 +6,6 @@ from datetime import datetime
 
 from core.errors import AppError
 from core.models.content import same
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_trial import issue, reject, validation
 from core.services.workbench.facts.archived_calendar import ArchivedCalendar
@@ -15,10 +14,11 @@ from core.services.workbench.run.candidate_adoption_constraints import (
     evaluate_draft_schedule_constraints,
 )
 from core.services.workbench.run.input_runtime import HeldArrangements
+from core.services.workbench.run.schedule_occupancy_constraints import latest_schedule_rows
 
 from .arrangements import same_arrangement
 from .calendar import estimate, new_slot_effort
-from .constraints import build_trial_intervals, prepare_outside_schedule_state
+from .constraints import build_trial_intervals
 from .execution_anchors import resolve_execution_anchors
 from .facts import facts_unchanged
 from .materials import adoption_settings, hold_settings, run_policy
@@ -27,15 +27,13 @@ from .protection import TrialProtection, frozen_issue, keeps_frozen, prepare_fro
 
 
 class TrialValidator:
-    def __init__(self, conn, admission, rows, live, *, resolved_anchors=None):
-        self.conn, self.admission, self.rows, self.live = conn, admission, rows, live
+    def __init__(self, admission, rows, live, *, resolved_anchors=None):
+        self.admission, self.rows, self.live = admission, rows, live
+        self.source = live["origin"].source
         self.tables = live["facts"]["tables"]
         self.checks = live["preflight_facts"].checks()
-        self.calendar = ArchivedCalendar({"tables": self.tables}, metadata_basis="current_transaction_snapshot")
+        self.calendar = ArchivedCalendar(self.tables, metadata_basis="current_transaction_snapshot")
         self.engine = self.calendar.engine
-        self.calendar_issue = None if self.engine is not None else issue(
-            "calendar_unproven", "日历数据无效，请核对工作日历。"
-        )
         self.qualification = live["resource_facts"]
         self.qualification_cache = {}
         self._protected_state = None
@@ -46,33 +44,33 @@ class TrialValidator:
         self.batch_ready_dates = {}
         self.trial_intervals: dict = {}
 
-    def _protect(self):
+    def _protect(self, current_by_row):
         # 采用输入的起止日随试调行变化（不重排时段按它裁剪）：行改过就按当前各行重新找。
-        # 只比较各行的最早开始日与最晚结束日，并在冻结窗口口径未变时复用冻结原安排。
+        # 只比较各行准入后的最早开始日与最晚结束日，并在冻结窗口口径未变时复用冻结原安排。
         span = (
-            min(row["current"]["start"][:10] for row in self.rows),
-            max(row["current"]["end"][:10] for row in self.rows),
+            min(start for start, _end in current_by_row.values()).date().isoformat(),
+            max(end for _start, end in current_by_row.values()).date().isoformat(),
         )
         if self._protected_state == span:
             return
         self._protected_state = span
-        self.settings = adoption_settings(self.admission, self.rows, self.checks, self.live["execution"])
-        anchor = hold_settings(self.admission, self.settings)
+        self.settings = adoption_settings(self.source, self.rows, self.checks, self.live["execution"], span=span)
+        anchor = hold_settings(self.source, self.settings)
         hold_key = anchor["start_date"], anchor.get("hold_window")
         if self._hold_key == hold_key:
             return
         self._hold_key = hold_key
         self.frozen, self.frozen_issue = {}, None
         try:
-            self.held = prepare_frozen_arrangements(
-                self.admission, self.rows, self.live, settings=self.settings
-            )
-        except (AppError, CandidateRunInputError, ValueError):
+            self.held = prepare_frozen_arrangements(self.rows, self.live, settings=self.settings)
+        except CandidateRunInputError:
+            # 唯一的领域拒绝：不重排时段里的零工时原安排与正式计划的依据对不上（point_evidence_unproven）。
+            # 存储损坏与代码缺陷原样上抛；采用时的存储损坏翻译只在 adoption_validation 一处。
             self.held = HeldArrangements(set(), [], {})
             self.frozen_issue = issue(
-                "freeze_window_unavailable",
-                "正式采用要原样保留来源排产不重排时段里的原安排，"
-                "但正式计划里这段时间的安排读不出来或者对不上，不能正式采用。请联系维护人员核对正式计划。",
+                "locked_point_evidence_unproven",
+                "正式采用要原样保留来源排产不重排时段里的原安排，但其中零工时原安排在正式计划里找不到对应依据，"
+                "不能正式采用。请重新做排产检查，或把不重排时段改短或不设后再试。",
             )
         else:
             self.frozen = {
@@ -105,16 +103,11 @@ class TrialValidator:
         )
 
     def prepare_validation_context(self, admission_issues):
-        self._protect()
-        reported = self.live["execution_reported"]
-        self.trial_intervals = build_trial_intervals(self.rows, reported=reported)
-        latest_schedule, outside_point_versions = prepare_outside_schedule_state(
-            self.conn, self.rows, self.live, reported
-        )
+        self.trial_intervals = build_trial_intervals(self.rows, reported=self.live["execution_reported"])
+        self._protect(self.trial_intervals["current_by_row"])
+        latest_schedule = latest_schedule_rows(self.live["facts"]["tables"]["Schedule"])
         piece_scope, piece_issues = evaluate_trial_piece_scope(self.rows, self.live, self.settings)
-        base_issues = [dict(item) for item in self.admission["base_issues"]] + list(admission_issues)
-        if self.calendar_issue:
-            base_issues.append(self.calendar_issue)
+        base_issues = self.admission["base_issues"] + admission_issues
         if self.frozen_issue:
             base_issues.append(self.frozen_issue)
         if self.anchor_error:
@@ -123,14 +116,13 @@ class TrialValidator:
             "live": self.live,
             "checks": self.checks,
             "settings": self.settings,
-            "material_policy_base": run_policy(self.admission),
+            "material_policy_base": run_policy(self.source),
             "qualification": self.qualification,
             "qualification_cache": self.qualification_cache,
             "anchors": self.anchors,
             "batch_ready_dates": self.batch_ready_dates,
             "trial_intervals": self.trial_intervals,
             "latest_schedule": latest_schedule,
-            "outside_point_versions": outside_point_versions,
             "piece_scope": piece_scope,
             "piece_issues": piece_issues,
             "estimate_fn": self._estimate_row,
@@ -157,7 +149,7 @@ class TrialValidator:
             )
         if protected and protected["code"] == "task_frozen":
             seed = self.frozen[original["operation"]["id"]]
-            if not keeps_frozen(row, seed):
+            if not keeps_frozen(row, seed, self.trial_intervals["current_by_row"][row["row_ref"]]):
                 issues.append(frozen_issue(row, seed, changed=True))
             return issues, None, seed
         if protected:
@@ -169,22 +161,22 @@ class TrialValidator:
         return issues, protected, None
 
     def adjusted(self, row, intent):
-        self._protect()
+        # 能不能改这一行、原工时依据是否成立，按改之前这一版各行准入后的起止判断；改完由 evaluate_saved 重新准入新的一版。
+        before = build_trial_intervals(self.rows, reported=self.live["execution_reported"])
+        self._protect(before["current_by_row"])
         protected = self.protection.check(row)
         if protected:
             reject(protected["code"], protected["message"])
-        if self.engine is None:
-            reject("calendar_unproven", "当前日历不能计算完工时间，本次调整未写入。", 422)
         current = self._requested_arrangement(intent)
         if row["original"]["operation"]["source"] == "external" and any(
             intent[key] is not None for key in ("machine_ref", "operator_ref")
         ):
             reject("external_internal_resource", "外协工序必须明确使用空内部资源。", 422)
         effort = new_slot_effort(row["original"])
-        end = self._adjusted_end(row, current, effort)
+        end = self._adjusted_end(row, current, effort, point_proven=row["row_ref"] in before["original_points_by_row"])
         current["end"] = end.isoformat()
         if same_arrangement(row["current"], current):
-            return dict(row["current"])
+            return row["current"]
         current["operation_effort"] = dict(effort.to_dict(), operation_ref=row["operation_ref"])
         return current
 
@@ -200,14 +192,17 @@ class TrialValidator:
             current[kind + "_id"] = entity["entity_key"] if entity else None
         return current
 
-    def _adjusted_end(self, row, current, effort):
+    def _adjusted_end(self, row, current, effort, *, point_proven):
+        # 开始时刻已由 change_input 准入成工厂本地时间的规范写法。
+        start = datetime.fromisoformat(current["start"])
         try:
-            start = datetime.fromisoformat(current["start"])
-            estimated_start, end = estimate(self.engine, row["original"], current, start=start, effort=effort)
-            if row["original"].get("point_basis") is not None and estimated_start != start:
-                reject("point_calendar_conflict", "所选点时间不在允许班次内，未推迟完工或改成正时长，原草稿保留。", 422)
-        except (AppError, ValueError, TypeError, OverflowError) as exc:
-            if isinstance(exc, WorkbenchCommandRejected):
-                raise
+            estimated_start, end = estimate(
+                self.engine, row["original"], current, start=start, point_proven=point_proven, effort=effort
+            )
+        except AppError:
+            # 日历引擎的领域拒绝：班次里找不到可排时间、越过可表示日期、日历资料不合规则。
+            # estimate 自己的拒绝、存储损坏与代码缺陷不是 AppError，原样上抛。
             reject("calendar_unproven", "真实日历或原工时不能计算完工时间，本次调整未写入。", 422)
+        if row["original"].get("point_basis") is not None and estimated_start != start:
+            reject("point_calendar_conflict", "所选点时间不在允许班次内，未推迟完工或改成正时长，原草稿保留。", 422)
         return end

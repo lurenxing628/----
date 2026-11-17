@@ -2,15 +2,15 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
-from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Mapping, Optional, cast
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from core.errors import AppError, ValidationError
+from core.models.workbench_load_limits import MAX_SOLVE_OPERATIONS
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
-from core.models.workbench_preflight import issue, normalize_preflight_input
+from core.models.workbench_preflight import RunDates, issue, normalize_preflight_input, reject, run_dates
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.preflight_dependencies import link_predecessors
-from core.services.workbench.facts.run_input_rows import OPERATION_STATES, mutable_classification
+from core.services.workbench.facts.run_input_rows import mutable_classification
 from core.services.workbench.facts.stored_algo_inputs import stored_batch_operation
 from core.shared.stored_dates import stored_date
 
@@ -36,22 +36,11 @@ class PreparedPreflight:
     config_snapshot: Optional["ScheduleConfigSnapshot"]
     execution_projections: tuple
     evaluation_rows: tuple
+    # settings 的日期范围，本请求只转换这一次；排产受理的业务准备与决策读模型都读这一份。
+    dates: RunDates
     config_error: Optional[ValidationError] = None
     run_options: Any = None
     held_arrangements: Any = None
-
-
-def _freeze_evaluation_row(row: Mapping[str, Any]) -> Mapping[str, Any]:
-    frozen = {
-        **row,
-        "issues": tuple(MappingProxyType(dict(item)) for item in row["issues"]),
-        "predecessor_refs": tuple(row["predecessor_refs"]),
-        "execution": MappingProxyType(dict(row["execution"])),
-        "held": MappingProxyType(dict(row["held"])) if row["held"] is not None else None,
-    }
-    if "external_execution_cycle" in row:
-        frozen["external_execution_cycle"] = MappingProxyType(dict(row["external_execution_cycle"]))
-    return MappingProxyType(frozen)
 
 
 def task_row(operation_ref, batch, op, projection):
@@ -70,10 +59,6 @@ def operation_gaps(checks, batch, op, projection):
         gaps.extend(projection["data_gaps"])
     if batch["ready_date"] is not None and stored_date(batch["ready_date"]) is None:
         gaps.append(issue("ready_date_invalid", "批次的齐套日期格式不对。请到批次管理改正。"))
-    if batch["status"] not in ("pending", "scheduled", "processing", "completed", "cancelled"):
-        gaps.append(issue("batch_status_invalid", "批次状态无效，请到批次管理核对。"))
-    if op["status"] not in OPERATION_STATES:
-        gaps.append(issue("operation_status_invalid", "工序状态无效，请到批次管理核对。"))
     return gaps
 
 
@@ -123,15 +108,16 @@ class PreflightService:
     def __init__(self, conn):
         self.conn = conn
 
-    def evaluate(self, value):
+    def evaluate(self, value, *, material_day):
         settings = normalize_preflight_input(value)
         with PreflightFacts.open(self.conn) as facts:
-            prepared = self.evaluate_prepared(settings, facts=facts)
+            prepared = self.evaluate_prepared(settings, facts=facts, material_day=material_day)
             return prepared.data, prepared.fingerprint
 
     def evaluate_prepared(
-        self, settings, *, facts: PreflightFacts, fingerprint: Optional[str] = None
+        self, settings, *, facts: PreflightFacts, material_day: str, fingerprint: Optional[str] = None
     ) -> PreparedPreflight:
+        """material_day is the day whose arrivals decide a reviewed batch's batch-level readiness."""
         effective_fingerprint = facts.fingerprint() if fingerprint is None else fingerprint
         config, config_error = None, None
         try:
@@ -144,8 +130,11 @@ class PreflightService:
         batches = facts.selected(settings["batch_refs"])
         selected_ids = {row["batch_id"] for row in batches}
         operations = [row for row in facts.tables["BatchOperations"] if row["batch_id"] in selected_ids]
-        prepared_projections = []
-        projections = execution_projections(facts, operations, prepared=prepared_projections)
+        # 排产检查和开始排产都经过这里：展开后的工序数一可知就按单次求解上限把关，超限不做后面的检查。
+        if len(operations) > MAX_SOLVE_OPERATIONS:
+            reject(f"选中的批次展开后共 {len(operations)} 道工序，超过单次自动排产上限 {MAX_SOLVE_OPERATIONS} 道，"
+                   "排产没有继续。请减少勾选的批次后重新检查。", fields=("batch_refs",))
+        projections, projected = execution_projections(facts, operations)
         cycles, arrangement_reasons = self._external_cycles(facts, batches, operations, projections)
         checks = facts.checks()
         grouped = defaultdict(list)
@@ -156,7 +145,7 @@ class PreflightService:
             ops = grouped[batch["batch_id"]]
             if not ops:
                 no_route.append(batch)
-            if checks.readiness(batch):
+            if checks.readiness(batch, material_day):
                 unready.append({"batch_ref": batch["ref"], "batch_id": batch["batch_id"]})
             batch_rows = []
             for op in ops:
@@ -172,21 +161,21 @@ class PreflightService:
                 batch_rows.append(row)
             dependency_reasons.extend(batch_dependencies(batch, ops, batch_rows))
             rows.extend(batch_rows)
-        hold = (None, "default") if config_error is not None else hold_window(settings, snapshot=config)
+        dates = run_dates(settings)
+        hold = (None, "default") if config_error is not None else hold_window(settings, start=dates.start, snapshot=config)
         held, notes, marks, held_obj = self._arrangement_reasons(
             facts, settings, batches, operations, rows, projections,
-            checks, cycles, hold_window_bounds=hold[0],
+            checks, cycles, start=dates.start, hold_window_bounds=hold[0],
         )
         for row in rows:
             row["held"] = marks.get(row["op_id"])
         data = summarize(settings, batches, rows, no_route, unready,
                          dependency_reasons + arrangement_reasons + held, notes,
-                         hold=hold)
+                         hold=hold, dates=dates)
         data["run_options"] = options
         return PreparedPreflight(
             data, effective_fingerprint, settings, facts.capture, facts,
-            config, tuple(prepared_projections),
-            tuple(_freeze_evaluation_row(row) for row in rows),
+            config, projected, tuple(rows), dates,
             config_error=config_error, run_options=options,
             held_arrangements=held_obj,
         )
@@ -201,7 +190,7 @@ class PreflightService:
 
     @staticmethod
     def _arrangement_reasons(facts: PreflightFacts, settings, batches, operations, rows, projections, checks, cycles,
-                             *, hold_window_bounds):
+                             *, start, hold_window_bounds):
         """排产计算或采用才会发现、却在开始前就能看出的冲突：外协记录占了本厂资源，
         不重排时段保留的原安排按现在的资料已不成立。返回 (阻断原因, 提醒, {工序: 保留标记}, 保留安排结果)。"""
         capture = cast("ProductionFactsCapture", facts.capture)
@@ -211,6 +200,6 @@ class PreflightService:
         held_ids = {row["op_id"] for row in rows if row["status"] in ("eligible", "auto_assign_required")} | set(cycles)
         held, notes, marks, held_obj = held_arrangement_reasons(
             facts, checks, settings, version, batches, operations,
-            held_ids, cycles, projections, hold_window_bounds=hold_window_bounds,
+            held_ids, cycles, projections, start=start, hold_window_bounds=hold_window_bounds,
         )
         return reasons + held, notes, marks, held_obj

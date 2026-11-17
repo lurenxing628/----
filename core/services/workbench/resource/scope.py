@@ -3,20 +3,24 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
-from core.models.workbench_resource_table_query import table_query_required, toolbar_scope
+from core.models.workbench_resource_query import ResourcePageRequest
+from core.models.workbench_resource_status import PUBLIC_STATUS_VALUES
+from core.models.workbench_resource_table_query import toolbar_scope
 from core.services.workbench.facts.source_revisions import RESOURCE_SOURCE_KEYS, read_source_revisions
+from core.services.workbench.facts.table_columns import sql_order
 from data.repositories.workbench_resource_table_repo import WorkbenchResourceTableRepository
 
 from .calendar_summary import resource_calendar_summary
-from .metrics import RESOURCE_KEYS, WorkbenchResourceMetricsService
+from .metrics import WorkbenchResourceMetricsService
 from .projection import project_resource
 from .readiness import process_readiness, resource_readiness
 from .states import ResourceChangePreparation
-from .table_facts import ResourceTableFacts
+from .table_facts import ResourceTableFacts, capture_change_facts
 from .table_states import resource_table_states
 
 if TYPE_CHECKING:
@@ -38,10 +42,7 @@ class ResourceFactScope:
     table_facts_instance: Optional[ResourceTableFacts] = None
     table_indexes: Dict[Any, Any] = field(default_factory=dict)
     table_identities: Optional[List[Dict[str, Any]]] = None
-    snapshot_scope: Optional[Dict[str, Any]] = None
     revisions: Optional[Dict[str, int]] = None
-    report_revisions: Dict[str, int] = field(default_factory=dict)
-    table_warmed: bool = False
 
     @property
     def conn(self):
@@ -69,57 +70,12 @@ class ResourceFactScope:
             self.metrics.identity_kinds(self.kind)
         )
 
-    def _ensure_table_snapshot(self) -> None:
-        if not self.capture_fingerprint:
-            return
-        if self.table_identities is None:
-            self.table_identities = self._read_identities()
-        if not self.table_warmed:
-            self.snapshot_scope = self.repo.scope_state(
-                self.kind, identities=self.table_identities, report_revisions=self.report_revisions
-            )
-            self.metrics.fingerprint_facts(self.kind)
-            self.table_warmed = True
-
-    def create_snapshot(self):
-        self._ensure_table_snapshot()
-        relations = {
-            "machine": ("op_type", "machine_group"),
-            "operator": ("op_type", "shift_profile"),
-            "supplier": ("op_type",),
-        }.get(self.kind, ())
-        if not relations:
-            return None
-        facts = self.metrics.facts
-        refs = self.table_facts().identities
-        result = {}
-        for relation in relations:
-            key = RESOURCE_KEYS[relation]
-            allowed = (
-                (("external", "both") if self.kind == "supplier" else ("internal", "both"))
-                if relation == "op_type"
-                else None
-            )
-            rows = [
-                {
-                    **row,
-                    "ref": refs.get((relation, row[key]), {}).get("ref"),
-                    "revision": refs.get((relation, row[key]), {}).get("revision"),
-                }
-                for row in facts[relation]
-                if allowed is None or row["category"] in allowed
-            ]
-            rows.sort(key=lambda item: item[key])
-            result[relation] = rows
-        if self.kind == "operator":
-            result["shift_pattern"] = sorted(
-                facts["shift_pattern"], key=lambda item: (item["profile_id"], item["day_offset"])
-            )
-        return result
-
-    def summary_projection(self) -> Dict[str, Any]:
-        counts, metrics = self.repo.summary(), self.metrics.summary_metrics()
-        calendar = resource_calendar_summary(self.conn, self.logger)
+    def summary_projection(self, as_of: datetime) -> Dict[str, Any]:
+        counts = self.repo.summary()
+        metrics = self.metrics.summary_metrics(
+            {kind: self.repo.status_counts(ResourcePageRequest(kind)) for kind in PUBLIC_STATUS_VALUES}
+        )
+        calendar = resource_calendar_summary(self.conn, self.logger, as_of=as_of)
         process = process_readiness(self.conn, counts["part"], self.logger)
         return {
             "counts": counts,
@@ -141,18 +97,18 @@ class ResourceFactScope:
         return ResourceReadRecord(identity, entity, state)
 
     def page(self, query):
+        """所有涉及的列都有 SQL 键就在 SQL 里分页，否则在格子索引里筛选、排序；计数都走 SQL，工种的能力计数例外。"""
         if query.kind != self.kind:
             raise WorkbenchCommandRejected("invalid_input", "查询类型与当前资源不一致。", 400)
-        self._ensure_table_snapshot()
-        advanced = table_query_required(query)
-        if advanced:
+        order = sql_order(query)
+        keys = None
+        if order is None:
             index = self.table_index(query)
             keys = index.matching_keys(query)
             offset = (query.number - 1) * query.size
-            rows, total = [index.rows[code] for code in keys[offset : offset + query.size]], len(keys)
+            rows = [index.rows[code] for code in keys[offset : offset + query.size]]
         else:
-            rows, total = self.repo.page(query)
-            keys = None
+            rows = self.repo.page_rows(query, order)
         if any(row["ref"] is None for row in rows):
             raise WorkbenchCommandRejected(
                 "storage_failure",
@@ -160,20 +116,28 @@ class ResourceFactScope:
                 500,
             )
         records = self._op_type_page(rows) if self.kind == "op_type" else self._table_page_records(rows)
+        if self.kind == "op_type":
+            codes = keys if keys is not None else self.repo.toolbar_keys(query)
+            metrics, total = self.metrics.op_type_metrics(codes), len(codes)
+        else:
+            counts = self.repo.status_counts(query, keys)
+            metrics, total = self.metrics.status_metrics(counts), counts["total"]
         page = {
             "number": query.number,
             "size": query.size,
             "total": total,
             "pages": max(1, (total + query.size - 1) // query.size),
             "sort": [{"field": query.sort, "direction": query.direction}],
-            "metrics": self.metrics.metrics(self.kind, keys if keys is not None else self.matching_keys(query)),
+            "metrics": metrics,
         }
         return records, page
 
     def _op_type_page(self, rows) -> List[ResourceReadRecord]:
+        if not rows:
+            return []
         self.metrics.op_type_records()
         codes = [row["business_code"] for row in rows]
-        dependencies = self.table_facts().op_type_dependencies(codes)
+        dependencies = WorkbenchResourceTableRepository(self.conn, self.logger).assigned_counts("op_type", codes)
         result = []
         for row in rows:
             code = row["business_code"]
@@ -196,7 +160,6 @@ class ResourceFactScope:
         return result
 
     def table_facts(self) -> ResourceTableFacts:
-        self._ensure_table_snapshot()
         if self.table_facts_instance is not None:
             return self.table_facts_instance
         if self.table_identities is None:
@@ -204,12 +167,9 @@ class ResourceFactScope:
         facts = ResourceTableFacts(
             self.metrics,
             self.table_identities,
-            scope_state=self.snapshot_scope,
             identity_kinds=self.metrics.identity_kinds(self.kind),
-            report_revisions=self.report_revisions,
         )
         self.table_facts_instance = facts
-        self.table_warmed = True
         return facts
 
     def table_preparation(self) -> ResourceChangePreparation:
@@ -224,11 +184,12 @@ class ResourceFactScope:
         return self.table_indexes[key]
 
     def matching_keys(self, query):
-        if table_query_required(query):
+        order = sql_order(query)
+        if order is None:
             return self.table_index(query).matching_keys(query)
         if query.kind != self.kind:
             raise WorkbenchCommandRejected("invalid_input", "查询类型与当前资源不一致。", 400)
-        return self.repo.toolbar_keys(query)
+        return self.repo.toolbar_keys(query, order)
 
     def facets(self, query, column, search="", number=1, size=100):
         return self.table_index(query).facets(column, search, number, size)
@@ -237,11 +198,32 @@ class ResourceFactScope:
         return self.table_index(query).facet_selection(column, search)
 
     def _table_page_records(self, rows) -> List[ResourceReadRecord]:
-        facts = self.table_facts()
-        states = resource_table_states(facts, self.kind, [row["business_code"] for row in rows])
+        if not rows:
+            return []
+        codes = [row["business_code"] for row in rows]
+        if self.table_facts_instance is not None:
+            facts = self.table_facts_instance
+        else:
+            known = [
+                {
+                    "ref": row["ref"],
+                    "kind": self.kind,
+                    "entity_key": row["business_code"],
+                    "revision": row["revision"],
+                    "active": 1,
+                }
+                for row in rows
+            ]
+            facts = capture_change_facts(
+                self.conn,
+                self.logger,
+                refs=(),
+                codes={self.kind: codes},
+                known_identities=known,
+            )
+        states = resource_table_states(facts, self.kind, codes)
         result = []
-        for row in rows:
-            code = row["business_code"]
+        for code in codes:
             identity = facts.identity(self.kind, code)
             state = states[code]
             result.append(ResourceReadRecord(identity, project_resource(self.kind, identity, state), state))

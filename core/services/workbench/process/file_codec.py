@@ -4,6 +4,9 @@ decode_process_file(kind, content, fmt) -> list of
 {row: source line (CSV physical start line / XLSX row), values: sparse canonical
 mapping, errors: [{row, field, code, message}]}. File/header/limit failures raise
 ValidationError with details.row. All duplicate-key occurrences are diagnosed.
+Key cells (REQUIRED) are diagnosed here only: a key in values is admitted (typed,
+not blank); a missing key already carries its error, so the domain reads keys
+as given and never re-judges them.
 Never partially apply this list: the caller must reject a batch with any errors.
 kind, fmt (csv|xlsx) and the bounded content arrive admitted by the upload route;
 fmt selects the CSV or XLSX reader.
@@ -16,8 +19,9 @@ None emits \\N. Literal leading backslashes are doubled. CSV prefixes every
 nonempty cell with one reversible apostrophe. XLSX explicitly types text,
 including decimal numbers to preserve precision. Source exports use Chinese.
 Hours/days decode to finite floats; sequence/group bounds to exact positive
-int64 (text digits or safe XLSX integers). Null legality and group/source/name
-assertions belong to the domain; this codec never fills absent fields.
+int64 (text digits or safe XLSX integers). Null legality, hour/cycle value
+ranges (the stage-input rules) and group/source/name assertions belong to the
+domain; this codec never fills absent fields.
 """
 
 from core.errors import ValidationError
@@ -31,7 +35,7 @@ from core.models.workbench_process_file import (
 from core.models.workbench_table_descriptor import extra_sheet_notice
 from core.services.workbench.facts.file_source import FileReadMessages, source_rows
 
-from .file_values import decode_value, numeric_diagnostic
+from .file_values import decode_value
 from .file_writer import write_csv, write_xlsx
 
 __all__ = ["decode_process_file", "encode_process_file"]
@@ -82,15 +86,15 @@ def _parse_row(kind, number, values, cell_errors, fields, file_format):
                 parsed = decode_value(value, field, number, file_format)
                 if parsed != "":
                     row["values"][field] = parsed
-                    message = numeric_diagnostic(field, parsed)
-                    if message:
-                        _issue(row, field, message)
             except ValidationError as exc:
                 _issue(row, field, exc.message)
+    # 关键列只在这里判：类型不对、缺、空、只有空白各报一次，这样的值不留在 values 里。
     for field in REQUIRED[kind]:
         value = row["values"].get(field)
-        if (value is None or type(value) is str and not value.strip()) and not any(e["field"] == field for e in row["errors"]):
-            _issue(row, field, LABELS[field] + "不能留空。请补填后重新导入。")
+        if value is None or type(value) is str and not value.strip():
+            row["values"].pop(field, None)
+            if not any(error["field"] == field for error in row["errors"]):
+                _issue(row, field, LABELS[field] + "不能留空。请补填后重新导入。")
     return row
 
 

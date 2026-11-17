@@ -2,10 +2,12 @@
 
 from datetime import datetime
 
-from core.algorithm_contracts.schedule_point_evidence import SchedulePointEvidence
+from core.algorithm_contracts.schedule_point_evidence import SchedulePointEvidence, is_point_work
 from core.algorithm_runtime.internal_slot import estimate_point_slot
-from core.models.workbench_preflight import public_ref
-from core.shared.strict_parse import is_stored_number
+from core.models.enums import SourceType
+from core.shared.local_datetime import us_to_datetime
+from core.shared.refs import is_ref
+from core.shared.strict_parse import is_exact_positive_int, is_stored_number
 
 
 class PointEventError(ValueError):
@@ -32,29 +34,17 @@ def point_work_quantity(operation, batch, execution, operation_ref):
 
 
 def _point_work_identity(operation, batch, execution, operation_ref):
-    if (not is_stored_number(operation.get("id"), integer=True, positive=True)
+    if (not is_exact_positive_int(operation.get("id"))
             or operation.get("source") != "internal"
             or not _canonical_identity(operation.get("batch_id"))
             or operation["batch_id"] != batch.get("batch_id")
-            or not public_ref(operation_ref)
+            or not is_ref(operation_ref)
             or not execution or execution.get("operation_ref") != operation_ref):
         raise PointEventError("point_identity_unproven", "零工时工序缺少原工序或报工记录的对应关系，不能核对。")
 
 
 def _canonical_identity(value):
     return type(value) is str and bool(value) and value.strip() == value
-
-
-def internal_duration_hours(setup_hours, unit_hours, quantity):
-    """Validate operands before multiplication: missing/negative times are not zero."""
-    if not is_stored_number(setup_hours) or not is_stored_number(unit_hours):
-        raise PointEventError("hours_missing", "换型工时和单件工时必须填好，而且不能是负数。")
-    if not is_stored_number(quantity, integer=True):
-        raise PointEventError("quantity_unknown", "目标数量必须填 0 或正整数。")
-    total = setup_hours + unit_hours * quantity
-    if not is_stored_number(total):
-        raise PointEventError("invalid_duration", "算出来的总工时超出可支持的范围，不能继续。")
-    return total
 
 
 def point_event_dto(start, end):
@@ -67,13 +57,32 @@ def point_event_dto(start, end):
             "duration_seconds": 0, "occupies_resources": False}
 
 
+def overlaps(start, end, low, high):
+    return low <= start < high if start == end else start < high and end > low
+
+
+def schedule_row_point_evidence(row):
+    """Construct a point-work witness directly from a stored Schedule row."""
+    if row["is_point_event"] != 1:
+        return None
+    return SchedulePointEvidence(
+        op_id=row["op_id"],
+        machine_id=row["machine_id"],
+        operator_id=row["operator_id"],
+        at=us_to_datetime(row["start_us"]),
+        setup_hours=row["setup_hours"],
+        unit_hours=row["unit_hours"],
+        quantity=row["quantity"],
+    )
+
+
 def estimate_point_event(calendar, *, setup_hours, unit_hours, quantity, machine_id, operator_id, priority, start):
     """Use real shift/priority/efficiency rules, with no occupied resource interval.
 
     This is not an adoption proof: identity, precedence, readiness, locks and
-    execution remain mandatory at the caller's complete-plan boundary.
+    execution remain mandatory at the caller's complete-plan boundary. Callers estimate internal work only.
     """
-    if internal_duration_hours(setup_hours, unit_hours, quantity) != 0:
+    if not is_point_work(SourceType.INTERNAL.value, setup_hours, unit_hours, quantity):
         raise PointEventError("point_duration_nonzero", "这道工序有实际工时，不是零工时工序。")
     point_event_dto(start, start)
     if any(type(value) is not str or not value.strip() for value in (machine_id, operator_id)):
@@ -123,7 +132,7 @@ def _candidate_point_evidence(
     quantity = point_work_quantity(work, {"batch_id": batch.batch_id, "quantity": batch.quantity},
                                    disposition["execution"], disposition["operation_ref"])
     if row.op_id in schedule_input.execution_guard.execution_completed_op_ids:
-        if internal_duration_hours(op.setup_hours, op.unit_hours, quantity) != 0:
+        if not is_point_work(op.source, op.setup_hours, op.unit_hours, quantity):
             raise PointEventError("point_duration_nonzero", "这道工序有实际工时，不是零工时工序。")
         point_event_dto(row.start_time, row.end_time)
         fact = schedule_input.execution_guard.execution_facts[row.op_id]

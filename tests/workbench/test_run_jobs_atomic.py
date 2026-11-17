@@ -10,19 +10,22 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.services.workbench.facts.admission_scope import project_admitted_scope
-from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.services.workbench.facts.candidate_facts import admit_generation_facts
 from core.services.workbench.facts.decision_read_models import public_job_status
-from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_history_projection import scope_summary
-from core.services.workbench.run import result_preparation
+from core.services.workbench.run import result_preparation, terminal
 from core.services.workbench.run import worker as worker_module
 from core.services.workbench.run.worker import WorkbenchRunWorker
+from core.services.workbench.run.worker_recovery import recover_unfinished_runs
+from core.shared.local_datetime import datetime_to_us
 from core.shared.strict_json import canonical_json
 from data.repositories import workbench_run_repo as run_repo_module
 from data.repositories import workbench_run_result_repo as result_repo_module
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
+from data.repositories.workbench_history_catalog_repo import WorkbenchHistoryCatalogRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository
+from tests._support.production_facts_dump import production_facts
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
 from tests.workbench.run_jobs_support import service
@@ -42,7 +45,7 @@ def test_worker_reuses_the_admission_dispositions_without_reclassifying(job_case
         raise AssertionError("worker 只读受理时存档的处置，不再重新分类")
 
     monkeypatch.setattr(run_input, "classify_rows", reclassify)
-    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
     assert result["state"] == "complete", result
     receipt = json.loads(case.conn.execute("SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?",
                                            (accepted["run_ref"],)).fetchone()[0])
@@ -54,7 +57,7 @@ def test_spawned_compute_consumes_the_parent_admission_and_returns_actual_status
 
     case = job_case
     accepted = case.accept(key="spawned-compute-single-admission")
-    result = WorkbenchRunWorker(case.conn, compute_runner=run_compute_in_process).execute(accepted["run_ref"])
+    result = WorkbenchRunWorker(case.conn, clock=datetime.now, compute_runner=run_compute_in_process).execute(accepted["run_ref"])
     assert result["state"] == "complete" and result["result_persisted"] is True
     assert result == public_job_status(WorkbenchRunRepository(case.conn).status(accepted["run_ref"]))
     assert result["started_at"] is not None and result["finished_at"] is not None and result["receipt_ref"]
@@ -73,11 +76,15 @@ def test_owned_file_compute_matches_thread_snapshot_types_and_payload(tmp_path, 
     source.execute("CREATE TABLE Facts(day DATE, at TIMESTAMP, label TEXT)")
     source.execute("INSERT INTO Facts VALUES (?,?,?)", (date(2026, 10, 17), datetime(2026, 10, 17, 8, 0, 0, 123456), "原内容"))
     source.commit()
-    row = {"run_ref": "a" * 48, "execution_json": "[]", "normalized_input_json": '{"scope":"same"}',
-           "baseline_json": "{}", "facts_json": "{}"}
-    worker = WorkbenchRunWorker(source)
-    monkeypatch.setattr(worker, "_check_facts", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(worker_module, "GenerationFacts", lambda _capture: SimpleNamespace(operations={"b" * 48: 1}))
+    # worker 读存下的规范输入走与排产记录同一处准入（admitted_run_input），这里给真实的存档形状。
+    stored_input = {"batch_refs": ["b" * 48], "start_date": "2026-10-17", "end_date": "2026-10-17", "ready_check": False,
+                    "missing_resource_policy": "auto_assign", "completed_policy": "preserve_actuals",
+                    "material_strategy": "strict", "time_budget_seconds": 10}
+    row = {"run_ref": "a" * 48, "execution_json": "[]", "normalized_input_json": json.dumps(stored_input),
+           "baseline_json": "{}", "revisions_json": "{}", "conditions_archive_json": "{}"}
+    worker = WorkbenchRunWorker(source, clock=datetime.now)
+    monkeypatch.setattr(worker_module, "_check_facts", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(worker_module, "admit_generation_facts", lambda _capture, **_kwargs: SimpleNamespace(operations={"b" * 48: 1}))
     monkeypatch.setattr(worker_module, "prepare_run_result", lambda value, *_args, **_kwargs: value)
 
     def compute(conn, normalized_input, projections, **_kwargs):
@@ -100,10 +107,8 @@ def test_owned_file_compute_matches_thread_snapshot_types_and_payload(tmp_path, 
             raise AssertionError("An owned process snapshot must not be backed up again")
 
         monkeypatch.setattr(worker_module, "computation_database", no_second_copy)
-        with open_readonly_immutable(path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
-                                     row_factory=sqlite3.Row) as owned:
-            owned.execute("PRAGMA foreign_keys=ON")
-            process_payload = worker.compute_owned_snapshot(owned, row, admission)
+        with open_readonly_immutable(path) as owned:
+            process_payload = worker_module.compute_owned_snapshot(owned, row, admission)
             assert process_payload == thread_payload
             with pytest.raises(sqlite3.OperationalError):
                 owned.execute("INSERT INTO Facts VALUES (NULL,NULL,'write')")
@@ -114,7 +119,7 @@ def test_owned_file_compute_matches_thread_snapshot_types_and_payload(tmp_path, 
 def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
     from collections import Counter
 
-    from core.services.material.stage_availability import MaterialAvailability
+    from core.services.material.stage_availability import MaterialReadiness
     from core.services.scheduler.calendar.engine import CalendarEngine
     from core.services.scheduler.config import config_snapshot
     from core.services.scheduler.execution import execution_ledger_adapter
@@ -149,18 +154,18 @@ def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
     monkeypatch.setattr(WorkbenchRunRepository, "input_admitted", checked_input)
     table_reads, preparations, statements = Counter(), Counter(), []
     calendars, material_indexes = [], []
-    initialize_calendar, initialize_materials = CalendarEngine.__init__, MaterialAvailability.__init__
+    initialize_calendar, initialize_materials = CalendarEngine.__init__, MaterialReadiness.__init__
 
     def calendar_once(calendar, inputs):
         calendars.append(inputs)
         initialize_calendar(calendar, inputs)
 
-    def materials_once(availability, tables):
-        material_indexes.append(availability)
-        initialize_materials(availability, tables)
+    def materials_once(readiness, **tables):
+        material_indexes.append(readiness)
+        initialize_materials(readiness, **tables)
 
     monkeypatch.setattr(CalendarEngine, "__init__", calendar_once)
-    monkeypatch.setattr(MaterialAvailability, "__init__", materials_once)
+    monkeypatch.setattr(MaterialReadiness, "__init__", materials_once)
     capture_table = WorkbenchPreflightFactsRepository.capture_table
     def capture_once(repo, name):
         table_reads[name] += 1
@@ -181,7 +186,7 @@ def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
     assert preparations == {"GenerationFacts": 1, "build_schedule_config_snapshot": 1, "current_execution_plan": 1}
     assert calendars == [] and len(material_indexes) == 1
     assert not any(sql.upper().startswith("SELECT") and "FROM WORKBENCHRUNJOBS" in sql.upper()
-                   and any(field in sql.upper() for field in ("FACTS_JSON", "EXECUTION_JSON", "BASELINE_JSON"))
+                   and any(field in sql.upper() for field in ("REVISIONS_JSON", "CONDITIONS_ARCHIVE_JSON", "EXECUTION_JSON", "BASELINE_JSON"))
                    for sql in statements)
     assert accepted["data"]["scope_summary"]["run_options"]["time_budget_seconds"] == 60
     actual = accepted["data"]
@@ -225,31 +230,30 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
     captured_scope = accepted["data"]["scope_summary"]
     legacy_row = WorkbenchRunRepository(case.conn).get(accepted["run_ref"])
     assert legacy_row is not None
-    legacy_facts = json.loads(legacy_row["facts_json"])
+    legacy_facts = json.loads(legacy_row["conditions_archive_json"])
     config_key = legacy_facts["columns"]["ScheduleConfig"].index("config_key")
     # 存档里有排产配置表、只是没有目标这一行：如实标“没有记下”，不猜默认目标。
     legacy_facts["tables"]["ScheduleConfig"] = [
         row for row in legacy_facts["tables"]["ScheduleConfig"] if row[config_key] != "objective"]
-    legacy_row["facts_json"] = canonical_json(legacy_facts)
     legacy_input = json.loads(legacy_row["normalized_input_json"])
     execution = json.loads(legacy_row["execution_json"])
     legacy_scope = project_admitted_scope(
-        legacy_input, GenerationFacts({"facts_text": legacy_row["facts_json"], "execution": execution}),
+        legacy_input, admit_generation_facts({"facts": legacy_facts, "execution": execution}),
         summary=scope_summary(legacy_input))
     assert legacy_scope["objective"] is None and legacy_scope["objective_label"] is None
     assert {"field": "objective", "code": "not_recorded", "message": "排产时没有记下这一项。"} in legacy_scope["data_gaps"]
     # 整张表都不在存档里是损坏，不当作空配置。
     legacy_facts["tables"].pop("ScheduleConfig")
     with pytest.raises(WorkbenchCommandRejected) as corrupt:
-        GenerationFacts({"facts_text": canonical_json(legacy_facts), "execution": execution})
+        admit_generation_facts({"facts": legacy_facts, "execution": execution})
     assert corrupt.value.code == "candidate_artifact_invalid"
-    before = ProductionFactsCapture(case.conn).content()
+    before = production_facts(case.conn)
     save = WorkbenchRunResultRepository.save
-    compute = WorkbenchRunWorker.compute_owned_snapshot
+    compute = worker_module.compute_owned_snapshot
     executed, computed, receipt_stage = [], [], []
 
-    def capture_compute(worker, snapshot, row, admission):
-        prepared = compute(worker, snapshot, row, admission)
+    def capture_compute(snapshot, row, admission):
+        prepared = compute(snapshot, row, admission)
         computed.append((row, prepared))
         return prepared
 
@@ -266,7 +270,7 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
         ))
         raise sqlite3.OperationalError("result receipt failed")
 
-    monkeypatch.setattr(WorkbenchRunWorker, "compute_owned_snapshot", capture_compute)
+    monkeypatch.setattr(worker_module, "compute_owned_snapshot", capture_compute)
     monkeypatch.setattr(WorkbenchRunResultRepository, "save", broken_save)
     with pytest.raises(WorkbenchCommandUncertain):
         WorkbenchRunWorker(case.conn, clock=lambda: datetime(2026, 9, 10, 12, 1, 0, 100000)).execute(accepted["run_ref"])
@@ -278,7 +282,7 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunReceipts").fetchone()[0] == 0
     running = service(case.conn).get(accepted["run_ref"])
     assert running["state"] == "running" and running["scope_summary"] == captured_scope
-    assert ProductionFactsCapture(case.conn).content() == before
+    assert production_facts(case.conn) == before
     assert executed == [1] and len(computed) == 1
 
     monkeypatch.setattr(WorkbenchRunResultRepository, "save", save)
@@ -299,11 +303,9 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunReceipts").fetchone()[0] == 0
     running = service(case.conn).get(accepted["run_ref"])
     assert running["state"] == "running" and running["scope_summary"] == captured_scope
-    assert ProductionFactsCapture(case.conn).content() == before
+    assert production_facts(case.conn) == before
     monkeypatch.undo()
-    recovery = service(case.conn)
-    recovery.clock = lambda: datetime(2026, 9, 10, 12, 1, 0, 123456)
-    outcome = recovery.recover_unfinished_runs()
+    outcome = recover_unfinished_runs(case.conn, clock=lambda: datetime(2026, 9, 10, 12, 1, 0, 123456))
     assert outcome["recovered"] == [accepted["run_ref"]]
     interrupted = service(case.conn).get(accepted["run_ref"])
     assert interrupted["state"] == "interrupted" and interrupted["scope_summary"] == captured_scope
@@ -321,7 +323,7 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
                 if action == sqlite3.SQLITE_READ:
                     observed.append((table, column))
                     if table == "WorkbenchRunCandidateTasks" or (
-                            table == "WorkbenchRunJobs" and column in ("normalized_input_json", "facts_json", "execution_json", "baseline_json")) or (
+                            table == "WorkbenchRunJobs" and column in ("normalized_input_json", "revisions_json", "conditions_archive_json", "execution_json", "baseline_json")) or (
                             table == "WorkbenchRunReceipts" and column == "result_json"):
                         return sqlite3.SQLITE_DENY
                 return sqlite3.SQLITE_OK
@@ -368,28 +370,45 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
         finally:
             phase[0] = "returned"
 
+    finished_bodies, original_finished = [], terminal.record_run_finished
+
+    def record_finished(conn, **kwargs):
+        finished_bodies.append(kwargs["result"])
+        return original_finished(conn, **kwargs)
+
     monkeypatch.setattr(run_repo_module, "canonical_json", encode_once)
     monkeypatch.setattr(result_repo_module, "canonical_json", encode_once)
     monkeypatch.setattr(result_preparation, "_prepare_result_artifacts", capture_artifacts)
     monkeypatch.setattr(result_preparation, "build_decision_read_models", capture_models)
     monkeypatch.setattr(worker_module, "prepare_run_result", prepare_once)
     monkeypatch.setattr(WorkbenchRunWorker, "_persist", persist_encoded)
-    completed = WorkbenchRunWorker(case.conn).execute(next_run["run_ref"])
+    monkeypatch.setattr(terminal, "record_run_finished", record_finished)
+    completed = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(next_run["run_ref"])
     assert len(packets) == len(artifacts) == len(models) == 1
     packet = packets[0]
     assert pickle.loads(pickle.dumps(packet)) == packet
     assert set(packet.result) == {"state", "result_json", "error_json"}
-    assert json.loads(packet.result["result_json"]) == artifacts[0][1]
+    assert packet.result_body is artifacts[0][1]
+    # The completion transaction hands the history entry the prepared body itself; the receipt is not decoded back.
+    assert len(finished_bodies) == 1 and finished_bodies[0] is packet.result_body
+    assert json.loads(packet.result["result_json"]) == packet.result_body.document()
     storage_json = [packet.result["result_json"], packet.result["error_json"]]
     for encoded, raw in zip(packet.candidates, artifacts[0][0]):
-        assert set(encoded) == {"candidate_ref", "key", "sequence", "status", "task_count", "artifact_json", "tasks"}
+        assert set(encoded) == {"candidate_ref", "key", "sequence", "task_count", "artifact_json", "tasks"}
         assert json.loads(encoded["artifact_json"]) == raw["artifact"]
-        assert json.loads(encoded["artifact_json"])["target_objectives"] == artifacts[0][1]["selection"]["target_objectives"]
+        assert json.loads(encoded["artifact_json"])["target_objectives"] == artifacts[0][1].selection["target_objectives"]
         storage_json.append(encoded["artifact_json"])
         for task, raw_task in zip(encoded["tasks"], raw["tasks"]):
-            assert set(task) == {"row_ref", "operation_ref", "payload_json"}
-            assert json.loads(task["payload_json"]) == raw_task["payload"]
-            storage_json.append(task["payload_json"])
+            assert set(task) == {
+                "row_ref", "operation_ref", "ordinal", "op_id", "source", "machine_id", "operator_id",
+                "start_time", "end_time", "start_us", "end_us", "is_point_event", "locked",
+            }
+            for field in ("op_id", "source", "machine_id", "operator_id"):
+                assert task[field] == raw_task[field]
+            start, end = raw_task["start_time"], raw_task["end_time"]
+            assert (task["start_us"], task["end_us"]) == (datetime_to_us(start), datetime_to_us(end))
+            assert (task["start_time"], task["end_time"]) == (start.isoformat(), end.isoformat())
+            assert task["is_point_event"] == (start == end) and bool(task["locked"]) is raw_task["locked"]
     for encoded, raw in [(packet.read_models["run_model"], models[0]["run_model"])] + list(zip(
             packet.read_models["candidate_models"], models[0]["candidate_models"])):
         for key, value in encoded.items():
@@ -399,6 +418,17 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
                     storage_json.append(value)
         assert not any(key in encoded for key in ("header", "context", "memberships", "calendar", "official", "process",
                                                    "summary", "preparation", "completion", "delivery", "delivery_detail", "arrangements"))
+    for row in packet.read_models["side_batches"]:
+        storage_json.append(row["detail_json"])
+    for row in packet.read_models["operation_catalog"]:
+        storage_json.append(row["label_json"])
+    for row in packet.read_models["side_operations"]:
+        storage_json.append(row["resource_refs_json"])
+        if row["arrangement_json"] is not None:
+            storage_json.append(row["arrangement_json"])
+        storage_json.append(row["preparation_json"])
+    for row in packet.read_models["side_resources"]:
+        storage_json.append(row["payload_json"])
     assert Counter(encoded for during, encoded in encodings if during == "prepare") == Counter(storage_json)
     assert not any(during == "persist" for during, encoded in encodings)
     receipt_json = case.conn.execute("SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?", (next_run["run_ref"],)).fetchone()[0]
@@ -411,12 +441,69 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
     assert completed["state"] == "complete" and len(completed["candidates"]) == 1
     assert completed == service(case.conn).get(next_run["run_ref"])
     called = []
-    repeated = WorkbenchRunWorker(case.conn, compute_runner=lambda *args, **kwargs: called.append(True)).execute(next_run["run_ref"])
+    repeated = WorkbenchRunWorker(case.conn, clock=datetime.now,
+                                  compute_runner=lambda *args, **kwargs: called.append(True)).execute(next_run["run_ref"])
     assert repeated == completed and called == []
     assert status_reads and ownership_reads
     assert all(table != "WorkbenchRunCandidateTasks" for table, column in status_reads + ownership_reads)
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunDecisionReadModels WHERE run_ref=?", (next_run["run_ref"],)).fetchone()[0] == 1
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateReadModels WHERE run_ref=?", (next_run["run_ref"],)).fetchone()[0] == 1
+
+
+def test_history_entry_failure_rolls_back_the_receipt_and_terminal_state_it_follows(job_case, monkeypatch):
+    """完成事务里历史条目写不进去：同一事务已写的候选、读模型、回执和终态一起回滚，作业停在认领后的 running。"""
+    case = job_case
+    run_ref = case.accept()["run_ref"]
+    claim, claimed, seen = worker_module.claim_run, [], []
+
+    def observe_claim(*args):
+        result = claim(*args)
+        claimed.append(all_rows(case.conn))
+        return result
+
+    def failing_entry(repo, params):
+        seen.append((repo.conn.execute("SELECT COUNT(*) FROM WorkbenchRunReceipts WHERE run_ref=?", (run_ref,)).fetchone()[0],
+                     repo.conn.execute("SELECT state FROM WorkbenchRunJobs WHERE run_ref=?", (run_ref,)).fetchone()[0]))
+        raise sqlite3.OperationalError("history entry write failed")
+
+    monkeypatch.setattr(worker_module, "claim_run", observe_claim)
+    monkeypatch.setattr(WorkbenchHistoryCatalogRepository, "update_run_entry", failing_entry)
+    with pytest.raises(WorkbenchCommandUncertain):
+        WorkbenchRunWorker(case.conn, clock=datetime.now).execute(run_ref)
+    # 写历史时回执和终态已在同一事务里；失败后库与认领刚提交时逐行相同。
+    assert seen == [(1, "complete")]
+    assert not case.conn.in_transaction
+    assert all_rows(case.conn) == claimed[0]
+    assert service(case.conn).get(run_ref)["state"] == "running"
+
+
+def test_recovery_history_entry_failure_rolls_back_the_whole_batch(job_case, monkeypatch):
+    """重启恢复在一个外层事务里逐个写中断终态；任一历史条目写不进去，整批读模型、回执和终态一起回滚。"""
+    case = job_case
+    runs = sorted(case.accept(key=key)["run_ref"] for key in ("recovery-history-run-01", "recovery-history-run-02"))
+    before = all_rows(case.conn)
+    update_entry, entries = WorkbenchHistoryCatalogRepository.update_run_entry, []
+
+    def second_entry_fails(repo, params):
+        entries.append(params[-1])
+        if len(entries) == 2:
+            raise sqlite3.OperationalError("history entry write failed")
+        return update_entry(repo, params)
+
+    monkeypatch.setattr(WorkbenchHistoryCatalogRepository, "update_run_entry", second_entry_fails)
+    with pytest.raises(sqlite3.OperationalError):
+        recover_unfinished_runs(case.conn, clock=datetime.now)
+    assert entries == ["run:" + ref for ref in runs]
+    assert not case.conn.in_transaction
+    assert all_rows(case.conn) == before
+
+    monkeypatch.undo()
+    assert recover_unfinished_runs(case.conn, clock=datetime.now) == {"recovered": runs, "pending": [], "scheduling_busy": False}
+    for ref in runs:
+        receipt_ref = case.conn.execute("SELECT receipt_ref FROM WorkbenchRunReceipts WHERE run_ref=?", (ref,)).fetchone()[0]
+        assert service(case.conn).get(ref)["state"] == "interrupted"
+        assert tuple(case.conn.execute("SELECT state, receipt_ref FROM WorkbenchHistoryEntries WHERE entry_ref=?",
+                                       ("run:" + ref,)).fetchone()) == ("interrupted", receipt_ref)
 
 
 def test_worker_shares_capture_inside_compute_and_recaptures_only_for_persistence(job_case, monkeypatch):
@@ -438,7 +525,7 @@ def test_worker_shares_capture_inside_compute_and_recaptures_only_for_persistenc
 
     monkeypatch.setattr(ProductionFactsCapture, "__init__", capture_once)
     monkeypatch.setattr(WorkbenchPreflightFactsRepository, "capture_table", table_once)
-    completed = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    completed = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
     assert completed["state"] == "complete"
     assert len(captures) == 2 and captures[0] is not case.conn and captures[1] is case.conn
     assert tables and set(tables.values()) == {1}
@@ -466,12 +553,14 @@ def test_run_api_500_logs_the_request_ref_shown_to_the_user(monkeypatch, caplog,
     from flask import Blueprint, Flask
 
     from web.routes.workbench import scheduling_jobs
+    from web.runtime_host import install_wall_clock
 
     def broken(*_args, **_kwargs):
         raise failure
 
     monkeypatch.setattr(scheduling_jobs, "_service", lambda: SimpleNamespace(get=broken, accept=broken))
     app = Flask(__name__)
+    install_wall_clock(app, datetime.now)
     bp = Blueprint("run_api_failures", __name__)
     scheduling_jobs.register_scheduling_job_routes(bp)
     app.register_blueprint(bp)
@@ -492,7 +581,7 @@ def test_run_api_500_logs_the_request_ref_shown_to_the_user(monkeypatch, caplog,
 
 def test_run_preview_admission_issues_do_not_mutate_preflight_blockers_and_block_accept(job_case):
     from core.services.workbench.run.jobs import WorkbenchRunService
-    from tests.workbench.run_jobs_support import data_context
+    from tests.workbench.run_jobs_support import RUN_NOW, data_context
     from web.routes.workbench.preflight import evaluate_preflight_input_prepared
     from web.routes.workbench.write_context import issue_write_context, validate_write_context
 
@@ -501,8 +590,8 @@ def test_run_preview_admission_issues_do_not_mutate_preflight_blockers_and_block
     ref = case.preflight()
     observed = []
 
-    def tracking_resolver(conn, input_ref, *, facts):
-        prepared = evaluate_preflight_input_prepared(conn, input_ref, facts=facts)
+    def tracking_resolver(conn, input_ref, *, facts, material_day):
+        prepared = evaluate_preflight_input_prepared(conn, input_ref, facts=facts, material_day=material_day)
         observed.append(prepared)
         return prepared
 
@@ -512,10 +601,10 @@ def test_run_preview_admission_issues_do_not_mutate_preflight_blockers_and_block
         input_resolver=tracking_resolver,
         context_factory=issue_write_context,
         context_validator=validate_write_context,
-        clock=lambda: datetime(2026, 9, 10, 12),
+        clock=lambda: RUN_NOW,
         data_context=data_context(case.conn),
     )
-    preview = run_svc.preview(ref)
+    preview = run_svc.preview(ref, now=RUN_NOW)
     assert len(observed) == 1 and observed[0].data["blockers"] == []
     assert preview["write_context"]["capabilities"]["scheduling.run"] is False
     assert preview["write_context"]["write_token"] is None

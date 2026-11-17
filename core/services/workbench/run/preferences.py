@@ -2,7 +2,8 @@
 
 from typing import Any, Dict, NoReturn, Tuple
 
-from core.infrastructure.logging import OperationLogger
+from core.infrastructure.operation_logging import OperationLogger
+from core.models.content import StoredJsonCorrupt, read_stored_json
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_preflight import (
     SCHEDULING_PREFERENCES_ACTION,
@@ -11,7 +12,7 @@ from core.models.workbench_preflight import (
     normalize_preflight_input,
 )
 from core.services.workbench.commands import WorkbenchCommandService
-from core.shared.strict_json import canonical_json, load_strict_json
+from core.shared.strict_json import canonical_json
 from data.repositories.system_config_repo import SystemConfigRepository
 
 
@@ -29,9 +30,11 @@ class SchedulingPreferencesService:
         state = {"present": present, "stored": stored}
         if not present:
             return {"input": None}, state
-        if not isinstance(stored, str):
+        try:
+            value = read_stored_json(stored, dict)
+        except StoredJsonCorrupt:
+            # 偏好读不出来时给可操作的 409 提示，不按整页 500 报；其他存储失败照常上抛。
             _invalid_preferences()
-        value = load_strict_json(stored, on_malformed=_invalid_preferences, expected=dict)
         if set(value) != {"version", "input"} or type(value["version"]) is not int or value["version"] != 1:
             _invalid_preferences()
         try:

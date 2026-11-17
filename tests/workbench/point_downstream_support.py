@@ -1,6 +1,7 @@
 """EK real EA adoption, production HTTP routes, and isolated temporary server."""
 
 import uuid
+from datetime import datetime
 
 from flask import Blueprint, Flask, g, request, send_from_directory
 
@@ -13,9 +14,13 @@ from web.routes.workbench.execution import register_execution_routes
 from web.routes.workbench.plan_reads import register_plan_read_routes
 from web.routes.workbench.reports import register_report_routes
 from web.routes.workbench.resources import register_resource_routes
+from web.runtime_host import install_wall_clock
 
 ACTUAL = '/api/workbench/v1/actual-gantt'
 FIELD = '/api/workbench/v1/execution'
+# Actual-Gantt and field reads are POSTs; like GETs they run on a query-only connection.
+READS = {'ek_point_routes.' + name for name in ('actual_gantt_workspace', 'actual_gantt_export', 'field_tasks', 'field_task',
+                                                 'field_file_template', 'field_file_export')}
 
 
 def adopted(case, **options):
@@ -29,6 +34,7 @@ def adopted(case, **options):
 
 def app_for(case, output=None):
     app = Flask('ek-point-downstream', static_folder=None)
+    install_wall_clock(app, datetime.now)
     app.config.update(TESTING=True, DATABASE_PATH=str(case.path))
     bp = Blueprint('ek_point_routes', __name__)
     register_actual_gantt_routes(bp)
@@ -41,7 +47,7 @@ def app_for(case, output=None):
     @app.before_request
     def bind():
         g.db = get_connection(str(case.path))
-        if request.method == 'GET':
+        if request.method == 'GET' or request.endpoint in READS:
             g.db.execute('PRAGMA query_only=ON')
 
     @app.teardown_request
@@ -60,17 +66,25 @@ def app_for(case, output=None):
     return app
 
 
-def read(client, path, **scope):
-    response = client.get(path, query_string=scope)
+def _success(response):
     assert response.status_code == 200, response.get_data(as_text=True)
     result = response.get_json()
     assert result['ok'] is True
     return result
 
 
+def read(client, path, **scope):
+    return _success(client.get(path, query_string=scope))
+
+
+def read_body(client, path, **scope):
+    """Actual-Gantt and field reads carry their scope in a JSON body."""
+    return _success(client.post(path, json=scope))
+
+
 def report(client, identity, *, quantity=1, start='2026-09-09T08:00:00', end='2026-09-09T09:30:00', hours=1.25):
     task = identity['task']
-    current = read(client, FIELD + '/tasks/' + task['task_ref'], plan_ref=task['plan_ref'])['data']['task']
+    current = read_body(client, FIELD + '/tasks/' + task['task_ref'], plan_ref=task['plan_ref'])['data']['task']
     values = {'completed_quantity': quantity, 'actual_start': start, 'actual_end': end,
               'effective_processing_hours': hours, 'actual_machine_ref': task['machine_ref'],
               'actual_operator_ref': task['operator_ref'], 'remark': 'EK real report',

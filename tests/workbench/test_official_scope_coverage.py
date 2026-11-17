@@ -1,6 +1,5 @@
 """Archived pressure and adoption use the same complete official operation set."""
 
-import json
 from dataclasses import replace
 
 import pytest
@@ -11,7 +10,7 @@ from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.services.workbench.facts.official_scope_coverage import official_scope_coverage
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.run.candidate_adoption_validation import require_official_scope
-from core.services.workbench.run.piece_adoption_execution import _quantities
+from core.services.workbench.run.input_execution import verify_piece_quantities
 from tests.workbench.run_candidate_adoption_support import INTENT, candidate, preview, service, snapshot
 from tests.workbench.run_candidate_adoption_support import candidate_case as _case  # noqa: F401
 
@@ -23,8 +22,14 @@ def test_saved_permanent_coverage_agrees_with_real_adoption_guard(candidate_case
     case.conn.commit()
     ref = candidate(case, case.settings("B1", "B2"))
     service(case.conn).adopt(ref, preview(case, ref), "coverage-full-official", INTENT)
-    refs = {json.loads(row[1])["op_id"]: row[0] for row in case.conn.execute(
-        "SELECT operation_ref,payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=?", (ref,))}
+    refs = {
+        row["op_id"]: row["operation_ref"]
+        for row in case.conn.execute(
+            "SELECT operation_ref, op_id, source, machine_id, operator_id, start_time, end_time, "
+            "start_us, end_us, is_point_event, locked FROM WorkbenchRunCandidateTasks WHERE candidate_ref=?",
+            (ref,),
+        )
+    }
     coverage = official_scope_coverage(refs.values(), [refs[case.op_id]])
     assert coverage == {"covers_official_scope": False, "official_operation_count": 2,
                         "covered_official_operation_count": 1, "missing_official_operations": [refs[second]]}
@@ -63,7 +68,7 @@ def _mixed_piece_quantities():
 
 def test_nonpiece_completion_can_share_a_run_with_strict_piece_quantities():
     scope, refs, projections = _mixed_piece_quantities()
-    _quantities(scope, refs, projections)
+    verify_piece_quantities(scope, refs, projections)
 
 
 @pytest.mark.parametrize("op_id", [1, 2, 3])
@@ -77,5 +82,5 @@ def test_all_operations_require_known_completion_quantities(op_id):
         target_basis="piece" if work.piece_id is not None else "batch",
     )
     with pytest.raises(CandidateAdoptionBlocked) as exc:
-        _quantities(scope, refs, projections)
+        verify_piece_quantities(scope, refs, projections)
     assert exc.value.code == "piece_execution_quantity_unproven"

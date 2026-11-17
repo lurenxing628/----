@@ -4,9 +4,10 @@ import codecs
 import csv
 from tempfile import SpooledTemporaryFile
 
+from core.models.enums import SOURCE_TYPE_LABELS
 from core.models.workbench_action_values import FileDownload
 from core.services.common.excel_instruction_sheet import close_write_only_sheets
-from core.services.workbench.facts.file_writer import _value, check_capacity
+from core.services.workbench.facts.file_writer import check_capacity, export_cell_value
 from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
 from core.services.workbench.facts.table_cells import number_text
 from core.shared.strict_json import canonical_json
@@ -19,7 +20,6 @@ HEADERS = ("记录类型", "排产编号", "候选方案编号", "候选方案�
 RECORD_KINDS = {"task": "工序安排", "unplanned_operation": "未安排工序", "candidate": "空范围"}
 CANDIDATE_STATUS = {"completed": "已排完", "partial": "部分排完"}
 COMPLETENESS = {"complete": "完整", "partial": "不完整"}
-TASK_SOURCES = {"internal": "自制", "external": "外协"}
 REPORT_STATES = {"unreported": "待报工", "started": "已开工", "partial": "部分完成", "complete": "已完工"}
 
 
@@ -36,22 +36,21 @@ def export_rows(data, snapshot):
     records = [("task", row) for row in data["tasks"]] + [("unplanned_operation", row) for row in data["unplanned_operations"]]
     if not records:
         records = [("candidate", {})]
-    common_gaps = data["data_gaps"] + candidate["data_gaps"] + generation["data_gaps"]
     for kind, row in records:
         values = [RECORD_KINDS[kind]] + common + [row.get(key) for key in ("row_ref", "operation_ref", "batch_ref", "batch_label",
             "part_label", "sequence", "process_label", "quantity", "due_date", "start", "end")]
-        values.append(_text(TASK_SOURCES, row.get("source")))
+        values.append(_text(SOURCE_TYPE_LABELS, row.get("source")))
         locked = row.get("locked")
         values.append(None if locked is None else "是" if locked else "否")
         values.extend((row.get(key) or {}).get("label") for key in ("machine", "operator", "supplier"))
         values.extend([_text(REPORT_STATES, (row.get("execution_at_generation") or {}).get("execution_state")),
                        (row.get("reason") or {}).get("message"),
-                       canonical_json(row.get("data_gaps", []) + common_gaps)])
+                       canonical_json(row.get("data_gaps", []))])
         yield values
 
 
 def _values(values, number, fmt):
-    return [_value(value, "default_days" if type(value) in (int, float) else "text", number, fmt) for value in values]
+    return [export_cell_value(value, "default_days" if type(value) in (int, float) else "text", number, fmt) for value in values]
 
 
 def _cell(value):

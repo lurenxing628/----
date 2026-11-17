@@ -1,20 +1,42 @@
 """Real trial slots save requirements independently of unchanged geometry."""
 
 from copy import deepcopy
+from dataclasses import replace
 
-from core.models.workbench_trial_codec import load
-from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.models.workbench_trial_codec import load_object
+from core.models.workbench_trial_scenario_archive import OMITTED_SCENARIO_KEYS
+from core.services.workbench.facts.operation_effort_evidence import saved_operation_efforts
 from core.services.workbench.facts.trial_origin import TrialOrigin
-from core.services.workbench.facts.trial_policy import load_draft, load_scenario
-from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
+from core.services.workbench.facts.trial_policy import load_draft, load_scenario_with_resources
+from core.services.workbench.facts.trial_scenario_archive import load_verified_scenario
 from core.services.workbench.trial.constraints import build_archived_trial_intervals
-from core.services.workbench.trial.effort import recorded_operation_types, slot_operation_types
-from core.services.workbench.trial.preparation import apply_preparation, preparation_projection, trial_changeovers
+from core.services.workbench.trial.effort import slot_operation_types
+from core.services.workbench.trial.preparation import (
+    DraftLabels,
+    apply_preparation,
+    preparation_projection,
+    trial_changeovers,
+)
 from core.services.workbench.trial.projection import unplanned_operations
 from core.services.workbench.trial.service import WorkbenchTrialService
 from tests.workbench.test_legacy_resource_projection import shipped
 from tests.workbench.trial_support import candidate, change, create, official, service
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
+
+
+def compact_scenario_snapshot(snapshot):
+    result = {key: value for key, value in snapshot.items() if key not in OMITTED_SCENARIO_KEYS}
+    result["comparison"] = {key: value for key, value in snapshot["comparison"].items() if key != "preparation_common"}
+    result["unplanned_operations"] = [
+        {key: value for key, value in item.items() if key != "operation_effort"}
+        for item in snapshot["unplanned_operations"]
+    ]
+    # 绑回来源草稿行之前的保存任务只有所在行的三列与保存时的执行状态、保护判定，其余读取时重新投影。
+    result["tasks"] = [
+        {key: row[key] for key in ("row_ref", "task_ref", "source_row_ref", "execution", "locked")}
+        for row in snapshot["tasks"]
+    ]
+    return result
 
 
 def test_new_trial_slot_persists_the_same_requirement_used_for_calendar_math(trial_case):
@@ -41,9 +63,9 @@ def test_new_trial_slot_persists_the_same_requirement_used_for_calendar_math(tri
     assert adjusted["comparison"]["changeover_common"]["before"]["count"] is None
     assert adjusted["comparison"]["changeover_common"]["after"]["count"] == 0
     shipped(adjusted, r"""
-const TrialContract = h.module('TrialContract.js').default, TrialResults = h.module('TrialResults.jsx').default,
+const TrialResults = h.module('TrialResults.jsx').default,
   TrialGantt = h.module('TrialGantt.jsx').default, TrialExport = h.module('TrialExport.js').default;
-const data = TrialContract.workspace(sourceData);
+const data = sourceData;
 const tree = h.render(TrialResults.Preparation, {data, name: TrialGantt.resourceNames(data), onSelect() {}}), text = h.text(tree);
 assert(text.includes('准备标准工时') && text.includes('合计'));
 const requirementDetail = h.walk(tree).find(node => node.type === 'details' && h.text(node) === '工时详情');
@@ -55,13 +77,17 @@ const requirement = TrialExport.preparation(data), switches = TrialExport.change
 assert(requirement.text.includes('归档单件标准（小时）') && requirement.text.includes('本次执行目标量'));
 assert(switches.text.includes('前工序编号') && switches.text.includes('汇总'));
 assert(legacy.text.includes('工种切换次数（次）') && !legacy.text.includes('换型次数'));
+// 方案状态与约束检查走共同词表；保存值不在词表里时 CSV 和页面一样显示中文，不输出原码。
+assert(legacy.text.includes(',"可继续试调",'));
+const retired = TrialExport.csv({...data, validation: {...data.validation, constraints_status: 'retired_check'}}).text;
+assert(retired.includes('约束检查：其他状态') && !retired.includes('retired_check'));
 return {shipped_contract:true, preparation_panel:true, csv_exports:true};
 """)
-    stored = load(case.conn.execute("SELECT current_json FROM WorkbenchTrialRows WHERE task_ref=?", (task["task_ref"],)).fetchone()[0])
-    assert isinstance(stored, dict) and stored["operation_effort"] == effort
+    stored = load_object(case.conn.execute("SELECT current_json FROM WorkbenchTrialRows WHERE task_ref=?", (task["task_ref"],)).fetchone()[0])
+    assert stored["operation_effort"] == effort
     saved = service(case.conn).save(draft["draft_ref"], {"name": "Saved preparation"},
                                    adjusted["write_context"]["write_token"], "trial-effort-save-01")["data"]
-    scenario = load_saved_scenario(case.conn, saved["scenario_ref"])
+    scenario = load_verified_scenario(case.conn, saved["scenario_ref"])
     reread, rows = scenario.saved, scenario.rows
     assert reread["operation_effort"] == saved["operation_effort"] == adjusted["operation_effort"]
     assert rows[0]["current"]["operation_effort"] == effort
@@ -107,10 +133,9 @@ def test_trial_retained_requirement_keeps_original_target_separate_from_creation
     item, = draft["operation_effort"]["items"]
     assert item["target_quantity"] == 10 and item["execution_target_quantity"] == 20
     assert item["required_standard_hours"] == 7
-    head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
-    outside = deepcopy(head["admission"])
-    outside["source"]["capture"]["input"]["batch_refs"] = []
-    origin = TrialOrigin(outside, rows)
+    head, rows, source = load_draft(service(case.conn).repo, draft["draft_ref"])
+    outside = replace(source, capture=dict(source.capture, input=dict(source.capture["input"], batch_refs=[])))
+    origin = TrialOrigin.saved(head["admission"], rows, outside)
     assert origin.batches == {}
     contexts = origin.contexts(rows)
     context = contexts[task["operation_ref"]]
@@ -118,8 +143,10 @@ def test_trial_retained_requirement_keeps_original_target_separate_from_creation
     assert context["operation"] is original["operation"] and context["execution"] is original["execution"]
     assert context["batch"] is original["batch"] and context["batch_ref"] == original["batch_ref"]
     assert context["row"] is rows[0] and context["arranged"] is True
-    pairs, retained = preparation_projection(outside, draft["operation_effort"], contexts=contexts,
-                                             current_evidence={"kind": "trial", "draft_ref": draft["draft_ref"]})
+    pairs, retained = preparation_projection(
+        head["admission"], saved_operation_efforts(source.document["operation_effort"]),
+        saved_operation_efforts(draft["operation_effort"]), contexts=contexts,
+        current_evidence={"kind": "trial", "draft_ref": draft["draft_ref"]})
     assert set(pairs) == {row["operation_ref"] for row in rows}
     assert pairs[task["operation_ref"]]["after"]["required_standard_hours"] == 7
     assert retained["role_totals"]["after"]["retained"]["setup_standard_hours"]["value"] == 2
@@ -127,9 +154,9 @@ def test_trial_retained_requirement_keeps_original_target_separate_from_creation
     assert unplanned == []
     apply_preparation(deepcopy(draft["tasks"]), unplanned, pairs)
     shipped(draft, r"""
-const TrialContract = h.module('TrialContract.js').default, TrialResults = h.module('TrialResults.jsx').default,
+const TrialResults = h.module('TrialResults.jsx').default,
   TrialGantt = h.module('TrialGantt.jsx').default, TrialExport = h.module('TrialExport.js').default;
-const data = TrialContract.workspace(sourceData);
+const data = sourceData;
 const tree = h.render(TrialResults.Preparation, {data, name: TrialGantt.resourceNames(data), onSelect() {}}), text = h.text(tree);
 assert(text.includes('保留原安排'));
 const sources = h.walk(tree).filter(node => node.type === 'details' && h.text(node) === '需求依据与数量');
@@ -153,7 +180,7 @@ return {shipped_contract:true, retained_quantity:true, csv_quantity:true};
     with monkeypatch.context() as patch:
         patch.setattr("core.services.workbench.trial.base.attach_execution_anchors", lambda *_: [])
         completed = create(case, base, key="trial-completed-effort-create")
-    head, rows = load_draft(service(case.conn).repo, completed["draft_ref"])
+    head, rows, _source = load_draft(service(case.conn).repo, completed["draft_ref"])
     assert head["admission"]["execution"][rows[0]["operation_ref"]]["execution_state"] == "complete"
     assert "execution_anchor" not in rows[0]["original"]
     saved = service(case.conn).save(completed["draft_ref"], {"name": "Completed retained requirement"},
@@ -190,7 +217,7 @@ def test_saved_legacy_trial_does_not_restore_runtime_from_newer_draft_metadata(t
     assert effort["setup_standard_hours"] is effort["processing_standard_hours"] is effort["required_standard_hours"] is None
     assert effort["standard"]["standard_total_hours"] == 3
     assert reread["comparison"]["preparation_common"]["after"]["scheduled_setup_hours"]["value"] is None
-    assert load_scenario(service(case.conn).repo, saved["scenario_ref"]) == saved
+    assert load_scenario_with_resources(service(case.conn).repo, saved["scenario_ref"])[1] == compact_scenario_snapshot(saved)
     assert case.conn.total_changes == before
 
 
@@ -209,24 +236,16 @@ def test_trial_switches_follow_actual_type_identity_and_saved_complete_arrangeme
     assert event["previous_type_ref"] != event["next_type_ref"]
     assert event["previous_operation_ref"] == draft["tasks"][0]["operation_ref"]
     assert event["next_operation_ref"] == draft["tasks"][1]["operation_ref"]
-    head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
-    facts = GenerationFacts(head["admission"]["source"]["capture"])
+    head, rows, source = load_draft(service(case.conn).repo, draft["draft_ref"])
     second = rows[1]
-    slot_types = slot_operation_types(rows, facts.entity_refs, facts.tables["OpTypes"])
+    slot_types = slot_operation_types(rows, source.facts.entity_refs, source.facts.tables["OpTypes"])
     assert slot_types[second["operation_ref"]] == {"ref": case.ref("op_type", "T2"), "label": "Drilling"}
-    unknown = recorded_operation_types(
-        rows,
-        facts.entity_refs,
-        facts.tables["OpTypes"],
-        [
-            {"op_id": rows[0]["original"]["operation"]["id"], "op_type_id": "T1"},
-            {"op_id": second["original"]["operation"]["id"], "op_type_id": None},
-        ],
-    )
-    assert unknown[second["operation_ref"]] == {"ref": None, "label": None}
-    unknown_source = dict(head["admission"], source=dict(head["admission"]["source"], operation_types=unknown))
-    intervals = build_archived_trial_intervals(rows, execution=unknown_source["execution"])
-    assert trial_changeovers(rows, TrialOrigin(unknown_source, rows), trial_intervals=intervals)["before"]["count"] is None
+    # A source whose recorded type is unknown (an official plan row saved without one) leaves "before" uncounted.
+    unknown = dict(slot_types, **{second["operation_ref"]: {"ref": None, "label": None}})
+    unknown_source = replace(source, document=dict(source.document, operation_types=unknown))
+    intervals = build_archived_trial_intervals(rows, execution=head["admission"]["execution"])
+    origin = TrialOrigin.saved(head["admission"], rows, unknown_source)
+    assert trial_changeovers(rows, DraftLabels(origin), trial_intervals=intervals)["before"]["count"] is None
     updated = change(case, draft, task=1, start="2026-09-09T12:00:00")["data"]
     assert updated["comparison"]["changeovers"] == 0
     assert updated["comparison"]["changeover_common"]["before"]["count"] == 1

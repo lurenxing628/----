@@ -8,7 +8,6 @@ from core.services.workbench.facts.resource_projection import (
     resource_cohort,
     resource_summary,
 )
-from core.services.workbench.facts.zero_duration import point_event_dto
 
 
 def _resource(ref):
@@ -27,7 +26,7 @@ def capacity_tasks(rows, field, *, intervals_by_row, occupancy_by_row):
         current = row["current"] if field == "current" else original["arrangement"]
         span = intervals_by_row[row["row_ref"]]
         common = {"task_ref": row["task_ref"], "operation_ref": row["operation_ref"], "source": original["operation"]["source"]}
-        segments = occupancy_by_row[row["row_ref"]] if span is not None and span[0] < span[1] else None
+        segments = occupancy_by_row[row["row_ref"]] if span[0] < span[1] else None
         if segments is not None and segments != ((*span, current["machine_ref"], current["operator_ref"]),):
             for index, (start, end, machine_ref, operator_ref) in enumerate(segments, 1):
                 row_ref = row["row_ref"] + "#" + str(index)
@@ -37,14 +36,12 @@ def capacity_tasks(rows, field, *, intervals_by_row, occupancy_by_row):
             continue
         task = {"row_ref": row["row_ref"], **common, "start": current["start"], "end": current["end"],
                 **{kind: _resource(current[kind + "_ref"]) for kind in ("machine", "operator")}}
-        if task["start"] == task["end"] and span is not None and span[0] == span[1]:
-            task.update(point_event_dto(span[0], span[1]))
         tasks.append(task)
         intervals[row["row_ref"]] = span
     return tasks, intervals
 
 
-def trial_capacity(rows, archive, *, source_ref, trial_intervals):
+def trial_capacity(rows, calendar_tables, *, source_ref, trial_intervals):
     tasks, current_intervals = capacity_tasks(rows, "current", intervals_by_row=trial_intervals["current_by_row"],
                                               occupancy_by_row=trial_intervals["current_occupancy_by_row"])
     original, original_intervals = capacity_tasks(rows, "original", intervals_by_row=trial_intervals["original_by_row"],
@@ -52,7 +49,7 @@ def trial_capacity(rows, archive, *, source_ref, trial_intervals):
     start, end = min(row["current"]["start"] for row in rows), max(row["current"]["end"] for row in rows)
     scope = {"start": start, "end": end, "basis": "selected_trial_only", "source": "archived_resource_calendar",
              "metric_version": RESOURCE_METRIC_VERSION, "time_basis": "factory_local"}
-    factory = ArchivedCalendar(archive, source_ref=source_ref)
+    factory = ArchivedCalendar(calendar_tables, source_ref=source_ref)
     cohort = resource_cohort([original, tasks], task_intervals=[original_intervals, current_intervals])
     specs = [dict(row, saved_id=factory.bindings.get((row["kind"], row["ref"]))) for row in cohort]
     index = ResourceTaskIndex(tasks, start, end, task_intervals=current_intervals)

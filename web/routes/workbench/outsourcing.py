@@ -8,16 +8,18 @@ An omitted date is preserved; explicit null only clears returned with matching s
 Each new intent records a confirmation, including unchanged-value reconfirmations.
 """
 
-from flask import g, request
+from flask import current_app, g
 
-from core.models.workbench_command import validate_request_key
 from core.models.workbench_outsourcing import MAX_BYTES, reject
 from core.services.workbench.outsourcing.commands import WorkbenchOutsourcingCommandService
 from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
+from core.shared.key_sets import keys_conform
 from web.api_responses import json_response, query_success
+from web.runtime_host import wall_clock
 
 from .api_responses import api_endpoint, read_endpoint
-from .read_context import bind_read_snapshot, page_integer, read_snapshot_time, unbound_snapshot
+from .read_context import bind_read_snapshot, current_snapshot_time, page_integer, read_snapshot_time, unbound_snapshot
+from .request_json import BodyTexts, command_body, read_json_body, rejecter, single_value_arguments
 from .write_context import issue_write_context, validate_write_context
 
 
@@ -29,9 +31,7 @@ def _arguments(kind):
         allowed.add("query")
     if kind == "receipts":
         allowed.add("status")
-    if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        reject("外协的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", status=400)
-    args = request.args.to_dict()
+    args = single_value_arguments(allowed, message="外协的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。")
     number = page_integer(args.pop("page", "1"))
     size = page_integer(args.pop("size", "20"))
     if number > 1 and not args.get("snapshot_ref"):
@@ -88,31 +88,28 @@ def outsourcing_history(outsourcing_ref):
     return _read("history", outsourcing_ref)
 
 
-def _body(confirm):
-    if request.args or not request.is_json:
-        reject("提交的内容格式不正确，外协登记还没有保存。请刷新页面后重新填写。", status=400)
-    body = request.get_json()
-    fields = {"input", "request_key", "write_token"} if confirm else {"input"}
-    if type(body) is not dict or set(body) != fields or type(body["input"]) is not dict:
-        reject("提交的内容不完整或有多余项，外协登记还没有保存。请刷新页面后重新填写。", status=400)
-    return body
+_UNREADABLE = "提交的内容格式不正确，外协登记还没有保存。请刷新页面后重新填写。"
+_BODY = BodyTexts(transport=_UNREADABLE, malformed=_UNREADABLE,
+                  incomplete="提交的内容不完整或有多余项，外协登记还没有保存。请刷新页面后重新填写。")
 
 
 @read_endpoint
 def outsourcing_preview():
-    body = _body(False)
-    service = WorkbenchOutsourcingCommandService(g.db, context_factory=issue_write_context)
-    result = service.preview(body["input"])
-    return query_success(result, unbound_snapshot(service.reader.now()),
-                         byte_limit=MAX_BYTES)
+    body = read_json_body(_BODY)
+    if not keys_conform(body, ("input",)) or type(body["input"]) is not dict:
+        rejecter(_BODY.incomplete)()
+    now = current_snapshot_time()
+    service = WorkbenchOutsourcingCommandService(g.db, clock=wall_clock(current_app), context_factory=issue_write_context)
+    result = service.preview(body["input"], now=now)
+    return query_success(result, unbound_snapshot(now), byte_limit=MAX_BYTES)
 
 
 @api_endpoint
 def outsourcing_confirm():
-    body = _body(True)
-    validate_request_key(body["request_key"])
-    g.workbench_request_key = body["request_key"]
-    service = WorkbenchOutsourcingCommandService(g.db, context_factory=issue_write_context)
+    body = command_body(_BODY, stale="本页数据已过期，外协登记还没有保存。请刷新页面后重新填写。")
+    if type(body["input"]) is not dict:
+        rejecter(_BODY.incomplete)()
+    service = WorkbenchOutsourcingCommandService(g.db, clock=wall_clock(current_app), context_factory=issue_write_context)
     result = service.execute(body["input"], request_key=body["request_key"],
         validate_context=lambda subject, action, snapshot: validate_write_context(body["write_token"], subject, action, snapshot))
     return json_response(result)

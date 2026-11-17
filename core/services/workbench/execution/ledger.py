@@ -1,27 +1,17 @@
 """Public SELECT-only ledger queries, usable inside an existing plan read snapshot."""
 
-from datetime import datetime
-from typing import Callable, Optional
+from typing import Optional
 
-from core.models.workbench_execution_input import reject
 from core.services.execution.ledger_reader import ExecutionLedgerReader, ExecutionLedgerReadScope
 from core.services.execution.projection import projection_resource_refs
 from core.services.scheduler.execution.execution_plan_identity import current_execution_plan
 from core.services.workbench.facts.execution_projection import ExecutionContextFactory, attach_context
 
 
-def _check_workspace_tasks(tasks, facts, plan_ref):
-    for task in tasks:
-        actual = facts["comparison_tasks"].get(task["operation_ref"])
-        if actual is None or actual["task_ref"] != task["task_ref"] or task["plan_ref"] != plan_ref:
-            reject("提交的计划任务和系统里记的不是同一条。请刷新后重试。", "constraint_conflict", 409)
-
-
 class ExecutionLedgerService(ExecutionLedgerReader):
-    def __init__(self, conn, *, clock: Optional[Callable[[], datetime]] = None,
-                 context_factory: Optional[ExecutionContextFactory] = None,
+    def __init__(self, conn, *, context_factory: Optional[ExecutionContextFactory] = None,
                  current_plan_provider=current_execution_plan):
-        super().__init__(conn, current_plan_provider=current_plan_provider, clock=clock)
+        super().__init__(conn, current_plan_provider=current_plan_provider)
         self.context_factory = context_factory
 
     @staticmethod
@@ -44,18 +34,9 @@ class ExecutionLedgerService(ExecutionLedgerReader):
 
     def operation_workspace_projection(self, scope: ExecutionLedgerReadScope, plan_ref, tasks, operation_ref):
         refs = [task["operation_ref"] for task in tasks]
-        facts = self.load_many(scope, refs, comparison_plan_ref=plan_ref)
-        _check_workspace_tasks(tasks, facts, plan_ref)
-        for ref in facts["operations"]:
-            if ref != operation_ref:
-                self.validate_operation_reports(facts, ref)
-        events_count = sum(
-            len(history)
-            for group in facts["reports"].values()
-            for report_ref, history in group.items()
-            if report_ref not in facts["voids"]
-        )
-        if operation_ref in facts["operations"]:
+        events_count = self.repo.active_revision_count(refs)
+        if any(ref == operation_ref for ref in refs):
+            facts = self.load(scope, [operation_ref], comparison_plan_ref=plan_ref, include_history=True)
             projected = self.project_operation(facts, operation_ref, include_history=True)
             if self.context_factory is not None:
                 projected = attach_context(
@@ -77,8 +58,8 @@ class ExecutionLedgerService(ExecutionLedgerReader):
 
     def workspace_projection(self, scope: ExecutionLedgerReadScope, plan_ref, tasks, *, include_history: bool = True):
         refs = [task["operation_ref"] for task in tasks]
-        facts = self.load_many(scope, refs, comparison_plan_ref=plan_ref)
-        _check_workspace_tasks(tasks, facts, plan_ref)
+        need_history = include_history or self.context_factory is not None
+        facts = self.load_many(scope, refs, comparison_plan_ref=plan_ref, include_history=need_history)
         projections = self.project_loaded(facts, include_history=include_history)
         raw_resources = self.resources(scope, {ref for row in projections for ref in projection_resource_refs(row)})
         resources = {

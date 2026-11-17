@@ -2,22 +2,26 @@
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Mapping, Optional
+from typing import Any, Dict, Iterator, List, Mapping, Optional, Tuple
 
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution import ExecutionProjection
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.execution.ledger_reader import ExecutionLedgerReadScope
-from core.services.execution.processing_hours import hour_totals
-from core.services.execution.projection import materialize_operation_history, validated_correction_history
+from core.services.execution.projection import projection_resource_refs
 from core.services.workbench.facts.execution_projection import attach_context
 from core.services.workbench.facts.source_revisions import EXECUTION_SOURCE_KEYS, read_source_revisions
+from core.services.workbench.facts.zero_duration import point_event_dto
+from core.services.workbench.plan.projection import project_plan
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.plan.read_context import PlanReadContext
-from data.repositories.workbench_field_query_repo import WorkbenchFieldQueryRepository
-
-from .field_workspace_scope import STATES, matches, matches_plan
+from core.shared.local_datetime import us_to_datetime, us_to_iso
+from core.shared.strict_parse import wire_int
+from data.repositories.workbench_field_query_repo import (
+    WorkbenchFieldQueryRepository,
+    empty_field_summary,
+)
 
 
 @dataclass(frozen=True)
@@ -36,12 +40,9 @@ class FieldReadState:
 @dataclass(frozen=True)
 class CohortTaskExecution:
     projection: ExecutionProjection
-    histories: Mapping[str, Any]
-    voids: Mapping[str, Any]
     labels: Mapping[Optional[str], Any]
-    facts: Mapping[str, Any]
 
-    def report_rows(self, *, include_history: bool = False) -> List[Dict[str, Any]]:
+    def report_rows(self) -> List[Dict[str, Any]]:
         return [
             {
                 'report_ref': report.report_ref,
@@ -61,13 +62,9 @@ class CohortTaskExecution:
                 'remark': report.remark,
                 'recorded_at': report.recorded_at,
                 'revision_ref': report.revision_ref,
+                'revision_count': report.revision_count,
                 'local_operator': report.local_operator,
                 'declared_operator': report.declared_operator,
-                **(
-                    {'correction_history': validated_correction_history(self.histories[report.report_ref])}
-                    if include_history
-                    else {}
-                ),
             }
             for report in self.projection.reports
         ]
@@ -99,27 +96,135 @@ class FieldWorkspaceService:
         current_plan = self.ledger.current_plan(ws_scope.ledger_scope)
         return current_plan['plan_ref'] if current_plan is not None else None
 
-    def _labels(self, ledger_scope: ExecutionLedgerReadScope, facts, plan_tasks):
+    def _selected_plan_header(
+        self, ws_scope: FieldWorkspaceReadScope, plan_ref: str, scope: Mapping[str, Any]
+    ) -> Tuple[int, Dict[str, Any]]:
+        entry, _ = ws_scope.plan_context.selected(plan_ref)
+        version = entry.locator.version
+        issue = self.queries.first_plan_binding_issue(version, scope)
+        if issue == 'identity_missing':
+            raise WorkbenchCommandRejected('identity_missing', '安排关联的批次、设备或人员编号缺失，请到资料总览核对。')
+        if issue is not None:
+            raise WorkbenchCommandRejected('entity_not_found', '工序关联资料缺失，请刷新重选；仍无法打开时请联系维护人员。', 404)
+        return version, project_plan(entry, plan_ref)
+
+    def _labels(self, ledger_scope: ExecutionLedgerReadScope, projections, rows):
         refs = {
-            history[-1]['values'][key]
-            for group in facts['reports'].values()
-            for history in group.values()
-            for key in ('actual_machine_ref', 'actual_operator_ref')
-            if history[-1]['values'][key]
+            ref
+            for projection in projections.values()
+            for ref in projection_resource_refs(projection)
         }
-        refs.update(task[key] for task in plan_tasks for key in ('machine_ref', 'operator_ref') if task[key])
+        refs.update(
+            row[key]
+            for row in rows
+            for key in ('planned_machine_ref', 'planned_operator_ref')
+            if row[key]
+        )
         labels, codes = {}, {}
         for row in self.ledger.resources(ledger_scope, refs):
             labels[row['ref']] = row['label']
             codes[row['ref']] = row['business_code']
         return labels, codes
 
-    def prepare_read(self, ws_scope: FieldWorkspaceReadScope, scope: Mapping[str, Any]) -> FieldReadState:
+    @staticmethod
+    def _build_task_row(plan_ref: str, row: Mapping[str, Any], labels: Mapping[Optional[str], Any], source: Any, execution: Any) -> Dict[str, Any]:
+        sequence = wire_int(row['seq'])
+        part_name = row['part_name']
+        task: Dict[str, Any] = {
+            'task_ref': row['task_ref'],
+            'plan_ref': plan_ref,
+            'operation_ref': row['operation_ref'],
+            'batch_id': row['batch_id'],
+            'part_name': part_name if type(part_name) is str else '',
+            'sequence': sequence,
+            'operation_label': f"{sequence} {row['op_type_name']}",
+            'planned_start': us_to_iso(row['start_us']),
+            'planned_end': us_to_iso(row['end_us']),
+            'execution': execution,
+            'piece_id': row['piece_id'],
+            'quantity': row['quantity'],
+            'batch_quantity': row['batch_quantity'],
+            'quantity_basis': row['quantity_basis'],
+            'quantity_reason': row['quantity_reason'],
+        }
+        if row['is_point_event']:
+            point_dt = us_to_datetime(row['start_us'])
+            task.update(point_event_dto(point_dt, point_dt))
+        for kind in ('machine', 'operator'):
+            ref_val = row['planned_' + kind + '_ref']
+            task['planned_' + kind + '_ref'] = ref_val
+            task['planned_' + kind + '_label'] = labels.get(ref_val)
+        # 报工页据此对外协工序不提供实际设备、人员选择；写入时仍以服务端校验为准。
+        task['source'] = source
+        return task
+
+    @staticmethod
+    def _decorate_execution(task_ref, projection_dict, labels):
+        if projection_dict['current_task_ref'] != task_ref:
+            projection_dict['write_context'] = {
+                'write_token': None,
+                'expires_at': None,
+                'capabilities': {'create': False},
+                'blocked_reasons': [{'code': 'plan_not_writable', 'message': '这条安排属于旧计划，不能在旧任务上新增报工。'}],
+            }
+        for report in projection_dict['reports'] + [item['report'] for item in projection_dict['voided_reports']]:
+            for kind in ('machine', 'operator'):
+                report['actual_' + kind + '_label'] = labels.get(report['actual_' + kind + '_ref'])
+        return projection_dict
+
+    def _materialize_rows_with_contexts(
+        self, ws_scope: FieldWorkspaceReadScope, plan_ref: str, rows: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        if not rows:
+            return []
+        refs = [row['operation_ref'] for row in rows]
+        facts = self.ledger.load(ws_scope.ledger_scope, refs, comparison_plan_ref=plan_ref, include_history=True)
+        factory = self.ledger.context_factory
+        projected_by_ref: Dict[str, ExecutionProjection] = {}
+        for ref in facts['operations']:
+            full = self.ledger.project_operation(facts, ref, include_history=True)
+            if factory is not None:
+                full = attach_context(full, factory, self.ledger.fact_snapshot(facts, ref))
+            projected_by_ref[ref] = full
+        labels, _ = self._labels(ws_scope.ledger_scope, projected_by_ref, rows)
+        result = []
+        for row in rows:
+            ref = row['operation_ref']
+            projection_dict = self._decorate_execution(
+                row['task_ref'], projected_by_ref[ref].to_dict(), labels
+            )
+            result.append(
+                self._build_task_row(
+                    plan_ref,
+                    row,
+                    labels,
+                    facts['operations'][ref]['source'],
+                    projection_dict,
+                )
+            )
+        return result
+
+    def _locate_task(
+        self,
+        version: int,
+        scope: Mapping[str, Any],
+        locate_task_ref: str,
+        locate_operation_ref: Optional[str],
+    ) -> int:
+        found = self.queries.locate_task_index(version, scope, locate_task_ref)
+        if found is None:
+            raise WorkbenchCommandRejected('entity_not_found', '所选任务不在当前范围，请刷新后重选。', 404)
+        index, op_ref = found
+        if locate_operation_ref and op_ref != locate_operation_ref:
+            raise WorkbenchCommandRejected('constraint_conflict', '选中的工序和这条任务对不上，安排没有变化。请刷新页面后重新选择工序。')
+        return index
+
+    def prepare_read(self, ws_scope: FieldWorkspaceReadScope, scope: Dict[str, Any]) -> FieldReadState:
         if not self.conn.in_transaction:
             raise RuntimeError('Field cohort requires caller read snapshot.')
         plan_ref = self._plan_ref(ws_scope, scope)
         if plan_ref is None:
-            effective = dict(scope)
+            effective = scope
             state = content_text({
                 'plan_revision': ws_scope.plan_context.plan_revision,
                 'ledger_revision': self.ledger.revision_clock(ws_scope.ledger_scope),
@@ -141,130 +246,98 @@ class FieldWorkspaceService:
 
     def cohort(self, ws_scope: FieldWorkspaceReadScope, read: FieldReadState):
         if read.plan_ref is None:
-            return {'plan': None, 'scope': dict(read.effective_scope), 'tasks': [], 'summary': self._summary([])}, {}
+            return {'plan': None, 'scope': read.effective_scope, 'tasks': [], 'summary': empty_field_summary()}, {}
         scope = read.effective_scope
-        plan = self.plans.execution_workspace(
-            ws_scope.plan_context,
-            PlanReadScope(read.plan_ref, scope.get('range_start'), scope.get('range_end')),
+        version, plan_dto = self._selected_plan_header(ws_scope, read.plan_ref, scope)
+        summary = self.queries.field_summary(version, scope)
+        rows = self.queries.field_task_rows(version, scope) if summary['tasks'] > 0 else []
+        refs = [row['operation_ref'] for row in rows]
+        facts = self.ledger.load_many(
+            ws_scope.ledger_scope, refs, comparison_plan_ref=read.plan_ref, include_history=False
         )
-        plan_tasks = [task for task in plan['tasks'] if matches_plan(task, scope)]
-        refs = [task['operation_ref'] for task in plan_tasks]
-        facts = self.ledger.load_many(ws_scope.ledger_scope, refs, comparison_plan_ref=read.plan_ref)
-        # 整份计划只做轻量投影、不展开更正历史和作废字典、不签发写令牌：
-        # 完整报工 DTO 与写令牌只发给本次返回的那一页或那一条（page/detail）。
         loaded = {ref: self.ledger.project_operation(facts, ref, include_history=False) for ref in facts['operations']}
-        labels, resource_codes = self._labels(ws_scope.ledger_scope, facts, plan_tasks)
-        names = self.queries.batch_part_names({row['batch_id'] for row in plan_tasks})
-        tasks, scope_tasks = [], []
-        count_scope = {key: value for key, value in scope.items()
-                       if key not in ('state', 'batch_ids', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to')}
-        for row in plan_tasks:
-            ref = row['operation_ref']
-            task = self._cohort_task(
-                row, loaded[ref], facts['reports'].get(ref, {}), facts['voids'], labels, names, facts=facts,
+        labels, resource_codes = self._labels(ws_scope.ledger_scope, loaded, rows)
+        tasks = [
+            self._build_task_row(
+                read.plan_ref,
+                row,
+                labels,
+                facts['operations'][row['operation_ref']]['source'],
+                CohortTaskExecution(projection=loaded[row['operation_ref']], labels=labels),
             )
-            # 报工页据此对外协工序不提供实际设备、人员选择；写入时仍以服务端校验为准。
-            task['source'] = facts['operations'][ref]['source']
-            if matches(task, count_scope):
-                scope_tasks.append(task)
-                if not scope.get('state') or task['execution'].projection.execution_state == scope['state']:
-                    tasks.append(task)
-        tasks.sort(key=lambda item: (item['batch_id'], int(item['sequence']), item['planned_start'], item['task_ref']))
-        summary = self._summary(tasks, scope_tasks)
-        return {'plan': plan['plan'], 'scope': dict(scope), 'tasks': tasks, 'summary': summary}, resource_codes
+            for row in rows
+        ]
+        return {'plan': plan_dto, 'scope': scope, 'tasks': tasks, 'summary': summary}, resource_codes
 
-    @staticmethod
-    def _cohort_task(row, projection, histories, voids, labels, names, *, facts):
-        execution = CohortTaskExecution(
-            projection=projection,
-            histories=histories,
-            voids=voids,
-            labels=labels,
-            facts=facts,
-        )
-        name = names.get(row['batch_id'])
-        task = {'task_ref': row['task_ref'], 'plan_ref': row['plan_ref'], 'operation_ref': row['operation_ref'],
-                'batch_id': row['batch_id'], 'part_name': name if type(name) is str else '',
-                'sequence': row['sequence'], 'operation_label': str(row['sequence']) + ' ' + row['process_label'],
-                'planned_start': row['start'], 'planned_end': row['end'], 'execution': execution}
-        for key in ('piece_id', 'quantity', 'batch_quantity', 'quantity_basis', 'quantity_reason'):
-            task[key] = row[key]
-        for key in ('event_kind', 'duration_seconds', 'occupies_resources'):
-            if key in row:
-                task[key] = row[key]
-        for kind in ('machine', 'operator'):
-            task['planned_' + kind + '_ref'] = row[kind + '_ref']
-            task['planned_' + kind + '_label'] = labels.get(row[kind + '_ref'])
-        return task
-
-    @staticmethod
-    def _decorate_execution(task_ref, projection_dict, labels):
-        if projection_dict['current_task_ref'] != task_ref:
-            projection_dict['write_context'] = {
-                'write_token': None,
-                'expires_at': None,
-                'capabilities': {'create': False},
-                'blocked_reasons': [{'code': 'plan_not_writable', 'message': '这条安排属于旧计划，不能在旧任务上新增报工。'}],
+    def page(
+        self,
+        ws_scope: FieldWorkspaceReadScope,
+        read: FieldReadState,
+        number: int,
+        size: int,
+        *,
+        locate_task_ref: Optional[str] = None,
+        locate_operation_ref: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        scope = read.effective_scope
+        if read.plan_ref is None:
+            if locate_task_ref:
+                raise WorkbenchCommandRejected('entity_not_found', '所选任务不在当前范围，请刷新后重选。', 404)
+            if number > 1:
+                raise WorkbenchCommandRejected('invalid_input', '翻页位置已失效，请回到第 1 页重新查询。', 400)
+            return {
+                'plan': None,
+                'scope': scope,
+                'tasks': [],
+                'summary': empty_field_summary(),
+                'page': {'number': 1, 'size': size, 'total': 0, 'pages': 1, 'sort': [{'field': 'batch_id', 'direction': 'asc'}]},
             }
-        for report in projection_dict['reports'] + [item['report'] for item in projection_dict['voided_reports']]:
-            for kind in ('machine', 'operator'):
-                report['actual_' + kind + '_label'] = labels.get(report['actual_' + kind + '_ref'])
-        return projection_dict
-
-    @staticmethod
-    def _task_reports(task):
-        return task['execution'].projection.reports
-
-    @classmethod
-    def _summary(cls, tasks, scope_tasks=None):
-        counted = tasks if scope_tasks is None else scope_tasks
-        state_counts = dict.fromkeys(STATES, 0)
-        for task in counted:
-            state_counts[task['execution'].projection.execution_state] += 1
-        reports = [report for task in counted for report in cls._task_reports(task)]
-        hours = hour_totals(reports)
-        if scope_tasks is None:
-            report_count, complete_count = len(reports), state_counts['complete']
-        else:
-            report_count = sum(len(cls._task_reports(task)) for task in tasks)
-            complete_count = sum(task['execution'].projection.execution_state == 'complete' for task in tasks)
-        return {'tasks': len(tasks), 'reports': report_count, 'complete': complete_count,
-                'incomplete': sum(task['execution'].projection.data_quality != 'complete' for task in tasks),
-                'state_counts': state_counts, 'state_scope_tasks': len(counted),
-                'effective_processing_hours': hours['effective_processing_hours'],
-                'known_effective_processing_hours': hours['known_effective_processing_hours'],
-                'unknown_hour_reports': hours['unknown_hour_events']}
-
-    def _with_contexts(self, tasks):
-        """Materialize full report/correction DTOs and issue write contexts for returned rows only."""
-        factory = self.ledger.context_factory
-        result, materialized_operations = [], {}
-        for task in tasks:
-            ref = task['operation_ref']
-            execution = task['execution']
-            if ref not in materialized_operations:
-                full = materialize_operation_history(
-                    execution.projection, execution.histories, execution.voids
-                )
-                if factory is not None:
-                    full = attach_context(full, factory, self.ledger.fact_snapshot(execution.facts, ref))
-                materialized_operations[ref] = full
-            projection_dict = self._decorate_execution(
-                task['task_ref'], materialized_operations[ref].to_dict(), execution.labels
-            )
-            result.append(dict(task, execution=projection_dict))
-        return result
-
-    def page(self, cohort, number, size):
-        total = len(cohort['tasks'])
+        version, plan_dto = self._selected_plan_header(ws_scope, read.plan_ref, scope)
+        if locate_task_ref:
+            index = self._locate_task(version, scope, locate_task_ref, locate_operation_ref)
+            number = index // size + 1
+        summary = self.queries.field_summary(version, scope)
+        total = summary['tasks']
         pages = max(1, (total + size - 1) // size)
         if number > pages:
             raise WorkbenchCommandRejected('invalid_input', '翻页位置已失效，请回到第 1 页重新查询。', 400)
-        return dict(cohort, tasks=self._with_contexts(cohort['tasks'][(number - 1) * size:number * size]),
-                    page={'number': number, 'size': size, 'total': total, 'pages': pages, 'sort': [{'field': 'batch_id', 'direction': 'asc'}]})
+        page_rows = (
+            self.queries.field_task_rows(version, scope, limit=size, offset=(number - 1) * size)
+            if total > 0
+            else []
+        )
+        tasks = self._materialize_rows_with_contexts(ws_scope, read.plan_ref, page_rows)
+        return {
+            'plan': plan_dto,
+            'scope': scope,
+            'tasks': tasks,
+            'summary': summary,
+            'page': {
+                'number': number,
+                'size': size,
+                'total': total,
+                'pages': pages,
+                'sort': [{'field': 'batch_id', 'direction': 'asc'}],
+            },
+        }
 
-    def detail(self, cohort, task_ref):
-        for task in cohort['tasks']:
-            if task['task_ref'] == task_ref:
-                return {'task': self._with_contexts([task])[0], 'scope': cohort['scope'], 'plan': cohort['plan']}
-        raise WorkbenchCommandRejected('entity_not_found', '所选任务不在当前范围，请刷新后重选。', 404)
+    def detail(
+        self,
+        ws_scope: FieldWorkspaceReadScope,
+        read: FieldReadState,
+        task_ref: str,
+        *,
+        locate_task_ref: Optional[str] = None,
+        locate_operation_ref: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        scope = read.effective_scope
+        if read.plan_ref is None:
+            raise WorkbenchCommandRejected('entity_not_found', '所选任务不在当前范围，请刷新后重选。', 404)
+        version, plan_dto = self._selected_plan_header(ws_scope, read.plan_ref, scope)
+        if locate_task_ref:
+            self._locate_task(version, scope, locate_task_ref, locate_operation_ref)
+        rows = self.queries.field_task_rows(version, scope, task_ref=task_ref)
+        if not rows:
+            raise WorkbenchCommandRejected('entity_not_found', '所选任务不在当前范围，请刷新后重选。', 404)
+        task = self._materialize_rows_with_contexts(ws_scope, read.plan_ref, rows)[0]
+        return {'task': task, 'scope': scope, 'plan': plan_dto}

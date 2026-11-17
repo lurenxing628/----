@@ -2,16 +2,17 @@
 
 import json
 from datetime import datetime
-from typing import NoReturn
 
+from core.models.content import StoredJsonCorrupt, read_stored_json
 from core.services.system.maintenance.telemetry import (
     classify_maintenance_result,
     extract_maintenance_result_values,
+    parse_job_time,
 )
 from core.services.workbench.facts.system_reads import backup_records
 from core.services.workbench.facts.system_redaction import public_system_text
 from core.services.workbench.messages import stored_utc_text
-from core.shared.strict_json import canonical_json, load_strict_json
+from core.shared.strict_json import canonical_json
 from data.repositories.system_job_state_repo import SystemJobStateRepository
 from data.repositories.workbench_system_maintenance_repo import WorkbenchSystemMaintenanceRepository
 
@@ -21,7 +22,8 @@ _JOBS = {"auto_backup_cleanup": ("cleanup", "备份清理"),
 _FILE_ACTIONS = {"download": False, "restore": False, "delete": False}
 
 
-def _timestamp(value):
+def _journal_time(value):
+    """外部维护日志（system_journal）的 updated_at；作业状态时间走 parse_job_time。"""
     if not isinstance(value, str):
         return None
     try:
@@ -47,22 +49,31 @@ def _restore_records(journal, records):
             continue
         event = journal.public(record)
         filename = event["filename"] or "文件名未读取"
-        rows.append(_event("restore", "external_maintenance_journal", event["job_ref"], _timestamp(event["updated_at"]),
-                           event["state"], "恢复 · " + filename, event))
+        rows.append(_event("restore", "external_maintenance_journal", event["job_ref"],
+                           _journal_time(event["updated_at"]), event["state"], "恢复 · " + filename, event))
     return rows
 
 
-def _not_object() -> NoReturn:
-    raise ValueError("Stored detail is not a strict JSON object")
+def _readable_detail(raw):
+    """存的维护结果明细；读不出来或字段值不合要求时为 None。
+
+    维护页遇到坏记录也要能打开，由调用方把它显示成排障信息：解码失败只捕获 StoredJsonCorrupt，
+    合法 JSON 里的字段问题只捕获准入函数 extract_maintenance_result_values 抛的 ValueError。
+    """
+    try:
+        detail = read_stored_json(raw, dict)
+    except StoredJsonCorrupt:
+        return None
+    try:
+        extract_maintenance_result_values(detail)
+    except ValueError:
+        return None
+    return detail
 
 
 def _detail(value):
-    try:
-        detail = load_strict_json(value, on_malformed=_not_object, expected=dict)
-        extract_maintenance_result_values(detail)
-        return detail
-    except ValueError:
-        return {"unparsed_detail": public_system_text(str(value or ""), 8192)}
+    detail = _readable_detail(value)
+    return {"unparsed_detail": public_system_text(str(value or ""), 8192)} if detail is None else detail
 
 
 def _cleanup_audits(conn):
@@ -130,17 +141,16 @@ def maintenance_records(conn, backup_dir, journal, *, journal_records):
 def _job_detail(job, label):
     """Report malformed persisted job fields without publishing parser input."""
     issues = []
-    timestamp = _timestamp(job.last_run_time)
-    if job.last_run_time not in (None, "") and timestamp is None:
+    parsed = parse_job_time(job.last_run_time)
+    timestamp = None if parsed.value is None else parsed.value.isoformat(timespec="seconds")
+    if parsed.state == "invalid":
         issues.append({"code": "maintenance_last_time_invalid", "job_key": job.job_key,
                        "message": label + "：上次执行时间记录异常，系统会在下次执行后重新记录。"})
     raw = job.last_run_detail
     if raw is None or raw == "":
         return {}, issues, timestamp
-    try:
-        detail = load_strict_json(raw, on_malformed=_not_object, expected=dict)
-        extract_maintenance_result_values(detail)
-    except ValueError:
+    detail = _readable_detail(raw)
+    if detail is None:
         message = "上次结果记录异常，详细内容请让维护人员查看日志。"
         issues.append({"code": "maintenance_last_detail_invalid", "job_key": job.job_key,
                        "message": label + "：" + message})

@@ -7,19 +7,18 @@ from .candidate_values import gap, text
 
 
 def project_admitted_scope(settings, facts, *, summary):
-    """facts is the run's GenerationFacts; summary is its scope_summary of settings."""
-    batches, parts = facts.tables["Batches"], facts.tables["Parts"]
-    batch_ids = {ref: key for (kind, key), ref in facts.entity_refs.items() if kind == "batch"}
-    gaps, selected = list(summary["data_gaps"]), []
-    for ref in settings.get("batch_refs", []) if summary["batch_count"] is not None else []:
-        batch = batches.get(batch_ids.get(ref), {})
+    """facts is the run's GenerationFacts, just captured at acceptance after its baseline admitted every selected
+    batch (``AdmissionBaseline``); summary is its scope_summary of settings."""
+    gaps, selected = [], []
+    for ref in settings["batch_refs"]:
+        batch = facts.related("Batches", facts.batch_id(ref))
         prefix = "batches." + ref + "."
-        batch_id = text(batch.get("batch_id"), prefix + "batch_id", gaps)
-        part_no = text(batch.get("part_no"), prefix + "part_no", gaps)
-        part = parts.get(part_no, {})
+        batch_id = text(batch["batch_id"], prefix + "batch_id", gaps)
+        part_no = text(batch["part_no"], prefix + "part_no", gaps)
+        part = facts.related("Parts", batch["part_no"])
         selected.append({"batch_ref": ref, "batch_id": batch_id, "part_no": part_no,
-                         "part_label": text(part.get("part_name"), prefix + "part_label", gaps)})
-    complete_scope = summary["batch_count"] is not None and all(item["batch_id"] is not None for item in selected)
+                         "part_label": text(part["part_name"], prefix + "part_label", gaps)})
+    complete_scope = all(item["batch_id"] is not None for item in selected)
     operation_count = None
     if complete_scope:
         selected_ids = {item["batch_id"] for item in selected}

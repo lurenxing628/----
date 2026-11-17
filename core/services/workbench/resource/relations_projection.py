@@ -1,6 +1,5 @@
 """Small read-only relation DTOs, with provenance distinct from eligibility."""
 
-from core.models.resource_capabilities import machine_types
 from core.models.workbench_resource_status import public_resource_status
 
 RELATION_KINDS = {"machines": "machine", "operators": "operator", "suppliers": "supplier"}
@@ -37,7 +36,7 @@ def relation_entity(identity, row, relation, parent_code, qualifications, author
 
 
 def _person_fields(entity, row, parent_code, skills, authorizations):
-    matching = [item for item in authorizations if parent_code in machine_types(item)]
+    matching = [item for item in authorizations if parent_code in item["op_type_ids"]]
     registered = row["skill_type"] is not None
     source = "mixed" if registered and matching else "skill" if registered else "machine_authorization"
     qualification = "legacy_fallback" if skills is None else "explicit_match" if parent_code in skills else "explicit_empty" if not skills else "explicit_mismatch"

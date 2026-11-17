@@ -2,19 +2,20 @@
 
 from flask import current_app, g
 
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_actions import normalize_process_part_create
 from core.models.workbench_process_table_query import process_scope_request
 from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process.part_actions import WorkbenchProcessPartActionService
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from core.shared.key_sets import keys_conform
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .process_action_context import action_preview, checked_preview, confirmed_body
-from .process_json import read_process_json
-from .read_context import bind_read_snapshot
+from .process_json import process_command_body, read_process_json
+from .read_context import rebind_read_snapshot
 from .resource_action_context import read_endpoint
 from .write_context import validate_write_context
 
@@ -31,11 +32,9 @@ def collection_scope(scope, size=20):
 
 @api_endpoint
 def process_create():
-    body = read_process_json("新增零件", 1024 * 1024)
-    if set(body) != {"request_key", "write_token", "input"}:
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，零件还没有新增。请刷新页面后重新填写。", 400)
-    validate_request_key(body["request_key"])
-    g.workbench_request_key = body["request_key"]
+    body = process_command_body("新增零件", 1024 * 1024,
+                                incomplete="提交的内容不完整或有多余项，零件还没有新增。请刷新页面后重新填写。",
+                                stale="本页数据已过期，零件还没有新增。请点「刷新资料」后重新填写。")
     domain = WorkbenchProcessPartActionService(g.db, current_app.logger)
     payload = normalize_process_part_create(body["input"])
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
@@ -54,14 +53,14 @@ def process_create():
 @read_endpoint
 def process_bulk_preview():
     body = read_process_json("删除预检", 4 * 1024 * 1024)
-    if not {"refs", "scope", "snapshot_ref"} <= set(body) or set(body) - {"refs", "scope", "snapshot_ref", "page_size"}:
+    if not keys_conform(body, ("refs", "scope", "snapshot_ref"), ("page_size",)):
         raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，零件没有删除。请刷新页面后重新点「检查删除范围」。", 400)
     if type(body["snapshot_ref"]) is not str or not body["snapshot_ref"]:
         raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
     page_request, query_scope = collection_scope(body["scope"], body.get("page_size", 20))
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as scope:
-        snapshot = bind_read_snapshot(query_scope, scope.state_fingerprint(), body["snapshot_ref"])
+        snapshot = rebind_read_snapshot(query_scope, scope.state_fingerprint(), body["snapshot_ref"])
         preview = WorkbenchProcessPartActionService(g.db, current_app.logger).preview_delete(body["refs"], scope=page_request)
         result = action_preview(preview, "process_bulk.confirm", extra={
             "columns": [{"key": key, "label": label} for key, label in DELETE_COLUMNS]})

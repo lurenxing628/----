@@ -4,7 +4,8 @@ import re
 from datetime import datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.shared.strict_json import load_strict_json
+from core.models.workbench_load_limits import MAX_WINDOW_BATCHES, too_many_batches
+from core.shared.refs import is_ref
 from core.shared.strict_parse import parse_bounded_positive_int
 
 STATES = ('unreported', 'started', 'partial', 'complete')
@@ -18,7 +19,7 @@ def invalid(message):
 
 def _references(result):
     for key in ('plan_ref', 'resource_ref'):
-        if key in result and (type(result[key]) is not str or not re.fullmatch('[0-9a-f]{48}', result[key])):
+        if key in result and not is_ref(result[key]):
             invalid('计划或资源的编号不对，请刷新后重新选择。')
     if result.get('resource_type') not in (None, 'machine', 'operator'):
         invalid('现场资源类型只能为设备或人员。')
@@ -39,38 +40,40 @@ def _search(result):
 
 def _dates(result, keys, *, times=False):
     start, end = [result.get(key) for key in keys]
-    if bool(start) != bool(end):
+    if (start is None) != (end is None):
         invalid('计划日期或时间范围起止须同时提供。')
     pattern = r'\d{4}-\d\d-\d\d' + (r'T\d\d:\d\d:\d\d' if times else '')
     fmt = '%Y-%m-%dT%H:%M:%S' if times else '%Y-%m-%d'
-    for value in filter(None, (start, end)):
+    for value in (item for item in (start, end) if item is not None):
         try:
             if type(value) is not str or not re.fullmatch(pattern, value):
                 raise ValueError()
             datetime.strptime(value, fmt)
         except ValueError as exc:
             raise WorkbenchCommandRejected('invalid_input', '计划日期或时间范围无效。', 400) from exc
-    if start and (start > end or times and start == end):
+    if start is not None and (start > end or times and start == end):
         invalid('计划范围起止顺序无效。')
 
 
 def _batches(result):
     if 'batch_ids' not in result:
         return
-    # Query arguments carry the list as JSON text; the file-preview form scope is already decoded.
     ids = result['batch_ids']
-    if type(ids) is str:
-        ids = load_strict_json(ids, on_malformed=lambda: invalid('批次范围无效。'))
-    if type(ids) is not list or not 1 <= len(ids) <= 5000 or any(type(item) is not str or not item or len(item) > 200 for item in ids):
+    if type(ids) is list and len(ids) > MAX_WINDOW_BATCHES:
+        invalid(too_many_batches(MAX_WINDOW_BATCHES))
+    if type(ids) is not list or not ids or any(type(item) is not str or not item or len(item) > 200 for item in ids):
         invalid('批次范围须为明确的非空批次号列表。')
     result['batch_ids'] = sorted(set(ids))
 
 
 def normalize_scope(value):
+    """The JSON-decoded read body or file-preview scope: only ``PARAMETERS``; ``FILTERS`` are returned normalized."""
     if type(value) is not dict or set(value) - set(PARAMETERS):
         invalid('查询条件无效，请清除筛选后重试。')
     if value.get('source', 'production') != 'production':
         invalid('现场记录仅接受真实生产来源。')
+    if any(value.get(key) is not None and type(value[key]) is not str for key in ('task_ref', 'operation_ref')):
+        invalid('要核对的任务或工序编号不对，请刷新后重新选择。')
     if value.get('operation_ref') and not value.get('task_ref'):
         invalid('按工序核对时要同时指定具体任务，只给工序不够。')
     result = {key: item for key, item in value.items() if item is not None and item != '' and key in FILTERS}
@@ -85,50 +88,9 @@ def normalize_scope(value):
 def page_input(value):
     result = []
     for key, default, upper in [('page', 1, 100000), ('size', 20, 100)]:
-        parsed = parse_bounded_positive_int(value.get(key, default), max_value=upper)
+        parsed = parse_bounded_positive_int(value.get(key, default), max_value=upper, allow_str=False)
         if parsed is None:
             invalid('页码或每页数量无效。')
         result.append(parsed)
     return tuple(result)
 
-
-def matches(task, scope):
-    if scope.get('query'):
-        searchable = [task['batch_id'], task['operation_label'], task['part_name'], task['piece_id'],
-                      task['planned_machine_label'], task['planned_operator_label']]
-        execution = task['execution']
-        labels = execution.labels
-        for report in execution.projection.reports:
-            searchable.extend(
-                (
-                    report.report_no,
-                    labels.get(report.actual_machine_ref),
-                    labels.get(report.actual_operator_ref),
-                )
-            )
-        if scope['query'].casefold() not in ' '.join(value for value in searchable if isinstance(value, str)).casefold():
-            return False
-    return _matches_resource(task, scope)
-
-
-def matches_plan(task, scope):
-    """Only plan-owned conditions may narrow the execution facts cohort."""
-    if scope.get('batch_ids') and task['batch_id'] not in scope['batch_ids']:
-        return False
-    if scope.get('plan_finish_date_from') and not scope['plan_finish_date_from'] <= task['end'][:10] <= scope['plan_finish_date_to']:
-        return False
-    return True
-
-
-def _matches_resource(task, scope):
-    if not scope.get('resource_ref'):
-        return True
-    kind, ref = scope['resource_type'], scope['resource_ref']
-    projection = task['execution'].projection
-    field = kind + '_ref'
-    if task['planned_' + field] == ref:
-        return True
-    return any(
-        (report.actual_machine_ref if kind == 'machine' else report.actual_operator_ref) == ref
-        for report in projection.reports
-    )

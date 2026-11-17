@@ -4,6 +4,7 @@ import pytest
 
 from tests.workbench.dashboard_support import api, source_rows
 from tests.workbench.dashboard_support import dashboard_case as dashboard_fixture  # noqa: F401
+from tests.workbench.plan_catalog_support import insert_schedule_row, update_schedule_rows
 
 BASE = "/api/workbench/v1/dashboard"
 
@@ -14,8 +15,7 @@ def add_batch(case, number):
                       "VALUES (?,'DP1','Part',2,'2026-09-08','no')", (batch,))
     op = case.conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source,unit_hours,setup_hours) "
                            "VALUES (?,?,1,'DT1','Turning','internal',0.5,0)", ("OP" + str(number), batch)).lastrowid
-    case.conn.execute("INSERT INTO Schedule(version,op_id,machine_id,operator_id,start_time,end_time) "
-                      "VALUES (1,?,'DM1','DO1','2026-09-09T08:00:00','2026-09-09T10:00:00')", (op,))
+    insert_schedule_row(case.conn, 1, op, "2026-09-09T08:00:00", "2026-09-09T10:00:00", machine_id="DM1", operator_id="DO1")
 
 
 def test_overview_and_pages_preserve_complete_counts_and_stale_source_binding(dashboard_case, monkeypatch):
@@ -29,7 +29,7 @@ def test_overview_and_pages_preserve_complete_counts_and_stale_source_binding(da
     # Exercise crossing an admitted ledger block without creating a second
     # large fixture for a cardinality boundary already checked by the reader.
     monkeypatch.setattr(ledger_reader, "MAX_OPERATIONS", 2)
-    client = api(case, monkeypatch)
+    client = api(case)
     listing = client.get(BASE)
     assert listing.status_code == 200, listing.get_json()
     overview = listing.get_json()["data"]["analysis"]
@@ -69,11 +69,11 @@ def test_overview_and_pages_preserve_complete_counts_and_stale_source_binding(da
     assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "snapshot_stale"
 
 
-def test_resource_day_pages_preserve_half_open_window_and_full_window_metrics(dashboard_case, monkeypatch):
+def test_resource_day_pages_preserve_half_open_window_and_full_window_metrics(dashboard_case):
     case = dashboard_case
-    case.conn.execute("UPDATE Schedule SET end_time='2026-09-12T00:00:00' WHERE version=1")
+    update_schedule_rows(case.conn, 1, end_time="2026-09-12T00:00:00")
     case.conn.commit()
-    client = api(case, monkeypatch)
+    client = api(case)
     response = client.get(BASE + "/analysis", query_string={"section": "pressure"})
     assert response.status_code == 200, response.get_json()
     pressure = response.get_json()["data"]
@@ -96,12 +96,12 @@ def test_resource_day_pages_preserve_half_open_window_and_full_window_metrics(da
     assert invalid.status_code == 400
 
 
-def test_timeline_batch_locator_resolves_original_page_and_keeps_snapshot_scope(dashboard_case, monkeypatch):
+def test_timeline_batch_locator_resolves_original_page_and_keeps_snapshot_scope(dashboard_case):
     case = dashboard_case
     add_batch(case, 2)
     add_batch(case, 3)
     case.conn.commit()
-    client = api(case, monkeypatch)
+    client = api(case)
     complete = client.get(BASE + "/analysis", query_string={"section": "timeline", "size": 100}).get_json()["data"]
     target = complete["tasks"][-1]
     initial = client.get(BASE + "/analysis", query_string={"section": "timeline", "size": 1}).get_json()
@@ -134,5 +134,5 @@ def test_timeline_batch_locator_resolves_original_page_and_keeps_snapshot_scope(
 @pytest.mark.parametrize("query", [{"page": "0"}, {"size": "101"}, {"section": "all"},
                                   {"section": "resource_days"}, {"resource_ref": "a" * 48},
                                   {"locate_batch_ref": "a" * 48}, {"section": "timeline", "locate_batch_ref": "invalid"}])
-def test_analysis_rejects_invalid_page_or_resource_scope(dashboard_case, monkeypatch, query):
-    assert api(dashboard_case, monkeypatch).get(BASE + "/analysis", query_string=query).status_code in (400, 404)
+def test_analysis_rejects_invalid_page_or_resource_scope(dashboard_case, query):
+    assert api(dashboard_case).get(BASE + "/analysis", query_string=query).status_code in (400, 404)

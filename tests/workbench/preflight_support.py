@@ -2,6 +2,7 @@
 
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime
 
 import pytest
 from flask import Blueprint, Flask, g
@@ -10,6 +11,7 @@ from core.infrastructure.schema_structure import SchemaStructure
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
 from tests.workbench.identity_metadata_support import insert_row, seed_resources
 from web.routes.workbench.preflight import register_preflight_routes
+from web.runtime_host import install_wall_clock
 
 BASE = "/api/workbench/v1/scheduling/preflight"
 
@@ -33,6 +35,7 @@ def seed(conn, count=1):
 
 def create_app(conn):
     app = Flask(__name__)
+    install_wall_clock(app, datetime.now)
     app.config.update(TESTING=True, SECRET_KEY="preflight-test-only")
     bp = Blueprint("workbench", __name__)
     register_preflight_routes(bp)

@@ -1,63 +1,39 @@
 """Verified outsourcing source instances: judgement over exact repository facts.
 
-Source binding resolves the current batch relation without manufacturing
-historical birth records; readable labels are nullable projections of verified,
-snapshot-local instances. The repository only reads; every rejection is here.
+Source membership and active batch/entity identities verify whether an external
+operation belongs to the target batch instance; readable labels are nullable
+projections of verified, snapshot-local instances. The repository only reads;
+every rejection is here.
 """
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Union, cast, overload
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_outsourcing import MAX_ROWS, label, raw_facts, reject
+from core.models.workbench_outsourcing import (
+    MAX_ROWS,
+    MEMBER_KEYS,
+    OPERATION_REVISION_KEYS,
+    label,
+    raw_facts,
+    reject,
+)
 from data.repositories.workbench_outsourcing_source_repo import (
     WorkbenchOutsourcingSourceFacts,
     WorkbenchOutsourcingSourceRepository,
 )
-
-MEMBER_KEYS = ("op_code", "batch_id", "piece_id", "seq", "op_type_id", "op_type_name", "source", "supplier_id")
 
 
 def _target_text(value):
     return value if type(value) is str and value.strip() and "\x00" not in value else None
 
 
-def resolve_source_binding(repo, operation_ref, origin, batch_ref):
-    confirmation = repo.source_confirmation(operation_ref)
-    if confirmation is not None:
-        valid = repo.confirmation_matches_receipt(operation_ref, confirmation["batch_ref"], confirmation["fact_ref"])
-        if origin["batch_ref"] is not None or not valid:
-            reject("工序的来源确认与原外协登记不一致，请核对原登记。", "identity_drift", 409)
-    if origin["batch_ref"] is not None:
-        resolved_ref, basis = origin["batch_ref"], "birth_record"
-    elif confirmation is not None:
-        resolved_ref, basis = confirmation["batch_ref"], "registration_confirmation"
-    else:
-        if repo.has_membership(operation_ref):
-            reject("已有外协登记缺少原批次的确认记录，请先核对原登记。", "identity_missing", 409)
-        resolved_ref, basis = batch_ref, "current_relation"
-    if resolved_ref != batch_ref:
-        reject("工序所属批次实例已变化，请核对批次与工序关联。", "identity_drift", 409)
-    return {"batch_ref": resolved_ref, "confirmation": confirmation,
-            "source_resolution": {"basis": basis, "confirmation_ref": confirmation["fact_ref"] if confirmation is not None else None}}
-
-
-def source_resolution(operations):
-    resolutions = [op["binding"]["source_resolution"] for op in operations]
-    basis = ("current_relation" if any(item["basis"] == "current_relation" for item in resolutions)
-             else "registration_confirmation" if any(item["basis"] == "registration_confirmation" for item in resolutions)
-             else "birth_record")
-    refs = {item["confirmation_ref"] for item in resolutions if item["confirmation_ref"] is not None}
-    if len(refs) > 1:
-        reject("所选工序已分别登记，不能合成另一条登记。", "constraint_conflict", 409)
-    return {"basis": basis, "confirmation_ref": next(iter(refs)) if refs else None}
-
-
-def _public_source(target, batch, part, supplier, operations, resolution, *, include_operations: bool) -> Dict[str, Any]:
+def _public_source(
+    target, batch, part, supplier, operations, *, include_operations: bool
+) -> Dict[str, Any]:
     public: Dict[str, Any] = {
         **target,
         "grouping_basis": "explicit_receipt_membership",
-        "source_resolution": resolution,
         "part": {
             "ref": part["identity"]["ref"],
             "business_code": _target_text(part["row"]["part_no"]),
@@ -97,7 +73,10 @@ def _source_identity(target, part, operations) -> Dict[str, Any]:
                 "part_ref": part["identity"]["ref"],
                 "supplier_ref": target["supplier_ref"],
                 "members": [
-                    {"operation_ref": op["identity"]["ref"], **{key: op["row"][key] for key in MEMBER_KEYS}}
+                    {
+                        "operation_ref": op["identity"]["ref"],
+                        **{key: op["row"][key] for key in MEMBER_KEYS},
+                    }
                     for op in operations
                 ],
             }
@@ -105,45 +84,28 @@ def _source_identity(target, part, operations) -> Dict[str, Any]:
     )
 
 
-def _source_confirmations(operations) -> List[str]:
-    return [
-        op["identity"]["ref"]
-        for op in operations
-        if op["binding"]["source_resolution"]["basis"] == "current_relation"
-    ]
-
-
 @dataclass(frozen=True)
 class AdmittedReceiptSource:
-    target: Dict[str, Any]
     batch: Dict[str, Any]
     part: Dict[str, Any]
     supplier: Dict[str, Any]
     operations: List[Dict[str, Any]]
-    resolution: Dict[str, Any]
     identity: Dict[str, Any]
 
     def to_scoped_source(self) -> Dict[str, Any]:
         return {
-            "public": _public_source(
-                self.target,
-                self.batch,
-                self.part,
-                self.supplier,
-                self.operations,
-                self.resolution,
-                include_operations=True,
-            ),
             "identity": self.identity,
-            "source_confirmations": _source_confirmations(self.operations),
-            "facts": raw_facts(
-                {
-                    "batch": self.batch,
-                    "part": self.part,
-                    "supplier": self.supplier,
-                    "operations": self.operations,
-                }
-            ),
+            "revisions": {
+                "batch": self.batch["identity"]["revision"],
+                "part": self.part["identity"]["revision"],
+                "supplier": self.supplier["identity"]["revision"],
+                "operations": raw_facts(
+                    [
+                        [op["row"][key] for key in OPERATION_REVISION_KEYS]
+                        for op in self.operations
+                    ]
+                ),
+            },
         }
 
 
@@ -153,8 +115,15 @@ class WorkbenchOutsourcingSourceService:
 
     def capture(self, targets, *, entities=(), include_routes=False, revision: int):
         """Resolve the same source rules from facts owned by this read snapshot."""
-        return WorkbenchOutsourcingSourceService(None, repo=self.repo.capture(
-            targets, entities=entities, include_routes=include_routes, revision=revision))
+        return WorkbenchOutsourcingSourceService(
+            None,
+            repo=self.repo.capture(
+                targets,
+                entities=entities,
+                include_routes=include_routes,
+                revision=revision,
+            ),
+        )
 
     def memberships(self, operation_refs):
         """Existing receipt memberships of these operations, from this snapshot's captured facts."""
@@ -184,12 +153,17 @@ class WorkbenchOutsourcingSourceService:
         if identity is None:
             reject("原工序已删除，请刷新重选。", "entity_not_found", 404)
         row = facts.source_row("operation", identity["source_key"])
-        origin = facts.operation_origin(ref)
-        if row is None or origin is None:
-            raise WorkbenchCommandRejected("identity_missing", "工序与批次的关联资料缺失，无法核对外协状态，请联系维护人员。", 409)
+        if row is None:
+            raise WorkbenchCommandRejected(
+                "identity_missing",
+                "工序与批次的关联资料缺失，无法核对外协状态，请联系维护人员。",
+                409,
+            )
         batch_ref = self._active_ref(facts, "batch", row["batch_id"])
-        binding = resolve_source_binding(facts, ref, origin, batch_ref)
-        return {"identity": identity, "origin": origin, "row": row, "binding": binding}
+        membership = facts.membership(ref)
+        if membership is not None and membership["batch_ref"] != batch_ref:
+            reject("工序所属批次实例已变化，请核对批次与工序关联。", "identity_drift", 409)
+        return {"identity": identity, "row": row, "batch_ref": batch_ref}
 
     def require_contiguous(self, operations):
         """Validate new shipment membership; historical receipts keep their original membership."""
@@ -201,9 +175,13 @@ class WorkbenchOutsourcingSourceService:
         positions = [index for index, row in enumerate(route) if row["id"] in selected]
         if len(positions) != len(selected):
             reject("所选工序的工艺顺序已变化，请刷新后重新选择。", "identity_drift", 409)
-        between = route[min(positions):max(positions) + 1]
+        between = route[min(positions) : max(positions) + 1]
         if any(row["id"] not in selected for row in between):
-            reject("合并发出必须选择同一次外协的连续工序，不能跨过自制工序或漏选中间工序。请按实际发出阶段分别登记。", "constraint_conflict", 409)
+            reject(
+                "合并发出必须选择同一次外协的连续工序，不能跨过自制工序或漏选中间工序。请按实际发出阶段分别登记。",
+                "constraint_conflict",
+                409,
+            )
 
     @overload
     def load(
@@ -249,7 +227,7 @@ class WorkbenchOutsourcingSourceService:
         operations = [self.operation(facts, ref) for ref in target["operation_refs"]]
         for op in operations:
             row = op["row"]
-            if row["source"] != "external" or op["binding"]["batch_ref"] != target["batch_ref"]:
+            if row["source"] != "external" or op["batch_ref"] != target["batch_ref"]:
                 reject("登记成员必须是所选批次的真实外协工序。", "constraint_conflict", 409)
             if row["supplier_id"] != supplier["row"]["supplier_id"]:
                 reject("登记供应商与工序承接供应商不一致，请核对。", "constraint_conflict", 409)
@@ -257,42 +235,33 @@ class WorkbenchOutsourcingSourceService:
             reject("合并发出的工序须属于同一批次分件。", "constraint_conflict", 409)
         if new_registration:
             self.require_contiguous(operations)
-        resolution = source_resolution(operations)
         if projection == "target_row":
             return {
                 "public": _public_source(
-                    target, batch, part, supplier, operations, resolution, include_operations=False
+                    target, batch, part, supplier, operations, include_operations=False
                 )
             }
         identity = _source_identity(target, part, operations)
         if projection == "identity":
             return {"identity": identity}
+        admitted = AdmittedReceiptSource(
+            batch=batch,
+            part=part,
+            supplier=supplier,
+            operations=operations,
+            identity=identity,
+        )
         if projection == "deferred_scoped":
-            return AdmittedReceiptSource(
-                target=target,
-                batch=batch,
-                part=part,
-                supplier=supplier,
-                operations=operations,
-                resolution=resolution,
-                identity=identity,
-            )
-        clock = self.repo.plan_identity_revision()
+            return admitted
         return {
             "public": _public_source(
-                target, batch, part, supplier, operations, resolution, include_operations=True
+                target, batch, part, supplier, operations, include_operations=True
             ),
             "identity": identity,
-            "source_confirmations": _source_confirmations(operations),
-            "facts": raw_facts(
-                {
-                    "batch": batch,
-                    "part": part,
-                    "supplier": supplier,
-                    "operations": operations,
-                    "source_clock": clock,
-                }
-            ),
+            "scoped": {
+                **admitted.to_scoped_source(),
+                "source_clock": self.repo.plan_identity_revision(),
+            },
         }
 
     @staticmethod
@@ -302,37 +271,65 @@ class WorkbenchOutsourcingSourceService:
         if row["outsourcing_ref"] is not None and row["receipt_" + kind + "_ref"] != ref:
             return None
         public = source["public"][kind]
-        return {"ref": ref, "business_code": _target_text(public["business_code"]), "label": _target_text(public["label"])}
+        return {
+            "ref": ref,
+            "business_code": _target_text(public["business_code"]),
+            "label": _target_text(public["label"]),
+        }
 
-    def target_rows(self, batch_ref=None, query="", *, unregistered_only=False):
-        """Read the bounded target range and retain a selected batch already resolved here."""
+    def target_page(self, batch_ref, query: str, *, number: int, size: int):
+        """Read one SQL page of external operations and retain a selected batch already resolved here."""
         batch_id = None
         entities = []
         if batch_ref is not None:
             batch = self.entity(batch_ref, "batch")
             batch_id = batch["row"]["batch_id"]
             entities.append(batch)
-        rows = self.repo.external_operation_rows(batch_id, MAX_ROWS, query, unregistered_only=unregistered_only)
+        rows, total = self.repo.target_page(batch_id, query, number=number, size=size)
+        return rows, total, entities
+
+    def unregistered_operation_rows(self):
+        """Read bounded unregistered external operation rows for dashboard gap evaluation."""
+        rows = self.repo.unregistered_operation_rows(MAX_ROWS)
         if len(rows) > MAX_ROWS:
-            reject("外协工序超过10000项，请按批次号或工序查找，缩小范围。", "query_too_large", 413)
-        return rows, entities
+            reject(f"外协工序超过{MAX_ROWS}项，请按批次号或工序查找，缩小范围。", "query_too_large", 413)
+        return rows
 
     @staticmethod
     def target_from_row(row):
-        return {"kind": "single", "batch_ref": row["batch_ref"], "supplier_ref": row["supplier_ref"],
-                "operation_refs": [row["operation_ref"]]}
+        return {
+            "kind": "single",
+            "batch_ref": row["batch_ref"],
+            "supplier_ref": row["supplier_ref"],
+            "operation_refs": [row["operation_ref"]],
+        }
 
     def load_target_rows(self, rows):
-        """Project already captured target rows with the shared load/binding judgement."""
+        """Project already captured target rows with the shared load/membership judgement."""
         result = []
         for row in rows:
-            item = {"operation_ref": row["operation_ref"], "business_code": label(row["op_code"]),
-                    "sequence": label(row["seq"]), "piece": label(row["piece_id"]),
-                    "label": label(row["op_type_name"]), "batch_ref": row["batch_ref"], "supplier_ref": row["supplier_ref"],
-                    "outsourcing_ref": row["outsourcing_ref"], "can_register": False, "issues": [],
-                    "batch": None, "supplier": None, "part": None, "source_resolution": None}
+            item = {
+                "operation_ref": row["operation_ref"],
+                "business_code": label(row["op_code"]),
+                "sequence": label(row["seq"]),
+                "piece": label(row["piece_id"]),
+                "label": label(row["op_type_name"]),
+                "batch_ref": row["batch_ref"],
+                "supplier_ref": row["supplier_ref"],
+                "outsourcing_ref": row["outsourcing_ref"],
+                "can_register": False,
+                "issues": [],
+                "batch": None,
+                "supplier": None,
+                "part": None,
+            }
             if any(row[key] is None for key in ("operation_ref", "batch_ref", "supplier_ref")):
-                item["issues"] = [{"code": "identity_missing", "message": "工序或供应商关联资料缺失，无法登记，请联系维护人员。"}]
+                item["issues"] = [
+                    {
+                        "code": "identity_missing",
+                        "message": "工序或供应商关联资料缺失，无法登记，请联系维护人员。",
+                    }
+                ]
             else:
                 # Known per-row identity gaps stay visible; storage failures propagate.
                 try:
@@ -341,7 +338,6 @@ class WorkbenchOutsourcingSourceService:
                     item["batch"] = self._target_entity_labels(row, "batch", source)
                     item["supplier"] = self._target_entity_labels(row, "supplier", source)
                     item["part"] = source["public"]["part"]
-                    item["source_resolution"] = source["public"]["source_resolution"]
                 except WorkbenchCommandRejected as exc:
                     item["issues"] = [{"code": exc.code, "message": str(exc)}]
             result.append(item)

@@ -9,7 +9,8 @@ from core.services.workbench.run.history import WorkbenchRunHistoryQueryService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
-from .read_context import bind_read_snapshot
+from .read_context import snapshot_binder
+from .request_json import single_value_arguments
 
 
 def _integer(name: str, default: str) -> int:
@@ -22,17 +23,12 @@ def _integer(name: str, default: str) -> int:
 @api_endpoint
 def run_history_list():
     allowed = ("page", "size", "state", "accepted_from", "accepted_to", "sort", "order", "snapshot_ref")
-    if set(request.args) - set(allowed) or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        reject("invalid_input", "排产记录的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。")
+    single_value_arguments(allowed, message="排产记录的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。")
     scope = RunHistoryScope(state=request.args.get("state", "all"), accepted_from=request.args.get("accepted_from"),
         accepted_to=request.args.get("accepted_to"), sort=request.args.get("sort", "accepted_at"),
         order=request.args.get("order", "desc"), page=_integer("page", "1"), size=_integer("size", "20"))
     data, snapshot = WorkbenchRunHistoryQueryService(g.db).catalog_for_snapshot(
-        scope,
-        bind_snapshot=lambda bound_scope, state: bind_read_snapshot(
-            bound_scope, state, request.args.get("snapshot_ref")
-        ),
-    )
+        scope, bind_snapshot=snapshot_binder(request.args.get("snapshot_ref")))
     return query_success(data, snapshot)
 
 

@@ -40,12 +40,7 @@ def _resolve_scheduler_manual_md_path() -> Tuple[Optional[str], List[str]]:
     - 只允许 BASE_DIR 推导出的唯一路径，不再在 static_folder 等位置做首个命中式猜测
     - 返回：(命中的路径 or None, 唯一路径候选)
     """
-    base_dir = current_app.config.get("BASE_DIR")
-    base_dir = str(base_dir).strip() if base_dir is not None else ""
-    if not base_dir:
-        return None, []
-
-    candidate = os.path.join(base_dir, "static", "docs", "scheduler_manual.md")
+    candidate = os.path.join(current_app.config["BASE_DIR"], "static", "docs", "scheduler_manual.md")
     normalized = [os.path.abspath(candidate)]
 
     if os.path.isfile(normalized[0]):
@@ -101,14 +96,6 @@ def _format_manual_mtime(manual_path: str) -> Optional[str]:
 def _load_manual_source(manual_path: Optional[str], candidates: List[str]) -> Tuple[str, Optional[str], bool]:
     """返回 (正文或错误提示, 文件时间, 说明书是否可用)；不可用时正文就是给用户看的提示句。"""
     if not manual_path:
-        if not candidates:
-            current_app.logger.warning("scheduler manual path resolution failed: BASE_DIR missing or empty")
-            return (
-                "找不到说明书文件：本机安装信息不完整。请联系维护人员检查安装目录。",
-                None,
-                False,
-            )
-
         current_app.logger.warning("系统使用说明文件不存在（candidates=%s）", candidates)
         return "找不到说明书文件，可能安装包里没带或文件被删了。请联系维护人员。", None, False
 
@@ -291,11 +278,8 @@ def config_manual_download():
     raw_src = (request.args.get("src") or "").strip()
     raw_page = (request.args.get("page") or "").strip()
     safe_src, safe_page, _entry, _page_warning = _normalize_scheduler_manual_args(raw_src, raw_page)
-    manual_path, candidates = _resolve_scheduler_manual_md_path()
+    manual_path = _resolve_scheduler_manual_md_path()[0]
     if not manual_path:
-        if not candidates:
-            flash("找不到说明书文件：本机安装信息不完整。请联系维护人员检查安装目录。", "error")
-            return redirect(_build_manual_page_url(safe_src, safe_page))
         flash("说明书文件不在了，下载不了。请联系维护人员。", "error")
         return redirect(_build_manual_page_url(safe_src, safe_page))
     try:

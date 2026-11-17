@@ -7,6 +7,7 @@ from core.models.resource_capabilities import supplier_capability_rows, supports
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.template_hours import ProcessTemplateHours
 from core.services.process.template_source import group_suppliers_consistent
+from core.services.process.workflow_state import reset_group_hours_confirmations
 from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
 
@@ -43,14 +44,15 @@ def require_supplier(operation, supplier_key, type_key, catalog):
     supplier = suppliers.get(supplier_key)
     label = supplier["name"] if supplier else supplier_key
     prefix = "工序 {} 的供应商 {}".format(operation["seq"], label)
+    path = "operations." + operation["ref"] + ".supplier_ref"
     if supplier is None or supplier["status"] != "active" or supplier["inactive_reason"] is not None:
-        raise WorkbenchCommandRejected("supplier_unavailable", prefix + "未启用，请重新选择。", 422, operation_refs=[operation["ref"]])
+        raise WorkbenchCommandRejected("supplier_unavailable", prefix + "未启用，请重新选择。", 422, fields=(path,))
     if type_key not in types or not supports_source(types[type_key]["category"], "external"):
         raise WorkbenchCommandRejected("source_category_mismatch", "工序 {} 请先选定有效外协工种。".format(operation["seq"]), 422,
-                                       operation_refs=[operation["ref"]])
+                                       fields=(path,))
     if (supplier_key, type_key) not in capabilities:
         raise WorkbenchCommandRejected("supplier_capability_mismatch", prefix + "不能承接" + types[type_key]["name"] + "，请改选承接此工种的供应商。", 422,
-                                       operation_refs=[operation["ref"]])
+                                       fields=(path,))
 
 
 def prepare_source(payload, operations, identities, *, catalog):
@@ -76,7 +78,13 @@ def apply_source(conn, changes, operations):
     repo = PartOperationRepository(conn)
     old_types = {op["id"]: op["op_type_id"] for op in operations}
     for source, type_key, supplier, key in changes:
-        fields = {"source": source, "op_type_id": type_key, "supplier_id": supplier}
+        fields = {
+            "source": source,
+            "op_type_id": type_key,
+            "supplier_id": supplier,
+            "source_confirmed_at": None,
+            "hours_confirmed_at": None,
+        }
         if old_types[key] != type_key:
             fields.update(setup_hours=None, unit_hours=None, ext_days=None)
         repo.update_fields_by_id(key, fields)
@@ -97,7 +105,7 @@ def source_group_changes(changes, operations, groups):
             affected.append(group)
         elif not group_suppliers_consistent(group, (row[2] for row in values)):
             raise WorkbenchCommandRejected("group_supplier_mismatch", "外协段 {} 至 {} 的供应商必须一致。请整段更换供应商，或先在工时定额页拆分外协段。".format(group["start_seq"], group["end_seq"]), 422,
-                                           operation_refs=[row["ref"] for row in members])
+                                           fields=tuple("operations." + row["ref"] + ".supplier_ref" for row in members))
         elif group["merge_mode"] == "merged" and group["supplier_id"] is not None and group["supplier_id"] != values[0][2]:
             updates.append((group["group_id"], values[0][2]))
     return affected, updates
@@ -120,10 +128,11 @@ def _hours_fields(row, old, merged_keys):
         # as the starting point if the user later dissolves this stage.
         if row["external_days"] is not None and row["external_days"] != old["ext_days"]:
             raise WorkbenchCommandRejected("group_cycle_only", "工序 {} 使用整段外协周期，请修改外协段总周期；逐序旧周期不会参与当前排产。".format(old["seq"]), 422,
-                                           operation_refs=[old["ref"]])
+                                           fields=("operations." + old["ref"] + ".external_days",))
         return {}
     if "external_days" in row and row["external_days"] is None and old["ext_group_id"] not in merged_keys:
-        raise WorkbenchCommandRejected("external_days_required", "不是合并组的外协工序必须填正数周期，不能留空。", 422)
+        raise WorkbenchCommandRejected("external_days_required", "不是合并组的外协工序必须填正数周期，不能留空。", 422,
+                                       fields=("operations." + old["ref"] + ".external_days",))
     return {("ext_days" if key == "external_days" else key): value for key, value in row.items() if key != "ref"}
 
 
@@ -139,12 +148,12 @@ def _hours_updates(payload, active, merged):
     return updates
 
 
-def prepare_hours(payload, operations, groups, *, confirmations):
+def prepare_hours(payload, operations, groups, *, workflow):
     active = exact_operations(payload, operations)
     merged = _merged_hours_groups(payload, active, groups)
     updates = _hours_updates(payload, active, merged)
     require_zero_confirmation([(active[row["ref"]], row) for row in payload["operations"]],
-                              payload["confirm_zero_unit_hours"], states=confirmations)
+                              payload["confirm_zero_unit_hours"], workflow=workflow)
     group_updates = [(merged[row["ref"]], row["total_days"]) for row in payload["groups"]
                      if merged[row["ref"]]["total_days"] != row["total_days"]]
     by_id = {row["id"]: row for row in active.values()}
@@ -159,4 +168,6 @@ def apply_prepared_hours(conn, prepared):
         hours.revise_current(old, fields)
     for old, days in group_updates:
         group_repo.set_total_days(old["group_id"], days)
+    if group_updates:
+        reset_group_hours_confirmations(conn, [old["group_id"] for old, _days in group_updates])
     return bool(updates or group_updates)

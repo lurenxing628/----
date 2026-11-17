@@ -1,18 +1,16 @@
 """Freeze only evidenced points; supplement the legacy overlap query's left edge."""
 
-from core.shared.local_datetime import parse_local_datetime as parse_dt
+from core.shared.local_datetime import datetime_to_us, row_interval
 
 
 def read_point_freeze_rows(*, version, op_ids, start_time, end_time, facts):
-    low, high = parse_dt(start_time), parse_dt(end_time)
-    if low is None or high is None:
-        raise ValueError("冻结窗口查询时间写法不对，无法读取旧排程种子")
+    low, high = datetime_to_us(start_time), datetime_to_us(end_time)
     ids = set(op_ids)
     result = []
     for row in facts.capture.business_table("Schedule"):
         if row["version"] != version or row["op_id"] not in ids:
             continue
-        start, end = parse_dt(row["start_time"]), parse_dt(row["end_time"])
-        if start is None or end is None or start < high and (end > low or start == end == low):
-            result.append({**row, "_parsed_times": (start, end)})
+        start, end = row["start_us"], row["end_us"]
+        if start < high and (end > low or start == end == low):
+            result.append({**row, "_parsed_times": row_interval(row)})
     return result

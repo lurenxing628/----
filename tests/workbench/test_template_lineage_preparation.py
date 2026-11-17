@@ -1,11 +1,9 @@
-"""Fixed source preparation, historical copy eligibility and streamed evidence limits."""
+"""Fixed source preparation, 6-column lineage eligibility and zero post-lock split SQL."""
 
 import json
-
-import pytest
+from datetime import date
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler import template_lineage_query
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.workbench.batch.facts import BatchFacts
@@ -20,19 +18,30 @@ def test_batch_copies_prepare_raw_sources_once_and_reuse_across_targets(lineage_
     conn = case.conn
     with TransactionManager(conn).transaction():
         conn.execute("UPDATE PartOperations SET unit_hours=NULL,op_type_name=? WHERE id=?", ("Turning-A", case.template_id))
-        conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,setup_hours,unit_hours,ext_days) "
-                     "VALUES ('P1',2,'T1','Turning','internal',NULL,0,0)")
-        conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,setup_hours,unit_hours) "
-                     "VALUES ('P1',3,'T1','External','external',0,0)")
+        conn.execute(
+            "INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,setup_hours,unit_hours,ext_days) "
+            "VALUES ('P1',2,'T1','Turning','internal',NULL,0,1.5)"
+        )
+        conn.execute(
+            "INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,setup_hours,unit_hours) "
+            "VALUES ('P1',3,'T1','External','external',0,0)"
+        )
     create(case, "PREP-SOURCE")
-    original = [tuple(row) for row in conn.execute("SELECT seq,op_type_name,setup_hours,unit_hours,ext_days FROM BatchOperations "
-                                                  "WHERE batch_id='PREP-SOURCE' ORDER BY seq")]
+    original = [
+        tuple(row)
+        for row in conn.execute(
+            "SELECT seq,op_type_name,setup_hours,unit_hours,ext_days FROM BatchOperations "
+            "WHERE batch_id='PREP-SOURCE' ORDER BY seq"
+        )
+    ]
     assert original[0][1] == "Turning-A" and original[0][3] is None
-    assert original[1][2] is None and original[1][4] == 0
-    conn.execute("UPDATE BatchExternalContexts SET origin='instance_copy' WHERE operation_id IN "
-                 "(SELECT id FROM BatchOperations WHERE batch_id='PREP-SOURCE')")
+    assert original[1][2] is None and original[1][4] == 1.5
+    conn.execute(
+        "UPDATE BatchExternalContexts SET origin='instance_copy' WHERE operation_id IN "
+        "(SELECT id FROM BatchOperations WHERE batch_id='PREP-SOURCE')"
+    )
     conn.commit()
-    facts = BatchFactScope(BatchFacts(conn)).load()
+    facts = BatchFactScope(BatchFacts(conn, material_day=date.today().isoformat())).load()
     source_rows = [row for row in facts["BatchOperations"] if row["batch_id"] == "PREP-SOURCE"]
     trace.clear()
     with TransactionManager(conn).transaction():
@@ -47,79 +56,89 @@ def test_batch_copies_prepare_raw_sources_once_and_reuse_across_targets(lineage_
         finally:
             conn.set_trace_callback(None)
     selects = [sql for sql in trace if sql.lstrip().upper().startswith("SELECT")]
-    assert not any("FROM WorkbenchPlanSourceRefs r" in sql or "FROM WorkbenchEntityRefs r" in sql or
-                   "FROM BatchExternalContexts" in sql for sql in selects)
-    assert sum("FROM WorkbenchTemplateLineageEvents" in sql for sql in selects) == 1
-    assert sum("e.event_id AS birth_event_id" in sql for sql in selects) == 6
-    contexts = [dict(row) for row in conn.execute("SELECT c.* FROM BatchExternalContexts c JOIN BatchOperations o "
-                                                "ON o.id=c.operation_id WHERE o.batch_id LIKE 'PREP-%' ORDER BY o.id")]
+    assert not any(
+        "FROM WorkbenchEntityRefs r" in sql or "FROM BatchExternalContexts" in sql
+        for sql in selects
+    )
+    assert sum("FROM WorkbenchTemplateLineageOrigins" in sql for sql in selects) == 1
+    assert not any("WorkbenchTemplateLineageEvents" in sql or "birth_event_id" in sql for sql in trace)
+    contexts = [
+        dict(row)
+        for row in conn.execute(
+            "SELECT c.* FROM BatchExternalContexts c JOIN BatchOperations o "
+            "ON o.id=c.operation_id WHERE o.batch_id LIKE 'PREP-%' ORDER BY o.id"
+        )
+    ]
     assert len(contexts) == 3
-    assert all({key: value for key, value in row.items() if key not in ('operation_id', 'origin')} ==
-               {key: value for key, value in contexts[0].items() if key not in ('operation_id', 'origin')} for row in contexts)
-    assert [row['origin'] for row in contexts] == ['instance_copy', 'instance_copy', 'instance_copy']
-    record_property("lineage_two_targets_source_event_reads", 1)
+    assert all(
+        {key: value for key, value in row.items() if key not in ("operation_id", "origin")}
+        == {key: value for key, value in contexts[0].items() if key not in ("operation_id", "origin")}
+        for row in contexts
+    )
+    assert [row["origin"] for row in contexts] == ["instance_copy", "instance_copy", "instance_copy"]
+    record_property("lineage_two_targets_origin_reads", 1)
 
 
-def test_copy_eligibility_uses_the_source_event_at_birth_after_change_back_withdrawal_and_replacement(lineage_case):
+def test_copy_eligibility_freezes_at_birth_after_change_back_replacement_and_multi_reason_accumulation(lineage_case):
     case, conn = lineage_case, lineage_case.conn
     source_id = create(case, "HISTORY-SOURCE")
     source = instance_for(case, source_id)
 
-    def copy(code):
+    def copy_from(op_id, code):
         with TransactionManager(conn).transaction():
             conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES (?,'P1',10)", (code,))
             writer = TemplateLineageWriter(conn)
             prepared = writer.prepare_instances(
-                [{"id": source_id}],
-                facts=BatchFactScope(BatchFacts(conn)).load(),
+                [{"id": op_id}],
+                facts=BatchFactScope(BatchFacts(conn, material_day=date.today().isoformat())).load(),
                 complete_facts=True,
             )[0]
             return writer.copy_prepared_instance(code, prepared)
 
-    early_first, early_second = copy("HISTORY-EARLY-1"), copy("HISTORY-EARLY-2")
+    early_first, early_second = copy_from(source_id, "HISTORY-EARLY-1"), copy_from(source_id, "HISTORY-EARLY-2")
     with TransactionManager(conn).transaction():
         conn.execute("UPDATE BatchOperations SET setup_hours=2 WHERE id=?", (source_id,))
         conn.execute("UPDATE BatchOperations SET setup_hours=0 WHERE id=?", (source_id,))
-    changed_id = copy("HISTORY-CHANGED")
+    assert origin(case, source_id)["instance_modified"] == 1
+    changed_id = copy_from(source_id, "HISTORY-CHANGED")
+    changed_ref = instance_for(case, changed_id)["operation_ref"]
     assert origin(case, changed_id)["source_eligible"] == 0
+    assert origin(case, changed_id)["instance_modified"] == 0
+
+    # Mutate and retire the unqualified copy to verify all 3 disqualification reasons coexist independently.
+    with TransactionManager(conn).transaction():
+        conn.execute("UPDATE BatchOperations SET unit_hours=5 WHERE id=?", (changed_id,))
+        conn.execute("DELETE FROM BatchOperations WHERE id=?", (changed_id,))
+
     with TransactionManager(conn).transaction():
         conn.execute("DELETE FROM BatchOperations WHERE id=?", (source_id,))
-        conn.execute("INSERT INTO BatchOperations(id,op_code,batch_id,seq,op_type_id,op_type_name,source,setup_hours,unit_hours) "
-                     "VALUES (?,'HISTORY-SOURCE_01','HISTORY-SOURCE',1,'T1','Turning','internal',0,1)", (source_id,))
+        conn.execute(
+            "INSERT INTO BatchOperations(id,op_code,batch_id,seq,op_type_id,op_type_name,source,setup_hours,unit_hours) "
+            "VALUES (?,'HISTORY-SOURCE_01','HISTORY-SOURCE',1,'T1','Turning','internal',0,1)",
+            (source_id,),
+        )
     replacement = instance_for(case, source_id)
     assert replacement["operation_ref"] != source["operation_ref"]
-    replaced_id = copy("HISTORY-REPLACED")
-    assert not list(case.lineage_repo.origin_rows([instance_for(case, replaced_id)["operation_ref"]]))
+    replaced_id = copy_from(source_id, "HISTORY-REPLACED")
+    assert not case.lineage_repo.origin_rows([instance_for(case, replaced_id)["operation_ref"]])
+
     for operation_id in (early_first, early_second):
         facts = lineage(case, operation_id)
         ref = instance_for(case, operation_id)["operation_ref"]
         assert not facts["problems"][ref]
-        assert [row["code"] for row in facts["problems"][source["operation_ref"]]] == [
-            "template_instance_retired", "template_instance_modified"]
-        assert set(facts) == {"available", "origins", "events", "current", "templates", "lineages", "problems"}
-        assert "_prepared" not in json.dumps(facts, default=lambda value: value.__dict__)
+        assert set(facts) == {"origins", "problems"}
+        assert "_prepared" not in json.dumps(facts)
 
-
-def test_streamed_event_budget_uses_remaining_limit_across_real_chunks(lineage_case, monkeypatch):
-    case, conn = lineage_case, lineage_case.conn
-    first_id, second_id = create(case, "LIMIT-FIRST"), create(case, "LIMIT-SECOND")
-    first = instance_for(case, first_id)
-    second = instance_for(case, second_id)
-    with TransactionManager(conn).transaction():
-        conn.execute("UPDATE BatchOperations SET setup_hours=2 WHERE id=?", (first_id,))
-    refs = [first["operation_ref"]] + ["absent-" + str(index) for index in range(299)] + [second["operation_ref"]]
-    trace = []
-    monkeypatch.setattr(template_lineage_query, "MAX_EVENTS", 2)
-    conn.set_trace_callback(trace.append)
-    try:
-        with pytest.raises(WorkbenchCommandRejected) as rejected:
-            template_lineage_query.read_events(case.lineage_repo, refs)
-    finally:
-        conn.set_trace_callback(None)
-    assert rejected.value.code == "query_too_large" and rejected.value.status == 413
-    queries = [sql for sql in trace if "FROM WorkbenchTemplateLineageEvents" in sql]
-    assert len(queries) == 2 and queries[0].endswith("LIMIT 3") and queries[1].endswith("LIMIT 1")
-    assert all("SUM(" not in sql.upper() for sql in queries)
+    combined = template_lineage_query.TemplateLineageQuery(conn).read([source["operation_ref"], changed_ref])
+    assert [row["code"] for row in combined["problems"][source["operation_ref"]]] == [
+        "template_instance_retired",
+        "template_instance_modified",
+    ]
+    assert [row["code"] for row in combined["problems"][changed_ref]] == [
+        "template_copy_source_unqualified",
+        "template_instance_retired",
+        "template_instance_modified",
+    ]
 
 
 def test_calibration_merges_and_sorts_duplicate_exclusion_reasons_across_bound_and_unbound(lineage_case):
@@ -142,16 +161,15 @@ def test_calibration_merges_and_sorts_duplicate_exclusion_reasons_across_bound_a
     assert by_code["production_reports_missing"] == 3
 
 
-def test_single_split_captures_lineage_in_same_snapshot_with_zero_post_lock_sql_and_ancestor_integrity(lineage_case):
+def test_single_split_captures_lineage_in_same_snapshot_with_zero_post_lock_sql(lineage_case):
     case, conn = lineage_case, lineage_case.conn
     ancestor_op_id = create(case, "SPLIT-ANCESTOR", quantity=10)
-    ancestor_ref = instance_for(case, ancestor_op_id)["operation_ref"]
     with TransactionManager(conn).transaction():
         conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('SPLIT-GEN2','P1',6)")
         writer = TemplateLineageWriter(conn)
         gen1_prepared = writer.prepare_instances(
             [{"id": ancestor_op_id}],
-            facts=BatchFactScope(BatchFacts(conn)).load(),
+            facts=BatchFactScope(BatchFacts(conn, material_day=date.today().isoformat())).load(),
             complete_facts=True,
         )[0]
         gen2_op_id = writer.copy_prepared_instance("SPLIT-GEN2", gen1_prepared)
@@ -160,43 +178,7 @@ def test_single_split_captures_lineage_in_same_snapshot_with_zero_post_lock_sql_
         "SELECT ref FROM WorkbenchEntityRefs WHERE kind='batch' AND entity_key='SPLIT-GEN2' AND active=1"
     ).fetchone()[0]
 
-    reader = BatchFacts(conn)
-
-    # 1) Corrupting the live ancestor's batch identity mapping must be caught (not masked as retired).
-    conn.execute("UPDATE WorkbenchEntityRefs SET active=0 WHERE kind='batch' AND entity_key='SPLIT-ANCESTOR'")
-    conn.commit()
-    with reader.detached_read_snapshot(mode="single_split", target_ref=gen2_batch_ref) as bad_ancestor_scope:
-        bad_ancestor_facts = bad_ancestor_scope.load()
-        source_ops = [row for row in bad_ancestor_facts["BatchOperations"] if row["batch_id"] == "SPLIT-GEN2"]
-        with pytest.raises(WorkbenchCommandRejected) as ancestor_err:
-            TemplateLineageWriter(conn).prepare_instances(
-                source_ops, facts=bad_ancestor_facts, complete_facts=False
-            )
-    assert ancestor_err.value.code == "template_lineage_corrupt" and ancestor_err.value.status == 500
-    conn.execute("UPDATE WorkbenchEntityRefs SET active=1 WHERE kind='batch' AND entity_key='SPLIT-ANCESTOR'")
-    conn.commit()
-
-    # 2) Corrupting the live template entity mapping must be rejected with 500 template_lineage_corrupt.
-    conn.execute(
-        "UPDATE WorkbenchEntityRefs SET entity_key='999999' WHERE kind='template_operation' AND entity_key=?",
-        (str(case.template_id),),
-    )
-    conn.commit()
-    with reader.detached_read_snapshot(mode="single_split", target_ref=gen2_batch_ref) as bad_tpl_scope:
-        bad_tpl_facts = bad_tpl_scope.load()
-        source_ops = [row for row in bad_tpl_facts["BatchOperations"] if row["batch_id"] == "SPLIT-GEN2"]
-        with pytest.raises(WorkbenchCommandRejected) as tpl_err:
-            TemplateLineageWriter(conn).prepare_instances(
-                source_ops, facts=bad_tpl_facts, complete_facts=False
-            )
-    assert tpl_err.value.code == "template_lineage_corrupt" and tpl_err.value.status == 500
-    conn.execute(
-        "UPDATE WorkbenchEntityRefs SET entity_key=? WHERE kind='template_operation' AND entity_key='999999'",
-        (str(case.template_id),),
-    )
-    conn.commit()
-
-    # 3) After detached_read_snapshot exits its read tx, prepare_instances runs 0 SQL and ignores concurrent writes.
+    reader = BatchFacts(conn, material_day=date.today().isoformat())
     with reader.detached_read_snapshot(mode="single_split", target_ref=gen2_batch_ref) as split_scope:
         conn.execute("UPDATE Batches SET quantity=99 WHERE batch_id='SPLIT-ANCESTOR'")
         conn.commit()
@@ -214,6 +196,5 @@ def test_single_split_captures_lineage_in_same_snapshot_with_zero_post_lock_sql_
         finally:
             conn.set_trace_callback(None)
         assert trace == []
-        assert captured_lineage["problems"][ancestor_ref] == []
         assert captured_lineage["problems"][gen2_ref] == []
         assert len(prepared) == 1 and prepared[0].source_eligible is True

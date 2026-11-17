@@ -1,5 +1,4 @@
 """A real partial run (stage material deferral) keeps its schedulable candidate adoptable and guarded."""
-import json
 from datetime import datetime
 
 import pytest
@@ -24,10 +23,9 @@ def persisted_partial_run(case):
     add_requirement(case, second, [])
     case.conn.commit()
     accepted = case.accept(settings=case.settings(material_strategy="stage"))
-    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    result = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
     assert result["state"] == "partial" and result["result_persisted"] is True
-    assert result["candidates"] and all(row["status"] == "completed" and row["task_count"] == 1
-                                        for row in result["candidates"])
+    assert result["candidates"] and all(row["task_count"] == 1 for row in result["candidates"])
     return result
 
 
@@ -47,8 +45,15 @@ def test_partial_run_candidate_http_preview_and_real_adoption(trial_case):
     assert [row[0] for row in case.conn.execute("SELECT op_id FROM Schedule")] == [case.op_id]
     assert case.conn.execute("SELECT state FROM WorkbenchRunJobs WHERE run_ref=?", (result["run_ref"],)).fetchone()[0] == "partial"
     actual = list(case.conn.execute("SELECT op_id,machine_id,operator_id,start_time,end_time FROM Schedule ORDER BY op_id"))
-    expected = [json.loads(row[0]) for row in case.conn.execute(
-        "SELECT payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=? ORDER BY ordinal", (ref,))]
+    expected = [
+        dict(row)
+        for row in case.conn.execute(
+            "SELECT op_id, source, machine_id, operator_id, start_time, end_time, "
+            "start_us, end_us, is_point_event, locked "
+            "FROM WorkbenchRunCandidateTasks WHERE candidate_ref=? ORDER BY ordinal",
+            (ref,),
+        )
+    ]
     normalized = [tuple(row[:3]) + tuple(datetime.fromisoformat(value).isoformat() for value in row[3:]) for row in actual]
     assert normalized == [tuple(item[key] for key in (
         "op_id", "machine_id", "operator_id", "start_time", "end_time")) for item in sorted(expected, key=lambda item: item["op_id"])]

@@ -1,12 +1,12 @@
 """Host-owned registration: import and call once, without changing global __init__."""
 
+from .system_actions import system_config_save, system_file_action, system_job_result, system_result
+from .system_backup_export import system_backup_export
+from .system_exports import system_log_export
+from .system_reads import system_collection, system_config_read
+
 
 def register_system_maintenance_routes(bp):
-    from .system_actions import system_config_save, system_file_action, system_job_result, system_result
-    from .system_backup_export import system_backup_export
-    from .system_exports import system_log_export
-    from .system_reads import system_collection, system_config_read
-
     base = "/api/workbench/v1/system"
     for kind in ("backups", "logs"):
         bp.add_url_rule(base + "/" + kind, endpoint="system_" + kind + "_read", view_func=system_collection,

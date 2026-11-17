@@ -2,6 +2,8 @@
 
 import os
 import uuid
+from datetime import datetime
+from typing import Callable
 
 from core.infrastructure.backup import BackupManager, maintenance_window
 from core.infrastructure.safe_files import remove_fixed_file
@@ -22,13 +24,13 @@ def _is_within_directory(path, directory):
 
 
 class SystemFileWorkspace:
-    def __init__(self, *, database_path, backup_dir, journal_dir, logger):
-        self.database_path, self.backup_dir, self.logger = database_path, backup_dir, logger
+    def __init__(self, *, database_path, backup_dir, journal_dir, logger, clock: Callable[[], datetime]):
+        self.database_path, self.backup_dir, self.logger, self.clock = database_path, backup_dir, logger, clock
         self.journal = SystemMaintenanceJournal(journal_dir, database_path)
         self._restore_source = None
         root, backups = os.path.realpath(journal_dir), os.path.realpath(backup_dir)
-        if _is_within_directory(root, backups) or root == os.path.dirname(os.path.realpath(database_path)):
-            raise WorkbenchCommandRejected("maintenance_unavailable", "维护记录必须放在单独的维护目录里，不能放在备份目录或数据库所在的文件夹。", 503)
+        if _is_within_directory(root, backups):
+            raise WorkbenchCommandRejected("maintenance_unavailable", "维护记录必须放在单独的维护目录里，不能放在备份目录里。", 503)
 
     def selected_path(self, selected):
         name = selected["filename"]
@@ -56,15 +58,15 @@ class SystemFileWorkspace:
         with maintenance_window(self.database_path, logger=self.logger, action="workbench_" + action):
             old = self.journal.admission(request_key)
             if old:
-                row, replayed = self.journal.begin(request_key, action, intent, previous=old)
+                row, replayed = self.journal.begin(request_key, action, intent, now=self.clock(), previous=old)
                 return self.journal.public(row, replayed)
             selected = guard()
             path = self.selected_path(selected) if selected else None
             target = {"filename": selected["filename"], "signature": selected["signature"]} if path else None
             # Intent and target identity are durable before any destructive operation.
-            row, _ = self.journal.begin(request_key, action, intent, previous=None)
+            row, _ = self.journal.begin(request_key, action, intent, now=self.clock(), previous=None)
             verification = {**row["source_verification"], "target": "not_checked"}
-            self.journal.record(row, "checking", target=target, source_verification=verification)
+            self.journal.record(row, "checking", now=self.clock(), target=target, source_verification=verification)
             return self._finish(row, action, path, None, audit)
 
     def prepare_restore(self, *, request_key, intent, guard):
@@ -72,15 +74,15 @@ class SystemFileWorkspace:
         with maintenance_window(self.database_path, logger=self.logger, action="restore_accept"):
             previous = self.journal.admission(request_key)
             if previous:
-                row, replayed = self.journal.begin(request_key, "restore", intent, previous=previous)
+                row, replayed = self.journal.begin(request_key, "restore", intent, now=self.clock(), previous=previous)
                 return row, replayed, None
             selected = guard()
             path = self.selected_path(selected)
             target, original = self._capture_source(path, selected["signature"])
-            row, _ = self.journal.begin(request_key, "restore", intent, previous=None)
+            row, _ = self.journal.begin(request_key, "restore", intent, now=self.clock(), previous=None)
             self._restore_source = (row["job_ref"], path, original)
             verification = {**row["source_verification"], "target": "captured"}
-            self.journal.record(row, "checking", target=target, restart_required=True,
+            self.journal.record(row, "checking", now=self.clock(), target=target, restart_required=True,
                                 source_verification=verification,
                                 database_origin="unconfirmed", code="host_draining",
                                 message="恢复已接收，正在停止当前操作和排产；请不要关闭页面，稍后在本页查看结果。")
@@ -102,7 +104,7 @@ class SystemFileWorkspace:
             raise
         except Exception:
             self.logger.exception("系统文件维护结果待核查 job_ref=%s", row["job_ref"])
-            self.journal.record(row, "recovery_required", code="storage_failure",
+            self.journal.record(row, "recovery_required", now=self.clock(), code="storage_failure",
                                 message="维护过程中磁盘出错，这次结果还不能确认。请不要再操作，联系维护人员。")
             return self.journal.public(row)
         persisted = False
@@ -119,7 +121,7 @@ class SystemFileWorkspace:
                 evidence["data_context_before"] = restored_context_ref(self.journal.database_scope, self.journal.records())
         if confirm_host is not None:
             confirm_host()
-        self.journal.record(row, state, code=code, message=message, audit_persisted=persisted, **evidence)
+        self.journal.record(row, state, now=self.clock(), code=code, message=message, audit_persisted=persisted, **evidence)
         return self.journal.public(row)
 
     def _perform(self, row, action, path, restore_runner):
@@ -129,13 +131,13 @@ class SystemFileWorkspace:
             captured = self._restore_source
             if captured is None or captured[0] != row["job_ref"] or captured[1] != path:
                 raise RuntimeError("本次恢复缺少已预检的原始来源内容。")
-            manager = SystemRestoreManager(journal=self.journal, record=row, db_path=self.database_path,
+            manager = SystemRestoreManager(journal=self.journal, record=row, clock=self.clock, db_path=self.database_path,
                                            backup_dir=self.backup_dir, logger=self.logger, source_content=captured[2])
             try:
                 outcome = restore_outcome(restore_runner(manager, path))
                 if outcome[0] in ("succeeded", "rolled_back"):
                     verification = {**row["source_verification"], "sqlite_integrity": "passed"}
-                    self.journal.record(row, row["state"], source_verification=verification)
+                    self.journal.record(row, row["state"], now=self.clock(), source_verification=verification)
                 return outcome
             finally:
                 self._restore_source = None
@@ -145,6 +147,6 @@ class SystemFileWorkspace:
         manager = BackupManager(self.database_path, self.backup_dir, logger=self.logger)
         path = manager.backup(suffix="manual_" + uuid.uuid4().hex[:12])
         verification = {**row["source_verification"], "target": "verified", "sqlite_integrity": "passed"}
-        self.journal.record(row, "checking", target={"filename": os.path.basename(path), "signature": backup_signature(path)},
+        self.journal.record(row, "checking", now=self.clock(), target={"filename": os.path.basename(path), "signature": backup_signature(path)},
                             source_verification=verification)
         return "succeeded", "backup_verified", "备份已新增并通过完整性检查；还没有做过恢复演练。"

@@ -58,8 +58,7 @@ class WorkbenchProcessMutationService:
         return bool(prepared or supplier_updates or grouped)
 
     def _identities(self, facts):
-        return {row["ref"]: WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"],
-                row["revision"], bool(row["active"])) for row in facts["identities"]}
+        return {row["ref"]: WorkbenchEntityIdentity.from_row(row) for row in facts.raw.identities}
 
     def prepare_checked(self, action, payload, checked, *, facts):
         """Own the actual change prepared from this command's current facts."""
@@ -73,7 +72,7 @@ class WorkbenchProcessMutationService:
         _, part, operations, groups, workflow = checked
         stage = action[:-len("_confirm")]
         if stage == "route":
-            route_facts = ProcessRouteFacts(facts)
+            route_facts = ProcessRouteFacts(facts.raw, references=facts.references)
             identities = route_facts.identities
         else:
             previous = "route" if stage in ("source", "groups") else "source"
@@ -81,13 +80,12 @@ class WorkbenchProcessMutationService:
                 raise WorkbenchCommandRejected("stage_not_ready", "前置阶段尚未确认或已变化，请先重新核对。")
             identities = None if stage == "hours" else self._identities(facts)
         if stage == "groups":
-            catalog = source_catalog(facts["references"])
+            catalog = source_catalog(facts.references)
             changes, affected = prepare_groups(payload, operations, groups, identities, catalog=catalog)
             names = {key: row["name"] for key, row in catalog[1].items()}
             auxiliary = group_changes(changes, affected, operations, names=names)
         elif stage == "hours":
-            confirmations = {code: state["operations"] for code, state in facts["workflow"].items()}
-            changes = prepare_hours(payload, operations, groups, confirmations=confirmations)
+            changes = prepare_hours(payload, operations, groups, workflow=facts.workflow)
             affected, auxiliary = [], None
         elif stage == "route":
             changes, sequences = prepare_route(
@@ -99,12 +97,38 @@ class WorkbenchProcessMutationService:
             affected, auxiliary = affected_group_rows(groups, operations, sequences), None
         else:
             changes = prepare_source(payload, operations, identities,
-                                     catalog=source_catalog(facts["references"]))
+                                     catalog=source_catalog(facts.references))
             affected, auxiliary = source_group_changes(changes, operations, groups)
-        return PreparedProcessChange(action, checked, changes, affected, auxiliary, identities, facts["references"])
+        return PreparedProcessChange(action, checked, changes, affected, auxiliary, identities, facts.references)
 
-    def apply_prepared(self, prepared):
-        """Apply the held change directly inside the command's write lock."""
+    def _apply_route_or_source(self, stage, part, operations, prepared) -> bool:
+        def default_catalog():
+            return default_suppliers(prepared.references)
+
+        part_no = part["part_no"]
+        discard_groups(self.conn, part_no, prepared.affected)
+        if stage == "route":
+            return apply_route(
+                self.conn,
+                part,
+                operations,
+                prepared.changes,
+                prepared.identities,
+                default_catalog_reader=default_catalog,
+                discarded_groups=bool(prepared.affected),
+            )
+        from core.services.process.workflow_state import reset_part_confirmations_from
+
+        changed = self._apply_source_changes(
+            part_no, prepared.changes, operations, prepared.auxiliary, default_catalog_reader=default_catalog
+        ) or bool(prepared.affected)
+        if changed:
+            reset_part_confirmations_from(self.conn, part_no, stage)
+        return changed
+
+    def apply_prepared(self, prepared, *, confirmed_at):
+        """Apply the held change directly inside the command's write lock; ``confirmed_at`` is the command's one
+        confirmation stamp."""
         if not self.conn.in_transaction:
             raise RuntimeError("工艺动作必须在外层BEGIN IMMEDIATE命令事务内执行。")
         from core.services.process.workflow_state import record_confirmation
@@ -115,25 +139,16 @@ class WorkbenchProcessMutationService:
             changed = apply_groups(self.conn, part["part_no"], prepared.changes, prepared.affected, operations,
                                    changes=prepared.auxiliary)
             if changed and workflow["source"]["state"] == "confirmed":
-                record_confirmation(self.conn, part["part_no"], "source")
+                record_confirmation(self.conn, part["part_no"], "source", confirmed_at=confirmed_at)
             return WorkbenchCommandOutcome("committed" if changed else "unchanged", {
                 "entity_ref": identity.ref, "business_code": part["part_no"], "stage": "groups"})
-        if stage == "hours":
-            changed = apply_prepared_hours(self.conn, prepared.changes)
-        else:
-            def default_catalog():
-                return default_suppliers(prepared.references)
-
-            discard_groups(self.conn, part["part_no"], prepared.affected)
-            if stage == "route":
-                changed = apply_route(self.conn, part, operations, prepared.changes, prepared.identities,
-                                      default_catalog_reader=default_catalog) or bool(prepared.affected)
-            else:
-                changed = self._apply_source_changes(part["part_no"], prepared.changes, operations, prepared.auxiliary,
-                                                     default_catalog_reader=default_catalog) or bool(prepared.affected)
+        changed = (
+            apply_prepared_hours(self.conn, prepared.changes)
+            if stage == "hours"
+            else self._apply_route_or_source(stage, part, operations, prepared)
+        )
         result = "unchanged" if not changed and workflow[stage]["state"] == "confirmed" else "committed"
-        # Route confirmation also retires records for removed operations.
-        if result != "unchanged" or stage == "route":
-            record_confirmation(self.conn, part["part_no"], stage)
+        if result != "unchanged":
+            record_confirmation(self.conn, part["part_no"], stage, confirmed_at=confirmed_at)
         return WorkbenchCommandOutcome(result, {"entity_ref": identity.ref,
                                                 "business_code": part["part_no"], "stage": stage})

@@ -3,8 +3,6 @@
 import json
 from datetime import datetime
 
-import pytest
-
 from core.models.workbench_plan_scope import PlanReadScope
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
@@ -45,15 +43,22 @@ def test_fractional_chain_all_candidates_adopt_reopen_and_delivery(candidate_cas
         assert tasks[2]["start"] >= tasks[1]["end"]
         assert any(datetime.fromisoformat(row["end"]).microsecond for row in tasks)
         delivery, = workspace["delivery_risks"]["items"]
-        assert delivery["risk"] == "on_time" and delivery["invalid_task_count"] == 0
+        assert delivery["risk"] == "on_time"
         assert delivery["planned_finish"] == max(row["end"] for row in tasks)
         analysis, _ = read_candidate_analysis(case.conn, ref, bind_snapshot=lambda scope, state: state)
         assert analysis["metrics"]["overdue_count"]["value"] == 0
         assert analysis["metrics"]["total_tardiness_hours"]["value"] == 0
         assert analysis["baseline"]["available"] is False
     ref = selection["selected_candidate_ref"]
-    expected = [json.loads(row[0]) for row in case.conn.execute(
-        "SELECT payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=? ORDER BY ordinal", (ref,))]
+    expected = [
+        dict(row)
+        for row in case.conn.execute(
+            "SELECT op_id, source, machine_id, operator_id, start_time, end_time, "
+            "start_us, end_us, is_point_event, locked "
+            "FROM WorkbenchRunCandidateTasks WHERE candidate_ref=? ORDER BY ordinal",
+            (ref,),
+        )
+    ]
     preview = svc.preview(ref)
     result = svc.adopt(ref, preview["write_context"]["write_token"], "subsecond-adopt-00001", INTENT)
     plan = result["data"]["official_plan"]

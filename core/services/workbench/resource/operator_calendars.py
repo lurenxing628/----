@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import calendar as calendar_module
 from datetime import date, datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import in_transaction_context
@@ -44,12 +44,10 @@ def _date_key(value: Any) -> str:
 
 
 class WorkbenchOperatorCalendarService:
-    def __init__(self, conn, operator_code: str, logger=None, *, clock: Callable[[], datetime] = datetime.now,
-                 calendar_admin: Optional[CalendarAdmin] = None):
+    def __init__(self, conn, operator_code: str, logger=None, *, calendar_admin: Optional[CalendarAdmin] = None):
         self.conn = conn
         self.operator_code = operator_code
         self.logger = logger
-        self._clock = clock
         self._admin = CalendarAdmin(conn, logger=logger) if calendar_admin is None else calendar_admin
         self._engine: Optional[CalendarEngine] = None
         self._query = WorkbenchCalendarQueryRepository(conn, logger=logger)
@@ -69,12 +67,6 @@ class WorkbenchOperatorCalendarService:
     @staticmethod
     def normalize(action: str, payload: Any) -> Dict[str, Any]:
         return normalize_operator_calendar_input(action, payload)
-
-    def _now(self) -> datetime:
-        now = self._clock()
-        if not isinstance(now, datetime) or now.tzinfo is not None:
-            raise ValueError("日历时钟必须使用无时区的工厂本地时间。")
-        return now.replace(microsecond=0)
 
     # ---------- 读 ----------
 
@@ -119,13 +111,13 @@ class WorkbenchOperatorCalendarService:
         state["periods"] = None if row is None else self._base_engine().decoded_periods_for_json(row["periods_json"])
         return state
 
-    def month(self, year: int, month: int) -> Dict[str, Any]:
+    def month(self, year: int, month: int, *, as_of: datetime) -> Dict[str, Any]:
         """一个月的个人日历。没有单独设置的日期只回 explicit=False，不替排产猜它当天怎么上班。"""
         if type(year) is not int or type(month) is not int or not 1 <= year <= 9999 or not 1 <= month <= 12:
             raise ValidationError("年月不合法，月份应为 1 至 12。", field="month")
         first = date(year, month, 1)
         count = calendar_module.monthrange(year, month)[1]
-        last, now = first.replace(day=count), self._now()
+        last = first.replace(day=count)
         if not self.conn.in_transaction:
             raise RuntimeError("个人日历读取必须在快照事务中执行。")
         states = self.range_states(first.isoformat(), last.isoformat())
@@ -135,11 +127,11 @@ class WorkbenchOperatorCalendarService:
             day = first + timedelta(days=offset)
             state = self._listed_state(day.isoformat(), states)
             days.append({**state, "day": day.day, "weekday": day.weekday(),
-                         "is_weekend": day.weekday() >= 5, "is_today": day == now.date()})
+                         "is_weekend": day.weekday() >= 5, "is_today": day == as_of.date()})
         cells = [None] * first.weekday() + days
         cells += [None] * (-len(cells) % 7)
         return {"operator_code": self.operator_code, "year": year, "month": month,
-                "as_of": now.isoformat(timespec="seconds"), "time_basis": "factory_local",
+                "as_of": as_of.isoformat(timespec="seconds"), "time_basis": "factory_local",
                 "days": days, "cells": cells, "default_periods": default_periods,
                 "previous_month": self._adjacent(year, month, -1), "next_month": self._adjacent(year, month, 1),
                 "stats": {"configured": sum(day["explicit"] for day in days),

@@ -80,7 +80,7 @@ def test_real_registration_public_preview_and_committed_restart_replay(client, k
     if category:
         assert preview["category"] == category
     row = preview["rows"][0]
-    assert set(row) == {"row", "business_code", "entity_ref", "action", "result", "before", "after", "changes", "errors", "requires_confirmation", "reference_count", "reference_fields"}
+    assert set(row) == {"row", "business_code", "entity_ref", "action", "result", "before", "after", "changes", "errors", "notes", "requires_confirmation", "reference_count", "reference_fields"}
     assert set(row["after"]) <= {item["key"] for item in preview["columns"]}
     assert "entity_key" not in json.dumps(preview) and "revision" not in json.dumps(preview)
     first = command(client, kind, preview)
@@ -143,7 +143,7 @@ def test_export_file_is_written_after_the_read_snapshot_is_released(client, monk
     from core.services.workbench.material import files as material_files
     from core.services.workbench.resource import files as resource_files
     from tests.workbench.material_actions_api_support import export_preview, register_actions, seed
-    from web.routes.workbench import material_actions_export
+    from web.routes.workbench import material_actions_export, resource_file_exports
 
     register_actions(client.application)
     assert command(client, "machine", new_preview(client, "machine")).status_code == 200
@@ -159,7 +159,7 @@ def test_export_file_is_written_after_the_read_snapshot_is_released(client, monk
         monkeypatch.setattr(module, name, wrapped)
 
     spy(resource_files.WorkbenchResourceFileService, "export_rows", "read")
-    spy(resource_files, "write_resource_file", "write")
+    spy(resource_file_exports, "write_resource_file", "write")
     spy(material_files.WorkbenchMaterialFileService, "export_rows", "read")
     spy(material_actions_export, "write_material_file", "write")
     listed = client.get(BASE + "/entities/machine", query_string={"size": 200})
@@ -184,9 +184,10 @@ def test_resource_export_shares_captured_facts_for_preview_and_csv(client, monke
     with database(client) as conn:
         conn.executemany("INSERT INTO OpTypes(op_type_id,name,category) VALUES (?,?,'internal')",
                          [("EXPORT-T1", "Turning"), ("EXPORT-T2", "Milling")])
-        conn.executemany("INSERT INTO Machines(machine_id,name,op_type_id,status) VALUES (?,?,'EXPORT-T1','active')",
+        conn.executemany("INSERT INTO Machines(machine_id,name,status) VALUES (?,?,'active')",
                          [("EXPORT-M1", "Lathe"), ("EXPORT-M2", "Second")])
-        conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('EXPORT-M1','EXPORT-T2')")
+        conn.executemany("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES (?,?)",
+                         [("EXPORT-M1", "EXPORT-T1"), ("EXPORT-M2", "EXPORT-T1"), ("EXPORT-M1", "EXPORT-T2")])
         conn.execute("INSERT INTO WorkbenchMachineGroups(group_id,name) VALUES ('EXPORT-G1','Group')")
         conn.execute("INSERT INTO WorkbenchMachineGroupMembers(machine_id,group_id) VALUES ('EXPORT-M1','EXPORT-G1')")
         conn.commit()
@@ -254,9 +255,11 @@ def test_filtered_export_without_column_filters_preserves_toolbar_sort_order(cli
     with database(client) as conn:
         conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('EXPORT-T1','Turning','internal')")
         conn.executemany(
-            "INSERT INTO Machines(machine_id,name,op_type_id,status) VALUES (?,?,'EXPORT-T1','active')",
+            "INSERT INTO Machines(machine_id,name,status) VALUES (?,?,'active')",
             [("EXPORT-M1", "Zulu Lathe"), ("EXPORT-M2", "Alpha Mill")],
         )
+        conn.executemany("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES (?,'EXPORT-T1')",
+                         [("EXPORT-M1",), ("EXPORT-M2",)])
         conn.commit()
     scope = {"sort": sort, "direction": direction}
     listed = client.get(BASE + "/entities/machine", query_string={**scope, "size": 200})
@@ -330,6 +333,20 @@ def test_resource_work_type_errors_use_the_same_kind_specific_column_label(clien
     assert label in error["message"] and other_label not in error["message"]
 
 
+def test_supplier_import_default_days_admit_the_external_days_range(client):
+    # 导入与供应商表单共用同一准入：默认周期 (0, 36500] 天，超出或不大于 0 这一行就不导入。
+    rows = [["R1", "Resource 1", "可用", "36500"], ["R2", "Resource 2", "可用", "36500.5"],
+            ["R3", "Resource 3", "可用", "0"], ["R4", "Resource 4", "可用", "-1"]]
+    response = upload(client, "supplier", rows, headers=["business_code", "label", "status", "default_days"])
+    assert response.status_code == 200, response.get_data(as_text=True)
+    data = response.get_json()["data"]
+    first, *refused = data["rows"]
+    assert first["errors"] == [] and first["after"]["default_days"] == 36500
+    for row in refused:
+        assert [error["message"] for error in row["errors"]] == ["默认周期必须大于 0 天且不超过 36500 天（100 年）。"]
+    assert data["can_confirm"] is False
+
+
 def test_op_type_import_marks_in_file_duplicate_labels_across_existing_and_conflicting_rows(client):
     assert command(client, "op_type", new_preview(client, "op_type", "external")).status_code == 200
     response = upload(
@@ -384,9 +401,10 @@ def test_resource_import_matches_saved_records_by_exact_business_code_and_reject
             [("G-PAD", "Trimmed Group"), (" G-PAD ", "Spaced Group")],
         )
         conn.executemany(
-            "INSERT INTO Machines(machine_id,name,op_type_id,status) VALUES (?,?,'OT-PAD','active')",
+            "INSERT INTO Machines(machine_id,name,status) VALUES (?,?,'active')",
             [("M1", "Trimmed Machine"), (" M1 ", "Spaced Machine")],
         )
+        conn.executemany("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES (?,'OT-PAD')", [("M1",), (" M1 ",)])
         conn.commit()
 
     # 不存在的带首尾空格新编号必须拒绝，存量带首尾空格编号精确匹配自身而不串改无空格兄弟
@@ -489,10 +507,11 @@ def test_resource_import_allows_keeping_existing_bound_work_type_when_pruning_li
             ],
         )
         conn.execute(
-            "INSERT INTO Machines(machine_id,name,op_type_id,status) VALUES ('R-LEGACY','Machine','LEGACY-EXT','active')"
+            "INSERT INTO Machines(machine_id,name,status) VALUES ('R-LEGACY','Machine','active')"
         )
-        conn.execute(
-            "INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('R-LEGACY','VALID-INT')"
+        conn.executemany(
+            "INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('R-LEGACY',?)",
+            [("LEGACY-EXT",), ("VALID-INT",)],
         )
         conn.execute(
             "INSERT INTO Operators(operator_id,name,status) VALUES ('R-LEGACY','Operator','active')"

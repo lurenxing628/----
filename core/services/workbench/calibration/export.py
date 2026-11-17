@@ -7,7 +7,8 @@ from core.models.report_export import ReportExport
 from core.models.workbench_calibration import MAX_EXPORT_BYTES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.common.excel_templates import sanitize_export_cell
-from core.services.report.exporters.xlsx import _append_write_only_row, close_workbook
+from core.services.report.exporters.xlsx import append_write_only_row, close_workbook
+from core.services.workbench.calibration.table import SOURCE_LABELS
 from core.services.workbench.facts.export_names import export_stamp
 from core.services.workbench.facts.table_cells import number_text
 from core.shared.strict_json import canonical_json
@@ -34,7 +35,7 @@ def _cell(value):
 
 
 def _export_values(rows, scope):
-    values = [[_cell({"internal": "自制", "external": "外协"}.get(row["source"], "未确认") if key == "source" else row[key])
+    values = [[_cell(SOURCE_LABELS[row["source"]] if key == "source" else row[key])
                for key, _ in COLUMNS] + [scope] for row in rows]
     if sum(len(str(value).encode("utf-8")) for row in values for value in row) > MAX_EXPORT_BYTES:
         raise WorkbenchCommandRejected("export_too_large", "完整导出超过 16 MB，请缩小范围后重试；系统没有截断内容。", 413)
@@ -60,12 +61,12 @@ def _xlsx(values, headers, output, metadata_rows):
     try:
         sheet = workbook.create_sheet("校准建议")
         sheet.freeze_panes = "A2"
-        _append_write_only_row(sheet, headers, is_header=True)
+        append_write_only_row(sheet, headers, is_header=True)
         for row in values:
-            _append_write_only_row(sheet, row)
+            append_write_only_row(sheet, row)
         metadata = workbook.create_sheet("范围与计算方式")
         for row in metadata_rows:
-            _append_write_only_row(metadata, list(row))
+            append_write_only_row(metadata, list(row))
         workbook.save(output)
         saved = True
     finally:

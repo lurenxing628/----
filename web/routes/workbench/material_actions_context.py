@@ -2,18 +2,12 @@
 
 from __future__ import annotations
 
-import re
-from functools import wraps
-
-from werkzeug.exceptions import HTTPException
-
-from core.errors import AppError
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_material_file import scope_request
 from core.services.workbench.messages import local_created_at
+from core.shared.key_sets import keys_conform
 
-from .api_responses import api_endpoint
-from .request_json import read_json_body
+from .api_responses import worded_read_endpoint
+from .request_json import BodyTexts, opaque_ref, read_json_body, rejecter
 from .write_context import preview_write_context, retain_action_preview
 
 PREVIEW_SCOPE = "workbench-material-preview-v1"
@@ -21,42 +15,28 @@ EXPORT_SCOPE = "workbench-material-export-v1"
 EXPIRED_MESSAGE = "预检结果已过期，物料没有改动，范围也没有自动更换。请点「重新预检」。"
 
 
-def read_endpoint(function):
-    """POST previews are reads too; unexpected failures cannot mean committed."""
-    @wraps(function)
-    def wrapped(*args, **kwargs):
-        try:
-            return function(*args, **kwargs)
-        except (AppError, HTTPException, WorkbenchCommandRejected):
-            raise
-        except Exception as exc:
-            raise WorkbenchCommandRejected("storage_failure", "物料预检或下载没有完成，数据没有改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500) from exc
-    return api_endpoint(wrapped, readonly=True)
+read_endpoint = worded_read_endpoint("物料预检或下载没有完成，数据没有改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。")
 
 
-_INCOMPLETE_BODY = "提交的内容不完整或有多余项，物料没有改动。请刷新页面后重新填写。"
+STALE_REF_MESSAGE = "这次操作的编号已失效，物料没有改动。请关掉弹窗后重新打开。"
+CONFIRM_MISMATCH_MESSAGE = "只能确认刚才预检过的那一批，物料没有改动。请点「重新预检」。"
+# Duplicate keys share the syntax-error text rather than silently taking the last scope or ref.
+BODY = BodyTexts(transport="提交的内容格式不正确，物料没有改动。请刷新页面后重新填写。",
+                 malformed="提交的内容格式不正确或有重复项，物料没有改动。请刷新页面后重新填写。",
+                 incomplete="提交的内容不完整或有多余项，物料没有改动。请刷新页面后重新填写。")
 
 
 def json_body(required, optional=()):
-    # Duplicate keys share the syntax-error text rather than silently taking the last scope or ref.
-    body = read_json_body(transport="提交的内容格式不正确，物料没有改动。请刷新页面后重新填写。",
-                          malformed="提交的内容格式不正确或有重复项，物料没有改动。请刷新页面后重新填写。",
-                          incomplete=_INCOMPLETE_BODY)
-    if not set(required) <= set(body) or set(body) - set(required) - set(optional):
-        raise WorkbenchCommandRejected("invalid_input", _INCOMPLETE_BODY, 400)
+    body = read_json_body(BODY)
+    if not keys_conform(body, required, optional):
+        rejecter(BODY.incomplete)()
     return body
-
-
-def opaque_ref(value):
-    if type(value) is not str or re.fullmatch(r"[A-Za-z0-9_-]{32}", value) is None:
-        raise WorkbenchCommandRejected("invalid_input", "这次操作的编号已失效，物料没有改动。请关掉弹窗后重新打开。", 400)
-    return value
 
 
 def scope_input(body):
     """The viewed list's validated request, its read-binding scope and snapshot token."""
     request = scope_request(body["scope"], size=body.get("page_size", 20))
-    return request, request.scope(), opaque_ref(body["snapshot_ref"])
+    return request, request.scope(), opaque_ref(body["snapshot_ref"], STALE_REF_MESSAGE)
 
 
 def issue_preview(preview):
@@ -96,8 +76,7 @@ def _public_after(row, before):
     if row["action"] != "delete" and row["input"] is not None:
         payload = row["input"]
         after = dict(before or {})
-        if "fields" in payload:
-            after.update(payload["fields"])
+        after.update(payload["fields"])
         after.update({key: payload[key] for key in ("business_code", "label") if key in payload})
         return after
     return None
@@ -109,9 +88,9 @@ def public_row(row):
     after = _public_after(row, before)
     identity = expected["identity"] if expected else None
     return {"row": row["row"], "business_code": row["business_code"],
-            "entity_ref": row.get("entity_ref") or (identity["ref"] if identity else None),
+            "entity_ref": row["entity_ref"] or (identity["ref"] if identity else None),
             "action": row["action"], "result": row["result"], "before": before, "after": after,
             "changes": {_PUBLIC_FIELD_NAMES[key]: value for key, value in row["changes"].items()},
-            "errors": row["errors"], "requires_confirmation": row["requires_confirmation"],
-            "reference_fields": row.get("reference_fields", []),
+            "errors": row["errors"], "notes": row["notes"], "requires_confirmation": row["requires_confirmation"],
+            "reference_fields": row["reference_fields"],
             "reference_count": len(expected["requirements"]) if expected else 0}

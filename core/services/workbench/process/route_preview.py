@@ -25,7 +25,6 @@ from core.services.process.route_parser_tokens import (
     route_format_errors,
     route_tokens,
 )
-from core.shared.strict_parse import is_exact_non_negative_number
 
 
 def _segment_ambiguities(segment):
@@ -123,14 +122,9 @@ def _structured_name_warnings(rows, diagnostics):
 
 def _persisted_refs(identities, keys):
     keys = set(keys)
-    if any(key not in identities or type(identities[key].ref) is not str or
-           re.fullmatch(r"[0-9a-f]{48}", identities[key].ref) is None for key in keys):
+    if any(key not in identities for key in keys):
         raise WorkbenchCommandRejected("storage_failure", "工艺参考资料找不到编号，或者编号无效，请联系维护人员核对资料。", 500)
     return {key: identities[key].ref for key in keys}
-
-
-def _positive_days(value):
-    return float(value) if is_exact_non_negative_number(value, positive=True) else None
 
 
 def _append_operation_diagnostics(operations, diagnostics):
@@ -219,10 +213,6 @@ class ProcessRoutePreviewService:
             result["issues"].append({"code": "unknown_op_type", "message": "这个工种还没登记，工艺路线可以先确认；归属要先建档，暂时不能据此排产。"})
             return result
         result["op_type_ref"] = op_refs[ot.op_type_id]
-        if ot.category not in ("internal", "external", "both"):
-            result["basis"] = "已登记工种的类别无效，系统不猜是自制还是外协。"
-            result["issues"].append({"code": "invalid_op_type_category", "message": "工种类别既不是自制也不是外协，归属还要核对。"})
-            return result
         result["source_suggestion"] = "internal" if ot.category == "both" else ot.category
         result["basis"] = "该工种自制和外协都可，当前建议自制，请在归属步骤确认。" if ot.category == "both" else "按工种类别匹配；可在归属步骤修改。"
         if ot.category == "external":
@@ -239,11 +229,10 @@ class ProcessRoutePreviewService:
         raw = candidates[name][key]
         if key not in suppliers or type(suppliers[key]["name"]) is not str:
             raise WorkbenchCommandRejected("storage_failure", "建议的供应商名称缺失或无效。请到资料总览核对。", 500)
+        # 供应商默认周期由表约束定为必填且在 (0, 36500] 天，直接作为本序周期建议。
         result.update(supplier_ref=supplier_refs[key], supplier_label=suppliers[key]["name"],
-                      external_days=_positive_days(raw["default_days"]))
+                      external_days=raw["default_days"])
         if len(candidates[name]) > 1:
             result["basis"] += "供应商按编号排序选择最后一家。"
             result["issues"].append({"code": "multiple_supplier_candidates",
                                      "message": f"有 {len(candidates[name])} 家供应商可承接，可在归属步骤改选。"})
-        if result["external_days"] is None:
-            result["issues"].append({"code": "external_days_missing_or_invalid", "message": "外协周期未填写或无效。请到基础资料补填周期。"})

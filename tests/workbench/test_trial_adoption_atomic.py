@@ -1,14 +1,29 @@
 """Real SQLite rollback and concurrent same-key receipt replay for trial adoption."""
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
-from tests.workbench.trial_adoption_support import INTENT, KEY, full_plan, preview, saved_scenario, service
+from core.services.workbench.facts.candidate_facts import TABLE_KEYS
+from core.shared.strict_json import canonical_json
+from data.repositories.workbench_run_candidate_repo import WorkbenchRunCandidateRepository
+from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
+from tests.workbench.execution_ledger_support import publish_official_plan
+from tests.workbench.trial_adoption_support import (
+    BAD_RESOURCE_NAMES,
+    INTENT,
+    KEY,
+    external_operation,
+    full_plan,
+    preview,
+    saved_scenario,
+    service,
+)
 from tests.workbench.trial_adoption_support import trial_case as trial_case
-from tests.workbench.trial_support import connect, snapshot
+from tests.workbench.trial_support import candidate, connect, official, snapshot
 
 
 def test_receipt_insert_failure_rolls_back_trial_adoption(trial_case, monkeypatch):
@@ -91,3 +106,124 @@ def test_all_frozen_scenario_with_live_violation_blocks_as_constraint_unproven(t
             frozen_invalid["scenario_ref"], "unused-token", "trial-adopt-frozen-violation-01", INTENT
         )
     assert rejected.value.code == "scenario_constraint_unproven"
+
+
+def _external_plan(case):
+    external = external_operation(case)
+    publish_official_plan(case.conn, 1, [
+        {"op_id": case.op_id, "machine_id": "M1", "operator_id": "O1",
+         "start_time": "2026-09-09T08:00:00", "end_time": "2026-09-09T11:00:00"},
+        {"op_id": external, "machine_id": None, "operator_id": None,
+         "start_time": "2026-09-09T11:00:00", "end_time": "2026-09-11T11:00:00"}])
+    case.conn.commit()
+    return {"base": {"plan_ref": case.plan_ref(1)}}
+
+
+def _external_candidate(case):
+    external_operation(case)
+    case.conn.commit()
+    return candidate(case)
+
+
+def _rename(archive, table, key, value):
+    columns = archive["columns"][table]
+    (row,) = [row for row in archive["tables"][table] if row[columns.index(TABLE_KEYS[table])] == key]
+    row[columns.index("name")] = value
+
+
+def _saved_machine_label(resources, value):
+    (row,) = [row for row in resources["machines"] if row["business_code"] == "M2"]
+    row["label"] = value
+
+
+def _recorded_supplier_label(admission, value):
+    (row,) = [row for row in admission["source"]["suppliers"].values() if row["supplier_id"] == "S1"]
+    row["label"] = value
+
+
+def _recorded_type_label(admission, value):
+    for row in admission["source"]["operation_types"].values():
+        row["label"] = value
+
+
+def _saved_type_name(resources, value):
+    (row,) = [row for row in resources["op_types"] if row["op_type_id"] == "T1"]
+    row["name"] = value
+
+
+def _trial_document(column, damage):
+    """A trial repository row whose stored ``column`` document holds the damaged name."""
+    def rewrite(row, value):
+        document = json.loads(row[column])
+        damage(document, value)
+        return dict(row, **{column: canonical_json(document)})
+    return rewrite
+
+
+def _run_archive(damage):
+    """A run's capture row whose generation archive holds the damaged name, with that archive's stored size."""
+    def rewrite(row, value):
+        archive = json.loads(row["conditions_archive_json"])
+        damage(archive, value)
+        text = canonical_json(archive)
+        return dict(row, conditions_archive_json=text, conditions_archive_bytes=len(text.encode("utf-8")))
+    return rewrite
+
+
+# Each archive an adopted task's resource or operation type name is read from, damaged where its repository reads
+# it: the source draft's archive (a kept arrangement's machine), the scenario's saved resources (a new slot's
+# machine), the supplier an official source recorded, a candidate source's generation archive (its supplier), the
+# type the source recorded for a kept arrangement, and the scenario's saved type a new slot holds.
+_NAME_SOURCES = {
+    "draft_archive": (official, False, WorkbenchTrialRepository, "draft_header", _trial_document(
+        "admission_json", lambda admission, value: _rename(admission["facts"], "Machines", "M1", value))),
+    "saved_scenario": (official, True, WorkbenchTrialRepository, "scenario_header",
+                       _trial_document("resources_json", _saved_machine_label)),
+    "official_supplier": (_external_plan, False, WorkbenchTrialRepository, "draft_header",
+                          _trial_document("admission_json", _recorded_supplier_label)),
+    "candidate_supplier": (_external_candidate, False, WorkbenchRunCandidateRepository, "job_capture",
+                           _run_archive(lambda archive, value: _rename(archive, "Suppliers", "S1", value))),
+    "draft_type": (official, False, WorkbenchTrialRepository, "draft_header",
+                   _trial_document("admission_json", _recorded_type_label)),
+    "saved_type": (official, True, WorkbenchTrialRepository, "scenario_header",
+                   _trial_document("resources_json", _saved_type_name)),
+}
+
+
+@pytest.mark.parametrize("name", sorted(BAD_RESOURCE_NAMES))
+@pytest.mark.parametrize("source", sorted(_NAME_SOURCES))
+def test_adoption_rejects_a_stored_resource_name_readers_do_not_show(trial_case, monkeypatch, source, name):
+    # 采用写进正式计划的资源名与读取同一准入；不合法就按所在存档损坏拒绝，正式计划不变：试调存档是可操作的
+    # trial_snapshot_invalid（预览阻断、采用 409），候选生成期归档是 candidate_artifact_invalid 500。
+    case = trial_case
+    base, changed, repository, method, rewrite = _NAME_SOURCES[source]
+    saved = saved_scenario(case, base(case), changed=changed)
+    token = preview(case, saved)
+    read = getattr(repository, method)
+    monkeypatch.setattr(repository, method, lambda repo, ref: rewrite(read(repo, ref), BAD_RESOURCE_NAMES[name]))
+    before = snapshot(case.conn)
+    if source == "candidate_supplier":
+        for adoption in (lambda: service(case.conn).preview(saved["scenario_ref"]),
+                         lambda: service(case.conn).adopt(saved["scenario_ref"], token, KEY, INTENT)):
+            with pytest.raises(WorkbenchCommandRejected) as rejected:
+                adoption()
+            assert (rejected.value.code, rejected.value.status) == ("candidate_artifact_invalid", 500)
+    else:
+        checked = service(case.conn).preview(saved["scenario_ref"])
+        assert checked["validation"]["can_adopt"] is False
+        assert [row["code"] for row in checked["validation"]["issues"]] == ["trial_snapshot_invalid"]
+        with pytest.raises(WorkbenchCommandRejected) as rejected:
+            service(case.conn).adopt(saved["scenario_ref"], token, KEY, INTENT)
+        assert (rejected.value.code, rejected.value.status) == ("trial_snapshot_invalid", 409)
+    assert snapshot(case.conn) == before
+
+
+def test_adoption_records_a_new_slot_type_name_as_the_scenario_saved_it(trial_case):
+    # 工种名与资源名同一准入：合法名称首尾的空白原样写进正式计划，不裁剪。
+    case = trial_case
+    case.conn.execute("UPDATE OpTypes SET name=' Turning ' WHERE op_type_id='T1'")
+    case.conn.commit()
+    saved = saved_scenario(case, official(case))
+    service(case.conn).adopt(saved["scenario_ref"], preview(case, saved), KEY, INTENT)
+    assert [row[0] for row in case.conn.execute(
+        "SELECT op_type_label FROM Schedule WHERE version=(SELECT MAX(version) FROM Schedule)")] == [" Turning "]

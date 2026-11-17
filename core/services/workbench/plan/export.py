@@ -11,7 +11,7 @@ import os
 from tempfile import SpooledTemporaryFile
 
 from core.models.workbench_action_values import FileDownload
-from core.services.workbench.facts.file_writer import _value, check_capacity
+from core.services.workbench.facts.file_writer import check_capacity, export_cell_value
 from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
 from core.services.workbench.facts.table_cells import number_text
 
@@ -54,7 +54,7 @@ def export_rows(data, snapshot):
 
 def _values(values, number, fmt):
     # Reuse the established numeric validation, null escaping and cell limits.
-    return [_value(value, "default_days" if index in (29, 30) else "text", number, fmt)
+    return [export_cell_value(value, "default_days" if index in (29, 30) else "text", number, fmt)
             for index, value in enumerate(values)]
 
 

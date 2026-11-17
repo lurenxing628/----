@@ -1,10 +1,13 @@
 """Isolated SQLite and registered functions; never import the production app."""
 
+from datetime import datetime
+
 import pytest
 from flask import Blueprint, Flask, g
 
 from tests._support.sqlite_snapshot import stored_state
 from tests.workbench.identity_metadata_support import insert_row, seed_resources
+from web.runtime_host import install_wall_clock
 
 BASE = "/api/workbench/v1/entities/batch"
 
@@ -27,6 +30,7 @@ def create_batch_client(schema_conn):
                 op_type_id="OT1", op_type_name="turning", source="internal", setup_hours=None, unit_hours=0))
     schema_conn.commit()
     app = Flask(__name__)
+    install_wall_clock(app, datetime.now)
     app.config.update(TESTING=True, SECRET_KEY="batch-fixture-only")
     bp = Blueprint("workbench", __name__)
     register_batch_routes(bp)

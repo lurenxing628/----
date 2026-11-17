@@ -4,8 +4,10 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_query import ResourcePageRequest
+from core.services.workbench.facts.table_columns import sql_order
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from core.services.workbench.resource.table_states import resource_table_states
+from core.shared.strict_json import canonical_json
 from data.repositories.workbench_resource_metrics_repo import WorkbenchResourceMetricsRepository
 from data.repositories.workbench_resource_query_repo import WorkbenchResourceQueryRepository
 from data.repositories.workbench_resource_table_repo import WorkbenchResourceTableRepository
@@ -75,35 +77,69 @@ def test_update_delete_and_replay_are_real_for_each_kind(app_client, kind):
     assert "已失效" in malformed.get_json()["error"]["message"]
 
 
+def test_supplier_default_days_writes_admit_the_external_days_range(app_client):
+    # 默认周期会派生成工序和外协组周期，新增、修改都按外协周期的同一值域 (0, 36500] 天准入。
+    ref, _ = _create(app_client, "supplier", "S-MAX", fields={"default_days": 36500})
+    assert _detail(app_client, "supplier", ref)["fields"]["default_days"] == 36500
+    token = _list(app_client, "supplier")["data"]["create_context"]["write_token"]
+    created = app_client.post(BASE + "supplier/create", json={
+        "request_key": "resource-create-supplier-over-1", "write_token": token,
+        "input": {"business_code": "S-OVER", "label": "over", "fields": {"default_days": 36500.5}}})
+    updated = [_command(app_client, "supplier", ref, "update", {"fields": {"default_days": value}},
+                        key="resource-update-supplier-bad-" + str(index))
+               for index, value in enumerate((0, -1, 36500.5, True, "3"))]
+    for response in [created] + updated:
+        assert response.status_code == 422, response.get_data(as_text=True)
+        assert response.get_json()["error"]["message"] == "默认周期必须大于 0 天且不超过 36500 天（100 年）。"
+    assert [row["business_code"] for row in _list(app_client, "supplier")["data"]["entities"]] == ["S-MAX"]
+    assert _detail(app_client, "supplier", ref)["fields"]["default_days"] == 36500
+
+
 _SHIFT_DAY = {"start": "08:00", "end": "16:00", "day_offset": 0}
 _NIGHT = {"start": "22:00", "end": "06:00", "day_offset": 0}
 
 
-@pytest.mark.parametrize(("pattern", "message"), [
-    pytest.param([{"day_offset": 0, "is_rest": False, "periods": None}], "工作时段必须按列表提交。", id="explicit-null"),
-    pytest.param([{"day_offset": 0, "is_rest": False}], "工作时段必须按列表提交。", id="omitted-periods"),
-    pytest.param([{"day_offset": 0, "is_rest": True, "periods": None}], "工作时段必须按列表提交。", id="rest-null"),
-    pytest.param([{"day_offset": 0, "is_rest": False, "periods": []}], "工作日请至少填写一个工作时段，或明确改为休息日。", id="workday-empty"),
-    pytest.param([{"day_offset": 0, "is_rest": True, "periods": [_SHIFT_DAY]}], "休息日不能填写工作时段。", id="rest-with-periods"),
-    pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY], "hours": 8}], "提交内容含有不支持的项", id="legacy-hours"),
-    pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY], "shiftStart": "08:00"}], "提交内容含有不支持的项", id="legacy-shiftStart"),
-    pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY], "shift_start": "08:00"}], "提交内容含有不支持的项", id="legacy-shift_start"),
-    pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY], "shift_end": "16:00"}], "提交内容含有不支持的项", id="legacy-shift_end"),
+_DAY0 = "fields.pattern.0"
+
+
+@pytest.mark.parametrize(("pattern", "message", "path"), [
+    pytest.param([{"day_offset": 0, "is_rest": False, "periods": None}], "工作时段必须按列表提交。", _DAY0 + ".periods", id="explicit-null"),
+    pytest.param([{"day_offset": 0, "is_rest": False}], "工作时段必须按列表提交。", _DAY0 + ".periods", id="omitted-periods"),
+    pytest.param([{"day_offset": 0, "is_rest": True, "periods": None}], "工作时段必须按列表提交。", _DAY0 + ".periods", id="rest-null"),
+    pytest.param([{"day_offset": 0, "is_rest": False, "periods": []}], "工作日请至少填写一个工作时段，或明确改为休息日。",
+                 _DAY0 + ".periods", id="workday-empty"),
+    pytest.param([{"day_offset": 0, "is_rest": True, "periods": [_SHIFT_DAY]}], "休息日不能填写工作时段。", _DAY0 + ".periods",
+                 id="rest-with-periods"),
+    pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY], "hours": 8}], "提交内容含有不支持的项", _DAY0,
+                 id="legacy-hours"),
+    pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY], "shiftStart": "08:00"}], "提交内容含有不支持的项", _DAY0,
+                 id="legacy-shiftStart"),
+    pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY], "shift_start": "08:00"}], "提交内容含有不支持的项", _DAY0,
+                 id="legacy-shift_start"),
+    pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY], "shift_end": "16:00"}], "提交内容含有不支持的项", _DAY0,
+                 id="legacy-shift_end"),
+    pytest.param([{"day_offset": 0, "is_rest": "no", "periods": [_SHIFT_DAY]}], "班次日期序号和休息标记不正确。", _DAY0, id="rest-flag"),
     pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_NIGHT]},
                   {"day_offset": 1, "is_rest": False, "periods": [{"start": "05:00", "end": "13:00", "day_offset": 0}]}],
-                 "相邻轮换日期的班次时间重叠", id="adjacent-overlap"),
+                 "相邻轮换日期的班次时间重叠", _DAY0 + ".periods", id="adjacent-overlap"),
     pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY]},
                   {"day_offset": 1, "is_rest": False, "periods": [{"start": "22:00", "end": "09:00", "day_offset": 0}]}],
-                 "相邻轮换日期的班次时间重叠", id="cycle-wrap-overlap"),
+                 "相邻轮换日期的班次时间重叠", "fields.pattern.1.periods", id="cycle-wrap-overlap"),
+    # 提交顺序与日序不同：重叠落在第 0 天，路径仍指回它的提交位置。
+    pytest.param([{"day_offset": 1, "is_rest": False, "periods": [{"start": "05:00", "end": "13:00", "day_offset": 0}]},
+                  {"day_offset": 0, "is_rest": False, "periods": [_NIGHT]}],
+                 "相邻轮换日期的班次时间重叠", "fields.pattern.1.periods", id="unsorted-overlap"),
 ])
-def test_shift_profile_write_entries_reject_invalid_pattern_days(app_client, pattern, message):
+def test_shift_profile_write_entries_reject_invalid_pattern_days(app_client, pattern, message, path):
     fields = {"anchor_date": "2026-09-09", "cycle_days": len(pattern), "pattern": pattern}
     token = _list(app_client, "shift_profile")["data"]["create_context"]["write_token"]
     created = app_client.post(BASE + "shift_profile/create", json={
         "request_key": "resource-create-shift-invalid-1", "write_token": token,
         "input": {"business_code": "BAD", "label": "bad", "fields": fields}})
     assert created.status_code == 422, created.get_data(as_text=True)
-    assert created.get_json()["error"]["code"] == "invalid_input" and message in created.get_json()["error"]["message"]
+    error = created.get_json()["error"]
+    assert error["code"] == "invalid_input" and message in error["message"]
+    assert error["fields"] == [{"path": path, "message": error["message"]}]
     assert _list(app_client, "shift_profile")["data"]["entities"] == []
 
     # 更新入口走同一条规则，且不留下任何改动。
@@ -111,6 +147,7 @@ def test_shift_profile_write_entries_reject_invalid_pattern_days(app_client, pat
     ref, _ = _create(app_client, "shift_profile", "GOOD", fields={"anchor_date": "2026-09-09", "cycle_days": 1, "pattern": good})
     updated = _command(app_client, "shift_profile", ref, "update", {"fields": fields}, key="resource-update-shift-invalid-1")
     assert updated.status_code == 422 and message in updated.get_json()["error"]["message"]
+    assert updated.get_json()["error"]["fields"] == [{"path": path, "message": updated.get_json()["error"]["message"]}]
     saved = _detail(app_client, "shift_profile", ref)["fields"]["pattern"]
     assert saved == [{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY]}]
 
@@ -123,12 +160,13 @@ def test_shift_profile_pattern_stores_only_periods_and_adjacent_rest_breaks_over
     assert _detail(app_client, "shift_profile", ref)["fields"]["pattern"] == pattern
 
 
-def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(resource_conn, monkeypatch):
+def test_plain_resource_pages_query_only_current_page_codes_and_lightweight_states(resource_conn, monkeypatch):
     conn = resource_conn
-    insert_row(conn, "Machines", {"machine_id": "M2", "name": "second machine", "op_type_id": "OT1"})
+    insert_row(conn, "Machines", {"machine_id": "M2", "name": "second machine"})
+    insert_row(conn, "MachineOpTypes", {"machine_id": "M2", "op_type_id": "OT1"})
     insert_row(conn, "Machines", {"machine_id": "M3", "name": "Ä"})
     insert_row(conn, "Operators", {"operator_id": "O2", "name": "second operator"})
-    insert_row(conn, "Suppliers", {"supplier_id": "S2", "name": "second supplier", "default_days": None})
+    insert_row(conn, "Suppliers", {"supplier_id": "S2", "name": "second supplier", "default_days": 2.0})
     conn.executemany("INSERT INTO WorkbenchSupplierOpTypes(supplier_id, op_type_id) VALUES (?, 'EXT')", [("S1",), ("S2",)])
     conn.execute("UPDATE Machines SET name='车床AlPhA' WHERE machine_id IN ('M1','M2')")
     conn.commit()
@@ -142,9 +180,11 @@ def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(reso
             "shift_profile_ref": shift.ref, "skill_refs": [op_type.ref],
         }}, code=code)
 
-    counts, relations, type_counts, scopes = [], [], [], []
-    assigned_counts, page_relations = WorkbenchResourceTableRepository.assigned_counts, WorkbenchResourceTableRepository.page_relations
-    op_type_dependencies, scope_state = WorkbenchResourceMetricsRepository.op_type_dependencies, WorkbenchResourceQueryRepository.scope_state
+    assert not hasattr(WorkbenchResourceQueryRepository, "scope_state")
+    counts, relations, member_reads = [], [], []
+    assigned_counts = WorkbenchResourceTableRepository.assigned_counts
+    page_relations = WorkbenchResourceTableRepository.page_relations
+    member_counts = WorkbenchResourceTableRepository.member_counts
 
     def read_counts(repo, kind, codes):
         counts.append((kind, tuple(codes)))
@@ -154,39 +194,51 @@ def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(reso
         relations.append((kind, tuple(codes)))
         return page_relations(repo, kind, codes)
 
-    def read_type_counts(repo, codes):
-        type_counts.append(tuple(codes))
-        return op_type_dependencies(repo, codes)
-
-    def read_scope(repo, kind, **kwargs):
-        scopes.append(kind)
-        return scope_state(repo, kind, **kwargs)
+    def read_members(repo, kind, codes):
+        member_reads.append((kind, tuple(codes)))
+        return member_counts(repo, kind, codes)
 
     for kind in ("machine", "operator", "supplier", "op_type", "machine_group", "shift_profile"):
         reader = WorkbenchResourceQueryService(conn, kind)
-        query = ResourcePageRequest(kind, size=20, direction="desc")
+        query = ResourcePageRequest(kind, size=1, direction="desc")
         counts.clear()
         relations.clear()
-        type_counts.clear()
-        scopes.clear()
+        member_reads.clear()
         with monkeypatch.context() as scoped:
-            scoped.setattr(WorkbenchResourceQueryRepository, "scope_state", read_scope)
             with reader.read_snapshot() as scope:
+                assert not hasattr(scope, "_ensure_table_snapshot")
+                assert not hasattr(scope, "create_snapshot")
                 fingerprint = scope.state_fingerprint()
-                rows, total = reader.repo.page(query)
+                rows = reader.repo.page_rows(query, sql_order(query))
+                total = len(reader.repo.toolbar_keys(query))
                 expected = [scope.detail(row["ref"]) for row in rows]
                 scoped.setattr(WorkbenchResourceTableRepository, "assigned_counts", read_counts)
-                scoped.setattr(WorkbenchResourceMetricsRepository, "op_type_dependencies", read_type_counts)
                 scoped.setattr(WorkbenchResourceTableRepository, "page_relations", read_relations)
+                scoped.setattr(WorkbenchResourceTableRepository, "member_counts", read_members)
                 records, page = scope.page(query)
                 codes = tuple(row["business_code"] for row in rows)
+                assert len(codes) == 1
                 assert records == expected
                 assert page["total"] == total
                 assert page["number"] == query.number and page["size"] == query.size
                 assert page["sort"] == [{"field": query.sort, "direction": query.direction}]
-                assert counts == type_counts == [] and scopes == [kind]
-                assert relations == ([('supplier', codes)] if kind == "supplier" else [])
-                assert scope.state_fingerprint() == fingerprint and scopes == [kind]
+                assert scope.state_fingerprint() == fingerprint
+                assert scope.table_identities is None
+                # 依赖计数只有 assigned_counts 一个入口，工种也走它。
+                if kind in ("machine", "operator", "supplier", "op_type"):
+                    assert counts == [(kind, codes)]
+                else:
+                    assert counts == []
+                if kind in ("machine_group", "shift_profile"):
+                    assert member_reads == [(kind, codes)]
+                    assert "members" not in records[0].state
+                    assert isinstance(records[0].state["member_count"], int)
+                if kind == "supplier":
+                    assert relations == []
+                    assert "references" not in records[0].state["supplier"]
+                    assert set(records[0].state["supplier"]["counts"]) == {
+                        "part_operations", "batch_operations", "external_groups"
+                    }
                 if kind != "op_type":
                     states = resource_table_states(scope.table_facts(), kind, codes)
                     assert {record.identity.entity_key: record.state for record in records} == states
@@ -195,31 +247,14 @@ def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(reso
                     assert [record.identity.entity_key for record in advanced] == ["M1", "M2"]
                     matched, _ = scope.page(ResourcePageRequest(kind, query="车床ALPHA", sort="label", direction="desc"))
                     assert matched == advanced
+                    counts.clear()
                     unmatched, _ = scope.page(ResourcePageRequest(kind, query="ä"))
-                    assert unmatched == [] and counts == [] and scopes == [kind]
+                    assert unmatched == [] and counts == []
                 if kind == "supplier":
                     ascending, _ = scope.page(ResourcePageRequest(kind, sort="default_days"))
                     descending, _ = scope.page(ResourcePageRequest(kind, sort="default_days", direction="desc"))
                     assert [record.identity.entity_key for record in ascending] == ["S2", "S1"]
                     assert [record.identity.entity_key for record in descending] == ["S1", "S2"]
-                if kind in ("operator", "op_type"):
-                    counts.clear()
-                    relations.clear()
-                    type_counts.clear()
-                    with reader.read_snapshot(capture_fingerprint=False) as inner_scope:
-                        assert inner_scope.revisions is None
-                        inner_records, inner_page = inner_scope.page(query)
-                        assert inner_records == expected and inner_page == page
-                        assert counts == ([(kind, codes)] if kind == "operator" else [])
-                        assert type_counts == ([codes] if kind == "op_type" else [])
-                        assert relations == ([('shift_profile', (shift.entity_key,))] if kind == "operator" else [])
-                        assert scopes == [kind]
-                    counts.clear()
-                    relations.clear()
-                    type_counts.clear()
-                    restored, restored_page = scope.page(query)
-                    assert restored == expected and restored_page == page
-                    assert counts == relations == type_counts == [] and scopes == [kind]
 
 
 @pytest.mark.parametrize('kind,code,table,key', [
@@ -251,9 +286,9 @@ def test_resource_import_captures_one_batch_and_applies_without_current_row_rere
         fact_reads.extend(names)
         return original_facts(repo, names)
 
-    def references(repo, selected_kind, codes, *, report_revisions=None):
+    def references(repo, selected_kind, codes):
         reference_reads.append((selected_kind, tuple(codes)))
-        return original_references(repo, selected_kind, codes, report_revisions=report_revisions)
+        return original_references(repo, selected_kind, codes)
 
     monkeypatch.setattr(WorkbenchResourceMetricsRepository, 'facts', captured)
     monkeypatch.setattr(WorkbenchResourceFileRepository, 'references_many', references)
@@ -302,45 +337,44 @@ def test_resource_bulk_delete_prepares_one_current_set_and_keeps_rejected_select
     assert conn.execute("SELECT COUNT(*) FROM Machines WHERE machine_id IN ('DELETE-ONE','DELETE-TWO')").fetchone()[0] == 0
 
 
-def test_downtime_create_ignores_reversed_active_legacy_interval(resource_conn):
+def test_downtime_writes_reject_reversed_windows_and_check_overlap_only_when_the_window_changes(resource_conn):
+    from core.infrastructure.transaction import TransactionManager
+    from core.models.workbench_downtime import normalize_downtime
     from core.services.workbench.resource.downtimes import WorkbenchDowntimeService
 
     conn = resource_conn
     service = WorkbenchDowntimeService(conn)
     machine = identity_for(conn, "machine", "M1")
     assert machine is not None
-    service.repo.create({
-        "machine_id": "M1", "scope_type": "machine", "scope_value": "M1",
-        "start_time": "2026-10-01 16:00", "end_time": "2026-10-01 15:00",
-        "reason_code": "maintenance", "reason_detail": None, "status": "active",
-    })
-    state = service.snapshot(machine.ref)
-    with conn:
-        outcome = service.apply_normalized(machine.ref, "create", {
-            "start_time": "2026-10-01 14:00", "end_time": "2026-10-01 17:00",
-            "reason_code": "maintenance", "reason_detail": None,
-        }, state)
-    assert outcome.result == "committed"
 
-    target_id = service.repo.create({
-        "machine_id": "M1", "scope_type": "machine", "scope_value": "M1",
-        "start_time": "2026-10-14 08:00", "end_time": "2026-10-14 10:00",
-        "reason_code": "maintenance", "reason_detail": "原说明", "status": "active",
-    })
-    service.repo.create({
-        "machine_id": "M1", "scope_type": "machine", "scope_value": "M1",
-        "start_time": "2026-10-14 09:00:00", "end_time": "2026-10-14 11:00:00",
-        "reason_code": "fault", "reason_detail": "历史重叠", "status": "active",
-    })
+    def window(start, end, reason="maintenance", detail=None, **ref):
+        action = "update" if ref else "create"
+        return normalize_downtime(action, {**ref, "start_time": start, "end_time": end, "reason_code": reason, "reason_detail": detail})
+
+    def apply(action, payload):
+        with TransactionManager(conn).transaction():
+            return service.apply_normalized(machine.ref, action, payload, service.snapshot(machine.ref))
+
+    with pytest.raises(WorkbenchCommandRejected, match="停机结束必须晚于开始"):
+        window("2026-10-01 16:00", "2026-10-01 15:00")
+    stored = {"machine_id": "M1", "scope_type": "machine", "scope_value": "M1", "status": "active"}
+    target_id = service.repo.create({**window("2026-10-14 08:00", "2026-10-14 10:00", detail="原说明"), **stored})
+    # 两条有效停机历史上重叠（并发写入），只改说明时不受这条已有重叠影响。
+    service.repo.create({**window("2026-10-14 09:00:00", "2026-10-14 11:00:00", "breakdown", "历史重叠"), **stored})
+    conn.commit()
     target_ref = service.facts.ref_for_id(target_id)
-    overlap_state = service.snapshot(machine.ref)
-    with conn:
-        updated = service.apply_normalized(machine.ref, "update", {
-            "downtime_ref": target_ref,
-            "start_time": "2026-10-14 08:00:00", "end_time": "2026-10-14 10:00:00",
-            "reason_code": "maintenance", "reason_detail": "仅改说明",
-        }, overlap_state)
-    assert updated.result == "committed"
+    # 展示文本由微秒生成；同设备的停机按起止排序（夹具里还有一条 2026-09-12 已取消的旧记录）。
+    assert [(row["start_time"], row["end_time"], row["status"]) for row in service.snapshot(machine.ref)["rows"]] == [
+        ("2026-09-12 22:00:00", "2026-09-13 07:00:00", "cancelled"),
+        ("2026-10-14 08:00:00", "2026-10-14 10:00:00", "active"), ("2026-10-14 09:00:00", "2026-10-14 11:00:00", "active")]
+    unchanged_window = window("2026-10-14 08:00:00", "2026-10-14 10:00:00", detail="仅改说明", downtime_ref=target_ref)
+    assert apply("update", unchanged_window).result == "committed"
+    with pytest.raises(WorkbenchCommandRejected, match="重叠"):
+        apply("update", window("2026-10-14 07:00", "2026-10-14 09:30", downtime_ref=target_ref))
+    created = window("2026-10-14 11:00", "2026-10-14 12:00")
+    assert apply("create", created).result == "committed"
+    assert tuple(conn.execute("SELECT start_time, end_time, start_us, end_us FROM MachineDowntimes ORDER BY id DESC LIMIT 1").fetchone()) == (
+        "2026-10-14 11:00:00", "2026-10-14 12:00:00", created["start_us"], created["end_us"])
 
 
 @pytest.mark.parametrize(
@@ -351,19 +385,18 @@ def test_downtime_create_ignores_reversed_active_legacy_interval(resource_conn):
     ),
 )
 def test_active_production_report_revision_blocks_resource_deletion_until_voided(resource_conn, kind, table, key, code, field):
-    import json
-
     from core.services.workbench.resource.bulk import WorkbenchResourceBulkService
 
     conn = resource_conn
     insert_row(conn, table, {key: code, "name": code})
-    conn.execute("INSERT INTO ScheduleHistory(version, schedule_time, strategy) VALUES (7, '2026-09-09 08:00:00', 'greedy')")
     conn.commit()
     target = identity_for(conn, kind, code)
     assert target is not None
 
     op_ref = conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' LIMIT 1").fetchone()[0]
-    task_row = conn.execute("SELECT ref, plan_ref FROM WorkbenchTaskRefs LIMIT 1").fetchone()
+    task_row = conn.execute(
+        "SELECT s.task_ref, h.plan_ref FROM Schedule s JOIN ScheduleHistory h ON h.version = s.version LIMIT 1"
+    ).fetchone()
     assert task_row is not None
     report_ref = ("a" if kind == "machine" else "b") * 48
     revision_ref = ("c" if kind == "machine" else "d") * 48
@@ -371,24 +404,44 @@ def test_active_production_report_revision_blocks_resource_deletion_until_voided
     req_create = f"report-create-{kind}-0001"
     req_void = f"report-void-{kind}-0001"
 
+    from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository
+
+    report_repo = WorkbenchExecutionReportRepository(conn)
+    report_values = {
+        "actual_start": "2026-10-01T08:00:00",
+        "actual_end": "2026-10-01T10:00:00",
+        "completed_quantity": 1,
+        "effective_processing_hours": 2.0,
+        "actual_machine_ref": target.ref if field == "actual_machine_ref" else None,
+        "actual_operator_ref": target.ref if field == "actual_operator_ref" else None,
+        "remark": "",
+    }
     with conn:
         conn.execute(
             """INSERT INTO WorkbenchCommandReceipts(request_key, receipt_ref, action, context_ref, input_json, outcome_json)
             VALUES (?, ?, 'execution.report_create', ?, '{}', '{}')""",
             (req_create, ("1" if kind == "machine" else "2") * 32, op_ref),
         )
-        conn.execute(
-            """INSERT INTO WorkbenchProductionReports
-            (report_ref, report_no, operation_ref, recorded_against_task_ref, recorded_against_plan_ref, source, recorded_at)
-            VALUES (?, ?, ?, ?, ?, 'manual', '2026-10-01T10:00:00')""",
-            (report_ref, f"BG-{kind.upper()}-001", op_ref, task_row["ref"], task_row["plan_ref"]),
-        )
-        conn.execute(
-            """INSERT INTO WorkbenchProductionReportRevisions
-            (revision_ref, report_ref, sequence, previous_revision_ref, action, values_json, reason,
-             local_operator, declared_operator, recorded_at, request_key)
-            VALUES (?, ?, 1, NULL, 'create', ?, 'initial', 'admin', 'admin', '2026-10-01T10:00:00', ?)""",
-            (revision_ref, report_ref, json.dumps({field: target.ref}), req_create),
+        report_repo.append(
+            {
+                "report_ref": report_ref,
+                "report_no": f"BG-{kind.upper()}-001",
+                "operation_ref": op_ref,
+                "recorded_against_task_ref": task_row["task_ref"],
+                "recorded_against_plan_ref": task_row["plan_ref"],
+                "source": "manual",
+                "recorded_at": "2026-10-01T10:00:00",
+                "revision_ref": revision_ref,
+                "sequence": 1,
+                "previous_revision_ref": None,
+                "action": "create",
+                "values": report_values,
+                "reason": "initial",
+                "local_operator": "admin",
+                "declared_operator": "admin",
+                "revision_at": "2026-10-01T10:00:00",
+            },
+            request_key=req_create,
         )
 
     with pytest.raises(WorkbenchCommandRejected) as exc_info:
@@ -398,15 +451,22 @@ def test_active_production_report_revision_blocks_resource_deletion_until_voided
     reader = WorkbenchResourceQueryService(conn, kind)
     bulk_service = WorkbenchResourceBulkService(conn, kind, reader=reader)
     report_sql_queries = []
-    conn.set_trace_callback(
-        lambda sql: report_sql_queries.append(sql) if "FROM WorkbenchProductionReportRevisions" in sql else None
-    )
+    revision_sql_queries = []
+
+    def trace_sql(sql):
+        if "FROM WorkbenchProductionReports" in sql:
+            report_sql_queries.append(sql)
+        if "WorkbenchProductionReportRevisions" in sql:
+            revision_sql_queries.append(sql)
+
+    conn.set_trace_callback(trace_sql)
     try:
         with reader.read_snapshot():
             preview = bulk_service.preview_delete([target.ref], scope=ResourcePageRequest(kind=kind)).as_dict()
     finally:
         conn.set_trace_callback(None)
     assert len(report_sql_queries) == 1
+    assert revision_sql_queries == []
     assert preview["summary"]["rejected"] == 1
     assert preview["rows"][0]["errors"][0]["code"] == "constraint_conflict"
 
@@ -416,11 +476,17 @@ def test_active_production_report_revision_blocks_resource_deletion_until_voided
             VALUES (?, ?, 'execution.report_void', ?, '{}', '{}')""",
             (req_void, ("3" if kind == "machine" else "4") * 32, report_ref),
         )
-        conn.execute(
-            """INSERT INTO WorkbenchProductionReportVoids
-            (void_fact_ref, report_ref, original_revision_ref, reason, local_operator, declared_operator, recorded_at, request_key)
-            VALUES (?, ?, ?, 'voided for test', 'admin', 'admin', '2026-10-01T11:00:00', ?)""",
-            (void_ref, report_ref, revision_ref, req_void),
+        report_repo.append_void(
+            {
+                "void_fact_ref": void_ref,
+                "report_ref": report_ref,
+                "original_revision_ref": revision_ref,
+                "reason": "voided for test",
+                "local_operator": "admin",
+                "declared_operator": "admin",
+                "recorded_at": "2026-10-01T11:00:00",
+            },
+            request_key=req_void,
         )
 
     with reader.read_snapshot():
@@ -492,3 +558,194 @@ def test_resource_table_query_honors_explicit_32mib_json_budget_while_default_ro
     )
     assert default_route_response.status_code == 413
     assert default_route_response.get_json()["error"]["code"] == "invalid_input"
+
+
+def _counts_from_details(conn, kind, codes):
+    """计数的对照：逐条读详情里的对外状态与关系，不经 SQL 状态计数。"""
+    from collections import Counter
+
+    from core.models.workbench_resource_status import PUBLIC_STATUS_VALUES
+
+    reader = WorkbenchResourceQueryService(conn, kind)
+    with reader.read_snapshot() as scope:
+        entities = [scope.detail(identity_for(conn, kind, code).ref).entity for code in codes]
+    counts = dict.fromkeys(PUBLIC_STATUS_VALUES[kind], 0)
+    counts.update(Counter(entity["status"] for entity in entities))
+    counts["total"] = len(entities)
+    if kind == "machine":
+        counts["groups"] = len({entity["relationships"]["group_ref"] for entity in entities} - {None})
+    elif kind == "operator":
+        counts["skills"] = sum(len(entity["relationships"]["skill_refs"]) for entity in entities)
+    return counts
+
+
+def test_plain_non_op_type_pages_push_down_scalar_counts_without_facts_or_toolbar_keys(resource_conn, monkeypatch):
+    conn = resource_conn
+    group_a = create_catalog(conn, "machine_group")
+    run_resource(conn, "machine_group", "create", {"business_code": "G2", "label": "G2", "fields": {}})
+    group_b = identity_for(conn, "machine_group", "G2")
+    assert group_b is not None
+    insert_row(conn, "Machines", {"machine_id": "M-ACT", "name": "active lathe", "status": "active", "category": "turning"})
+    insert_row(conn, "Machines", {"machine_id": "M-MAINT", "name": "maint lathe", "status": "maintain", "category": "turning"})
+    insert_row(conn, "Machines", {"machine_id": "M-IDLE", "name": "idle mill", "status": "inactive", "category": "milling"})
+    conn.executemany("INSERT INTO MachineOpTypes(machine_id, op_type_id) VALUES (?, 'OT1')", [("M-ACT",), ("M-MAINT",), ("M-IDLE",)])
+    insert_row(conn, "Operators", {"operator_id": "O-LEAVE", "name": "leave operator", "status": "inactive"})
+    insert_row(conn, "Operators", {"operator_id": "O-OFF", "name": "disabled operator", "status": "inactive"})
+    insert_row(conn, "Suppliers", {"supplier_id": "S-ACT", "name": "active vendor", "status": "active", "default_days": 3.0})
+    insert_row(conn, "Suppliers", {"supplier_id": "S-PEND", "name": "pending vendor", "status": "inactive", "default_days": 4.0})
+    insert_row(conn, "Suppliers", {"supplier_id": "S-OFF", "name": "disabled vendor", "status": "inactive", "default_days": 5.0})
+    conn.execute("UPDATE Machines SET category='turning' WHERE machine_id='M1'")
+    conn.execute("INSERT INTO WorkbenchOperatorProfiles(operator_id, inactive_reason) VALUES ('O-LEAVE', 'leave'), ('O-OFF', 'disabled')")
+    conn.execute("INSERT INTO WorkbenchSupplierProfiles(supplier_id, inactive_reason) VALUES ('S-PEND', 'pending_review'), ('S-OFF', 'disabled')")
+    conn.execute("INSERT INTO OperatorSkill(operator_id, op_type_id) VALUES ('O-LEAVE', 'OT1')")
+    conn.commit()
+    run_resource(conn, "machine", "update", {"relationships": {"group_ref": group_a.ref}}, code="M1")
+    run_resource(conn, "machine", "update", {"relationships": {"group_ref": group_b.ref}}, code="M-MAINT")
+
+    cases = (
+        ("machine", ResourcePageRequest("machine", size=1), {"active", "inactive", "maintain", "total", "groups"}),
+        ("machine", ResourcePageRequest("machine", size=1, status="maintain"), {"active", "inactive", "maintain", "total", "groups"}),
+        ("machine", ResourcePageRequest("machine", size=1, query="M-"), {"active", "inactive", "maintain", "total", "groups"}),
+        ("operator", ResourcePageRequest("operator", size=1), {"active", "inactive", "leave", "total", "skills"}),
+        ("operator", ResourcePageRequest("operator", size=1, status="leave"), {"active", "inactive", "leave", "total", "skills"}),
+        ("operator", ResourcePageRequest("operator", size=1, query="O-"), {"active", "inactive", "leave", "total", "skills"}),
+        ("supplier", ResourcePageRequest("supplier", size=1), {"active", "inactive", "pending_review", "total"}),
+        ("supplier", ResourcePageRequest("supplier", size=1, status="pending_review"), {"active", "inactive", "pending_review", "total"}),
+        ("supplier", ResourcePageRequest("supplier", size=1, query="vendor"), {"active", "inactive", "pending_review", "total"}),
+    )
+
+    unfiltered_counts = {}
+    for kind, req, expected_keys in cases:
+        expected_counts = _counts_from_details(conn, kind, WorkbenchResourceQueryRepository(conn).toolbar_keys(req))
+        assert set(expected_counts) == expected_keys
+
+        reader = WorkbenchResourceQueryService(conn, kind)
+        with monkeypatch.context() as guarded:
+            guarded.setattr(
+                WorkbenchResourceMetricsRepository,
+                "facts",
+                lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("MetricsRepository.facts forbidden on plain page")),
+            )
+            guarded.setattr(
+                WorkbenchResourceQueryRepository,
+                "toolbar_keys",
+                lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("QueryRepository.toolbar_keys forbidden on plain page")),
+            )
+            with reader.read_snapshot() as scope:
+                records, page = scope.page(req)
+        assert len(records) <= 1
+        assert page["metrics"]["scope"] == "filtered" and page["metrics"]["issues"] == []
+        assert page["metrics"]["counts"] == expected_counts and page["total"] == expected_counts["total"]
+        if req == ResourcePageRequest(kind, size=1):
+            unfiltered_counts[kind] = page["metrics"]["counts"]
+    assert unfiltered_counts == {
+        "machine": {
+            "active": 1,
+            "inactive": 1,
+            "maintain": 2,
+            "total": 4,
+            "groups": 2,
+        },
+        "operator": {
+            "active": 1,
+            "inactive": 2,
+            "leave": 1,
+            "total": 4,
+            "skills": 2,
+        },
+        "supplier": {
+            "active": 1,
+            "inactive": 2,
+            "pending_review": 1,
+            "total": 4,
+        },
+    }
+
+
+# 编号顺序、英文代号顺序、中文显示字顺序都和业务序不同：两条路径只要有一条没按共享业务序排，就对不上。
+@pytest.mark.parametrize("kind,rows,ascending,descending", [
+    ("machine", (("M-A", "inactive"), ("M-B", "active"), ("M-C", "maintain"), ("M-D", "inactive")),
+     ["M-B", "M-C", "M-A", "M-D"], ["M-A", "M-D", "M-C", "M-B"]),
+    ("operator", (("O-A", "inactive"), ("O-B", "leave"), ("O-C", "active"), ("O-D", "inactive")),
+     ["O-C", "O-B", "O-A", "O-D"], ["O-A", "O-D", "O-B", "O-C"]),
+    ("supplier", (("S-A", "pending_review"), ("S-B", "inactive"), ("S-C", "active"), ("S-D", "inactive")),
+     ["S-C", "S-A", "S-B", "S-D"], ["S-B", "S-D", "S-A", "S-C"]),
+    ("material", (("MAT-A", "inactive"), ("MAT-B", "active"), ("MAT-C", "inactive"), ("MAT-D", "active")),
+     ["MAT-B", "MAT-D", "MAT-A", "MAT-C"], ["MAT-A", "MAT-C", "MAT-B", "MAT-D"]),
+])
+def test_status_sort_is_one_business_order_for_plain_pages_and_column_filters(app_client, kind, rows, ascending, descending):
+    for code, status in rows:
+        _create(app_client, kind, code, fields={"status": status, **({"default_days": 2} if kind == "supplier" else {})})
+    for direction, expected in (("asc", ascending), ("desc", descending)):
+        plain = _list(app_client, kind, sort="status", direction=direction)["data"]["entities"]
+        filtered = app_client.post(BASE + kind + "/query", json={
+            "sort": "status", "direction": direction,
+            "column_filters": {"business_code": {"mode": "exclude", "values": ["不存在的编号"]}},
+        })
+        assert filtered.status_code == 200, filtered.get_data(as_text=True)
+        assert [entity["business_code"] for entity in plain] == expected
+        assert [entity["business_code"] for entity in filtered.get_json()["data"]["entities"]] == expected
+
+
+def _query_pages(client, kind, body, pages):
+    """按 /query 逐页读（第 2 页起带第 1 页的快照），把各页编号接起来。"""
+    codes, token = [], None
+    for number in range(1, pages + 1):
+        response = client.post(BASE + kind + "/query", json=dict(body, page=number, **({"snapshot_ref": token} if token else {})))
+        assert response.status_code == 200, response.get_data(as_text=True)
+        payload = response.get_json()
+        token = payload["meta"]["snapshot_ref"]
+        codes.extend(entity["business_code"] for entity in payload["data"]["entities"])
+    return codes
+
+
+def _create_rows(client, kind, rows):
+    for number, (code, fields) in enumerate(rows, 1):
+        token = _list(client, kind)["data"]["create_context"]["write_token"]
+        response = client.post(BASE + kind + "/create", json={
+            "request_key": f"resource-table-{kind}-{number:02d}", "write_token": token,
+            "input": {"business_code": code, "label": "Name-" + code, "fields": fields}})
+        assert response.status_code == 200, response.get_data(as_text=True)
+
+
+# 只差连续空白或 Unicode 写法的编号与名称，归一化后同键：普通分页（SQL）和列筛选（格子索引）同序，平手按原始编号升序。
+@pytest.mark.parametrize("kind", ["machine", "supplier", "material"])
+@pytest.mark.parametrize("sort", ["business_code", "label"])
+def test_normalized_text_ties_page_in_one_order_for_plain_pages_and_column_filters(app_client, kind, sort):
+    fields = {"default_days": 2} if kind == "supplier" else {}
+    _create_rows(app_client, kind, [(code, fields) for code in ("K  2", "K 1", "K  1", "K\u00e9", "Ke\u0301")])
+    expected = {"asc": ["K  1", "K 1", "K  2", "Ke\u0301", "K\u00e9"],
+                "desc": ["Ke\u0301", "K\u00e9", "K  2", "K  1", "K 1"]}
+    for direction in ("asc", "desc"):
+        body = {"sort": sort, "direction": direction, "size": 2}
+        filtered = dict(body, column_filters={"business_code": {"mode": "exclude", "values": ["不存在的编号"]}})
+        assert _query_pages(app_client, kind, body, 3) == expected[direction]
+        assert _query_pages(app_client, kind, filtered, 3) == expected[direction]
+
+
+# 数字格排序只看数值，筛选身份带单位：240 kg 与 240 件同序、不同值；计数跟工具栏范围加列筛选走，不跟当前页走；
+# 筛选值只按工具栏范围列出，不受本列或别的列筛选影响。
+def test_number_cells_sort_by_value_but_filter_and_count_by_unit(app_client):
+    _create_rows(app_client, "material", [("U-1", {"stock_qty": 240, "unit": "kg"}), ("U-2", {"stock_qty": 240, "unit": "件"}),
+                                          ("U-3", {"stock_qty": 7, "unit": "kg"}), ("U-4", {"stock_qty": 0, "unit": "kg", "status": "inactive"})])
+    kg240 = canonical_json({"type": "number", "value": "240", "unit": "kg"})
+    assert _query_pages(app_client, "material", {"sort": "stock_qty", "direction": "asc", "size": 1}, 4) == ["U-4", "U-3", "U-1", "U-2"]
+    for mode, codes, counts in (
+        ("include", ["U-1"], {"total": 1, "active": 1, "inactive": 0, "stock_unknown": 0}),
+        ("exclude", ["U-4", "U-3", "U-2"], {"total": 3, "active": 2, "inactive": 1, "stock_unknown": 0}),
+    ):
+        body = {"sort": "stock_qty", "direction": "asc", "size": 1, "column_filters": {"stock_qty": {"mode": mode, "values": [kg240]}}}
+        response = app_client.post(BASE + "material/query", json=dict(body, page=1))
+        assert response.status_code == 200, response.get_data(as_text=True)
+        assert response.get_json()["data"]["metrics"]["counts"] == counts
+        assert _query_pages(app_client, "material", body, len(codes)) == codes
+    plain = app_client.post(BASE + "material/query", json={"sort": "stock_qty", "size": 1, "page": 1}).get_json()["data"]
+    assert plain["metrics"]["counts"] == {"total": 4, "active": 3, "inactive": 1, "stock_unknown": 0}
+    assert plain["page"]["total"] == 4
+    facets = app_client.post(BASE + "material/facets", json={
+        "scope": {"query": "", "column_filters": {"stock_qty": {"mode": "include", "values": [kg240]}}}, "column": "stock_qty"})
+    assert facets.status_code == 200, facets.get_data(as_text=True)
+    data = facets.get_json()["data"]
+    assert data["row_count"] == 4
+    assert [(option["label"], option["count"]) for option in data["options"]] == [
+        ("0 kg", 1), ("7 kg", 1), ("240 kg", 1), ("240 件", 1)]

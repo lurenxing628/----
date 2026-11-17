@@ -2,6 +2,7 @@
 
 import getpass
 from datetime import datetime
+from typing import Callable
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_calibration_adoption import ADOPT_ACTION, adoption_input, closed_context, preview_input
@@ -17,12 +18,12 @@ from .adoption_policy import adopt_checked_quota
 
 class WorkbenchCalibrationAdoptionService:
     def __init__(self, conn, *, integration_enabled=False, context_factory, context_validator,
-                 clock=None, actor_provider=None):
+                 clock: Callable[[], datetime], actor_provider=None):
         self.conn = conn
         self.integration_enabled = integration_enabled is True
         self.context_factory = context_factory
         self.context_validator = context_validator
-        self.clock = clock or datetime.now
+        self.clock = clock
         self.actor_provider = actor_provider or getpass.getuser
         self.repo = WorkbenchCalibrationAdoptionRepository(conn)
         self.commands = WorkbenchCommandService(conn)
@@ -55,8 +56,6 @@ class WorkbenchCalibrationAdoptionService:
 
         def guard():
             self._enabled()
-            if type(write_token) is not str or not write_token:
-                raise WorkbenchCommandRejected("stale_write", messages.STALE)
             evidence = read_evidence(self.conn, self.repo, template_operation_ref, intent, self.clock)
             self.context_validator(write_token, template_operation_ref, ADOPT_ACTION, evidence.snapshot)
             evidence.require_adoptable()

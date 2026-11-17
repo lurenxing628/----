@@ -3,11 +3,13 @@
 import csv
 import json
 import subprocess
+from datetime import datetime
 from io import StringIO
 from pathlib import Path
 
 import pytest
 
+from core.shared.local_datetime import datetime_to_us
 from tests._support.node_runtime_support import node_runtime
 from tests.workbench.dashboard_external_handling_support import (
     external_handling_case as external_handling_fixture,  # noqa: F401
@@ -15,7 +17,8 @@ from tests.workbench.dashboard_external_handling_support import (
 from tests.workbench.dashboard_external_support import external_case as external_fixture  # noqa: F401
 from tests.workbench.dashboard_support import api, follow  # noqa: F401
 from tests.workbench.dashboard_support import dashboard_case as dashboard_fixture  # noqa: F401
-from tests.workbench.point_downstream_support import ACTUAL, app_for, read
+from tests.workbench.plan_catalog_support import insert_schedule_row, update_schedule_rows
+from tests.workbench.point_downstream_support import ACTUAL, app_for, read, read_body
 from tests.workbench.run_candidate_support import candidate_case as candidate_fixture  # noqa: F401
 
 ROOT = "/api/workbench/v1/dashboard"
@@ -28,10 +31,10 @@ def list_item(client):
     return next(row for row in body["data"]["items"] if row["category"] == "delivery"), body["meta"]["snapshot_ref"]
 
 
-def test_routes_list_detail_transition_history_and_stale_snapshot(dashboard_case, monkeypatch):
+def test_routes_list_detail_transition_history_and_stale_snapshot(dashboard_case):
     from data.repositories.workbench_dashboard_repo import WorkbenchDashboardRepository
 
-    client = api(dashboard_case, monkeypatch)
+    client = api(dashboard_case)
     item, snapshot = list_item(client)
     url = ROOT + "/items/" + item["item_ref"]
     assert client.get(url).status_code == 400
@@ -48,20 +51,18 @@ def test_routes_list_detail_transition_history_and_stale_snapshot(dashboard_case
     assert history["data"]["history"]["page"]["total"] == 1
     assert history["data"]["history"]["items"][0]["receipt_ref"] == response.get_json()["receipt_ref"]
     row = WorkbenchDashboardRepository(dashboard_case.conn).history_rows(item["item_ref"], 1, 0)[0]
-    assert "source_hash" not in row
-    saved = json.loads(row["source_facts_json"])
-    assert saved["facts"] and saved["guard"]["identity"]["item_ref"] == item["item_ref"]
-    assert saved["guard"]["revision"] == 0 and saved["guard"]["handling"]["status"] == "new"
+    saved = json.loads(row["source_json"])
+    assert saved["item_ref"] == item["item_ref"] and saved["category"] == "delivery"
 
 
 def test_first_screen_list_and_analysis_share_one_fact_read(dashboard_case, monkeypatch, record_property):
     from core.services.workbench.dashboard.facts import DashboardFacts
 
     case = dashboard_case
-    case.conn.execute("UPDATE Schedule SET end_time='2026-09-09T10:09:59.940000' WHERE version=1")
+    update_schedule_rows(case.conn, 1, end_time="2026-09-09T10:09:59.940000")
     case.conn.commit()
     case.report()
-    client = api(dashboard_case, monkeypatch)
+    client = api(dashboard_case)
     original, calls = DashboardFacts.load, []
     original_contents, snapshots = DashboardFacts.snapshot_contents, []
 
@@ -103,7 +104,7 @@ def test_first_screen_list_and_analysis_share_one_fact_read(dashboard_case, monk
     assert body["data"]["analysis"]["as_of"] == body["meta"]["as_of"]
     execution_client = app_for(case).test_client()
     plan_ref = body["data"]["plan"]["plan_ref"]
-    boundary = read(execution_client, ACTUAL, plan_ref=plan_ref)
+    boundary = read_body(execution_client, ACTUAL, plan_ref=plan_ref)
     deviation = boundary["data"]["items"][0]["deviation"]
     review = read(execution_client, "/api/workbench/v1/analytics", plan_ref=plan_ref)
     assert deviation["as_of"] == boundary["meta"]["as_of"]
@@ -111,16 +112,16 @@ def test_first_screen_list_and_analysis_share_one_fact_read(dashboard_case, monk
     assert (review["data"]["rows"][0]["finish_deviation_minutes"], review["data"]["rows"][0]["finish_late"]) == (10, False)
     assert boundary["data"]["execution_summary"] == {"complete": 1, "reported": 0, "pending": 0,
         "average_finish_deviation_minutes": 10, "known_finish_count": 1, "scope": "full_response_cohort"}
-    exported = execution_client.get(ACTUAL + "/export", query_string={"plan_ref": plan_ref, "format": "csv",
+    exported = execution_client.post(ACTUAL + "/export", json={"plan_ref": plan_ref, "format": "csv",
         "snapshot_ref": boundary["meta"]["snapshot_ref"], "late_filter": "finishLate"})
     assert exported.status_code == 200
     assert list(csv.DictReader(StringIO(exported.data.decode("utf-8-sig")))) == []
-    case.conn.execute("UPDATE Schedule SET end_time='2026-09-09T10:09:59' WHERE version=1")
+    update_schedule_rows(case.conn, 1, end_time="2026-09-09T10:09:59")
     case.conn.commit()
     item = next(row for row in body["data"]["items"] if row["category"] == "delivery")
     stale = client.get(ROOT + "/items/" + item["item_ref"], query_string={"snapshot_ref": body["meta"]["snapshot_ref"]})
     assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "snapshot_stale"
-    late = read(execution_client, ACTUAL, plan_ref=plan_ref)
+    late = read_body(execution_client, ACTUAL, plan_ref=plan_ref)
     review = read(execution_client, "/api/workbench/v1/analytics", plan_ref=plan_ref)
     assert (late["data"]["items"][0]["deviation"]["finish_deviation_minutes"],
             late["data"]["items"][0]["deviation"]["finish_late"]) == (10.02, True)
@@ -135,20 +136,20 @@ def test_analysis_failure_does_not_hide_the_readable_list(dashboard_case, monkey
         raise WorkbenchCommandRejected("query_too_large", "分析超过读取上限。", 413)
 
     monkeypatch.setattr(WorkbenchDashboardService, "analysis", unavailable)
-    response = api(dashboard_case, monkeypatch).get(ROOT)
+    response = api(dashboard_case).get(ROOT)
     assert response.status_code == 200
     data = response.get_json()["data"]
     assert data["items"] and data["analysis"] is None
     assert data["analysis_error"] == "分析超过读取上限。"
 
 
-def test_merged_response_budget_keeps_the_complete_readable_list(dashboard_case, monkeypatch):
+def test_merged_response_budget_keeps_the_complete_readable_list(dashboard_case):
     from core.models.workbench_dashboard import MAX_BYTES
 
     case = dashboard_case
     case.conn.execute("UPDATE MachineDowntimes SET reason_detail=?", ("x" * (3 * 1024 * 1024),))
     case.conn.commit()
-    client = api(case, monkeypatch)
+    client = api(case)
 
     standalone = client.get(ROOT + "/analysis", query_string={"section": "downtime"})
     assert standalone.status_code == 200 and len(standalone.data) <= MAX_BYTES
@@ -165,11 +166,11 @@ def test_merged_response_budget_keeps_the_complete_readable_list(dashboard_case,
     assert detail.status_code == 200 and len(detail.data) <= MAX_BYTES
 
 
-def test_unavailable_plan_keeps_handling_readable_and_analysis_consistent(dashboard_case, monkeypatch):
+def test_unavailable_plan_keeps_handling_readable_and_analysis_consistent(dashboard_case):
     case = dashboard_case
     item = case.item()
     case.command(item, follow())
-    client = api(case, monkeypatch)
+    client = api(case)
     healthy = client.get(ROOT).get_json()
     plan_ref = healthy["data"]["plan"]["plan_ref"]
     case.conn.execute("UPDATE WorkbenchEntityRefs SET active=0 WHERE kind='batch' AND entity_key='DB1'")
@@ -198,14 +199,14 @@ def test_unavailable_plan_keeps_handling_readable_and_analysis_consistent(dashbo
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_standalone_analysis_over_budget_preserves_complete_list(dashboard_case, monkeypatch):
+def test_standalone_analysis_over_budget_preserves_complete_list(dashboard_case):
     from core.models.workbench_dashboard import MAX_BYTES
 
     case = dashboard_case
     reason = "x" * (MAX_BYTES * 9 // 16)
     case.conn.execute("UPDATE MachineDowntimes SET reason_detail=?", (reason,))
     case.conn.commit()
-    client = api(case, monkeypatch)
+    client = api(case)
     analysis = client.get(ROOT + "/analysis", query_string={"section": "downtime"})
     assert analysis.status_code == 413
     assert analysis.get_json()["error"]["code"] == "query_too_large"
@@ -220,7 +221,7 @@ def test_standalone_analysis_over_budget_preserves_complete_list(dashboard_case,
     assert downtime["source"]["downtimes"][0]["reason"] == reason
 
 
-def test_candidate_comparison_uses_dashboard_envelope_budget(candidate_case, monkeypatch):
+def test_candidate_comparison_uses_dashboard_envelope_budget(candidate_case):
     from core.models.workbench_dashboard import MAX_BYTES
     from tests.workbench.run_candidate_support import compute
 
@@ -228,7 +229,7 @@ def test_candidate_comparison_uses_dashboard_envelope_budget(candidate_case, mon
     case.conn.execute("UPDATE Batches SET part_name=?", ("x" * (MAX_BYTES * 9 // 16),))
     case.conn.commit()
     _, candidates = compute(case)
-    response = api(case, monkeypatch).get(ROOT + "/candidates/" + candidates[0] + "/comparison", query_string={
+    response = api(case).get(ROOT + "/candidates/" + candidates[0] + "/comparison", query_string={
         "range_start": "2026-09-09T00:00:00", "range_end": "2026-09-26T00:00:00"})
     assert response.status_code == 413, response.get_json()
     assert response.get_json()["error"]["code"] == "query_too_large"
@@ -247,7 +248,7 @@ def test_candidate_comparison_rejects_invalid_snapshot_before_read_admission(das
         yield
 
     monkeypatch.setattr(PLAN_READ_SLOTS, "slot", slot)
-    response = api(dashboard_case, monkeypatch).get(ROOT + "/candidates/" + "a" * 48 + "/comparison", query_string={
+    response = api(dashboard_case).get(ROOT + "/candidates/" + "a" * 48 + "/comparison", query_string={
         "range_start": "2026-09-09T00:00:00", "range_end": "2026-09-26T00:00:00", "snapshot_ref": "invalid"})
     assert response.status_code == 409 and response.get_json()["error"]["code"] == "snapshot_stale"
     assert admitted == []
@@ -305,7 +306,7 @@ def test_dashboard_read_lane_is_used_only_for_list_admission(dashboard_case, mon
             yield
 
     monkeypatch.setattr(PLAN_READ_SLOTS, "slot", slot)
-    client = api(dashboard_case, monkeypatch)
+    client = api(dashboard_case)
     listed = client.get(ROOT, headers={"X-Workbench-Read-Lane": "dashboard-page-a"})
     assert listed.status_code == 200
     body = listed.get_json()
@@ -326,9 +327,9 @@ def test_dashboard_materializes_only_page_and_detail_facts_without_changing_snap
     from core.services.workbench.dashboard import service
     from tests.workbench.dashboard_support import NOW
 
-    reader = service.WorkbenchDashboardService(dashboard_case.conn, clock=lambda: NOW)
+    reader = service.WorkbenchDashboardService(dashboard_case.conn)
     with reader.read_snapshot():
-        sources = reader.load()
+        sources = reader.load(NOW)
     calls = []
     original_decorate = service.WorkbenchDashboardService._decorate
     original_materialize = service.WorkbenchDashboardService._materialize_item
@@ -342,24 +343,30 @@ def test_dashboard_materializes_only_page_and_detail_facts_without_changing_snap
         is_new = "_snapshot" not in item
         original_materialize(item)
         if is_new:
-            calls.append(set(item["_facts"]))
+            calls.append(set(item["_snapshot"]))
 
     monkeypatch.setattr(service.WorkbenchDashboardService, "_decorate", decorate)
     monkeypatch.setattr(service.WorkbenchDashboardService, "_materialize_item", staticmethod(materialize_item))
     data = reader.project(sources)
-    assert len(data["items"]) > 1 and all("_snapshot" not in item for item in data["items"])
-    assert len(calls) == len(data["items"]) and all("facts" not in value for value in calls)
+    assert len(data["items"]) > 1 and all("_facts" not in item and "_snapshot" not in item for item in data["items"])
+    assert len(calls) == len(data["items"]) and all("facts" not in value and "source_revision" in value for value in calls)
     for item in data["items"]:
-        snapshot = {"facts": item["_facts"], "source_state": item["source_state"],
-            "identity": item["_guard"]["identity"], "revision": item["_guard"]["revision"],
-            "source": item["source"], "risk": item["risk"], "handling": item["_handling"]}
-        assert item["_guard"] == {key: value for key, value in snapshot.items() if key != "facts"}
+        expected = {
+            "source_state": item["source_state"],
+            "source_revision": item["_guard"]["source_revision"],
+            "identity": item["_guard"]["identity"],
+            "revision": item["_guard"]["revision"],
+            "source": item["source"],
+            "risk": item["risk"],
+            "handling": item["_handling"],
+        }
+        assert item["_guard"] == expected
     guard_calls = len(calls)
     public = reader.workspace(data, DashboardQuery(size=1))
     assert len(public["items"]) == 1 and len(calls) == guard_calls + 1
     item = next(item for item in data["items"] if "_snapshot" in item)
     snapshot = item["_snapshot"]
-    assert snapshot["facts"] is item["_facts"] and snapshot["source"] is item["_guard"]["source"]
+    assert snapshot is item["_guard"] and snapshot["source"] is item["_guard"]["source"]
     reader.public_item(item)
     assert item["_snapshot"] is snapshot and len(calls) == guard_calls + 1
     untouched = next(item for item in data["items"] if "_snapshot" not in item)
@@ -402,9 +409,9 @@ def test_dashboard_analysis_reuses_streamed_pressure_without_retaining_calendar_
     monkeypatch.setattr(calendar_capture, "calendar_from_sources", calendar_factory)
     # Capture and analysis share one metrics object; the only index constructor is in calendar_capture.
     monkeypatch.setattr(calendar_capture, "ResourceTaskIndex", resource_task_index)
-    reader = WorkbenchDashboardService(case.conn, clock=lambda: NOW)
+    reader = WorkbenchDashboardService(case.conn)
     with reader.read_snapshot():
-        sources = reader.load()
+        sources = reader.load(NOW)
     facts = sources.facts.project()
     metrics = facts.pressure_metrics
     assert metrics is not None
@@ -458,14 +465,23 @@ def test_plan_without_resource_cohort_beyond_calendar_window_keeps_analysis_read
     case.conn.execute("UPDATE BatchOperations SET source='external', op_type_id=NULL, op_type_name='Plating' WHERE id=?", (case.op,))
     early = case.conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_name,source,unit_hours,setup_hours) "
                               "VALUES ('DOP0','DB1',2,'Plating',?,0,0)", (early_source,)).lastrowid
-    case.conn.execute("UPDATE Schedule SET machine_id=NULL, operator_id=NULL, start_time='2026-09-09T08:00:00', "
-                      "end_time='2026-09-11T08:00:00' WHERE version=1")
-    case.conn.execute("INSERT INTO Schedule(version,op_id,start_time,end_time) "
-                      "VALUES (1,?,'2010-01-04T08:00:00','2010-01-06T08:00:00')", (early,))
+    case.conn.execute(
+        "UPDATE Schedule SET source='external', op_type_ref=NULL, op_type_label='Plating', op_type_name='Plating' "
+        "WHERE version=1 AND op_id=?",
+        (case.op,),
+    )
+    update_schedule_rows(
+        case.conn, 1, machine_id=None, operator_id=None,
+        start_time="2026-09-09T08:00:00", end_time="2026-09-11T08:00:00", sync_history=False,
+    )
+    insert_schedule_row(
+        case.conn, 1, early, "2010-01-04T08:00:00", "2010-01-06T08:00:00",
+        machine_id=None, operator_id=None,
+    )
     case.conn.commit()
-    reader = WorkbenchDashboardService(case.conn, clock=lambda: NOW)
+    reader = WorkbenchDashboardService(case.conn)
     with reader.read_snapshot():
-        sources = reader.load()
+        sources = reader.load(NOW)
     assert sources.facts.pressure["calendar_state"] == "unavailable"
     assert sources.facts.pressure_metrics is not None and sources.facts.pressure_metrics.factory is None
     first = reader.analysis(sources, DashboardAnalysisQuery("overview"))
@@ -479,6 +495,25 @@ def test_plan_without_resource_cohort_beyond_calendar_window_keeps_analysis_read
     assert reader.analysis(sources, DashboardAnalysisQuery("overview")) == first
 
 
+def test_material_item_keeps_the_admitted_daily_total_beyond_one_entry_bound(dashboard_case):
+    # 需求量、库存、到料各自是单条存储值（上界 2^53-1）；当日可用量是合计，不再套单条上界被洗成未知。
+    case = dashboard_case
+    largest = (1 << 53) - 1
+    requirement = case.conn.execute("SELECT id FROM BatchMaterials WHERE batch_id='DB1'").fetchone()[0]
+    case.conn.execute("UPDATE BatchMaterials SET required_qty=1, available_qty=? WHERE id=?", (largest, requirement))
+    case.conn.execute("INSERT INTO BatchMaterialReviews(requirement_id,batch_quantity) VALUES (?,2)", (requirement,))
+    case.conn.execute("INSERT INTO BatchMaterialArrivals(requirement_id,arrival_date,quantity) VALUES (?,?,?)",
+                      (requirement, "2026-09-10", largest))
+    case.conn.commit()
+    response = api(case).get(ROOT)
+    assert response.status_code == 200, response.get_json()
+    data = response.get_json()["data"]
+    material = data["categories"]["material"]
+    # 齐套无缺口不是风险，不进列表；合计被洗成未知时这里会是 unknown_count=1、risk_count=None、readiness_unknown。
+    assert (material["assessed_count"], material["unknown_count"], material["risk_count"], material["evaluation_gaps"]) == (1, 0, 0, [])
+    assert "material" not in {row["category"] for row in data["items"]}
+
+
 def test_reviewed_batch_quantity_change_reports_material_review_required_issue(dashboard_case):
     dashboard_case.command(dashboard_case.item("material"), follow())
     req_id = dashboard_case.conn.execute("SELECT id FROM BatchMaterials WHERE batch_id='DB1'").fetchone()[0]
@@ -490,3 +525,328 @@ def test_reviewed_batch_quantity_change_reports_material_review_required_issue(d
     dashboard_case.conn.commit()
     item = dashboard_case.item("material")
     assert [row["code"] for row in item["source"]["readiness_issues"]] == ["material_review_required"]
+
+
+def test_per_item_source_revision_guards_remark_review_and_downtime_mutations(dashboard_case):
+    from core.models.workbench_command import WorkbenchCommandRejected
+    from core.services.workbench.execution.production_report import WorkbenchProductionReportService
+    from tests.workbench.dashboard_support import NOW
+
+    case = dashboard_case
+    created = case.report()["data"]["rows"][0]
+    items = {row["category"]: row for row in case.read()[0]["items"]}
+
+    # 1. Modifying only a production report's remark invalidates the actual item's write_token,
+    #    while unrelated categories (e.g. material) stay unaffected.
+    WorkbenchProductionReportService(case.conn, clock=lambda: NOW).execute(
+        "correct",
+        created["report_ref"],
+        {
+            "remark": "remark-only update",
+            "original_revision_ref": created["revision_ref"],
+            "reason": "Clarify operator note",
+            "declared_operator": "Foreman",
+        },
+        request_key="dashboard-report-remark-only-01",
+        validate_context=lambda *_: None,
+    )
+    with pytest.raises(WorkbenchCommandRejected) as stale_actual:
+        case.command(items["actual"], follow(), key="dashboard-stale-actual-remark-01")
+    assert stale_actual.value.code == "stale_write"
+    assert case.command(items["material"], follow(), key="dashboard-material-unaffected-01")["result"] == "committed"
+
+    # 2. Adjusting a material review row invalidates the material item's write_token.
+    material_item = case.item("material")
+    req_id = case.conn.execute("SELECT id FROM BatchMaterials WHERE batch_id='DB1'").fetchone()[0]
+    case.conn.execute("INSERT INTO BatchMaterialReviews(requirement_id,batch_quantity) VALUES (?,2)", (req_id,))
+    case.conn.commit()
+    with pytest.raises(WorkbenchCommandRejected) as stale_material:
+        case.command(material_item, follow(remark="After review tweak"), key="dashboard-stale-material-review-01")
+    assert stale_material.value.code == "stale_write"
+
+    # 3. Updating a non-overlapping downtime on the same machine invalidates the downtime item's write_token.
+    afternoon = (datetime_to_us(datetime(2026, 9, 9, 15)), datetime_to_us(datetime(2026, 9, 9, 16)))
+    case.conn.execute(
+        "INSERT INTO MachineDowntimes(machine_id,start_time,end_time,start_us,end_us,reason_code,reason_detail) "
+        "VALUES ('DM1','2026-09-09 15:00:00','2026-09-09 16:00:00',?,?,'maintenance','Initial note')",
+        afternoon,
+    )
+    case.conn.commit()
+    downtime_item = case.item("downtime")
+    case.conn.execute("UPDATE MachineDowntimes SET reason_detail='Updated note' WHERE start_us=?", (afternoon[0],))
+    case.conn.commit()
+    with pytest.raises(WorkbenchCommandRejected) as stale_downtime:
+        case.command(downtime_item, follow(), key="dashboard-stale-downtime-update-01")
+    assert stale_downtime.value.code == "stale_write"
+
+
+def test_transition_reads_only_single_item_closure_across_all_five_categories(external_handling_case, monkeypatch):
+    from core.services.workbench.dashboard import facts as facts_module
+    from core.services.workbench.execution.ledger import ExecutionLedgerService
+    from tests.workbench.dashboard_support import connect
+
+    case = external_handling_case
+    # Add an unrelated scheduled internal operation so any whole-plan execution load would read >1 operations.
+    extra_op = case.conn.execute(
+        "INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source,unit_hours,setup_hours) "
+        "VALUES ('DOP2','DB1',2,'DT1','Turning','internal',1.0,0)"
+    ).lastrowid
+    assert extra_op is not None
+    insert_schedule_row(
+        case.conn,
+        1,
+        extra_op,
+        "2026-09-09T13:00:00",
+        "2026-09-09T14:00:00",
+        machine_id="DM1",
+        operator_id="DO1",
+    )
+    case.conn.commit()
+    case.register(index=1)
+
+    sql_log = []
+
+    def traced_connect(path):
+        conn = connect(path)
+        conn.set_trace_callback(sql_log.append)
+        return conn
+
+    client = api(case, connect_factory=traced_connect)
+    listed = client.get(ROOT)
+    assert listed.status_code == 200, listed.get_json()
+    by_category = {}
+    for row in listed.get_json()["data"]["items"]:
+        by_category.setdefault(row["category"], row)
+    assert set(by_category) == {"delivery", "material", "actual", "downtime", "external"}
+
+    loaded_op_counts = []
+    orig_ledger_load = ExecutionLedgerService.load
+
+    def tracked_ledger_load(self, scope, operation_refs, **kwargs):
+        loaded_op_counts.append(len(list(operation_refs)))
+        return orig_ledger_load(self, scope, operation_refs, **kwargs)
+
+    def patch_command_only(mp):
+        mp.setattr(
+            facts_module,
+            "capture_resource_pressure",
+            lambda *args, **kwargs: pytest.fail("Command unexpectedly captured resource pressure"),
+        )
+        mp.setattr(
+            facts_module,
+            "candidate_catalog",
+            lambda *args, **kwargs: pytest.fail("Command unexpectedly loaded candidate catalog"),
+        )
+        mp.setattr(
+            facts_module.DashboardFacts,
+            "_load_sources",
+            lambda *args, **kwargs: pytest.fail("Command unexpectedly loaded the full dashboard sources"),
+        )
+        mp.setattr(ExecutionLedgerService, "load", tracked_ledger_load)
+
+    queries_by_category = {}
+    with monkeypatch.context() as cmd_patch:
+        patch_command_only(cmd_patch)
+        for idx, category_name in enumerate(("delivery", "material", "actual", "downtime", "external"), start=1):
+            item = by_category[category_name]
+            sql_log.clear()
+            resp = client.post(
+                ROOT + "/items/" + item["item_ref"] + "/transition",
+                json={
+                    "request_key": f"dashboard-scoped-transition-{category_name}-{idx:02d}",
+                    "write_token": item["write_context"]["write_token"],
+                    "input": follow(),
+                },
+            )
+            assert resp.status_code == 200, (category_name, resp.get_json())
+            assert resp.get_json()["result"] == "committed"
+            queries_by_category[category_name] = [
+                " ".join(stmt.upper().replace('"', "").split())
+                for stmt in sql_log
+                if stmt.lstrip().upper().startswith("SELECT")
+            ]
+
+    for category_name in ("material", "external"):
+        selects = queries_by_category[category_name]
+        assert not any("FROM SCHEDULE " in stmt or stmt.endswith("FROM SCHEDULE") for stmt in selects), (
+            category_name,
+            selects,
+        )
+        assert not any("WORKBENCHPRODUCTIONREPORTS" in stmt for stmt in selects), (category_name, selects)
+        assert not any("WORKCALENDAR" in stmt for stmt in selects), (category_name, selects)
+
+    assert loaded_op_counts == [1]
+
+    # Retained items under unavailable batch identity also commit cleanly with 0 stale_write false positives.
+    case.conn.execute("UPDATE WorkbenchEntityRefs SET active=0 WHERE kind='batch' AND entity_key='DB1'")
+    case.conn.commit()
+    degraded = client.get(ROOT)
+    assert degraded.status_code == 200, degraded.get_json()
+    degraded_items = {row["item_ref"]: row for row in degraded.get_json()["data"]["items"]}
+    with monkeypatch.context() as cmd_patch:
+        patch_command_only(cmd_patch)
+        for category_name in ("delivery", "material", "actual", "downtime"):
+            retained = degraded_items[by_category[category_name]["item_ref"]]
+            assert retained["source_state"] == "not_currently_evaluated"
+            resp = client.post(
+                ROOT + "/items/" + retained["item_ref"] + "/transition",
+                json={
+                    "request_key": f"dashboard-degraded-transition-{category_name}",
+                    "write_token": retained["write_context"]["write_token"],
+                    "input": follow(remark="Retained after identity_missing"),
+                },
+            )
+            assert resp.status_code == 200, (category_name, resp.get_json())
+            assert resp.get_json()["result"] == "committed"
+
+
+def test_sibling_batch_invalidation_keeps_healthy_items_current_and_retained_delivery_avoids_other_batches(
+    dashboard_case, monkeypatch
+):
+    from tests.workbench.dashboard_support import connect
+    from tests.workbench.execution_ledger_support import publish_official_plan
+
+    case = dashboard_case
+    case.conn.execute(
+        "INSERT INTO Batches(batch_id,part_no,part_name,quantity,due_date,ready_status) "
+        "VALUES ('DB2','DP1','Part 2',2,'2026-09-08','no')"
+    )
+    db2_op = case.conn.execute(
+        "INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source,unit_hours,setup_hours) "
+        "VALUES ('DOP-DB2-1','DB2',1,'DT1','Turning','internal',1.0,0)"
+    ).lastrowid
+    db2_deferred_op = case.conn.execute(
+        "INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source,unit_hours,setup_hours) "
+        "VALUES ('DOP-DB2-2','DB2',2,'DT1','Turning','internal',1.0,0)"
+    ).lastrowid
+    assert db2_op is not None and db2_deferred_op is not None
+    case.conn.execute(
+        "INSERT INTO BatchMaterials(batch_id,material_id,required_qty,available_qty,ready_status) "
+        "VALUES ('DB2','DMAT',5,1,'no')"
+    )
+    insert_schedule_row(
+        case.conn,
+        1,
+        db2_op,
+        "2026-09-09T13:00:00",
+        "2026-09-09T15:00:00",
+        machine_id="DM1",
+        operator_id="DO1",
+    )
+    case.conn.commit()
+
+    sql_log = []
+
+    def traced_connect(path):
+        conn = connect(path)
+        conn.set_trace_callback(sql_log.append)
+        return conn
+
+    client = api(case, connect_factory=traced_connect)
+    initial = client.get(ROOT)
+    assert initial.status_code == 200, initial.get_json()
+    db1_items = {
+        row["category"]: row
+        for row in initial.get_json()["data"]["items"]
+        if row["subject"].startswith("DB1 · ")
+    }
+    assert set(db1_items) == {"delivery", "material", "actual", "downtime"}
+
+    for idx, category_name in enumerate(("delivery", "material", "actual", "downtime"), start=1):
+        item = db1_items[category_name]
+        resp = client.post(
+            ROOT + "/items/" + item["item_ref"] + "/transition",
+            json={
+                "request_key": f"dashboard-db1-initial-{category_name}-{idx:02d}",
+                "write_token": item["write_context"]["write_token"],
+                "input": follow(),
+            },
+        )
+        assert resp.status_code == 200, (category_name, resp.get_json())
+        assert resp.get_json()["result"] == "committed"
+
+    # Invalidate sibling batch DB2: top-level plan becomes None/unavailable,
+    # while DB1's four items remain "current" in both GET /dashboard and POST /transition.
+    case.conn.execute("UPDATE WorkbenchEntityRefs SET active=0 WHERE kind='batch' AND entity_key='DB2'")
+    case.conn.commit()
+
+    listed = client.get(ROOT)
+    assert listed.status_code == 200, listed.get_json()
+    data = listed.get_json()["data"]
+    assert data["plan"] is None
+    assert data["analysis"]["plan"] is None and data["analysis"]["state"] == "unavailable"
+    for category_name in ("delivery", "material", "actual", "downtime"):
+        assert data["categories"][category_name]["state"] == "unavailable"
+
+    listed_by_ref = {row["item_ref"]: row for row in data["items"]}
+    for idx, category_name in enumerate(("delivery", "material", "actual", "downtime"), start=1):
+        current_item = listed_by_ref[db1_items[category_name]["item_ref"]]
+        assert current_item["source_state"] == "current", (category_name, current_item)
+        resp = client.post(
+            ROOT + "/items/" + current_item["item_ref"] + "/transition",
+            json={
+                "request_key": f"dashboard-db1-sibling-dead-{category_name}-{idx:02d}",
+                "write_token": current_item["write_context"]["write_token"],
+                "input": follow(remark=f"Updated while DB2 inactive ({category_name})"),
+            },
+        )
+        assert resp.status_code == 200, (category_name, resp.get_json())
+        assert resp.get_json()["result"] == "committed"
+
+    # Restore DB2 and publish plan v2 containing only DB2 (plus a deferred DB2 operation),
+    # leaving DB1's handled delivery item retained outside the current official plan.
+    case.conn.execute("UPDATE WorkbenchEntityRefs SET active=1 WHERE kind='batch' AND entity_key='DB2'")
+    publish_official_plan(
+        case.conn,
+        2,
+        [
+            {
+                "op_id": db2_op,
+                "machine_id": "DM1",
+                "operator_id": "DO1",
+                "start_time": "2026-09-09T13:00:00",
+                "end_time": "2026-09-09T15:00:00",
+            }
+        ],
+        adopted_at="2026-09-08T18:00:00",
+    )
+    case.conn.execute(
+        "UPDATE ScheduleHistory SET deferred_operation_ids_json=? WHERE version=2",
+        (json.dumps([db2_deferred_op]),),
+    )
+    case.conn.commit()
+
+    after_v2 = client.get(ROOT)
+    assert after_v2.status_code == 200, after_v2.get_json()
+    retained_delivery = next(
+        row
+        for row in after_v2.get_json()["data"]["items"]
+        if row["item_ref"] == db1_items["delivery"]["item_ref"]
+    )
+    assert retained_delivery["source_state"] == "not_currently_evaluated"
+
+    sql_log.clear()
+    resp = client.post(
+        ROOT + "/items/" + retained_delivery["item_ref"] + "/transition",
+        json={
+            "request_key": "dashboard-db1-retained-delivery-no-db2-01",
+            "write_token": retained_delivery["write_context"]["write_token"],
+            "input": follow(remark="Retained delivery outside v2 without touching DB2"),
+        },
+    )
+    assert resp.status_code == 200, resp.get_json()
+    assert resp.get_json()["result"] == "committed"
+
+    select_trace = [
+        " ".join(stmt.replace('"', "").split())
+        for stmt in sql_log
+        if stmt.lstrip().upper().startswith("SELECT")
+    ]
+    assert select_trace
+    assert all("DB2" not in stmt for stmt in select_trace), select_trace
+    assert not any("FROM BATCHES" in stmt.upper() for stmt in select_trace), select_trace
+    assert all(
+        "DB1" in stmt
+        for stmt in select_trace
+        if "FROM BATCHOPERATIONS" in stmt.upper()
+    ), select_trace

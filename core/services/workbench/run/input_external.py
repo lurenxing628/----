@@ -119,13 +119,9 @@ def preflight_external_cycles(facts, batches, operations, projections):
 def prior_execution_projections(facts, version):
     refs = {facts.operation_refs[op_id] for op_id in facts.latest_plan_rows(version)}
     supplied = facts.execution_projections
-    missing = sorted(refs - set(supplied))
     ledger = facts.ledger
-    for offset in range(0, len(missing), 10000):
-        supplied.update(
-            (item.operation_ref, item)
-            for item in ledger.reader.project_operations(ledger, missing[offset:offset + 10000])
-        )
+    supplied.update((item.operation_ref, item)
+                    for item in ledger.reader.project_operations(ledger, sorted(refs - set(supplied))))
     return [supplied[ref] for ref in sorted(refs)]
 
 
@@ -146,12 +142,10 @@ def _planned_external(facts, version):
 def _resource_bearing_external(facts, version):
     external = _planned_external(facts, version)
     supplied = {ref: facts.execution_projections[ref].to_dict() for ref in external if ref in facts.execution_projections}
-    missing = sorted(set(external) - set(supplied))
     ledger = facts.ledger
-    for offset in range(0, len(missing), 10000):
-        for row in ledger.reader.project_operations(ledger, missing[offset:offset + 10000]):
-            facts.execution_projections[row.operation_ref] = row
-            supplied[row.operation_ref] = row.to_dict()
+    for row in ledger.reader.project_operations(ledger, sorted(set(external) - set(supplied))):
+        facts.execution_projections[row.operation_ref] = row
+        supplied[row.operation_ref] = row.to_dict()
     return {op["id"]: (op, supplied[ref]) for ref, op in external.items()
             if _projection_holds_resource(supplied[ref])}
 

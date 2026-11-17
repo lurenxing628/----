@@ -1,6 +1,7 @@
 """Fresh calibration pagination keeps snapshot, detail and export bindings."""
 
 import csv
+from datetime import datetime
 from io import BytesIO, StringIO
 
 import pytest
@@ -12,12 +13,12 @@ from tests.workbench.template_lineage_support import ledger_fixture as _ledger_f
 from tests.workbench.template_lineage_support import lineage_case as _lineage_case  # noqa: F401
 from web import public_token_registry
 from web.routes.workbench.calibration import register_calibration_routes
+from web.runtime_host import install_wall_clock
 
 
 @pytest.mark.parametrize("suffix", ("", "/facets/operation_label"))
-def test_calibration_captures_current_clock_in_snapshot_and_reuses_token_clock(lineage_case, monkeypatch, suffix):
+def test_calibration_captures_current_clock_in_snapshot_and_reuses_token_clock(lineage_case, suffix):
     from tests.workbench.execution_ledger_support import NOW
-    from web.routes.workbench import calibration, calibration_table
 
     case = lineage_case
     app = Flask("calibration-snapshot-clock")
@@ -36,8 +37,7 @@ def test_calibration_captures_current_clock_in_snapshot_and_reuses_token_clock(l
         clocks.append(case.conn.in_transaction)
         return NOW
 
-    module = calibration_table if suffix else calibration
-    monkeypatch.setattr(module, "current_snapshot_time", current_clock)
+    install_wall_clock(app, current_clock)
     client, path = app.test_client(), "/api/workbench/v1/calibration" + suffix
     initial = client.get(path)
     assert initial.status_code == 200, initial.get_json()
@@ -57,6 +57,7 @@ def test_calibration_restores_page_once_and_keeps_scope_source_and_expiry(lineag
                       "VALUES ('P1',2,'T1','second template','internal',0,2)")
     case.conn.commit()
     app = Flask("calibration-direct-page")
+    install_wall_clock(app, datetime.now)
     app.config.update(TESTING=True, SECRET_KEY="temporary-calibration-direct-page")
     bp = Blueprint("calibration_direct_page", __name__)
     register_calibration_routes(bp)
@@ -155,7 +156,7 @@ def test_token_bindings_share_facts_preserve_types_and_own_their_lifetime(monkey
         assert len(indexes) == 1 and len(next(iter(indexes.values()))) == 100
         assert write_context.issue_write_context("0", ["save"], snapshot)["write_token"] == tokens[0]
         # An independent retained reference survives expiry of the original read token.
-        read = read_context.bind_read_snapshot({"kind": "source"}, snapshot)
+        read = read_context.bind_read_snapshot({"kind": "source"}, snapshot, as_of=datetime(2026, 10, 18, 4, 0))
         binding = read_context.resolve_read_snapshot(read["snapshot_ref"])
         clock[0] += 800
         retained = public_token_registry.issue_public_token("retained", binding, key="one", ttl_seconds=900)
@@ -231,7 +232,7 @@ def test_new_read_times_and_write_subjects_share_one_registered_fact_text(monkey
             write_context.validate_write_context(token, str(index), "save", text)
         with pytest.raises(WorkbenchCommandRejected):
             write_context.validate_write_context(write_tokens[0], "0", "save", text + " changed")
-        assert read_context.bind_read_snapshot({"kind": "batch"}, text, read_tokens[0])["snapshot_ref"] == read_tokens[0]
+        assert read_context.rebind_read_snapshot({"kind": "batch"}, text, read_tokens[0])["snapshot_ref"] == read_tokens[0]
         clock[0] = 1451.0
         refreshed = write_context.issue_write_context("0", ["save"], ("fresh:" + text)[6:])["write_token"]
         assert refreshed != write_tokens[0]
@@ -287,7 +288,7 @@ def test_group_binding_uses_canonical_group_under_lock_and_failure_leaves_no_gro
         assert public_token_registry.resolve_public_token("bound-failure", recovered, message="expired", field="token") == ("facts", "different")
 
 
-@pytest.mark.parametrize("source,label", (("internal", "自制"), ("external", "外协"), ("unknown", "未确认"), (None, "未确认")))
+@pytest.mark.parametrize("source,label", (("internal", "自制"), ("external", "外协"), ("unknown", "未确认")))
 def test_calibration_export_source_labels_are_shared_by_csv_and_xlsx(source, label):
     from core.services.workbench.calibration.export import COLUMNS, _export_values
 
@@ -326,29 +327,26 @@ def test_calibration_query_json_rejects_duplicate_keys_and_nonfinite_numbers_wit
     assert body["error"]["message"] == message
 
 
-def test_calibration_routes_use_read_budget_and_avoid_duplicate_instance_or_unselected_revision_work(
+def test_calibration_list_uses_execution_states_with_zero_schedule_or_unselected_report_queries(
     lineage_case, monkeypatch
 ):
-    from contextlib import contextmanager
-
     from core.models.workbench_calibration import CalibrationQuery
     from core.services.workbench.calibration import samples as calibration_samples
+    from data.repositories.workbench_calibration_query_repo import WorkbenchCalibrationQueryRepository
     from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
-    from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
     from tests.workbench.execution_ledger_support import NOW
-    from tests.workbench.template_lineage_support import create
-    from web.routes.workbench.read_budget import CALIBRATION_READ_SLOTS
+    from tests.workbench.template_lineage_support import completed, create
 
     case = lineage_case
-    create(case, "CAL-BUDGET-001")
-    create(case, "CAL-BUDGET-002")
+    create(case, "CAL-UNREPORTED-001")
+    create(case, "CAL-UNREPORTED-002")
+    completed(case, [1, 2, 3, 4, 5], prefix="CAL-ELIGIBLE", version=2)
 
-    op_calls, tpl_calls, inst_calls, rev_calls, task_calls, cohort_calls = [], [], [], [], [], []
+    op_calls, task_calls, cohort_calls, rev_calls, selected_ref_calls = [], [], [], [], []
     orig_ops = WorkbenchExecutionRepository.operation_rows
-    orig_tpls = WorkbenchTemplateLineageRepository.current_templates
-    orig_insts = WorkbenchTemplateLineageRepository.current_instances
     orig_tasks = WorkbenchExecutionRepository.task_rows
     orig_cohort = WorkbenchExecutionRepository.cohort_task_rows
+    orig_selected_refs = WorkbenchCalibrationQueryRepository.selected_report_refs
     orig_content = calibration_samples.content_text
 
     monkeypatch.setattr(
@@ -367,14 +365,9 @@ def test_calibration_routes_use_read_budget_and_avoid_duplicate_instance_or_unse
         lambda repo, refs, plan_ref: (cohort_calls.append(list(refs)), orig_cohort(repo, refs, plan_ref))[1],
     )
     monkeypatch.setattr(
-        WorkbenchTemplateLineageRepository,
-        "current_templates",
-        lambda repo, refs: (tpl_calls.append(list(refs)), orig_tpls(repo, refs))[1],
-    )
-    monkeypatch.setattr(
-        WorkbenchTemplateLineageRepository,
-        "current_instances",
-        lambda repo, refs: (inst_calls.append(list(refs)), orig_insts(repo, refs))[1],
+        WorkbenchCalibrationQueryRepository,
+        "selected_report_refs",
+        lambda repo, refs: (selected_ref_calls.append(list(refs)), orig_selected_refs(repo, refs))[1],
     )
     monkeypatch.setattr(
         calibration_samples,
@@ -383,32 +376,50 @@ def test_calibration_routes_use_read_budget_and_avoid_duplicate_instance_or_unse
     )
 
     service = WorkbenchCalibrationService(case.conn)
-    with service.read_snapshot() as ledger_scope:
-        facts = service.read(ledger_scope, CalibrationQuery(), as_of=NOW)
-    assert op_calls == [] and tpl_calls == [] and inst_calls == []
-    assert len(task_calls) == 1 and cohort_calls == []
-    assert rev_calls == []
-    suggestion_ref = facts["rows"][0]["suggestion_ref"]
-    detail_data, _ = service.workspace(
-        facts, CalibrationQuery(), {"snapshot_ref": "s", "as_of": "2026-09-09T12:00:00"},
-        suggestion_ref=suggestion_ref, export=False,
+    sql_trace = []
+    case.conn.set_trace_callback(sql_trace.append)
+    try:
+        with service.read_snapshot() as ledger_scope:
+            facts = service.read(ledger_scope, CalibrationQuery(), as_of=NOW)
+            assert op_calls == [] and task_calls == [] and cohort_calls == []
+            assert selected_ref_calls == [] and rev_calls == []
+            list_data, _ = service.workspace(
+                facts,
+                CalibrationQuery(),
+                {"snapshot_ref": "s", "as_of": "2026-09-09T12:00:00"},
+                export=False,
+            )
+    finally:
+        case.conn.set_trace_callback(None)
+    assert op_calls == [] and task_calls == [] and cohort_calls == []
+    assert not any('FROM "Schedule"' in sql or "FROM Schedule " in sql for sql in sql_trace)
+    assert not any("WorkbenchProductionReports" in sql for sql in sql_trace)
+    assert selected_ref_calls == [] and rev_calls == []
+    assert all(
+        not {"sample_refs", "sample_revisions", "exclusion_reasons", "template_snapshot"}.intersection(item)
+        for item in list_data["items"]
     )
-    assert len(rev_calls) == len(detail_data["samples"]) > 0
+    suggestion_ref = list_data["items"][0]["suggestion_ref"]
+
+    rev_calls.clear()
+    with service.read_snapshot() as ledger_scope:
+        detail_data, _ = service.read_detail(
+            ledger_scope,
+            CalibrationQuery(),
+            suggestion_ref,
+            as_of=NOW,
+            bind_snapshot=lambda _c: {"snapshot_ref": "s", "as_of": "2026-09-09T12:00:00"},
+        )
+    assert len(detail_data["samples"]) == 8 and len(rev_calls) == 1 + len(detail_data["samples"])
+    assert {"sample_refs", "sample_revisions", "exclusion_reasons", "template_snapshot"}.issubset(
+        detail_data["suggestion"]
+    )
     assert all(isinstance(row["sample_revision"], str) and row["sample_revision"] for row in detail_data["samples"])
 
-    admitted = []
-    original_slot = CALIBRATION_READ_SLOTS.slot
-
-    @contextmanager
-    def tracked_slot(lane=None):
-        admitted.append(True)
-        with original_slot(lane=lane):
-            yield
-
-    monkeypatch.setattr(CALIBRATION_READ_SLOTS, "slot", tracked_slot)
-    app = Flask("calibration-read-budget")
-    app.config.update(TESTING=True, SECRET_KEY="temporary-calibration-read-budget")
-    bp = Blueprint("calibration_read_budget", __name__)
+    app = Flask("calibration-routes-direct")
+    install_wall_clock(app, datetime.now)
+    app.config.update(TESTING=True, SECRET_KEY="temporary-calibration-routes-direct")
+    bp = Blueprint("calibration_routes_direct", __name__)
     register_calibration_routes(bp)
     app.register_blueprint(bp)
 
@@ -418,14 +429,20 @@ def test_calibration_routes_use_read_budget_and_avoid_duplicate_instance_or_unse
 
     client = app.test_client()
     stale = client.get("/api/workbench/v1/calibration", query_string={"snapshot_ref": "invalid"})
-    assert stale.status_code == 409 and admitted == []
+    assert stale.status_code == 409
     ok_list = client.get("/api/workbench/v1/calibration")
-    assert ok_list.status_code == 200 and len(admitted) == 1
+    assert ok_list.status_code == 200
     token = ok_list.get_json()["meta"]["snapshot_ref"]
-    ok_facets = client.get("/api/workbench/v1/calibration/facets/operation_label")
-    assert ok_facets.status_code == 200 and len(admitted) == 2
+    facet_sql = []
+    case.conn.set_trace_callback(facet_sql.append)
+    try:
+        ok_facets = client.get("/api/workbench/v1/calibration/facets/operation_label")
+    finally:
+        case.conn.set_trace_callback(None)
+    assert ok_facets.status_code == 200
+    assert not any("WorkbenchProductionReports" in sql for sql in facet_sql)
     ok_detail = client.get(f"/api/workbench/v1/calibration/{suggestion_ref}", query_string={"snapshot_ref": token})
-    assert ok_detail.status_code == 200 and len(admitted) == 3
+    assert ok_detail.status_code == 200
 
 
 def test_shared_receipt_classification_route_boundaries_and_dashboard_stored_rows(schema_conn, tmp_path):
@@ -434,7 +451,6 @@ def test_shared_receipt_classification_route_boundaries_and_dashboard_stored_row
     from core.infrastructure.sqlite_udf import receipt_revision_category
     from core.models.workbench_dashboard import empty_handling
     from core.services.workbench.dashboard.policy import read_stored
-    from core.services.workbench.facts.production_capture import non_input_row
     from core.shared.strict_json import canonical_json
     from data.repositories.workbench_dashboard_repo import WorkbenchDashboardRepository
     from web.routes.workbench.batches import register_batch_routes
@@ -443,16 +459,11 @@ def test_shared_receipt_classification_route_boundaries_and_dashboard_stored_row
     from web.routes.workbench.resources import register_resource_routes
     from web.routes.workbench.system_routes import register_system_maintenance_routes
 
-    # #35: 统一回执三分类语义与 non_input_row
-    cols = ("action", "outcome_json")
+    # #35: 统一回执三分类语义
     assert receipt_revision_category("trial.scenario.adopt", '{"result":"applied"}') == "trial_adoption"
-    assert non_input_row("WorkbenchCommandReceipts", ("trial.scenario.adopt", '{"result":"applied"}'), cols) is True
     assert receipt_revision_category("batch.update", '{"result":"unchanged"}') == ""
-    assert non_input_row("WorkbenchCommandReceipts", ("batch.update", '{"result":"unchanged"}'), cols) is True
     assert receipt_revision_category("batch.update", "{malformed") == "production_input"
-    assert non_input_row("WorkbenchCommandReceipts", ("batch.update", "{malformed"), cols) is False
     assert receipt_revision_category("batch.update", '{"result":"applied"}') == "production_input"
-    assert non_input_row("WorkbenchCommandReceipts", ("batch.update", '{"result":"applied"}'), cols) is False
 
     log_dir = tmp_path / "logs"
     backup_dir = tmp_path / "backups"
@@ -460,6 +471,7 @@ def test_shared_receipt_classification_route_boundaries_and_dashboard_stored_row
     backup_dir.mkdir(parents=True, exist_ok=True)
 
     app = Flask("shard-d-route-contracts")
+    install_wall_clock(app, datetime.now)
     app.config.update(
         TESTING=True,
         SECRET_KEY="temporary-shard-d-route-contracts",

@@ -1,110 +1,94 @@
 """Task labels and execution context are projections of the captured generation."""
 
-from typing import Any, Dict, Mapping
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Mapping, Set, Tuple
 
-from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.workbench_run_candidate import local_time
 
+from .candidate_facts import RESOURCE_TABLES, require_arranged_type
 from .candidate_projection import scheduled_ids
-from .candidate_values import corrupt, gap, text
-from .zero_duration import PointEventError, point_event_dto
-from .zero_duration_evidence import CandidatePointReader, overlaps
+from .candidate_values import corrupt, text
+from .zero_duration import overlaps, point_event_dto
 
 
 def task_resource(facts, kind, key, gaps):
     if key is None or key == "":
         return None
-    table = {"machine": "Machines", "operator": "Operators", "supplier": "Suppliers"}[kind]
-    row = facts.related(table, key, kind, gaps)
-    ref = facts.entity_refs.get((kind, key))
-    if ref is None:
-        gaps.append(gap(kind + ".ref", "source_missing"))
-    return {"ref": ref, "label": text(row.get("name"), kind + ".label", gaps) if row else None}
+    row = facts.related(RESOURCE_TABLES[kind], key)
+    return {"ref": facts.entity_ref(kind, key), "label": text(row["name"], kind + ".label", gaps)}
 
 
-def operation_labels(facts, ref, payload=None, *, prepared=None):
-    if prepared is not None:
-        op, gaps = prepared["operation"], list(prepared["operation_gaps"])
-    else:
-        gaps = []
-        op = facts.operation(ref, payload, gaps)
-    base = facts.base_operation_labels(ref, op, gaps)
-    # Callers extend their own gap list and execution context; the capture's shared base stays unchanged.
+def operation_labels(facts, ref, op_id=None, *, operation=None):
+    """An archived operation's labels and the operation; ``operation`` is the row already read for ``ref``."""
+    if operation is None:
+        operation = facts.operation(ref, op_id)
+    base = facts.base_operation_labels(ref, operation)
+    # The base is the capture's labels cache (architecture-invariants「可变容器所有权」): callers extend their own
+    # gap list and execution context, so both are copied here, at the rewrite point.
     result = {**base, "data_gaps": [dict(item) for item in base["data_gaps"]]}
     if base["execution_at_generation"] is not None:
         result["execution_at_generation"] = dict(base["execution_at_generation"])
-    return result, op
+    return result, operation
 
 
-def validate_task_payload(payload, *, seen, expected=None):
-    if set(payload) != {"op_id", "machine_id", "operator_id", "start_time", "end_time", "source", "locked"}:
-        corrupt()
-    op = payload["op_id"]
-    if type(op) is not int or op <= 0 or op in seen:
-        corrupt()
-    seen.add(op)
-    if expected is not None and op not in expected:
-        corrupt()
-    try:
-        start, end = local_time(payload["start_time"]), local_time(payload["end_time"])
-    except ValueError:
-        corrupt()
-    if (start > end or type(payload["source"]) is not str or payload["source"] not in OPERATION_SOURCES
-            or type(payload["locked"]) is not bool
-            or any(payload[key] is not None and type(payload[key]) is not str for key in ("machine_id", "operator_id"))):
-        corrupt()
-    return op, start, end
-
-
-def _task_dto(row, facts, start, end, *, prepared):
-    ref, payload = row["operation_ref"], row["payload"]
-    task, operation = operation_labels(facts, ref, payload, prepared=prepared)
+def _task_dto(row, facts, start, end, *, operation):
+    task, operation = operation_labels(facts, row["operation_ref"], row["op_id"], operation=operation)
     gaps = task["data_gaps"]
     task.update(row_ref=row["row_ref"], start=start.isoformat(), end=end.isoformat(),
-                source=payload["source"], locked=payload["locked"])
+                source=row["source"], locked=row["locked"])
     if start == end:
         task.update(point_event_dto(start, end))
     for kind in ("machine", "operator"):
-        task[kind] = task_resource(facts, kind, payload[kind + "_id"], gaps)
-    task["supplier"] = task_resource(facts, "supplier", operation.get("supplier_id"), gaps)
+        task[kind] = task_resource(facts, kind, row[kind + "_id"], gaps)
+    task["supplier"] = task_resource(facts, "supplier", operation["supplier_id"], gaps)
     return task
 
 
-def validate_saved_tasks(rows, candidate, facts, *, prepared_tasks):
+@dataclass(frozen=True)
+class ValidatedCandidateTasks:
+    """One candidate's saved task rows bound to its scheduled operations; ``prepared_tasks`` holds each row's
+    archived operation, read once, by row ref."""
+
+    raw_tasks: List[Dict[str, Any]]
+    task_intervals: Dict[str, Tuple[datetime, datetime]]
+    scheduled_op_ids: Set[int]
+    prepared_tasks: Dict[str, Dict[str, Any]]
+
+
+def validate_candidate_tasks(store, candidate, facts) -> ValidatedCandidateTasks:
+    """Read a candidate's saved tasks once and bind them to its scheduled operations and their archived operations.
+
+    ``CandidateStore.tasks`` reads exactly ``task_count`` rows and the store's candidate record holds
+    ``task_count`` equal to the scheduled operations, so the rows and the scheduled operations correspond one to one.
+    Each row's ``op_id`` is one of them, once, and the one its ``operation_ref`` was archived for, an operation with
+    a type (``require_arranged_type``; one missing from the archive is corrupt); time order, the point flag and
+    value domains are the store boundary's. Point events were proven zero-duration when generated
+    (``zero_duration.candidate_point_validator``) and their facts are immutable since.
+    """
+    rows = store.tasks(candidate["candidate_ref"])
     ids = scheduled_ids(candidate)
-    if len(ids) != len(rows):
-        corrupt()
-    intervals, seen, point_reader = {}, set(), None
+    intervals: Dict[str, Tuple[datetime, datetime]] = {}
+    prepared_tasks: Dict[str, Dict[str, Any]] = {}
+    seen: Set[int] = set()
     for row in rows:
-        ref, payload = row["operation_ref"], row["payload"]
-        _op, start, end = validate_task_payload(payload, seen=seen, expected=ids)
-        operation_gaps = []
-        point_work = None
-        if start == end:
-            try:
-                if point_reader is None:
-                    point_reader = CandidatePointReader(candidate, facts, ids=ids)
-                point_work = point_reader.work(ref, payload)
-            except (PointEventError, ValueError, TypeError):
-                corrupt()
-            operation = point_work["operation"]
-        else:
-            operation = facts.operation(ref, payload, operation_gaps)
-        intervals[row["row_ref"]] = (start, end)
-        prepared_tasks[row["row_ref"]] = {"operation": operation, "operation_gaps": operation_gaps,
-                                           "interval": (start, end), "point_work": point_work}
-    return rows, intervals, ids
+        op_id = row["op_id"]
+        if op_id in seen or op_id not in ids:
+            corrupt()
+        seen.add(op_id)
+        operation = facts.operation(row["operation_ref"], op_id)
+        require_arranged_type(operation)
+        prepared_tasks[row["row_ref"]] = operation
+        intervals[row["row_ref"]] = (row["start_time"], row["end_time"])
+    return ValidatedCandidateTasks(rows, intervals, ids, prepared_tasks)
 
 
-def project_validated_tasks(rows, candidate, facts, intervals, *, prepared_tasks=None):
-    traces = {row["op_id"]: row for row in candidate["artifact"]["results"]}
+def project_validated_tasks(rows, facts, intervals, *, prepared_tasks=None):
     result = []
     for row in rows:
         start, end = intervals[row["row_ref"]]
-        task = _task_dto(row, facts, start, end,
-            prepared=prepared_tasks[row["row_ref"]] if prepared_tasks is not None else None)
-        task.update(facts.operation_type_labels(traces[row["payload"]["op_id"]]["op_type_id"]))
-        result.append(task)
+        result.append(_task_dto(row, facts, start, end,
+            operation=prepared_tasks[row["row_ref"]] if prepared_tasks is not None else None))
     return result
 
 

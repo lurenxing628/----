@@ -6,6 +6,7 @@ from collections import defaultdict
 from core.models.workbench_command import WorkbenchCommandRejected
 
 from .projection import require_ref
+from .template_facts import ProcessFacts
 
 _PLAIN_SCALARS = frozenset((str, int, bool, type(None)))
 
@@ -26,21 +27,22 @@ def check_process_template(operations, groups, part_no, group_parts):
         raise WorkbenchCommandRejected("group_invalid", "这个外协组还被别的零件工序用着，不能在当前零件解除。请先到那些零件上解除。", 422)
 
 
-def checked_process_facts(identity, facts):
+def checked_process_facts(identity, facts: ProcessFacts):
     """Select the current template once for both review and its actual change."""
     part_no = identity.entity_key
-    part = next((row for row in facts["parts"] if row["part_no"] == part_no), None)
+    raw = facts.raw
+    part = next((row for row in raw.parts if row["part_no"] == part_no), None)
     if part is None:
         raise WorkbenchCommandRejected("entity_not_found", "这个零件不存在。请刷新列表后重新选择。", 404)
-    groups = [row for row in facts["groups"] if row["part_no"] == part_no]
+    groups = [row for row in raw.groups if row["part_no"] == part_no]
     operations, group_parts = [], defaultdict(set)
-    for row in facts["operations"]:
+    for row in raw.operations:
         if row["part_no"] == part_no:
             operations.append(row)
         if groups and row["ext_group_id"] is not None:
             group_parts[row["ext_group_id"]].add(row["part_no"])
     check_process_template(operations, groups, part_no, group_parts)
-    return identity, part, operations, groups, facts["workflow"][part_no]["workflow"]
+    return identity, part, operations, groups, facts.workflow.parts[part_no].workflow
 
 
 def plain_part_action_facts(value):

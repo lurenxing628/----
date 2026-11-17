@@ -17,8 +17,8 @@ from core.shared.strict_json import load_strict_json
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
-from .read_context import bind_read_snapshot
-from .request_json import rejecter
+from .read_context import bind_read_snapshot, read_snapshot_time
+from .request_json import rejecter, single_value_arguments
 
 
 def _positive(key, default):
@@ -31,8 +31,7 @@ def _positive(key, default):
 @api_endpoint
 def process_facets(column, selection=False):
     allowed = {"scope", "query", "page", "size", "snapshot_ref"}
-    if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "列筛选的查询条件有重复或不支持的项，筛选没有变化。请刷新页面后重新打开列筛选。", 400)
+    single_value_arguments(allowed, message="列筛选的查询条件有重复或不支持的项，筛选没有变化。请刷新页面后重新打开列筛选。")
     scope = load_strict_json(request.args.get("scope", "{}"),
                              on_malformed=rejecter("筛选内容读不出来，筛选没有变化。请点「清除筛选」后重新选择。"),
                              on_duplicate=rejecter(DUPLICATE_QUERY_MESSAGE))
@@ -44,12 +43,15 @@ def process_facets(column, selection=False):
     token = request.args.get("snapshot_ref")
     if (selection or number > 1) and not token:
         raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
+    as_of, binding = read_snapshot_time(token)
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fact_scope:
         snapshot = bind_read_snapshot(
             process_facet_scope(query, column, search, size),
             fact_scope.state_fingerprint(),
             token,
+            as_of=as_of,
+            binding=binding,
         )
         table = fact_scope.table()
         data = table.facet_selection(query, column, search) if selection else table.facets(query, column, search, number, size)

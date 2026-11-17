@@ -1,5 +1,7 @@
 """DA-only helpers: real engine/adoptions in temporary file SQLite, never production."""
 
+from datetime import datetime
+
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_adoption_support import INTENT
 from tests.workbench.run_candidate_adoption_support import service as candidate_service
@@ -10,7 +12,7 @@ from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 
 def adopt_candidate(case, suffix="first"):
     accepted = case.accept(key="da-run-request-" + suffix)
-    run = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    run = WorkbenchRunWorker(case.conn, clock=datetime.now).execute(accepted["run_ref"])
     assert run["state"] == "complete", run
     ref = run["candidates"][0]["candidate_ref"]
     svc = candidate_service(case.conn)

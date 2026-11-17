@@ -4,9 +4,8 @@ from collections import defaultdict
 
 from core.services.scheduler.run.schedule_execution_guardrails import build_execution_guardrails_from_projections
 from core.services.scheduler.run.schedule_input_contracts import ExecutionGuardState
+from core.services.workbench.facts.piece_scope import block
 from core.services.workbench.facts.run_input_rows import fail
-
-from .piece_adoption_execution import _quantities
 
 
 def _prior_operation_refs(facts, plan_rows):
@@ -24,6 +23,22 @@ def _validate_execution_target(op, batches, projection):
     basis = "piece" if op.piece_id is not None else "batch"
     if projection.target_quantity != quantity or projection.target_basis != basis:
         fail("execution_target_changed", "这道工序的报工目标数量和当前批次数量对不上，这次排产没有开始。请到现场记录核对后重试。", op_id=op.id)
+
+
+def verify_piece_quantities(scope, refs, projections):
+    for work in scope.operations:
+        item = projections[refs[work.op_id]]
+        basis = "batch" if work.piece_id is None else "piece"
+        if item.target_basis != basis or item.target_quantity != work.target_quantity:
+            block("piece_quantity_unknown", "报工记录的目标数量和共同工序或分件工序对不上，本次没有采用。请到现场记录核对后重新排产。")
+        if (item.data_quality == "invalid" or item.unknown_record_count
+                or item.known_completed_quantity > work.target_quantity or item.remaining_quantity is None
+                or item.remaining_quantity != work.target_quantity - item.known_completed_quantity):
+            block("piece_execution_quantity_unproven", "报工数量缺失、互相矛盾或超过目标量，本次没有采用。请到现场记录核对后重新排产。")
+        if item.execution_state == "complete" and (
+            not item.quantity_complete or item.known_completed_quantity != work.target_quantity
+        ):
+            block("piece_execution_quantity_unproven", "有工序报了完工却没有确切完工数量，证明不了分件全部做完，本次没有采用。请到现场记录补齐完工数量。")
 
 
 def _validate_execution_origin(op_id, projection, prior_refs):
@@ -52,11 +67,11 @@ def execution_guards(facts, operations, batches, projections, prev_version, *, p
     if set(projections) != selected_refs | prior_refs:
         fail("execution_projection_scope_mismatch", "Supply selected operations plus every last-official operation, exactly.")
     if piece_scope is not None:
-        _quantities(piece_scope, {op.id: facts.operation_refs[op.id] for op in operations}, projections)
+        verify_piece_quantities(piece_scope, {op.id: facts.operation_refs[op.id] for op in operations}, projections)
     for op in operations:
         projection = projections[facts.operation_refs[op.id]]
         if piece_scope is None:
-            # 分件时 _quantities 已按同一份工序逐条核对过目标数量和口径。
+            # 分件时 verify_piece_quantities 已按同一份工序逐条核对过目标数量和口径。
             _validate_execution_target(op, batches, projection)
         _validate_execution_origin(op.id, projection, prior_refs)
     execution_facts, completed, execution_seeds, snapshot = build_execution_guardrails_from_projections(

@@ -1,7 +1,8 @@
-"""Single and imported permissions apply one final write per changed relationship."""
+"""Single and imported permissions apply one final write per changed relationship; primary is per link."""
 
 import re
 from collections import Counter
+from datetime import datetime
 from io import BytesIO
 
 import pytest
@@ -25,11 +26,13 @@ from web.routes.workbench.operator_machine_permissions import register_operator_
 from web.routes.workbench.relation_files import register_relation_file_routes
 from web.routes.workbench.resources import register_resource_routes
 from web.routes.workbench.write_context import issue_write_context
+from web.runtime_host import install_wall_clock
 
 
 def _machines(conn):
     for code in ("M2", "M3"):
-        insert_row(conn, "Machines", {"machine_id": code, "name": code, "op_type_id": "OT1"})
+        insert_row(conn, "Machines", {"machine_id": code, "name": code})
+        insert_row(conn, "MachineOpTypes", {"machine_id": code, "op_type_id": "OT1"})
     conn.commit()
 
 
@@ -60,7 +63,7 @@ def _writes(monkeypatch):
     return written
 
 
-def test_public_single_and_batch_apply_keep_last_written_primary(resource_conn, monkeypatch):
+def test_public_single_and_batch_apply_write_only_the_requested_links(resource_conn, monkeypatch):
     conn = resource_conn
     _machines(conn)
     service = OperatorMachineService(conn)
@@ -69,8 +72,9 @@ def test_public_single_and_batch_apply_keep_last_written_primary(resource_conn, 
         current = service.repo.list_simple_rows_for_operators(["O1"])
         changes = service.prepare_changes(current, [OperatorMachine("O1", "M2", "expert", "yes")])
         service.apply_changes(changes)
-    assert _rows(conn) == [("M1", "expert", "no"), ("M2", "expert", "yes")]
-    assert Counter(written) == Counter([("O1", "M1", "update"), ("O1", "M2", "add")])
+    # 新设一台主操不牵动原来那台：M1 仍是主操，只新增 M2 一行。
+    assert _rows(conn) == [("M1", "expert", "yes"), ("M2", "expert", "yes")]
+    assert written == [("O1", "M2", "add")]
     written.clear()
     with TransactionManager(conn).transaction():
         current = service.repo.list_simple_rows_for_operators(["O1"])
@@ -83,8 +87,8 @@ def test_public_single_and_batch_apply_keep_last_written_primary(resource_conn, 
         changes = service.prepare_changes(current, [OperatorMachine("O1", "M1", "normal", "yes"),
                                                      OperatorMachine("O1", "M3", "expert", "yes")])
         service.apply_changes(changes)
-    assert _rows(conn) == [("M1", "normal", "no"), ("M2", "expert", "no"), ("M3", "expert", "yes")]
-    assert len(written) == 3 and len(set(written)) == 3
+    assert _rows(conn) == [("M1", "normal", "yes"), ("M2", "expert", "yes"), ("M3", "expert", "yes")]
+    assert Counter(written) == Counter([("O1", "M1", "update"), ("O1", "M3", "add")])
 
 
 def test_permission_replacement_reuses_capture_and_rejects_stale_before_writing(resource_conn, monkeypatch):
@@ -130,7 +134,7 @@ def test_permission_replacement_reuses_capture_and_rejects_stale_before_writing(
     assert exc.value.code == "stale_write" and written == []
 
 
-def test_relation_import_applies_implicit_primary_change_once_and_keeps_untouched_rows(resource_conn, monkeypatch):
+def test_relation_import_writes_each_changed_row_once_and_keeps_untouched_rows(resource_conn, monkeypatch):
     conn = resource_conn
     _machines(conn)
     insert_row(conn, "OperatorMachine", {"operator_id": "O1", "machine_id": "M2", "skill_level": "beginner"})
@@ -139,19 +143,22 @@ def test_relation_import_applies_implicit_primary_change_once_and_keeps_untouche
     content = file_bytes([("O1", "M1", "", ""), ("O1", "M2", "熟练", ""), ("O1", "M3", "普通", "是")],
                          headers=("工号", "设备编号", "技能等级", "主操设备"))
     preview = service.preview_import(content, file_format="csv", mode="upsert")
-    assert [row["result"] for row in preview.as_dict()["rows"]] == ["update", "update", "new"]
+    rows = preview.as_dict()["rows"]
+    # M3 成为主操不牵动原主操 M1：M1 那行没填就保持原样，也不需要额外确认。
+    assert [row["result"] for row in rows] == ["unchanged", "update", "new"]
+    assert not any(row["requires_confirmation"] or row["notes"] for row in rows)
     written = _writes(monkeypatch)
     sql = []
     conn.set_trace_callback(sql.append)
     with TransactionManager(conn).transaction():
         service.confirm_import(preview)
     conn.set_trace_callback(None)
-    assert _rows(conn) == [("M1", "expert", "no"), ("M2", "expert", "no"), ("M3", "normal", "yes")]
-    assert len(written) == 3 and len(set(written)) == 3
+    assert _rows(conn) == [("M1", "expert", "yes"), ("M2", "expert", "no"), ("M3", "normal", "yes")]
+    assert Counter(written) == Counter([("O1", "M2", "update"), ("O1", "M3", "add")])
     assert sum(statement.startswith("SELECT * FROM OperatorMachine WHERE operator_id IN") for statement in sql) == 1
     assert not any(statement == "SELECT * FROM OperatorMachine ORDER BY operator_id,machine_id" for statement in sql)
 
-    conn.execute("UPDATE OperatorMachine SET skill_level='high',is_primary='no' WHERE machine_id='M2'")
+    conn.execute("UPDATE OperatorMachine SET skill_level='beginner',is_primary='no' WHERE machine_id='M2'")
     conn.commit()
     content = file_bytes([("O1", "M2", "", "是")],
                          headers=("工号", "设备编号", "技能等级", "主操设备"))
@@ -159,12 +166,27 @@ def test_relation_import_applies_implicit_primary_change_once_and_keeps_untouche
     assert list(preview.as_dict()["rows"][0]["changes"]) == ["is_primary"]
     with TransactionManager(conn).transaction():
         service.confirm_import(preview)
-    assert _rows(conn)[1] == ("M2", "high", "yes")
+    assert _rows(conn) == [("M1", "expert", "yes"), ("M2", "beginner", "yes"), ("M3", "normal", "yes")]
 
-    conn.execute("UPDATE OperatorMachine SET skill_level='mystery',is_primary='no' WHERE machine_id='M2'")
-    conn.commit()
-    with pytest.raises(ValueError, match="mystery"):
-        service.preview_import(content, file_format="csv", mode="upsert")
+
+def test_permission_form_saves_two_primary_machines_for_one_operator(resource_conn):
+    conn = resource_conn
+    _machines(conn)
+    identity = identity_for(conn, "operator")
+    assert identity is not None
+    desired = []
+    for code, skill in (("M1", "expert"), ("M2", "normal")):
+        machine = identity_for(conn, "machine", code)
+        assert machine is not None
+        desired.append({"machine_ref": machine.ref, "skill_level": skill, "is_primary": "yes"})
+    service = WorkbenchOperatorMachinePermissions(conn)
+    with service.reader.read_snapshot():
+        preview = service.preview(identity.ref, desired)
+    assert {row["business_code"]: row["result"] for row in preview.as_dict()["rows"]} == {"M1": "unchanged", "M2": "new"}
+    with TransactionManager(conn).transaction():
+        outcome = service.confirm(preview)
+    assert outcome.result == "committed"
+    assert _rows(conn) == [("M1", "expert", "yes"), ("M2", "normal", "yes")]
 
 
 def test_relation_export_uses_toolbar_scope_and_preserves_column_filters(resource_conn):
@@ -192,8 +214,20 @@ def test_relation_export_uses_toolbar_scope_and_preserves_column_filters(resourc
     assert rows[0]["operator_code"] == "O2" and rows[0]["operator_label"] == "Bravo"
 
 
+def test_resource_calendar_summary_reads_its_week_and_time_from_the_request_clock(resource_conn):
+    client = _relation_client(resource_conn)
+    install_wall_clock(client.application, lambda: datetime(2026, 10, 7, 23, 59, 30, 600000))
+    response = client.get("/api/workbench/v1/resources/summary")
+    assert response.status_code == 200, response.get_json()
+    body = response.get_json()
+    calendar = body["data"]["calendar"]
+    assert (calendar["factory_today"], calendar["week_start"], calendar["week_end"]) == ("2026-10-07", "2026-10-05", "2026-10-11")
+    assert calendar["as_of"] == body["meta"]["as_of"] == "2026-10-07T23:59:30"
+
+
 def _relation_client(conn):
     app = Flask(__name__)
+    install_wall_clock(app, datetime.now)
     app.config.update(TESTING=True, SECRET_KEY="relation-route-fixture",
                       EXCEL_MAX_UPLOAD_BYTES=Config.EXCEL_MAX_UPLOAD_BYTES)
     bp = Blueprint("relation_route_test", __name__)
@@ -276,6 +310,7 @@ def test_permission_routes_accept_existing_write_context_and_replay_receipt(reso
     conn = resource_conn
     _machines(conn)
     app = Flask(__name__)
+    install_wall_clock(app, datetime.now)
     app.config.update(TESTING=True, SECRET_KEY="operator-permission-fixture")
     bp = Blueprint("operator_permissions_test", __name__)
     register_operator_machine_routes(bp)
@@ -317,7 +352,8 @@ def test_permission_routes_accept_existing_write_context_and_replay_receipt(reso
 def test_permission_replacement_preserves_whitespace_operator_and_machine_identities(resource_conn):
     conn = resource_conn
     insert_row(conn, "Operators", {"operator_id": " O1 ", "name": "Padded Operator"})
-    insert_row(conn, "Machines", {"machine_id": " M1 ", "name": "Padded Machine", "op_type_id": "OT1"})
+    insert_row(conn, "Machines", {"machine_id": " M1 ", "name": "Padded Machine"})
+    insert_row(conn, "MachineOpTypes", {"machine_id": " M1 ", "op_type_id": "OT1"})
     conn.commit()
     padded_operator = identity_for(conn, "operator", " O1 ")
     padded_machine = identity_for(conn, "machine", " M1 ")

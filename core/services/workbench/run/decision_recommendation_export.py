@@ -1,10 +1,10 @@
 """Three inspectable flat tables from the same recommendation and source facts."""
 
-from .decision_export_cells import issue_text
+from .decision_export_cells import baseline_ref, issue_text
 from .decision_preparation_export import EFFORT_FIELDS, effort_values
 
 COMMON_HEADERS = ("排产编号", "归档编号", "读取编号", "读取时间", "保存推荐候选编号", "当前查看候选编号", "比较模式",
-                  "查看基准编号", "查看基准类型", "范围起点（含）", "范围终点（不含）", "资源视角", "推荐版本", "推荐记录格式版本")
+                  "查看基准编号", "查看基准类型", "范围起点（含）", "范围终点（不含）", "资源视角", "推荐版本")
 EXPLANATION_FIELDS = ("record_kind", "指标标识", "名称", "范围", "来源", "状态", "变化方向", "单位", "基准值", "比较对象值", "差值",
                       "主项类别", "主项顺序", "相关明细类型", "相关明细永久编号", "相关明细候选编号", "相关明细页签",
                       "相关明细比较起点", "相关明细比较终点", "相关明细筛选字段", "相关明细筛选值", "说明", "指标版本")
@@ -43,9 +43,8 @@ def _explanations(data):
     recommendation, basis = data["recommendation"], data["selection_basis"]
     yield {"record_kind": "conclusion", "指标标识": "recommendation_type", "名称": "推荐结论", "范围": "full_admission",
            "状态": recommendation["state"], "比较对象值": recommendation["recommendation_type"], "说明": recommendation["headline"]}
-    for field in ("generation_policy_version", "selection_policy_version", "primary_objective", "target_objectives",
-                  "selected_candidate_ref", "objective_winners", "objective_winner_reasons", "objective_field_order",
-                  "selected_score", "reason_code"):
+    for field in ("primary_objective", "target_objectives", "selected_candidate_ref", "objective_winners",
+                  "objective_winner_reasons", "objective_field_order", "selected_score", "reason_code"):
         for key, value in _scalars(basis[field], field):
             yield {"record_kind": "fixed_selection", "指标标识": key, "名称": field, "范围": "fixed_algorithm_selection",
                    "来源": "saved_selection", "状态": "complete" if value is not None else "unavailable", "比较对象值": value}
@@ -79,7 +78,7 @@ def recommendation_export_records(source, data):
     common = set(source.completion.common(fixed)["common_completed_batch_refs"]) if fixed else set()
     contexts = [(row["candidate_ref"], row["label"], "candidate") for row in data["candidates"]]
     if source.comparison_mode == "admission_official":
-        contexts.append(("reference", source.baseline.get("label"), "admission_official"))
+        contexts.append(("reference", source.baseline["label"], "admission_official"))
     completion, remaining = [], []
     for key, label, kind in contexts:
         scope = source.completion.scope(key, details=True)
@@ -108,12 +107,11 @@ def recommendation_export_records(source, data):
 
 
 def common_export_columns(data, snapshot):
-    scope, baseline, basis = data["scope"], data["baseline"], data["selection_basis"]
+    scope, baseline = data["scope"], data["baseline"]
     return [data["run"]["run_ref"], data["capture_ref"], snapshot["snapshot_ref"], snapshot["as_of"],
             data["recommendation"]["candidate_ref"], scope["selected_candidate_ref"], scope["comparison_mode"],
-            baseline.get("candidate_ref") if baseline["kind"] == "candidate" else baseline.get("baseline_ref"), baseline["kind"],
-            scope["range_start"], scope["range_end"], scope["resource_view"], data["recommendation"]["recommendation_version"],
-            basis["selection_policy_version"]]
+            baseline_ref(baseline), baseline["kind"],
+            scope["range_start"], scope["range_end"], scope["resource_view"], data["recommendation"]["recommendation_version"]]
 
 
 def recommendation_export_tables(data, snapshot):

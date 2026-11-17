@@ -8,7 +8,7 @@ from core.services.execution.ledger_reader import project_loaded_facts
 from core.services.scheduler.contracts.external_context import context_group_key, require_context
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.stored_algo_inputs import stored_batch_operation
-from core.shared.strict_parse import is_stored_number
+from core.shared.strict_parse import is_exact_positive_int
 from data.repositories.batch_external_context_repo import BatchExternalContextRepository
 from data.repositories.workbench_report_validation_repo import WorkbenchReportValidationRepository
 
@@ -28,7 +28,7 @@ def _predecessors(rows):
     for row in rows:
         chains[row["piece_id"]].append(row)
     for chain in chains.values():
-        if (any(not is_stored_number(row["seq"], integer=True, positive=True) for row in chain)
+        if (any(not is_exact_positive_int(row["seq"]) for row in chain)
                 or len({row["seq"] for row in chain}) != len(chain)):
             reject("工序顺序号缺失或重复，无法核对报工前后关系，请先核对工艺。", "execution_dependencies_unproven", 409)
         previous = ()

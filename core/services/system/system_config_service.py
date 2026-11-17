@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from data.repositories import SystemConfigRepository
+from data.repositories.system_config_repo import SystemConfigRepository
 
 
 @dataclass

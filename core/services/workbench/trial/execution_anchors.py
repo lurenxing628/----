@@ -98,5 +98,5 @@ def attach_execution_anchors(rows, anchors, problem):
         anchor = anchors.get(row["original"]["operation"]["id"])
         if anchor is not None:
             row["original"]["execution_anchor"] = anchor
-            row["current"] = dict(anchor["arrangement"])
+            row["current"] = anchor["arrangement"]
     return []

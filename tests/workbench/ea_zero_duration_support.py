@@ -1,5 +1,7 @@
 """EA backend integration factories; the HTTP point surface remains disabled."""
 
+from datetime import datetime
+
 from core.services.workbench.run.candidate_adoption import WorkbenchRunCandidateAdoptionService
 from tests.workbench.run_candidate_adoption_support import INTENT
 from tests.workbench.run_candidate_support import compute
@@ -10,7 +12,7 @@ from web.routes.workbench.write_context import issue_write_context, validate_wri
 def adoption_service(conn):
     return WorkbenchRunCandidateAdoptionService(conn, integration_enabled=True, point_rendering_enabled=True,
         context_factory=issue_write_context, context_validator=validate_write_context,
-        data_context=data_context(conn))
+        data_context=data_context(conn), clock=datetime.now)
 
 
 def point_candidate(case, *, setup=0, unit=0, quantity=3, settings=None):
