@@ -1,6 +1,7 @@
 import T from './shared/network/transport.js';
 import { pendingStore, storageSlot } from './shared/session/pending-store.js';
 import SystemRestoreStatus from './SystemRestoreStatus.js';
+import { object, text, nonempty, failure, checker } from './shared/contract/kit.js';
 
 const BASE = '/api/workbench/v1/system', PENDING_KEY = 'aps_workbench_system_pending_v1', EVENT = 'aps-workbench-system-pending-changed';
 const actions = { create: '新增备份', delete: '删除所选备份', restore: '恢复所选备份', config: '保存八项维护配置' };
@@ -10,19 +11,19 @@ const fields = [
   ['auto_backup_cleanup_enabled', '清理过期备份', 'backup'], ['auto_backup_keep_days', '备份保留时间', 'backup'],
   ['auto_backup_cleanup_interval_minutes', '备份清理检查间隔', 'backup'], ['auto_log_cleanup_enabled', '清理操作日志', 'logs'],
   ['auto_log_cleanup_keep_days', '操作日志保留时间', 'logs'], ['auto_log_cleanup_interval_minutes', '日志清理检查间隔', 'logs']
-].map(([key, label, group]) => ({ key, label, group, switch: key.endsWith('_enabled'), max: key.endsWith('_days') ? 365 : 1440, unit: key.endsWith('_days') ? '天' : '分钟' }));
-const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-const text = value => typeof value === 'string', nonempty = value => text(value) && value.length > 0;
+].map(([key, label, group]) => ({ key, label, group, switch: key.endsWith('_enabled'), unit: key.endsWith('_days') ? '天' : '分钟' }));
 const count = value => Number.isSafeInteger(value) && value >= 0;
-function check(valid, message = '读到的维护数据不完整，页面没有改动。请刷新后重试。') { if (!valid) throw new Error(message); }
+const INVALID = '读到的维护数据不完整，页面没有改动。请刷新后重试。';
+// 维护命令回执与结果查询都在命令发出之后：核对不过时结果未知，本机待确认记录不能清。
+const check = checker(INVALID), checkResult = checker(INVALID, { committed: 'unknown' });
 function collection(value, kind) {
   const data = value.data;
-  check(nonempty(value.meta.snapshot_ref) && object(data)
+  check(nonempty(value.meta.snapshot_ref)
     && data.scope === (kind === 'backups' ? 'backup-files-and-maintenance-events' : 'bounded-log-windows'));
   return value;
 }
 function receipt(value) {
-  check(object(value) && value.ok === true && ['committed', 'unchanged'].includes(value.result) && nonempty(value.receipt_ref));
+  checkResult(object(value) && value.ok === true && ['committed', 'unchanged'].includes(value.result) && nonempty(value.receipt_ref));
   return { kind: 'config', command: value, terminal: true };
 }
 function result(value, intent) {
@@ -30,10 +31,10 @@ function result(value, intent) {
   const external = object(value) && object(value.meta) && value.meta.result_source === 'external_maintenance_journal';
   if (!external) T.envelope(value, T.modes.lookup);
   const data = external ? SystemRestoreStatus.envelope(value) : value.data;
-  if (data.kind === 'not_recorded') { check(text(data.message)); return { ...data, terminal: false }; }
-  if (data.kind === 'config') { check(intent.action === 'config'); return receipt(data.command); }
+  if (data.kind === 'not_recorded') { checkResult(text(data.message)); return { ...data, terminal: false }; }
+  if (data.kind === 'config') { checkResult(intent.action === 'config'); return receipt(data.command); }
   const op = data.operation;
-  check(data.kind === 'file_operation' && intent.action !== 'config' && object(op)
+  checkResult(data.kind === 'file_operation' && intent.action !== 'config' && object(op)
     && op.request_key === intent.request_key && op.action === intent.action);
   return { ...data, terminal: terminalStates.includes(op.state) };
 }
@@ -42,14 +43,14 @@ function blocked(data, action) {
   const caps = data.capabilities;
   return caps[action] === true ? '' : (action === 'restore' ? caps.restore_reason || caps.blocked_reason : caps.blocked_reason);
 }
+// 只把间隔与保留天数转成整数；取值范围由后端校验，422 带字段路径。开关由勾选框直接给出 yes/no。
 function normalize(draft) {
   const values = {}, errors = {};
   fields.forEach(field => {
     const raw = draft[field.key];
-    if (field.switch) { if (!['yes', 'no'].includes(raw)) errors[field.key] = '请选择启用或关闭。'; values[field.key] = raw; }
+    if (field.switch) values[field.key] = raw;
     else {
-      const valid = /^\d+$/.test(String(raw)) && Number.isSafeInteger(Number(raw)) && Number(raw) >= 1 && Number(raw) <= field.max;
-      if (!valid) errors[field.key] = '请输入 1 至 ' + field.max + ' 的整数。';
+      if (!/^-?\d+$/.test(String(raw)) || !Number.isSafeInteger(Number(raw))) errors[field.key] = '请输入整数。';
       values[field.key] = Number(raw);
     }
   });
@@ -123,7 +124,7 @@ const maintenancePending = {
     try {
       created = store.save({ request_key: T.requestKey('system'), action, summary: actions[action] }, null);
     } catch (error) {
-      if (error && error.conflict === true) throw new Error('还有一次操作没有确认结果，不能重新发起。请先点「查询结果」。');
+      if (error.conflict === true) throw failure('还有一次操作没有确认结果，不能重新发起。请先点「查询结果」。');
       throw error;
     }
     Object.assign(current, emptySession(), { intent: created, startedHere: action === 'restore', selection });
@@ -158,7 +159,7 @@ const maintenancePending = {
       store.save(null, intent);
     } catch (error) {
       if (current.intent && current.intent.request_key === intent.request_key) {
-        if (error && error.conflict === true) Object.assign(current, emptySession());
+        if (error.conflict === true) Object.assign(current, emptySession());
         else { current.storageError = error; current.dismissPending = Boolean(dismiss); }
       }
       throw error;
@@ -213,8 +214,8 @@ function recordContext(value = {}, kind) {
   check(count(page) && page >= 1 && page <= 100000, '上次的页码无法恢复。请刷新后重新翻页。');
   return { filters, page, selection: recordSelection(value.selection, kind) };
 }
+// 键集已由 WorkbenchNavigation.admit 按受控导航声明准入；这里核对取值。
 function pageContext(value) {
-  check(object(value) && Object.keys(value).every(key => ['tab', 'page_size', 'records'].includes(key)), '上次的页面状态无法恢复。请从侧栏重新打开系统管理。');
   const tab = value.tab === undefined ? 'overview' : value.tab;
   const size = value.page_size === undefined ? 10 : value.page_size;
   const records = value.records === undefined ? {} : value.records;
@@ -226,9 +227,9 @@ const TIMEOUT = 30000;
 async function host() {
   try { return SystemRestoreStatus.host(await T.lookup(BASE + '/restore-host', {}, { timeout: TIMEOUT })); }
   catch (problem) {
-    const message = problem.status === 404 ? '维护状态接口未注册（HTTP 404），请检查服务启动配置。'
-      : '维护状态查询失败' + (problem.status ? '（HTTP ' + problem.status + '）' : '') + '：' + problem.message;
-    const error = new Error(message); error.code = problem.code; error.status = problem.status; throw error;
+    // 只给 404 换成能照着处理的中文说明，状态码留在错误对象里；其余错误原样交给错误框判定能否上屏。
+    if (problem.status === 404) throw failure('维护状态接口未注册，请检查服务启动配置。', { code: problem.code, status: problem.status, committed: problem.committed });
+    throw problem;
   }
 }
 async function read(kind, input, signal) {
@@ -253,7 +254,7 @@ async function lookup(intent) {
 async function lookupReference(reference, kind, signal) {
   const path = SystemRestoreStatus.referencePath(reference, kind);
   const value = await T.lookup(BASE + path, {}, { signal, timeout: TIMEOUT }), op = value.data && value.data.operation;
-  if (op && path.startsWith('/jobs/')) check(op.job_ref === reference, '返回的维护记录不是所查询的记录。');
+  if (op && path.startsWith('/jobs/')) checkResult(op.job_ref === reference, '返回的维护记录不是所查询的记录。');
   return result(value, { action: op && op.action, request_key: path.startsWith('/jobs/') ? op && op.request_key : reference });
 }
 async function download(format, input) {

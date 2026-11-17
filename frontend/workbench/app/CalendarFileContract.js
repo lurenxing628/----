@@ -1,14 +1,11 @@
-import APSResourceContract from './resource-contract.js';
-import APSResourceMaterial from './ResourceMaterialContract.js';
-import APSCalendarContract from './CalendarContract.js';
+import C from './resource-contract.js';
+import M from './ResourceMaterialContract.js';
+import { failure, object, token32, isDate } from './shared/contract/kit.js';
 
 // 日历文件的导出范围都以日期区间为准，不是列表筛选。个人日历在日期之外还能只导某几个人。
-const C = APSResourceContract, M = APSResourceMaterial, K = APSCalendarContract;
 const labels = { work_calendar: '工作日历', operator_calendar: '个人日历' };
 // 个人日历在日期之外多一维人员范围；全局日历没有这一维。
 const PEOPLE_KIND = 'operator_calendar';
-const token = value => typeof value === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value);
-const MAX_RANGE_DAYS = 1096;
 const hints = {
   work_calendar: {
     scopeLabel: '日期范围',
@@ -29,39 +26,35 @@ const hints = {
       + '只填这个人有特殊安排的日期；要取消某几天的特殊安排，请在人员详情的「编辑个人日历」里按日期范围清除。'
   }
 };
-function days(range) {
-  return Math.round((Date.parse(range.end_date + 'T00:00:00Z') - Date.parse(range.start_date + 'T00:00:00Z')) / 86400000) + 1;
-}
-// 日期范围的错误带上项路径，弹窗里对应的日期项会标红；总错误框只保留这一句话。
+// 日期范围的错误带上项路径，弹窗里对应的日期项会标红；总错误框只保留这一句话。一次能导出多少天由后端校验。
+// 路径与后端导出预检的 400 同一口径：范围在请求体的 range 下（range.start_date / range.end_date）。
 function checkRange(value) {
-  if (!C.object(value) || !K.isDate(value.start_date) || !K.isDate(value.end_date))
-    throw C.failure('请先选好开始和结束日期，没有开始下载。',
-      [{ path: !C.object(value) || !K.isDate(value.start_date) ? 'start_date' : 'end_date', message: '请按 2026-09-13 这样填写日期。' }]);
-  if (value.start_date > value.end_date) throw C.failure('结束日期不能早于开始日期，没有开始下载。', [{ path: 'end_date', message: '结束日期不能早于开始日期。' }]);
-  if (days(value) > MAX_RANGE_DAYS) throw C.failure('一次最多导出 ' + MAX_RANGE_DAYS + ' 天，没有开始下载。请把范围缩小后重试。',
-    [{ path: 'end_date', message: '一次最多导出 ' + MAX_RANGE_DAYS + ' 天。' }]);
+  if (!object(value) || !isDate(value.start_date) || !isDate(value.end_date))
+    throw failure('请先选好开始和结束日期，没有开始下载。',
+      { fields: [{ path: !object(value) || !isDate(value.start_date) ? 'range.start_date' : 'range.end_date', message: '请按 2026-09-13 这样填写日期。' }] });
+  if (value.start_date > value.end_date) throw failure('结束日期不能早于开始日期，没有开始下载。', { fields: [{ path: 'range.end_date', message: '结束日期不能早于开始日期。' }] });
   return { start_date: value.start_date, end_date: value.end_date };
 }
 // 导出请求体只在这里拼一次，导出预检回来也拿它对账，免得两边各写一份人员范围的判断。
 function exportBody(kind, shared, request, selected) {
   const range = checkRange(selected), body = { range };
   if (kind === PEOPLE_KIND) {
-    if (!C.object(selected) || !['all', 'selected'].includes(selected.people))
-      throw C.failure('请先选好要导出哪些人员，没有开始下载。');
+    if (!object(selected) || !['all', 'selected'].includes(selected.people))
+      throw failure('请先选好要导出哪些人员，没有开始下载。');
     if (selected.people === 'selected') {
       const refs = shared.selection(request);
-      if (!refs.length) throw C.failure('还没有勾选人员，没有开始下载。请先在人员列表里勾选，或者改成导出全部人员。');
+      if (!refs.length) throw failure('还没有勾选人员，没有开始下载。请先在人员列表里勾选，或者改成导出全部人员。');
       body.scope = { operator_refs: refs };
     }
-  } else if (C.object(selected) && C.own(selected, 'people')) {
-    throw C.failure('这类日历没有人员范围，没有开始下载。');
+  } else if (object(selected) && C.own(selected, 'people')) {
+    throw failure('这类日历没有人员范围，没有开始下载。');
   }
   const snapshot = request && request.snapshot_ref;
-  if (token(snapshot)) body.snapshot_ref = snapshot;
+  if (token32(snapshot)) body.snapshot_ref = snapshot;
   return body;
 }
 function create(kind) {
-  if (!C.own(labels, kind)) throw C.failure('不支持这类日历的文件操作。');
+  if (!C.own(labels, kind)) throw failure('不支持这类日历的文件操作。');
   const label = labels[kind];
   const shared = M.create(kind, label);
   return {
@@ -70,23 +63,22 @@ function create(kind) {
       import: 'calendar-files/' + kind + '/preview', export: 'calendar-files/' + kind + '/export-preview',
       download: 'calendar-files/' + kind + '/export', template: 'calendar-files/' + kind + '/template'
     },
-    // 导出范围是日期区间，不是勾选；初始值由弹窗按当前月份给。
-    rowsMatchSelection: false,
     templateHint: '空白表头模板，只有列名，没有示例数据。',
     requestBody(mode, request, selected) {
-      if (mode !== 'export') throw C.failure('日历文件只支持导入和按日期范围导出。');
+      if (mode !== 'export') throw failure('日历文件只支持导入和按日期范围导出。');
       return exportBody(kind, shared, request, selected);
     },
+    // 导出范围是日期区间，不是勾选；初始值由弹窗按当前月份给。
     exportPreview(result, _selected, body) {
       const data = result.data;
-      if (!token(data.export_ref) || !C.object(data.range)
+      if (!token32(data.export_ref) || !object(data.range)
           || data.range.start_date !== body.range.start_date || data.range.end_date !== body.range.end_date)
-        throw C.failure('导出预检内容不完整，没有开始下载。');
+        throw failure('导出预检内容不完整，没有开始下载。');
       // 服务端把这次导出的人员范围原样回显在 range 里，对不上就不下载，免得导出的是别人的日历。
       const echoed = C.own(data.range, 'selected_refs') ? data.range.selected_refs : null;
       const wanted = body.scope ? body.scope.operator_refs : null;
       if (JSON.stringify(echoed) !== JSON.stringify(wanted))
-        throw C.failure('导出预检的人员范围和选择的不一致，没有开始下载。');
+        throw failure('导出预检的人员范围和选择的不一致，没有开始下载。');
       return result;
     }
   };

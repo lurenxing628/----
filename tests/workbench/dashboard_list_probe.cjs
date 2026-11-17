@@ -67,7 +67,8 @@ async function slowRead() {
   const result = await read(invalid);
   assert.equal(result.data.items.length, invalid.data.items.length);
   assert.equal(result.data.analysis, null);
-  assert.match(result.data.analysis_error, /影响分析读取失败/);
+  // 本地校验不过时，契约把校验抛出的错误对象原样放进 analysis_error，不拼成字符串；上屏文案由 WorkbenchError 判定。
+  assert.equal(result.data.analysis_error.message, '值班台读到的数据不完整，请刷新后重试。');
   const absentReceipt = routeFetch({ 'GET /api/workbench/v1/commands/*': () => ({ state: 'not_observed', receipt: null, may_be_in_flight: true, resolution: 'unresolved' }) });
   assert.equal(await dashboard(absentReceipt).lookup({ request_key: 'dashboard-' + 'a'.repeat(48) }), null);
   await slowRead();

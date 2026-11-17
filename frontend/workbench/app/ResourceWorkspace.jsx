@@ -1,13 +1,12 @@
 import React from './shared/runtime/react.js';
 import C from './resource-contract.js';
-import { useCounts } from './resource-api.js';
+import APSResourceAPI, { useCounts } from './resource-api.js';
 import S from './shared/session/command-session.js';
 import { useQuery } from './shared/session/query.js';
 import { Button, Icon, ErrorBox, Issues, Modal } from './ResourceControls.jsx';
 import Forms from './ResourceForms.jsx';
 import Tables from './ResourceTables.jsx';
 import ResourceTableFilterModel from './ResourceTableFilterModel.js';
-import APSCalendarContract from './CalendarContract.js';
 import APSProcessReadView from './ProcessReadView.js';
 import Rail from './ResourceRail.jsx';
 import WorkbenchPageContext from './WorkbenchPageContext.jsx';
@@ -15,7 +14,10 @@ import ResourceMetrics from './ResourceMetrics.jsx';
 import OperatorMachinePermissions from './OperatorMachinePermissions.jsx';
 import MachineDowntimePanel from './MachineDowntimePanel.jsx';
 import OperatorCalendarPanel from './OperatorCalendarPanel.jsx';
+import { failure, object, ref48, isDate } from './shared/contract/kit.js';
 
+// 命令发出之后发现回执对不上：结果未知，本机待确认记录不能清。
+const UNKNOWN = { committed: 'unknown' };
 const readScopeKeys = ['query', 'status', 'page', 'size', 'sort', 'direction', 'category', 'column_filters'];
 function readColumns(config) {
   const fields = config.kind === 'op_type' ? config.category === 'internal' ? ['available_machines', 'available_operators', 'remark']
@@ -24,53 +26,49 @@ function readColumns(config) {
   return ['business_code', 'label', ...fields, ...(config.kind === 'op_type' ? [] : ['status'])];
 }
 function resourceReadView(view, node) {
-  if (!C.object(view) || Object.keys(view).some(key => !['scope', 'selected_refs', 'sort_active', 'detail'].includes(key))) throw C.failure('上次浏览位置只能包含查看状态。');
+  if (!object(view) || Object.keys(view).some(key => !['scope', 'selected_refs', 'sort_active', 'detail'].includes(key))) throw failure('上次浏览位置只能包含查看状态。');
   const config = C.nodes[node], scope = view.scope;
-  if (!C.object(scope) || Object.keys(scope).some(key => !readScopeKeys.includes(key)) || typeof scope.query !== 'string'
+  if (!object(scope) || Object.keys(scope).some(key => !readScopeKeys.includes(key)) || typeof scope.query !== 'string'
       || !Number.isSafeInteger(scope.page) || scope.page < 1 || !Number.isSafeInteger(scope.size) || scope.size < 1 || scope.size > 100
       || typeof scope.sort !== 'string' || !readColumns(config).includes(scope.sort)
-      || !['asc', 'desc'].includes(scope.direction) || typeof view.sort_active !== 'boolean') throw C.failure('上次浏览位置的范围、排序或分页不正确。');
+      || !['asc', 'desc'].includes(scope.direction) || typeof view.sort_active !== 'boolean') throw failure('上次浏览位置的范围、排序或分页不正确。');
   if (config.category ? scope.category !== config.category || C.own(scope, 'status') : C.own(scope, 'category')
-      || !['', ...C.statuses[config.kind].map(row => row[0])].includes(scope.status)) throw C.failure('上次浏览位置与当前资料不一致。');
+      || !['', ...C.statuses[config.kind].map(row => row[0])].includes(scope.status)) throw failure('上次浏览位置与当前资料不一致。');
   const selected = view.selected_refs;
-  if (!Array.isArray(selected) || selected.some(value => typeof value !== 'string' || !/^[0-9a-f]{48}$/.test(value)) || new Set(selected).size !== selected.length)
-    throw C.failure('上次勾选的记录编号不正确。');
+  if (!Array.isArray(selected) || !selected.every(ref48) || new Set(selected).size !== selected.length)
+    throw failure('上次勾选的记录编号不正确。');
   if (scope.column_filters !== undefined) {
-    if (!C.object(scope.column_filters) || Object.keys(scope.column_filters).some(key => !readColumns(config).includes(key)))
-      throw C.failure('上次浏览位置的列筛选不正确。');
+    if (!object(scope.column_filters) || Object.keys(scope.column_filters).some(key => !readColumns(config).includes(key)))
+      throw failure('上次浏览位置的列筛选不正确。');
   }
   if (view.detail !== null) {
-    if (!C.object(view.detail) || Object.keys(view.detail).some(key => !['kind', 'entity_ref', 'category'].includes(key))) throw C.failure('上次打开的详情记录不正确。');
+    if (!object(view.detail) || Object.keys(view.detail).some(key => !['kind', 'entity_ref', 'category'].includes(key))) throw failure('上次打开的详情记录不正确。');
     const checked = navigation({ source: 'production', ...view.detail });
-    if (checked.error || !checked.context || ['part', 'calendar'].includes(checked.context.kind)) throw C.failure('上次打开的详情对不上，已取消定位。');
+    if (checked.error || !checked.context || ['part', 'calendar'].includes(checked.context.kind)) throw failure('上次打开的详情对不上，已取消定位。');
   }
   return {
     ...view,
     scope: { ...scope, column_filters: ResourceTableFilterModel.rules(scope.column_filters === undefined ? {} : scope.column_filters) }
   };
 }
+// 各类资料允许的键、必带的键、单条定位与记住的浏览位置互斥，已由 WorkbenchNavigation.admit 按受控导航声明准入；这里核对取值。
 function navigation(context) {
   // 侧栏直接进入时 main.jsx 传空对象；资料页内部没有定位目标时传 undefined 或 null。
   if (context === undefined || context === null || !Object.keys(context).length) return { context: null };
   try {
-    if (!C.object(context) || context.source !== 'production') throw C.failure('定位来源不正确，只能打开生产资料。');
-    const keys = Object.keys(context), kind = context.kind, ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
+    if (context.source !== 'production') throw failure('定位来源不正确，只能打开生产资料。');
+    const keys = Object.keys(context), kind = context.kind;
     if (keys.length === 1 && keys[0] === 'source') return { context: null };
-    if (!['material', 'op_type', 'machine', 'operator', 'supplier', 'part', 'calendar'].includes(kind)) throw C.failure('未知的基础资料定位类型。');
-    const allowed = ['source', 'kind'].concat(kind === 'calendar' ? ['month', 'date'] : ['entity_ref', 'read_view'], kind === 'op_type' ? ['category'] : [],
-      kind === 'part' ? ['stage', 'template_operation_ref', 'template_external_group_ref'] : []);
-    if (keys.some(key => !allowed.includes(key))) throw C.failure('定位信息里有不支持的项，没有改用编号查找。');
-    if (C.own(context, 'read_view') && ['entity_ref', 'stage', 'template_operation_ref', 'template_external_group_ref'].some(key => C.own(context, key)))
-      throw C.failure('单条定位和记住的浏览位置不能混用。');
+    if (!['material', 'op_type', 'machine', 'operator', 'supplier', 'part', 'calendar'].includes(kind)) throw failure('未知的基础资料定位类型。');
     if (kind === 'calendar') {
       if (typeof context.month !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(context.month) || Number(context.month.slice(0, 4)) < 1
-          || C.own(context, 'date') && (!APSCalendarContract.isDate(context.date) || context.date.slice(0, 7) !== context.month))
-        throw C.failure('定位的月份或日期不正确，日期必须属于指定月份。');
-    } else if ((!C.own(context, 'read_view') || C.own(context, 'entity_ref')) && !ref(context.entity_ref)) throw C.failure('无法定位所选记录，请从列表重新选择。');
-    if (kind === 'op_type' && !['internal', 'external'].includes(context.category)) throw C.failure('定位缺少自制或外协类别，不做猜测。');
+          || C.own(context, 'date') && (!isDate(context.date) || context.date.slice(0, 7) !== context.month))
+        throw failure('定位的月份或日期不正确，日期必须属于指定月份。');
+    } else if ((!C.own(context, 'read_view') || C.own(context, 'entity_ref')) && !ref48(context.entity_ref)) throw failure('无法定位所选记录，请从列表重新选择。');
+    if (kind === 'op_type' && !['internal', 'external'].includes(context.category)) throw failure('定位缺少自制或外协类别，不做猜测。');
     if (kind === 'part' && (C.own(context, 'stage') && !['route', 'source', 'hours'].includes(context.stage)
-        || ['template_operation_ref', 'template_external_group_ref'].some(key => C.own(context, key) && !ref(context[key]))))
-      throw C.failure('工艺阶段或模板记录编号不正确。');
+        || ['template_operation_ref', 'template_external_group_ref'].some(key => C.own(context, key) && !ref48(context[key]))))
+      throw failure('工艺阶段或模板记录编号不正确。');
     const node = kind === 'part' ? 'process' : kind === 'op_type' ? context.category === 'internal' ? 'op_int' : 'op_ext' : kind;
     const restored = C.own(context, 'read_view') ? kind === 'part' ? APSProcessReadView.read(context.read_view) : resourceReadView(context.read_view, node) : undefined;
     return { context: { ...context, ...(restored ? { read_view: restored } : {}) }, node };
@@ -81,24 +79,11 @@ function navigationDialog(context) {
 }
 const scopeFor = node => ({ query: '', ...(C.nodes[node] && C.nodes[node].kind !== 'op_type' ? { status: '' } : {}), page: 1, size: 20, sort: 'business_code', direction: 'asc',
   ...(C.nodes[node] && C.nodes[node].category ? { category: C.nodes[node].category } : {}) });
-async function readList(adapter, kind, scope, signal) {
-  const result = await adapter.list(kind, scope, signal);
-  if (result.data.page.number !== scope.page || result.data.page.size !== scope.size)
-    throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
-  const page = Math.min(scope.page, Math.max(1, Math.ceil(result.data.page.total / scope.size)));
-  if (page === scope.page) return result;
-  // A smaller total can invalidate the last page; keep the returned snapshot and all filters.
-  const clamped = await adapter.list(kind, { ...scope, page, snapshot_ref: result.meta.snapshot_ref }, signal);
-  if (clamped.data.page.number !== page || clamped.data.page.size !== scope.size || clamped.data.page.total !== result.data.page.total
-      || clamped.meta.snapshot_ref !== result.meta.snapshot_ref || clamped.meta.source !== result.meta.source)
-    throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
-  return clamped;
-}
-function Toolbar({ config, scope, onFilter, loading, disabled, onRefresh, onCreate, createReason, onExternal, adapter, selected, ready, onClearSelection }) {
+function Toolbar({ config, scope, onFilter, loading, disabled, onRefresh, onCreate, createReason, onExternal, host, selected, ready, onClearSelection }) {
   const [search, setSearch] = React.useState(scope.query);
   React.useEffect(() => setSearch(scope.query), [scope.query, config.kind]);
-  // 附属资料的文件入口只在挂靠它的那类资料上出现，有几种、叫什么由适配器给，页面不写死。
-  const attached = adapter.attachedFiles(config.kind);
+  // 附属资料的文件入口只在挂靠它的那类资料上出现，有几种、叫什么由宿主给，页面不写死。
+  const attached = host.attachedFiles(config.kind);
   const actions = [['openImport', 'file-input', '导入'], ['openExport', 'file-output', '导出'],
     ...attached.flatMap(item => [['openRelationImport', 'file-input', '导入' + item.label, item.family],
       ['openRelationExport', 'file-output', '导出' + item.label, item.family]]),
@@ -112,14 +97,15 @@ function Toolbar({ config, scope, onFilter, loading, disabled, onRefresh, onCrea
     {selected.length > 0 && <Button icon="x" aria-label="清除所有选择" onClick={onClearSelection} disabled={disabled}>清除选择</Button>}
     <span className="tb-spacer" /><div className="wb-actions">
     {actions.map(([name, icon, label, family]) => <Button key={family === undefined ? name : name + ':' + family} icon={icon} transfer={/Import$/.test(name) ? 'import' : /Export$/.test(name) ? 'export' : undefined}
-      disabled={disabled || loading} reasonDisplay="tooltip" reason={!adapter.supports(name, config.kind) ? label + '尚未开通。' : !ready ? '请先读取当前列表。' : name === 'openBulk' && !selected.length ? '请先勾选记录。' : ''}
+      disabled={disabled || loading} reasonDisplay="tooltip" reason={!host.supports(name, config.kind) ? label + '尚未开通。' : !ready ? '请先读取当前列表。' : name === 'openBulk' && !selected.length ? '请先勾选记录。' : ''}
       onClick={() => onExternal(name, family ? { family } : {})}>{label}</Button>)}
     <Button icon="plus" className="btn primary wb-action wb-primary" reason={createReason} disabled={disabled} onClick={onCreate}>新增{config.label}</Button></div>
   </form>;
 }
-function ResourceWorkspace({ adapter, onNavigate, initialNode = 'material', initialContext, renderPart, renderCalendar, externalRevision = 0, onNavigationReady, rememberEnabled = true }) {
+// host：宿主（ResourceLive）给的维护向导入口，见 ResourceLive.hostEntries。
+function ResourceWorkspace({ host, onNavigate, initialNode = 'material', initialContext, renderPart, renderCalendar, externalRevision = 0, onNavigationReady, rememberEnabled = true }) {
   const [target] = React.useState(() => navigation(initialContext));
-  const command = S.useCommand(adapter);
+  const api = APSResourceAPI.forNamespace('resources'), command = S.useCommand(api);
   const [deferred, setDeferred] = React.useState(() => !!target.context && command.phase !== 'idle');
   const [navigationError, setNavigationError] = React.useState(target.error === undefined ? null : target.error);
   const startNode = target.node || initialNode;
@@ -134,7 +120,7 @@ function ResourceWorkspace({ adapter, onNavigate, initialNode = 'material', init
   const [refreshState, setRefreshState] = React.useState({});
   const [editContext, setEditContext] = React.useState(null), [contextError, setContextError] = React.useState(null);
   const [contextReview, setContextReview] = React.useState(null), [contextBusy, setContextBusy] = React.useState(false);
-  const counts = useCounts(adapter, revision + ':' + externalRevision);
+  const counts = useCounts(revision + ':' + externalRevision);
   const config = C.nodes[node], basic = !!config && !['part', 'calendar'].includes(config.kind);
   const blocked = command.locked || external.busy;
   React.useEffect(() => {
@@ -144,20 +130,19 @@ function ResourceWorkspace({ adapter, onNavigate, initialNode = 'material', init
   const lastScope = React.useRef(null);
   const requestScope = React.useMemo(() => request.externalRevision === externalRevision ? request.scope
     : { ...(lastScope.current && lastScope.current.request === request ? lastScope.current.scope : request.scope), snapshot_ref: undefined }, [request, externalRevision]);
-  const list = useQuery(signal => readList(adapter, config.kind, requestScope, signal), [adapter, node, requestScope, revision, externalRevision], basic);
+  const list = useQuery(signal => api.listPage(config.kind, requestScope, signal), [node, requestScope, revision, externalRevision], { enabled: basic });
   const effectiveScope = React.useMemo(() => list.result
     ? { ...requestScope, page: list.result.data.page.number, snapshot_ref: list.result.meta.snapshot_ref } : requestScope, [requestScope, list.result]);
   React.useLayoutEffect(() => {
     if (list.result) lastScope.current = { request, scope: effectiveScope };
   }, [request, effectiveScope, list.result]);
   const detail = useQuery(async signal => {
-    const result = await adapter.detail(dialog.kind, dialog.ref, signal);
-    if (result.data.ref !== dialog.ref) throw C.failure('读到的详情与所选记录不一致，请刷新后重试。');
+    const result = await api.detail(dialog.kind, dialog.ref, signal);
     if (dialog.navigation && (result.meta.source !== 'production' || C.own(result.data, 'kind') && result.data.kind !== dialog.kind
         || dialog.kind === 'op_type' && ![dialog.category, 'both'].includes(result.data.fields.category)))
-      throw C.failure('这条记录的来源、类型或工种类别和定位不一致，没有打开别的记录。');
+      throw failure('这条记录的来源、类型或工种类别和定位不一致，没有打开别的记录。');
     return result;
-  }, [adapter, dialog && dialog.ref, dialog && dialog.kind], !!(dialog && dialog.ref));
+  }, [dialog && dialog.ref, dialog && dialog.kind], { enabled: !!(dialog && dialog.ref) });
   const data = list.result && list.result.data;
   const savedDetail = dialog && dialog.action === 'view' ? { kind: dialog.kind, entity_ref: dialog.ref, ...(dialog.kind === 'op_type' ? { category: dialog.category } : {}) } : null;
   const savedScope = Object.fromEntries(readScopeKeys.filter(key => effectiveScope[key] !== undefined).map(key => [key, effectiveScope[key]]));
@@ -208,7 +193,7 @@ function ResourceWorkspace({ adapter, onNavigate, initialNode = 'material', init
   }
   function close() { if (!command.locked && !contextBusy && command.reset()) { setDialog(null); setEditContext(null); setContextReview(null); refreshGeneration.current++; } }
   function continueNavigation() {
-    if (command.phase !== 'idle' || dialog || external.busy) { setNavigationError(C.failure('请先确认上次操作的结果并关闭，再继续跳转。')); return; }
+    if (command.phase !== 'idle' || dialog || external.busy) { setNavigationError(failure('请先确认上次操作的结果并关闭，再继续跳转。')); return; }
     setNavigationError(null); setDeferred(false); setNode(target.node); setRequestScope(readView ? readView.scope : scopeFor(target.node));
     if (readView) { setSelected(readView.selected_refs); setSortActive(readView.sort_active); setDialog(readView.detail ? navigationDialog(readView.detail) : null); }
     else if (!['part', 'calendar'].includes(target.context.kind)) setDialog(navigationDialog(target.context));
@@ -218,9 +203,8 @@ function ResourceWorkspace({ adapter, onNavigate, initialNode = 'material', init
     setContextError(null); setContextReview(null); setContextBusy(true);
     try {
       let result;
-      if (dialog.ref) result = await adapter.detail(dialog.kind, dialog.ref, new AbortController().signal);
-      else result = await adapter.list(dialog.kind, { ...effectiveScope, page: 1, snapshot_ref: undefined }, new AbortController().signal);
-      if (dialog.ref && result.data.ref !== dialog.ref) throw C.failure('读到的资料与所选记录不一致，请刷新后核对。');
+      if (dialog.ref) result = await api.detail(dialog.kind, dialog.ref, new AbortController().signal);
+      else result = await api.list(dialog.kind, { ...effectiveScope, page: 1, snapshot_ref: undefined }, new AbortController().signal);
       if (!command.reset()) return;
       setEditContext({ context: dialog.ref ? result.data.write_context : result.data.create_context,
         source: result.meta.source, entity: dialog.ref ? result.data : null });
@@ -242,18 +226,17 @@ function ResourceWorkspace({ adapter, onNavigate, initialNode = 'material', init
       let refreshedList;
       if (sameView) {
         setRequestScope(readScope);
-        refreshedList = await list.reloadAndWait(signal => readList(adapter, intent.kind, readScope, signal));
+        refreshedList = await list.reloadAndWait(signal => api.listPage(intent.kind, readScope, signal));
       } else {
         refresh();
-        refreshedList = await readList(adapter, intent.kind, readScope, new AbortController().signal);
+        refreshedList = await api.listPage(intent.kind, readScope, new AbortController().signal);
       }
       let fresh = null;
       if (intent.action !== 'delete') {
         const ref = C.resultRef(command.result, intent.ref);
-        if (typeof ref !== 'string' || !ref) throw C.failure('保存结果里没有记录编号，暂时读不到详情。请点「刷新」后核对。');
-        if (intent.ref && ref !== intent.ref) throw C.failure('保存结果对应的记录和上次提交的不一致，请点「查询结果」核对。');
-        fresh = await adapter.detail(intent.kind, ref, new AbortController().signal);
-        if (fresh.data.ref !== ref) throw C.failure('保存后的详情和结果编号对不上，请点「刷新」后核对。');
+        if (typeof ref !== 'string' || !ref) throw failure('保存结果里没有记录编号，暂时读不到详情。请点「刷新」后核对。', UNKNOWN);
+        if (intent.ref && ref !== intent.ref) throw failure('保存结果对应的记录和上次提交的不一致，请点「查询结果」核对。', UNKNOWN);
+        fresh = await api.detail(intent.kind, ref, new AbortController().signal);
       }
       if (mounted.current && generation === refreshGeneration.current) setRefreshState({ done: true, detail: fresh, list: refreshedList });
     } catch (error) { if (mounted.current && generation === refreshGeneration.current) setRefreshState({ error }); }
@@ -265,19 +248,17 @@ function ResourceWorkspace({ adapter, onNavigate, initialNode = 'material', init
     let callbackCalled = false;
     const onCommitted = result => {
       callbackCalled = true;
-      if (C.receipt(result) !== 'terminal') { setExternal({ busy: false, error: C.failure('向导没有返回完成结果。请点「查询结果」，不要重复提交。') }); return; }
-      if (Number.isInteger(result.data.deleted_count) && Array.isArray(result.data.rows)) {
-        const removed = new Set(result.data.rows.map(row => row.entity_ref));
-        setSelected(current => current.filter(ref => !removed.has(ref)));
-      }
+      if (C.receipt(result) !== 'terminal') { setExternal({ busy: false, error: failure('向导没有返回完成结果。请点「查询结果」，不要重复提交。', UNKNOWN) }); return; }
+      const removed = new Set(C.removedRefs(result));
+      if (removed.size) setSelected(current => current.filter(ref => !removed.has(ref)));
       refresh(); setExternal({ busy: false, error: null, result, action: name === 'openBulk' ? 'delete' : /Import$/.test(name) ? 'import' : 'save' });
     };
     try {
-      const result = await adapter[name](config.kind, { refs: selected, scope: { ...effectiveScope, source: list.result && list.result.meta.source }, ...extra, onCommitted }, new AbortController().signal);
+      const result = await host[name](config.kind, { refs: selected, scope: { ...effectiveScope, source: list.result && list.result.meta.source }, ...extra, onCommitted }, new AbortController().signal);
       if (callbackCalled) return;
       if (result && ['opened', 'cancelled'].includes(result.state)) { setExternal({ busy: false, error: null }); return; }
       if (C.receipt(result) === 'terminal') { onCommitted(result); return; }
-      throw C.failure('向导没有返回明确结果，没有当成功处理。请刷新后核对。');
+      throw failure('向导没有返回明确结果，没有当成功处理。请刷新后核对。', UNKNOWN);
     } catch (error) { setExternal({ busy: false, error }); }
   }
   const editorEntity = detail.result && detail.result.data;
@@ -288,35 +269,35 @@ function ResourceWorkspace({ adapter, onNavigate, initialNode = 'material', init
     <section className="content">
       <ErrorBox error={navigationError} />
       {deferred && <div role="status"><p>上次操作还没处理完，暂时没有跳转到指定记录。刚才的提交没有被覆盖。</p><Button icon="arrow-right" onClick={continueNavigation}>继续跳转</Button></div>}
-      {!config ? <ErrorBox error={C.failure('未知的基础资料入口，请在上方产能链里选一项。')} /> : <>
+      {!config ? <ErrorBox error={failure('未知的基础资料入口，请在上方产能链里选一项。')} /> : <>
         {node !== 'calendar' && <><div className="crumb"><span>产能链</span><span className="sep">/</span><span>{({ input: '输入', internal: '自制链', external: '外协链', global: '全局' })[config.chain]}</span><span className="sep">/</span><span className="cur">{config.label}</span></div>
         <div className="chead wb-page-heading"><h2>{config.label}{node === 'material' ? ' · 基础资料' : ''}</h2></div></>}
         <ErrorBox error={external.error} />{external.busy && <p role="status">正在打开维护向导…</p>}
         {external.result && <Forms.Feedback command={{ phase: 'done', result: external.result }} action={external.action} />}
-        {node === 'process' ? renderPart({ adapter, onNavigate, onRefresh: refresh, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'part' ? target.context : undefined }) : node === 'calendar' ? renderCalendar({ onCommitted: refresh, externalRevision, summaryState: counts.summary, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'calendar' ? target.context : undefined }) : <>
+        {node === 'process' ? renderPart({ onNavigate, onRefresh: refresh, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'part' ? target.context : undefined }) : node === 'calendar' ? renderCalendar({ onCommitted: refresh, externalRevision, summaryState: counts.summary, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'calendar' ? target.context : undefined }) : <>
           <ResourceMetrics node={node} data={data} />
           {selected.length > 0 && <p className="muted" aria-live="polite">已选择 <b data-resource-selection-count>{selected.length}</b> 条{entityRefs && selected.some(ref => !entityRefs.has(ref)) && <> · <span>含非当前页记录</span></>}</p>}
           <Toolbar config={config} scope={effectiveScope} onFilter={filter} loading={list.loading} disabled={blocked} onRefresh={refresh} onCreate={() => open('create')}
-            createReason={C.blocked(data && data.create_context, config.kind, 'create', list.result && list.result.meta.source)} onExternal={openExternal} adapter={adapter} selected={selected} ready={!!data} onClearSelection={() => setSelected([])} />
+            createReason={C.blocked(data && data.create_context, config.kind, 'create', list.result && list.result.meta.source)} onExternal={openExternal} host={host} selected={selected} ready={!!data} onClearSelection={() => setSelected([])} />
           {data && <Issues issues={list.result.warnings} />}
           <Tables key={node} kind={config.kind} category={config.category} entities={data ? data.entities : []} source={list.result && list.result.meta.source} selected={selected} onSelect={setSelected}
-            disabled={blocked || list.loading} headerDisabled={blocked} loading={list.loading} error={list.error} adapter={adapter} scope={effectiveScope} matchingCount={data && data.page.total}
+            disabled={blocked || list.loading} headerDisabled={blocked} loading={list.loading} error={list.error} scope={effectiveScope} matchingCount={data && data.page.total}
             onRetry={refresh} onClear={() => filter({ query: '', column_filters: {}, ...(config.kind === 'op_type' ? {} : { status: '' }) })}
             onOpen={ref => open('view', ref)} onDelete={ref => open('delete', ref)} sort={effectiveScope.sort} direction={effectiveScope.direction} sortActive={sortActive} onSort={sortColumn} onColumnFilter={columnFilter} />
           <Tables.Pager page={data ? data.page : { number: effectiveScope.page, size: effectiveScope.size }} disabled={blocked || list.loading || !data} onPage={changePage} onSize={size => filter({ size })} />
         </>}
       </>}
     </section>
-    {dialog && (dialog.action === 'view' || !editorReady) && <Forms.Detail key={dialog.kind + ':' + dialog.ref} adapter={adapter} kind={dialog.kind} result={detail.result} busy={detail.loading} error={detail.error} onRetry={detail.reload} onClose={close}
+    {dialog && (dialog.action === 'view' || !editorReady) && <Forms.Detail key={dialog.kind + ':' + dialog.ref} kind={dialog.kind} result={detail.result} busy={detail.loading} error={detail.error} onRetry={detail.reload} onClose={close}
       onRelated={(kind, ref, category) => open('view', ref, { kind, category })} onBack={dialog.history.length ? back : null}
       onEdit={() => edit('update')} onAdjustStock={() => edit('update', true)} onMachinePermissions={() => edit('machine_permissions')}
       onDowntimes={() => edit('downtimes')} onOperatorCalendar={() => edit('operator_calendar')} onDelete={() => edit('delete')} />}
-    {editorReady && dialog.action === 'machine_permissions' && <OperatorMachinePermissions adapter={adapter} entity={editorEntity} source={detail.result.meta.source}
+    {editorReady && dialog.action === 'machine_permissions' && <OperatorMachinePermissions entity={editorEntity} source={detail.result.meta.source}
       command={command} onClose={close} refreshState={refreshState} onRefresh={readAfterCommand} Feedback={Forms.Feedback} />}
-    {editorReady && dialog.action === 'downtimes' && <MachineDowntimePanel adapter={adapter} entity={editorEntity} source={detail.result.meta.source} onClose={close} onCommitted={refresh} />}
-    {editorReady && dialog.action === 'operator_calendar' && <OperatorCalendarPanel adapter={adapter} entity={editorEntity} source={detail.result.meta.source}
+    {editorReady && dialog.action === 'downtimes' && <MachineDowntimePanel entity={editorEntity} source={detail.result.meta.source} onClose={close} onCommitted={refresh} />}
+    {editorReady && dialog.action === 'operator_calendar' && <OperatorCalendarPanel entity={editorEntity} source={detail.result.meta.source}
       command={command} onClose={close} refreshState={refreshState} onRefresh={readAfterCommand} externalRevision={externalRevision} Feedback={Forms.Feedback} />}
-    {editorReady && !['view', 'machine_permissions', 'operator_calendar', 'downtimes'].includes(dialog.action) && <><Forms key={dialog.kind + ':' + (dialog.ref || 'create') + ':' + dialog.action} adapter={adapter} kind={dialog.kind} action={dialog.action} entity={editorEntity} category={dialog.category} stockOnly={!!dialog.stockOnly}
+    {editorReady && !['view', 'machine_permissions', 'operator_calendar', 'downtimes'].includes(dialog.action) && <><Forms key={dialog.kind + ':' + (dialog.ref || 'create') + ':' + dialog.action} openCatalog={host.openCatalog} kind={dialog.kind} action={dialog.action} entity={editorEntity} category={dialog.category} stockOnly={!!dialog.stockOnly}
       acceptedEntity={editContext && editContext.entity}
       writeContext={editContext ? editContext.context : editorEntity ? editorEntity.write_context : dialog.createContext} source={editContext ? editContext.source : editorEntity ? detail.result.meta.source : dialog.source}
       command={command} onClose={close} onReloadContext={reloadContext} refreshState={refreshState} onRefresh={readAfterCommand}

@@ -1,10 +1,16 @@
-import RunHistoryAPI from './RunHistoryAPI.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import APSWorkbenchTransport from './shared/network/transport.js';
+import WorkbenchNavigation from './WorkbenchNavigation.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
+import { object, ref48, isDate, localTime, checker, failure } from './shared/contract/kit.js';
 
-const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const check = checker('历史资料读取不完整，请刷新后重试。', { code: 'invalid_response' });
 // 返回位置与条件明细只读，并随 onNavigate 经 history.pushState 结构化克隆，不另做深拷贝。
-const states = ['all', 'queued', 'running', 'complete', 'partial', 'failed', 'interrupted', 'committed'];
+// 历史条目状态：排产运行条目沿用排产记录状态（后端 RunState），采用条目恒为 committed（workbench_history_catalog_repo.py 写入），
+// 两组取值不重叠。状态筛选的取值、条目列表与详情的状态文字都从这里取，词表外的码显示“其他状态”。
+const ADOPTED = 'committed';
+const states = ['all', ...Object.keys(WorkbenchTerms.run_statuses), ADOPTED];
+const stateLabel = state => state === 'all' ? '全部状态' : state === ADOPTED ? '已正式采用' : WorkbenchTerms.run_status(state);
 const queryKeys = ['timeline', 'date_from', 'date_to', 'metric_keys', 'comparison', 'reference_run_ref', 'selected_entry_ref', 'range_start', 'range_end', 'resource_window_days', 'state', 'sort', 'order', 'page', 'size', 'condition_page', 'condition_size', 'snapshot_ref'];
 // 默认指标列表直接放进每份默认查询，冻结后谁也不能原地改它；切换指标一律生成新数组。
 const defaultMetrics = Object.freeze(['overdue_count', 'total_tardiness_hours', 'makespan_hours', 'elapsed_seconds']);
@@ -13,12 +19,7 @@ const sourceLabel = value => sourceLabels[typeof value === 'string' ? value : va
 const windowMetric = definition => ['fixed_resource_window', 'fixed_changeover_window'].includes(definition.scope);
 const sameMetricDefinition = (a, b) => a.unit === b.unit && a.metric_version === b.metric_version && a.scope === b.scope;
 const entryRef = value => typeof value === 'string' && /^(?:run:[a-f0-9]{48}|adoption:[a-f0-9]{32})$/.test(value);
-const runRef = value => typeof value === 'string' && /^[a-f0-9]{48}$/.test(value);
-const timeKey = value => value.slice(0, 19) + '.' + (value.split('.')[1] || '').padEnd(6, '0');
 
-function page(value, query, prefix = '') {
-  return object(value) && value.number === query[prefix + 'page'] && value.size === query[prefix + 'size'];
-}
 function scope(value = {}) {
   check(object(value) && Object.keys(value).every(key => queryKeys.includes(key)), '历史筛选含不支持的项，请重新选择。');
   const q = { timeline: 'run', date_from: null, date_to: null, metric_keys: defaultMetrics, comparison: 'observed', reference_run_ref: null, selected_entry_ref: null,
@@ -28,30 +29,15 @@ function scope(value = {}) {
   check(Array.isArray(q.metric_keys) && q.metric_keys.length >= 1 && q.metric_keys.length <= 100 && q.metric_keys.every(key => typeof key === 'string' && /^[a-z][a-z0-9_]{0,79}$/.test(key)) && new Set(q.metric_keys).size === q.metric_keys.length, '请选择有效的历史指标。');
   check(['page', 'condition_page'].every(key => Number.isSafeInteger(q[key]) && q[key] >= 1 && q[key] <= 1000000)
     && ['size', 'condition_size'].every(key => [20, 50].includes(q[key])) && Number.isSafeInteger(q.resource_window_days) && q.resource_window_days >= 1 && q.resource_window_days <= 366, '历史页码、每页数量或资源窗口天数无效。');
-  check(q.reference_run_ref === null || runRef(q.reference_run_ref), '请选择有效的基准运行。');
+  check(q.reference_run_ref === null || ref48(q.reference_run_ref), '请选择有效的基准运行。');
   check(q.selected_entry_ref === null || entryRef(q.selected_entry_ref), '请选择有效的历史条目。');
   check(q.snapshot_ref === null || typeof q.snapshot_ref === 'string' && q.snapshot_ref.length > 0 && q.snapshot_ref.length <= 512, '历史快照无效，请刷新历史。');
-  const H = RunHistoryAPI;
-  check(q.date_from === null && q.date_to === null || H.date(q.date_from) && H.date(q.date_to) && q.date_from <= q.date_to, '时间线日期须成对填写，开始日期须早于或等于结束日期。');
-  check(q.range_start === null && q.range_end === null || H.time(q.range_start) && H.time(q.range_end) && timeKey(q.range_start) < timeKey(q.range_end), '资源共同窗口须成对填写，结束须晚于开始。');
+  check(q.date_from === null && q.date_to === null || isDate(q.date_from) && isDate(q.date_to) && q.date_from <= q.date_to, '时间线日期须成对填写，开始日期须早于或等于结束日期。');
+  check(q.range_start === null && q.range_end === null || localTime(q.range_start) && localTime(q.range_end) && q.range_start < q.range_end, '资源共同窗口须成对填写，结束须晚于开始。');
   return q;
 }
-function check(value, message = '历史资料读取不完整，请刷新后重试。') {
-  if (!value) throw Object.assign(new Error(message), { code: 'invalid_response' });
-}
-function returnState(origin = {}) {
-  check(object(origin), '历史返回位置无效，请重新打开排产记录。');
-  const value = origin.return_decision_history_context || origin.return_decision_context && origin.return_decision_context.return_decision_history_context
-    || origin.source === 'run_history' && origin.history_topic === 'decision_history' && origin.decision_history_context;
-  if (!value) return null;
-  check(object(value) && object(value.query), '历史返回条件无效，请重新打开排产记录。');
-  return value;
-}
-function historyContext(origin = {}) {
-  const value = returnState(origin);
-  return { source: 'run_history', ...(origin.history_query ? { history_query: origin.history_query } : {}),
-    ...(value ? { history_topic: 'decision_history', decision_history_context: value } : {}) };
-}
+// 返回链上最近的“指标走势”页状态（含本页）：「返回历史走势」原样回到它。
+const historyOrigin = context => WorkbenchNavigation.origin(context, value => value.source === 'run_history' && value.history_topic === 'decision_history');
 function context(value = {}) {
   check(object(value) && Object.keys(value).every(key => ['query', 'selected_entry_ref', 'reference_entry_ref', 'metric_key', 'detail_queries'].includes(key)), '历史页面的返回条件无效，请从排产记录重新打开。');
   const query = scope(value.query), selected = value.selected_entry_ref === undefined ? query.selected_entry_ref : value.selected_entry_ref;
@@ -69,24 +55,8 @@ function serialized(query) {
 function _history(payload, q) {
   // 成功信封（meta 五键、warnings 形状、as_of）已由 transport.read 校验；历史分页与导出要钉住同一份快照。
   check(payload.meta.snapshot_ref !== null);
-  if (q.snapshot_ref && payload.meta.snapshot_ref !== q.snapshot_ref) throw Object.assign(new Error('历史资料已更新，请刷新当前条件后继续查看。'), { code: 'snapshot_stale' });
-  const d = payload.data;
-  const filterKeys = queryKeys.filter(key => key !== 'snapshot_ref');
-  check(d.history_version === 'decision-history-v1' && object(d.filters) && page(d.page, q)
-    && object(d.selection)
-    && object(d.comparison) && d.comparison.mode === q.comparison && object(d.comparison.conditions) && page(d.comparison.conditions.page, q, 'condition_')
-    && object(d.resource_window));
-  for (const key of filterKeys) {
-    const left = d.filters[key], right = q[key];
-    check(['range_start', 'range_end'].includes(key) && left !== null && right !== null ? RunHistoryAPI.time(left) && timeKey(left) === timeKey(right) : JSON.stringify(left) === JSON.stringify(right), '历史返回的筛选条件已变化，请重新查询。');
-  }
-  if (d.selection.entry !== null) check(object(d.selection.entry) && q.selected_entry_ref !== null && d.selection.entry.entry_ref === q.selected_entry_ref, '历史选中条目已变化，请重新选择。');
-  else check(q.selected_entry_ref === null, '选中的历史条目未返回，请刷新当前条件。');
-  if (d.selection.reference !== null) check(object(d.selection.reference) && q.reference_run_ref !== null && d.selection.reference.entry_ref === 'run:' + q.reference_run_ref, '历史基准运行已变化，请重新选择。');
-  else check(q.reference_run_ref === null, '基准运行未返回，请重新选择。');
-  check(d.resource_window.mode === (q.range_start ? 'absolute' : 'fixed_days') && d.resource_window.anchor === (q.range_start ? 'common_absolute_window' : 'source_start')
-    && (q.range_start ? d.resource_window.start !== null && d.resource_window.end !== null && timeKey(d.resource_window.start) === timeKey(q.range_start) && timeKey(d.resource_window.end) === timeKey(q.range_end) : d.resource_window.days === q.resource_window_days), '历史资源窗口与查询条件不一致，请重新查询。');
-  return d;
+  if (q.snapshot_ref && payload.meta.snapshot_ref !== q.snapshot_ref) throw failure('历史资料已更新，请刷新当前条件后继续查看。', { code: 'snapshot_stale' });
+  return payload.data;
 }
 function numberText(value, unit, precision = 3) {
   if (value === null) return '未知';
@@ -111,6 +81,6 @@ async function historyExport(query, snapshotRef, format, signal, section = 'entr
   check(rows !== null && /^[0-9]+$/.test(rows) && Number.isSafeInteger(Number(rows)), '历史导出文件内容不完整，请重新下载。');
   return { filename: file.filename, blob: file.blob, row_count: Number(rows) };
 }
-const DecisionHistoryAPI = { check, returnState, historyContext, scope, context, serialized, states, sourceLabel, windowMetric, sameMetricDefinition, read, historyExport, numberText, metricText };
-export { DecisionHistoryAPI, check, returnState, historyContext, scope, context, serialized, states, sourceLabel, windowMetric, sameMetricDefinition, read, historyExport, numberText, metricText };
+const DecisionHistoryAPI = { check, historyOrigin, scope, context, serialized, states, stateLabel, sourceLabel, windowMetric, sameMetricDefinition, read, historyExport, numberText, metricText };
+export { DecisionHistoryAPI, check, historyOrigin, scope, context, serialized, states, stateLabel, sourceLabel, windowMetric, sameMetricDefinition, read, historyExport, numberText, metricText };
 export default DecisionHistoryAPI;

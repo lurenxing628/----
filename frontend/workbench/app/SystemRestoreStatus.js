@@ -1,6 +1,6 @@
 import APSWorkbenchTransport from './shared/network/transport.js';
+import { object, checker } from './shared/contract/kit.js';
 
-const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const source = 'external_maintenance_journal';
 const labels = { accepted: '已接收', checking: '检查中', protecting: '生成保护副本', restoring: '恢复中', verifying: '完整性检查中',
   rolling_back: '还原中', succeeded: '已完成', failed: '操作失败', rolled_back: '恢复失败，已还原',
@@ -9,13 +9,15 @@ const hostLabels = { ready: '系统运行中', draining: '正在准备数据库�
 const origins = { selected_backup: '来自所选备份', protection_backup: '已还原到恢复前的保护副本', unchanged: '原数据库未被替换', unconfirmed: '维护记录尚未确认数据库来源' };
 const fileStates = { captured: '已读取原文件内容', verified: '与原文件内容一致', not_checked: '尚未核对', unavailable: '原内容核对资料缺失' };
 const sqliteStates = { passed: '完整性检查通过', not_checked: '尚未检查', unavailable: '完整性检查资料缺失' };
-function check(ok) { if (!ok) throw new Error('维护状态数据不完整或存在冲突，请重新查询并核对维护记录。'); }
+const INVALID = '维护状态数据不完整或存在冲突，请重新查询并核对维护记录。';
+// 维护状态与维护结果都是回执查询读回来的（含命令结果）：核对不过时结果未知。编号格式在查询发出前核对。
+const check = checker(INVALID), checkResult = checker(INVALID, { committed: 'unknown' });
 function envelope(value) {
-  check(object(value) && value.ok === true && value.schema_version === 1 && object(value.data) && object(value.meta)
+  checkResult(object(value) && value.ok === true && value.schema_version === 1 && object(value.data) && object(value.meta)
     && value.meta.source === 'production' && value.meta.result_source === source);
   return value.data;
 }
-function host(value) { const data = envelope(value); check(data.kind === 'restore_host' && object(data.host)); return data.host; }
+function host(value) { const data = envelope(value); checkResult(data.kind === 'restore_host' && object(data.host)); return data.host; }
 function sourceFacts(op) {
   const value = op.source_verification;
   return [['所选备份内容', fileStates[value.target]], ['保护副本内容', fileStates[value.protection]], ['SQLite 完整性', sqliteStates[value.sqlite_integrity]]];

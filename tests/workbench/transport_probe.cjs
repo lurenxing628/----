@@ -89,21 +89,21 @@ async function envelopes() {
 }
 
 async function failures() {
-  const { T } = runtime(() => assert.fail('failure() does not fetch'));
-  await check('failure maps the backend failure envelope to the unified error', () => {
-    const error = T.failure(failurePayload('stale_write', false, { request_key: 'run-' + 'b'.repeat(48), result_target: '/api/workbench/v1/scheduling/requests/x', conflicts: [{ code: 'c' }] }), 409);
+  const { T } = runtime(() => assert.fail('envelopeFailure() does not fetch'));
+  await check('envelopeFailure maps the backend failure envelope to the unified error', () => {
+    const error = T.envelopeFailure(failurePayload('stale_write', false, { request_key: 'run-' + 'b'.repeat(48), result_target: '/api/workbench/v1/scheduling/requests/x', conflicts: [{ code: 'c' }] }), 409);
     assert.equal(Object.prototype.toString.call(error), '[object Error]');
     assert(shaped(error, { message: 'stale_write visible', code: 'stale_write', fields: [{ path: 'quantity', message: '请填写数量。' }], conflicts: [{ code: 'c' }],
       committed: false, status: 409, requestRef: 'f'.repeat(32), requestKey: 'run-' + 'b'.repeat(48), resultTarget: '/api/workbench/v1/scheduling/requests/x' }));
     assert.equal(Object.prototype.hasOwnProperty.call(error, 'error'), false, 'There is one error shape; no nested error.error');
   });
-  await check('failure keeps committed unknown and absent optional echoes as null', () => {
-    assert(shaped(T.failure(failurePayload('storage_failure', 'unknown'), 500), { committed: 'unknown', status: 500, requestKey: null, resultTarget: null, conflicts: [] }));
+  await check('envelopeFailure keeps committed unknown and absent optional echoes as null', () => {
+    assert(shaped(T.envelopeFailure(failurePayload('storage_failure', 'unknown'), 500), { committed: 'unknown', status: 500, requestKey: null, resultTarget: null, conflicts: [] }));
   });
   for (const [name, payload] of [['success payload', valid()], ['missing fields', { ok: false, committed: false, error: { code: 'x', message: 'm' } }],
     ['bad committed', { ...failurePayload('x'), committed: 'maybe' }], ['non-text code', { ok: false, committed: false, error: { code: 1, message: 'm', fields: [] } }], ['null', null]]) {
-    await check('failure turns an unrecognised payload into invalid_response: ' + name, () => {
-      assert(shaped(T.failure(payload, 502), { code: 'invalid_response', status: 502, committed: false }));
+    await check('envelopeFailure turns an unrecognised payload into invalid_response: ' + name, () => {
+      assert(shaped(T.envelopeFailure(payload, 502), { code: 'invalid_response', status: 502, committed: false }));
     });
   }
 }
@@ -205,7 +205,7 @@ async function commands() {
 async function verdicts() {
   // Every valid failure envelope with committed:false is a definite rejection; request_key_conflict and invalid responses never are.
   const { T } = runtime(() => null);
-  const verdict = (code, committed, status) => T.rejected(T.failure(failurePayload(code, committed), status));
+  const verdict = (code, committed, status) => T.rejected(T.envelopeFailure(failurePayload(code, committed), status));
   for (const status of [400, 401, 403, 404, 405, 409, 413, 422, 429, 500, 502, 503]) await check('rejected for committed:false HTTP ' + status, () => assert.equal(verdict('stale_write', false, status), true));
   await check('request_key_conflict is never a rejection', () => assert.equal(verdict('request_key_conflict', false, 409), false));
   for (const committed of ['unknown', true]) await check('not rejected when committed is ' + committed, () => assert.equal(verdict('stale_write', committed, 409), false));
@@ -249,6 +249,13 @@ async function downloads() {
     assert.equal(value.contentType, 'text/csv'); assert.equal(value.filename, '排产.csv'); assert.equal(value.header('X-Workbench-Row-Count'), '3');
     assert.deepEqual([...new Uint8Array(await value.blob.arrayBuffer())], bom);
     assert.equal(seen.target, origin + endpoint + '?format=csv'); assert.equal(seen.init.headers.Accept, 'text/csv,application/json'); assert.deepEqual(Object.keys(seen.init.headers), ['Accept']);
+  });
+  await check('download with a body posts it as JSON and keeps the file checks', async () => {
+    const client = runtime(async (target, init) => { seen = { target, init }; return file(bom, 'text/csv', { 'Content-Disposition': 'attachment; filename=a.csv' }); });
+    const value = await client.T.download(endpoint, {}, { types: ['text/csv'], timeout: 60000, body: { batch_ids: ['B1', 'B2'], format: 'csv' } });
+    assert.equal(value.filename, 'a.csv'); assert.equal(seen.init.method, 'POST'); assert.equal(seen.target, origin + endpoint);
+    assert.deepEqual(plain(seen.init.headers), { Accept: 'text/csv,application/json', 'Content-Type': 'application/json' });
+    assert.deepEqual(JSON.parse(seen.init.body), { batch_ids: ['B1', 'B2'], format: 'csv' });
   });
   for (const [name, bytes, type, disposition] of [['quoted filename', zip, XLSX, 'attachment; filename="plan \\"v2\\".xlsx"'], ['bare filename', zip, 'application/zip', 'attachment; filename=backup.zip'],
     ['sqlite backup', sqlite, 'application/vnd.sqlite3', 'attachment; filename=aps.db']]) {

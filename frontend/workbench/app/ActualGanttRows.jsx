@@ -1,12 +1,12 @@
 import React from './shared/runtime/react.js';
-import ActualGanttModel from './ActualGanttModel.js';
-import ResourceControls from './ResourceControls.jsx';
+import M from './ActualGanttModel.js';
+import { Button } from './ResourceControls.jsx';
 import ActualGanttWindow from './ActualGanttWindow.js';
 import PointGantt from './PointGantt.jsx';
 import PointContract from './PointContract.js';
 import ActualGanttCanvas from './ActualGanttCanvas.jsx';
+import Hours from './shared/hours.js';
 
-const M = ActualGanttModel, { Button } = ResourceControls;
 function emptyReports(row, mode) {
   const execution = row.item.execution;
   if (!execution) return '报工记录不可用';
@@ -65,7 +65,7 @@ function Rows({ model, view, width, viewport, left, top, height, labelWidth, den
     if (row.kind === 'group') return <div key={row.key} className="fg-virtual-row fg-group-row" style={style} data-resource={row.group.id}>
       <div className="fg-frozen"><Button className="fg-icon-button" icon={view.collapsed[row.group.id] ? 'chevron-right' : 'chevron-down'} aria-label={(view.collapsed[row.group.id] ? '展开 ' : '折叠 ') + row.group.label}
         aria-expanded={!view.collapsed[row.group.id]} onClick={() => patch({ collapsed: { ...view.collapsed, [row.group.id]: !view.collapsed[row.group.id] } })} />
-        <strong className="fg-resource-label" title={row.group.label}>{row.group.label}</strong></div><div className="fg-group-summary">{row.group.members.size} 道工序 · {model.executionAvailable ? row.group.reportCount + ' 次报工 · ' + (row.group.knownHours === null ? row.group.reportCount ? '本组报工未填写有效工时' : '本组暂无逐次报工工时' : '已知实报工时 ' + M.hours(row.group.knownHours)) + (row.group.unknownHours ? ' · ' + row.group.unknownHours + ' 条工时待补' : '') : '报工记录不可用'}</div></div>;
+        <strong className="fg-resource-label" title={row.group.label}>{row.group.label}</strong></div><div className="fg-group-summary">{row.group.members.size} 道工序 · {model.executionAvailable ? row.group.reportCount + ' 次报工 · ' + (row.group.hours.known === null ? row.group.reportCount ? '本组报工未填写有效工时' : '本组暂无逐次报工工时' : '已知实报工时 ' + M.hours(Hours.hoursNumber(row.group.hours.known))) + (row.group.hours.unknown ? ' · ' + row.group.hours.unknown + ' 条工时待补' : '') : '报工记录不可用'}</div></div>;
     const { item } = row, e = item.execution, t = item.task, marks = row.marks;
     const emptyText = row.kind === 'actual' && !row.reports.length ? emptyReports(row, view.mode) : '';
     const renderMark = (mark, canvasPainted = false) => <Bar key={mark.key} {...{ mark, row, visibleMarks, model, width, active, onSelect, onHover, canvasPainted }} selected={view.selected} />;

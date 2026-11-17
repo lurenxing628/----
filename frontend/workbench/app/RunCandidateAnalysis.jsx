@@ -1,19 +1,18 @@
 import React from './shared/runtime/react.js';
-import RunCandidateControls from './RunCandidateControls.jsx';
-import RunCandidateModel from './RunCandidateModel.js';
-import WorkbenchTerms from './WorkbenchTerms.js';
+import C from './RunCandidateControls.jsx';
+import M from './RunCandidateModel.js';
+import T from './WorkbenchTerms.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
 
-const C = RunCandidateControls, M = RunCandidateModel, T = WorkbenchTerms;
-const labels = { overdue_count: WorkbenchTerms.overdue_count, total_tardiness_hours: WorkbenchTerms.total_tardiness_hours + '（小时）', changed_operation_count: '调整工序', machine_change_count: '换设备数' };
+const labels = { overdue_count: T.overdue_count, total_tardiness_hours: T.total_tardiness_hours + '（小时）', changed_operation_count: '调整工序', machine_change_count: '换设备数' };
 function Value({ metric }) {
   return <>{metric.state === 'not_applicable' ? '不适用' : metric.value === null ? '未知' : M.number(metric.value)}{metric.value === null && metric.state !== 'not_applicable' && <small>已知小计 {M.number(metric.known_subtotal)} · 待确认 {metric.unknown_count} / {metric.total_count}</small>}
     {metric.reason && <details><summary>依据不足</summary><small>{metric.reason.message}</small></details>}</>;
 }
 function Overview({ data }) {
   return <section aria-label="全方案交付与变化" data-candidate-analysis={data.candidate_ref}>
-    <div className="rc-heading"><h3>全方案交付与变化</h3><span className="rc-muted">{data.batch_refs.length} 批 · {data.operations.operation_refs.length} 道工序</span></div>
+    <div className="rc-heading"><h3>全方案交付与变化</h3><span className="rc-muted">{data.batch_count} 批 · {data.operations.operation_count} 道工序</span></div>
     <dl className="rc-meta" data-analysis-metrics>{Object.keys(labels).map(key => <div key={key} data-analysis-metric={key}><dt>{labels[key]}</dt><dd><Value metric={data.metrics[key]} /></dd></div>)}</dl>
     <div className="rc-scope" aria-label="候选变化与取舍">{Object.keys(data.delivery_deltas).map(key => <span key={key}>
       {labels[key]}变化：{!data.baseline.available ? '无原安排' : data.metrics[key].state === 'not_applicable' ? '不适用' : data.delivery_deltas[key] === null ? '交付待确认' : M.signedChange(data.delivery_deltas[key])}</span>)}</div>

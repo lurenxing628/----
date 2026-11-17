@@ -1,7 +1,7 @@
 import React from './shared/runtime/react.js';
 import { Button, ErrorBox, Pager, EmptyState } from './ResourceControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
-import { useQuery } from './shared/session/query.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
 import ResourceTableHeader from './ResourceTableHeader.jsx';
 import CalibrationAPI from './CalibrationAPI.js';
 
@@ -13,14 +13,11 @@ const hours = (value, missing = '未填写') => missingValue(value) ? missing : 
 const unitHours = (value, missing = '未填写') => missingValue(value) ? missing : hours(value) + '/件';
 const percent = (value, missing = '未计算') => missingValue(value) ? missing
   : (value > 0 ? '+' : '') + WorkbenchFormat.percent(value / 100, { digits: 1, trim: true });
-const source = value => ({ internal: '自制', external: '外协', unknown: '未确认' })[value] || '未确认';
+const source = value => WorkbenchTerms.operation_sources[value] || '未确认';
+// 来源筛选的自制、外协两项取自工序来源词表；“全部来源”和“未确认”是筛选专用项。
+const operationSources = Object.entries(WorkbenchTerms.operation_sources);
 const statusText = value => value === 'insufficient_data' ? '数据不足' : '已有建议';
 const viewReason = '当前来源暂不能查看。';
-
-function useRead(load, identity, adapter, enabled = true) {
-  const read = useQuery(load, [identity, adapter], enabled);
-  return { ...read, busy: read.loading };
-}
 
 function Filters({ value, onChange, disabled }) {
   const [query, setQuery] = React.useState(value.query);
@@ -29,7 +26,7 @@ function Filters({ value, onChange, disabled }) {
     <label className="ca-search"><input type="search" aria-label="搜索校准明细" placeholder="搜索图号、零件名、工序或序号" maxLength={200} value={query} disabled={disabled} onChange={event => setQuery(event.target.value)} /></label>
     <Button icon="search" type="submit" aria-label="搜索" className="primary" disabled={disabled} />
     <label>工序来源<select aria-label="工序来源" disabled={disabled} value={value.source || ''} onChange={event => onChange({ source: event.target.value || null, query })}>
-      <option value="">全部来源</option><option value="internal">自制</option><option value="external">外协</option><option value="unknown">未确认</option></select></label>
+      <option value="">全部来源</option>{operationSources.map(([code, label]) => <option key={code} value={code}>{label}</option>)}<option value="unknown">未确认</option></select></label>
     <label>状态<select aria-label="建议状态" disabled={disabled} value={value.status} onChange={event => onChange({ status: event.target.value, query })}>
       <option value="all">全部状态</option><option value="suggested">已有建议</option><option value="insufficient_data">数据不足</option></select></label>
     <label className="ca-check"><input type="checkbox" checked={value.deviation === 'over_20_percent'} disabled={disabled} onChange={event => onChange({ deviation: event.target.checked ? 'over_20_percent' : 'all', query })} />仅看偏差 &gt; 20%</label>
@@ -43,7 +40,7 @@ function Page({ page, onChange, disabled, label = '' }) {
     onPage={number => onChange({ page: number })} onSize={size => onChange({ size, page: 1 })} />;
 }
 
-function Table({ rows, selected, onSelect, onPart, disabled, canView, scope, adapter, onSort, onFilter, widths, onResize, total, loading = false }) {
+function Table({ rows, selected, onSelect, onPart, disabled, canView, scope, onSort, onFilter, widths, onResize, total, loading = false }) {
   // 默认列宽（B1 样式包 2026-09-21 核定）：905 + 详情列 60 = 965，1280 视口整表放得下；
   // 每个表头文字按 13px 字号加 16px 内距都放得进对应宽度，放不下时缩短文案而不是压宽度。
   const columns = [
@@ -54,7 +51,7 @@ function Table({ rows, selected, onSelect, onPart, disabled, canView, scope, ada
   const width = (key, value) => widths[key] || value;
   return <div className="ca-table-scroll wb-table-frame" tabIndex={0} role="region" aria-label="校准明细滚动区域"><table className="ca-table" aria-label="校准明细" style={{ minWidth: actionWidth + columns.reduce((sum, [key, , value]) => sum + width(key, value), 0) }}><caption className="wb-visually-hidden">当前筛选范围的校准建议；建议不直接修改已有批次定额。</caption><thead><tr>
     {columns.map(([key, title, value]) => <th key={key} scope="col" style={{ width: width(key, value) }} aria-sort={scope.sort === key ? scope.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
-      <ResourceTableHeader column={{ key, title }} kind="calibration" scope={scope} adapter={adapter} sort={scope.sort} direction={scope.direction} sortActive
+      <ResourceTableHeader column={{ key, title }} kind="calibration" scope={scope} sort={scope.sort} direction={scope.direction} sortActive
         onSort={onSort} onFilter={rule => onFilter(key, rule)} filter={scope.column_filters[key]} matchingCount={total}
         width={width(key, value)} onResize={value => onResize(key, Math.min(16384, value))} disabled={disabled} scopeTransform={CalibrationAPI.facetScope} />
     </th>)}<th scope="col" className="ca-action" style={{ width: actionWidth }}>详情</th>
@@ -68,7 +65,7 @@ function Table({ rows, selected, onSelect, onPart, disabled, canView, scope, ada
   </tr>)}</tbody></table>{!rows.length && <EmptyState kind={loading ? 'loading' : 'empty'} title={loading ? '正在加载...' : '当前筛选没有记录'} hint={loading ? undefined : '调整图号、工序来源或建议状态后重新查询。'} />}</div>;
 }
 
-const CalibrationControls = { Button, ErrorBox, Filters, Page, Table, useRead, text, amount, hours, unitHours, percent, source, statusText, viewReason };
+const CalibrationControls = { Button, ErrorBox, Filters, Page, Table, text, amount, hours, unitHours, percent, source, statusText, viewReason };
 
-export { CalibrationControls, Button, ErrorBox, Filters, Page, Table, useRead, text, amount, hours, unitHours, percent, source, statusText, viewReason };
+export { CalibrationControls, Button, ErrorBox, Filters, Page, Table, text, amount, hours, unitHours, percent, source, statusText, viewReason };
 export default CalibrationControls;

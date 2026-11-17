@@ -1,8 +1,8 @@
 import React from './shared/runtime/react.js';
-import APSResourceSession from './shared/session/command-session.js';
+import S from './shared/session/command-session.js';
 import { useQuery } from './shared/session/query.js';
-import FieldControls from './FieldControls.jsx';
-import FieldAPI from './FieldAPI.js';
+import { Button, ErrorBox, Feedback } from './FieldControls.jsx';
+import api from './FieldAPI.js';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import WorkbenchCaption from './WorkbenchCaption.jsx';
@@ -14,7 +14,6 @@ import { Pager } from './ResourceControls.jsx';
 import FieldDetail from './FieldDetail.jsx';
 import FieldFiles from './FieldFiles.jsx';
 
-const S = APSResourceSession, { Button, ErrorBox, Feedback } = FieldControls, api = FieldAPI;
 function FieldWorkspace({ onNavigate, initialContext }) {
   const [scope, setScope] = React.useState(() => api.initial(initialContext));
   const [opened, setOpened] = React.useState(initialContext.task_ref || null), [editor, setEditor] = React.useState(null), [files, setFiles] = React.useState(false), [revision, setRevision] = React.useState(0);
@@ -32,9 +31,10 @@ function FieldWorkspace({ onNavigate, initialContext }) {
     drafts.current.set(editor.taskRef, { editor, retained });
     renderDrafts();
   }, [editor]);
-  const read = useQuery(signal => api.readView(scope, signal), [scope, revision]);
+  // 刷新期间按打开的任务保留上一次读到的任务详情；换了打开的任务就不再保留。
+  const read = useQuery(signal => api.readView(scope, signal), [scope, revision], { keep: opened });
   const data = read.result && read.result.data, snapshot = read.result && read.result.meta.snapshot_ref;
-  const readPlan = React.useRef(scope.plan_ref), lastTaskRef = React.useRef(null);
+  const readPlan = React.useRef(scope.plan_ref);
   if (data && !read.loading && !read.error) readPlan.current = data.scope.plan_ref;
   const captionPlan = !read.loading && !read.error && data && data.plan;
   const captionStatus = captionPlan && (captionPlan.is_current_official ? WorkbenchTerms.current_official : WorkbenchTerms.historical_official);
@@ -44,9 +44,7 @@ function FieldWorkspace({ onNavigate, initialContext }) {
     range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
   } : null);
   const selectedTask = data && data.tasks.find(task => task.task_ref === opened);
-  if (selectedTask) lastTaskRef.current = selectedTask;
-  else if (!opened || !read.loading || (lastTaskRef.current && lastTaskRef.current.task_ref !== opened)) lastTaskRef.current = null;
-  const displayTask = selectedTask || (read.loading && opened && lastTaskRef.current && lastTaskRef.current.task_ref === opened ? lastTaskRef.current : null);
+  const displayTask = read.shown && read.shown.data.tasks.find(task => task.task_ref === opened);
   const pageContext = data ? {
     plan_ref: data.scope.plan_ref, scope: data.scope,
     table: { page: data.page.number, size: data.page.size }, task_ref: opened,
@@ -105,12 +103,11 @@ function FieldWorkspace({ onNavigate, initialContext }) {
   }, [nextDraft, read.loading, read.error, data, selectedTask]);
   const effectiveScope = data ? data.scope : scope;
   const filtered = !!(scope.query || scope.state && scope.state !== 'all' || scope.plan_finish_date_from || scope.plan_finish_date_to || scope.range_start || scope.batch_ids || scope.resource_ref);
-  // 返回入口统一是 {view, context} 信封：值班台、现场实际甘特、报表 / 复盘带过来的都是这种。
+  // 返回入口统一是 return_to 信封（值班台、现场实际甘特、报表 / 复盘带过来的），已由 WorkbenchNavigation.admit 准入。
   const returnTarget = initialContext.return_to;
-  const canReturn = !!returnTarget && ['analysis', 'gantt', 'fieldgantt', 'reports', 'review', 'dashboard'].includes(returnTarget.view);
   return <section className="plana field-workspace" data-field-workspace aria-label="现场记录">
     <div className="field-toolbar"><h2 className="wb-page-title">现场记录</h2><span className="field-note wb-page-context">{data ? data.plan ? data.plan.display_name : '暂无正式计划' : read.loading ? '正在读取计划' : '计划未读取'}</span><span className="field-space" />
-      {canReturn && <Button icon="arrow-left" disabled={blocked} onClick={() => onNavigate(returnTarget.view, returnTarget.context)}>返回</Button>}
+      {returnTarget && <Button icon="arrow-left" disabled={blocked} onClick={() => onNavigate(returnTarget.view, returnTarget.context)}>返回</Button>}
       <Button icon="refresh-cw" aria-label="刷新现场记录" disabled={blocked || read.loading} onClick={refresh} />
       <Button transfer="import" disabled={blocked || !data} onClick={() => { command.reset(); setFiles(true); }}>报工文件</Button>
     </div>
@@ -122,10 +119,10 @@ function FieldWorkspace({ onNavigate, initialContext }) {
     <Pager page={data ? data.page : { number: scope.page || 1, size: scope.size }} sizes={[10, 20, 50, 100]} unit="道工序" label="现场" sizeLabel="现场每页数量" disabled={blocked || !data} busy={read.loading}
       onPage={page => { setNotice(''); setScope({ ...effectiveScope, size: scope.size, page, snapshot_ref: snapshot }); setOpened(null); }}
       onSize={size => { setNotice(''); setScope({ ...effectiveScope, size, page: 1, snapshot_ref: snapshot }); setOpened(null); }} />
-    {displayTask && <FieldDetail key={displayTask.task_ref} adapter={api} taskRef={displayTask.task_ref} scope={effectiveScope} returnContext={pageContext} snapshot={snapshot} revision={revision} command={command} editor={editor}
+    {displayTask && <FieldDetail key={displayTask.task_ref} taskRef={displayTask.task_ref} scope={effectiveScope} returnContext={pageContext} snapshot={snapshot} revision={revision} command={command} editor={editor}
       retained={drafts.current.get(displayTask.task_ref)?.retained} onDraft={retainDraft} nextDraft={nextDraft} onContinueReady={continueReady} onRefresh={refresh}
       onEdit={value => { if (command.reset()) setEditor(value); }} onCloseEditor={closeEditor} onDone={done} onNavigate={onNavigate} />}
-    {files && <FieldFiles adapter={api} scope={effectiveScope} snapshot={snapshot} command={command} onClose={() => { if (command.phase === 'done') done(); else if (command.reset()) setFiles(false); }} onDone={done} />}
+    {files && <FieldFiles scope={effectiveScope} snapshot={snapshot} command={command} onClose={() => { if (command.phase === 'done') done(); else if (command.reset()) setFiles(false); }} onDone={done} />}
   </section>;
 }
 export { FieldWorkspace };

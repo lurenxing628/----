@@ -1,18 +1,20 @@
 import React from './shared/runtime/react.js';
 import C from './resource-contract.js';
 import S from './shared/session/command-session.js';
+import APSResourceAPI from './resource-api.js';
 import { useQuery } from './shared/session/query.js';
 import { Button, Modal, Field, ErrorBox } from './ResourceControls.jsx';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import { Feedback } from './ResourceForms.jsx';
+import { failure } from './shared/contract/kit.js';
 
 const blank = () => ({ start_time: '', end_time: '', reason_code: 'maintenance', reason_detail: '' });
-function MachineDowntimePanel({ adapter, entity, source, onClose, onCommitted }) {
-  const command = S.useCommand(adapter), [selection, setSelection] = React.useState(null);
+function MachineDowntimePanel({ entity, source, onClose, onCommitted }) {
+  const api = APSResourceAPI.forNamespace('resources'), command = S.useCommand(api), [selection, setSelection] = React.useState(null);
   const [draft, setDraft] = React.useState(blank), [original, setOriginal] = React.useState(blank), [error, setError] = React.useState(null);
   const [confirmCancel, setConfirmCancel] = React.useState(false), [review, setReview] = React.useState(null), [lastReceipt, setLastReceipt] = React.useState(null), seen = React.useRef(null);
-  const query = useQuery(signal => adapter.downtimes(entity.ref, signal), [adapter, entity.ref]);
+  const query = useQuery(signal => api.downtimes(entity.ref, signal), [entity.ref]);
   const data = query.result && query.result.data, done = command.phase === 'done', locked = command.locked || done;
   const dirty = JSON.stringify(draft) !== JSON.stringify(original), form = React.useId();
   const owner = WorkbenchGuards.useDirtyGuard({ dirty: !done && dirty, locked: command.locked, message: '停机资料尚未保存，离开会丢失本次填写。' });
@@ -20,7 +22,7 @@ function MachineDowntimePanel({ adapter, entity, source, onClose, onCommitted })
     if (!done || seen.current === command.result.receipt_ref) return;
     const receipt = command.result, intent = command.intent;
     if (!intent || receipt.data.operation !== 'machine.' + intent.action || intent.ref !== entity.ref || receipt.data.entity_ref !== entity.ref) {
-      setError(C.failure('保存结果与当前设备不一致，请查询结果后核对。')); return;
+      setError(failure('保存结果与当前设备不一致，请查询结果后核对。', { committed: 'unknown' })); return;
     }
     seen.current = receipt.receipt_ref;
     const empty = blank();
@@ -51,16 +53,16 @@ function MachineDowntimePanel({ adapter, entity, source, onClose, onCommitted })
     event.preventDefault(); if (locked || !data || review) return;
     const action = confirmCancel ? 'cancel' : selection ? 'update' : 'create';
     const reason = C.blocked(data.write_context, 'machine', 'downtime_' + action, source);
-    if (reason) { setError(C.failure(reason)); return; }
+    if (reason) { setError(failure(reason)); return; }
     if (!confirmCancel && (!draft.start_time || !draft.end_time || draft.end_time <= draft.start_time)) {
-      setError(C.failure('请填写停机起止，结束必须晚于开始。')); return;
+      setError(failure('请填写停机起止，结束必须晚于开始。')); return;
     }
     setError(null);
     await command.submit('machine', 'downtime_' + action, entity.ref, data.write_context,
       { ...(confirmCancel ? {} : draft), ...(selection ? { downtime_ref: selection.ref } : {}) });
   }
   async function reload() {
-    try { const latest = await adapter.downtimes(entity.ref); setReview(latest); setError(null); }
+    try { const latest = await api.downtimes(entity.ref); setReview(latest); setError(null); }
     catch (e) { setError(e); }
   }
   return <Modal title={'停机计划 · ' + entity.business_code} icon="wrench" onClose={close} guardOwner={owner} locked={command.locked}
@@ -71,8 +73,8 @@ function MachineDowntimePanel({ adapter, entity, source, onClose, onCommitted })
       <ErrorBox error={query.error} />{query.loading && <p role="status">正在读取停机记录…</p>}
       <div className="wb-table-frame"><table className="tbl wb-table" aria-label="设备停机计划"><thead><tr><th>开始</th><th>结束</th><th>原因</th><th>状态</th><th>操作</th></tr></thead><tbody>
         {data && data.rows.map(row => <tr key={row.ref}><td>{WorkbenchFormat.dateTime(row.start_time)}</td><td>{WorkbenchFormat.dateTime(row.end_time)}</td>
-          <td>{data.reasons[row.reason_code] || row.reason_code} {row.reason_detail}</td><td>{row.status === 'active' ? '有效' : row.status === 'cancelled' ? '已取消' : row.status}</td>
-          <td><Button disabled={locked || dirty || row.status === 'cancelled'} onClick={() => select(row)}>{row.status === 'active' ? '编辑 / 取消' : row.status === 'cancelled' ? '已取消' : '取消记录'}</Button></td></tr>)}
+          <td>{data.reasons[row.reason_code]} {row.reason_detail}</td><td>{row.status === 'active' ? '有效' : '已取消'}</td>
+          <td><Button disabled={locked || dirty || row.status === 'cancelled'} onClick={() => select(row)}>{row.status === 'active' ? '编辑 / 取消' : '已取消'}</Button></td></tr>)}
       </tbody></table></div>
       {!done && <Button disabled={locked || dirty} onClick={() => select(null)}>新增停机</Button>}
       {!done && <><div className="fgrid">

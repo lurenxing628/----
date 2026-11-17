@@ -2,11 +2,13 @@ import React from './shared/runtime/react.js';
 import C from './resource-contract.js';
 import O from './OperatorCalendarContract.js';
 import { useQuery } from './shared/session/query.js';
+import APSResourceAPI from './resource-api.js';
 import { Button, ErrorBox, Issues, Modal, Field, EmptyState } from './ResourceControls.jsx';
 import WorkPeriodFields from './WorkPeriodFields.jsx';
 import APSWorkPeriods from './WorkPeriods.js';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
+import { monthRange, thisMonth } from './shared/contract/kit.js';
 
 function Segment({ label, value, options, disabled, onChange }) {
   return <div className="rm-format"><span className="seclabel">{label}</span>
@@ -21,18 +23,6 @@ function RefreshResult({ state, onRefresh }) {
     : state && state.loading ? '正在刷新…' : '请刷新保存结果，核对个人日历。'}</p>;
 }
 const PATH = ref => 'entities/operator/' + ref + '/calendar';
-function todayMonth() {
-  const now = new Date();
-  return { year: now.getFullYear(), month: now.getMonth() + 1 };
-}
-function monthDays(year, month) {
-  return [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
-}
-function monthKey(year, month) { return String(year).padStart(4, '0') + '-' + String(month).padStart(2, '0'); }
-function monthRange(target) {
-  const prefix = monthKey(target.year, target.month);
-  return { start_date: prefix + '-01', end_date: prefix + '-' + monthDays(target.year, target.month) };
-}
 function DayEditor({ day, draft, setDraft, disabled, error, onSave, onClear, saveReason, clearReason, clearing, onClearing }) {
   const rest = draft.type === 'rest';
   // 上班但工作时段全部移除：能保存，但排产按 0 工时不排这个人，与全局日历同一句提醒。
@@ -96,9 +86,10 @@ function RangeClear({ range, setRange, disabled, error, preview, onPreview, onCo
       + preview.data.days.map(day => day.date).join('、') : '这段时间里没有单独设置过的日期，不需要清除。'}</p>}
   </div>;
 }
-function OperatorCalendarPanel({ adapter, entity, source, command, onClose, refreshState, onRefresh, Feedback, externalRevision = 0 }) {
+function OperatorCalendarPanel({ entity, source, command, onClose, refreshState, onRefresh, Feedback, externalRevision = 0 }) {
+  const api = APSResourceAPI.forNamespace('resources');
   const ref = entity.ref;
-  const [month, setMonth] = React.useState(todayMonth);
+  const [month, setMonth] = React.useState(thisMonth);
   const [editBase, setEditBase] = React.useState(null);
   const [selected, setSelected] = React.useState(null), [draft, setDraft] = React.useState(null);
   const [mode, setMode] = React.useState('day');
@@ -108,15 +99,15 @@ function OperatorCalendarPanel({ adapter, entity, source, command, onClose, refr
   const mounted = React.useRef(true), lastResult = React.useRef(null);
   React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const done = command.phase === 'done', completedReceipt = done ? command.result.receipt_ref : null;
-  const request = useQuery(async signal => O.month(await adapter.query(PATH(ref) + '/month', month, signal), { ...month, ref }),
-    [adapter, ref, month.year, month.month, externalRevision, completedReceipt]);
+  // 刷新本月时保留上一次读到的月历，不把整块清空闪烁；写入仍只认最新读到的 data。
+  // 翻月时标题已经指向新月，旧月网格不能继续显示在新标题下：展示保留键是年月。
+  const request = useQuery(async signal => O.month(await api.query(PATH(ref) + '/month', month, signal), { ...month, ref }),
+    [ref, month.year, month.month, externalRevision, completedReceipt], { keep: month.year + '-' + month.month });
   const result = request.result, data = result && result.data;
   if (result) lastResult.current = result;
-  // 刷新本月时保留上一次读到的月历，不把整块清空闪烁；写入仍只认最新读到的 data。
-  // 翻月时标题已经指向新月，旧月网格不能继续显示在新标题下。
   const previous = lastResult.current && lastResult.current.data;
   const baseline = data || (previous && previous.year === month.year && previous.month === month.month ? previous : null);
-  const shown = data || (request.loading ? baseline : null);
+  const shown = request.shown && request.shown.data;
   const editorData = data || (done ? baseline : null);
   const disabled = command.locked || done || request.loading || busy;
   const combinedRefresh = { done: Boolean(refreshState && refreshState.done && result), loading: Boolean(refreshState && refreshState.loading || request.loading), error: refreshState && refreshState.error || request.error };
@@ -199,7 +190,7 @@ function OperatorCalendarPanel({ adapter, entity, source, command, onClose, refr
       const input = O.rangeInput(range);
       if (!command.reset()) return;
       setBusy(true);
-      const raw = await adapter.preview(PATH(ref) + '/range-preview', { input }, new AbortController().signal);
+      const raw = await api.preview(PATH(ref) + '/range-preview', { input }, new AbortController().signal);
       if (mounted.current) setPreview(O.rangePreview(raw, input));
     } catch (failure) { if (mounted.current) setError(failure); }
     finally { if (mounted.current) setBusy(false); }

@@ -1,11 +1,11 @@
 import React from './shared/runtime/react.js';
-import DashboardContract from './DashboardContract.js';
-import DashboardSession from './DashboardSession.js';
-import DashboardPanels from './DashboardPanels.jsx';
+import C from './DashboardContract.js';
+import S from './DashboardSession.js';
+import P from './DashboardPanels.jsx';
 import { Button, ErrorBox, EmptyState } from './ResourceControls.jsx';
 import WorkbenchPageContext from './WorkbenchPageContext.jsx';
 import WorkbenchCaption from './WorkbenchCaption.jsx';
-import { WorkbenchReference } from './WorkbenchReferences.jsx';
+import { WorkbenchReference, WorkbenchError } from './WorkbenchReferences.jsx';
 import OutsourcingWorkspace from './OutsourcingWorkspace.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
@@ -14,8 +14,8 @@ import DashboardCandidates from './DashboardCandidates.jsx';
 import DashboardHistory from './DashboardHistory.jsx';
 import DashboardHandling from './DashboardHandling.jsx';
 import DashboardCandidateComparisonAPI from './DashboardCandidateComparisonAPI.js';
-
-const C = DashboardContract, S = DashboardSession, P = DashboardPanels;
+import { ref48 } from './shared/contract/kit.js';
+import { useQuery } from './shared/session/query.js';
 
 function durableScope(query) { const result = { ...query }; delete result.snapshot_ref; return result; }
 
@@ -29,21 +29,16 @@ function Content({ start, onNavigate }) {
   const [analysisBatch, setAnalysisBatch] = React.useState(start.analysisBatch);
   const [comparisonState, setComparisonState] = React.useState({ context: start.comparison, caption: null });
   const onComparisonState = React.useCallback(value => setComparisonState(previous => C.equal(previous, value) ? previous : value), []);
-  const list = S.useRead(signal => C.list(q, signal), [q, revision]);
+  const list = useQuery(signal => C.list(q, signal), [q, revision], { keep: q.category });
   const result = list.result, data = result && result.data, snapshot = result && result.meta.snapshot_ref;
-  const lastResultRef = React.useRef(null);
-  if (result) lastResultRef.current = { category: q.category, result };
-  else if (!list.loading || (lastResultRef.current && lastResultRef.current.category !== q.category)) lastResultRef.current = null;
-  const displayResult = result || (list.loading && lastResultRef.current && lastResultRef.current.category === q.category ? lastResultRef.current.result : null);
-  const displayData = displayResult && displayResult.data;
+  const displayResult = list.shown, displayData = displayResult && displayResult.data;
   const analysisData = data && data.analysis;
-  const analysisRead = { loading: list.loading, error: data && data.analysis_error ? new Error(data.analysis_error) : null };
+  const analysisRead = { loading: list.loading, error: data && data.analysis_error };
   const detailQuery = React.useMemo(() => ({ ...q, snapshot_ref: snapshot }), [q, snapshot]);
   const external = q.category === 'external';
   const currentSummary = data && q.category !== 'all' && data.categories[q.category];
-  const handlingAvailable = !external || !data || !!(currentSummary && currentSummary.handling_supported);
-  const history = S.useRead(signal => C.detail(selected, detailQuery, historyPage, signal), [selected, detailQuery, historyPage], handlingAvailable && tab === 'records' && !!selected && !!snapshot);
-  const detail = S.useRead(signal => C.detail(selected, detailQuery, undefined, signal), [selected, detailQuery], handlingAvailable && tab !== 'records' && !!selected && !!snapshot && !history.result);
+  const history = useQuery(signal => C.detail(selected, detailQuery, historyPage, signal), [selected, detailQuery, historyPage], { enabled: tab === 'records' && !!selected && !!snapshot, keep: selected });
+  const detail = useQuery(signal => C.detail(selected, detailQuery, undefined, signal), [selected, detailQuery], { enabled: tab !== 'records' && !!selected && !!snapshot && !history.result });
   const item = history.result ? history.result.data.item : detail.result && detail.result.data.item;
   const handlingOpen = !!(dialog && (command.saved || item));
   function choose(ref) { setSelected(ref); setHistoryPage(1); }
@@ -85,7 +80,7 @@ function Content({ start, onNavigate }) {
     } catch (error) { setNavError(error); }
   }
   async function finish() { if (await command.finish()) { setDialog(false); reload(); } }
-  const activeTabs = external ? handlingAvailable ? { items: '处置清单', records: '处置历史' } : { items: '登记与更正历史' } : S.tabs;
+  const activeTabs = external ? { items: '处置清单', records: '处置历史' } : S.tabs;
   const activeTab = Object.prototype.hasOwnProperty.call(activeTabs, tab) ? tab : 'items', tabKeys = Object.keys(activeTabs);
   WorkbenchPageContext.useSnapshot(readContext(), !!data && !list.loading && !list.error && !detail.error);
   const comparing = !external && activeTab === 'compare', showingAnalysis = !external && activeTab === 'analysis';
@@ -113,7 +108,7 @@ function Content({ start, onNavigate }) {
     {registrationChanged && <div className="dy-note warning" role="status">外协物流登记已更新。当前仍显示离开前的筛选和条目，请点「刷新值班台」更新风险与处置。</div>}
     {!dialog && command.saved && <div className={'dy-note ' + (command.saved.phase === 'confirmed' ? 'success' : 'warning')}>{command.saved.phase === 'confirmed' ? '上次处置结果已确认，点「完成」后更新风险与处置。' : '上次处置还没确认结果，确认前不能新增处置。'}</div>}
     <P.Overview data={data} analysis={analysisData} loading={list.loading} error={list.error}
-      analysisLoading={analysisRead.loading} analysisError={analysisRead.error} onCategory={category} onAnalysis={showAnalysis} /><ErrorBox error={analysisRead.error} />
+      analysisLoading={analysisRead.loading} analysisError={analysisRead.error} onCategory={category} onAnalysis={showAnalysis} /><WorkbenchError error={analysisRead.error} fallback="影响分析读取失败，请刷新后重试。" />
     <div className="dy-work"><P.Rail data={data} category={q.category} onCategory={category} /><div className="dy-main">
       <div className="dy-section-head"><h3>{C.categories[q.category]}</h3>{currentSummary && q.category !== 'candidate' && <P.CategoryState summary={currentSummary} />}
         <label className="dy-category-picker">异常类别<select aria-label="异常类别" value={q.category} onChange={event => category(event.target.value)}>
@@ -129,7 +124,7 @@ function Content({ start, onNavigate }) {
         {external && <P.ExternalRegistration summary={currentSummary} onUpdated={reload} />}
         {data && <><P.Gaps categories={data.categories} selected={q.category} analysis={showingAnalysis ? analysisData : null} />
           {external && <P.ExternalHandlingState summary={currentSummary} />}</>}
-        {activeTab === 'items' && (!data || handlingAvailable) && <div className={item ? 'wb-detail-layout dy-detail-layout' : ''}><div><P.Filters query={q} busy={list.loading} onChange={change} />{data && handlingAvailable && <P.List data={data} selected={selected} onSelect={choose} query={q} onClear={() => change({ query: '', status: 'all' })} />}
+        {activeTab === 'items' && <div className={item ? 'wb-detail-layout dy-detail-layout' : ''}><div><P.Filters query={q} busy={list.loading} onChange={change} />{data && <P.List data={data} selected={selected} onSelect={choose} query={q} onClear={() => change({ query: '', status: 'all' })} />}
           <P.Pager page={data ? data.page : { number: q.page, size: q.size }} busy={list.loading || !data} onPage={page => change({ page }, true)} onSize={size => change({ size })} />
           <ErrorBox error={detail.error} />{detail.loading && <EmptyState kind="loading" title="正在读取这条记录的详情" />}
         </div>{item && <P.Detail item={item} onClose={() => choose(null)} onHandle={() => setDialog(true)} onHistory={() => setTab('records')} navigate={navigate} />}</div>}
@@ -146,7 +141,7 @@ function Content({ start, onNavigate }) {
           {displayData && <P.Candidates data={displayData} navigate={navigate} />}
         </> : <section aria-label="本问题候选状态"><h3>这个问题还没有单独的候选方案</h3>
           <Button icon="git-compare-arrows" onClick={() => category('candidate')}>查看现有候选方案</Button></section>)}
-        {handlingAvailable && activeTab === 'records' && <DashboardHistory read={history} selected={selected} rows={displayData ? displayData.items : []} historyPage={historyPage} onPage={setHistoryPage} onSelect={choose} onHandle={() => setDialog(true)} />}
+        {activeTab === 'records' && <DashboardHistory read={history} selected={selected} rows={displayData ? displayData.items : []} historyPage={historyPage} onPage={setHistoryPage} onSelect={choose} onHandle={() => setDialog(true)} />}
       </div></div></div>
     {handlingOpen && <DashboardHandling key={command.saved ? command.saved.request_key : item.item_ref} item={item} command={command} onClose={() => setDialog(false)} onFinish={finish} />}
     {navigationConfirmation && <P.NavigationConfirmation entry={navigationConfirmation} error={navError}
@@ -157,7 +152,7 @@ function Content({ start, onNavigate }) {
 function WorkbenchDashboardWorkspace({ initialContext, onNavigate }) {
   let start; try {
     const { analysis_batch_ref, comparison, ...base } = initialContext;
-    C.check(analysis_batch_ref === undefined || C.ref(analysis_batch_ref));
+    C.check(analysis_batch_ref === undefined || ref48(analysis_batch_ref));
     start = {
       ...S.context(base), analysisBatch: analysis_batch_ref || null,
       comparison: DashboardCandidateComparisonAPI.context(comparison === undefined ? {} : comparison)

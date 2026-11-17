@@ -1,14 +1,13 @@
 import React from './shared/runtime/react.js';
 import RunCandidateControls from './RunCandidateControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
 
-// 过程点只来自共同优化存档：每点都有 scope_ref 指向保存的评价范围，耗时与核验状态都已记录（RunDecisionAPI.processDetails 校验）。
+// 过程点只来自共同优化存档：每点都有 scope_ref 指向保存的评价范围，耗时与核验状态都已记录。
 const known = value => typeof value === 'number' && Number.isFinite(value);
 const knownDimension = value => value !== null && value !== undefined && value !== '' && value !== 'unknown' && (typeof value !== 'number' || known(value));
-const flagLabels = { first_valid: '首次有效结果', first_expected_complete: '本次计算范围首次排齐', final: '最终记录', strict_improvement: '评分改善', segment_start: '开始新的比较' };
-const phaseLabels = { baseline: '起始排法', initial: '起始排法', multi_start: '尝试不同排法', multi_start_search: '尝试不同排法', profiles: '按规则生成排法', elite_repair: '局部调整排法', iterated_greedy: '继续调整工序顺序', graph_ready: '按优先顺序安排工序', graph_ready_search: '按优先顺序安排工序', graph_ready_elite_repair: '局部调整排法', graph_ready_iterated_greedy: '继续调整工序顺序', graph_ready_v2_generated: '生成优化排法', graph_ready_v2_repaired: '修整优化排法', graph_ready_v2_iterated_greedy: '继续改进排法', ortools_warmstart: '生成优化起点', heuristic_candidate_search: '尝试不同工序顺序', grasp_ig_candidate_construction: '构建并调整排法', local_search: '调整已有排法', completed: '计算结束' };
-const phaseText = value => value === null ? '阶段未记录' : phaseLabels[value] || '其他搜索阶段';
-const flagsText = point => point.flags.map(flag => flagLabels[flag] || flag).join('、');
+const phaseText = WorkbenchTerms.search_stage;
+const flagsText = point => point.flags.map(WorkbenchTerms.process_flag).join('、');
 const formatter = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 });
 const number = value => known(value) ? formatter.format(value) : '—';
 const elapsed = value => !known(value) ? '—' : value >= 1000 ? number(value / 1000) + ' 秒' : number(value) + ' 毫秒';
@@ -50,8 +49,8 @@ function markerText({ before, point, changes }) {
   return '事件 ' + number(point.event_index) + '，累计求解 ' + elapsed(point.elapsed_ms) + '（' + point.elapsed_ms + ' ms）；' + descriptions.join('；') + '。';
 }
 function sharedScopeText(scope) {
-  return scopeLabels[scope.objective_scope] + '；已安排 ' + number(scope.scheduled_operation_refs.length) + ' 道工序，已排齐 '
-    + number(scope.complete_batch_refs.length) + ' 批；' + (scope.is_complete ? '完整安排范围' : '部分安排范围')
+  return scopeLabels[scope.objective_scope] + '；已安排 ' + number(scope.scheduled_operation_count) + ' 道工序，已排齐 '
+    + number(scope.complete_batch_count) + ' 批；' + (scope.is_complete ? '完整安排范围' : '部分安排范围')
     + '；' + (scope.components_known ? '评分已知' : '评分缺项');
 }
 function pointText(point, index, total, objective) {
@@ -187,6 +186,6 @@ function Chart({ progress: savedProgress, objective, elapsedMs, scopes, sourceEv
     {mode === 'curve' && <p className="rd-process-chart-note">图中各指标沿同一保留方案的保存事件显示，评分改善时次要指标仍可能增加。</p>}
   </figure>;
 }
-const RunDecisionProcessChart = { Chart, segments, markers, flagLabels, sharedScopeText, phaseText, stepPath };
-export { RunDecisionProcessChart, Chart, segments, markers, flagLabels, sharedScopeText, phaseText, stepPath };
+const RunDecisionProcessChart = { Chart, segments, markers, sharedScopeText, stepPath };
+export { RunDecisionProcessChart, Chart, segments, markers, sharedScopeText, stepPath };
 export default RunDecisionProcessChart;

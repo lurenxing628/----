@@ -1,21 +1,16 @@
 import React from './shared/runtime/react.js';
-import ResourceControls from './ResourceControls.jsx';
-import PlanGanttModel from './PlanGanttModel.js';
-import WorkbenchTerms from './WorkbenchTerms.js';
-import WorkbenchFormat from './WorkbenchFormat.js';
+import { Button, Issues } from './ResourceControls.jsx';
+import M from './PlanGanttModel.js';
+import T from './WorkbenchTerms.js';
+import F from './WorkbenchFormat.js';
 import GanttRouteList from './GanttRouteList.jsx';
 import PointContract from './PointContract.js';
 import WorkbenchControls from './WorkbenchControls.jsx';
 import { PlanSegmentUI } from './PlanGantt.jsx';
+import { errorText } from './WorkbenchReferences.jsx';
 
-const { Button, Issues } = ResourceControls, M = PlanGanttModel;
-const T = WorkbenchTerms, F = WorkbenchFormat, riskLabel = T.delivery_risks;
-const deliveryIssues = {
-  operations_unscheduled: '尚有工序未安排', material_deferred: '因缺料暂未安排', operations_missing: '工序资料未记录', schedule_time_invalid: '安排时间无效',
-  saved_plan_incomplete: '保存的计划不完整', due_date_missing: '交期未记录', due_date_invalid: '交期无效',
-  part_label_missing: '零件名称或图号未记录'
-};
-const issueText = issues => issues.map(issue => typeof issue === 'string' ? deliveryIssues[issue] || '原因说明缺失' : issue.message).join('；');
+const riskLabel = T.delivery_risks;
+const issueText = issues => issues.map(issue => typeof issue === 'string' ? T.delivery_issue(issue) : issue.message).join('；');
 function Facts({ items }) {
   return <dl className="plan-facts">{items.map(([key, value]) => <React.Fragment key={key}><dt>{key}</dt><dd>{value}</dd></React.Fragment>)}</dl>;
 }
@@ -47,19 +42,19 @@ function DetailSection({ title, collapsible, children }) {
   return collapsible ? <details className="wb-gantt-detail-section"><summary>{title}</summary><div className="wb-gantt-detail-section-body">{children}</div></details>
     : <section><h3>{title}</h3>{children}</section>;
 }
-function Route({ prepared, graph, selected, onRelated, disabled, collapsible, graphLoading, graphError, onRetryGraph }) {
+// graph 是当前展示用的工序衔接图索引；graphSlice / baselineSlice 是计划页按需子读取（useResultSlice）的加载、错误与重试。
+function Route({ prepared, graph, graphSlice, selected, onRelated, disabled, collapsible }) {
   if (selected.before) return <section><h3>完整工艺路线</h3><p className="plan-muted">切换到当前安排查看完整工艺路线。</p></section>;
-  const graphData = graph && graph.graph;
-  if (graphData && graphData.state === 'available' && graphData.nodes_complete === false) {
+  if (graph.graph.state === 'available' && graph.graph.nodes_complete === false) {
     return <DetailSection title="完整工艺路线" collapsible={collapsible}>
-      {graphError
-        ? <><p className="plan-muted">{graphError.message || '工序衔接图读取失败。'}</p><Button icon="refresh-cw" onClick={onRetryGraph}>重试工序衔接图</Button></>
-        : <p className="plan-muted">{graphLoading ? '正在读取完整工艺路线…' : '正在准备完整工艺路线…'}</p>}
+      {graphSlice.error
+        ? <><p className="plan-muted">{errorText(graphSlice.error, '工序衔接图读取失败。')}</p><Button icon="refresh-cw" onClick={graphSlice.request}>重试工序衔接图</Button></>
+        : <p className="plan-muted">{graphSlice.loading ? '正在读取完整工艺路线…' : '正在准备完整工艺路线…'}</p>}
     </DetailSection>;
   }
   return <GanttRouteList index={graph} targetRef={selected.task.task_ref} loadedRefs={prepared.loadedRefs} onSelect={onRelated} disabled={disabled} collapsible={collapsible} />;
 }
-function TaskDetail({ data, prepared, graph, selected, onSelect, onRelated, onCollapse, renderTrial, scope, query, disabled, baselineLoading, baselineError, onRetryBaseline, graphLoading, graphError, onRetryGraph }) {
+function TaskDetail({ data, prepared, graph, selected, onSelect, onRelated, onCollapse, renderTrial, scope, query, disabled, baselineSlice, graphSlice }) {
   const task = selected && selected.task, labels = prepared.labels;
   const baseline = data.projections.baseline;
   const comparison = task && baseline.state === 'available' && prepared.comparisons.get(task.operation_ref);
@@ -69,7 +64,7 @@ function TaskDetail({ data, prepared, graph, selected, onSelect, onRelated, onCo
       const delta = comparison.afterTime[field] - comparison.beforeTime[field];
       if (delta) {
         const minutes = Math.abs(delta) >= 60000, value = Math.abs(delta) / (minutes ? 60000 : 1000);
-        changes.push([label + '变化', (delta < 0 ? '提前 ' : '延后 ') + WorkbenchFormat.number(value, { digits: minutes ? 2 : 6, trim: true }) + (minutes ? ' 分钟' : ' 秒')]);
+        changes.push([label + '变化', (delta < 0 ? '提前 ' : '延后 ') + F.number(value, { digits: minutes ? 2 : 6, trim: true }) + (minutes ? ' 分钟' : ' 秒')]);
       }
     }
     for (const [kind, label] of [['machine', '设备'], ['operator', '人员']]) if (comparison.before[kind + '_ref'] !== comparison.after[kind + '_ref'])
@@ -100,15 +95,15 @@ function TaskDetail({ data, prepared, graph, selected, onSelect, onRelated, onCo
         taskOrigin: { plan_ref: data.plan.plan_ref, operation_ref: task.operation_ref, task_ref: task.task_ref },
         disabled: disabled || selected.before || task.plan_ref !== data.plan.plan_ref, label: '调整此工序' })}</div>
     </>}</section>
-    {task && <><Route prepared={prepared} graph={graph} selected={selected} onRelated={onRelated} disabled={disabled} collapsible={compact} graphLoading={graphLoading} graphError={graphError} onRetryGraph={onRetryGraph} />
+    {task && <><Route prepared={prepared} graph={graph} graphSlice={graphSlice} selected={selected} onRelated={onRelated} disabled={disabled} collapsible={compact} />
     {compact && <DetailSection title="计划来源" collapsible><Facts items={[
       ['计划来源整批量', M.quantityLabel(task.batch_quantity, task.quantity_reason)],
       ['数量依据', task.quantity_reason ? M.quantityReasons[task.quantity_reason] : task.quantity_basis === 'run_admission' ? '来自上次排产候选方案的数据，已核对采用记录' : '来自新增试调草稿时的数据，已核对采用记录']
     ]} /></DetailSection>}
     {baseline.state === 'available' && <DetailSection title="原安排对照" collapsible={compact}>{!prepared.baselineLoaded
-      ? baselineError
-        ? <><p className="plan-muted">{baselineError.message || '原安排对照读取失败。'}</p><Button icon="refresh-cw" onClick={onRetryBaseline}>重试原安排对照</Button></>
-        : <p className="plan-muted">{baselineLoading ? '正在读取原安排对照…' : '未找到对应对照记录'}</p>
+      ? baselineSlice.error
+        ? <><p className="plan-muted">{errorText(baselineSlice.error, '原安排对照读取失败。')}</p><Button icon="refresh-cw" onClick={baselineSlice.request}>重试原安排对照</Button></>
+        : <p className="plan-muted">{baselineSlice.loading ? '正在读取原安排对照…' : '未找到对应对照记录'}</p>
       : comparison ? <>
       <Facts items={[
         ['变化', ({ added: '新增安排', removed: '移除安排', changed: '安排已变更', unchanged: '安排未变更' })[comparison.change]],
@@ -125,7 +120,7 @@ function TaskDetail({ data, prepared, graph, selected, onSelect, onRelated, onCo
       <Facts items={[
         ['判定', <span className={risk.risk === 'overdue' ? 'plan-danger' : ''}>{riskLabel[risk.risk]}</span>],
         ['交期', T.due_date(risk.due_date, risk.due_state, risk.due_issue)], [T.arrangement_labels.status, T.delivery_completion_states[risk.completion_state]], [T.arrangement_labels.planned_finish, <TimeValue value={risk.planned_finish} />],
-        [T.delay_hours, risk.due_state === 'unspecified' ? '不适用' : risk.delay_hours === null ? '交付待确认' : WorkbenchFormat.hours(risk.delay_hours, 2)],
+        [T.delay_hours, risk.due_state === 'unspecified' ? '不适用' : risk.delay_hours === null ? '交付待确认' : F.hours(risk.delay_hours, 2)],
         [T.arrangement_labels.other_unplanned, M.count(risk.ordinary_unscheduled_operation_count)], [T.arrangement_labels.deferred, M.count(risk.deferred_operation_count)]
       ]} />
       {risk.partial_planned_finish && <p className="plan-muted">{T.arrangement_labels.partial_finish}：<TimeValue value={risk.partial_planned_finish} /></p>}
@@ -179,7 +174,7 @@ function Conflicts({ data, prepared }) {
     </tr>)}</tbody></table></div><WorkbenchControls.Pager label="重叠明细" page={current + 1} pages={Math.ceil(rows.length / 20)} total={rows.length} size={20} sizes={[20]} unit="段" onPage={next => setPage(next - 1)} /></> : <WorkbenchControls.EmptyState kind="empty" title={empty} />}
   </section>;
 }
-function ProjectionTables({ data, prepared, onBatch, onResource, tab, onTab, page, onPage, capacityLoading = false, capacityError = null, onRetryCapacity }) {
+function ProjectionTables({ data, prepared, onBatch, onResource, tab, onTab, page, onPage, capacitySlice }) {
   const projections = data.projections, labels = prepared.labels;
   const rows = (tab === 'risk' ? projections.delivery_risks.items : tab === 'load' ? projections.occupancy.resources : projections.calendar.resources) || [];
   const pages = Math.max(1, Math.ceil(rows.length / 20)), current = Math.min(page, pages - 1);
@@ -189,10 +184,10 @@ function ProjectionTables({ data, prepared, onBatch, onResource, tab, onTab, pag
   return <section className="plan-projections" aria-label="计划分析">
     <PlanSegmentUI value={tab} options={[["risk", "交付风险"], ["load", "资源负荷"], ["calendar", "资源班表"]]} label="计划分析视图" onChange={value => { onTab(value); onPage(0); }} />
     {projection.state !== 'available' && <div className="plan-note">{projection.state === 'not_applicable' ? '当前范围未指定有效交期。' : projection.state === 'partial' ? '部分资料缺失，查看下方原因。' : '资料缺失，暂无法判断。'}</div>}
-    {tab === 'calendar' && !windowsComplete && (capacityError || capacityLoading) && <div className="wb-surface-body plan-read-state" data-plan-capacity-state={capacityError ? 'error' : 'loading'}>
-      {capacityError && <p className="plan-muted">{capacityError.message || '资源班表时段读取失败。'}</p>}
-      {capacityError && <Button icon="refresh-cw" onClick={onRetryCapacity}>重试加载班表时段</Button>}
-      {!capacityError && capacityLoading && <p className="plan-muted">正在加载可排时段明细…</p>}
+    {tab === 'calendar' && !windowsComplete && (capacitySlice.error || capacitySlice.loading) && <div className="wb-surface-body plan-read-state" data-plan-capacity-state={capacitySlice.error ? 'error' : 'loading'}>
+      {capacitySlice.error && <p className="plan-muted">{errorText(capacitySlice.error, '资源班表时段读取失败。')}</p>}
+      {capacitySlice.error && <Button icon="refresh-cw" onClick={capacitySlice.request}>重试加载班表时段</Button>}
+      {!capacitySlice.error && capacitySlice.loading && <p className="plan-muted">正在加载可排时段明细…</p>}
     </div>}
     {tab === 'load' && <details className="plan-table-help"><summary>负荷怎么算</summary><div>
       <p>占用比例 = 班表内已占时间 ÷ 可排总时长。同一资源的重叠安排只计一次已占时间。</p>
@@ -217,7 +212,7 @@ function ProjectionTables({ data, prepared, onBatch, onResource, tab, onTab, pag
           <td>{row.utilization === null ? '待确认' : <>{F.percent(row.utilization, 2)}<span className="plan-meter"><i style={{ width: row.utilization * 100 + '%' }} /></span></>}</td>
           <td>{row.has_overlap === true && <div className="plan-danger">班表内重叠 {F.hours(row.available_overlap_hours, 2)}</div>}{row.issues.length > 0 && <div className="plan-muted">{issueText(row.issues)}</div>}</td>
           <td><OccupancyDetails row={row} /></td></> :
-          <><td>{M.number(row.available_hours)}</td><td><CalendarWindows windows={row.windows} windowsComplete={windowsComplete} loading={capacityLoading} error={capacityError} onRetry={onRetryCapacity} /></td>
+          <><td>{M.number(row.available_hours)}</td><td><CalendarWindows windows={row.windows} windowsComplete={windowsComplete} loading={capacitySlice.loading} error={capacitySlice.error} onRetry={capacitySlice.request} /></td>
             <td><details className="plan-row-details"><summary>折算标准工时</summary><Facts items={[
               ['普通件', row.normal_effective_hours === null ? '暂无数据' : F.hours(row.normal_effective_hours, 2)],
               ['急件', row.urgent_effective_hours === null ? '暂无数据' : F.hours(row.urgent_effective_hours, 2)]

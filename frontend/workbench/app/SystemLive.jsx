@@ -13,13 +13,17 @@ import WorkbenchPageContext from './WorkbenchPageContext.jsx';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
+import { WorkbenchError } from './WorkbenchReferences.jsx';
+import { useQuery } from './shared/session/query.js';
+
+const READ_FAILED = '本机状态读取失败，请重试。', EXPORT_FAILED = '页面诊断导出失败，请重试。';
 
 function SystemLive({ boot, theme, initialContext }) {
-  const [payload, setPayload] = React.useState(null), [error, setError] = React.useState('');
-  const [loading, setLoading] = React.useState(true), [revision, refresh] = React.useReducer(value => value + 1, 0);
+  const [revision, refresh] = React.useReducer(value => value + 1, 0);
   const [start] = React.useState(() => SystemMaintenanceAPI.pageContext(initialContext));
   const [tab, setTab] = React.useState(start.tab);
-  const [notice, setNotice] = React.useState(''), [pageSize, setPageSize] = React.useState(start.page_size);
+  // 页面诊断导出的结果：{ text } 是已开始下载的提示，{ error } 是导出失败的原错误对象，上屏文案由 WorkbenchError 判定。
+  const [notice, setNotice] = React.useState(null), [pageSize, setPageSize] = React.useState(start.page_size);
   const [density, setDensity] = React.useState(() => WorkbenchDensity.get());
   React.useEffect(() => WorkbenchDensity.subscribe(setDensity), []);
   const compact = density.density === 'compact', setCompact = value => WorkbenchDensity.set(value ? 'compact' : 'comfortable');
@@ -32,35 +36,29 @@ function SystemLive({ boot, theme, initialContext }) {
   React.useLayoutEffect(() => {
     setLocal(inspectEnvironment(globalThis));
   }, [revision]);
-  // 系统管理只读本机数据；维护操作结果没确认前暂停读取，不用别的数据顶替。
-  React.useEffect(() => {
-    if (readSuspended) { setLoading(false); setPayload(null); setError(''); return; }
-    const controller = new AbortController(); setLoading(true); setError('');
-    APSWorkbenchTransport.read(boot.overview_url, {}, { signal: controller.signal, timeout: 20000 }).then(result => {
-      setPayload(result);
-    }).catch(problem => { if (problem.name !== 'AbortError') { setError(problem.message); setPayload(null); } })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }, [revision, readSuspended]);
-  const data = payload && payload.data;
-  WorkbenchPageContext.useSnapshot({ tab, page_size: pageSize, records: recordContexts }, !readSuspended && !!data && !loading);
+  // 系统管理只读本机数据；维护操作结果没确认前暂停读取，不用别的数据顶替：暂停也算换了一次读取（readSuspended 进读取身份），
+  // 暂停期间没有结果，恢复后重读。重新检查期间继续显示上一次结果；出错或暂停之后不再保留。导出只读当前结果。
+  const read = useQuery(signal => APSWorkbenchTransport.read(boot.overview_url, {}, { signal, timeout: 20000 }),
+    [revision, readSuspended], { enabled: !readSuspended, keep: 'system-overview' });
+  const payload = read.shown, data = payload && payload.data, loading = read.loading, error = read.error;
+  WorkbenchPageContext.useSnapshot({ tab, page_size: pageSize, records: recordContexts }, read.result !== null);
   const tabs = [['overview', '概况'], ['backups', '备份恢复'], ['logs', '运行日志'], ['config', '配置']];
   const onTab = async next => {
     if (next !== tab && !await WorkbenchGuards.confirmLeave()) return;
-    setTab(next); setNotice(''); document.getElementById('sm-tab-' + next).focus();
+    setTab(next); setNotice(null); document.getElementById('sm-tab-' + next).focus();
   };
   const diagnosticName = '页面诊断.json';
   const exportDiagnostic = () => {
     try { APSWorkbenchTransport.downloadJSON(diagnosticName, { instance: boot.instance_label,
-      page_check: local, system: payload }); setNotice(WorkbenchTerms.download_started(diagnosticName)); }
-    catch (problem) { setNotice('页面诊断导出失败：' + problem.message); }
+      page_check: local, system: read.result }); setNotice({ text: WorkbenchTerms.download_started(diagnosticName) }); }
+    catch (problem) { setNotice({ error: problem }); }
   };
   const ready = local.checks.filter(item => item.status === 'available').length;
   const stateLabel = state => ({ available: '可读取', empty: '暂无记录', partial: '需核对', missing: '文件夹不存在', error: '读取失败', not_read: '未读取' }[state] || '未知');
   return <div className={'sm-workbench' + (compact ? ' sm-compact' : '')} data-source="current" data-live="true">
     <header className="sm-header"><div><h2 className="wb-page-title">系统管理</h2><p className="wb-page-context">本机备份恢复、日志与自动维护</p></div><div className="sm-actions">
-      <ControlButton className="sm-button sm-icon-button" size="sm" title="重新检查" aria-label="重新检查" disabled={loading || readSuspended} onClick={() => { refresh(); setNotice(''); }}><SMIcon name="refresh-cw" /></ControlButton>
-      <SMExport disabled={!payload || loading || readSuspended} onClick={exportDiagnostic}>导出页面诊断</SMExport>
+      <ControlButton className="sm-button sm-icon-button" size="sm" title="重新检查" aria-label="重新检查" disabled={loading || readSuspended} onClick={() => { refresh(); setNotice(null); }}><SMIcon name="refresh-cw" /></ControlButton>
+      <SMExport disabled={read.result === null} onClick={exportDiagnostic}>导出页面诊断</SMExport>
     </div></header>
     <div className="sm-source-bar"><span className="sm-source-note">{boot.instance_label + (payload ? ' · ' + WorkbenchTerms.data_as_of(WorkbenchFormat.dateTime(payload.meta.as_of)) : ' · 尚未完成读取')}</span></div>
     <MetricStrip columns={4} className="sm-metrics"><Metric label="当前页面检查" value={ready + ' / ' + local.checks.length} helper="仅页面依赖与资源" />
@@ -68,8 +66,8 @@ function SystemLive({ boot, theme, initialContext }) {
       <Metric label="数据库状态" value={data ? stateLabel(data.database.state) : '未读取'} helper="尚未执行完整性检查" tone={data && data.database.state === 'error' ? 'danger' : undefined} />
       <Metric label="备份校验" value="未校验" helper={data && data.backups.count != null ? data.backups.count + ' 个备份文件' : '尚未校验'} />
     </MetricStrip>
-    {notice && <p className="sm-notice" role="status">{notice}</p>}
-    {error && <div className="sm-notice sm-tone-danger" role="alert">{error}<ControlButton size="sm" onClick={refresh}>重试</ControlButton></div>}
+    {notice && (notice.error ? <WorkbenchError error={notice.error} fallback={EXPORT_FAILED} /> : <p className="sm-notice" role="status">{notice.text}</p>)}
+    {error && <div className="sm-notice sm-tone-danger" role="alert"><WorkbenchError error={error} fallback={READ_FAILED} /><ControlButton size="sm" onClick={refresh}>重试</ControlButton></div>}
     <div className="sm-tabs" role="tablist" aria-label="系统管理页签">{tabs.map(([key, label], index) => <button type="button" className={'sm-tab' + (tab === key ? ' sm-active' : '')}
       key={key} id={'sm-tab-' + key} role="tab" aria-selected={tab === key} aria-controls={'sm-panel-' + key} tabIndex={tab === key ? 0 : -1} onClick={() => onTab(key)} onKeyDown={event => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault();

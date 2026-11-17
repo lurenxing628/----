@@ -1,15 +1,13 @@
 import React from './shared/runtime/react.js';
 import A from './SystemMaintenanceAPI.js';
-import SystemRestoreStatus from './SystemRestoreStatus.js';
+// 恢复各阶段的叫法只在 SystemRestoreStatus.labels 维护一份；后端 web/bootstrap/workbench_system_restore_view.py 与之逐字对齐。
+import { labels } from './SystemRestoreStatus.js';
 import { Button as BaseButton, Modal } from './ResourceControls.jsx';
 import { SMIcon } from './shared/ui/icons.jsx';
 import { WorkbenchError, WorkbenchReference } from './WorkbenchReferences.jsx';
-import { useQuery } from './shared/session/query.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 
-// 恢复各阶段的叫法只在 SystemRestoreStatus.labels 维护一份；后端 web/bootstrap/workbench_system_restore_view.py 与之逐字对齐。
-const labels = SystemRestoreStatus.labels;
 function Button({ children, icon, className = 'btn', ...props }) {
   const label = typeof children === 'string' ? children : props['aria-label'];
   return <BaseButton {...props} icon={icon === 'rotate-ccw' ? undefined : icon === 'save' ? 'check' : icon}
@@ -18,11 +16,6 @@ function Button({ children, icon, className = 'btn', ...props }) {
 }
 function ErrorBox({ error }) {
   return error ? <WorkbenchError error={error} /> : null;
-}
-function useRead(kind, input, revision, enabled) {
-  const signature = JSON.stringify(input);
-  const query = useQuery(signal => A.read(kind, input, signal), [kind, signature, revision], enabled);
-  return { data: query.result, error: query.error, loading: query.loading };
 }
 function Confirm({ action, row, reason, onClose, onConfirm }) {
   const [checked, setChecked] = React.useState(false), [typed, setTyped] = React.useState('');
@@ -74,7 +67,7 @@ function Preferences({ theme, onSetTheme, pageSize, onPageSize, compact, onCompa
     <label className="sm-inline-label" title="应用于全工作台表格"><input type="checkbox" checked={compact} onChange={event => onCompact(event.target.checked)} />紧凑表格</label>
   </div></section>;
 }
-const SystemMaintenanceControls = { Button, ErrorBox, useRead, Confirm, Outcome, Preferences };
+const SystemMaintenanceControls = { Button, ErrorBox, Confirm, Outcome, Preferences };
 
-export { SystemMaintenanceControls, Button, ErrorBox, useRead, Confirm, Outcome, Preferences };
+export { SystemMaintenanceControls, Button, ErrorBox, Confirm, Outcome, Preferences };
 export default SystemMaintenanceControls;

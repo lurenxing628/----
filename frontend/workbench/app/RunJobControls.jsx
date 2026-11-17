@@ -1,13 +1,12 @@
 import React from './shared/runtime/react.js';
-import ResourceControls, { Pager } from './ResourceControls.jsx';
-import RunJobAPI from './RunJobAPI.js';
+import { Pager, Button, Modal } from './ResourceControls.jsx';
+import A from './RunJobAPI.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import RunPresentation from './RunPresentation.js';
 import RunGenerationContract from './RunGenerationContract.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
+import { WorkbenchError } from './WorkbenchReferences.jsx';
 
-const { Button, Modal } = ResourceControls, A = RunJobAPI;
-const labels = WorkbenchTerms.run_statuses;
 function Progress({ run }) {
   const [now, setNow] = React.useState(Date.now);
   React.useEffect(() => {
@@ -24,7 +23,7 @@ function Progress({ run }) {
 }
 function Status({ run }) {
   return <span className={'pill ' + (run.state === 'complete' ? 'ok' : ['failed', 'partial', 'interrupted'].includes(run.state) ? 'warn' : 'off')} data-run-state={run.state} data-run-stage={run.stage}>
-    <span className="dot" />{run.recovery_required ? '等待核对排产记录' : labels[run.state]}</span>;
+    <span className="dot" />{run.recovery_required ? '等待核对排产记录' : WorkbenchTerms.run_status(run.state)}</span>;
 }
 // 不重排时段：本次没填时按交付设置，有同一次排产检查的结果就把推算出的时段一并写出来。
 function holdText(value, effective) {
@@ -37,23 +36,23 @@ function RunOptions({ value, timeBudget = value.time_budget_seconds }) {
   return <><div><dt>主目标</dt><dd>{G.objectiveLabel(value.primary_objective)}</dd></div>
     <div><dt>同时探索</dt><dd>{value.target_objectives.map(G.objectiveLabel).join(' · ')}</dd></div>
     <div><dt>总计算预算</dt><dd>{timeBudget} 秒</dd></div>
-    <div><dt>生成方式</dt><dd>{value.algo_mode === 'greedy' ? '快速生成' : '共同优化'}</dd></div></>;
+    <div><dt>生成方式</dt><dd>{WorkbenchTerms.condition_value('algo_mode', value.algo_mode)}</dd></div></>;
 }
 function Scope({ preview, effective, operationCount, timeBudget }) {
   const value = preview.normalized_input;
   return <dl className="rj-scope"><div><dt>本次范围</dt><dd>{value.batch_refs.length} 批{operationCount !== undefined && ' · ' + operationCount + ' 道工序'}</dd></div>
     <div><dt>排产日期</dt><dd>{value.start_date} 至 {value.end_date}</dd></div>
     <div><dt>物料齐套规则</dt><dd>{WorkbenchTerms.material_strategy(value.material_strategy, value.ready_check)}</dd></div><div><dt>齐套检查</dt><dd>{value.ready_check ? '开启' : '关闭'}</dd></div>
-    <div><dt>缺资源工序</dt><dd>{value.missing_resource_policy === 'auto_assign' ? '自动分配' : '暂不排'}</dd></div>
+    <div><dt>缺资源工序</dt><dd>{WorkbenchTerms.missing_resource_policies[value.missing_resource_policy]}</dd></div>
     <div><dt>不重排时段</dt><dd data-hold-window>{holdText(value, effective)}</dd></div>
-    <div><dt>已有报工</dt><dd>保留已开工和已完工的记录</dd></div>
+    <div><dt>已有报工</dt><dd>{WorkbenchTerms.completed_policies[value.completed_policy]}</dd></div>
     {preview.run_options && <RunOptions value={preview.run_options} timeBudget={timeBudget} />}</dl>;
 }
 function Reasons({ rows }) {
   const groups = new Map();
   rows.forEach(row => { const id = row.code + '\n' + row.message, group = groups.get(id); if (group) group.count += 1; else groups.set(id, { ...row, count: 1 }); });
   return <div className="rj-notice" role="status">{Array.from(groups.values()).slice(0, 20).map((row, index) => <div key={index}>
-    {['run_worker_not_connected', 'execution_ledger_unavailable'].includes(row.code) ? A.message(row) : row.message}{row.count > 1 ? '（' + row.count + ' 项）' : ''}
+    {row.message}{row.count > 1 ? '（' + row.count + ' 项）' : ''}
   </div>)}{groups.size > 20 && <div>另有 {groups.size - 20} 类原因，请返回排产检查核对。</div>}</div>;
 }
 function BatchNames({ rows }) {
@@ -96,9 +95,9 @@ function Confirmation({ preview, preflight, effective, batches = [], operationCo
     <Button icon="play" className="btn primary" busy={busy} disabled={!preview || editingBudget} onClick={onConfirm}>确认开始排产</Button></>}>
     <div className="modal-body run-job-panel rj-confirm"><Scope preview={checked} effective={effective} operationCount={operationCount} timeBudget={timeBudget} />
       {checked.run_options && <Budget value={timeBudget} disabled={submitting} onChange={onBudgetChange} onEditing={setEditingBudget} />}
-      {checked.run_options && <p className="rj-muted">预算用于一次共同优化；结果有 1—3 份，实际相同方案会合并。{checked.run_options.algo_mode === 'greedy' && '快速生成可能得到一份方案。'}</p>}
+      {checked.run_options && <p className="rj-muted">预算用于一次共同优化；结果有 1—3 份，实际相同方案会合并。{checked.run_options.algo_mode === 'greedy' && '快速计算可能得到一份方案。'}</p>}
       {busy && !submitting && <p role="status">正在按本次预算重新检查并核对排产条件。</p>}
-      {error && <div className="rj-notice" role="alert">{error}</div>}
+      <WorkbenchError error={error} />
       <p className="rj-muted">计算完成后可比较候选方案，再选择是否采用为正式计划。</p>
       <h3>本次选中的批次</h3><ol className="rj-confirm-batches" start={(page - 1) * 20 + 1}>
         {values.slice((page - 1) * 20, page * 20).map(value => { const row = labels.get(value); return <li key={value}>{row ? row.batch_id : '批次名称未记录，请返回排产检查核对。'}</li>; })}</ol>
@@ -117,7 +116,7 @@ function Record({ run, paused, retryPaused, retryHint = '可点「查询结果�
     {run && <><BusinessScope value={run.scope_summary} /><Progress run={run} />
       {saved && <p className="rj-muted">本次保存 {run.candidates.length} 份方案。</p>}
       {run.recovery_required && <p className="rj-notice">正在核对上次的排产记录，结果还没确认，没有重新计算。</p>}
-      {run.error && <div className="rj-notice" role="alert">{A.failure(run.error)}</div>}
+      {run.error && <div className="rj-notice" role="alert">{run.error.message}</div>}
       <div className="rj-tools">{saved && <Button icon="chart" disabled={!verified} onClick={() => onNavigate('run', { run_ref: run.run_ref })}>查看本次排产结果</Button>}
         {A.terminal(run) && !saved && <Button icon="arrow-left" onClick={() => onNavigate('run', {})}>返回排产检查</Button>}</div>
       <details className="rj-record-details"><summary>排产记录详情</summary><dl className="rj-scope">

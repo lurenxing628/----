@@ -1,12 +1,11 @@
 import React from './shared/runtime/react.js';
-import FieldContract from './FieldContract.js';
-import FieldDraftModel from './FieldDraftModel.js';
-import FieldControls from './FieldControls.jsx';
+import C from './FieldContract.js';
+import M from './FieldDraftModel.js';
+import { Button, ErrorBox, Feedback } from './FieldControls.jsx';
 import ResourceControls from './ResourceControls.jsx';
 import FieldEditorFields from './FieldEditorFields.jsx';
 
-const C = FieldContract, M = FieldDraftModel, { Button, ErrorBox, Feedback } = FieldControls;
-function FieldEditor({ task, record, action, adapter, command, retained, onDraft, onClose, onDone }) {
+function FieldEditor({ task, record, action, command, retained, onDraft, onClose, onDone }) {
   const [initial] = React.useState(() => M.initialize({ task, record, action, retained }));
   const [draft, setDraft] = React.useState(initial.draft), [suggestions, setSuggestions] = React.useState(initial.suggestions);
   const [error, setError] = React.useState(null), [continueAfter, setContinueAfter] = React.useState(false);
@@ -59,7 +58,7 @@ function FieldEditor({ task, record, action, adapter, command, retained, onDraft
   return <form ref={form} className="field-editor" aria-label={title} noValidate onSubmit={event => { event.preventDefault(); save(draft); }}>
     <div className="field-editor-heading"><h3>{title}{record ? ' · ' + record.report_no : ''}</h3>
       {fresh && <Button disabled={disabled} reason={!hasPrevious ? '同任务同工序暂无可复制的有效报工。' : ''} reasonDisplay="inline" onClick={copy}>复制上一条</Button>}</div>
-    <FieldEditorFields {...{ task, record, action, adapter, draft, suggestions, disabled, first, change }} error={shownError} />
+    <FieldEditorFields {...{ task, record, action, draft, suggestions, disabled, first, change }} error={shownError} />
     <ErrorBox error={error} excludePaths={mapped} /><Feedback command={command} onDone={onDone} excludePaths={mapped} />
     <div className="field-footer"><Button onClick={onClose} disabled={command.locked}>取消</Button>
       {fresh && <Button disabled={disabled} reason={reason} reasonDisplay="tooltip" onClick={() => save(draft, true)}>保存并继续</Button>}

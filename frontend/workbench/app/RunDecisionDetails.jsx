@@ -1,16 +1,15 @@
 import React from './shared/runtime/react.js';
-import RunCandidateControls from './RunCandidateControls.jsx';
+import C from './RunCandidateControls.jsx';
 import RunDecisionComparison from './RunDecisionComparison.jsx';
-import RunCandidateModel from './RunCandidateModel.js';
-import WorkbenchTerms from './WorkbenchTerms.js';
-import WorkbenchFormat from './WorkbenchFormat.js';
+import M from './RunCandidateModel.js';
+import T from './WorkbenchTerms.js';
+import F from './WorkbenchFormat.js';
 import RunOperationEffort from './RunOperationEffort.jsx';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
 import RunDecisionAPI from './RunDecisionAPI.js';
 import { useQuery } from './shared/session/query.js';
 import APSBatchContract from './BatchContract.js';
 
-const C = RunCandidateControls, M = RunCandidateModel, T = WorkbenchTerms, F = WorkbenchFormat;
 const batchChanges = [['all', '全部'], ['changed', '有明确变化'], ['earlier', '预计完工提前'], ['later', '预计完工推迟'], ['new_overdue', '新增超期'], ['relieved_overdue', '解除超期'], ['completion_improved', '工序安排改善'], ['completion_worsened', '工序安排变差'], ['unchanged', '持平'], ['unknown', '差值待确认']];
 const operationChanges = [['all', '全部'], ['changed', '有明确变化'], ['added', '新增安排'], ['removed', '移除安排'], ['moved', '时间移动'], ['machine_changed', '设备变化'], ['operator_changed', '人员变化'], ['source_changed', '内外协变化'], ['status_changed', '排产状态变化'], ['unchanged', '持平'], ['unknown', '差值待确认']];
 const batchSorts = [['current_priority', '当前风险优先'], ['worsened', '恶化优先'], ['improved', '改善优先'], ['after_delay_hours', '当前拖期'], ['delay_delta_hours', '拖期变化'], ['finish_delta_hours', '完工变化'], ['batch_id', '批次编号']];
@@ -35,16 +34,16 @@ function Summary({ data }) {
   const summary = data.summary, common = summary.common_delivery;
   return <div className="rd-impact-summary"><SummarySide summary={summary.before} label="比较基准" absent={data.baseline.state !== 'available'} formal={data.baseline.kind === 'admission_official'} />
     <SummarySide summary={summary.after} label="当前方案" />
-    <details className="rd-common-delivery"><summary>双方都已排齐 · {summary.common_completed_batch_refs.length} 批</summary>
+    <details className="rd-common-delivery"><summary>双方都已排齐 · {summary.common_completed_batch_count} 批</summary>
       <span>总拖期：{riskValue(common.before, 'total_tardiness_hours')} → {riskValue(common.after, 'total_tardiness_hours')} 小时 · {delta(common.delay_delta_hours, '减少', '增加')}</span>
       <span>预计超期：{riskValue(common.before, 'overdue_count')} → {riskValue(common.after, 'overdue_count')} 批 · {delta(common.overdue_delta_count, '减少', '增加', ' 批')}</span>
       <small>{T.delivery_coverage(common.after)}</small></details></div>;
 }
-function Changes({ values }) { return <div className="rd-change-list">{values.map(value => <span key={value} className="rd-badge">{changeLabels[value] || value}</span>)}</div>; }
+function Changes({ values }) { return <div className="rd-change-list">{values.map(value => <span key={value} className="rd-badge">{changeLabels[value] || '其他变化'}</span>)}</div>; }
 function Locate({ row, onDrill }) {
   return <div className="rd-locate"><C.Button icon="chart-gantt" className="mini" onClick={() => onDrill(row.drill.selected)}>查看当前甘特</C.Button>
     <C.Button icon="chart-gantt" className="mini" disabled={!row.drill.reference} title={!row.drill.reference ? '对照安排未记录' : undefined} onClick={() => onDrill(row.drill.reference)}>查看对照甘特</C.Button>
-    {row.unplanned_operation_refs && (row.unplanned_operation_refs.length > 0 || row.deferred_operation_refs.length > 0) && <C.Button icon="circle-alert" className="mini" onClick={() => onDrill({ ...row.drill.selected, candidate_tab: 'unplanned' })}>查看未安排工序</C.Button>}</div>;
+    {row.drill.selected && row.after && (row.after.ordinary_unscheduled_operation_count > 0 || row.after.deferred_operation_count > 0) && <C.Button icon="arrow-right" onClick={() => onDrill({ ...row.drill.selected, candidate_tab: 'unplanned' })}>查看未安排工序</C.Button>}</div>;
 }
 function BatchDelivery({ value, absent, year = true }) {
   const missing = T.missing_arrangements(value.ordinary_unscheduled_operation_count, value.deferred_operation_count);
@@ -58,12 +57,12 @@ function BatchDelivery({ value, absent, year = true }) {
 function ArrangementSegment({ row }) {
   return <><span title={F.dateTime(row.start, { seconds: true, fractions: true }) + ' 至 ' + F.dateTime(row.end, { seconds: true, fractions: true })}>{F.compactRange(row.start, row.end)}</span>
     <small>设备：{row.machine ? row.machine.label || T.name_missing : '未记录'} · 人员：{row.operator ? row.operator.label || T.name_missing : '未记录'}</small>
-    <small>{row.source === 'internal' ? '本厂安排' : row.source === 'external' ? '外协安排' : '安排类型未记录'}</small></>;
+    <small>来源：{T.operation_sources[row.source]}</small></>;
 }
 function Arrangement({ row, absent, state }) {
   if (absent) return <span className="rc-muted">比较基准缺失</span>;
   if (!row) return <><span className="rc-muted">{state ? ({ deferred: '待料未排', missing: '未安排', unavailable: '安排资料未产出' }[state.status] || '安排待确认') : '未安排'}</span>{state && state.reason && <small>{state.reason.message}</small>}</>;
-  return <>{row.segments ? <details className="rd-segments"><summary>已保存 {row.segments.length} 段安排</summary>{row.segments.map(segment => <div key={segment.row_ref}><ArrangementSegment row={segment} /></div>)}</details> : <ArrangementSegment row={row} />}
+  return <><ArrangementSegment row={row} />
     <C.Reasons rows={row.data_gaps} /></>;
 }
 function Effort({ value }) {
@@ -95,17 +94,14 @@ function BatchList({ data, difference, selectedRef, onSelect }) {
     <td><CurrentRisk row={row} /></td>
   </tr>)}</tbody></table></div>;
 }
-function segments(value) { return value ? value.segments || [value] : []; }
 function ChainTimeline({ row, bounds, difference }) {
   if (!bounds) return <span className="rc-muted">安排时间待确认</span>;
   const sides = difference ? [['before', '固定对照'], ['after', '当前查看']] : [['after', '当前查看']], span = bounds.end - bounds.start;
   const descriptions = [], tracks = sides.map(([key, label]) => {
-    const parts = segments(row[key]);
-    descriptions.push(label + '：' + (parts.length ? parts.map(part => F.dateTime(part.start, { seconds: true, fractions: true }) + ' 至 ' + F.dateTime(part.end, { seconds: true, fractions: true })).join('；') : row[key + '_state'] && row[key + '_state'].status === 'deferred' ? '待料未排' : '未安排'));
-    return <div key={key} className={'rd-chain-track rd-chain-' + key}><span className="wb-visually-hidden">{label}</span>{parts.filter(part => part.start && part.end).map(part => {
-      const start = M.instant(part.start), end = M.instant(part.end);
-      return <span key={part.row_ref} className={'rd-chain-bar' + (start === end ? ' rd-chain-point' : '')} title={label + ' · ' + F.dateTime(part.start, { seconds: true, fractions: true }) + ' 至 ' + F.dateTime(part.end, { seconds: true, fractions: true })} style={{ left: (start - bounds.start) / span * 100 + '%', width: start === end ? undefined : (end - start) / span * 100 + '%' }} />;
-    })}</div>;
+    const part = row[key], range = part && F.dateTime(part.start, { seconds: true, fractions: true }) + ' 至 ' + F.dateTime(part.end, { seconds: true, fractions: true });
+    descriptions.push(label + '：' + (part ? range : row[key + '_state'] && row[key + '_state'].status === 'deferred' ? '待料未排' : '未安排'));
+    const start = part && M.instant(part.start), end = part && M.instant(part.end);
+    return <div key={key} className={'rd-chain-track rd-chain-' + key}><span className="wb-visually-hidden">{label}</span>{part && <span className={'rd-chain-bar' + (start === end ? ' rd-chain-point' : '')} title={label + ' · ' + range} style={{ left: (start - bounds.start) / span * 100 + '%', width: start === end ? undefined : (end - start) / span * 100 + '%' }} />}</div>;
   });
   return <div className="rd-chain-timeline" role="img" aria-label={descriptions.join('；')}>{tracks}</div>;
 }
@@ -115,7 +111,7 @@ function OperationFacts({ row, baseline }) {
   </div><div><Constraints value={row.constraints} />{row.data_gaps && row.data_gaps.length > 0 && <C.Reasons rows={row.data_gaps} />}</div><WorkbenchReference value={row.operation_ref} /></div></details>;
 }
 function OperationChain({ data, difference, onDrill }) {
-  const intervals = data.items.flatMap(row => (difference ? ['before', 'after'] : ['after']).flatMap(side => segments(row[side]).filter(part => part.start && part.end).map(part => ({ start: M.instant(part.start), end: M.instant(part.end), startText: part.start, endText: part.end }))));
+  const intervals = data.items.flatMap(row => (difference ? ['before', 'after'] : ['after']).filter(side => row[side]).map(side => ({ start: M.instant(row[side].start), end: M.instant(row[side].end), startText: row[side].start, endText: row[side].end })));
   const low = intervals.length ? intervals.reduce((a, b) => a.start < b.start ? a : b) : null, high = intervals.length ? intervals.reduce((a, b) => a.end > b.end ? a : b) : null;
   const bounds = low && high ? { start: low.start, end: high.end > low.start ? high.end : low.start + 1 } : null;
   return <div className="rd-chain">{bounds && <div className="rd-chain-axis"><span>本页工序时间轴</span><span>{F.dateTime(low.startText, { seconds: true, fractions: true })}</span><span>{F.dateTime(high.endText, { seconds: true, fractions: true })}</span></div>}
@@ -134,7 +130,7 @@ function BatchChain({ result, batch, difference, query, onQuery, onDrill, headin
   const q = RunDecisionAPI.detailScope(runRef, { ...stored, comparison_mode: scope.comparison_mode, resource_view: scope.resource_view, selected_candidate_ref: scope.selected_candidate_ref, ...(scope.comparison_mode === 'candidates' ? { reference_candidate_ref: scope.reference.candidate_ref } : {}), range_start: scope.range_start, range_end: scope.range_end, batch_ref: batch.batch_ref, change_kind: difference ? stored.change_kind || 'changed' : 'all', sort: stored.sort || 'sequence', order: stored.order || 'asc' }, 'operations');
   const [paused, setPaused] = React.useState(false), key = JSON.stringify(q);
   React.useEffect(() => { setPaused(false); }, [runRef, key, result.meta.snapshot_ref]);
-  const read = useQuery(signal => RunDecisionAPI.decisionDetails(runRef, q, 'operations', signal), [runRef, key, result.meta.snapshot_ref], enabled && !paused), detailResult = read.result, data = detailResult && detailResult.data;
+  const read = useQuery(signal => RunDecisionAPI.decisionDetails(runRef, q, 'operations', signal), [runRef, key, result.meta.snapshot_ref], { enabled: enabled && !paused }), detailResult = read.result, data = detailResult && detailResult.data;
   function update(change, paging = false) { const next = { ...stored, batch_ref: batch.batch_ref, ...change, page: paging ? change.page : 1 }; delete next.snapshot_ref; if (paging && detailResult) next.snapshot_ref = detailResult.meta.snapshot_ref; setPaused(false); onQuery(next); }
   return <section className="rd-batch-detail" aria-label={difference ? '选中批次的工序安排差异' : '选中批次的完整当前工序链'}><div className="rd-batch-detail-heading"><div><h3 tabIndex={-1} ref={headingRef}>{batch.batch_id} · {difference ? '工序安排差异' : '完整工序链'}</h3><p>{batch.part_no || '图号未记录'} · {batch.part_label || T.name_missing} · {amount(batch.quantity, ' 件')} · 优先级 {APSBatchContract.label('priority', batch.priority)}</p><small>{T.due_date(batch.due_date, batch.due_state, batch.due_issue)}</small></div><div className="rc-tools"><Locate row={batch} onDrill={onDrill} /><C.Button icon="refresh-cw" aria-label="刷新选中批次工序链" disabled={read.loading} onClick={() => { update({}); read.reload(); }} /></div></div>
     <div className="rd-batch-detail-status"><CurrentRisk row={batch} />{difference && <>{batch.operation_change_count > 0 && <span>{amount(batch.operation_change_count, ' 道工序有明确变化')}</span>}{batch.operation_unknown_count > 0 && <span>{amount(batch.operation_unknown_count, ' 道工序差值待确认')}</span>}</>}</div>
@@ -156,7 +152,7 @@ function Pane({ result, section, query, onQuery, selectedBatchRef, onSelectBatch
   const q = RunDecisionAPI.detailScope(runRef, { delivery_filter: difference ? 'all' : 'attention', change_kind: difference ? 'changed' : 'all', sort: 'current_priority', order: 'asc', ...stored, ...shared, ...(selectedBatchRef ? { selected_batch_ref: selectedBatchRef } : {}) }, 'batches'), key = JSON.stringify(q);
   const [paused, setPaused] = React.useState(false), headingRef = React.useRef(null), focusRequested = React.useRef(false);
   React.useEffect(() => { setPaused(false); }, [runRef, key, section, result.meta.snapshot_ref]);
-  const read = useQuery(signal => RunDecisionAPI.decisionDetails(runRef, q, 'batches', signal), [runRef, key, section, result.meta.snapshot_ref], enabled && !paused && !sameCandidate);
+  const read = useQuery(signal => RunDecisionAPI.decisionDetails(runRef, q, 'batches', signal), [runRef, key, section, result.meta.snapshot_ref], { enabled: enabled && !paused && !sameCandidate });
   const detailResult = read.result, data = detailResult && detailResult.data, options = data && data.filter_options;
   const changed = data && data.summary.operation_changes.changed_operation_count;
   const arrangementsEqual = difference && !sameCandidate && changed && changed.scope === 'full_admission' && changed.state === 'complete' && changed.value === 0;

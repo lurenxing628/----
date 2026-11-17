@@ -75,7 +75,6 @@ body.aps-workbench .outsourcing-live .wb-table-frame[data-sticky-actions] > tabl
 .resource-catalog .rc-list th:first-child { width:40%; }
 .resource-catalog .rc-list th:last-child { width:144px; }
 .resource-catalog .rc-wrap { overflow-wrap:anywhere; }
-.resource-catalog .rc-error { color:var(--ui-danger-text); }
 .resource-catalog .rc-pattern { margin-top:20px; border-top:1px solid var(--ui-border); padding-top:14px; }
 .resource-catalog .rc-section-head { display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap; margin-bottom:var(--space-2); }
 .resource-catalog .rc-section-head h3 { font-size:var(--font-size-3); margin:0; flex:1; }

@@ -1,10 +1,9 @@
 import React from './shared/runtime/react.js';
-import ActualGanttModel from './ActualGanttModel.js';
-import ActualGanttContract from './ActualGanttContract.js';
-import ActualGanttWindow from './ActualGanttWindow.js';
-import ResourceControls from './ResourceControls.jsx';
-import ActualGanttControls from './ActualGanttControls.jsx';
-import APSResourceContract from './resource-contract.js';
+import M from './ActualGanttModel.js';
+import C from './ActualGanttContract.js';
+import W from './ActualGanttWindow.js';
+import ResourceControls, { Button, ErrorBox, Modal } from './ResourceControls.jsx';
+import { Toolbar, Range, Chain } from './ActualGanttControls.jsx';
 import APSPlanAPI from './PlanAPI.js';
 import ActualGanttAPI from './ActualGanttAPI.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
@@ -13,23 +12,21 @@ import GanttGraph from './GanttGraph.js';
 import WorkbenchPageContext from './WorkbenchPageContext.jsx';
 import GanttPresentation from './GanttPresentation.js';
 import APSWorkbenchTransport from './shared/network/transport.js';
-import FieldContract from './FieldContract.js';
 import WorkbenchControls from './WorkbenchControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import GanttGraphLayer from './GanttGraphLayer.jsx';
 import GanttPresentationUI from './GanttPresentationUI.jsx';
 import ActualGanttRows from './ActualGanttRows.jsx';
 import GanttRouteList from './GanttRouteList.jsx';
+import { failure, ref48 } from './shared/contract/kit.js';
+import { useQuery } from './shared/session/query.js';
 
-const M = ActualGanttModel, C = ActualGanttContract, W = ActualGanttWindow;
-const { Button, ErrorBox, Modal } = ResourceControls;
-const { Toolbar, Range, Chain } = ActualGanttControls;
 function savedView(value) {
   if (value === undefined) return null;
   const object = item => item !== null && typeof item === 'object' && !Array.isArray(item);
-  const reference = item => item === null || typeof item === 'string' && /^[0-9a-f]{48}$/.test(item);
+  const reference = item => item === null || ref48(item);
   const valid = object(value) && object(value.view) && object(value.position) && Number.isFinite(value.zoom) && value.zoom >= 1 && value.zoom <= 1024;
-  if (!valid) throw new Error('现场实际甘特的查看状态无效，没有改选其他工序。');
+  if (!valid) throw failure('现场实际甘特的查看状态无效，没有改选其他工序。');
   const v = value.view;
   if (!Object.prototype.hasOwnProperty.call(M.views, v.mode) || !Object.prototype.hasOwnProperty.call(M.lateLabels, v.late)
     || typeof v.query !== 'string' || v.query.length > 200 || !reference(v.selected) || !reference(v.report)
@@ -37,32 +34,30 @@ function savedView(value) {
     || !object(v.collapsed) || !Object.values(v.collapsed).every(item => typeof item === 'boolean')
     || !Number.isFinite(value.position.centerAt) || !Number.isFinite(value.position.windowSpan) || value.position.windowSpan <= 0
     || !Number.isFinite(value.position.top) || value.position.top < 0)
-    throw new Error('现场实际甘特的查看状态无效，没有改选其他工序。');
+    throw failure('现场实际甘特的查看状态无效，没有改选其他工序。');
   return value;
 }
+// 顶层键集与 return_to 已由 WorkbenchNavigation.admit 按受控导航声明准入；查看范围只在 scope 里，这里核对范围与定位取值。
 function initial(context) {
   const input = { ...context.scope }, scope = {};
   const taskRef = context.task_ref;
-  for (const key of ['source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids'])
-    if (context[key] !== undefined && input[key] === undefined) input[key] = context[key];
   const allowed = ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids', 'query', 'focus', 'as_of', 'snapshot_ref', 'kind', 'baseline_ref'];
   let issue = Object.keys(input).some(key => !allowed.includes(key)) ? '查询条件无效，请清除筛选后重试。' : null;
   if (input.baseline_ref && input.baseline_ref !== (context.plan_ref || input.plan_ref)) issue = '现场实际甘特以所选计划为对比基准，没有换成另一个计划版本。';
   if (input.query !== undefined && (typeof input.query !== 'string' || input.query.length > 200)) issue = '来源搜索条件无效。';
-  if (context.report_ref !== undefined && !C.ref(context.report_ref)) issue = '来源报工编号无效，请从现场记录重新打开。';
-  if (context.report_ref !== undefined && !C.ref(taskRef)) issue = '报工关联的任务资料缺失，请刷新后重选。';
+  if (context.report_ref !== undefined && !ref48(context.report_ref)) issue = '来源报工编号无效，请从现场记录重新打开。';
+  if (context.report_ref !== undefined && !ref48(taskRef)) issue = '报工关联的任务资料缺失，请刷新后重选。';
   for (const key of ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids'])
     if (input[key] !== undefined && input[key] !== null && input[key] !== '') scope[key] = input[key];
   if (context.plan_ref) scope.plan_ref = context.plan_ref;
   let persisted = null;
   try { persisted = savedView(context.actual_view); } catch (failure) { issue = failure.message; }
-  return { scope, issue, persisted, query: typeof input.query === 'string' ? input.query : typeof context.query === 'string' ? context.query : '',
+  return { scope, issue, persisted, query: typeof input.query === 'string' ? input.query : '',
     selected: taskRef === undefined ? null : taskRef, report: context.report_ref === undefined ? null : context.report_ref };
 }
 function Content({ onNavigate, initialContext }) {
   const seed = React.useMemo(() => initial(initialContext), []);
-  const [scope, setScope] = React.useState(seed.scope), [refresh, setRefresh] = React.useState(0);
-  const [result, setResult] = React.useState(null), [loading, setLoading] = React.useState(false), [error, setError] = React.useState(null);
+  const [scope, setScope] = React.useState(seed.scope), [refresh, setRefresh] = React.useState(0), [rangeError, setRangeError] = React.useState(null);
   const [view, setView] = React.useState(seed.persisted ? seed.persisted.view : { mode: seed.scope.resource_type || 'machine', query: seed.query, selected: seed.selected,
     report: seed.report, late: 'all', collapsed: {}, onlySelected: false, details: false, chain: false });
   const [zoom, setZoom] = React.useState(seed.persisted ? seed.persisted.zoom : 1), [position, setPosition] = React.useState({ left: 0, top: 0, width: 1000, height: 480 });
@@ -85,37 +80,28 @@ function Content({ onNavigate, initialContext }) {
     const button = document.querySelector('[aria-controls="actual-gantt-detail"]');
     if (button) button.focus();
   }
-  React.useEffect(() => {
-    const controller = new AbortController(); let active = true;
-    setLoading(true); setResult(null); setError(null);
-    (async () => {
-      try {
-        if (seed.issue) throw APSResourceContract.failure(seed.issue);
-        if (scope.source && scope.source !== 'production') throw APSResourceContract.failure('数据来源无效，请重新打开现场实际甘特。');
-        if (!scope.plan_ref) {
-          if (Object.keys(scope).some(k => k !== 'source')) throw APSResourceContract.failure('来源范围缺少计划，请选择计划。');
-          const catalog = await APSPlanAPI.catalog({ collection: 'history', size: 20 }, controller.signal);
-          const current = catalog.data.plans.filter(p => p.is_current_official && p.capabilities.view);
-          if (current.length !== 1) throw APSResourceContract.failure('没有唯一可读取的当前正式计划，请先选择计划。');
-          if (active) setScope({ plan_ref: current[0].plan_ref });
-          return;
-        }
-        const response = await ActualGanttAPI.load(scope, controller.signal);
-        if (initialContext.operation_ref && seed.selected) {
-          const task = response.data.items.find(item => item.task.task_ref === seed.selected);
-          if (task && task.task.operation_ref !== initialContext.operation_ref) throw APSResourceContract.failure('来源工序与所选计划任务不一致，请重新选择工序。');
-        }
-        if (active) setResult(response);
-      } catch (failure) { if (active) setError(failure); }
-      finally { if (active) setLoading(false); }
-    })();
-    return () => { active = false; controller.abort(); };
-  }, [scope, refresh]);
+  // 没选计划时先找唯一的当前正式计划，找到后换成按它读取；同一计划刷新、换范围期间继续显示上一次读到的甘特（保留键是计划），导出只认当前结果。
+  const read = useQuery(async signal => {
+    if (seed.issue) throw failure(seed.issue);
+    if (scope.source && scope.source !== 'production') throw failure('数据来源无效，请重新打开现场实际甘特。');
+    if (!scope.plan_ref) {
+      if (Object.keys(scope).some(k => k !== 'source')) throw failure('来源范围缺少计划，请选择计划。');
+      const catalog = await APSPlanAPI.catalog({ collection: 'history', size: 20 }, signal);
+      const current = catalog.data.plans.filter(p => p.is_current_official && p.capabilities.view);
+      if (current.length !== 1) throw failure('没有唯一可读取的当前正式计划，请先选择计划。');
+      if (!signal.aborted) setScope({ plan_ref: current[0].plan_ref });
+      return null;
+    }
+    const response = await ActualGanttAPI.load(scope, signal);
+    if (initialContext.operation_ref && seed.selected) {
+      const task = response.data.items.find(item => item.task.task_ref === seed.selected);
+      if (task && task.task.operation_ref !== initialContext.operation_ref) throw failure('来源工序与所选计划任务不一致，请重新选择工序。');
+    }
+    return response;
+  }, [scope, refresh], { keep: scope.plan_ref });
+  const result = read.result, loading = read.loading, error = rangeError || read.error;
   React.useEffect(() => () => { if (downloadController.current) downloadController.current.abort(); cancelAnimationFrame(frame.current); }, []);
-  const lastResultRef = React.useRef(null);
-  if (result && scope.plan_ref) lastResultRef.current = { planRef: scope.plan_ref, result };
-  else if (!loading || !scope.plan_ref || (lastResultRef.current && lastResultRef.current.planRef !== scope.plan_ref)) lastResultRef.current = null;
-  const displayResult = result || (loading && scope.plan_ref && lastResultRef.current && lastResultRef.current.planRef === scope.plan_ref ? lastResultRef.current.result : null);
+  const displayResult = read.shown;
   const data = displayResult && displayResult.data;
   const captionPlan = !loading && !error && data && data.plan;
   const captionStatus = captionPlan && (captionPlan.is_current_official ? WorkbenchTerms.current_official : WorkbenchTerms.historical_official);
@@ -212,14 +198,14 @@ function Content({ onNavigate, initialContext }) {
   function apply(next) {
     try {
       C.scope(next); defaultWindowApplied.current = false; pending.current = null; setRestore(null); setNavigationNotice(null);
-      setResult(null); setLoading(true); setScope(next); patch({ collapsed: {} }); setError(null); setExportNotice('');
-    } catch (failure) { setError(failure); }
+      setScope(next); patch({ collapsed: {} }); setRangeError(null); setExportNotice('');
+    } catch (failure) { setRangeError(failure); }
   }
   function reload() {
     if (snapshotPosition) setRestore(snapshotPosition);
     pending.current = null;
     const next = { ...scope }; delete next.snapshot_ref;
-    setResult(null); setLoading(true); setScope(next); setRefresh(n => n + 1); setExportNotice('');
+    setScope(next); setRefresh(n => n + 1); setRangeError(null); setExportNotice('');
   }
   function select(item, report) { setLocateNotice(''); patch({ selected: item.task.task_ref, report: report ? report.report_ref : null }); }
   const selectedFact = taskIndex && taskIndex.get(view.selected), selected = selectedFact && selectedFact.item;
@@ -253,7 +239,7 @@ function Content({ onNavigate, initialContext }) {
     [model && model.start, model && model.end, width, position.left, viewport]);
   function clearTarget() { setHover(null); setChainTarget(null); patch({ selected: null, report: null, onlySelected: false }); }
   const hoverMark = value => { setHover(value); setChainTarget(value && value.item ? [value.item.task.task_ref] : null); };
-  const viewScope = () => ({ ...scope, snapshot_ref: displayResult.meta.snapshot_ref, format: 'csv', local_query: view.query.trim(), late_filter: view.late,
+  const viewScope = () => ({ ...scope, snapshot_ref: result.meta.snapshot_ref, format: 'csv', local_query: view.query.trim(), late_filter: view.late,
     ...(view.onlySelected ? { selected_task_ref: view.selected } : {}) });
   async function download() {
     const controller = new AbortController(); downloadController.current = controller; setExportBusy(true); setExportError(null);
@@ -269,11 +255,6 @@ function Content({ onNavigate, initialContext }) {
     return { view: 'fieldgantt', context: pageContext() };
   }
   function openField() {
-    // 现场实际甘特可按 10000 个批次读取，现场记录只接受 FieldContract.batchLimit 个；超出时原样保留批次范围，请用户先缩小。
-    const limit = FieldContract.batchLimit;
-    if (scope.batch_ids && scope.batch_ids.length > limit) {
-      setNavigationNotice({ message: '现场记录最多按 ' + limit + ' 个批次查看，当前范围有 ' + scope.batch_ids.length + ' 个批次。请先缩小批次范围，再打开现场记录。' }); return;
-    }
     const destinationScope = { ...scope, query: view.query };
     // Actual uses [] for all batches; Field represents that scope by omission.
     if (destinationScope.batch_ids !== undefined && destinationScope.batch_ids.length === 0) delete destinationScope.batch_ids;
@@ -288,7 +269,7 @@ function Content({ onNavigate, initialContext }) {
     const limits = [...(scope.plan_finish_date_from ? ['计划完工日期 ' + scope.plan_finish_date_from + ' 至 ' + scope.plan_finish_date_to] : []),
       ...(scope.resource_ref ? ['指定' + M.views[scope.resource_type]] : []), ...(scope.batch_ids && scope.batch_ids.length ? ['指定的 ' + scope.batch_ids.length + ' 个批次'] : [])];
     if (limits.length && !confirmed) {
-      setNavigationNotice({ plan: true, message: '计划甘特只按计划时段读取，带不过去这些条件：' + limits.join('、') + '。确认后按'
+      setNavigationNotice({ message: '计划甘特只按计划时段读取，带不过去这些条件：' + limits.join('、') + '。确认后按'
         + (scope.range_start ? '当前时段' : '完整计划') + '打开' + (view.selected ? '，并定位所选工序' : '') + '。' }); return;
     }
     onNavigate('gantt', { plan_ref: scope.plan_ref, ...(scope.range_start ? { range_start: scope.range_start, range_end: scope.range_end } : {}),
@@ -299,8 +280,8 @@ function Content({ onNavigate, initialContext }) {
       <div className="wb-actions"><Button icon="refresh-cw" aria-label="刷新实际甘特" busy={loading} onClick={reload} />
         <Button icon="chart-gantt" onClick={() => openPlan(false)}>计划甘特</Button><Button icon="arrow-right" onClick={openField}>现场记录</Button>
         {initialContext.return_to && <Button icon="chevron-left" onClick={() => onNavigate(initialContext.return_to.view, initialContext.return_to.context)}>返回</Button>}</div></div>
-    <ErrorBox error={error} />{navigationNotice && <><p className="fg-note" role="status">{navigationNotice.message}</p>{navigationNotice.plan && <span className="wb-actions">
-      <Button icon="chart-gantt" onClick={() => openPlan(true)}>确认打开计划甘特</Button><Button icon="x" onClick={() => setNavigationNotice(null)}>取消</Button></span>}</>}
+    <ErrorBox error={error} />{navigationNotice && <><p className="fg-note" role="status">{navigationNotice.message}</p><span className="wb-actions">
+      <Button icon="chart-gantt" onClick={() => openPlan(true)}>确认打开计划甘特</Button><Button icon="x" onClick={() => setNavigationNotice(null)}>取消</Button></span></>}
     {scope.plan_ref && <Range scope={scope} resources={data ? data.resources : null} onApply={apply} busy={loading} />}
     {!data && <WorkbenchControls.EmptyState kind={loading ? 'loading' : error ? 'error' : 'empty'} title={loading ? '正在读取计划与现场记录…' : error ? '现场实际甘特未读取成功' : '暂无现场实际甘特数据'}
       action={error && !loading ? <Button icon="refresh-cw" onClick={reload}>刷新</Button> : undefined} />}
@@ -312,7 +293,7 @@ function Content({ onNavigate, initialContext }) {
         <div title="仅统计有确认完工时间的已完工工序"><dt>平均整道完工偏差</dt><dd>{stats.average === null ? stats.complete === null ? '报工数据不可用' : stats.complete ? '完工时间待核对' : '尚无已完工工序' : (stats.average > 0 ? '+' : '') + WorkbenchFormat.number(Math.round(stats.average) + 0, { digits: 0 }) + ' 分钟'}</dd></div></dl>
       {exportNotice && <p className="fg-note" role="status">{exportNotice}</p>}
       <div className="wb-gantt-detail-layout" data-details-open={view.details}><div className="wb-gantt-main-column"><section className="gb-workspace fg-workspace" aria-label="现场实际甘特工作区" onKeyDown={zoomKeys}><Toolbar {...{ view, patch, model, data, zoom, width }} onZoom={zoomTo}
-        onFit={fitView} onLocate={() => locate()} onExport={() => { setExportError(null); setExportNotice(''); setExporting(true); }} busy={exportBusy} />
+        onFit={fitView} onLocate={() => locate()} onExport={() => { setExportError(null); setExportNotice(''); setExporting(true); }} exportReady={!!result} busy={exportBusy} />
         <GanttGraphLayer.Controls graph={data.gantt_graph} enabled={view.chain} onChange={chain => patch({ chain })}
           active={active} geometry={geometry} onClear={clearTarget} />
         {locateNotice && <p className="fg-note" role="status">{locateNotice}</p>}
@@ -337,7 +318,7 @@ function Content({ onNavigate, initialContext }) {
               <Button icon="search" disabled={!report || !report.actual_start} onClick={() => locate()}>定位本次报工</Button>
               {selected.execution.remaining_plan && <p>剩余安排：{M.time(selected.execution.remaining_plan.start)} 至 {M.time(selected.execution.remaining_plan.end)}</p>}
               {gapReportButtons}
-              {report && <p>登记：{M.time(report.recorded_at)} · 历史版本 {report.correction_history.length} 条</p>}</>}
+              {report && <p>登记：{M.time(report.recorded_at)} · 历史版本 {report.revision_count} 条</p>}</>}
             <Button icon="arrow-right" onClick={openField}>到现场记录核对或补齐</Button>
           </div></details>
           <details className="wb-gantt-detail-section" open><summary>完整工艺路线</summary><div className="wb-gantt-detail-section-body">
@@ -349,10 +330,10 @@ function Content({ onNavigate, initialContext }) {
         </> : <p className="fg-muted">点击工序查看详情与完整工艺路线。</p>}</div>
       </aside>}</div></>}
     {hover && model && <div className="fg-tip" role="tooltip" style={{ left: Math.max(8, Math.min(hover.x + 12, window.innerWidth - 368)), top: Math.max(8, Math.min(hover.y + 12, window.innerHeight - 360)) }}>{hoverTip}</div>}
-    {exporting && data && <Modal title="导出现场实际甘特" icon="download" onClose={() => { if (downloadController.current) downloadController.current.abort(); setExporting(false); }} footer={<><Button onClick={() => setExporting(false)} disabled={exportBusy}>取消</Button><Button transfer="export" busy={exportBusy} onClick={download}>下载 CSV</Button></>}>
+    {exporting && result && <Modal title="导出现场实际甘特" icon="download" onClose={() => { if (downloadController.current) downloadController.current.abort(); setExporting(false); }} footer={<><Button onClick={() => setExporting(false)} disabled={exportBusy}>取消</Button><Button transfer="export" busy={exportBusy} onClick={download}>下载 CSV</Button></>}>
       <div className="modal-b"><p>按当前查询范围和本次读取的数据导出全部 {model.items.length} 道匹配工序及其逐次报工，不受滚动、折叠和详情开关影响。</p>
         <p>本地搜索：{view.query.trim() || '无'}；{WorkbenchTerms.overdue}：{M.lateLabels[view.late]}；仅选中：{view.onlySelected ? '是' : '否'}。</p>
-        <p>计划完工日期：{scope.plan_finish_date_from || '不限'} 至 {scope.plan_finish_date_to || '不限'}；数据截至 {M.time(displayResult.meta.as_of)}。数据变化时下载会要求刷新。</p><ErrorBox error={exportError} /></div></Modal>}
+        <p>计划完工日期：{scope.plan_finish_date_from || '不限'} 至 {scope.plan_finish_date_to || '不限'}；数据截至 {M.time(result.meta.as_of)}。数据变化时下载会要求刷新。</p><ErrorBox error={exportError} /></div></Modal>}
   </div>;
 }
 // 侧栏直接进入时 main.jsx 传空对象作为定位上下文。

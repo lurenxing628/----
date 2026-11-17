@@ -1,15 +1,14 @@
 import React from './shared/runtime/react.js';
-import RunCandidateControls from './RunCandidateControls.jsx';
+import C from './RunCandidateControls.jsx';
 import RunDecisionComparison from './RunDecisionComparison.jsx';
-import RunOperationEffort from './RunOperationEffort.jsx';
-import RunCandidateModel from './RunCandidateModel.js';
-import WorkbenchTerms from './WorkbenchTerms.js';
-import WorkbenchFormat from './WorkbenchFormat.js';
+import E from './RunOperationEffort.jsx';
+import M from './RunCandidateModel.js';
+import T from './WorkbenchTerms.js';
+import F from './WorkbenchFormat.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
 import RunDecisionAPI from './RunDecisionAPI.js';
 import { useQuery } from './shared/session/query.js';
 
-const C = RunCandidateControls, E = RunOperationEffort, M = RunCandidateModel, T = WorkbenchTerms, F = WorkbenchFormat;
 const prepKeys = ['pending_setup_hours', 'scheduled_setup_hours', 'unplanned_setup_hours', 'deferred_setup_hours', 'pending_processing_hours', 'scheduled_processing_hours', 'unplanned_processing_hours', 'deferred_processing_hours'];
 const labels = { pending_setup_hours: '本次准备标准工时需求', scheduled_setup_hours: '新安排准备标准工时', unplanned_setup_hours: '其他未安排准备标准工时', deferred_setup_hours: '缺料未安排准备标准工时', pending_processing_hours: '本次加工标准工时需求', scheduled_processing_hours: '新安排加工标准工时', unplanned_processing_hours: '其他未安排加工标准工时', deferred_processing_hours: '缺料未安排加工标准工时', type_changeover_count: T.changeover_count, changed_machine_count: '发生工种切换的设备数' };
 const prepSorts = [['sequence', '工序顺序'], ['batch_id', '批次编号'], ['after_setup_hours', '当前准备工时'], ['after_required_hours', '当前标准需求'], ['setup_delta_hours', '准备工时变化']];
@@ -96,13 +95,10 @@ function Pane({ result, section, query, onQuery, onDrill, enabled }) {
   const shared = { comparison_mode: scope.comparison_mode, resource_view: scope.resource_view, selected_candidate_ref: scope.selected_candidate_ref, range_start: scope.range_start, range_end: scope.range_end,
     ...(scope.comparison_mode === 'candidates' ? { reference_candidate_ref: scope.reference.candidate_ref } : {}) };
   const stored = Object.fromEntries(Object.entries(query).filter(([key]) => queryKeys.includes(key))), q = RunDecisionAPI.preparationScope(runRef, { ...stored, ...shared }, section);
-  const [paused, setPaused] = React.useState(false), key = JSON.stringify(q), lastDetailRef = React.useRef(null);
+  const [paused, setPaused] = React.useState(false), key = JSON.stringify(q);
   React.useEffect(() => { setPaused(false); }, [runRef, key, section, result.meta.snapshot_ref]);
-  const read = useQuery(signal => RunDecisionAPI[section](runRef, q, signal), [runRef, key, section, result.meta.snapshot_ref], enabled && !paused);
-  const detailKey = runRef + ':' + section + ':' + q.selected_candidate_ref;
-  if (read.result) lastDetailRef.current = { key: detailKey, detail: read.result };
-  else if (!read.loading || (lastDetailRef.current && lastDetailRef.current.key !== detailKey)) lastDetailRef.current = null;
-  const detail = read.result || (read.loading && lastDetailRef.current && lastDetailRef.current.key === detailKey ? lastDetailRef.current.detail : null), data = detail && detail.data;
+  const read = useQuery(signal => RunDecisionAPI[section](runRef, q, signal), [runRef, key, section, result.meta.snapshot_ref], { enabled: enabled && !paused, keep: runRef + ':' + section + ':' + q.selected_candidate_ref });
+  const detail = read.shown, data = detail && detail.data;
   function update(change, paging = false) {
     const next = { ...q, ...change, page: paging ? change.page : 1 }; delete next.snapshot_ref;
     if (paging && detail) next.snapshot_ref = detail.meta.snapshot_ref;
@@ -119,7 +115,7 @@ function Pane({ result, section, query, onQuery, onDrill, enabled }) {
     <details className="rd-preparation-more"><summary>排序与分页</summary><div className="rd-detail-filters"><label>排序<select aria-label="准备与切换排序" value={q.sort} disabled={read.loading} onChange={event => update({ sort: event.target.value })}>{sorts.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>顺序<select aria-label="准备与切换排序顺序" value={q.order} disabled={read.loading} onChange={event => update({ order: event.target.value })}><option value="asc">升序</option><option value="desc">降序</option></select></label>
     </div></details>
-    <div className="rc-tools rd-detail-actions">{data && <RunDecisionComparison.Export key={detail.meta.snapshot_ref} result={detail} initialSection={section} filterQuery={q} />}<C.Button icon="refresh-cw" aria-label="刷新准备与切换明细" disabled={read.loading} onClick={reload} /></div></div>
+    <div className="rc-tools rd-detail-actions">{data && <RunDecisionComparison.Export key={read.result ? read.result.meta.snapshot_ref : 'unavailable'} result={read.result} initialSection={section} filterQuery={q} />}<C.Button icon="refresh-cw" aria-label="刷新准备与切换明细" disabled={read.loading} onClick={reload} /></div></div>
     <C.ErrorBox error={read.error} />{read.loading && <div className="rc-tools"><span role="status">正在读取{preparation ? '工序准备需求' : '设备工种切换'}。</span><C.Button icon="x" onClick={() => setPaused(true)}>取消读取</C.Button></div>}{paused && <p className="rc-muted" role="status">读取已取消，点击刷新继续。</p>}
     {data && <><Summary data={data} definitions={overview.metric_definitions} section={section} /><C.Reasons rows={detail.warnings} />
       {data.items.length ? preparation ? <PreparationTable data={data} onDrill={onDrill} /> : <ChangeoverTable data={data} onDrill={onDrill} /> : <p className="rc-empty">当前筛选下没有{preparation ? '准备需求工序' : '工种切换事件'}。</p>}

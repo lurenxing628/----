@@ -4,6 +4,9 @@ The paired CJS harness uses shipped React.createElement, not an HTML serializer.
 It observes actual component props and visible text children, not browser layout
 pixels. Closed diagnostic details retain their nodes but contribute only their
 summary to text(); styles() reads the shipped manifest-declared Gantt CSS.
+h.render() is one first paint without effects; h.mount() keeps hook state per
+component instance (tests/_support/hook_host.cjs) and settle() commits effects and
+awaits answers; h.serve() replaces only the network answers. Programs may await.
 """
 
 import json

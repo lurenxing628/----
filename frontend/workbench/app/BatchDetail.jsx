@@ -1,13 +1,15 @@
 import React from './shared/runtime/react.js';
 import B from './BatchContract.js';
+import APSBatchAPI from './BatchAPI.js';
 import { useQuery } from './shared/session/query.js';
 import { Button, ErrorBox, Issues, EmptyState } from './ResourceControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
 
 // Stored quotas keep the accepted numeric precision; estimates use the default formatter.
 const ENTERED_HOURS = { exact: true }, ENTERED_DAYS = { exact: true };
-function BatchDetail({ adapter, batchRef, revision, onBack, onEdit, onDelete, onOperation, onSync, onMaterials, disabled }) {
-  const read = useQuery(async signal => B.detail(await adapter.detail('batch', batchRef, signal), batchRef), [adapter, batchRef, revision]);
+function BatchDetail({ batchRef, revision, onBack, onEdit, onDelete, onOperation, onSync, onMaterials, disabled }) {
+  const read = useQuery(async signal => B.detail(await APSBatchAPI.detail('batch', batchRef, signal), batchRef), [batchRef, revision]);
   const entity = read.result && read.result.data;
   if (!entity) return <section className="batch-band"><Button icon="arrow-left" onClick={onBack} disabled={disabled}>返回列表</Button>
     {read.loading && <p role="status">正在读取批次详情…</p>}<ErrorBox error={read.error} />{read.error && <Button icon="refresh-cw" onClick={read.reload}>刷新详情</Button>}</section>;
@@ -24,7 +26,7 @@ function BatchDetail({ adapter, batchRef, revision, onBack, onEdit, onDelete, on
       {!entity.protected && deleteReason && <p className="batch-restriction" role="status">{deleteReason}</p>}<Issues issues={entity.issues} /></section>
     <section className="batch-band"><div className="batch-section-head"><h3>批次基础信息</h3><Button icon="square-pen" onClick={() => onEdit(entity)} disabled={disabled} reasonDisplay="tooltip" reason={reason('update')}>编辑基础信息</Button></div>
       <dl className="batch-facts-grid"><div><dt>交期</dt><dd>{WorkbenchFormat.date(entity.fields.due_date)}</dd></div><div><dt>优先级</dt><dd>{B.label('priority', entity.fields.priority)}</dd></div>
-        <div><dt>齐套状态</dt><dd>{B.label('ready_status', B.readyStatus(entity))}</dd></div><div><dt>齐套日期</dt><dd>{WorkbenchFormat.date(entity.fields.ready_date)}</dd></div><div className="batch-fact-full"><dt>备注</dt><dd>{B.label('', entity.fields.remark)}</dd></div></dl>
+        <div><dt>齐套状态</dt><dd>{B.readyLabel(entity.display_ready_status)}</dd></div><div><dt>齐套日期</dt><dd>{WorkbenchFormat.date(entity.fields.ready_date)}</dd></div><div className="batch-fact-full"><dt>备注</dt><dd>{B.label('', entity.fields.remark)}</dd></div></dl>
       <Button icon="box" onClick={() => onMaterials(entity)} disabled={disabled} reason={reason('materials_update')}>维护物料需求</Button>
       {entity.materials.count > 0 && <details><summary>物料齐套原记录 · {entity.materials.count} 项</summary><div className="wb-table-frame" data-sticky-head><table className="tbl wb-table" style={{ minWidth: 640 }} aria-label="批次物料齐套"><caption className="wb-visually-hidden">批次物料齐套</caption><thead><tr><th scope="col">物料</th><th scope="col">需求量</th><th scope="col">到料量</th><th scope="col">单位</th><th scope="col">齐套记录</th></tr></thead><tbody>
         {entity.materials.requirements.map((row, index) => <tr key={row.row_key || index}><td>{row.business_code} · {row.label}<Issues issues={row.issues} /></td><td>{WorkbenchFormat.number(row.required_quantity, { digits: 20, trim: true })}</td><td>{WorkbenchFormat.number(row.available_quantity, { digits: 20, trim: true })}</td><td>{row.unit || '未填写'}</td><td>{B.label('ready_status', row.ready_status)}</td></tr>)}
@@ -40,9 +42,9 @@ function BatchDetail({ adapter, batchRef, revision, onBack, onEdit, onDelete, on
       <span>已完工：{entity.relationships.completed_count}</span><span>待补齐：{entity.relationships.gap_count}</span></div></section>
     <section className="batch-band"><h3>批次工序</h3><div className="wb-table-frame" data-sticky-head data-sticky-actions><table className="tbl wb-table" style={{ minWidth: 1060 }} aria-label="批次工序"><caption className="wb-visually-hidden">批次工序</caption><thead><tr>
       {['工序编码', '工序', '工种', '归属', '资源补充', '完工', '操作'].map((name, index) => <th key={name} scope="col" className={index === 0 ? 'wb-col-key' : index === 6 ? 'wb-col-actions' : undefined} style={{ width: [160, 80, 130, 80, 330, 100, 130][index] }}>{name}</th>)}</tr></thead><tbody>
-      {entity.operations.map(op => <tr key={op.ref}><td className="wb-col-key">{op.business_code}</td><td>{op.sequence}</td><td>{op.label}</td><td>{op.source === 'internal' ? '自制' : op.source === 'external' ? '外协' : '未归类'}</td>
+      {entity.operations.map(op => <tr key={op.ref}><td className="wb-col-key">{op.business_code}</td><td>{op.sequence}</td><td>{op.label}</td><td>{WorkbenchTerms.operation_sources[op.source] || '未归类'}</td>
         <td>{op.source === 'internal' ? <><div>{op.resources.machine ? op.resources.machine.label : '设备未选'} · {op.resources.operator ? op.resources.operator.label : '人员未选'}</div><div>换型 {WorkbenchFormat.hours(op.setup_hours, ENTERED_HOURS)} / 单件 {WorkbenchFormat.hours(op.unit_hours, ENTERED_HOURS)}</div></>
-          : <><div>{op.resources.supplier ? op.resources.supplier.label : '供应商未选'}</div><div>{op.external_group && op.external_group.merge_mode === 'merged' ? '整组 ' + WorkbenchFormat.number(op.external_group.total_days, ENTERED_DAYS) : '本序 ' + WorkbenchFormat.number(op.external_days, ENTERED_DAYS)} 天</div>{op.external_context_notice && <p className="muted">{op.external_context_notice}</p>}</>}<Issues issues={op.issues} /></td>
+          : <><div>{op.resources.supplier ? op.resources.supplier.label : '供应商未选'}</div><div>{op.external_group && op.external_group.merge_mode === 'merged' ? '整组 ' + WorkbenchFormat.number(op.external_group.total_days, ENTERED_DAYS) : '本序 ' + WorkbenchFormat.number(op.external_days, ENTERED_DAYS)} 天</div></>}<Issues issues={op.issues} /></td>
         <td>{op.completed ? '已完工' : op.status === 'processing' ? '加工中' : op.status === 'skipped' ? '已跳过' : '未完工'}</td>
         <td className="wb-col-actions"><Button icon="square-pen" aria-label="补充资料" reasonDisplay="tooltip" onClick={() => onOperation(entity, op)} disabled={disabled || !op.editable} reason={reason('operation_update')}>补充资料</Button></td></tr>)}
       {!entity.operations.length && <tr><td colSpan={7}><EmptyState kind="empty" title="尚未生成工序" /></td></tr>}

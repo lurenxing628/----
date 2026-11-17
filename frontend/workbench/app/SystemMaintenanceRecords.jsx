@@ -7,6 +7,8 @@ import { WorkbenchReference } from './WorkbenchReferences.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import { EmptyState, Pager } from './ResourceControls.jsx';
+import { failure } from './shared/contract/kit.js';
+import { useQuery } from './shared/session/query.js';
 
 const emptyFilters = { query: '', type: '', status: '', level: '', file: '', start: '', end: '' };
 const types = { manual: '手动备份', auto: '自动备份', before_restore: '恢复前保护副本', unknown: '类型未知', restore: '恢复', cleanup: '清理', runtime: '运行日志', operation: '操作记录' };
@@ -14,8 +16,8 @@ const types = { manual: '手动备份', auto: '自动备份', before_restore: '�
 const states = { unverified: '未校验', partial: '部分异常', skipped: '已跳过', unknown: '结果不确定', ...SystemRestoreStatus.labels };
 const levels = { INFO: '信息', WARNING: '警告', ERROR: '错误', DEBUG: '调试', CRITICAL: '严重', UNKNOWN: '未知' };
 const sources = { 'aps.log': '主日志（aps.log）', 'aps_error.log': '错误日志（aps_error.log）', 'launcher.log': '启动日志（launcher.log）', OperationLogs: '操作记录' };
-const levelText = value => levels[value] || value;
-const sourceText = value => sources[value] || value;
+const levelText = value => levels[value] || '其他级别';
+const sourceText = value => sources[value] || '其他来源';
 function Filters({ kind, value, onChange, onSubmit, onReset, loading }) {
   const select = (key, label, choices) => <label className="sm-field" key={key}><span>{label}</span><select aria-label={label} value={value[key]} onChange={event => onChange({ ...value, [key]: event.target.value })}>
     <option value="">全部</option>{choices.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>;
@@ -69,8 +71,9 @@ function SystemMaintenanceRecords({ kind, pageSize, onPageSize, revision, comman
   const [page, setPage] = React.useState(start.page), [snapshot, setSnapshot] = React.useState(''), [refresh, reload] = React.useReducer(value => value + 1, 0);
   const [selection, setSelection] = React.useState(start.selection), [confirm, setConfirm] = React.useState(null), [downloadBusy, setDownloadBusy] = React.useState(false);
   const [error, setError] = React.useState(null), [notice, setNotice] = React.useState('');
-  const request = C.useRead(kind, { ...filters, page, page_size: pageSize, snapshot_ref: snapshot }, revision + ':' + refresh, active);
-  const payload = request.data, data = payload && payload.data;
+  const request = useQuery(signal => A.read(kind, { ...filters, page, page_size: pageSize, snapshot_ref: snapshot }, signal),
+    [kind, filters, page, pageSize, snapshot, revision, refresh], { enabled: active });
+  const payload = request.result, data = payload && payload.data;
   const matches = selection && data ? data.rows.filter(row => row.key === selection.key && (kind !== 'backups'
     || row.record_kind === selection.record_kind && (row.record_kind !== 'backup_file' || !selection.backup_ref || row.backup_ref === selection.backup_ref))) : [];
   const selected = matches.length === 1 ? matches[0] : null;
@@ -90,8 +93,9 @@ function SystemMaintenanceRecords({ kind, pageSize, onPageSize, revision, comman
     if (active && data) onReadContext(kind, { filters: { ...filters }, page, selection: savedSelection });
   }, [onReadContext, kind, active, !!data, savedScope]);
   React.useEffect(() => { if (!active || command.locked) setConfirm(null); }, [active, command.locked]);
+  // 读取筛选的本地拦截：后端 query_input 用同一规则拒绝（同文案、不带字段路径）；先在这里拦住，当前清单留在原位，也不发一次必然 422 的读取。
   function apply(value) {
-    if (value.start && value.end && value.start > value.end) { setError(new Error('开始日期不能晚于结束日期。')); return; }
+    if (value.start && value.end && value.start > value.end) { setError(failure('开始日期不能晚于结束日期。')); return; }
     setError(null); setNotice(''); setFilters({ ...value }); setPage(1); setSnapshot(''); setSelected(null); reload();
   }
   function changePage(next) { setPage(next); setSnapshot(payload.meta.snapshot_ref); setSelected(null); setError(null); setNotice(''); }
@@ -109,10 +113,8 @@ function SystemMaintenanceRecords({ kind, pageSize, onPageSize, revision, comman
   }
   const writeReason = command.locked ? command.lockedReason : request.loading || !data ? '请先读取有效的备份清单。' : '';
   const sharedReason = kind === 'backups' ? writeReason || data && data.capabilities.blocked_reason || '' : '';
-  const ask = (action, row) => {
-    if (action !== 'create' && (!row || row.record_kind !== 'backup_file')) { setError(new Error('维护事件不是可操作的备份文件。')); return; }
-    setConfirm({ action, row });
-  };
+  // 恢复、删除只由备份文件详情发起（Detail 只给 backup_file 渲染这两个按钮）。
+  const ask = (action, row) => setConfirm({ action, row });
   const hasFilter = Object.values(filters).some(Boolean);
   return <section className="sm-section" aria-label={kind === 'logs' ? '运行日志与操作记录' : '备份与维护记录'}>
     <div className="sm-section-head"><h3>{kind === 'logs' ? '运行日志与操作记录' : '备份与维护记录'}</h3><C.Button icon="refresh-cw" aria-label="刷新清单" busy={request.loading} onClick={() => { setPage(1); setSnapshot(''); setSelected(null); reload(); }} /></div>
@@ -140,7 +142,8 @@ function SystemMaintenanceRecords({ kind, pageSize, onPageSize, revision, comman
     <div className="sm-pager"><Pager page={data ? data.page : { number: page, size: pageSize }} sizes={[10, 25, 50]} unit="条" onSize={onPageSize} onPage={changePage} disabled={!data} busy={request.loading} label="" sizeLabel="每页数量" /></div>
     {selected && <Detail key={selected.key} row={selected} kind={kind} data={data} reason={writeReason} sharedReason={sharedReason} onAction={ask} onDownload={downloadBackup} downloadBusy={downloadBusy} onClose={() => setSelected(null)} />}
     {confirm && <C.Confirm {...confirm} reason={writeReason || A.blocked(data, confirm.action)} onClose={() => setConfirm(null)} onConfirm={() => {
-      const { action, row } = confirm, reason = writeReason || A.blocked(data, action); if (reason) { setError(new Error(reason)); return; }
+      // 有原因时确认按钮已被同一个 reason 禁用，这里不会带着原因进来。
+      const { action, row } = confirm;
       setConfirm(null); command.execute(action, row ? row.write_context.write_token : data.create_context.write_token, row ? { backup_ref: row.backup_ref } : {}, row ? { filename: row.filename } : null);
     }} />}
   </section>;

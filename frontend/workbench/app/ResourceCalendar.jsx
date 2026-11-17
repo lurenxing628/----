@@ -1,7 +1,6 @@
 import React from './shared/runtime/react.js';
-import C from './resource-contract.js';
 import K from './CalendarContract.js';
-import { useSummary } from './resource-api.js';
+import APSResourceAPI, { useSummary } from './resource-api.js';
 import S from './shared/session/command-session.js';
 import { useQuery } from './shared/session/query.js';
 import { Button, ErrorBox, Issues, Modal, EmptyState } from './ResourceControls.jsx';
@@ -16,6 +15,7 @@ import CalendarDayDialog from './CalendarDayDialog.jsx';
 import CalendarRangeDialog from './CalendarRangeDialog.jsx';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
 import { Feedback } from './ResourceForms.jsx';
+import { failure, thisMonth } from './shared/contract/kit.js';
 
 const statusLabels = { not_configured: '未填写', unknown: '未知', unavailable: '暂无数据' };
 // 默认规则只写班表汇总里真实读到的值：没有的项写“未填写 / 暂无数据”，不再把 8 小时、周末休息这类假设写死在图例里。
@@ -25,25 +25,24 @@ function DefaultRules({ value }) {
   const holidayText = holiday.status === 'known' ? WorkbenchFormat.number(holiday.value * 100, { digits: 1, trim: true }) + '%' : statusLabels[holiday.status] || '暂无数据';
   return <><p>未单独设置的日期按默认规则排产。标准工时 / 日：{standardText}；假期录入默认效率：{holidayText}。</p><p className="muted">{value.basis}</p></>;
 }
-function ResourceCalendar({ adapter, onCommitted, externalRevision = 0, initialContext, onNavigationReady, onOpenFile, rememberEnabled = true, summaryState }) {
+function ResourceCalendar({ onCommitted, externalRevision = 0, initialContext, onNavigationReady, onOpenFile, rememberEnabled = true, summaryState }) {
   const [target] = React.useState(() => {
     if (initialContext == null) return { context: null };
     const parsed = workspaceNavigation(initialContext);
-    return parsed.context && parsed.context.kind !== 'calendar' ? { error: C.failure('工作日历定位类型不正确。') } : parsed;
+    return parsed.context && parsed.context.kind !== 'calendar' ? { error: failure('工作日历定位类型不正确。') } : parsed;
   });
-  const [month, setMonth] = React.useState(() => { const now = new Date(); return target.context
-    ? { year: Number(target.context.month.slice(0, 4)), month: Number(target.context.month.slice(5, 7)) } : { year: now.getFullYear(), month: now.getMonth() + 1 }; });
+  const [month, setMonth] = React.useState(() => target.context
+    ? { year: Number(target.context.month.slice(0, 4)), month: Number(target.context.month.slice(5, 7)) } : thisMonth());
   const [dialog, setDialog] = React.useState(null), [refreshState, setRefreshState] = React.useState({});
-  const command = S.useCommand(adapter), handled = React.useRef(null), awaitingRefresh = React.useRef(false);
+  const api = APSResourceAPI.forNamespace('calendar'), command = S.useCommand(api), handled = React.useRef(null), awaitingRefresh = React.useRef(false);
   const [deferred, setDeferred] = React.useState(() => !!target.context && command.phase !== 'idle');
   const [navigationError, setNavigationError] = React.useState(target.error || null), located = React.useRef(false), root = React.useRef(null);
-  const request = useQuery(async signal => K.month(await adapter.query(K.path + '/month', month, signal), month.year, month.month), [adapter, month.year, month.month, externalRevision]);
+  // 刷新本月时继续显示同月数据并标 aria-busy；翻月时不把旧月网格放到新标题下：保留键是年月。
+  const request = useQuery(async signal => K.month(await api.query(K.path + '/month', month, signal), month.year, month.month), [month.year, month.month, externalRevision],
+    { keep: month.year + '-' + month.month });
   const result = request.result, data = result && result.data, source = result && result.meta.source;
-  // 刷新本月时继续显示同月数据并标 aria-busy；翻月时不把旧月网格放到新标题下。
-  const last = React.useRef(null); if (result) last.current = result;
-  const previous = last.current && last.current.data;
-  const view = data || (request.loading && previous && previous.year === month.year && previous.month === month.month ? previous : null);
-  const localSummary = useSummary(adapter, 0, !summaryState);
+  const view = request.shown && request.shown.data;
+  const localSummary = useSummary(0, !summaryState);
   const summary = summaryState || localSummary, rules = summary.result && summary.result.data;
   WorkbenchPageContext.useSnapshot({ source: 'production', kind: 'calendar', month: String(month.year).padStart(4, '0') + '-' + String(month.month).padStart(2, '0'),
     ...(dialog && dialog.mode === 'view' ? { date: dialog.day.date } : {}) },
@@ -53,10 +52,10 @@ function ResourceCalendar({ adapter, onCommitted, externalRevision = 0, initialC
   React.useEffect(() => {
     if (!target.context || deferred || located.current || !data || command.phase !== 'idle') return;
     located.current = true;
-    if (source !== 'production') { setNavigationError(C.failure('本月日历读取失败，请重新打开工作日历。')); return; }
+    if (source !== 'production') { setNavigationError(failure('本月日历读取失败，请重新打开工作日历。')); return; }
     if (target.context.date) {
       const day = data.days.find(row => row.date === target.context.date);
-      if (!day || !day.explicit) { setNavigationError(C.failure('这一天的单独设置已经不存在了，没有新增，也没有用默认规则代替。')); return; }
+      if (!day || !day.explicit) { setNavigationError(failure('这一天的单独设置已经不存在了，没有新增，也没有用默认规则代替。')); return; }
       setDialog({ mode: 'view', day, source });
     }
   }, [data, source, command.phase, deferred, target]);
@@ -76,7 +75,7 @@ function ResourceCalendar({ adapter, onCommitted, externalRevision = 0, initialC
   function open(next) { if (blocked || !command.reset()) return; setRefreshState({}); setDialog(next); }
   function close() { if (!command.reset()) return; setDialog(null); }
   function continueNavigation() {
-    if (dialog || command.phase !== 'idle') { setNavigationError(C.failure('请先确认并关闭上次工作日历操作的结果，再继续跳转。')); return; }
+    if (dialog || command.phase !== 'idle') { setNavigationError(failure('请先确认并关闭上次工作日历操作的结果，再继续跳转。')); return; }
     setDeferred(false); setNavigationError(null);
   }
   const stats = [['work_days', '本月工作日', 'primary'], ['configured', '已单独设置', 'ok'], ['overrides', '调休 / 加班', 'warn'], ['weekend_rest', '周末休息', 'neutral']];
@@ -94,7 +93,7 @@ function ResourceCalendar({ adapter, onCommitted, externalRevision = 0, initialC
           <span className="cal-title">{month.year} 年 {month.month} 月</span>
           <Button className="cal-nav" icon="chevron-right" aria-label="下一月" disabled={blocked || request.loading || !data || !data.next_month} onClick={() => setMonth(data.next_month)} />
           <Button className="cal-nav cal-today-btn" title="回到本月" style={{ width: 'auto', padding: '0 10px', fontSize: 12, fontWeight: 600 }} disabled={blocked}
-            onClick={() => { const now = new Date(), next = { year: now.getFullYear(), month: now.getMonth() + 1 }; if (month.year === next.year && month.month === next.month) request.reload(); else setMonth(next); }}>本月</Button>
+            onClick={() => { const next = thisMonth(); if (month.year === next.year && month.month === next.month) request.reload(); else setMonth(next); }}>本月</Button>
           <Button icon="refresh-cw" aria-label="刷新本月" busy={request.loading} disabled={blocked} onClick={request.reload} />
           <span className="tb-spacer" style={{ flex: 1 }} />
           <Button icon="file-input" transfer="import" disabled={blocked || !data || request.loading}
@@ -126,7 +125,7 @@ function ResourceCalendar({ adapter, onCommitted, externalRevision = 0, initialC
         <Button icon="square-pen" disabled={blocked || !data || request.loading} reason={source && source !== 'production' ? '当前不是生产数据，不能修改。' : ''}
           onClick={() => open({ mode: 'defaults' })}>修改默认工作时间</Button>
         {rules && rules.calendar ? <DefaultRules value={rules.calendar} /> : summary.loading ? <p role="status">正在读取默认规则…</p>
-          : <p>默认规则暂无数据{rules && rules.calendar_error ? '：' + rules.calendar_error : ''}</p>}
+          : <p>默认规则暂无数据</p>}
         <ErrorBox error={summary.error} />
         <h3>规则来源</h3><p>本页维护全局工作日历；{WorkbenchTerms.personal_calendar}和班次单独设置。</p>
         {view && <p>{WorkbenchTerms.data_as_of(WorkbenchFormat.dateTime(view.as_of))}</p>}</div>
@@ -134,9 +133,9 @@ function ResourceCalendar({ adapter, onCommitted, externalRevision = 0, initialC
     {dialog && dialog.mode === 'view' && <Modal title={dialog.day.date + ' · 日历详情'} icon="calendar-days" onClose={close}
       footer={<><Button onClick={close}>关闭</Button><Button icon="square-pen" onClick={() => open({ ...dialog, mode: 'day' })}>维护此日</Button></>}>
       <div className="modal-b form scroll"><Policy value={dialog.day} /></div></Modal>}
-    {dialog && dialog.mode === 'defaults' && <CalendarDefaultsDialog adapter={adapter} command={command} onClose={close} refreshState={refreshState} onRefresh={refresh} />}
-    {dialog && dialog.mode === 'day' && <CalendarDayDialog adapter={adapter} day={dialog.day} source={dialog.source} command={command} onClose={close} refreshState={refreshState} onRefresh={refresh} />}
-    {dialog && dialog.mode === 'range' && <CalendarRangeDialog adapter={adapter} month={month} defaultPeriods={data && data.default_periods} source={source} command={command} onClose={close} refreshState={refreshState} onRefresh={refresh} />}
+    {dialog && dialog.mode === 'defaults' && <CalendarDefaultsDialog command={command} onClose={close} refreshState={refreshState} onRefresh={refresh} />}
+    {dialog && dialog.mode === 'day' && <CalendarDayDialog day={dialog.day} source={dialog.source} command={command} onClose={close} refreshState={refreshState} onRefresh={refresh} />}
+    {dialog && dialog.mode === 'range' && <CalendarRangeDialog month={month} defaultPeriods={data && data.default_periods} source={source} command={command} onClose={close} refreshState={refreshState} onRefresh={refresh} />}
     {orphan && <Modal title="工作日历操作结果" icon="history" locked={command.locked} onClose={close} footer={<Button disabled={command.locked} onClick={close}>关闭</Button>}>
       <div className="modal-b form scroll">{command.intent ? <><p>{command.intent.action === 'confirm' ? '批量维护工作日历' : '维护单日设置'}</p>
         <WorkbenchReference entries={{ '操作编号': command.intent.request_key, '日期编号': command.intent.ref }} /></> : <p>读不到上次操作记录</p>}

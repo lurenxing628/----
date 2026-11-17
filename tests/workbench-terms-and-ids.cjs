@@ -51,6 +51,7 @@ assert.deepEqual(JSON.parse(JSON.stringify(T)), {
   current_official: '当前正式', historical_official: '历史正式', baseline_plan: '排产时的正式计划', initial_plan: '初始计划',
   run_statuses: { queued: '等待计算', running: '正在计算', complete: '计算完成', partial: '已产出部分结果', failed: '计算失败', interrupted: '已中断' },
   candidate_statuses: { completed: '计算完成', partial: '工序未排齐' },
+  trial_draft_statuses: { editing: '可继续试调', saved: '已保存', discarded: '已放弃' },
   material_strategies: { strict: '等整批物料齐套', stage: '按工序物料齐套' },
   material_descriptions: { strict: '这批全部用料到齐后，再安排工序开工。', stage: '每道工序只等本序和前序用料，不等后续用料。' },
   execution_states: { unreported: '待报工', started: '已开工', partial: '部分完成', complete: '已完工' },
@@ -60,6 +61,16 @@ assert.deepEqual(JSON.parse(JSON.stringify(T)), {
     complete: '工序已排齐', unplanned: '未安排', other_unplanned: '其他未安排', deferred: '缺料未安排' },
   delivery_completion_states: { complete: '工序已排齐', deferred: '因缺料暂未安排', incomplete: '工序未排齐', unknown: '工序安排待确认' },
   resource_kinds: { machine: '设备', operator: '人员' },
+  member_units: { batch: '批', operation: '道工序', machine: '台设备', operator: '人', record: '项' },
+  skill_levels: { beginner: '初级', normal: '普通', expert: '熟练' }, primary_machine: { no: '否', yes: '是' },
+  yes_no: { yes: '是', no: '否' }, op_type_categories: { internal: '自制', external: '外协', both: '自制和外协都可' },
+  merge_modes: { separate: '分别设置', merged: '合并设置' },
+  operation_statuses: { pending: '待排', scheduled: '已排', processing: '加工中', completed: '已完工', skipped: '已跳过' },
+  batch_priorities: { normal: '普通', urgent: '急件', critical: '特急' },
+  batch_statuses: { pending: '待排', scheduled: '已排', processing: '加工中', completed: '已完成', cancelled: '已取消' },
+  ready_statuses: { yes: '齐套', partial: '部分齐套', no: '未齐套' }, operation_sources: { internal: '自制', external: '外协' },
+  resource_statuses: { active: '启用', inactive: '停用', maintain: '停机' },
+  missing_resource_policies: { auto_assign: '自动分配', exclude: '暂不排' }, completed_policies: { preserve_actuals: '保留开工和完工记录' },
   resource_views: { selected_batches: '本次选中批次', full_candidate: '整份候选方案' },
   resource_metric_labels: { available_hours: '可排总时长', occupied_hours: '班表内已占时间', summed_load_hours: '班表内逐工序占用合计',
     overlap_hours: '班表内重复计入时长', outside_calendar_hours: '安排跨度跨非工作时段', utilization_ratio: '班表内占用比例', demand_ratio: '工序合计占用比例',
@@ -85,6 +96,45 @@ assert.deepEqual(JSON.parse(JSON.stringify(T)), {
     failure: '操作没有完成。请刷新重试；仍不行请联系维护人员，并告知下方编号。' }
 });
 assert(Object.isFrozen(T.outcomes));
+// 取值词表：已知字段显示中文，派工规则令牌带参数也能读，不认识的码不显示原文。
+assert.equal(T.condition_value('dispatch_mode', 'sgs'), '智能派工');
+assert.equal(T.condition_value('dispatch_rule', 'atc:k=4.0'), '综合判断更紧急的先做（交期视野 4.0）');
+assert.equal(T.condition_value('dispatch_rule', 'unknown_rule'), '其他派工规则');
+assert.equal(T.condition_value('sort_strategy', 'unknown'), '其他取值');
+assert.equal(T.condition_value('freeze_window_enabled', 'yes'), '是');
+assert.equal(T.condition_value('time_budget_seconds', 10), '10');
+assert.equal(T.condition_value('algo_mode', null), '未记录');
+// 是/否只给登记过的开关字段；图号、分件编号这类自由文本恰好写成 yes/no 也照原值显示。
+assert.equal(T.condition_value('graph_block_on_cycle', 'no'), '否');
+assert.equal(T.condition_value('auto_assign_enabled', 'yes'), '是');
+assert.equal(T.condition_value('part_no', 'yes'), 'yes');
+assert.equal(T.condition_value('piece_id', 'no'), 'no');
+// 历史条件的受控枚举按业务概念显示中文；同名 status 按条件分类取批次、工序或资料的词表。
+assert.deepEqual([['material_strategy', 'strict'], ['missing_resource_policy', 'auto_assign'], ['completed_policy', 'preserve_actuals'],
+  ['priority', 'urgent'], ['ready_status', 'partial'], ['source', 'internal'], ['merge_mode', 'merged'], ['is_primary', 'yes'],
+  ['execution_state', 'started'], ['target_basis', 'piece'], ['objective', 'min_overdue'], ['objective_name', 'min_tardiness']]
+  .map(([field, value]) => T.condition_value(field, value)),
+  ['等整批物料齐套', '自动分配', '保留开工和完工记录', '急件', '部分齐套', '自制', '合并设置', '是', '已开工', '分件工序数量', '交期优先', '拖期更轻']);
+assert.deepEqual([['batch', 'pending'], ['batch', 'cancelled'], ['requirements', 'completed'], ['materials_outsource', 'inactive'], ['resource_qualifications', 'maintain']]
+  .map(([category, value]) => T.condition_value('status', value, category)), ['待排', '已取消', '已完工', '停用', '停机']);
+assert.equal(T.condition_value('priority', 'new_priority'), '其他取值');
+assert.equal(T.condition_value('status', 'archived', 'batch'), '其他取值');
+assert.equal(T.condition_value('objective', 'new_objective'), '其他优化目标');
+assert.equal(T.search_stage('graph_ready_v2_repaired'), '修整优化排法');
+assert.equal(T.search_stage('new_stage'), '其他搜索阶段');
+assert.equal(T.execution_kind('decision_reused'), '沿用已算结果');
+assert.equal(T.process_flag('final'), '最终记录');
+assert.equal(T.process_flag('new_flag'), '其他标记');
+assert.equal(T.run_status('interrupted'), '已中断');
+assert.equal(T.run_status('new_state'), '其他状态');
+// 试调草稿状态与约束检查结果是两张表；保存的试调方案读回的保存值不准入，词表外的码也显示中文。
+assert.deepEqual(['editing', 'discarded', 'valid'].map(T.trial_draft_status), ['可继续试调', '已放弃', '其他状态']);
+assert.deepEqual(['valid', 'blocked', 'saved'].map(T.trial_constraint_status), ['通过', '有冲突，不能采用', '其他状态']);
+assert.equal(T.delivery_issue('no_admission_baseline'), '排产时没有正式计划可供对比');
+assert.equal(T.delivery_issue('new_reason'), '原因说明缺失');
+// 计划的范围原因与试调的约束原因也在同一张表里。
+assert.equal(T.delivery_issue('deferred_operation_source_missing'), '待料工序的来源批次未知');
+assert.equal(T.delivery_issue('trial_constraints_blocked'), '试调安排有约束冲突');
 // 执行状态、数据完整性、交付判断各只留一套叫法：现场记录、排产候选、试调、值班台都从这里取。
 assert(Object.isFrozen(T.execution_states) && Object.isFrozen(T.data_quality) && Object.isFrozen(T.delivery_risks));
 assert.equal(T.outcomes.pending('保存'), '上次保存的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。');
@@ -111,7 +161,8 @@ assert(text(Ref({ value: 0 })).includes('0'));
 assert(text(Ref({ value: '<script>bad()</script>' })).includes('<script>bad()</script>'));
 assert.equal(Ref({ value: 'r1' }).props.dangerouslySetInnerHTML, undefined);
 assert.equal(ErrorBox({ error: null }), null);
-const original = Object.freeze({ message: '请先填写批次数量。', code: 'quantity.required', requestKey: hash });
+const { failure } = context.__wbRuntime.getModule('shared/contract/kit.js');
+const original = failure('请先填写批次数量。', { code: 'quantity.required', requestKey: hash });
 const business = ErrorBox({ error: original, fields: [{ path: 'quantity', message: original.message }] });
 assert.equal(text(business, true).match(/请先填写批次数量。/g).length, 1);
 assert(!text(business, true).includes(hash));
@@ -119,31 +170,45 @@ assert(!text(business, true).includes('quantity.required'));
 assert(text(business).includes(hash));
 assert(text(business).includes('quantity.required'));
 for (const message of ['工艺表.xlsx 缺少工序列，请修正后重试。', 'route_template.xlsx 缺少工序列，请修正后重试。', '无法读取 aps.db，请检查文件是否仍在原位置。']) {
-  const tree = ErrorBox({ error: { message, code: 'file.invalid' } });
+  const tree = ErrorBox({ error: failure(message, { code: 'file.invalid' }) });
   assert(text(tree, true).includes(message), 'Keep actionable file context');
   assert(!text(tree, true).includes('file.invalid'));
   assert(text(tree).includes('file.invalid'));
 }
+// kit 文案里夹着编码、JSON 或异常名时同样只显示兜底句，原文进折叠区。
 for (const message of ['HTTP 503: request_failed', 'TypeError: 无法读取', '{"message":"bad"}', '[1,2]', '{}', '引用 ' + hash + ' 已过期', 'request_failed', '资格检查 qualification.empty']) {
-  const tree = ErrorBox({ error: { message }, fallback: '保存未完成，请重试。' });
+  const tree = ErrorBox({ error: failure(message), fallback: '保存未完成，请重试。' });
   assert(text(tree, true).includes('保存未完成，请重试。'));
   assert(!text(tree, true).includes(message));
   assert(text(tree).includes(message));
 }
-const filtered = ErrorBox({ error: { message: '必填项未完成。' }, hideMessage: true, fields: [
-  { path: 'quantity', message: '请填写数量。' }, { path: 'due_date', message: '请选择交期。' }, { path: 'due_date', message: '请选择交期。' }
-], excludePaths: ['quantity'] });
-assert(!text(filtered, true).includes('请填写数量。'));
+// 不是 kit 统一错误对象的（程序内部 TypeError、浏览器异常、别处 new 出来的 Error），原文再像中文也不当用户文案：
+// 界面只显示中文兜底句，原文和错误类型只进折叠的“原始错误信息”。
+for (const error of [new TypeError("Cannot read properties of undefined (reading 'data')"), new DOMException('The user aborted a request.', 'AbortError'),
+  new Error('请先填写批次数量。')]) {
+  const tree = ErrorBox({ error });
+  assert.equal(text(tree, true).trim(), '操作未完成，请核对后重试。');
+  assert(text(tree).includes('原始错误信息') && text(tree).includes(error.message));
+  if (error.name !== 'Error') assert(text(tree).includes(error.name));
+}
+assert.equal(text(ErrorBox({ error: new RangeError('Invalid time value'), fallback: '候选方案读取失败，请刷新后重试。' }), true).trim(), '候选方案读取失败，请刷新后重试。');
+// 只能放一句话的地方（禁用理由）用 errorText，与错误框同一条规则。
+const { errorText } = context.__wbRuntime.getModule('WorkbenchReferences.jsx');
+assert.equal(errorText(failure('计划已经更新，请刷新后重试。'), '维护状态查询失败。'), '计划已经更新，请刷新后重试。');
+assert.equal(errorText(failure('HTTP 503: request_failed'), '维护状态查询失败。'), '维护状态查询失败。');
+assert.equal(errorText(new TypeError('Failed to fetch'), '维护状态查询失败。'), '维护状态查询失败。');
+assert.equal(errorText(new TypeError('Failed to fetch')), '操作未完成，请核对后重试。');
+// 就地标红项由调用方（ResourceControls.ErrorBox）先滤掉；这里只收到剩下的字段行，同一句只显示一次。
+const filtered = ErrorBox({ error: failure('必填项未完成。'), hideMessage: true, fields: [
+  { path: 'due_date', message: '请选择交期。' }, { path: 'due_date', message: '请选择交期。' }
+] });
 assert(!text(filtered, true).includes('必填项未完成。'));
 assert.equal(text(filtered, true).match(/请选择交期。/g).length, 1);
 const diagnosticOnly = ErrorBox({ error: original, hideMessage: true });
 assert.equal(text(diagnosticOnly, true).trim(), '');
 assert(text(diagnosticOnly).includes(hash));
 // 齐套规则只有 strict 和 stage；值域外的 split 按记录无效显示，关闭检查时也不能回显成正在生效。
-assert.equal(T.material_strategy('split', true), '记录无效');
-assert.equal(T.material_strategy('stage', false), '未启用（齐套检查已关闭）');
-assert.equal(T.material_strategy(null, true), '未记录');
-assert.equal(T.material_strategy('stage', null), '未记录');
+assert.equal(T.material_strategy('strict', false), '未启用（齐套检查已关闭）');
 assert(Object.isFrozen(T.material_descriptions));
 
 function load(name) {
@@ -159,6 +224,7 @@ context.__wbRuntime.setStub('ResourceControls.jsx', {
   ErrorBox,
   Button: props => React.createElement('button', props, ...props.children),
   Field: props => React.createElement('label', props, ...props.children),
+  FieldCell: props => props.children,
 });
 load('PreflightContract.js'); load('PreflightControls.jsx');
 const C = context.__wbRuntime.getModule('PreflightContract.js'), refA = 'a'.repeat(48), refB = 'b'.repeat(48);
@@ -233,9 +299,8 @@ const conflicts = [
     message: '后道工序的执行或正式安排依赖本工序完工',
     plan: { plan_ref: 'd'.repeat(48), task_ref: '1'.repeat(48), version: 5, start: '2026-10-26T10:44:00', end: '2026-10-26T13:44:00' } }
 ];
-// The transport's unified error is flat: conflicts sit beside message and code.
-const rejected = { phase: 'idle', locked: false, error: { message: '请先处理下面列出的影响。', code: 'constraint_conflict', fields: [], conflicts,
-  committed: false, status: 409, requestRef: null, requestKey: null, resultTarget: null } };
+// The transport's unified error is the kit failure: conflicts sit beside message and code.
+const rejected = { phase: 'idle', locked: false, error: failure('请先处理下面列出的影响。', { code: 'constraint_conflict', conflicts, status: 409 }) };
 const failureTree = context.__wbRuntime.getModule('FieldControls.jsx').Feedback({ command: rejected }), visibleFailure = text(failureTree, true);
 for (const label of ['20 热处理', '30 检验', '分件 A']) assert(visibleFailure.includes(label));
 assert.equal((visibleFailure.match(/后道工序的执行或正式安排依赖本工序完工/g) || []).length, 2);

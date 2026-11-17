@@ -1,11 +1,13 @@
 import React from './shared/runtime/react.js';
 import C from './resource-contract.js';
 import { useQuery } from './shared/session/query.js';
+import APSResourceAPI from './resource-api.js';
 import { iconNodes, Ico, SMIcon, RESOURCE_CONTROL_ICONS as railPaths } from './shared/ui/icons.jsx';
 import { TransferIcon } from './shared/ui/Button.jsx';
 import { WorkbenchError } from './WorkbenchReferences.jsx';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
+import { object } from './shared/contract/kit.js';
 
 function Icon({ name, className }) {
   const nodes = iconNodes[name];
@@ -46,28 +48,17 @@ function Button({ icon, transfer, children, reason, reasonDisplay = 'inline', bu
     {inlineReason && <span id={reasonId} className="wb-reason" role="status">{reason}</span>}
     {hiddenReason && <span id={reasonId} className="wb-visually-hidden">{reason}</span>}</span>;
 }
-const fieldPath = path => path.replace(/^input\./, '');
-function uniqueFieldErrors(error, errors) {
-  const seen = new Set();
-  return (errors || C.fieldErrors(error)).filter(row => {
-    if (!row || typeof row.path !== 'string' || typeof row.message !== 'string') return false;
-    const key = fieldPath(row.path) + '\n' + row.message;
-    if (seen.has(key)) return false;
-    seen.add(key); return true;
-  });
-}
+// excludePaths 是页面上已经就地标红的输入框路径：这些项的文案不在总错误框里重复。
 function ErrorBox({ error, excludePaths = [] }) {
   if (!error) return null;
-  const excluded = new Set(excludePaths.map(fieldPath));
-  const all = uniqueFieldErrors(error), fields = all.filter(row => !excluded.has(fieldPath(row.path)));
-  const message = C.message(error), hideMessage = all.some(row => excluded.has(fieldPath(row.path)) && row.message === message);
+  const all = C.fieldErrors(error), fields = all.filter(row => !excludePaths.includes(row.path));
+  const hideMessage = all.some(row => excludePaths.includes(row.path) && row.message === error.message);
   return <WorkbenchError error={error} fields={fields} hideMessage={hideMessage} />;
 }
+// 带标签的输入框按 path 认领字段错误（resource-contract.fieldMessages）；没有 path 的字段不认领。
 function Field({ label, path, error, errors, required, full, hint, children }) {
   const generated = React.useId(), child = React.Children.only(children), id = child.props.id || generated;
-  // 没有 path 的字段不认领任何字段级错误。
-  const target = path === undefined ? null : fieldPath(path);
-  const messages = uniqueFieldErrors(error, errors).filter(row => fieldPath(row.path) === target).map(row => row.message);
+  const messages = path === undefined ? [] : C.fieldMessages(errors || C.fieldErrors(error), path);
   const describedBy = [child.props['aria-describedby'], hint && id + '-hint', messages.length && id + '-error'].filter(Boolean).join(' ');
   return <div className={'field wb-field' + (full ? ' full' : '') + (messages.length ? ' err' : '')} data-field-path={path}>
     <label htmlFor={id}>{label}{required && <span className="req" aria-hidden="true">*</span>}</label>
@@ -76,6 +67,15 @@ function Field({ label, path, error, errors, required, full, hint, children }) {
       'aria-invalid': messages.length ? true : child.props['aria-invalid'], 'aria-describedby': describedBy || undefined })}
     {hint && <span id={id + '-hint'} className="fhint">{hint}</span>}
     {messages.length > 0 && <span id={id + '-error'} className="wb-field-error">{messages.join(' ')}</span>}</div>;
+}
+// 表格格子、行内勾选这类没有标签外框的输入框：同样按 path 认领字段错误，标红并把文案写在框后。
+function FieldCell({ path, error, children }) {
+  const generated = React.useId(), child = React.Children.only(children), id = child.props.id || generated;
+  const messages = C.fieldMessages(C.fieldErrors(error), path);
+  if (!messages.length) return child;
+  return <>{React.cloneElement(child, { id, 'aria-invalid': true,
+    'aria-describedby': [child.props['aria-describedby'], id + '-error'].filter(Boolean).join(' ') })}
+    <span id={id + '-error'} className="wb-field-error">{messages.join(' ')}</span></>;
 }
 function focusFirstInvalid(form) {
   if (!form) return false;
@@ -248,31 +248,33 @@ function Modal({ title, icon, children, footer, onClose, locked, labelId, suspen
 }
 function relationLabels(entity, key) {
   if (!entity) return [];
-  const objects = { op_type_ref: 'op_type', group_ref: 'group', shift_profile_ref: 'shift_profile', skill_refs: 'skills', op_type_refs: 'op_types',
+  const objects = { group_ref: 'group', shift_profile_ref: 'shift_profile', skill_refs: 'skills', op_type_refs: 'op_types',
     actual_machine_ref: 'actual_machine', actual_operator_ref: 'actual_operator' };
   const related = entity.relationships[objects[key]], refs = entity.relationships[key];
   // 后端投影的多值关系同时给编号表和对象表（编号表由对象表导出），单值关系给对象或 null。
   if (Array.isArray(related)) return related.map(item => ({ ref: item.ref, label: item.label }));
-  if (C.object(related)) return [{ ref: refs, label: related.label }];
+  if (object(related)) return [{ ref: refs, label: related.label }];
   return refs ? [{ ref: refs, label: null }] : [];
 }
 function Relation({ entity, field, onOpen }) {
   const items = relationLabels(entity, field);
   return items.length ? <span className="chipline">{items.map(item => onOpen ? <Button key={item.ref} className="mini wb-chip-link" icon="arrow-right" onClick={() => onOpen(item.ref)}>{item.label || '名称未填写'}</Button> : <span className="chip wb-chip-wrap" key={item.ref}>{item.label || '名称未填写'}</span>)}</span> : <span className="muted">未选</span>;
 }
-function Choice({ adapter, field, value, original, onChange, disabled, onCatalog, catalogBusy, error }) {
+// 关系字段的候选项都是基础资料列表：资源表单与报工表单的实际设备、人员都从这里读。
+function Choice({ field, value, original, onChange, disabled, onCatalog, catalogBusy, error }) {
   const [search, setSearch] = React.useState(''), [query, setQuery] = React.useState('');
   const [page, setPage] = React.useState(1), [snapshot, setSnapshot] = React.useState(undefined);
   const [known, setKnown] = React.useState({});
   const id = React.useId();
-  const errors = uniqueFieldErrors(error).filter(row => ['relationships.' + field.key, field.key].includes(fieldPath(row.path)));
-  const invalid = errors.length > 0, describedBy = invalid ? id + '-error' : undefined;
+  // 资源表单报 relationships.<键>，报工表单的实际设备 / 人员直接报 <键>。
+  const rows = C.fieldErrors(error), messages = Array.from(new Set(C.fieldMessages(rows, 'relationships.' + field.key).concat(C.fieldMessages(rows, field.key))));
+  const invalid = messages.length > 0, describedBy = invalid ? id + '-error' : undefined;
   const request = useQuery(async signal => {
     const scope = { query, page, size: 50 };
     if (field.category) scope.category = field.category;
     if (snapshot) scope.snapshot_ref = snapshot;
-    return adapter.choices(field.kind, scope, signal);
-  }, [adapter, field.kind, field.category, query, page, snapshot]);
+    return APSResourceAPI.forNamespace('resources').choices(field.kind, scope, signal);
+  }, [field.kind, field.category, query, page, snapshot]);
   const response = request.result;
   React.useEffect(() => {
     if (!response) return;
@@ -322,7 +324,7 @@ function Choice({ adapter, field, value, original, onChange, disabled, onCatalog
       <select id={id} value={value} disabled={disabled} aria-invalid={invalid || undefined} aria-describedby={describedBy} onChange={event => choose(event.target.value)}>
         <option value="">未选</option>{options.map(item => <option key={item.ref} value={item.ref} disabled={!selectable(item) && item.ref !== value}>
           {item.label}{!selectable(item) ? '（停用 / 未确认）' : ''}</option>)}</select>}
-    {invalid && <span id={describedBy} className="wb-field-error">{Array.from(new Set(errors.map(row => row.message))).join(' ')}</span>}
+    {invalid && <span id={describedBy} className="wb-field-error">{messages.join(' ')}</span>}
     {request.loading && <span role="status" className="fhint">正在读取选项…</span>}
     <ErrorBox error={request.error} />
     {request.error && <Button disabled={disabled} onClick={() => { if (page === 1 && snapshot === undefined) request.reload(); else { setPage(1); setSnapshot(undefined); } }}>刷新选项</Button>}
@@ -403,7 +405,7 @@ function TimelineZoom({ zoom, max, scope = '', onZoom, onFit, disabled, classNam
     <Button icon="plus" className={className} aria-label={'放大' + axis} title={'放大' + axis + ' (+)'} disabled={disabled || zoom >= max} onClick={() => onZoom(timelineZoomStep(zoom, 1, max))} />
     <Button icon="unfold-vertical" className={(fitClassName || className) + ' wb-zoom-fit'} aria-label={'显示完整' + range} title={'显示完整' + range + ' (F)'} disabled={disabled || zoom <= 1} onClick={onFit} /></>;
 }
-const ResourceControls = { Icon, Button, Search, ErrorBox, Issues, Status, Modal, Relation, relationLabels, Choice, Field, focusFirstInvalid, MetricValue, EmptyState, Pager, TimelineZoom, timelineZoomKey, timelineZoomStep, focusOrigin, restoreCandidate };
+const ResourceControls = { Icon, Button, Search, ErrorBox, Issues, Status, Modal, Relation, relationLabels, Choice, Field, FieldCell, focusFirstInvalid, MetricValue, EmptyState, Pager, TimelineZoom, timelineZoomKey, timelineZoomStep, focusOrigin, restoreCandidate };
 
 export {
   ResourceControls,
@@ -418,6 +420,7 @@ export {
   relationLabels,
   Choice,
   Field,
+  FieldCell,
   focusFirstInvalid,
   MetricValue,
   EmptyState,

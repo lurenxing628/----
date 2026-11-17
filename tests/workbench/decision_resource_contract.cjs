@@ -47,7 +47,7 @@ function runtime(state = hooks()) {
 const { window } = runtime(), API = getMod(window, 'RunDecisionAPI.js'), R = getMod(window, 'RunDecisionResources.jsx');
 const WorkbenchTerms = getMod(window, 'WorkbenchTerms.js'), WorkbenchFormat = getMod(window, 'WorkbenchFormat.js'), RunCandidateModel = getMod(window, 'RunCandidateModel.js');
 const common = { selected_candidate_ref: chosen, reference_candidate_ref: baseline, resource_view: 'selected_batches', range_start: start, range_end: end };
-function scope(q) { return { run_ref: run, selected_candidate_ref: chosen, comparison_mode: q.comparison_mode || 'candidates', resource_view: q.resource_view || 'selected_batches', range_start: start, range_end: end,
+function scope(q) { return { run_ref: run, selected_candidate_ref: chosen, comparison_mode: q.comparison_mode || 'candidates', resource_view: q.resource_view || 'selected_batches', range_start: start, range_end: end, batch_count: 1, operation_count: 2,
   resource_refs: { machine: q.resource_view === 'full_candidate' ? [...machines, outside] : machines, operator: operators }, reference_state: 'available',
   reference: q.comparison_mode === 'admission_official' ? { kind: 'admission_official', baseline_ref: official } : { kind: 'candidate', candidate_ref: baseline } }; }
 function metricWindow(extra = {}) { return { state: 'complete', calendar_state: 'complete', actual_work_state: 'not_recorded', source: 'archived_resource_calendar', metric_version: 'decision-resource-v4', issues: [], reservation_overlaps: [], reservations: [], contribution_operation_count: 2, known_contribution_operation_count: 2,
@@ -60,7 +60,7 @@ function summary() { return { ...metricWindow(), resource_count: 23, used_resour
   high_pressure_count: 3, known_high_pressure_count: 3, zero_capacity_task_count: 0, conflict_resource_count: 2, unknown_day_resource_count: 0,
   balance_cv: 0.5, balance_state: 'complete', balance_reason: null }; }
 const deltas = { available_hours: 0, occupied_hours: 1, summed_load_hours: 2, outside_calendar_hours: 1, overlap_hours: 1, utilization_ratio: 0.125, peak_utilization: 0.25, demand_ratio: 0.25, balance_cv: 0.1 };
-const coverage = { formal_state: 'available', formal_operation_count: 2, covered_formal_operation_count: 2, missing_formal_operation_refs: [], formal_coverage_complete: true, unplanned_operation_refs: [], deferred_operation_refs: [], missing_formal_arrangements: [] };
+const coverage = { formal_state: 'available', formal_operation_count: 2, covered_formal_operation_count: 2, missing_formal_operation_count: 0, formal_coverage_complete: true, unplanned_operation_count: 0, deferred_operation_count: 0, missing_formal_arrangements: [] };
 function drill(q, resource, side = 'selected') { const formal = side === 'reference' && q.comparison_mode === 'admission_official'; return { run_ref: run, candidate_ref: side === 'reference' && !formal ? baseline : chosen,
   comparison_mode: q.comparison_mode || 'candidates', resource_view: q.resource_view || 'selected_batches', resource_kind: q.resource_kind || 'machine', resource_ref: resource, range_start: start, range_end: end,
   ...(formal ? { reference_view: true, plan_ref: official } : {}) }; }
@@ -90,12 +90,12 @@ async function rejected(value, modify, query = common, section = 'resources') { 
 async function identityContracts() {
   const value = payload(); assert.deepEqual(await readResource(value, common), value.data);
   assert.equal(value.data.items[0].after.metric_version, 'decision-resource-v4', '时段资源明细采用同一v4资源投影');
-  await rejected(value, result => { result.data.scope.resource_view = 'full_candidate'; });
-  await rejected(value, result => { result.data.scope.resource_refs.machine = [outside]; }, { ...common, expected_resource_refs: scope(common).resource_refs });
+  await rejected(value, result => { result.meta.snapshot_ref = 't'.repeat(32); }, { ...common, snapshot_ref: token });
   const officialQuery = { ...common, comparison_mode: 'admission_official' }; delete officialQuery.reference_candidate_ref;
   const formal = payload(officialQuery); assert.equal((await readResource(formal, officialQuery)).items[0].drill.reference.reference_view, true);
   for (const kind of ['machine', 'operator']) { const q = { ...common, resource_kind: kind, resource_ref: scope(common).resource_refs[kind][0] }, days = payload(q, 'resource-days');
-    assert.equal((await readResource(days, q, 'resource-days')).resource.kind, kind); }
+    assert.equal((await readResource(days, q, 'resource-days')).resource.kind, kind);
+    await rejected(days, result => { result.meta.snapshot_ref = 't'.repeat(32); }, { ...q, snapshot_ref: token }, 'resource-days'); }
   for (const wrong of [{ selected_candidate_ref: undefined }, { resource_kind: 'batch' }, { size: 7 }, { heatmap_size: 20 }]) assert.throws(() => API.resourceScope(run, { ...common, ...wrong }));
   assert.throws(() => API.resourceScope(run, common, 'resource-days'), /请选择/);
   const saved = { resource_kind: 'machine', resource_ref: outside, page: 2, snapshot_ref: token, grain: 'hour',
@@ -103,9 +103,12 @@ async function identityContracts() {
   assert.deepEqual(clone(API.savedResourceView(saved, scope(common).resource_refs, scope(common))),
     { resource_kind: 'machine', page: 1, grain: 'hour', heatmap_page: 1, sort: 'label', pressure_threshold: 0.8 },
     '越界资源和显示窗按同一规则清理，同时保留有效筛选');
-  const boundary = { grain: 'hour', display_start: start + '.000000', display_end: end + '.000000', snapshot_ref: token, heatmap_page: 2 };
+  const boundary = { grain: 'hour', display_start: start, display_end: end, snapshot_ref: token, heatmap_page: 2 };
   assert.deepEqual(clone(API.savedResourceView(boundary, scope(common).resource_refs, scope(common))), boundary,
-    '资源显示窗的等价零小数边界仍在当前比较范围内，保留原快照与页码');
+    '资源显示窗落在当前比较范围边界上，保留原快照与页码');
+  const zeroFraction = { ...boundary, display_start: start + '.000000', display_end: end + '.000000' };
+  assert.deepEqual(clone(API.savedResourceView(zeroFraction, scope(common).resource_refs, scope(common))), { grain: 'hour', heatmap_page: 1 },
+    '时间只认后端 isoformat 的规范形状：全零小数不是规范写法，显示窗按无效清理');
 }
 async function presentationContracts() {
   const zero = metricWindow({ state: 'complete', available_hours: 0, utilization_ratio: null, demand_ratio: null, peak_utilization: null, zero_capacity_task: false, high_pressure: false, conflict: false }), unknown = metricWindow({ state: 'unavailable', available_hours: null, utilization_ratio: null, demand_ratio: null, peak_utilization: null });
@@ -115,15 +118,15 @@ async function presentationContracts() {
   const missingBasis = expand(h(R.Summary, { data: absent, definitions: [] })), beforeCells = nodes(missingBasis).filter(node => node.type === 'tr')[1].children;
   assert(text(beforeCells[1]).includes('184'), '正式基准缺失仍显示归档班表的已知容量');
   assert(text(beforeCells[2]).includes('比较基准缺失'), '缺比较对象的占用继续表达基准缺失');
-  const missing = payload().data; missing.coverage.after.missing_formal_operation_refs = [ref(501)];
+  const missing = payload().data; missing.coverage.after.missing_formal_operation_count = 1;
   missing.coverage.after.missing_formal_arrangements = [{ operation_ref: ref(501), row_ref: ref(500), batch_ref: ref(502), batch_label: 'B-旧计划', process_label: '车削', start, end }];
   const missingText = text(expand(h(R.Coverage, { data: missing }))).replace(/\s+/g, ' ');
-  assert(missingText.includes('B-旧计划 · 车削'), '缺失正式安排沿接口实际批次和工序名称展示');
+  assert(missingText.includes('缺失的正式安排 · 1 道工序') && missingText.includes('B-旧计划 · 车削'), '缺失正式安排沿接口实际计数、批次和工序名称展示');
   assert(!missingText.includes('未知 车削'), '未提供的工序序号不制造未知值');
   for (const [state, mode, reason] of [['absent', 'admission_official', '排产时尚无正式计划。'], ['selection_required', 'candidates', '选定比较基准后显示差值。']]) {
     const noBaseline = clone(missing); noBaseline.baseline.state = state; noBaseline.scope.comparison_mode = mode;
-    noBaseline.coverage.before.unplanned_operation_refs = [ref(501), ref(502)]; noBaseline.coverage.before.deferred_operation_refs = [ref(503)];
-    noBaseline.coverage.after.unplanned_operation_refs = [ref(504)]; noBaseline.coverage.after.deferred_operation_refs = [ref(505)];
+    noBaseline.coverage.before.unplanned_operation_count = 2; noBaseline.coverage.before.deferred_operation_count = 1;
+    noBaseline.coverage.after.unplanned_operation_count = 1; noBaseline.coverage.after.deferred_operation_count = 1;
     const coverageTree = expand(h(R.Coverage, { data: noBaseline }));
     const sideText = label => text(nodes(coverageTree).find(node => node.type === 'div' && node.children.some(child => child && child.type === 'strong' && text(child).replace(/\s/g, '') === label + '：'))).replace(/\s+/g, ' ');
     const before = sideText('基准'), after = sideText('当前方案');
@@ -131,9 +134,20 @@ async function presentationContracts() {
     assert(!before.includes(WorkbenchTerms.missing_arrangements(2, 1)) && !before.includes('B-旧计划'), '缺对象不冒充已知空计划或已知未安排数量');
     assert(after.includes(WorkbenchTerms.missing_arrangements(1, 1)) && after.includes('B-旧计划 · 车削'), '所选侧保持真实未安排、缺料和缺失正式记录');
   }
-  const segmented = payload({ resource_ref: machines[0] }, 'resource-days'); segmented.data.items[0].after.tasks.push({ ...segmented.data.items[0].after.tasks[0], row_ref: ref(506) });
+  const rankingLists = value => nodes(expand(h(R.Rankings, { data: value, onFocus() {}, onAll() {} }))).filter(node => node.type === 'details');
+  const listed = node => nodes(node).filter(child => child.type === 'li').length;
+  const [, referencedIncrease] = rankingLists(payload().data);
+  assert(listed(referencedIncrease) === 10 && !text(referencedIncrease).includes('没有参照方案'), '有参照方案时增幅前 10 照常列出');
+  for (const state of ['absent', 'selection_required']) {
+    const unreferenced = payload().data; unreferenced.baseline.state = state; unreferenced.rankings.top_increase = [];
+    const [pressure, increase] = rankingLists(unreferenced);
+    assert.equal(listed(pressure), 10, '没有参照方案时单日占用比例最高照常列出');
+    assert(text(increase).includes('没有参照方案，不能按增量排名'), '没有参照方案时增幅一栏说明不能按增量排名');
+    assert(!nodes(increase).some(node => ['ol', 'li', 'button'].includes(node.type)), '没有参照方案时不列增幅行，也不提供展开按钮');
+  }
+  const segmented = payload({ resource_ref: machines[0] }, 'resource-days'); segmented.data.items[0].after.tasks.push({ ...segmented.data.items[0].after.tasks[0], row_ref: ref(506), operation_ref: ref(507) });
   const dailyTree = expand(h(R.Days, { result: segmented, query: common, definitions: [], onQuery() {}, onClose() {}, onDrill() {} }));
-  assert(nodes(dailyTree).some(node => node.type === 'summary' && text(node).replace(/\s/g, '').includes('当前方案：2段安排记录')), '同工序多段列表按实际安排记录段数展示');
+  assert(nodes(dailyTree).some(node => node.type === 'summary' && text(node).replace(/\s/g, '').includes('当前方案：2段安排记录')), '同一资源同日的安排按实际安排记录条数展示');
   const data = payload().data; let presentationReads = 0; Object.defineProperty(data.heatmap.items[0].cells[0], 'after', { get() { presentationReads++; return zero; } });
   const selection = [], focus = [], { state, window: local } = runtime(), localHeatmap = getMod(local, 'RunDecisionResourceHeatmap.jsx'), localResources = getMod(local, 'RunDecisionResources.jsx');
   let tree = state.render(() => localHeatmap.Heatmap({ data, focus: { resource_ref: machines[0], date: dates[0], bucket_key: dates[0] }, definitions: [], mode: 'after', onCursor: value => selection.push(value), onFocus: (...args) => focus.push(args) }));
@@ -358,9 +372,9 @@ async function paneContracts() {
 async function transportContracts() {
   const calls = network.calls, responses = [], exportName = '排产方案对比.xlsx';
   routes[DECISION + 'resources'] = () => responses.shift(); routes[DECISION + 'export'] = () => responses.shift();
-  const q = { ...common, page: 2, heatmap_page: 2, heatmap_size: 7, snapshot_ref: token, expected_resource_refs: scope(common).resource_refs };
-  responses.push(payload(q)); await API.resources(run, q); assert.equal(calls.at(-1).url.searchParams.has('expected_resource_refs'), false);
-  assert.equal(calls.at(-1).url.searchParams.get('heatmap_page'), '2');
+  const q = { ...common, page: 2, heatmap_page: 2, heatmap_size: 7, snapshot_ref: token };
+  responses.push(payload(q)); await API.resources(run, q);
+  assert.equal(calls.at(-1).url.searchParams.get('heatmap_page'), '2'); assert.equal(calls.at(-1).url.searchParams.get('snapshot_ref'), token);
   // Backend export (core/services/workbench/run/decision_export.py): attachment with its own filename, XLSX magic bytes and three business headers.
   const download = () => file(Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x00]), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     { 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(exportName), 'X-Workbench-Run-Ref': run, 'X-Workbench-Snapshot-Ref': token, 'X-Workbench-Row-Count': '23' });
@@ -370,11 +384,11 @@ async function transportContracts() {
     const params = calls.at(-1).url.searchParams; assert.equal(params.get('filter_section'), section); assert.equal(params.get('resource_ref'), machines[0]); assert.equal(params.get('resource_view'), 'selected_batches');
     for (const key of ['page', 'size', 'heatmap_page', 'heatmap_size']) assert.equal(params.has(key), false, '导出所有页删除显示分页:' + key);
   }
-  const hourExport = { ...common, grain: 'hour', display_start: '2026-12-01T08:00:00.125', display_end: '2026-12-01T15:00:00.125', pressure_threshold: 0.8, pressure_filter: 'high_pressure', heatmap_page: 2, heatmap_size: 7 };
+  const hourExport = { ...common, grain: 'hour', display_start: '2026-12-01T08:00:00.125000', display_end: '2026-12-01T15:00:00.125000', pressure_threshold: 0.8, pressure_filter: 'high_pressure', heatmap_page: 2, heatmap_size: 7 };
   responses.push(download()); await API.decisionExport(run, hourExport, token, 'xlsx', undefined, 'resources');
   assert.equal(calls.at(-1).url.searchParams.get('display_start'), hourExport.display_start, '小时筛选导出保服务给出的真实当前显示窗与精度');
   assert.equal(calls.at(-1).url.searchParams.get('display_end'), hourExport.display_end); assert.equal(calls.at(-1).url.searchParams.get('pressure_threshold'), '0.8');
-  const bucketExport = { ...common, resource_ref: machines[0], grain: 'shift', bucket_start: '2026-12-01T18:30:00.125', bucket_end: '2026-12-02T02:30:00.125' };
+  const bucketExport = { ...common, resource_ref: machines[0], grain: 'shift', bucket_start: '2026-12-01T18:30:00.125000', bucket_end: '2026-12-02T02:30:00.125000' };
   responses.push(download()); await API.decisionExport(run, bucketExport, token, 'xlsx', undefined, 'resource-days');
   assert.equal(calls.at(-1).url.searchParams.get('bucket_start'), bucketExport.bucket_start, '精确班次导出绑定选择时段');
   assert.equal(calls.at(-1).url.searchParams.get('bucket_end'), bucketExport.bucket_end);

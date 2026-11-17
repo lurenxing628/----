@@ -1,11 +1,4 @@
-const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-
-function fault(message, details) {
-  return Object.assign(new Error(message), {
-    code: null, fields: [], conflicts: [], committed: false, status: null,
-    requestRef: null, requestKey: null, resultTarget: null
-  }, details);
-}
+import { object, failure } from '../contract/kit.js';
 
 function canonical(value) {
   return JSON.stringify(value, (_, item) => object(item) ? Object.keys(item).sort().reduce((out, key) => { out[key] = item[key]; return out; }, {}) : item);
@@ -13,16 +6,26 @@ function canonical(value) {
 
 const equal = (a, b) => canonical(a) === canonical(b);
 
+// 领域给文案时由这里造错误对象。本机记录读写不知道服务端有没有生效，一律按“结果未知”：即使落进命令结算的 catch，
+// T.rejected 也不会把本机写失败当成“确定没有生效”去清待确认记录。需要别的判定时领域传构造函数自己给。
 function raise(spec, cause, extra) {
-  const err = !spec ? cause : typeof spec === 'function' ? spec() : new Error(spec);
+  const err = !spec ? cause : typeof spec === 'function' ? spec() : failure(spec, { committed: 'unknown' });
   if (extra) Object.assign(err, extra);
   throw err;
+}
+
+// 采用类待确认记录（pending / rejected / committed 三态，试调采用与校准采用共用）的本机读写失败：记录已是结论时，
+// 换成说明这次结论的 kit 错误；其余错误原样交给显示层。current 是失败时本页认定的记录，默认取错误带出的 saved。
+function adoptionStorageFailure(e, current = e.saved) {
+  if (current && current.phase === 'committed') return failure('已收到采用结果，但本机没能保存这次操作记录。');
+  if (current && current.phase === 'rejected') return failure('本次采用未通过，但本机没能保存这次操作记录。');
+  return e;
 }
 
 // 跨页互斥的唯一入口：同名的本机待确认记录转换在所有标签页之间串行。不带 wait 时拿不到锁立即返回 acquired:false。
 async function exclusive(name, { wait }, fn) {
   const locks = window.navigator && window.navigator.locks;
-  if (!locks) throw fault('当前浏览器不支持，请用 Chrome 打开。', { code: 'locks_unavailable' });
+  if (!locks) throw failure('当前浏览器不支持，请用 Chrome 打开。', { code: 'locks_unavailable' });
   return locks.request(name, wait ? {} : { ifAvailable: true },
     async lock => lock ? { acquired: true, value: await fn() } : { acquired: false, value: undefined });
 }
@@ -82,13 +85,15 @@ function pendingStore({ key, storage = () => window.localStorage, event, raw = f
   }
   // 每次转换只调一次 getItem。未刷盘记录只在磁盘仍是它记下的旧值时有效，否则别处已经写过，丢弃它。
   // 读不到磁盘时先让 settle（save 的冲突核对与未刷盘记录）处理本页状态，再在读取边界报错。
+  // 读不到磁盘的错误带 unreadable: true，和冲突的 conflict: true 一样是领域识别它的唯一依据，不比对文案
+  // （多数领域的损坏文案默认就是读取文案）。不用 code：没给 readError 的存储原样抛浏览器异常，DOMException 的 code 只读。
   function effectiveRead(settle) {
     let target, text;
     try { target = storage(); text = target.getItem(key); }
     catch (error) {
       const slot = slotOf(target);
       if (settle) settle(slot);
-      raise(readError, error, slot.pending ? { saved: slot.pending.value } : undefined);
+      raise(readError, error, slot.pending ? { unreadable: true, saved: slot.pending.value } : { unreadable: true });
     }
     const slot = slotOf(target), disk = decode(text);
     if (slot.pending && !matches(disk, slot.pending.disk)) slot.pending = null;
@@ -193,5 +198,5 @@ function createStoreSubscribe(key, event) {
   };
 }
 
-export { pendingStore, storageSlot, exclusive, canonical, equal };
-export default { pendingStore, storageSlot, exclusive, canonical, equal };
+export { pendingStore, storageSlot, exclusive, canonical, equal, adoptionStorageFailure };
+export default { pendingStore, storageSlot, exclusive, canonical, equal, adoptionStorageFailure };

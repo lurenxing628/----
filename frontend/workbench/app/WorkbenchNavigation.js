@@ -1,9 +1,39 @@
-const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+import { object, checker } from './shared/contract/kit.js';
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const position = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
 
-function check(value) {
-  if (!value) throw new Error('页面地址里的定位信息无效，没有自动改成别的记录或范围。请从侧栏重新打开。');
+const check = checker('页面地址里的定位信息无效，没有自动改成别的记录或范围。请从侧栏重新打开。');
+// 浏览器里记住的页面状态（history.state）是跨请求存储，读到旧形状或不支持的键一律按定位无效处理。
+const restorable = checker('定位信息无效，请从侧栏重新打开。');
+
+// 受控导航声明（boot.navigation_rules，后端 navigation_metadata.NAVIGATION_RULES 下发）的前端唯一解释器；
+// 后端 navigation_boot._restore 解释同一份声明。规则说明见声明处。
+function matches(when, context) {
+  if (when === null) return true;
+  if (own(when, 'has')) return when.has.some(key => own(context, key));
+  return Object.keys(when.is).every(key => Array.isArray(when.is[key]) ? when.is[key].includes(context[key]) : context[key] === when.is[key]);
+}
+// 准入后的页面状态按哪一个变体读：计划中心和执行排产按变体名分流，没有名字的变体返回 null。每页最后一个变体不带 when，总能选中。
+function variant(boot, target, context) {
+  return boot.navigation_rules[target].restore.find(row => matches(row.when, context)).name;
+}
+// 可恢复状态的唯一准入：页面记忆、侧栏恢复和页面之间传的定位都经这里，return_to 按目标页规则递归。
+function admit(boot, target, context) {
+  restorable(object(context) && own(boot.navigation_rules, target));
+  const rule = boot.navigation_rules[target].restore.find(row => matches(row.when, context));
+  restorable(Object.keys(context).every(key => rule.fields.includes(key)) && rule.required.every(key => own(context, key))
+    && Object.keys(rule.requires).every(key => !own(context, key) || rule.requires[key].every(other => own(context, other)))
+    && Object.keys(rule.excludes).every(key => !own(context, key) || !rule.excludes[key].some(other => own(context, other))));
+  if (!own(context, 'return_to')) return;
+  const back = context.return_to;
+  restorable(object(back) && own(back, 'view') && Object.keys(back).every(key => key === 'view' || key === 'context')
+    && typeof back.view === 'string' && own(boot.navigation_rules, back.view));
+  if (own(back, 'context')) admit(boot, back.view, back.context);
+}
+// 沿返回链（含自己）找第一个满足条件的页面状态；“返回历史走势”“排产记录”这类根返回入口都从这里取。
+function origin(context, test) {
+  for (let value = context; value !== undefined; value = value.return_to === undefined ? undefined : value.return_to.context) if (test(value)) return value;
+  return null;
 }
 
 function same(left, right) {
@@ -15,14 +45,12 @@ function same(left, right) {
   return keys.length === Object.keys(right).length && keys.every(key => own(right, key) && same(left[key], right[key]));
 }
 
-function historyView(page) {
-  const context = page.context;
-  return ['analysis', 'gantt', 'delay'].includes(page.view) && context.source === 'run_history'
-    && !own(context, 'run_ref') && !own(context, 'candidate_ref');
+function historyView(boot, page) {
+  return variant(boot, page.view, page.context) === 'history';
 }
 
 function title(boot, page) {
-  if (historyView(page)) return '排产记录';
+  if (historyView(boot, page)) return '排产记录';
   return boot.titles[page.view] || '工作区不存在';
 }
 
@@ -51,6 +79,7 @@ function read(boot) {
   if (!history.state || !own(history.state, 'workbench')) return { view: current, context: {}, key: 0 };
   check(object(saved) && saved.view === current && object(saved.context)
     && Number.isSafeInteger(saved.key) && saved.key >= 0);
+  admit(boot, saved.view, saved.context);
   return saved;
 }
 
@@ -65,7 +94,7 @@ function helpUrl(boot, page) {
   // The manual page renders its "返回" link from src; without it help exits the shell with no way back.
   // The shared history entry has run lookup under 6.2 and decision history under 6.3.
   // Other alias views keep their own id and therefore continue to open their own manual chapter.
-  const history = historyView(page), manualPage = history
+  const history = historyView(boot, page), manualPage = history
     ? page.context.history_topic === 'decision_history' ? 'analysis' : 'run' : page.view;
   const url = new URL(boot.help_url, location.origin); url.searchParams.set('src', href(boot, page.view)); url.searchParams.set('page', manualPage);
   if (history) url.hash = '排产记录';
@@ -140,6 +169,7 @@ function navigate(boot, page, target, supplied, preferSaved = false, pending = {
   // every tab keeps its own range and the supplied context only seeds a first visit. Mixing the
   // current tab's scope / topic into the target's saved table produced unreadable combinations.
   const context = resume ? saved.context : supplied === undefined ? {} : supplied;
+  admit(boot, target, context);
   const scroll = resume && object(saved.scroll) ? (object(context.scroll) ? { ...context.scroll, ...saved.scroll } : saved.scroll) : object(context.scroll) ? context.scroll : {};
   const next = { view: target, context, key: page.key + 1, scroll };
   const extra = resume && object(saved.auxiliary) ? saved.auxiliary : {};
@@ -248,6 +278,6 @@ function guardHistory(boot, { hasDirty, confirmLeave, onRestore, onError }) {
   return { sync, busy: () => !!pending, dispose: () => { disposed = true; window.removeEventListener('popstate', pop); } };
 }
 
-const WorkbenchNavigation = { read, href, helpUrl, remember, navigate, replaceContext, restore, title, historyView, guardHistory, scrollMemory, captureScroll };
-export { read, href, helpUrl, remember, navigate, replaceContext, restore, title, historyView, guardHistory, scrollMemory, captureScroll, WorkbenchNavigation };
+const WorkbenchNavigation = { read, href, helpUrl, remember, navigate, replaceContext, restore, title, historyView, variant, admit, origin, guardHistory, scrollMemory, captureScroll };
+export { read, href, helpUrl, remember, navigate, replaceContext, restore, title, historyView, variant, admit, origin, guardHistory, scrollMemory, captureScroll, WorkbenchNavigation };
 export default WorkbenchNavigation;

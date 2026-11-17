@@ -1,9 +1,11 @@
 import React from './shared/runtime/react.js';
-import ResourceControls from './ResourceControls.jsx';
+import { Button, Modal, ErrorBox, Field } from './ResourceControls.jsx';
 import WorkbenchHandlerMemory from './WorkbenchHandlerMemory.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
+import { errorText } from './WorkbenchReferences.jsx';
 
-const { Button, Modal } = ResourceControls;
+// 采用原因与经办人就地认领后端 422 的字段错误（reason / declared_operator），总错误框不再重复这两项。
+const fieldPaths = ['reason', 'declared_operator'];
 function Scope({ value, label, name }) {
   return <><dl className="ta-scope"><div><dt>{label}</dt><dd>{value.baseline.version === null ? '尚无正式计划' : '第 ' + value.baseline.version + ' 版'}</dd></div>
     <div><dt>采用完整范围</dt><dd>完整试调方案，共 {value.task_count} 道工序</dd></div>
@@ -11,13 +13,12 @@ function Scope({ value, label, name }) {
     <p className="ta-note">将完整试调方案采用为新一版正式计划，保留历史版本。恢复旧安排需重新排产并采用。</p></>;
 }
 function Fields({ session: s }) {
-  const id = React.useId(), frozen = !!s.saved, memoryHint = WorkbenchHandlerMemory.useHint(s.draft.declared_operator);
-  return <div className="ta-fields"><div className="field"><label htmlFor={id + '-reason'}>采用原因</label>
-    <textarea id={id + '-reason'} rows={3} maxLength={1000} value={s.draft.reason} readOnly={frozen} disabled={s.busy}
-      onChange={e => s.change({ ...s.draft, reason: e.target.value })} /></div>
-    <div className="field"><label htmlFor={id + '-operator'}>{WorkbenchTerms.handler}</label><input id={id + '-operator'} maxLength={100} value={s.draft.declared_operator}
-      readOnly={frozen} disabled={s.busy} onChange={e => s.change({ ...s.draft, declared_operator: e.target.value })} />
-      {!frozen && memoryHint && <small>{memoryHint}</small>}</div>
+  const frozen = !!s.saved, memoryHint = WorkbenchHandlerMemory.useHint(s.draft.declared_operator);
+  return <div className="ta-fields"><Field label="采用原因" path="reason" error={s.error}>
+    <textarea rows={3} value={s.draft.reason} readOnly={frozen} disabled={s.busy}
+      onChange={e => s.change({ ...s.draft, reason: e.target.value })} /></Field>
+    <Field label={WorkbenchTerms.handler} path="declared_operator" error={s.error} hint={!frozen && memoryHint}><input value={s.draft.declared_operator}
+      readOnly={frozen} disabled={s.busy} onChange={e => s.change({ ...s.draft, declared_operator: e.target.value })} /></Field>
     {(!s.saved || s.saved.phase === 'rejected') && <label className="ta-consent"><input type="checkbox" checked={s.consent}
       disabled={s.busy || s.disabled || !s.preview || !s.preview.validation.can_adopt || !!s.storageError} onChange={e => s.setConsent(e.target.checked)} />
       <span>确认将完整试调方案正式采用。</span></label>}
@@ -43,11 +44,11 @@ function Dialog({ session: s, scenarioRef, onNavigate, name }) {
           : <><Button icon="refresh-cw" busy={s.busy} disabled={blocked} onClick={s.inspect}>重新预检</Button>
             <Button icon="check" className="btn primary" busy={s.busy} disabled={!canConfirm} onClick={s.submit}>确认正式采用</Button></>}</>}>
     <div className="modal-body ta-body">
-      {(s.storageError || s.error) && <div className="ta-notice" role="alert">{s.storageError || s.error}</div>}
+      <ErrorBox error={s.storageError || s.error} excludePaths={fieldPaths} />
       {s.storageError && <Button icon="refresh-cw" disabled={s.busy} onClick={s.sync}>刷新上次操作记录</Button>}
       {other && <div className="ta-notice" role="status">另一个试调方案的采用结果待确认，请先查询结果。</div>}
       {s.notice && <div className="ta-notice" role="status">{s.notice}</div>}
-      {!pending && !s.result && (s.disabled || s.sourceError) && <div className="ta-notice" role="status">{s.sourceError || '试调方案正在读取，或还有操作没确认结果，暂时不能开始采用。'}</div>}
+      {!pending && !s.result && (s.disabled || s.sourceError) && <div className="ta-notice" role="status">{s.sourceError ? errorText(s.sourceError) : '试调方案正在读取，或还有操作没确认结果，暂时不能开始采用。'}</div>}
       {s.result && <div className="ta-result" role="status">已确认：这次生成正式计划第 {s.result.data.official_plan.version} 版，共 {s.result.data.row_count} 道工序。
         <p>当前正式计划可在计划列表查看。</p>{s.result.replayed && <p>已查询到上次采用结果。</p>}</div>}
       {!pending && !s.result && <p className="ta-note" role="status" aria-label="当前采用预检">{s.preview

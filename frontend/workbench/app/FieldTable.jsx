@@ -1,9 +1,8 @@
 import React from './shared/runtime/react.js';
-import FieldContract from './FieldContract.js';
-import FieldControls from './FieldControls.jsx';
+import C from './FieldContract.js';
+import { Button, State } from './FieldControls.jsx';
 import { EmptyState } from './ResourceControls.jsx';
 
-const C = FieldContract, { Button, State } = FieldControls;
 function FieldTable({ tasks, loading, loaded, filtered, onClear, error, onRetry, opened, onOpen, disabled }) {
   return <div className="field-scroll wb-table-frame" data-sticky-head data-sticky-actions tabIndex="0" aria-label="现场任务表格滚动区"><table className="field-table wb-table" aria-label="现场任务列表"><caption className="wb-visually-hidden">当前范围的工序安排、累计实际报工和报工操作</caption><colgroup>{['task', 'resource', 'time', 'quantity', 'remaining', 'state', 'actions'].map(key => <col key={key} className={'field-task-col-' + key} />)}</colgroup>
     <thead><tr>{['批次 / 工序', '计划设备 / 人员', '计划开工 / 完工', '累计完成 / 计划应做', '执行剩余', '状态', '操作'].map((label, index) => <th key={label} scope="col" className={index === 0 ? 'wb-col-key' : index === 6 ? 'wb-col-actions' : undefined}>{label}</th>)}</tr></thead>

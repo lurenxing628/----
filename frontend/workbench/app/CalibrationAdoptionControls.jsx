@@ -1,5 +1,5 @@
 import React from './shared/runtime/react.js';
-import { Button, Modal } from './ResourceControls.jsx';
+import { Button, Modal, ErrorBox, Field } from './ResourceControls.jsx';
 import { text, amount, unitHours } from './CalibrationControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
@@ -8,6 +8,8 @@ import WorkbenchTerms from './WorkbenchTerms.js';
 const time = value => value ? WorkbenchFormat.dateTime(value, { seconds: true }) : '未知';
 const scope = '采用后更新模板当前定额，并保留本次采用记录；以后可以继续人工修改、导入或采用新建议。已有批次和历史计划保留原值。';
 const consentText = '我已核对本次建议和完工记录；新定额用于以后新建的批次，已有批次和历史计划保持原值。';
+// 采用原因与经办人就地认领预检与提交的字段错误（reason / declared_operator），总错误框不再重复这两项。
+const fieldPaths = ['reason', 'declared_operator'];
 
 function Facts({ row }) {
   return <dl className="cad-facts"><div><dt>模板工序</dt><dd>{row.part_no} · {row.sequence} {row.operation_label}</dd></div>
@@ -53,15 +55,15 @@ function Dialog({ session: s, detail, stale, onRefresh }) {
         <Button icon="search" busy={s.busy} disabled={blocked} onClick={s.inspect}>检查是否可采用</Button>
         <Button icon="check" className="btn primary" busy={s.busy} disabled={blocked || !preview || !preview.validation.can_adopt || !s.consent} onClick={s.submit}>确认采用</Button></>}</>}>
     <div className="modal-body cad-body">
-      {(s.error || s.storageError) && <p className="cad-notice" role="alert">{s.storageError || s.error}</p>}
+      <ErrorBox error={s.storageError || s.error} excludePaths={fieldPaths} />
       {s.storageError && <Button icon="refresh-cw" onClick={s.sync}>刷新上次操作记录</Button>}
       {s.notice && <p className="cad-notice" role="status">{s.notice}</p>}
       {other && <p className="cad-notice">另一个模板的采用结果待确认，请先查询结果。</p>}
       {stale && !pending && !result && <p className="cad-notice">{WorkbenchTerms.outcomes.stale}</p>}
       <p className="ca-muted">{scope}</p>{row && <Facts row={row} />}
       {result ? <Receipt value={result} /> : pending ? <dl className="cad-facts"><div><dt>原采用原因</dt><dd>{saved.input.reason}</dd></div><div><dt>原经办人</dt><dd>{saved.input.declared_operator}</dd></div></dl> : <>
-        <div className="cad-fields"><label>采用原因<textarea aria-label="采用原因" rows={2} maxLength={2000} value={s.draft.reason} disabled={s.busy} onChange={e => s.change({ ...s.draft, reason: e.target.value })} /></label>
-          <label>经办人<input aria-label="经办人" type="text" maxLength={100} value={s.draft.declared_operator} disabled={s.busy} onChange={e => s.change({ ...s.draft, declared_operator: e.target.value })} /></label></div>
+        <div className="cad-fields"><Field label="采用原因" path="reason" error={s.error}><textarea aria-label="采用原因" rows={2} value={s.draft.reason} disabled={s.busy} onChange={e => s.change({ ...s.draft, reason: e.target.value })} /></Field>
+          <Field label="经办人" path="declared_operator" error={s.error}><input aria-label="经办人" type="text" value={s.draft.declared_operator} disabled={s.busy} onChange={e => s.change({ ...s.draft, declared_operator: e.target.value })} /></Field></div>
         {preview && <><p className={preview.validation.can_adopt ? 'cad-success' : 'cad-notice'} role="status">{preview.validation.can_adopt ? '检查通过，可以采用。' : '当前不能采用。'}</p>
           {preview.validation.issues.map(item => <p className="cad-notice" key={item.code}>{item.message}</p>)}
           {preview.latest_adoption && <p className="ca-muted">上次采用 {unitHours(preview.latest_adoption.new_unit_hours)} · {time(preview.latest_adoption.adopted_at)}；本次仍可按当前模板版本采用。</p>}

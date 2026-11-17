@@ -1,14 +1,13 @@
-import APSResourceContract from './resource-contract.js';
+import { failure, object } from './shared/contract/kit.js';
 
-const C = APSResourceContract;
 const key = value => typeof value === 'string' && value.length > 0;
 function ruleSet(value) {
   if (value === null || value === undefined) return { mode: 'exclude', keys: new Set() };
-  if (!C.object(value) || !['include', 'exclude'].includes(value.mode) || !Array.isArray(value.values)
+  if (!object(value) || !['include', 'exclude'].includes(value.mode) || !Array.isArray(value.values)
       || Object.keys(value).some(key => !['mode', 'values'].includes(key)) || !value.values.every(key))
-    throw C.failure('本列筛选规则不完整，请清除本列后重新选择。');
+    throw failure('本列筛选规则不完整，请清除本列后重新选择。');
   const keys = new Set(value.values);
-  if (keys.size > 50000) throw C.failure('本列筛选超过 50000 个值，请先清除或减少原条件。');
+  if (keys.size > 50000) throw failure('本列筛选超过 50000 个值，请先清除或减少原条件。');
   return { mode: value.mode, keys };
 }
 function rule(value) {
@@ -26,7 +25,7 @@ function toggle(value, key, enabled) {
 function toggleKeys(value, changed, enabled) {
   const { mode, keys } = ruleSet(value);
   changed.forEach(key => { if ((mode === 'include') === enabled) keys.add(key); else keys.delete(key); });
-  if (keys.size > 50000) throw C.failure('本次选择会使本列筛选超过 50000 个值，原条件没有改动。请先清除或减少已选范围。');
+  if (keys.size > 50000) throw failure('本次选择会使本列筛选超过 50000 个值，原条件没有改动。请先清除或减少已选范围。');
   return { mode, values: Array.from(keys).sort() };
 }
 function groupState(value, keys) {
@@ -45,26 +44,26 @@ function active(value) {
 }
 function signature(value) {
   if (Array.isArray(value)) return '[' + value.map(signature).join(',') + ']';
-  if (C.object(value)) return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + signature(value[key])).join(',') + '}';
+  if (object(value)) return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + signature(value[key])).join(',') + '}';
   return JSON.stringify(value);
 }
 function envelope(raw, request) {
   const data = raw.data;
-  if (data.column !== request.column || data.basis !== 'toolbar_scope') throw C.failure('读到的列值不完整，没有当成空列表。请回到第 1 页重新查询。');
+  if (data.column !== request.column || data.basis !== 'toolbar_scope') throw failure('读到的列值不完整，没有当成空列表。请回到第 1 页重新查询。');
   if (request.snapshot_ref && raw.meta.snapshot_ref !== request.snapshot_ref)
-    throw C.failure('数据已更新，请回到第 1 页重新查询。');
+    throw failure('数据已更新，请回到第 1 页重新查询。');
   return data;
 }
 function facets(raw, request) {
   const data = envelope(raw, request), page = data.page;
   if (page.number !== request.page || page.size !== request.size)
-    throw C.failure('读到的列值不完整，没有当成空列表。请回到第 1 页重新查询。');
+    throw failure('读到的列值不完整，没有当成空列表。请回到第 1 页重新查询。');
   return raw;
 }
 function selection(raw, request) {
   const data = envelope(raw, request);
   if (data.total > 50000 || request.expected_total !== undefined && data.total !== request.expected_total)
-    throw C.failure('全部匹配值不完整或超过 50000 个，筛选没有改动。请回到第 1 页重新查询。');
+    throw failure('全部匹配值不完整或超过 50000 个，筛选没有改动。请回到第 1 页重新查询。');
   return raw;
 }
 const ResourceTableFilterModel = { rule, rules, toggle, toggleKeys, groupState, toolbarScope, active, signature, facets, selection };

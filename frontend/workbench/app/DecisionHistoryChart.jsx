@@ -1,9 +1,9 @@
 import React from './shared/runtime/react.js';
-import WorkbenchFormat from './WorkbenchFormat.js';
-import PlanGanttModel from './PlanGanttModel.js';
-import DecisionHistoryAPI from './DecisionHistoryAPI.js';
+import F from './WorkbenchFormat.js';
+import M from './PlanGanttModel.js';
+import A from './DecisionHistoryAPI.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
 
-const F = WorkbenchFormat, M = PlanGanttModel, A = DecisionHistoryAPI;
 const known = value => typeof value === 'number' && Number.isFinite(value);
 const hasValue = metric => known(metric.value) && metric.state !== 'unavailable';
 function valueText(metric, definition) {
@@ -11,7 +11,7 @@ function valueText(metric, definition) {
 }
 function missingText(metric, definition) {
   const state = metric.state === 'not_applicable' ? '不适用' : metric.state === 'partial' || metric.reason && metric.reason.code === 'delivery_evidence_incomplete' ? '资料不全' : metric.reason && ['history_result_missing', 'not_recorded'].includes(metric.reason.code) ? '未保存结果' : '资料缺项';
-  const member = metric.covered_batch_refs !== null ? '批' : metric.covered_operation_refs !== null ? '道工序' : metric.covered_resource_refs !== null ? '个资源' : '项';
+  const member = WorkbenchTerms.member_units[metric.member_unit];
   const partial = metric.known_count > 0 && known(metric.known_subtotal) ? '已知 ' + A.numberText(metric.known_subtotal, metric.unit, definition.precision) + '，另有 ' + metric.unknown_count + ' ' + member + '待确认' : metric.unknown_count > 0 ? metric.unknown_count + ' ' + member + '待确认' : '';
   return [state, metric.reason && metric.reason.message, partial].filter(Boolean).join('；');
 }

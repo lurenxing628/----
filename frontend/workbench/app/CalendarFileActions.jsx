@@ -1,17 +1,9 @@
 import React from './shared/runtime/react.js';
-import K from './CalendarContract.js';
 import APSCalendarFile from './CalendarFileContract.js';
 import { Field } from './ResourceControls.jsx';
 import { ResourceFileActionFlow } from './ResourceMaterialActions.jsx';
+import { monthRange, thisMonth } from './shared/contract/kit.js';
 
-function monthRange(month) {
-  const key = K.monthKey(month.year, month.month);
-  return { start_date: key + '-01', end_date: key + '-' + K.monthDays(month.year, month.month) };
-}
-function thisMonth() {
-  const now = new Date();
-  return { year: now.getFullYear(), month: now.getMonth() + 1 };
-}
 function People({ value, onChange, refs, disabled }) {
   return <fieldset style={{ border: 0, margin: 0, padding: 0 }} disabled={disabled}>
     <legend className="seclabel">人员范围</legend>
@@ -30,10 +22,10 @@ function ExportScope({ value, onChange, disabled, refs = [], error = null }) {
     <fieldset style={{ border: 0, margin: 0, padding: 0 }} disabled={disabled}>
       <legend className="seclabel">导出范围</legend>
       <div className="fgrid">
-        <Field label="开始日期" path="start_date" error={error} required>
+        <Field label="开始日期" path="range.start_date" error={error} required>
           <input id={id + '-from'} type="date" value={value.start_date} disabled={disabled}
             onChange={event => set('start_date', event.target.value)} /></Field>
-        <Field label="结束日期" path="end_date" error={error} required>
+        <Field label="结束日期" path="range.end_date" error={error} required>
           <input id={id + '-to'} type="date" value={value.end_date} disabled={disabled}
             onChange={event => set('end_date', event.target.value)} /></Field>
       </div>
@@ -48,8 +40,8 @@ function CalendarFileActions({ kind, month, request, ...props }) {
     ...APSCalendarFile.create(kind),
     // 个人日历从人员列表打开，勾了人就默认只导这些人；全局日历没有这一维。
     exportScopeInitial: { ...monthRange(month || thisMonth()), ...(people ? { people: refs.length ? 'selected' : 'all' } : {}) },
-    // 日期范围填错时错误标到对应的日期项上，总错误框只留一句话，不再重复逐项说明。
-    exportFieldPaths: ['start_date', 'end_date'],
+    // 日期范围填错时错误标到对应的日期项上，总错误框只留一句话，不再重复逐项说明；本地检查与后端导出预检都报 range.*。
+    exportFieldPaths: ['range.start_date', 'range.end_date'],
     ExportScope
   }), [kind, people, refs.length, month && month.year, month && month.month]);
   return <ResourceFileActionFlow key={kind} {...props} request={request} contract={contract} />;

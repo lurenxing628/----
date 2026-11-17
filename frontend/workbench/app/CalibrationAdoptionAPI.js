@@ -1,20 +1,21 @@
-import APSWorkbenchTransport from './shared/network/transport.js';
+import T from './shared/network/transport.js';
 import { equal } from './shared/session/pending-store.js';
-import CalibrationAPI from './CalibrationAPI.js';
+import C from './CalibrationAPI.js';
+import { object, ref48, failure, checker } from './shared/contract/kit.js';
 
-const T = APSWorkbenchTransport, C = CalibrationAPI, BASE = '/api/workbench/v1/calibration/';
-const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
-const ref = v => typeof v === 'string' && /^[a-f0-9]{48}$/.test(v);
+const BASE = '/api/workbench/v1/calibration/';
 const key = v => typeof v === 'string' && /^calibration-[a-f0-9]{48}$/.test(v);
 
-function check(value, message = '读到的采用结果不完整或来源不一致，没有确认采用。') { if (!value) throw new Error(message); }
+const INVALID = '读到的采用结果不完整或来源不一致，没有确认采用。';
+// 采用回执与回执查询都在命令发出之后：核对不过时结果未知，本机待确认记录不能清。
+const check = checker(INVALID), checkResult = checker(INVALID, { committed: 'unknown' });
 
-// 采用表单的唯一校验点：只认原因和经办人两项，校验后去掉首尾空白。
+// 采用表单的唯一校验点：原因和经办人两项必填，校验后去掉首尾空白；字数等值域由后端校验，422 带字段路径。
+// 两项必填的本地错误与后端同一套路径（reason / declared_operator），标在对应输入框上。
 function input(draft) {
-  check(object(draft) && Object.keys(draft).length === 2 && typeof draft.reason === 'string' && draft.reason.trim()
-    && Array.from(draft.reason).length <= 2000 && !draft.reason.includes('\0'), '请填写 1 到 2000 字的采用原因。');
-  check(typeof draft.declared_operator === 'string' && draft.declared_operator.trim() && Array.from(draft.declared_operator).length <= 100
-    && !draft.declared_operator.includes('\0'), '请填写 1 到 100 字的经办人。');
+  [['reason', '请填写采用原因。'], ['declared_operator', '请填写经办人。']].forEach(([path, message]) => {
+    if (!(typeof draft[path] === 'string' && draft[path].trim())) throw failure(message, { fields: [{ path, message }] });
+  });
   return { reason: draft.reason.trim(), declared_operator: draft.declared_operator.trim() };
 }
 
@@ -35,9 +36,9 @@ function previewResult(value, original, filled) {
 // intent 是本存储读到或刚登记的采用记录，baseline 与 input 都已校验过。
 function receipt(value, intent) {
   const d = value && value.data, s = intent.baseline;
-  check(value && value.ok === true && value.result === 'committed'
+  checkResult(value && value.ok === true && value.result === 'committed'
     && typeof value.receipt_ref === 'string' && /^[a-f0-9]{32}$/.test(value.receipt_ref)
-    && object(d) && ref(d.adoption_ref) && d.template_operation_ref === s.template_operation_ref
+    && object(d) && ref48(d.adoption_ref) && d.template_operation_ref === s.template_operation_ref
     && d.request_key === intent.request_key && d.reason === intent.input.reason && d.declared_operator === intent.input.declared_operator && d.confirmed === true);
   return value;
 }
@@ -57,7 +58,7 @@ async function adopt(intent, writeToken) {
 
 async function lookup(intent, signal) {
   const value = await T.lookup(BASE + intent.baseline.template_operation_ref + '/adopt/receipts/' + intent.request_key, {}, { signal, timeout: 30000 });
-  check(object(value) && ['recorded', 'not_observed'].includes(value.state));
+  checkResult(object(value) && ['recorded', 'not_observed'].includes(value.state));
   if (value.state === 'not_observed') return null;
   return receipt(value.receipt, intent);
 }

@@ -1,69 +1,46 @@
 import React from './shared/runtime/react.js';
-import RunCandidateAPI from './RunCandidateAPI.js';
-import DashboardCandidateComparisonAPI from './DashboardCandidateComparisonAPI.js';
-import DashboardContract from './DashboardContract.js';
-import DashboardCandidatePanels from './DashboardCandidatePanels.jsx';
+import A from './RunCandidateAPI.js';
+import Q from './DashboardCandidateComparisonAPI.js';
+import P from './DashboardCandidatePanels.jsx';
 import { Button, ErrorBox, Issues, EmptyState } from './ResourceControls.jsx';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import WorkbenchDatePickerModel from './WorkbenchDatePickerModel.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
+import { useQuery } from './shared/session/query.js';
 
-const A = RunCandidateAPI, Q = DashboardCandidateComparisonAPI, C = DashboardContract, P = DashboardCandidatePanels;
 // Q.context 保证 range_start / range_end 成对出现；未设置范围时输入框显示为空。
 const rangeDraft = value => value.range_start === undefined ? { start: '', end: '' } : { start: value.range_start, end: value.range_end };
 
+// 后续页钉在第一页的数据版本上；数据版本绑定这次排产和它的状态，排产结束后候选清单不再变，各页拼起来就是完整目录。
 async function allCandidates(runRef, signal) {
   const first = await A.catalog(runRef, { size: 50 }, signal), rows = first.data.candidates.slice();
   let page = 1, next = first;
   while (next.data.page.has_more) {
     next = await A.catalog(runRef, { page: ++page, size: 50, snapshot_ref: first.meta.snapshot_ref }, signal);
-    C.check(next.data.candidate_count === first.data.candidate_count); rows.push(...next.data.candidates);
+    rows.push(...next.data.candidates);
   }
-  C.check(rows.length === first.data.candidate_count && new Set(rows.map(row => row.candidate_ref)).size === rows.length);
   return { ...first.data, candidates: rows };
 }
 
 function Candidates({ catalog, initialContext, onState, selectedBatch, onSelectBatch, issueBatchRef }) {
-  const [choice, setChoice] = React.useState(() => { const value = Q.context(initialContext); delete value.batch_ref; return value; }), [revision, refresh] = React.useReducer(n => n + 1, 0);
-  const context = Q.context({ ...choice, ...(issueBatchRef ? { batch_ref: issueBatchRef } : {}) });
-  const [list, setList] = React.useState({ run: null, data: null, error: null, loading: false });
-  const [read, setRead] = React.useState({ signature: null, resolvedSignature: null, revision: null, data: null, error: null, loading: false });
-  const [range, setRange] = React.useState(() => rangeDraft(choice)), [rangeError, setRangeError] = React.useState(null);
-  const [summary, setSummary] = React.useState(false), [rangeOpen, setRangeOpen] = React.useState(false), signature = JSON.stringify(context);
+  const [chosen, setChoice] = React.useState(() => { const value = Q.context(initialContext); delete value.batch_ref; return value; }), [revision, refresh] = React.useReducer(n => n + 1, 0);
+  const scoped = value => Q.context({ ...value, ...(issueBatchRef ? { batch_ref: issueBatchRef } : {}) });
+  const [range, setRange] = React.useState(() => rangeDraft(chosen)), [rangeError, setRangeError] = React.useState(null);
+  // 方案摘要跟着打开它时的那份比较结果：重新读取后自动收起。
+  const [summaryOf, setSummaryOf] = React.useState(null), [rangeOpen, setRangeOpen] = React.useState(false);
+  const list = useQuery(signal => allCandidates(chosen.run_ref, signal), [chosen.run_ref, revision], { enabled: Boolean(chosen.run_ref) });
+  // 比较范围不进读取身份：选择里没写范围时，后端按这次排产的范围读，读回后在下面把这段范围回填进选择——读的还是同一份结果，不重读；
+  // 之后换候选、换问题批次和刷新都按回填的范围读。用户改范围时由 applyRange 重读。
+  const comparison = useQuery(signal => Q.read(scoped(chosen), signal), [chosen.run_ref, chosen.candidate_ref, issueBatchRef, revision],
+    { enabled: Boolean(chosen.candidate_ref) });
+  const result = comparison.result, data = result && result.data;
+  const filled = data && chosen.range_start === undefined ? { ...chosen, range_start: data.time_scope.range_start, range_end: data.time_scope.range_end } : null;
+  if (filled) setChoice(filled);
+  const choice = filled || chosen, context = scoped(choice), signature = JSON.stringify(context), options = list.result;
   React.useEffect(() => { setRange(rangeDraft(choice)); }, [choice.range_start, choice.range_end]);
-  React.useEffect(() => {
-    const controller = new AbortController(), run = choice.run_ref;
-    setList({ run, data: null, error: null, loading: !!run });
-    if (run) allCandidates(run, controller.signal).then(data => { if (!controller.signal.aborted) setList({ run, data, error: null, loading: false }); })
-      .catch(error => { if (!controller.signal.aborted) setList({ run, data: null, error, loading: false }); });
-    return () => controller.abort();
-  }, [choice.run_ref, revision]);
-  React.useEffect(() => {
-    if (read.resolvedSignature === signature && read.revision === revision && read.data) return;
-    const controller = new AbortController(); setSummary(false);
-    setRead({ signature, resolvedSignature: null, revision, data: null, error: null, loading: !!context.candidate_ref });
-    if (!context.candidate_ref) return () => controller.abort();
-    const load = async () => {
-      const comparison = await Q.read(context, controller.signal);
-      C.check(comparison.data.candidate.run_ref === context.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
-      if (controller.signal.aborted) return;
-      if (!context.range_start || !context.range_end) {
-        const bounds = { range_start: comparison.data.time_scope.range_start, range_end: comparison.data.time_scope.range_end };
-        const nextContext = Q.context({ ...choice, ...bounds, ...(issueBatchRef ? { batch_ref: issueBatchRef } : {}) });
-        setRead({ signature, resolvedSignature: JSON.stringify(nextContext), revision, data: comparison, error: null, loading: false });
-        setChoice(previous => C.equal(previous, choice) ? { ...previous, ...bounds } : previous);
-        return;
-      }
-      setRead({ signature, resolvedSignature: signature, revision, data: comparison, error: null, loading: false });
-    };
-    load().catch(error => { if (!controller.signal.aborted) setRead({ signature, resolvedSignature: null, revision, data: null, error, loading: false }); });
-    return () => controller.abort();
-  }, [signature, revision]);
-  const current = (read.signature === signature || read.resolvedSignature === signature) && read.revision === revision ? read : null, result = current && current.data;
-  const data = result && result.data, options = list.run === choice.run_ref && list.data;
   const caption = data ? {
-    reference: data.candidate.candidate_ref, label: '比较方案', name: data.candidate.label || WorkbenchTerms.name_missing,
+    reference: data.candidate.candidate_ref, label: '比较方案', name: data.candidate.label,
     status: data.baseline.available ? '已保存候选方案 · 与排产时的正式计划对照' : '已保存候选方案 · 排产时没有正式计划'
   } : null;
   const captionKey = JSON.stringify(caption);
@@ -87,6 +64,7 @@ function Candidates({ catalog, initialContext, onState, selectedBatch, onSelectB
         range_end: range.end === choice.range_end ? choice.range_end : normalize(range.end)
       });
       setRangeError(null); setChoice(next); setRangeOpen(false);
+      if (next.range_start !== choice.range_start || next.range_end !== choice.range_end) comparison.reload();
     } catch (error) { setRangeError(error); }
   }
   return <section aria-label="已保存候选方案同范围比较" data-dashboard-candidates data-comparison-ready={!!data}>
@@ -99,26 +77,26 @@ function Candidates({ catalog, initialContext, onState, selectedBatch, onSelectB
       {choice.run_ref && !catalog.runs.some(row => row.run_ref === choice.run_ref) && <option value={choice.run_ref}>原来选中的排产记录</option>}
       {catalog.runs.map(run => <option key={run.run_ref} value={run.run_ref}>{WorkbenchFormat.compactDateTime(run.accepted_at)} · {run.candidate_count} 份候选</option>)}
     </select></label>
-    <Issues issues={catalog.issues} /><ErrorBox error={list.error} /><ErrorBox error={rangeError || current && current.error} />
+    <Issues issues={catalog.issues} /><ErrorBox error={list.error} /><ErrorBox error={rangeError || comparison.error} />
     {context.batch_ref && <div className="dy-context">仅比较原问题批次。<WorkbenchReference entries={{ '原问题批次编号': context.batch_ref }} /></div>}
     {list.loading && <p role="status">正在读取这次排产已保存的候选方案列表。</p>}
     {options && <fieldset className="dy-candidate-options"><legend>候选方案</legend>{options.candidates.map(row => <label key={row.candidate_ref} data-candidate-choice={row.candidate_ref} data-selected={choice.candidate_ref === row.candidate_ref}>
       <input type="radio" name="dashboard-candidate" value={row.candidate_ref} checked={choice.candidate_ref === row.candidate_ref}
         onChange={() => setChoice({ ...choice, candidate_ref: row.candidate_ref })} />
-      <span><b>{row.label || WorkbenchTerms.name_missing}</b><small>{WorkbenchTerms.candidate_statuses[row.status]} · {row.task_count} 道安排</small></span>
+      <span><b>{row.label}</b><small>{WorkbenchTerms.candidate_status(row.status)} · {row.task_count} 道安排</small></span>
     </label>)}{!options.candidates.length && <EmptyState kind="empty" title="这次排产还没有保存候选方案。" />}</fieldset>}
     {choice.run_ref && rangeOpen && <form id="dashboard-comparison-range" className="dy-compare-range" onSubmit={applyRange}><label>开始（包含）<input type="text" data-picker-type="factory-local" spellCheck={false} aria-label="候选比较共同开始" value={range.start} onChange={event => setRange({ ...range, start: event.target.value })} /></label>
       <label>结束（不含）<input type="text" data-picker-type="factory-local" spellCheck={false} aria-label="候选比较共同结束" value={range.end} onChange={event => setRange({ ...range, end: event.target.value })} /></label><Button reasonDisplay="inline" icon="check" type="submit">应用范围</Button></form>}
-    {current && current.loading && <p role="status">正在核对所选候选方案、排产时的正式计划和共同范围。</p>}
+    {comparison.loading && <p role="status">正在核对所选候选方案、排产时的正式计划和共同范围。</p>}
     {data && <>
       <P.Metrics data={data} /><P.Batches data={data} selected={selectedBatch} onSelect={onSelectBatch} />
-      <div className="dy-tools"><Button reasonDisplay="inline" icon="chart-gantt" onClick={() => setSummary(true)}>查看方案摘要</Button></div>
+      <div className="dy-tools"><Button reasonDisplay="inline" icon="chart-gantt" onClick={() => setSummaryOf(result)}>查看方案摘要</Button></div>
       <details className="dy-evidence"><summary>排产时的范围与规则</summary><dl className="dy-facts"><div><dt>比较批次</dt><dd>{data.batch_refs.length} 批；预计完工按全部工序安排计算</dd></div><div><dt>齐套检查</dt><dd>{data.generation.input.ready_check ? '开启' : '关闭'}</dd></div>
         <div><dt>物料齐套规则</dt><dd>{WorkbenchTerms.material_strategy(data.generation.input.material_strategy, data.generation.input.ready_check)}</dd></div>
-        <div><dt>缺设备人员时的规则</dt><dd>{data.generation.input.missing_resource_policy === 'auto_assign' ? '按匹配规则自动分配' : '排除缺设备人员的工序'}</dd></div>
+        <div><dt>缺设备人员时的规则</dt><dd>{WorkbenchTerms.missing_resource_policies[data.generation.input.missing_resource_policy]}</dd></div>
         <div><dt>不重排时段</dt><dd>{WorkbenchTerms.hold_window(data.generation.input.hold_window)}</dd></div>
         <div><dt>已开工工序的规则</dt><dd>保留已登记的实际数据和受保护的安排</dd></div></dl><WorkbenchReference entries={{ '排产编号': data.generation.run_ref }} /></details>
-      {summary && <P.Summary data={data} onClose={() => setSummary(false)} />}
+      {summaryOf === result && <P.Summary data={data} onClose={() => setSummaryOf(null)} />}
     </>}
   </section>;
 }

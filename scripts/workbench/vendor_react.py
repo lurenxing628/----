@@ -140,15 +140,13 @@ def load_esbuild_manifest(manifest_path=ESBUILD_MANIFEST_PATH):
     return manifest
 
 
-def verify_esbuild_vendor(root=ROOT, platform_key=None, manifest_path=ESBUILD_MANIFEST_PATH, node_executable=None):
-    repo_root = Path(root)
-    manifest = load_esbuild_manifest(manifest_path)
-    host_platform = current_esbuild_platform_key(node_executable=node_executable)
-    target_platform = platform_key or host_platform
-    platforms = manifest["platforms"]
-    if target_platform not in platforms:
-        raise ValueError(f"Unsupported esbuild platform key: {target_platform}")
+def verify_esbuild_vendor(root, manifest, *, host_platform, target_platform):
+    """Verify the vendor files of ``target_platform`` against an admitted manifest.
 
+    ``manifest`` comes from :func:`load_esbuild_manifest`; the binary is executed only when the target
+    platform is the host platform (installing win32-x64 vendor on macOS is a valid cross-platform setup).
+    """
+    repo_root = Path(root)
     pkg_spec = manifest["package"]
     pkg_json_path = repo_root / pkg_spec["package_json"]
     main_js_path = repo_root / pkg_spec["main"]
@@ -180,7 +178,7 @@ def verify_esbuild_vendor(root=ROOT, platform_key=None, manifest_path=ESBUILD_MA
                 f"expected {expected_size}, got {rel_file.stat().st_size}"
             )
 
-    platform_spec = platforms[target_platform]
+    platform_spec = manifest["platforms"][target_platform]
     platform_pkg_json_path = repo_root / platform_spec["package_json"]
     platform_binary_path = repo_root / platform_spec["binary"]
     if not platform_pkg_json_path.is_file():
@@ -259,18 +257,11 @@ def _extract_npm_tarball_to_dir(tarball_bytes, expected_name, expected_version, 
             os.chmod(dest, 0o755)
 
 
-def install_esbuild_vendor(root=ROOT, platform_key=None, manifest_path=ESBUILD_MANIFEST_PATH, node_executable=None):
+def install_esbuild_vendor(root, manifest, *, host_platform, target_platform):
     repo_root = Path(root)
-    manifest = load_esbuild_manifest(manifest_path)
-    target_platform = platform_key or current_esbuild_platform_key(node_executable=node_executable)
-    if target_platform not in manifest["platforms"]:
-        raise ValueError(f"Unsupported esbuild platform key: {target_platform}")
     try:
         already_verified = verify_esbuild_vendor(
-            root=repo_root,
-            platform_key=target_platform,
-            manifest_path=manifest_path,
-            node_executable=node_executable,
+            repo_root, manifest, host_platform=host_platform, target_platform=target_platform
         )
     except ValueError:
         already_verified = None
@@ -292,12 +283,7 @@ def install_esbuild_vendor(root=ROOT, platform_key=None, manifest_path=ESBUILD_M
         ESBUILD_VERSION,
         repo_root / platform_spec["install_dir"],
     )
-    verified = verify_esbuild_vendor(
-        root=repo_root,
-        platform_key=target_platform,
-        manifest_path=manifest_path,
-        node_executable=node_executable,
-    )
+    verified = verify_esbuild_vendor(repo_root, manifest, host_platform=host_platform, target_platform=target_platform)
     return {**verified, "status": "installed"}
 
 
@@ -330,13 +316,16 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Manage pinned workbench frontend vendor assets.")
     parser.add_argument("--check-esbuild", action="store_true", help="verify pinned esbuild vendor installation")
     parser.add_argument("--install-esbuild", action="store_true", help="download and install pinned esbuild vendor")
-    parser.add_argument("--platform", default=None, help="optional esbuild platform key override")
+    parser.add_argument(
+        "--platform", choices=ESBUILD_PLATFORMS, default=None, help="esbuild target platform (default: host platform)"
+    )
     args = parser.parse_args(argv)
-    if args.check_esbuild:
-        print(json.dumps(verify_esbuild_vendor(ROOT, platform_key=args.platform)))
-        return
-    if args.install_esbuild:
-        print(json.dumps(install_esbuild_vendor(ROOT, platform_key=args.platform)))
+    if args.check_esbuild or args.install_esbuild:
+        manifest = load_esbuild_manifest()
+        host_platform = current_esbuild_platform_key()
+        target_platform = args.platform or host_platform
+        action = verify_esbuild_vendor if args.check_esbuild else install_esbuild_vendor
+        print(json.dumps(action(ROOT, manifest, host_platform=host_platform, target_platform=target_platform)))
         return
     print(json.dumps(import_react_vendor(ROOT)))
 

@@ -1,15 +1,15 @@
-import RunCandidateModel from './RunCandidateModel.js';
+import M, { resourceLabel } from './RunCandidateModel.js';
 import RunBaselineAPI from './RunBaselineAPI.js';
 import PointContract from './PointContract.js';
 import PointGanttModel from './PointGanttModel.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
 
-const M = RunCandidateModel;
 const resourceLabels = { machine: '设备', operator: '人员', supplier: '供应商' };
-const sourceLabel = side => side.source === 'internal' ? '内部' : side.source === 'external' ? '外协' : '来源未记录';
-const statusLabels = { matched: '可对照安排', newly_scheduled: '新增安排', unscheduled: '候选未排', baseline_only: '仅原安排', not_comparable: '无法一一对照' };
+const sourceLabel = side => WorkbenchTerms.operation_sources[side.source] || '来源未记录';
+const statusLabels = { matched: '可对照安排', newly_scheduled: '新增安排', unscheduled: '候选未排', baseline_only: '仅原安排' };
 function searchText(row) {
   return [row.operation_ref, row.row_ref, row.batch_ref, row.batch_label, row.part_label, row.sequence, row.process_label,
-    row.candidate, ...row.baseline_segments].flatMap(value => typeof value === 'object' && value ? [value.row_ref, value.machine && value.machine.label, value.operator && value.operator.label, value.supplier && value.supplier.label] : [value])
+    row.candidate, row.baseline_segment].flatMap(value => typeof value === 'object' && value ? [value.row_ref, value.machine && value.machine.label, value.operator && value.operator.label, value.supplier && value.supplier.label] : [value])
     .filter(value => value != null).join(' ').toLocaleLowerCase();
 }
 function title(item) {
@@ -19,16 +19,14 @@ function title(item) {
     ...Object.keys(resourceLabels).map(kind => resourceLabels[kind] + '：' + resourceLabel(s, kind)),
     statusLabels[r.status], ...(r.comparison_available ? Object.keys(resourceLabels).map(kind => resourceLabels[kind] + '变化：' + resourceChange(r, kind)) : [])].join('\n');
 }
-const resourceLabel = M.resourceLabel;
 function resourceChange(row, kind) {
   const changed = row.delta[kind + '_changed'];
   if (changed !== null) return changed ? '有' : '无';
-  if (!row.candidate || row.baseline_segments.length !== 1) return statusLabels[row.status];
   const label = resourceLabels[kind];
-  return [['原安排', row.baseline_segments[0]], ['新安排', row.candidate]].filter(([, side]) => RunBaselineAPI.resourceIdentity(side, kind) === undefined).map(([name, side]) => {
+  return [['原安排', row.baseline_segment], ['新安排', row.candidate]].filter(([, side]) => RunBaselineAPI.resourceIdentity(side, kind) === undefined).map(([name, side]) => {
     const problem = side.data_gaps.find(gap => gap.field === kind || gap.field === kind + '.ref');
     return name + label + '身份无法核对：' + (problem ? problem.message : '历史记录未保存资源身份。');
-  }).join('；') || '原安排起止不可比较';
+  }).join('；');
 }
 function push(heap, value) {
   let i = heap.length; heap.push(value);
@@ -53,23 +51,21 @@ function tracks(items) {
   return rows;
 }
 function prepare(baseline) {
-  return { hasBaseline: !!baseline, facts: baseline ? baseline.comparisons.map(comparison => ({ comparison,
-    segments: comparison.baseline_segments.filter(segment => segment.interval_comparable).map(segment => ({ comparison, segment,
-      start: M.instant(segment.start), end: M.instant(segment.end), point: PointContract.isPoint(segment) })) })) : [] };
+  return { hasBaseline: !!baseline, facts: baseline ? baseline.comparisons.map(comparison => { const segment = comparison.baseline_segment;
+    return { comparison, bar: segment && { comparison, segment, start: M.instant(segment.start), end: M.instant(segment.end), point: PointContract.isPoint(segment) } }; }) : [] };
 }
 function groupPrepared(prepared, mode, focus) {
   const groups = new Map(), comparisons = []; let start = null, end = null, hasPoints = false;
   for (const fact of prepared.facts) {
-    const comparison = focus ? { ...fact.comparison, baseline_segments: fact.comparison.baseline_segments.filter(segment => M.resourceMatches(segment, focus)) } : fact.comparison;
+    const source = fact.bar && M.resourceMatches(fact.bar.segment, focus) ? fact.bar : null;
+    const comparison = focus ? { ...fact.comparison, baseline_segment: source && source.segment } : fact.comparison;
     const entry = { comparison, search: searchText(comparison) }; comparisons.push(entry);
-    for (const source of fact.segments) {
-      if (!M.resourceMatches(source.segment, focus)) continue;
-      const item = { ...source, comparison }, resource = mode === 'batch' ? { ref: comparison.batch_ref, label: comparison.batch_label } : item.segment[mode];
-      const id = resource && resource.ref || 'baseline-missing:' + item.segment.row_ref;
-      start = start === null ? item.start : Math.min(start, item.start); end = end === null ? item.end : Math.max(end, item.end); hasPoints = hasPoints || item.point;
-      if (!groups.has(id)) groups.set(id, { id, label: mode === 'batch' ? resource.label || '批次未记录' : resourceLabel(item.segment, mode), before: [] });
-      groups.get(id).before.push(item);
-    }
+    if (!source) continue;
+    const item = { ...source, comparison }, resource = mode === 'batch' ? { ref: comparison.batch_ref, label: comparison.batch_label } : item.segment[mode];
+    const id = resource && resource.ref || 'baseline-missing:' + item.segment.row_ref;
+    start = start === null ? item.start : Math.min(start, item.start); end = end === null ? item.end : Math.max(end, item.end); hasPoints = hasPoints || item.point;
+    if (!groups.has(id)) groups.set(id, { id, label: mode === 'batch' ? resource.label || '批次未记录' : resourceLabel(item.segment, mode), before: [] });
+    groups.get(id).before.push(item);
   }
   for (const group of groups.values()) {
     group.intervals = tracks(group.before.filter(item => !item.point)); group.points = PointGanttModel.prepareTracks(group.before.filter(item => item.point));
@@ -109,8 +105,9 @@ function layoutPrepared(prepared, width) {
       height: 30, lane, laneCount: lanes.length, baseline: true, baselinePoint
     }); });
   }
+  // comparisons 恒为数组：没有原安排时是空数组，“有没有原安排”由 hasBaseline 表达。
   return { tasks: candidate.tasks, unplottableTasks: candidate.unplottableTasks, rows, height: top, locations, baselineLocations, start, end, groupCount: prepared.groups.size,
-    ...(prepared.hasBaseline ? { comparisons: prepared.comparisons } : {}) };
+    comparisons: prepared.comparisons };
 }
 const RunBaselineModel = { prepare, groupPrepared, selectPrepared, layoutPrepared, title, resourceLabel, resourceChange, sourceLabel, statusLabels };
 export { RunBaselineModel, prepare, groupPrepared, selectPrepared, layoutPrepared, title, resourceLabel, resourceChange, sourceLabel, statusLabels };

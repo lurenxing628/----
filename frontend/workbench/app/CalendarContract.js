@@ -1,16 +1,12 @@
-import APSResourceContract from './resource-contract.js';
+import C from './resource-contract.js';
 import APSWorkPeriods from './WorkPeriods.js';
+import { failure } from './shared/contract/kit.js';
 
-const C = APSResourceContract;
+// 定型对象：transport 校验过的信封——数据在 .data，数据版本在 .meta.snapshot_ref，提示在 .warnings，其余元信息在 .meta。
+// 本文件另外保证：月历的年月与请求一致，预览带变更清单编号。
 const path = '/api/workbench/v1/calendar';
 const keys = ['type', 'periods', 'eff', 'allowNormal', 'allowUrgent', 'note'];
-const isDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
-  && Number(value.slice(0, 4)) >= 1 && Number(value.slice(5, 7)) >= 1 && Number(value.slice(5, 7)) <= 12
-  && Number(value.slice(8)) >= 1 && Number(value.slice(8)) <= monthDays(Number(value.slice(0, 4)), Number(value.slice(5, 7)));
-function monthDays(year, month) {
-  return [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
-}
-function monthKey(year, month) { return String(year).padStart(4, '0') + '-' + String(month).padStart(2, '0'); }
+// 工厂日历日的判定与算术（isDate、monthDays、moveDay 等）统一在 shared/contract/kit.js。
 function displayNumber(value) {
   if (!Number.isFinite(value)) return String(value);
   const tidy = Number(value.toPrecision(15));
@@ -18,14 +14,14 @@ function displayNumber(value) {
 }
 function month(result, year, number) {
   const data = result.data;
-  if (!C.object(data) || data.year !== year || data.month !== number)
-    throw C.failure('读到的月份、日期或统计数据不完整，页面没有改动。请刷新后重试。');
+  if (data.year !== year || data.month !== number)
+    throw failure('读到的月份、日期或统计数据不完整，页面没有改动。请刷新后重试。');
   return result;
 }
 function preview(result) {
   const data = result.data;
   if (typeof data.preview_ref !== 'string' || !/^[0-9a-f]{32}$/.test(data.preview_ref))
-    throw C.failure('读到的变更清单不完整，没有写入。请点「重新预览变更」。');
+    throw failure('读到的变更清单不完整，没有写入。请点「重新预览变更」。');
   return result;
 }
 function draft(value) {
@@ -44,14 +40,15 @@ function switchType(value, type) {
 }
 function effNumber(value) {
   const result = Number(value);
-  if (typeof value !== 'string' || !value.trim() || !Number.isFinite(result) || result <= 0 || result > 200)
-    throw C.failure('效率须大于 0 且不超过 200%。', [{ path: 'fields.eff', message: '请输入有效数字。' }]);
+  // 提交前只确认能解析成有限数；取值范围由后端校验，422 带字段路径。
+  if (typeof value !== 'string' || !value.trim() || !Number.isFinite(result))
+    throw failure('请填写有效的效率。', { fields: [{ path: 'fields.eff', message: '请输入有效数字。' }] });
   return result;
 }
 function input(value, original) {
   const periods = value.type === 'rest' ? [] : value.periods;
   const issue = APSWorkPeriods.validate(periods);
-  if (issue) throw C.failure(issue, [{ path: 'fields.periods', message: issue }]);
+  if (issue) throw failure(issue, { fields: [{ path: 'fields.periods', message: issue }] });
   const note = value.note.trim();
   const converted = {
     type: value.type,
@@ -85,6 +82,6 @@ function tag(row) {
   }
   return { tone, text };
 }
-const APSCalendarContract = { path, month, preview, monthDays, monthKey, isDate, draft, switchType, input, tag, displayNumber };
-export { APSCalendarContract, path, month, preview, monthDays, monthKey, isDate, draft, switchType, input, tag, displayNumber };
+const APSCalendarContract = { path, month, preview, draft, switchType, input, tag, displayNumber };
+export { APSCalendarContract, path, month, preview, draft, switchType, input, tag, displayNumber };
 export default APSCalendarContract;

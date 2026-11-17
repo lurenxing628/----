@@ -1,13 +1,14 @@
-import APSWorkbenchTransport from './shared/network/transport.js';
+import T from './shared/network/transport.js';
 import { pendingStore, storageSlot, canonical, equal } from './shared/session/pending-store.js';
+import { object, text, nonempty, ref48, token32, checker } from './shared/contract/kit.js';
 
-const T = APSWorkbenchTransport, BASE = '/api/workbench/v1/';
+const BASE = '/api/workbench/v1/';
 const PENDING_KEY = 'aps_workbench_candidate_adoption_pending_v1', EVENT = PENDING_KEY + '_changed';
-const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
-const text = v => typeof v === 'string', count = v => Number.isSafeInteger(v) && v >= 0;
-const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v), token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
+const count = v => Number.isSafeInteger(v) && v >= 0;
 const key = v => text(v) && /^adoption-[a-f0-9]{48}$/.test(v), replacedProofs = new WeakMap();
-function check(valid, message = '读到的采用数据不完整，请刷新重试。') { if (!valid) throw new Error(message); }
+const INVALID = '读到的采用数据不完整，请刷新重试。';
+// 采用回执与回执查询都在命令发出之后：核对不过时结果未知，本机待确认记录不能清。
+const check = checker(INVALID), checkResult = checker(INVALID, { committed: 'unknown' });
 function hasKeys(v, required) {
   return object(v) && required.every(k => Object.prototype.hasOwnProperty.call(v, k));
 }
@@ -18,14 +19,14 @@ function contextRef(v) {
   if (!text(v)) return false;
   try {
     const data = JSON.parse(v);
-    return exactShape(data, ['database_scope', 'successful_restores']) && text(data.database_scope) && data.database_scope.length > 0
+    return exactShape(data, ['database_scope', 'successful_restores']) && nonempty(data.database_scope)
       && Array.isArray(data.successful_restores)
       && data.successful_restores.every((item, index, list) => text(item) && /^[a-f0-9]{32}$/.test(item) && (index === 0 || list[index - 1] < item));
   } catch (_) { return false; }
 }
 function summary(v) {
-  return exactShape(v, ['candidate_ref', 'run_ref', 'baseline', 'task_count', 'scope_complete']) && ref(v.candidate_ref) && ref(v.run_ref)
-    && exactShape(v.baseline, ['plan_ref', 'version']) && (v.baseline.plan_ref === null ? v.baseline.version === null : ref(v.baseline.plan_ref) && count(v.baseline.version) && v.baseline.version > 0)
+  return exactShape(v, ['candidate_ref', 'run_ref', 'baseline', 'task_count', 'scope_complete']) && ref48(v.candidate_ref) && ref48(v.run_ref)
+    && exactShape(v.baseline, ['plan_ref', 'version']) && (v.baseline.plan_ref === null ? v.baseline.version === null : ref48(v.baseline.plan_ref) && count(v.baseline.version) && v.baseline.version > 0)
     && count(v.task_count) && v.task_count > 0 && v.scope_complete === true;
 }
 // 采用范围的投影只取字段、不校验：本机记录在 validIntent 里核验。
@@ -33,27 +34,27 @@ const overviewFields = v => ({ candidate_ref: v.candidate_ref, run_ref: v.run_re
 // candidateRef 已由 preview() 在拼路径前核过。
 function previewResult(v, candidateRef) {
   const d = v.data;
-  check(d.candidate_ref === candidateRef && text(d.data_context_ref) && d.data_context_ref.length > 0
-    && (d.validation.can_adopt !== true || token(d.write_context.write_token)));
+  check(d.candidate_ref === candidateRef && nonempty(d.data_context_ref)
+    && (d.validation.can_adopt !== true || token32(d.write_context.write_token)));
   return d;
 }
+// 候选采用与试调采用共用的填写准入：只管勾选确认和两项必填；字数等值域由后端按原文码点校验，422 带字段路径。
 function input(v) {
   check(exactShape(v, ['confirm', 'reason', 'declared_operator']) && v.confirm === true, '请勾选确认正式采用。');
-  for (const [name, limit] of [['reason', 1000], ['declared_operator', 100]]) check(text(v[name]) && v[name].trim()
-    && Array.from(v[name].trim()).length <= limit && !v[name].includes('\0'), '请填写采用原因（1 至 1000 字）和经办人（1 至 100 字）。');
+  check(['reason', 'declared_operator'].every(name => text(v[name]) && v[name].trim()), '请填写采用原因和经办人。');
   return { confirm: true, reason: v.reason.trim(), declared_operator: v.declared_operator.trim() };
 }
 function receipt(v, intent) {
   const d = v && v.data, p = d && d.official_plan, s = intent.preview;
-  check(object(v) && v.ok === true && v.result === 'committed'
+  checkResult(object(v) && v.ok === true && v.result === 'committed'
     && object(d) && d.candidate_ref === intent.candidate_ref && d.run_ref === s.run_ref && d.row_count === s.task_count
-    && object(p) && ref(p.plan_ref) && p.source_run_ref === s.run_ref && p.baseline_ref === s.baseline.plan_ref);
+    && object(p) && ref48(p.plan_ref) && p.source_run_ref === s.run_ref && p.baseline_ref === s.baseline.plan_ref);
   return v;
 }
 function lookupResult(v, intent) {
-  check(object(v) && ['recorded', 'not_observed'].includes(v.state));
+  checkResult(object(v) && ['recorded', 'not_observed'].includes(v.state));
   if (v.state === 'not_observed') {
-    check(['unresolved', 'context_replaced'].includes(v.resolution));
+    checkResult(['unresolved', 'context_replaced'].includes(v.resolution));
     if (v.resolution === 'unresolved') return null;
     const info = {
       resolution: 'context_replaced',
@@ -64,14 +65,13 @@ function lookupResult(v, intent) {
   return receipt(v.receipt, intent);
 }
 function validIntent(v) {
-  if (!exactShape(v, ['schema_version', 'candidate_ref', 'request_key', 'input', 'preview', 'phase', 'data_context_ref']) || v.schema_version !== 2 || !ref(v.candidate_ref)
+  if (!exactShape(v, ['schema_version', 'candidate_ref', 'request_key', 'input', 'preview', 'phase', 'data_context_ref']) || v.schema_version !== 2 || !ref48(v.candidate_ref)
     || !contextRef(v.data_context_ref) || !key(v.request_key) || !summary(v.preview) || v.preview.candidate_ref !== v.candidate_ref || !['pending', 'rejected'].includes(v.phase)) return false;
   try { return equal(input(v.input), v.input); } catch (_) { return false; }
 }
-const READ_ERROR = '读不到上次采用的操作记录，不要重新采用。';
 const { read: rawRead, flush: rawFlush, save, subscribe } = pendingStore({
   key: PENDING_KEY, event: EVENT, validate: validIntent,
-  readError: READ_ERROR,
+  readError: '读不到上次采用的操作记录，不要重新采用。',
   corruptError: '本机存的采用操作记录已损坏，已拦下新采用。请不要再操作，联系维护人员。',
   invalidError: '本机存的采用操作记录不完整，已拦下新采用。请不要再操作，联系维护人员。',
   conflictError: '上次采用记录已变化，没有覆盖其他操作。',
@@ -105,7 +105,7 @@ function loadWithSlot(rawFn) {
       } else {
         syncSlotFromDisk(e.saved);
       }
-    } else if (e.message === READ_ERROR && slot.intent) {
+    } else if (e.unreadable && slot.intent) {
       e.saved = slot.intent;
     }
     throw e;
@@ -118,7 +118,7 @@ function clearPending(intent) {
   try {
     return save(null, intent);
   } catch (e) {
-    if (!e || !e.conflict) Object.assign(slot, prev);
+    if (!e.conflict) Object.assign(slot, prev);
     throw e;
   }
 }
@@ -144,7 +144,7 @@ const adoptionPending = { read, flush, subscribe,
     resetSlot(slot, rejected);
     try { return save(rejected, intent); }
     catch (e) {
-      if (e && e.conflict) Object.assign(slot, prev);
+      if (e.conflict) Object.assign(slot, prev);
       throw e;
     }
   },
@@ -157,7 +157,7 @@ const adoptionPending = { read, flush, subscribe,
 };
 const candidatePath = candidateRef => BASE + 'scheduling/candidates/' + candidateRef;
 async function preview(candidateRef, signal) {
-  check(ref(candidateRef));
+  check(ref48(candidateRef));
   return previewResult(await T.preview(candidatePath(candidateRef) + '/adopt-preview', {}, { signal, timeout: 30000 }), candidateRef);
 }
 // intent 是 begin() 刚写入的待确认记录，writeToken 已由 previewResult 核过。
@@ -180,6 +180,6 @@ async function lookup(intent, signal) {
   }
   return res;
 }
-const RunAdoptionAPI = { preview, adopt, lookup, receipt, input, pending: adoptionPending, ref, contextRef, PENDING_KEY, EVENT };
-export { RunAdoptionAPI, preview, adopt, lookup, receipt, input, adoptionPending as pending, ref, contextRef, PENDING_KEY, EVENT };
+const RunAdoptionAPI = { preview, adopt, lookup, receipt, input, pending: adoptionPending, contextRef, PENDING_KEY, EVENT };
+export { RunAdoptionAPI, preview, adopt, lookup, receipt, input, adoptionPending as pending, contextRef, PENDING_KEY, EVENT };
 export default RunAdoptionAPI;

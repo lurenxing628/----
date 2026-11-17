@@ -1,6 +1,6 @@
 import React from './shared/runtime/react.js';
-import DashboardContract from './DashboardContract.js';
-import WorkbenchTerms from './WorkbenchTerms.js';
+import C from './DashboardContract.js';
+import T from './WorkbenchTerms.js';
 import { Button, Issues, MetricValue, Pager as BasePager, EmptyState, Modal, ErrorBox } from './ResourceControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
@@ -8,14 +8,14 @@ import DashboardEvidence from './DashboardEvidence.jsx';
 import WorkbenchDetailPanel from './WorkbenchDetailPanel.jsx';
 import DashboardAnalysisPanels from './DashboardAnalysisPanels.jsx';
 import OutsourcingWorkspace from './OutsourcingWorkspace.jsx';
+import { object } from './shared/contract/kit.js';
 
-const C = DashboardContract, T = WorkbenchTerms;
 // 跳转标签与侧栏视图标题保持同名（web/routes/workbench/navigation_metadata.py VIEW_TITLES）；outsourcing 是页内目标，侧栏没有对应条目。
 const navigationLabels = { gantt: '计划甘特', fieldgantt: '现场实际甘特', batches: '批次管理', analysis: '选择排产方案', field: '现场记录', run: '执行排产', outsourcing: '外协物流登记' };
 
 function navigationTarget(n) {
-  C.check(C.object(n) && Object.prototype.hasOwnProperty.call(navigationLabels, n.view)
-    && C.object(n.context) && typeof n.enabled === 'boolean', '这条记录的跳转目标不对，页面没有跳转。请刷新后重试。');
+  C.check(object(n) && Object.prototype.hasOwnProperty.call(navigationLabels, n.view)
+    && object(n.context) && typeof n.enabled === 'boolean', '这条记录的跳转目标不对，页面没有跳转。请刷新后重试。');
   C.check(n.enabled || typeof n.reason === 'string' && n.reason.trim().length > 0, '这条记录暂时打不开，页面没有跳转。请刷新后重试。');
   return navigationLabels[n.view];
 }
@@ -173,11 +173,11 @@ function Pressure({ data, navigate }) {
 }
 
 function Candidates({ data, navigate }) {
-  const c = data.candidate_catalog, runStates = WorkbenchTerms.run_statuses;
+  const c = data.candidate_catalog;
   return <section aria-label="候选方案列表"><div className="dy-heading"><h3>候选方案列表</h3><div className="dy-tools"><Button reasonDisplay="inline" icon="history" onClick={() => navigate({ view: 'analysis', context: { source: 'run_history' }, enabled: true })}>排产记录</Button>
     <Button reasonDisplay="inline" icon="play" onClick={() => navigate({ view: 'run', context: {}, enabled: true })}>{navigationLabels.run}</Button></div></div>
     <Issues issues={c.issues} />
-    {c.state === 'unavailable' ? <EmptyState kind="empty" title="候选方案列表读不到。" hint="请点右上角的「刷新值班台」按钮重试。" /> : !c.runs.length ? <EmptyState kind="empty" title="还没有排产记录。" /> : <><div className="dy-scroll"><table><caption className="wb-sr-only">候选方案排产记录</caption><thead><tr><th scope="col">排产提交时间</th><th scope="col">计算状态</th><th scope="col">候选数量</th><th scope="col">范围</th><th scope="col">操作</th></tr></thead><tbody>{c.runs.map(r => <tr key={r.run_ref} data-run-ref={r.run_ref}><td>{WorkbenchFormat.dateTime(r.accepted_at)}</td><td>{runStates[r.state] || '状态未知'}</td><td>{r.candidate_count}</td><td>{r.scope_summary ? value(r.scope_summary.batch_count) + ' 个批次' : '范围未知'}</td><td><Button reasonDisplay="inline" icon="arrow-right" onClick={() => navigate({ view: 'analysis', context: { run_ref: r.run_ref }, enabled: true })}>查看候选</Button></td></tr>)}</tbody></table></div>
+    {c.state === 'unavailable' ? <EmptyState kind="empty" title="候选方案列表读不到。" hint="请点右上角的「刷新值班台」按钮重试。" /> : !c.runs.length ? <EmptyState kind="empty" title="还没有排产记录。" /> : <><div className="dy-scroll"><table><caption className="wb-sr-only">候选方案排产记录</caption><thead><tr><th scope="col">排产提交时间</th><th scope="col">计算状态</th><th scope="col">候选数量</th><th scope="col">范围</th><th scope="col">操作</th></tr></thead><tbody>{c.runs.map(r => <tr key={r.run_ref} data-run-ref={r.run_ref}><td>{WorkbenchFormat.dateTime(r.accepted_at)}</td><td>{T.run_status(r.state)}</td><td>{r.candidate_count}</td><td>{r.scope_summary ? value(r.scope_summary.batch_count) + ' 个批次' : '范围未知'}</td><td><Button reasonDisplay="inline" icon="arrow-right" onClick={() => navigate({ view: 'analysis', context: { run_ref: r.run_ref }, enabled: true })}>查看候选</Button></td></tr>)}</tbody></table></div>
       <div className="dy-pager">排产记录 {c.page.total} 次 · 当前显示 {c.runs.length} 次{c.page.has_more ? ' · 还有更多，请点「排产记录」查看' : ''}</div></>}
   </section>;
 }

@@ -52,7 +52,7 @@ function useResize({ columnKey, kind, scopeKey, width, disabled, onResize }, hol
   }
   return { currentWidth: measured, moving, start, keyboard };
 }
-function ResourceTableHeader({ column, kind, scope, adapter, sort, direction, sortActive, onSort, onFilter, filter = null, matchingCount, width, onResize, disabled = false, scopeTransform = M.toolbarScope, pageSize = 100 }) {
+function ResourceTableHeader({ column, kind, scope, sort, direction, sortActive, onSort, onFilter, filter = null, matchingCount, width, onResize, disabled = false, scopeTransform = M.toolbarScope, pageSize = 100 }) {
   const holder = React.useRef(null), [opened, setOpened] = React.useState(null);
   const baseScope = scopeTransform(scope, column.key), scopeKey = M.signature(baseScope), identity = M.signature({ kind, column: column.key, scope: baseScope });
   const resize = useResize({ columnKey: column.key, kind, scopeKey, width, disabled, onResize }, holder);
@@ -78,7 +78,7 @@ function ResourceTableHeader({ column, kind, scope, adapter, sort, direction, so
     <span role="separator" aria-orientation="vertical" aria-label={'调整' + column.title + '列宽'} aria-valuemin={56} aria-valuenow={resize.currentWidth}
       aria-valuetext={resize.currentWidth + ' 像素'} aria-disabled={disabled} tabIndex={disabled ? -1 : 0}
       className="wb-th-resize" data-dragging={resize.moving || undefined} onPointerDown={resize.start} onKeyDown={resize.keyboard} onClick={event => event.stopPropagation()} />
-    {current && <ResourceTableFilter key={identity} {...{ column, kind, adapter, filter, matchingCount, onFilter, scope, scopeTransform, pageSize }} owner={opened.owner} onClose={close} />}
+    {current && <ResourceTableFilter key={identity} {...{ column, kind, filter, matchingCount, onFilter, scope, scopeTransform, pageSize }} owner={opened.owner} onClose={close} />}
   </span>;
 }
 

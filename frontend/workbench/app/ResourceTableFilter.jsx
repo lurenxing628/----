@@ -1,55 +1,43 @@
 import React, { createPortal } from './shared/runtime/react.js';
 import M from './ResourceTableFilterModel.js';
 import { Button, ErrorBox } from './ResourceControls.jsx';
+import { useQuery } from './shared/session/query.js';
+import APSResourceAPI from './resource-api.js';
+import APSProcessAPI from './ProcessAPI.js';
+import CalibrationAPI from './CalibrationAPI.js';
 
 function initialRule(value) {
   try { return { value: M.rule(value), error: null }; }
   catch (error) { return { value: M.rule(null), error }; }
 }
-function ResourceTableFilter({ column, kind, scope, adapter, filter, matchingCount, owner, onFilter, onClose, scopeTransform = M.toolbarScope, pageSize = 100 }) {
-  const current = React.useMemo(() => initialRule(filter), [filter]), panel = React.useRef(null), search = React.useRef(null), service = React.useRef(adapter);
-  service.current = adapter;
+// 列筛选取值的唯一数据源入口：按表格所属的领域选——零件工艺表、校准明细表，其余是基础资料列表。
+function facetSource(kind) {
+  return kind === 'part' ? APSProcessAPI : kind === 'calibration' ? CalibrationAPI : APSResourceAPI.forNamespace('resources');
+}
+function ResourceTableFilter({ column, kind, scope, filter, matchingCount, owner, onFilter, onClose, scopeTransform = M.toolbarScope, pageSize = 100 }) {
+  const current = React.useMemo(() => initialRule(filter), [filter]), panel = React.useRef(null), search = React.useRef(null);
   const close = React.useRef(onClose); close.current = onClose;
   const [draftQuery, setDraftQuery] = React.useState('');
   const [request, setRequest] = React.useState({ query: '', page: 1, size: pageSize });
-  const [version, setVersion] = React.useState(0), [reading, setReading] = React.useState({ loading: true, result: null, error: null });
-  const [keysState, setKeysState] = React.useState({}), cache = React.useRef(null);
+  const [version, setVersion] = React.useState(0);
   const [changeError, setChangeError] = React.useState(null);
   const [position, setPosition] = React.useState({ visibility: 'hidden' });
   const baseScope = scopeTransform(scope, column.key), scopeKey = M.signature(baseScope), id = React.useId(), portal = owner.closest('[role="dialog"]') || document.body;
   const queryText = request.query.trim();
-  const requestKey = M.signature({ kind, column: column.key, scope: baseScope, request: { ...request, query: queryText }, version });
-  React.useEffect(() => {
-    const controller = new AbortController(); let live = true;
-    const query = { scope: baseScope, column: column.key, ...request, query: queryText };
-    setReading({ key: requestKey, loading: true, result: null, error: null });
-    Promise.resolve().then(() => service.current.facets(kind, query, controller.signal)).then(raw => {
-      if (live && !controller.signal.aborted) setReading({ key: requestKey, loading: false, result: M.facets(raw, query), error: null });
-    }).catch(error => { if (live && !controller.signal.aborted) setReading({ key: requestKey, loading: false, result: null, error }); });
-    return () => { live = false; controller.abort(); };
-  }, [requestKey]);
-  const validReading = reading.key === requestKey, result = validReading && reading.result, data = result && result.data;
-  const loading = !validReading || reading.loading, readError = validReading && reading.error;
+  const facetQuery = { scope: baseScope, column: column.key, ...request, query: queryText };
+  const facetRead = useQuery(signal => facetSource(kind).facets(kind, facetQuery, signal).then(raw => M.facets(raw, facetQuery)),
+    [M.signature({ kind, column: column.key, scope: baseScope, request: { ...request, query: queryText }, version })]);
+  const result = facetRead.result, data = result && result.data, loading = facetRead.loading, readError = facetRead.error;
   const normalized = current.value, selectedKeys = React.useMemo(() => new Set(normalized.values), [normalized]);
   const needed = !!queryText || normalized.values.length > 0;
   const snapshot = request.snapshot_ref || result && result.meta.snapshot_ref;
   // List filtering and paging cannot invalidate the menu's own facet snapshot or complete key set.
+  // 全部匹配值只在用得上（needed）时读；同一个 keysKey 下改勾选让它暂时用不上再用上，是同一读取身份，沿用已读到的结果不重读。
   const keysKey = snapshot ? M.signature({ kind, column: column.key, scopeKey, query: queryText, snapshot, version }) : '';
-  React.useEffect(() => {
-    if (!keysKey || !needed) return;
-    if (cache.current && cache.current.key === keysKey) { setKeysState(cache.current); return; }
-    const controller = new AbortController(); let live = true;
-    const query = { scope: baseScope, column: column.key, query: queryText, size: pageSize, snapshot_ref: snapshot };
-    setKeysState({ key: keysKey, loading: true });
-    Promise.resolve().then(() => service.current.facetSelection(kind, query, controller.signal)).then(raw => {
-      if (!live || controller.signal.aborted) return;
-      const result = M.selection(raw, { ...query, expected_total: data ? data.page.total : undefined }), state = { key: keysKey, loading: false, result };
-      cache.current = state; setKeysState(state);
-    }).catch(error => { if (live && !controller.signal.aborted) setKeysState({ key: keysKey, loading: false, error }); });
-    return () => { live = false; controller.abort(); };
-  }, [keysKey, needed]);
-  const keyResult = keysState.key === keysKey && keysState.result, keyError = needed && keysState.key === keysKey && keysState.error;
-  const keyLoading = needed && !!keysKey && !readError && (keysState.key !== keysKey || keysState.loading);
+  const keysQuery = { scope: baseScope, column: column.key, query: queryText, size: pageSize, snapshot_ref: snapshot };
+  const keyRead = useQuery(signal => facetSource(kind).facetSelection(kind, keysQuery, signal)
+    .then(raw => M.selection(raw, { ...keysQuery, expected_total: data ? data.page.total : undefined })), [keysKey], { enabled: !!keysKey && needed });
+  const keyResult = keyRead.result, keyError = needed && keyRead.error, keyLoading = needed && keyRead.loading && !readError;
   const group = React.useMemo(() => keyResult ? M.groupState(normalized, keyResult.data.keys) : { all: !needed && normalized.mode === 'exclude' && !!data && data.page.total > 0, mixed: false }, [keyResult, normalized, needed, data && data.page.total]);
   const blocked = loading || !!readError || !!current.error || keyLoading;
   React.useLayoutEffect(() => {
@@ -112,7 +100,7 @@ function ResourceTableFilter({ column, kind, scope, adapter, filter, matchingCou
       document.removeEventListener('pointerdown', outside, true); document.removeEventListener('scroll', scroll, true); document.removeEventListener('focusin', focus);
     };
   }, [owner]);
-  function readFirst() { cache.current = null; setRequest({ query: draftQuery, page: 1, size: pageSize }); setVersion(value => value + 1); }
+  function readFirst() { setRequest({ query: draftQuery, page: 1, size: pageSize }); setVersion(value => value + 1); }
   function changePage(number) { setRequest({ ...request, page: number, snapshot_ref: result.meta.snapshot_ref }); }
   function commitChange(makeRule, dismiss) {
     try {

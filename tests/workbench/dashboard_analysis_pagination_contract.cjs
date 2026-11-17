@@ -104,7 +104,7 @@ function catalogSummary() {
     [key, { state: key === 'candidate' ? 'unavailable' : 'no_data', risk_count: key === 'candidate' ? null : 0,
       known_risk_count: 0, unknown_count: 0, issues: [], evaluation_gaps: [] }]));
   Object.assign(categories.external, { kind: 'outsourcing_receipts',
-    tracking_basis: 'manual_receipt_facts', handling_supported: true, handling_count: 0, closed_count: 0,
+    tracking_basis: 'manual_receipt_facts', handling_count: 0, closed_count: 0,
     entry: { view: 'outsourcing', target: '/api/workbench/v1/outsourcing/receipts', enabled: true },
     ...Object.fromEntries(['receipt_count', 'current_receipt_count', 'awaiting_return_count', 'overdue_count', 'returned_count',
       'awaiting_confirmation_count', 'unregistered_count', 'source_gap_count'].map(key => [key, 0])) });

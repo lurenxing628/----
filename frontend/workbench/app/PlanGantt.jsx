@@ -1,9 +1,9 @@
 import React from './shared/runtime/react.js';
-import PlanGanttModel from './PlanGanttModel.js';
-import WorkbenchFormat from './WorkbenchFormat.js';
-import GanttPresentation from './GanttPresentation.js';
-import ResourceControls from './ResourceControls.jsx';
-import PlanGanttCanvas from './PlanGanttCanvas.jsx';
+import M from './PlanGanttModel.js';
+import F from './WorkbenchFormat.js';
+import V from './GanttPresentation.js';
+import { Button, ErrorBox, Icon, TimelineZoom, timelineZoomKey } from './ResourceControls.jsx';
+import { DenseRow, Overview } from './PlanGanttCanvas.jsx';
 import PointContract from './PointContract.js';
 import PointGantt from './PointGantt.jsx';
 import GanttPresentationUI from './GanttPresentationUI.jsx';
@@ -12,9 +12,7 @@ import GanttGraph from './GanttGraph.js';
 import PointGanttModel from './PointGanttModel.js';
 import GanttGraphLayer from './GanttGraphLayer.jsx';
 
-const M = PlanGanttModel, F = WorkbenchFormat, V = GanttPresentation, { Button, ErrorBox, Icon, TimelineZoom, timelineZoomKey } = ResourceControls;
 const ZOOM_MAX = 1024;
-const { DenseRow, Overview } = PlanGanttCanvas;
 function Segment({ value, options, onChange, label, disabled = false }) {
   return <div className="plan-segment" role="group" aria-label={label} onKeyDown={event => {
     if (disabled || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -69,8 +67,8 @@ function Source({ data }) {
   return <div className="wb-gantt-comparison-source" data-gantt-comparison-source>
     <div><strong>当前安排：{identity(data.plan)}</strong>{p.state === 'available'
       ? p.source_kind === 'candidate_adoption'
-        ? <>，采用算法生成的候选「{p.source_label || '未命名'}」；算法：{algorithm.mode_label || algorithm.mode || '未记录'}{algorithm.strategy_label && ' · ' + algorithm.strategy_label}。</>
-        : <>，采用保存的试调方案「{p.source_label || '未命名'}」。</>
+        ? <>，采用算法生成的候选「{p.source_label}」；算法：{algorithm.mode_label} · {algorithm.strategy_label}。</>
+        : <>，采用保存的试调方案「{p.source_label}」。</>
       : '，' + p.reason}</div>
     {baseline.state === 'available' ? <div><strong>原安排：{identity(baseline.baseline_plan)}</strong>，{captured
       ? (captured.kind === 'admission_official' ? '提交该次试排时' : '创建该次试调时') + '自动保存'
@@ -79,7 +77,8 @@ function Source({ data }) {
       : <div>原安排：{baseline.reason}</div>}
   </div>;
 }
-function PlanGantt({ data, prepared: facts, graph, asOf, selected, onSelect, query, onQuery, toolbarActions, initialMode, initialBaseline, onRequestBaseline, baselineLoading, baselineError, graphLoading, graphError, onRetryGraph }) {
+// graph 是当前展示用的工序衔接图索引；baselineSlice / graphSlice 是计划页按需子读取（useResultSlice）的加载、错误与重试，与 TaskDetail 同一口径。
+function PlanGantt({ data, prepared: facts, graph, asOf, selected, onSelect, query, onQuery, toolbarActions, initialMode, initialBaseline, baselineSlice, graphSlice }) {
   const [mode, setMode] = React.useState(initialMode === 'operator' ? 'operator' : 'machine'), [baseline, setBaseline] = React.useState(initialBaseline), [zoom, setZoom] = React.useState(1);
   const [changedOnly, setChangedOnly] = React.useState(false), { expanded, toggle } = GanttPresentationUI.useExpanded();
   const [position, setPosition] = React.useState({ left: 0, top: 0, width: 1000, height: 440 }), [hover, setHover] = React.useState(null);
@@ -173,8 +172,8 @@ function PlanGantt({ data, prepared: facts, graph, asOf, selected, onSelect, que
     located.current = selected; locate(selectedRef, selected.before);
   }, [selected, model]);
   React.useEffect(() => {
-    if ((displayBaseline || displayChangedOnly) && !facts.baselineLoaded) onRequestBaseline();
-  }, [displayBaseline, displayChangedOnly, facts.baselineLoaded, onRequestBaseline]);
+    if ((displayBaseline || displayChangedOnly) && !facts.baselineLoaded) baselineSlice.request();
+  }, [displayBaseline, displayChangedOnly, facts.baselineLoaded, baselineSlice.request]);
   function select(task, beforeTask) { setHover(null); onSelect(task, beforeTask); }
   const currentIndex = model.taskOrder.has(selectedRef) ? model.taskOrder.get(selectedRef) : -1;
   function move(direction) {
@@ -194,9 +193,9 @@ function PlanGantt({ data, prepared: facts, graph, asOf, selected, onSelect, que
     <div className="plan-toolbar">
       <Segment value={mode} options={Object.entries(M.kindLabels)} onChange={setMode} label="甘特分组" />
       {showBaseline && <label className="plan-check" title="显示保存的原安排"><input type="checkbox" aria-label="显示原安排" checked={displayBaseline}
-        onChange={event => { const next = event.target.checked; setBaseline(next); if (next && !facts.baselineLoaded) onRequestBaseline(); }} />显示原安排</label>}
+        onChange={event => { const next = event.target.checked; setBaseline(next); if (next && !facts.baselineLoaded) baselineSlice.request(); }} />显示原安排</label>}
       {showBaseline && <label className="plan-check" title="筛选起止时间、设备或人员发生变化，以及新增、移除的工序"><input type="checkbox" aria-label="只看有变化的工序" checked={displayChangedOnly}
-        onChange={event => { const next = event.target.checked; setChangedOnly(next); if (next && !facts.baselineLoaded) onRequestBaseline(); }} />只看有变化的工序</label>}
+        onChange={event => { const next = event.target.checked; setChangedOnly(next); if (next && !facts.baselineLoaded) baselineSlice.request(); }} />只看有变化的工序</label>}
       <label className="search plan-search"><span className="ic"><Icon name="search" /></span><input ref={search} type="search" aria-label="搜索批次、工序、设备、人员" placeholder="批次、工序、资源" value={query}
         onChange={event => onQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); move(event.shiftKey ? -1 : 1); } if (event.key === 'Escape') onQuery(''); }} /></label>
       <div className="plan-actions">
@@ -207,17 +206,17 @@ function PlanGantt({ data, prepared: facts, graph, asOf, selected, onSelect, que
         {toolbarActions}
       </div>
     </div>
-    {(displayBaseline || displayChangedOnly) && !facts.baselineLoaded && (baselineError || baselineLoading) && <div className="wb-surface-body plan-read-state" data-plan-baseline-state={baselineError ? 'error' : 'loading'}>
-      {baselineError && <ErrorBox error={baselineError} />}
-      {baselineError && onRequestBaseline && <Button icon="refresh-cw" onClick={onRequestBaseline}>重试加载原安排</Button>}
-      {!baselineError && baselineLoading && <p className="plan-muted">正在加载原安排对照…</p>}
+    {(displayBaseline || displayChangedOnly) && !facts.baselineLoaded && (baselineSlice.error || baselineSlice.loading) && <div className="wb-surface-body plan-read-state" data-plan-baseline-state={baselineSlice.error ? 'error' : 'loading'}>
+      {baselineSlice.error
+        ? <><ErrorBox error={baselineSlice.error} /><Button icon="refresh-cw" onClick={baselineSlice.request}>重试加载原安排</Button></>
+        : <p className="plan-muted">正在加载原安排对照…</p>}
     </div>}
-    {data.gantt_graph.state === 'available' && data.gantt_graph.nodes_complete === false && (graphError || graphLoading) && <div className="wb-surface-body plan-read-state" data-plan-graph-state={graphError ? 'error' : 'loading'}>
-      {graphError && <ErrorBox error={graphError} />}
-      {graphError && onRetryGraph && <Button icon="refresh-cw" onClick={onRetryGraph}>重试加载工序关联</Button>}
-      {!graphError && graphLoading && <p className="plan-muted">正在加载关键链与工序关联…</p>}
+    {data.gantt_graph.state === 'available' && data.gantt_graph.nodes_complete === false && (graphSlice.error || graphSlice.loading) && <div className="wb-surface-body plan-read-state" data-plan-graph-state={graphSlice.error ? 'error' : 'loading'}>
+      {graphSlice.error
+        ? <><ErrorBox error={graphSlice.error} /><Button icon="refresh-cw" onClick={graphSlice.request}>重试加载工序关联</Button></>
+        : <p className="plan-muted">正在加载关键链与工序关联…</p>}
     </div>}
-    <GanttGraphLayer.Controls graph={data.gantt_graph} enabled={chainEnabled} onChange={setChainEnabled} active={active} geometry={geometry} loading={graphLoading} error={graphError} onClear={() => { setHover(null); onSelect(null); }} />
+    <GanttGraphLayer.Controls graph={data.gantt_graph} enabled={chainEnabled} onChange={setChainEnabled} active={active} geometry={geometry} loading={graphSlice.loading} error={graphSlice.error} onClear={() => { setHover(null); onSelect(null); }} />
     <div className="plan-board-frame">
       {!printing && width > viewport && <Overview model={model} tasks={data.tasks} prepared={facts} cache={overviewCache} width={width} viewport={renderViewport} left={renderLeft} onPan={left => { board.current.scrollLeft = Math.max(0, left); measure(); }} />}
       <div ref={board} className="plan-board" data-plan-scroll data-wb-scroll-key="plan-board" tabIndex={0} aria-label={M.kindLabels[mode] + '甘特时间轴'} onScroll={() => {

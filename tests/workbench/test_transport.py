@@ -14,17 +14,18 @@ def test_transport_contract_and_bounded_request_lifetime():
     )
     report = json.loads(result.stdout)
     assert report["network"] == "mock-only" and report["production"] is False
-    assert report["checks"] == len(report["cases"]) == 95
+    assert report["checks"] == len(report["cases"]) == 96
     cases = set(report["cases"])
     # Q2-A: one definite-rejection verdict for every command module.
     for status in (400, 403, 404, 409, 413, 422, 500, 503):
         assert f"rejected for committed:false HTTP {status}" in cases
     assert "request_key_conflict is never a rejection" in cases
-    assert "failure maps the backend failure envelope to the unified error" in cases
+    assert "envelopeFailure maps the backend failure envelope to the unified error" in cases
     assert "envelope rejects sixth meta key" in cases and "envelope accepts a null snapshot_ref" in cases
     assert "lookup returns a 200 not_observed payload for the domain to validate" in cases
     assert "types maps the four download formats to frozen MIME types" in cases
     assert "rejected for a local failure that never reached the server" in cases
     assert "read network failure is a definite non-commit, lookup failure never is" in cases
     assert "download rejects a missing filename" in cases
+    assert "download with a body posts it as JSON and keeps the file checks" in cases
     assert "download rejects a suffix that does not match the type: CSV saved as .xlsx" in cases

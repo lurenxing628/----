@@ -1,20 +1,21 @@
 import React from './shared/runtime/react.js';
-import RunJobAPI from './RunJobAPI.js';
-import RunJobControls from './RunJobControls.jsx';
-import APSWorkbenchTransport from './shared/network/transport.js';
+import A from './RunJobAPI.js';
+import U from './RunJobControls.jsx';
+import T from './shared/network/transport.js';
 import { exclusive, equal } from './shared/session/pending-store.js';
-import PreflightContract from './PreflightContract.js';
 import RunGenerationContract from './RunGenerationContract.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
+import { token32, failure } from './shared/contract/kit.js';
+import { WorkbenchError, errorText } from './WorkbenchReferences.jsx';
 
-const A = RunJobAPI, U = RunJobControls, T = APSWorkbenchTransport;
 // 本机记录还原成界面状态：本页还没写进磁盘的记录（读取错误带 saved）照样还原，错误交给 storageError。
+// storageError 和 error 保存错误对象（没有错误时为 null），由显示层（WorkbenchError / errorText）判定上屏文案。
 function savedRecord(load = A.pending.read) {
-  let pending, error = '', unflushedFinish = false;
+  let pending, error = null, unflushedFinish = false;
   try { pending = load(); }
   catch (e) {
     if (e.saved === undefined) throw e;
-    pending = e.saved; error = e.message;
+    pending = e.saved; error = e;
     unflushedFinish = e.saved === null;
   }
   const s = A.pending.session();
@@ -29,7 +30,7 @@ function savedRecord(load = A.pending.read) {
     try { recent = A.pending.recent(); }
     catch (e) {
       if (s.intent && (s.resolution === 'context_replaced' || (s.run && A.terminal(s.run)))) {
-        return { intent: s.intent, pending: false, run: s.run, resolution: s.resolution, verified: Boolean(s.verified), error: error || e.message };
+        return { intent: s.intent, pending: false, run: s.run, resolution: s.resolution, verified: Boolean(s.verified), error: error || e };
       }
       throw e;
     }
@@ -45,9 +46,9 @@ function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate }) {
     catch (e) {
       const s = A.pending.session();
       if (s.intent && (s.resolution === 'context_replaced' || (s.run && A.terminal(s.run)))) {
-        return { intent: s.intent, pending: false, run: s.run, resolution: s.resolution, verified: Boolean(s.verified), error: e.message };
+        return { intent: s.intent, pending: false, run: s.run, resolution: s.resolution, verified: Boolean(s.verified), error: e };
       }
-      return { intent: null, pending: false, run: null, verified: false, error: e.message };
+      return { intent: null, pending: false, run: null, verified: false, error: e };
     }
   });
   const [intent, setIntent] = React.useState(initial.intent), [storageError, setStorageError] = React.useState(initial.error);
@@ -55,14 +56,12 @@ function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate }) {
   const [retryPaused, setRetryPaused] = React.useState(false), [lastChecked, setLastChecked] = React.useState(null);
   const [run, setRun] = React.useState(initial.run || null), [preview, setPreview] = React.useState(null), [confirming, setConfirming] = React.useState(false);
   const [confirmationData, setConfirmationData] = React.useState(null), [timeBudget, setTimeBudget] = React.useState(null), [submitting, setSubmitting] = React.useState(false);
-  const [error, setError] = React.useState(''), [notice, setNotice] = React.useState(''), [busy, setBusy] = React.useState(false);
-  const fail = (e, text) => { setError(text || A.failure(e)); };
-  const clearError = () => { setError(''); };
+  const [error, setError] = React.useState(null), [notice, setNotice] = React.useState(''), [busy, setBusy] = React.useState(false);
   const [unavailable, setUnavailable] = React.useState('');
   const [verified, setVerified] = React.useState(Boolean(initial.verified));
   const [checking, setChecking] = React.useState(false), [paused, setPaused] = React.useState(document.hidden), [revision, refresh] = React.useReducer(v => v + 1, 0);
   const alive = React.useRef(false), locked = React.useRef(false), manualQuery = React.useRef(false), previewRequest = React.useRef(null), confirmationSession = React.useRef(null), currentPreview = React.useRef(null), activeInput = React.useRef(null), activeIntent = React.useRef(intent);
-  const inputRef = preflight && A.token(preflight.input_ref) ? preflight.input_ref : null;
+  const inputRef = preflight && token32(preflight.input_ref) ? preflight.input_ref : null;
   activeInput.current = inputRef; activeIntent.current = intent;
   function closeConfirmation() {
     if (locked.current) return;
@@ -84,7 +83,7 @@ function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate }) {
   }, [inputRef, preflightOwner]);
   function changed() {
     try { const saved = savedRecord(); closeConfirmation(); setIntent(saved.intent); setPendingActive(saved.pending); setResolution(saved.resolution || 'unresolved'); setRun(saved.run || null); setVerified(Boolean(saved.verified)); setStorageError(saved.error); refresh(); }
-    catch (e) { setStorageError(e.message); }
+    catch (e) { setStorageError(e); }
   }
   React.useEffect(() => A.pending.subscribe(changed), []);
   React.useEffect(() => {
@@ -119,10 +118,10 @@ function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate }) {
     async function record(result) {
       let outcome;
       try { outcome = (await settle(result)).value; }
-      catch (e) { if (current()) setStorageError(e.message); return; }
+      catch (e) { if (current()) setStorageError(e); return; }
       if (!outcome || !current()) return;
       activeIntent.current = outcome.intent; setIntent(outcome.intent);
-      if (outcome.error) { setStorageError(outcome.error.message); return; }
+      if (outcome.error) { setStorageError(outcome.error); return; }
       if (outcome.finished) { setPendingActive(false); if (result && A.terminal(result)) onNavigate('run', { run_ref: result.run_ref }); }
     }
     async function query() {
@@ -131,7 +130,7 @@ function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate }) {
       try {
         const found = await A.lookup(intent, localController.signal);
         if (!current() || localController.signal.aborted) return;
-        setLastChecked(Date.now()); setResolution(found.resolution); clearError(); setNotice('');
+        setLastChecked(Date.now()); setResolution(found.resolution); setError(null); setNotice('');
         if (!found.found) {
           setVerified(false);
           if (found.resolution === 'context_replaced') {
@@ -147,7 +146,13 @@ function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate }) {
         if (!result.recovery_required) attempt = 0;
         setRun(result); setVerified(true); unsettledSince = null; done = A.terminal(result);
         if (pendingActive && (done || !activeIntent.current.run_ref)) await record(result);
-      } catch (e) { if (current() && !localController.signal.aborted) { setLastChecked(Date.now()); setResolution('lookup_failed'); setVerified(false); fail(e, e.code === 'run_result_inconsistent' ? A.message(e) : '查询暂未成功，请点「查询结果」重试。'); unresolved(started); } }
+      } catch (e) {
+        // 查询失败的错误对象原样交给显示层（后端说明和编号在错误框里）；记录对不上时后端说明已写明下一步，其余失败在错误框下另附重试提示。
+        if (current() && !localController.signal.aborted) {
+          setLastChecked(Date.now()); setResolution('lookup_failed'); setVerified(false); setError(e);
+          setNotice(e.code === 'run_result_inconsistent' ? '' : '查询暂未成功，请点「查询结果」重试。'); unresolved(started);
+        }
+      }
       finally {
         if (controller === localController) {
           querying = false;
@@ -170,7 +175,7 @@ function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate }) {
   function beginPreviewRequest() {
     if (previewRequest.current) previewRequest.current.abort();
     const controller = new AbortController(); previewRequest.current = controller; currentPreview.current = null;
-    setBusy(true); clearError(); setNotice(''); setPreview(null); setUnavailable('');
+    setBusy(true); setError(null); setNotice(''); setPreview(null); setUnavailable('');
     return controller;
   }
   function ownsPreview(owner, controller) {
@@ -180,14 +185,13 @@ function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate }) {
     const value = await A.preview(checked.input_ref, controller.signal);
     if (!ownsPreview(owner, controller)) return;
     if (!equal(value.normalized_input, checked.normalized_input) || !equal(value.run_options, checked.run_options))
-      throw PreflightContract.fail('核对结果与本次排产检查不一致，请重新检查。');
+      throw failure('核对结果与本次排产检查不一致，请重新检查。');
     currentPreview.current = value; setPreview(value); setConfirming(value.write_context.capabilities['scheduling.run']);
-    if (!value.write_context.capabilities['scheduling.run']) setUnavailable(value.write_context.blocked_reasons[0].message || A.message(value.write_context.blocked_reasons[0]));
+    if (!value.write_context.capabilities['scheduling.run']) setUnavailable(value.write_context.blocked_reasons[0].message);
   }
+  // 核对失败的错误对象原样交给显示层：本页的一致性核对、传输层和后端拒绝（含排产检查重算）都已带这次失败的中文说明。
   function previewFailure(error, owner, controller) {
-    if (!ownsPreview(owner, controller)) return;
-    fail(error, A.previewMessage(error));
-    if (error.code === 'run_worker_not_connected') setUnavailable(A.message(error));
+    if (ownsPreview(owner, controller)) setError(error);
   }
   function finishPreview(owner, controller) {
     if (previewRequest.current !== controller) return;
@@ -220,15 +224,15 @@ function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate }) {
   async function submit() {
     if (locked.current || !confirmationSession.current || confirmationSession.current.rechecking || !preview || currentPreview.current !== preview
         || preview.input_ref !== activeInput.current || preview.write_context.capabilities['scheduling.run'] !== true || storageError) return;
-    locked.current = true; setSubmitting(true); setBusy(true); clearError();
+    locked.current = true; setSubmitting(true); setBusy(true); setError(null);
     let original, storageFailed = false;
     try {
       // Keep admission and the durable identity claim serialized across browser tabs; the lock is held across admission.
       const { acquired } = await exclusive(A.PENDING_KEY, {}, async () => {
         if (!alive.current || currentPreview.current !== preview || preview.input_ref !== activeInput.current) return;
-        if (pendingActive) { fail(null, '上次排产还没确认结果，不能开始下一次排产。'); return; }
+        if (pendingActive) { setError(failure('上次排产还没确认结果，不能开始下一次排产。')); return; }
         try { original = A.pending.begin(preview.input_ref, preview.data_context_ref); }
-        catch (e) { storageFailed = true; if (alive.current) setStorageError(e.message); return; }
+        catch (e) { storageFailed = true; if (alive.current) setStorageError(e); return; }
         confirmationSession.current = null; currentPreview.current = null;
         activeIntent.current = original; setIntent(original); setPendingActive(true); setResolution('unresolved'); setRun(null); setVerified(false); setConfirming(false);
         try {
@@ -247,17 +251,17 @@ function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate }) {
             }
           }
           try { const saved = A.pending.attach(original, receipt.run_ref); if (owned) { activeIntent.current = saved; setIntent(saved); } }
-          catch (_) { if (alive.current) setStorageError('排产已接收，但本机没能保存这次排产的编号。请不要重新提交，到排产记录页查看结果。'); }
+          catch (_) { if (alive.current) setStorageError(failure('排产已接收，但本机没能保存这次排产的编号。请不要重新提交，到排产记录页查看结果。')); }
         } catch (e) {
           if (T.rejected(e)) {
-            if (alive.current) { activeIntent.current = null; setIntent(null); setPendingActive(false); setRun(null); fail(e); }
+            if (alive.current) { activeIntent.current = null; setIntent(null); setPendingActive(false); setRun(null); setError(e); }
             try { A.pending.reject(original); }
-            catch (storageErr) { if (alive.current) setStorageError(storageErr.message); }
-          } else if (alive.current) fail(null, WorkbenchTerms.outcomes.pending('排产'));
+            catch (storageErr) { if (alive.current) setStorageError(storageErr); }
+          } else if (alive.current) setError(failure(WorkbenchTerms.outcomes.pending('排产'), { committed: 'unknown' }));
         }
       });
-      if (!acquired && alive.current) fail(null, '另一个页面正在处理排产记录，请稍后重试。');
-    } catch (e) { if (alive.current) fail(e, e.message); }
+      if (!acquired && alive.current) setError(failure('另一个页面正在处理排产记录，请稍后重试。'));
+    } catch (e) { if (alive.current) setError(e); }
     finally {
       locked.current = false;
       if (alive.current) {
@@ -272,11 +276,11 @@ function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate }) {
     try {
       const saved = (await exclusive(A.PENDING_KEY, { wait: true }, () => savedRecord(A.pending.flush))).value;
       setIntent(saved.intent); setPendingActive(saved.pending); setResolution(saved.resolution || 'unresolved'); setStorageError(saved.error); setVerified(Boolean(saved.verified)); setRun(saved.run || null); refresh();
-    } catch (e) { setStorageError(e.message); }
+    } catch (e) { setStorageError(e); }
   }
   const selected = preflight && preflight.normalized_input && preflight.normalized_input.batch_refs;
   const effective = preflight && preview && preflight.input_ref === preview.input_ref ? preflight.effective_config : null;
-  const reason = storageError || (!inputRef ? '请先完成排产检查。' : selected && !selected.length ? '请先选择要排产的批次。' : pendingActive ? '上次排产尚未确认结果，请先查询。' : unavailable);
+  const reason = storageError ? errorText(storageError) : !inputRef ? '请先完成排产检查。' : selected && !selected.length ? '请先选择要排产的批次。' : pendingActive ? '上次排产尚未确认结果，请先查询。' : unavailable;
   return <section className="plana run-job-panel" data-run-job-panel="true" aria-label="候选排产">
     <div className="rj-heading"><div><h3>候选排产</h3><p className="rj-muted">选择范围并完成检查后，计算本次候选方案。</p></div></div>
     <div className="rj-actions"><div className="rj-tools">
@@ -284,8 +288,8 @@ function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate }) {
       {unavailable && <U.Button icon="refresh-cw" busy={busy} onClick={inspect}>重新核对排产条件</U.Button>}
       {intent && resolution !== 'context_replaced' && <U.Button icon="refresh-cw" busy={checking || busy} onClick={() => { manualQuery.current = true; setNotice(''); refresh(); }}>查询结果</U.Button>}
     </div>{reason && <p className="rj-muted rj-action-reason">{reason}</p>}</div>
-    {storageError && <div className="rj-notice" role="alert">{storageError}<div className="rj-tools"><U.Button icon="refresh-cw" disabled={busy} onClick={rereadStorage}>刷新上次操作记录</U.Button></div></div>}
-    {error && <div className="rj-notice" role="alert">{error}</div>}{notice && <div className="rj-notice" role="status">{notice}</div>}
+    {storageError && <><WorkbenchError error={storageError} /><div className="rj-tools"><U.Button icon="refresh-cw" disabled={busy} onClick={rereadStorage}>刷新上次操作记录</U.Button></div></>}
+    <WorkbenchError error={error} />{notice && <div className="rj-notice" role="status">{notice}</div>}
     {preview && !confirming && <><U.Scope preview={preview} effective={effective} /><U.Reasons rows={preview.write_context.blocked_reasons} /></>}
     {intent && <U.Record run={run} title={pendingActive ? '本次排产' : '上次排产'} paused={paused} retryPaused={retryPaused} lastChecked={lastChecked} resolution={resolution} checking={checking} verified={verified} onNavigate={onNavigate} />}
     {confirming && confirmationData && <U.Confirmation preview={preview} preflight={confirmationData} effective={confirmationData.effective_config}

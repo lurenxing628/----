@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('../../scripts/workbench/compile.cjs');
+const { memoryStorage } = require('../_support/memory_storage.cjs');
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
 const built = compile({
   sources: ['WorkbenchFormat.js', 'ResourceRail.jsx'].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })),
@@ -10,16 +11,16 @@ const nodes = Object.fromEntries([
   ['process', '工艺', '项'], ['material', '物料', '条'], ['op_int', '自制工种', '个'], ['machine', '设备', '台'],
   ['operator', '人员', '人'], ['op_ext', '外协工种', '个'], ['supplier', '供应商', '家']
 ].map(([key, label, unit]) => [key, { label, unit, icon: key }]));
-function runtime(storage = new Map()) {
+function runtime(storage = memoryStorage()) {
   let choice;
   const React = { Fragment: 'fragment', createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
     useState(initial) { if (!choice) choice = initial(); return [choice, value => { choice = value; }]; } };
   const context = vm.createContext({
     React,
-    sessionStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
+    sessionStorage: storage,
     window: {},
     __wbStubs: {
-      'resource-contract.js': { nodes, message: error => error.message },
+      'resource-contract.js': { nodes },
       'ResourceControls.jsx': {
         Button: props => React.createElement('button', props, props.children),
         Icon: () => null,
@@ -28,7 +29,10 @@ function runtime(storage = new Map()) {
     },
   });
   for (const out of built) vm.runInContext(out.code, context);
-  return props => expand(context.__wbRuntime.getModule('ResourceRail.jsx')(props));
+  const render = props => expand(context.__wbRuntime.getModule('ResourceRail.jsx')(props));
+  // 与侧栏同一运行时里的 kit：显示层按它认 kit 统一错误对象。
+  render.failure = context.__wbRuntime.getModule('shared/contract/kit.js').failure;
+  return render;
 }
 function expand(node) {
   if (Array.isArray(node)) return node.flatMap(item => { const value = expand(item); return Array.isArray(value) ? value : [value]; });
@@ -68,7 +72,7 @@ function fixture() {
 }
 
 // A fresh session opens the preparation chain. Manual choices survive node switches and remounts.
-const storage = new Map(), render = runtime(storage), props = fixture();
+const storage = memoryStorage(), render = runtime(storage), props = fixture();
 let tree = render(props);
 assert.equal(tree.props['data-collapsed'], 'false');
 assert(!text(tree).includes('只读汇总'));
@@ -97,7 +101,7 @@ assert.equal(tree.props['data-collapsed'], 'true');
 find(tree, node => hasClass(node, 'rail-toggle')).props.onClick();
 tree = remount(props);
 assert.equal(tree.props['data-collapsed'], 'false');
-assert.equal(storage.get('aps_resource_rail_collapsed'), 'false');
+assert.equal(storage.data.get('aps_resource_rail_collapsed'), 'false');
 
 // Each day has a compact unit-free value, while rest, prohibited scheduling and unknown remain different facts.
 let calendar = find(tree, node => hasClass(node, 'hb-cal-block'));
@@ -131,8 +135,13 @@ find(tree, node => hasClass(node, 'rail-toggle')).props.onClick(); tree = remoun
 const notices = find(tree, node => hasClass(node, 'rail-notices'));
 assert(text(notices).includes('工艺确认记录读取失败'));
 assert(text(notices).includes('2026-10-05：班次时长无效。'));
-failed.counts.summary.error = { message: '本机数据库无法读取。' };
+// The summary read error goes through the shared display rule: kit copy is shown as is, anything else shows the rail's fallback.
+failed.counts.summary.error = remount.failure('本机数据库无法读取。');
 assert(text(find(remount(failed), node => hasClass(node, 'rail-notices'))).includes('本机数据库无法读取。'));
+failed.counts.summary.error = new TypeError("Cannot read properties of undefined (reading 'counts')");
+tree = remount(failed);
+assert(text(find(tree, node => hasClass(node, 'rail-notices'))).includes('产能链读取失败，请刷新后重试。'));
+assert(!JSON.stringify(tree).includes('Cannot read properties'), 'A non-kit error message never reaches the rail');
 
 const loading = fixture(); loading.counts.summary = { loading: true };
 tree = runtime()(loading);

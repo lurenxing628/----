@@ -1,16 +1,13 @@
-import TrialContract from './TrialContract.js';
-import WorkbenchTerms from './WorkbenchTerms.js';
+import C from './TrialContract.js';
+import T from './WorkbenchTerms.js';
 import { csvCell } from './shared/csv.js';
 
-const C = TrialContract, T = WorkbenchTerms;
 const headers = ['方案', '方案状态', '约束检查', '对比基准方案', T.changeover_count + '（次）',
   '批次', '产品', '数量（件）', '优先级', '交期（截至日）', '对比基准预计完工', '试调预计完工',
   '超期（小时）', '预计完工提前（小时，负数为延后）', '工序调整', '换设备', '交付风险',
   '交期判定', '原工序安排', '试调工序安排', '原已安排部分预计完工', '试调已安排部分预计完工',
   '原其他未安排工序', '原缺料未安排工序', '试调其他未安排工序', '试调缺料未安排工序',
   '草稿编号', '试调方案编号', '原来源编号', '试调方案保存时间', '核对提示'];
-const states = { editing: '可继续试调', saved: '已保存', discarded: '已放弃', valid: '通过', warning: '有提示', blocked: '有冲突，不能采用' };
-const priorities = { normal: '普通', urgent: '急件', critical: '特急' };
 const risks = T.delivery_risks;
 const label = (value, labels) => value == null ? null : Object.prototype.hasOwnProperty.call(labels, value) ? labels[value] : '未识别（' + String(value) + '）';
 
@@ -33,15 +30,15 @@ function document(filename, columns, rows) {
 }
 function csv(data) {
   const c = data.comparison;
-  const constraintStatus = label(data.validation.constraints_status, states);
+  const constraintStatus = T.trial_constraint_status(data.validation.constraints_status);
   const constraints = '约束检查：' + constraintStatus + '；整体状态：' + constraintStatus +
     '；问题 ' + data.validation.issues.length + ' 项';
-  const common = [data.name || '未命名试调草稿', label(data.status, states), constraints,
+  const common = [data.name || '未命名试调草稿', T.trial_draft_status(data.status), constraints,
     data.base_identity.display_name || '上次排产的候选方案', c.changeovers];
   const evidence = [data.draft_ref, data.scenario_ref,
     (data.base.plan_ref ? '计划：' + data.base.plan_ref : '排产候选：' + data.base.candidate_ref),
     data.scenario_ref ? data.saved_at || '未记录' : undefined, note(data)];
-  const rows = c.batches.map(batch => common.concat([batch.batch_id, batch.part_name, batch.quantity, label(batch.priority, priorities),
+  const rows = c.batches.map(batch => common.concat([batch.batch_id, batch.part_name, batch.quantity, label(batch.priority, T.batch_priorities),
     batch.due_date, batch.baseline_finish, batch.finish, batch.late_hours, batch.improvement_hours, batch.changed, batch.moved, label(batch.risk, risks),
     T.due_date(batch.due_date, batch.due_state, batch.due_issue), T.delivery_completion_states[batch.before.completion_state], T.delivery_completion_states[batch.after.completion_state],
     batch.partial_baseline_finish, batch.partial_finish, batch.before.ordinary_unscheduled_operation_count, batch.before.deferred_operation_count,

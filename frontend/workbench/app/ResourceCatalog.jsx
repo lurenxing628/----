@@ -1,6 +1,7 @@
 import React from './shared/runtime/react.js';
 import C from './resource-contract.js';
 import S from './shared/session/command-session.js';
+import APSResourceAPI from './resource-api.js';
 import { useQuery } from './shared/session/query.js';
 import M from './ResourceCatalogModel.js';
 import { Modal, Button, ErrorBox, Issues, focusFirstInvalid, EmptyState, Pager } from './ResourceControls.jsx';
@@ -9,6 +10,7 @@ import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import { Feedback } from './ResourceForms.jsx';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
+import { failure } from './shared/contract/kit.js';
 
 const initialScope = () => ({ query: '', status: '', page: 1, size: 20, sort: 'business_code', direction: 'asc' });
 function CatalogList({ kind, list, scope, setScope, onOpen, disabled }) {
@@ -39,11 +41,12 @@ function CatalogList({ kind, list, scope, setScope, onOpen, disabled }) {
         onPage={page => setScope({ ...scope, page, snapshot_ref: list.result.meta.snapshot_ref })} /></>}
   </>;
 }
-function ResourceCatalog({ kind, adapter, onClose, onCommitted }) {
+function ResourceCatalog({ kind, onClose, onCommitted }) {
+  const api = APSResourceAPI.forNamespace('catalog');
   const [scope, setScope] = React.useState(initialScope), [editor, setEditor] = React.useState(null);
   const [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null), [review, setReview] = React.useState(null);
   const [lastReceipt, setLastReceipt] = React.useState(null), [needsReview, setNeedsReview] = React.useState(false);
-  const command = S.useCommand(adapter), generation = React.useRef(0), alive = React.useRef(true), root = React.useRef(null), formId = React.useId();
+  const command = S.useCommand(api), generation = React.useRef(0), alive = React.useRef(true), root = React.useRef(null), formId = React.useId();
   React.useEffect(() => { alive.current = true; return () => { alive.current = false; generation.current++; }; }, []);
   const validKind = Object.prototype.hasOwnProperty.call(M.names, kind), done = command.phase === 'done';
   const locked = command.locked || busy, showList = !editor && !command.locked && !done;
@@ -51,7 +54,7 @@ function ResourceCatalog({ kind, adapter, onClose, onCommitted }) {
     dirty: !!(editor && editor.action !== 'delete' && !done && M.isDirty(kind, editor.draft, editor.baseline)),
     locked: command.locked, message: (M.names[kind] || '基础资料') + '有尚未保存的填写内容。' });
   React.useEffect(() => { if (error || command.error) focusFirstInvalid(root.current); }, [error, command.error]);
-  const list = useQuery(signal => adapter.list(kind, scope, signal), [adapter, kind, scope], validKind && showList);
+  const list = useQuery(signal => api.list(kind, scope, signal), [kind, scope], { enabled: validKind && showList });
   React.useEffect(() => {
     const selector = done ? '.modal-f button:not(:disabled)' : 'input:not(:disabled):not([readonly]),select:not(:disabled)';
     const target = root.current && root.current.querySelector(selector);
@@ -65,10 +68,9 @@ function ResourceCatalog({ kind, adapter, onClose, onCommitted }) {
     if (locked) return;
     const ticket = ++generation.current; setBusy(true); setError(null);
     try {
-      const result = ref ? await adapter.detail(kind, ref, new AbortController().signal) :
-        await adapter.list(kind, { ...scope, page: 1, snapshot_ref: undefined }, new AbortController().signal);
-      if (ref && result.data.ref !== ref) throw C.failure('读到的记录与所选记录不一致，请刷新后重试。');
-      const defaults = !reviewing && kind === 'shift_profile' && action !== 'delete' ? await adapter.query('/api/workbench/v1/calendar/defaults', {}, new AbortController().signal) : null;
+      const result = ref ? await api.detail(kind, ref, new AbortController().signal) :
+        await api.list(kind, { ...scope, page: 1, snapshot_ref: undefined }, new AbortController().signal);
+      const defaults = !reviewing && kind === 'shift_profile' && action !== 'delete' ? await api.calendarDefaults(new AbortController().signal) : null;
       if (!alive.current || ticket !== generation.current) return;
       if (reviewing) setReview(result);
       else {
@@ -121,6 +123,7 @@ function ResourceCatalog({ kind, adapter, onClose, onCommitted }) {
     } catch (failure) { setError(failure); }
   }
   const title = (editor && !done ? ({ create: '新增', update: '编辑', delete: '删除' })[editor.action] : '维护') + (M.names[kind] || '基础资料');
+  const markedPaths = editor && !done && editor.action !== 'delete' ? Editor.fieldPaths(editor.draft) : [];
   return <div className="plana resource-catalog" data-resource-catalog={kind} ref={root}>
     <Modal title={title} icon={editor && editor.action === 'delete' ? 'trash-2' : kind === 'shift_profile' ? 'clock-3' : 'folder-open'} locked={locked} guardOwner={guardOwner} onClose={options => requestClose('close', options)}
       footer={<><Button onClick={() => requestClose()} reason={locked ? '操作结果还没确认，请保留当前页面。' : ''} reasonDisplay="tooltip">{lastReceipt || done ? '完成并返回' : '关闭'}</Button>
@@ -128,11 +131,11 @@ function ResourceCatalog({ kind, adapter, onClose, onCommitted }) {
             {editor.action === 'delete' ? '确认删除' : '保存'}</Button></>}
           {done && <Button icon="folder-open" onClick={() => back('list')}>继续维护</Button>}</>}>
       <div className="modal-b form scroll">
-        {!validKind && <ErrorBox error={C.failure('不支持这类基础资料。')} />}
+        {!validKind && <ErrorBox error={failure('不支持这类基础资料。')} />}
         {busy && <p role="status">正在读取资料…</p>}
         {validKind && showList && <CatalogList kind={kind} list={list} scope={scope} setScope={setScope} onOpen={open} disabled={locked} />}
         {editor && !done && <form id={formId} onSubmit={submit} noValidate><Editor kind={kind} editor={editor} error={error || command.error} disabled={locked} onChange={change} onValidationError={setError} onAcknowledge={acknowledge} /></form>}
-        <ErrorBox error={error} excludePaths={editor && !done && editor.action !== 'delete' ? Editor.fieldPaths : []} /><Feedback command={command} excludePaths={editor && !done && editor.action !== 'delete' ? Editor.fieldPaths : []} />
+        <ErrorBox error={error} excludePaths={markedPaths} /><Feedback command={command} excludePaths={markedPaths} />
         {command.intent && command.locked && <WorkbenchReference entries={{ '操作编号': command.intent.request_key }} />}
         {editor && !done && !command.locked && <div className="rc-pattern">
           <Button icon="refresh-cw" disabled={busy} onClick={() => { setReview(null); load(editor.action, editor.ref, true); }}>{WorkbenchTerms.refresh_latest}</Button>

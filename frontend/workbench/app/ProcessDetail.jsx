@@ -1,7 +1,7 @@
 import React from './shared/runtime/react.js';
-import C from './resource-contract.js';
 import P from './ProcessContract.js';
 import S from './shared/session/command-session.js';
+import APSProcessAPI from './ProcessAPI.js';
 import { useQuery } from './shared/session/query.js';
 import E from './ProcessStageEditor.jsx';
 import { Button, Modal, ErrorBox, Issues } from './ResourceControls.jsx';
@@ -15,6 +15,7 @@ import ProcessSourceEditor from './ProcessSourceEditor.jsx';
 import ProcessHoursEditor from './ProcessHoursEditor.jsx';
 import ProcessRouteEntry from './ProcessRouteEntry.jsx';
 import ProcessFileActions from './ProcessFileActions.jsx';
+import { failure, object } from './shared/contract/kit.js';
 
 function Steps({ entity, stage, onStage, disabled, panelId, sharedPanel = false }) {
   const items = [['route', '工艺路线'], ['source', '归属'], ['hours', '工时定额'], ...(entity.workflow.ready ? [['ready', '汇总']] : [])];
@@ -56,9 +57,61 @@ function RouteView({ entity, disabled, onEntry, onFileAction }) {
     <Operations entity={entity} hours={false} />
     <details className="process-original"><summary>原始导入资料与保存记录</summary><dl className="process-fields">{[['route_raw', '原始路线'], ['route_parsed', '解析状态'], ['remark', '零件备注']].map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{key === 'route_parsed' ? entity.fields[key] === 'yes' ? '已解析' : entity.fields[key] === 'no' ? '未解析' : '解析状态未知' : E.value(entity.fields[key])}</dd></div>)}</dl><E.Confirmation record={entity.workflow.route} /><E.Groups rows={entity.external_groups} /></details></section>;
 }
-function DetailSession({ adapter, partRef, onClose, onCommitted, disabled = false, initialStage, templateOperationRef, templateExternalGroupRef, navigationReadOnly = false }) {
+// 读零件工艺详情：只认生产资料；按原零件记录定位浏览时，核对定位到的工序或外协段还在。
+async function readPart(partRef, target, locate, signal) {
+  if (target.error) throw target.error;
+  const value = P.detail(await APSProcessAPI.detail('part', partRef, signal), partRef);
+  if (value.meta.source !== 'production') throw failure('未取得原零件的生产详情，不能使用样例替代。');
+  if (locate) E.locate(value.data, target);
+  return value;
+}
+const defaultStage = entity => entity.workflow.route.state !== 'confirmed' ? 'route' : entity.workflow.stage;
+const prerequisiteOf = (entity, selected) => selected === 'source' && entity.workflow.route.state !== 'confirmed' ? '路线尚未确认；当前只能查看，不能确认归属。'
+  : selected === 'hours' && (entity.workflow.route.state !== 'confirmed' || entity.workflow.source.state !== 'confirmed') ? '前置路线或归属尚未确认；当前只能查看，不能确认工时。' : '';
+// 浏览时把焦点放到当前步骤页签上；定位到具体工序或外协段时由 E.useFocus 处理。
+function useBrowseFocus(root, browsing, entity, selected, target) {
+  React.useEffect(() => {
+    if (!browsing || !entity || target.operationRef || target.groupRef || !root.current) return undefined;
+    const frame = requestAnimationFrame(() => { const tab = root.current && root.current.querySelector('.stepper [aria-selected="true"]'); if (tab) { tab.focus(); tab.scrollIntoView({ block: 'nearest' }); } });
+    return () => cancelAnimationFrame(frame);
+  }, [browsing, entity, selected, target]);
+}
+// 零件工艺详情的弹窗外框：标题、批次引用说明与关闭按钮。
+function Frame({ entity, locked, suspended, onClose, children }) {
+  return <Modal title={entity ? entity.business_code + ' · ' + entity.label : '零件工艺详情'} icon="chart-gantt" onClose={onClose} locked={locked} suspended={suspended}
+    footer={<><span className="muted" style={{ marginRight: 'auto' }}>{entity ? '此工艺已用于 ' + entity.relationships.batch_count + ' 个批次。修改后，已有批次工序不会自动更新。' : ''}</span><Button disabled={locked} onClick={onClose}>关闭详情</Button></>}>
+    <div className="modal-b scroll pd-modal-b">{children}</div>
+  </Modal>;
+}
+// 按原零件记录定位后的只读浏览：工艺页“开始维护”之前与校准页查看共用。
+function Browse({ entity, selected, panelId, target, disabled, prerequisite, onStart }) {
+  return <section role="tabpanel" id={panelId + '-navigation'} aria-labelledby={panelId + '-tab-' + selected} data-process-navigation-stage={selected}>
+    <div className="toolbar"><span role="status">已按原零件记录定位，当前只能查看 · {P.stageLabel(selected)}</span>
+      <Button icon="square-pen" disabled={disabled} reason={prerequisite} onClick={onStart}>开始维护</Button></div>
+    <p><E.Confirmation record={entity.workflow[selected === 'ready' ? 'hours' : selected]} /></p>
+    {selected === 'route' && <dl className="process-fields"><dt>原始路线</dt><dd>{E.value(entity.fields.route_raw)}</dd></dl>}
+    <Operations key={selected} entity={entity} hours={selected !== 'route'} focusRef={target.operationRef} />
+    <E.Groups key={'groups-' + selected} rows={entity.external_groups} focusRef={target.groupRef} />
+  </section>;
+}
+// 只读查看零件工艺（校准页）：只读详情，不订阅工艺写入会话，不读取也不接续工艺页留下的待确认操作。
+function DetailView({ partRef, onClose, initialStage, templateOperationRef }) {
+  const [target] = React.useState(() => { try { return E.location(initialStage, templateOperationRef); } catch (error) { return { error }; } });
+  const [stage, setStage] = React.useState(target.stage || null), root = React.useRef(null), panelId = React.useId();
+  const detail = useQuery(signal => readPart(partRef, target, true, signal), [partRef]);
+  const result = detail.result, entity = result && result.data, selected = stage || (entity && defaultStage(entity));
+  useBrowseFocus(root, true, entity, selected, target);
+  return <div className="plana process-detail" ref={root}>
+    <Frame entity={entity} locked={false} suspended={false} onClose={onClose}>
+      {detail.loading && !entity && <p role="status">正在读取工艺详情…</p>}<ErrorBox error={detail.error} />{detail.error && <Button icon="refresh-cw" onClick={detail.reload}>刷新详情</Button>}
+      {entity && <><Issues issues={result.warnings} /><Issues issues={entity.issues} /><Steps entity={entity} stage={selected} disabled onStage={setStage} panelId={panelId} sharedPanel />
+        <Browse entity={entity} selected={selected} panelId={panelId} target={target} disabled prerequisite={prerequisiteOf(entity, selected)} /></>}
+    </Frame>
+  </div>;
+}
+function DetailSession({ partRef, onClose, onCommitted, disabled = false, initialStage, templateOperationRef, templateExternalGroupRef, navigationReadOnly = false }) {
   const [target] = React.useState(() => { try { return E.location(initialStage, templateOperationRef, templateExternalGroupRef); } catch (error) { return { error }; } });
-  const command = S.useCommand(adapter), [stage, setStage] = React.useState(target.stage || null), [current, setCurrent] = React.useState(null);
+  const command = S.useCommand(APSProcessAPI), [stage, setStage] = React.useState(target.stage || null), [current, setCurrent] = React.useState(null);
   const [browsing, setBrowsing] = React.useState(navigationReadOnly || !!initialStage || !!templateOperationRef || !!templateExternalGroupRef);
   const [entry, setEntry] = React.useState(false), [entryStarted, setEntryStarted] = React.useState(false), [overlay, setOverlay] = React.useState(false);
   const [dirty, setDirty] = React.useState({}), [discard, setDiscard] = React.useState(false), [saved, setSaved] = React.useState({ route: 0, source: 0, hours: 0, groups: 0 });
@@ -67,25 +120,17 @@ function DetailSession({ adapter, partRef, onClose, onCommitted, disabled = fals
   const request = React.useRef(null), notified = React.useRef(null), root = React.useRef(null), fileFocus = React.useRef(null);
   const panelId = React.useId();
   const onDirty = React.useCallback((key, value) => setDirty(old => old[key] === value ? old : { ...old, [key]: value }), []);
-  async function loadPart(signal) {
-    if (target.error) throw target.error;
-    const raw = await adapter.detail('part', partRef, signal);
-    if (raw.data.ref !== partRef) throw C.failure('返回的不是原零件记录，不能继续使用同图号的新零件。');
-    const value = P.detail(raw, partRef);
-    if (value.meta.source !== 'production') throw C.failure('未取得原零件的生产详情，不能使用样例替代。');
-    if (browsing) E.locate(value.data, target);
-    return value;
-  }
-  const detail = useQuery(loadPart, [adapter, partRef]);
+  const loadPart = signal => readPart(partRef, target, browsing, signal);
+  const detail = useQuery(loadPart, [partRef]);
   React.useEffect(() => { if (detail.result) setCurrent(old => old || detail.result); }, [detail.result]);
   React.useEffect(() => () => { if (request.current) request.current.abort(); }, []);
   const intent = command.intent, restored = APSProcessActions.restored(intent), fileKind = restored && restored.fileKind || null;
   const expectedStage = intent && intent.kind === 'process' && ['route_confirm', 'source_confirm', 'hours_confirm', 'groups_confirm'].includes(intent.action) ? intent.action.replace('_confirm', '') : null;
   const receiptMatches = command.phase === 'done' && expectedStage && command.intent.kind === 'process' && command.intent.ref === partRef &&
-    C.object(command.result.data) && command.result.data.entity_ref === partRef && command.result.data.stage === expectedStage && ['committed', 'unchanged'].includes(command.result.result);
+    object(command.result.data) && command.result.data.entity_ref === partRef && command.result.data.stage === expectedStage && ['committed', 'unchanged'].includes(command.result.result);
   const needsReceiptCheck = command.phase === 'done' && !fileKind && !receiptMatches;
   const visibleCommand = fileKind ? { ...command, phase: 'idle', result: null, error: null, locked: true } :
-    needsReceiptCheck ? { ...command, phase: 'pending', locked: true, error: C.failure(WorkbenchTerms.outcomes.pending('保存')) } : command;
+    needsReceiptCheck ? { ...command, phase: 'pending', locked: true, error: failure(WorkbenchTerms.outcomes.pending('保存'), { committed: 'unknown' }) } : command;
   const hasDraft = Object.values(dirty).some(Boolean);
   WorkbenchGuards.useDirtyGuard({ dirty: hasDraft, locked: (fileKind ? command.locked : visibleCommand.locked) || needsReceiptCheck,
     message: '零件工艺的路线、归属或工时输入尚未保存。' });
@@ -130,7 +175,7 @@ function DetailSession({ adapter, partRef, onClose, onCommitted, disabled = fals
     if (command.phase !== 'done' || !expectedStage || fileKind || request.current) return;
     const controller = new AbortController(); request.current = controller; setRefresh({ loading: true });
     try {
-      if (!receiptMatches) throw C.failure(WorkbenchTerms.outcomes.pending('保存'));
+      if (!receiptMatches) throw failure(WorkbenchTerms.outcomes.pending('保存'), { committed: 'unknown' });
       notify(command.result);
       const fresh = await loadPart(controller.signal);
       if (controller.signal.aborted) return;
@@ -138,7 +183,7 @@ function DetailSession({ adapter, partRef, onClose, onCommitted, disabled = fals
       setCurrent(fresh); setStage(fresh.data.workflow.stage); setSaved(old => ({ ...old, [key]: old[key] + 1 })); onDirty(key, false);
       if (key === 'route') { setEntry(false); setEntryStarted(false); }
       setReceipt(command.result); setRefresh({ done: true });
-      if (!command.reset()) setRefresh({ error: C.failure('保存已确认，但本机还留着上次操作记录。请点「查询结果」重试。') });
+      if (!command.reset()) setRefresh({ error: failure('保存已确认，但本机还留着上次操作记录。请点「查询结果」重试。') });
     } catch (error) { if (!controller.signal.aborted) setRefresh({ error }); }
     finally { if (request.current === controller) request.current = null; }
   }
@@ -151,8 +196,8 @@ function DetailSession({ adapter, partRef, onClose, onCommitted, disabled = fals
       if (controller.signal.aborted) return;
       setCurrent(fresh); setStage(fresh.data.workflow.stage); resetDrafts(); setRefresh({ done: true });
       if (command.reset()) setFileReceipt(null);
-      else setRefresh({ error: C.failure('文件已保存，但本机还留着上次操作记录。请点「查询结果」重试。') });
-    } catch (error) { if (!controller.signal.aborted) setRefresh({ error: C.failure('文件已保存，但刷新零件详情失败：' + C.message(error) + ' 请点「查询结果」重试；如果这条零件已删除，不能续用同图号的新零件。') }); }
+      else setRefresh({ error: failure('文件已保存，但本机还留着上次操作记录。请点「查询结果」重试。') });
+    } catch (error) { if (!controller.signal.aborted) setRefresh({ error, fileRead: true }); }
     finally { if (request.current === controller) request.current = null; }
   }
   function fileCommitted(value) {
@@ -164,46 +209,33 @@ function DetailSession({ adapter, partRef, onClose, onCommitted, disabled = fals
     if (command.reset()) onClose();
   }
   const result = current, entity = result && result.data;
-  const selected = stage || (entity && (entity.workflow.route.state !== 'confirmed' ? 'route' : entity.workflow.stage));
-  const prerequisite = entity && (selected === 'source' && entity.workflow.route.state !== 'confirmed' ? '路线尚未确认；当前只能查看，不能确认归属。'
-    : selected === 'hours' && (entity.workflow.route.state !== 'confirmed' || entity.workflow.source.state !== 'confirmed') ? '前置路线或归属尚未确认；当前只能查看，不能确认工时。' : '');
-  React.useEffect(() => {
-    if (!browsing || !entity || target.operationRef || target.groupRef || !root.current) return undefined;
-    const frame = requestAnimationFrame(() => { const tab = root.current && root.current.querySelector('.stepper [aria-selected="true"]'); if (tab) { tab.focus(); tab.scrollIntoView({ block: 'nearest' }); } });
-    return () => cancelAnimationFrame(frame);
-  }, [browsing, entity, selected, target]);
+  const selected = stage || (entity && defaultStage(entity));
+  useBrowseFocus(root, browsing, entity, selected, target);
   return <div className="plana process-detail" ref={root}>
-    <Modal title={entity ? entity.business_code + ' · ' + entity.label : '零件工艺详情'} icon="chart-gantt" onClose={close} locked={locked} suspended={entry || overlay || !!discard || !!fileAction}
-      footer={<><span className="muted" style={{ marginRight: 'auto' }}>{entity ? '此工艺已用于 ' + entity.relationships.batch_count + ' 个批次。修改后，已有批次工序不会自动更新。' : ''}</span><Button disabled={locked} onClick={close}>关闭详情</Button></>}>
-      <div className="modal-b scroll pd-modal-b">
+    <Frame entity={entity} locked={locked} suspended={entry || overlay || !!discard || !!fileAction} onClose={close}>
         {detail.loading && !entity && <p role="status">正在读取工艺详情…</p>}<ErrorBox error={detail.error} />{detail.error && <Button icon="refresh-cw" onClick={detail.reload}>刷新详情</Button>}
         {!fileKind && !fileReceipt && <Feedback command={visibleCommand} />}
-        {refresh.loading && (receiptMatches || fileReceipt) && <p role="status">保存已确认，正在刷新工艺详情…</p>}<ErrorBox error={refresh.error} />{refresh.error && !needsReceiptCheck && <Button icon="refresh-cw" onClick={fileReceipt ? () => readFileSaved(fileReceipt) : readSaved}>查询结果</Button>}
+        {refresh.loading && (receiptMatches || fileReceipt) && <p role="status">保存已确认，正在刷新工艺详情…</p>}
+        {refresh.fileRead && <p role="alert">文件已保存，但刷新零件详情失败。请点「查询结果」重试；如果这条零件已删除，不能续用同图号的新零件。</p>}<ErrorBox error={refresh.error} />{refresh.error && !needsReceiptCheck && <Button icon="refresh-cw" onClick={fileReceipt ? () => readFileSaved(fileReceipt) : readSaved}>查询结果</Button>}
         {fileReceipt && !refresh.done && !refresh.loading && <p role="status">资料尚未刷新，请刷新后继续编辑。</p>}
         {receipt && refresh.done && command.phase === 'idle' && <p role="status">提交已确认，工艺详情已刷新。</p>}
         {entity && <><Issues issues={result.warnings} /><Issues issues={entity.issues} /><Steps entity={entity} stage={selected} disabled={editingBlocked} onStage={setStage} panelId={panelId} sharedPanel={browsing} />
-          {browsing && <section role="tabpanel" id={panelId + '-navigation'} aria-labelledby={panelId + '-tab-' + selected} data-process-navigation-stage={selected}>
-            <div className="toolbar"><span role="status">已按原零件记录定位，当前只能查看 · {P.stageLabel(selected)}</span>
-              <Button icon="square-pen" disabled={editingBlocked} reason={prerequisite} onClick={() => setBrowsing(false)}>开始维护</Button></div>
-            <p><E.Confirmation record={entity.workflow[selected === 'ready' ? 'hours' : selected]} /></p>
-            {selected === 'route' && <dl className="process-fields"><dt>原始路线</dt><dd>{E.value(entity.fields.route_raw)}</dd></dl>}
-            <Operations key={selected} entity={entity} hours={selected !== 'route'} focusRef={target.operationRef} />
-            <E.Groups key={'groups-' + selected} rows={entity.external_groups} focusRef={target.groupRef} />
-          </section>}
+          {browsing && <Browse entity={entity} selected={selected} panelId={panelId} target={target} disabled={editingBlocked}
+            prerequisite={prerequisiteOf(entity, selected)} onStart={() => setBrowsing(false)} />}
           {!browsing && <>{entity.workflow.ready && <div className="toolbar"><span className="pill ok">三阶段已确认 · 已就绪</span><Button icon="check" onClick={() => setStage('ready')} disabled={editingBlocked}>查看汇总</Button></div>}
           <div hidden={selected !== 'route'} role="tabpanel" id={panelId + '-route'} aria-labelledby={panelId + '-tab-route'}><RouteView entity={entity} disabled={editingBlocked} onFileAction={openFile} onEntry={() => { setEntryStarted(true); setEntry(true); }} /></div>
-          <div hidden={selected !== 'source'} role="tabpanel" id={panelId + '-source'} aria-labelledby={panelId + '-tab-source'}><ProcessSourceEditor key={saved.source} adapter={adapter} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.source} onDirty={onDirty} onOverlay={setOverlay} onResourceCommitted={onCommitted} /></div>
-          <div hidden={selected !== 'hours'} role="tabpanel" id={panelId + '-hours'} aria-labelledby={panelId + '-tab-hours'}><ProcessHoursEditor key={saved.hours} adapter={adapter} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.hours} groupSaved={saved.groups} onDirty={onDirty} onOverlay={setOverlay} onFileAction={openFile} /></div>
+          <div hidden={selected !== 'source'} role="tabpanel" id={panelId + '-source'} aria-labelledby={panelId + '-tab-source'}><ProcessSourceEditor key={saved.source} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.source} onDirty={onDirty} onOverlay={setOverlay} onResourceCommitted={onCommitted} /></div>
+          <div hidden={selected !== 'hours'} role="tabpanel" id={panelId + '-hours'} aria-labelledby={panelId + '-tab-hours'}><ProcessHoursEditor key={saved.hours} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.hours} groupSaved={saved.groups} onDirty={onDirty} onOverlay={setOverlay} onFileAction={openFile} /></div>
           {entity.workflow.ready && <div hidden={selected !== 'ready'} role="tabpanel" id={panelId + '-ready'} aria-labelledby={panelId + '-tab-ready'}><Operations entity={entity} hours /><E.Groups rows={entity.external_groups} /><p><E.Confirmation record={entity.workflow.hours} /></p></div>}</>}
         </>}
-      </div>
-    </Modal>
-    {entryStarted && result && <div hidden={!entry}><ProcessRouteEntry adapter={adapter} result={result} command={visibleCommand} active={entry} disabled={disabled || refresh.loading} refreshState={needsReceiptCheck ? {} : refresh} onRefresh={readSaved} onDirty={onDirty} onClose={() => setEntry(false)} /></div>}
-    {fileAction && <ProcessFileActions adapter={adapter} {...fileAction} onClose={() => setFileAction(null)} onCommitted={fileCommitted} disabled={disabled} />}
+    </Frame>
+    {entryStarted && result && <div hidden={!entry}><ProcessRouteEntry result={result} command={visibleCommand} active={entry} disabled={disabled || refresh.loading} refreshState={needsReceiptCheck ? {} : refresh} onRefresh={readSaved} onDirty={onDirty} onClose={() => setEntry(false)} /></div>}
+    {fileAction && <ProcessFileActions {...fileAction} onClose={() => setFileAction(null)} onCommitted={fileCommitted} disabled={disabled} />}
     {discard && <Modal title="放弃未保存的工艺草稿？" icon="square-pen" onClose={() => setDiscard(false)} footer={<><Button onClick={() => setDiscard(false)}>继续编辑</Button><Button className="btn danger" onClick={() => { if (discard.kind) openFile(discard.kind, discard.mode, true); else if (command.reset()) onClose(); }}>{discard.kind ? '放弃草稿并打开文件' : '放弃草稿并关闭'}</Button></>}><div className="modal-b">未保存的路线、归属和工时修改将被丢弃；已经保存成功的内容不受影响。</div></Modal>}
   </div>;
 }
 function ProcessDetail(props) { return <DetailSession key={props.partRef} {...props} />; }
+function ProcessDetailView(props) { return <DetailView key={props.partRef} {...props} />; }
 
-export { ProcessDetail };
+export { ProcessDetail, ProcessDetailView };
 export default ProcessDetail;

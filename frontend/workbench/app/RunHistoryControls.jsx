@@ -1,20 +1,17 @@
 import React from './shared/runtime/react.js';
-import RunHistoryAPI from './RunHistoryAPI.js';
+import A from './RunHistoryAPI.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import ResourceControls, { Pager as SharedPager } from './ResourceControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import RunGenerationContract from './RunGenerationContract.js';
-import { WorkbenchReference } from './WorkbenchReferences.jsx';
+import { WorkbenchReference, WorkbenchError } from './WorkbenchReferences.jsx';
 
-const A = RunHistoryAPI;
-const labels = { all: '全部状态', ...WorkbenchTerms.run_statuses };
-const fields = { start_date: '排产起日', end_date: '排产止日', ready_check: '齐套检查', material_strategy: '物料齐套规则', hold_window: '不重排时段', missing_resource_policy: '缺设备人员时的规则', completed_policy: '执行规则', batch_count: '所选批次' };
 function Button(props) { return <ResourceControls.Button {...props} className="btn wb-action" />; }
 const timeLabel = v => WorkbenchFormat.dateTime(v);
 const number = v => WorkbenchFormat.number(v, { digits: 0 });
 function ErrorBox({ error }) {
-  return error ? <div className="rh-notice rh-error" role="alert">{error.code === 'snapshot_stale' && <strong>数据已更新。 </strong>}
-    {error.message || '排产记录读取失败，请重新查询。'}</div> : null;
+  if (!error) return null;
+  return <>{error.code === 'snapshot_stale' && <strong>数据已更新。</strong>}<WorkbenchError error={error} fallback="排产记录读取失败，请重新查询。" /></>;
 }
 function Filters({ value, busy, onApply }) {
   const [draft, setDraft] = React.useState(value), [error, setError] = React.useState(null);
@@ -30,7 +27,7 @@ function Filters({ value, busy, onApply }) {
   }
   return <form className="rh-filters" aria-label="排产记录筛选" onSubmit={submit} noValidate><div className="rh-filter-row">
     <label>排产状态<select aria-label="排产记录状态" value={draft.state} disabled={busy} onChange={e => set({ state: e.target.value })}>
-      {['all', ...A.states].map(state => <option key={state} value={state}>{labels[state]}</option>)}</select></label>
+      {[['all', '全部状态'], ...Object.entries(WorkbenchTerms.run_statuses)].map(([state, label]) => <option key={state} value={state}>{label}</option>)}</select></label>
     <label>提交起日<input type="date" aria-label="排产记录提交起日" value={draft.accepted_from || ''} disabled={busy} onChange={e => set({ accepted_from: e.target.value })} /></label>
     <label>提交止日<input type="date" aria-label="排产记录提交止日" value={draft.accepted_to || ''} disabled={busy} onChange={e => set({ accepted_to: e.target.value })} /></label>
     <label>排序<select aria-label="排产记录排序项" value={draft.sort} disabled={busy} onChange={e => set({ sort: e.target.value })}>
@@ -43,24 +40,22 @@ function Filters({ value, busy, onApply }) {
 }
 function Status({ run }) {
   const tone = run.recovery_required || ['partial', 'interrupted'].includes(run.state) ? 'rh-warning' : run.state === 'failed' ? 'rh-danger' : run.state === 'complete' ? 'rh-success' : '';
-  return <div><strong className={'rh-state ' + tone}>{run.recovery_required ? '等待核对' : labels[run.state]}</strong>
+  return <div><strong className={'rh-state ' + tone}>{run.recovery_required ? '等待核对' : WorkbenchTerms.run_status(run.state)}</strong>
     <small>{run.recovery_required ? run.recovery_reason.message : { queued: '尚未开始计算', running: '排产尚未结束', complete: '计算结束，约束未核验',
       partial: '保留部分结果，须查看候选', failed: '未保存可用候选', interrupted: '排产中断，未自动重跑' }[run.state]}</small>
-    {run.recovery_required && <small>原状态：{labels[run.state]}</small>}{run.error && <small className="rh-danger">{run.error.message}</small>}</div>;
+    {run.recovery_required && <small>原状态：{WorkbenchTerms.run_status(run.state)}</small>}{run.error && <small className="rh-danger">{run.error.message}</small>}</div>;
 }
 function ScopeSummary({ value }) {
   const options = value.run_options;
-  return <div><span>{value.start_date || '起日未记录'} 至 {value.end_date || '止日未记录'}</span>
+  return <div><span>{value.start_date} 至 {value.end_date}</span>
     <small>物料齐套规则：{WorkbenchTerms.material_strategy(value.material_strategy, value.ready_check)}</small>
-    <small>选批 {value.batch_count === null ? '未记录' : number(value.batch_count) + ' 批'} · 齐套{value.ready_check === null ? '未记录' : value.ready_check ? '开启' : '关闭'}</small>
+    <small>选批 {number(value.batch_count)} 批 · 齐套{value.ready_check ? '开启' : '关闭'}</small>
     <small>主目标：{RunGenerationContract.objectiveLabel(options.primary_objective)}</small>
     <small>同时探索：{options.target_objectives.map(RunGenerationContract.objectiveLabel).join(' · ')}</small>
-    <small>总计算预算：{number(options.time_budget_seconds)} 秒 · {options.algo_mode === 'greedy' ? '快速生成' : '共同优化'}</small>
-    <details><summary>排产设置</summary><small>缺资源：{{ auto_assign: '自动分配', exclude: '暂不排' }[value.missing_resource_policy] || '未记录'} · {value.completed_policy === 'preserve_actuals' ? '保留开工和完工记录' : '执行规则未记录'}</small>
-      <small data-hold-window>不重排时段：{WorkbenchTerms.hold_window(value.hold_window, value.data_gaps.some(g => g.field === 'hold_window'))}</small>
-      <small>生成策略：{options.generation_policy_version} · 图分析：{{ off: '关闭', report: '诊断报告', on: '参与优化' }[options.graph_analysis_mode]}</small></details>
-    {!!value.data_gaps.length && <details><summary className="rh-warning">排产时资料缺项 {value.data_gaps.length}</summary>
-      {value.data_gaps.map(g => <small key={g.field}>{fields[g.field]}：{g.message}</small>)}</details>}</div>;
+    <small>总计算预算：{number(options.time_budget_seconds)} 秒 · {WorkbenchTerms.condition_value('algo_mode', options.algo_mode)}</small>
+    <details><summary>排产设置</summary><small>缺资源：{WorkbenchTerms.missing_resource_policies[value.missing_resource_policy]} · {WorkbenchTerms.completed_policies[value.completed_policy]}</small>
+      <small data-hold-window>不重排时段：{WorkbenchTerms.hold_window(value.hold_window)}</small>
+      <small>图分析：{WorkbenchTerms.condition_value('graph_analysis_mode', options.graph_analysis_mode)}</small></details></div>;
 }
 function Table({ runs, onOpen }) {
   return <div className="rh-table wb-table-frame" data-sticky-head data-sticky-actions tabIndex={0} aria-label="排产记录表格滚动区域"><table className="wb-table" aria-label="排产记录"><caption className="wb-visually-hidden">排产记录</caption>

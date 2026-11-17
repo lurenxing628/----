@@ -1,15 +1,14 @@
 import React from './shared/runtime/react.js';
-import PreflightContract from './PreflightContract.js';
-import PreflightControls from './PreflightControls.jsx';
+import C from './PreflightContract.js';
+import { Button, ErrorBox, Rules, Metrics, Reasons, HoldSummary } from './PreflightControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
-import { Pager } from './ResourceControls.jsx';
+import { FieldCell, Pager } from './ResourceControls.jsx';
 import PreflightAPI from './PreflightAPI.js';
 import WorkbenchPageContext from './WorkbenchPageContext.jsx';
 import RunPresentation from './RunPresentation.js';
 import PreflightBatchPicker from './PreflightBatchPicker.jsx';
 import BatchSplitPanel from './BatchSplitPanel.jsx';
 
-const C = PreflightContract, { Button, ErrorBox, Rules, Metrics, Reasons, HoldSummary } = PreflightControls;
 const labels = { eligible: '资料有效', auto_assign_required: '自动分配待补', skipped: '本次跳过', blocked: '缺资料', protected: '已开工保护' };
 function resolveContext(initialContext, savedInput) {
   if (Object.keys(initialContext).length === 0) return savedInput === null ? undefined : savedInput;
@@ -49,7 +48,6 @@ function NoRoutes({ rows }) {
   </details>;
 }
 function PreflightWorkspace({ onNavigate, initialContext, renderRunPanel, actions }) {
-  const adapter = React.useMemo(() => PreflightAPI.create(), []);
   const [initial, setInitial] = React.useState(() => contextState(initialContext));
   const [value, setValue] = React.useState(initial.value), [error, setError] = React.useState(null), [result, setResult] = React.useState(null);
   const [busy, setBusy] = React.useState(false), [expanded, setExpanded] = React.useState(false);
@@ -58,10 +56,11 @@ function PreflightWorkspace({ onNavigate, initialContext, renderRunPanel, action
   // 上次检查按交付设置推算出的不重排时段（从开始日期起算）；开始日期没变时继续用它填显示值。
   const [holdDefault, setHoldDefault] = React.useState(null);
   const serial = React.useRef(0), active = React.useRef(null);
+  // 页面记忆和地址定位同在顶层带返回信封：去批次补资料再回来，历史走势与排产记录的返回链仍在。
   const remembered = React.useMemo(() => {
-    try { return C.input(value); }
+    try { return { ...C.input(value), ...(initialContext.return_to ? { return_to: initialContext.return_to } : {}) }; }
     catch (_) { return null; }
-  }, [value]);
+  }, [value, initialContext]);
   WorkbenchPageContext.useSnapshot(remembered, !initial.error && remembered !== null);
   function invalidate() { serial.current++; if (active.current) active.current.abort(); setResult(null); setError(null); setBusy(false); }
   const onSplitActivity = React.useCallback(inProgress => { setSplitBusy(inProgress); if (inProgress) invalidate(); }, []);
@@ -71,7 +70,7 @@ function PreflightWorkspace({ onNavigate, initialContext, renderRunPanel, action
     setBusy(true);
     async function open() {
       try {
-        const saved = await adapter.preferences(controller.signal);
+        const saved = await PreflightAPI.preferences(controller.signal);
         if (serial.current !== id) return;
         const next = contextState(resolveContext(initialContext, saved.data.input));
         setInitial(next); setValue(next.value);
@@ -81,18 +80,18 @@ function PreflightWorkspace({ onNavigate, initialContext, renderRunPanel, action
     }
     open();
     return () => { controller.abort(); if (serial.current === id) serial.current++; };
-  }, [adapter, initialContext]);
+  }, [initialContext]);
   React.useEffect(() => () => { serial.current++; if (active.current) active.current.abort(); }, []);
   async function check() {
     if (busy || splitBusy || initial.error) return;
     invalidate(); const id = ++serial.current, controller = new AbortController(); active.current = controller;
     setBusy(true);
-    try { const input = await adapter.savePreferences(value, controller.signal); if (serial.current === id) await read(input, controller, id); }
+    try { const input = await PreflightAPI.savePreferences(value, controller.signal); if (serial.current === id) await read(input, controller, id); }
     catch (problem) { if (serial.current === id) setError(problem); }
     finally { if (serial.current === id) setBusy(false); }
   }
   async function read(input, controller, id, confirmationOwner = null) {
-    const response = await adapter.preflight(input, controller.signal);
+    const response = await PreflightAPI.preflight(input, controller.signal);
     if (serial.current === id && !controller.signal.aborted) {
       setResult({ response, confirmationOwner }); setNeedsRecheck(false); rememberHold(input, response.data.effective_config);
       return response.data;
@@ -138,10 +137,11 @@ function PreflightWorkspace({ onNavigate, initialContext, renderRunPanel, action
     <section className="pf-scope" aria-label="排产范围">
     <ol className="pf-stepper" aria-label="执行排产步骤">{['选批次和日期', '检查', '计算'].map((label, index) => <li key={label} aria-current={currentStep === index + 1 ? 'step' : undefined} data-step-state={currentStep > index + 1 ? 'complete' : currentStep === index + 1 ? 'current' : 'upcoming'}><span aria-hidden="true">{index + 1}</span>{label}</li>)}</ol>
     <ErrorBox error={initial.error} />{initial.error && <Button icon="refresh-cw" onClick={() => { const next = contextState(undefined); invalidate(); setInitial(next); setValue(next.value); }}>重新选择范围</Button>}
-    <div className="pf-window"><strong>排产日期范围</strong><label>开始日期<input type="date" aria-label="计划开始日期" min="1900-01-01" max="9999-12-30" value={value.start_date} disabled={inputDisabled} onChange={event => change({ start_date: event.target.value })} /></label>
-      <label>结束日期<input type="date" aria-label="计划结束日期" min="1900-01-01" max="9999-12-30" value={value.end_date} disabled={inputDisabled} onChange={event => change({ end_date: event.target.value })} /></label>
+    {/* 排产检查与偏好保存的日期错误报 start_date / end_date（起止倒置报 end_date），标在对应的日期框上。 */}
+    <div className="pf-window"><strong>排产日期范围</strong><label>开始日期<FieldCell path="start_date" error={error}><input type="date" aria-label="计划开始日期" min="1900-01-01" max="9999-12-30" value={value.start_date} disabled={inputDisabled} onChange={event => change({ start_date: event.target.value })} /></FieldCell></label>
+      <label>结束日期<FieldCell path="end_date" error={error}><input type="date" aria-label="计划结束日期" min="1900-01-01" max="9999-12-30" value={value.end_date} disabled={inputDisabled} onChange={event => change({ end_date: event.target.value })} /></FieldCell></label>
       <span>已选 {value.batch_refs.length} 批</span><Button icon={expanded ? 'chevron-up' : 'chevron-down'} className={currentStep === 1 ? 'btn primary' : 'btn'} disabled={inputDisabled} aria-expanded={expanded} onClick={() => setExpanded(old => !old)}>{expanded ? '收起范围' : '选择批次'}</Button></div>
-    {expanded && !initial.error && <PreflightBatchPicker adapter={adapter} selected={value.batch_refs} onChange={batch_refs => change({ batch_refs })} disabled={inputDisabled} />}
+    {expanded && !initial.error && <PreflightBatchPicker selected={value.batch_refs} onChange={batch_refs => change({ batch_refs })} disabled={inputDisabled} />}
     <Metrics counts={counts} /></section>
     <section className="pf-review" aria-label="排产规则与检查"><div className="pf-body"><Rules value={value} effective={effectiveHold} onChange={change} disabled={inputDisabled}
       onInspectMaterials={inspectMaterials} splitExpanded={splitExpanded}

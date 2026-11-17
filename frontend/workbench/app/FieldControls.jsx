@@ -1,10 +1,9 @@
 import React from './shared/runtime/react.js';
-import ResourceControls from './ResourceControls.jsx';
+import ResourceControls, { Icon, ErrorBox, Modal, Issues } from './ResourceControls.jsx';
 import FieldContract from './FieldContract.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
 import WorkbenchTerms from './WorkbenchTerms.js';
 
-const { Icon, ErrorBox, Modal, Issues } = ResourceControls;
 const iconAliases = { 'arrow-left': 'chevron-left', 'file-spreadsheet': 'file-input', 'file-plus': 'plus', info: 'history', 'chevron-up': 'fold-vertical' };
 function Button({ icon, ...props }) { return <ResourceControls.Button {...props} icon={iconAliases[icon] || icon} />; }
 function State({ value }) { return <span className={'field-state ' + value}>{FieldContract.states[value] || '未读取'}</span>; }

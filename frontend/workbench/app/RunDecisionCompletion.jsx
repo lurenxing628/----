@@ -1,18 +1,14 @@
 import React from './shared/runtime/react.js';
-import RunCandidateControls from './RunCandidateControls.jsx';
-import RunCandidateModel from './RunCandidateModel.js';
-import WorkbenchTerms from './WorkbenchTerms.js';
+import C from './RunCandidateControls.jsx';
+import M from './RunCandidateModel.js';
+import T from './WorkbenchTerms.js';
 import RunDecisionRecommendation from './RunDecisionRecommendation.jsx';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
 import RunDecisionAPI from './RunDecisionAPI.js';
 import { useQuery } from './shared/session/query.js';
 
-const C = RunCandidateControls, M = RunCandidateModel, T = WorkbenchTerms;
 const queryKeys = ['completion_filter', 'sort', 'order', 'page', 'size', 'snapshot_ref'];
 const filters = [['all', '全部批次'], ['complete', '工序已排齐'], ['unfinished', '工序未排齐'], ['ordinary', '其他未排齐'], ['deferred', '仅因缺料未排齐'], ['unknown', '工序安排待确认']];
-const issueLabels = { material_deferred: '工序因缺料暂未安排', operations_unscheduled: '尚有工序未安排', operations_missing: '排产时工序资料未记录',
-  schedule_time_invalid: '安排时间无效', saved_plan_incomplete: '候选方案的工序安排记录不完整', due_date_missing: '交期未记录',
-  due_date_invalid: '交期无效', due_date_unspecified: '未指定交期', part_label_missing: '零件名称未填写' };
 const countText = value => value === null ? '未记录' : M.number(value);
 const hasRemaining = work => work.operation_count > 0;
 
@@ -25,7 +21,7 @@ function Remaining({ work, definitions, label }) {
 function Issues({ row, definitions }) {
   return <details className="rd-completion-issues"><summary>{row.issues.length ? '批次资料说明 · ' + row.issues.length + ' 项' : '批次工序数量明细'}</summary>
     <dl>{[['scheduled_operation_count', '已排工序'], ['unplanned_operation_count', '其他未安排工序'], ['deferred_operation_count', '缺料未安排工序']].map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{countText(row[key])} 道</dd></div>)}<div><dt>剩余工序</dt><dd>{countText(row.remaining_work.operation_count)} 道</dd></div></dl>
-    {row.issues.length > 0 && <ul>{row.issues.map((code, index) => <li key={code + ':' + index}>{issueLabels[code] || code}</li>)}</ul>}
+    {row.issues.length > 0 && <ul>{row.issues.map((code, index) => <li key={code + ':' + index}>{T.delivery_issue(code)}</li>)}</ul>}
     {!hasRemaining(row.remaining_work) && <RunDecisionRecommendation.RemainingMetrics work={row.remaining_work} definitions={definitions} label={(row.batch_label || '本批次') + '剩余准备与加工需求'} className="rd-completion-demand-table" completion />}
   </details>;
 }
@@ -66,13 +62,9 @@ function Pane({ result, query, onQuery, onSupport, enabled }) {
   const shared = { comparison_mode: scope.comparison_mode, resource_view: scope.resource_view, selected_candidate_ref: scope.selected_candidate_ref,
     range_start: scope.range_start, range_end: scope.range_end, ...(scope.comparison_mode === 'candidates' ? { reference_candidate_ref: scope.reference.candidate_ref } : {}) };
   const stored = Object.fromEntries(Object.entries(query).filter(([key]) => queryKeys.includes(key)));
-  const q = RunDecisionAPI.completionScope(runRef, { ...stored, ...shared }), key = JSON.stringify(q), lastDetailRef = React.useRef(null);
-  const read = useQuery(signal => RunDecisionAPI.completionBatches(runRef, q, signal), [runRef, key, result.meta.snapshot_ref], enabled);
-  const liveDetail = read.result && read.result.data.candidate.candidate_ref === q.selected_candidate_ref ? read.result : null;
-  const detailKey = runRef + ':completion:' + q.selected_candidate_ref;
-  if (liveDetail) lastDetailRef.current = { key: detailKey, detail: liveDetail };
-  else if (!read.loading || (lastDetailRef.current && lastDetailRef.current.key !== detailKey)) lastDetailRef.current = null;
-  const detail = liveDetail || (read.loading && lastDetailRef.current && lastDetailRef.current.key === detailKey ? lastDetailRef.current.detail : null), data = detail && detail.data;
+  const q = RunDecisionAPI.completionScope(runRef, { ...stored, ...shared }), key = JSON.stringify(q);
+  const read = useQuery(signal => RunDecisionAPI.completionBatches(runRef, q, signal), [runRef, key, result.meta.snapshot_ref], { enabled, keep: runRef + ':completion:' + q.selected_candidate_ref });
+  const detail = read.shown, data = detail && detail.data;
   function update(change, paging = false) {
     const next = { ...q, ...change, page: paging ? change.page : 1 }; delete next.snapshot_ref;
     if (paging && detail) next.snapshot_ref = detail.meta.snapshot_ref;

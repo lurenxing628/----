@@ -1,17 +1,12 @@
 import React from './shared/runtime/react.js';
-import DashboardContract from './DashboardContract.js';
-import DashboardPanels from './DashboardPanels.jsx';
+import C from './DashboardContract.js';
+import P from './DashboardPanels.jsx';
 import { Button, ErrorBox, EmptyState } from './ResourceControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
 
-const C = DashboardContract, P = DashboardPanels;
-
 function History({ read, selected, historyPage, onPage, onSelect, rows, onHandle }) {
-  const [source, setSource] = React.useState(''), result = read.result, lastDataRef = React.useRef(null);
-  if (result && selected) lastDataRef.current = { selected, data: result.data };
-  else if (!selected || !read.loading || (lastDataRef.current && lastDataRef.current.selected !== selected)) lastDataRef.current = null;
-  const data = result ? result.data : (read.loading && selected && lastDataRef.current && lastDataRef.current.selected === selected ? lastDataRef.current.data : null);
+  const [source, setSource] = React.useState(''), data = read.shown && read.shown.data;
   const history = data && data.history, item = data && data.item;
   React.useEffect(() => setSource(''), [selected]);
   const options = item && !rows.some(r => r.item_ref === item.item_ref) ? rows.concat(item) : rows;

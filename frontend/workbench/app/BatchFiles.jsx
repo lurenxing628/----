@@ -1,6 +1,6 @@
 import React from './shared/runtime/react.js';
 import B from './BatchContract.js';
-import C from './resource-contract.js';
+import APSBatchAPI from './BatchAPI.js';
 import T from './WorkbenchTerms.js';
 import { Button, Modal, ErrorBox, Issues, Icon } from './ResourceControls.jsx';
 import APSWorkbenchTransport from './shared/network/transport.js';
@@ -8,6 +8,7 @@ import { display, Field } from './BatchControls.jsx';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import { Feedback } from './ResourceForms.jsx';
+import { failure } from './shared/contract/kit.js';
 
 // 类型、魔数与带正确后缀的文件名都已由 transport.download 校验（BatchAPI 只收 XLSX），这里直接按后端文件名存盘。
 const save = download => { APSWorkbenchTransport.saveBlob(download.filename, download.blob); return download.filename; };
@@ -17,7 +18,7 @@ function PreviewRow({ row }) {
     <td>{row.errors.length ? row.errors.join('；') : row.input && <div>{B.fields.filter(key => key in row.input.fields).map(key =>
       <div key={key}>{names[key]}：{display(key, row.before && row.before.fields[key])} → {display(key, row.input.fields[key])}</div>)}</div>}</td></tr>;
 }
-function BatchFiles({ adapter, mode: operation, scope, selected, snapshot, command, onClose, onCommitted }) {
+function BatchFiles({ mode: operation, scope, selected, snapshot, command, onClose, onCommitted }) {
   const [mode, setMode] = React.useState('overwrite'), [file, setFile] = React.useState(null), [preview, setPreview] = React.useState(null), [acknowledged, setAcknowledged] = React.useState(false);
   const [selection, setSelection] = React.useState(selected.length ? 'selected' : 'filtered');
   const [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null), [notice, setNotice] = React.useState('');
@@ -42,16 +43,14 @@ function BatchFiles({ adapter, mode: operation, scope, selected, snapshot, comma
     if (locked) return;
     const id = ++serial.current; setBusy(true); setError(null); setNotice('');
     try {
-      if (action === 'template') { const name = save(await adapter.downloadTemplate()); if (alive.current && id === serial.current) setNotice(T.download_started(name)); }
+      if (action === 'template') { const name = save(await APSBatchAPI.downloadTemplate()); if (alive.current && id === serial.current) setNotice(T.download_started(name)); }
       else if (action === 'preview') {
-        const result = await adapter.importPreview(file, mode, scope, snapshot);
-        const data = result.data;
-        if (!data || data.operation !== 'batch.import_confirm' || data.mode !== mode) throw C.failure('读到的导入预检结果不完整，没有写入批次。请再点一次「开始预检」。');
+        const data = B.preview(await APSBatchAPI.importPreview(file, mode, scope, snapshot), 'import', null, { mode });
         if (alive.current && id === serial.current) setPreview(data);
       } else {
-        const result = await adapter.exportPreview(selection, { ...scope, snapshot_ref: snapshot }, selected);
-        if (!result.data || typeof result.data.export_ref !== 'string') throw C.failure('导出范围没有确认，文件没有生成。请刷新批次列表后重试。');
-        const name = save(await adapter.downloadExport(result.data.export_ref));
+        const result = await APSBatchAPI.exportPreview(selection, { ...scope, snapshot_ref: snapshot }, selected);
+        if (typeof result.data.export_ref !== 'string') throw failure('导出范围没有确认，文件没有生成。请刷新批次列表后重试。');
+        const name = save(await APSBatchAPI.downloadExport(result.data.export_ref));
         if (alive.current && id === serial.current) setNotice(T.download_started(name) + '（共 ' + WorkbenchFormat.number(result.data.count, { digits: 0 }) + ' 个批次）');
       }
     } catch (error) { if (alive.current && id === serial.current) setError(error); }

@@ -1,6 +1,6 @@
 import React from './shared/runtime/react.js';
-import DashboardTimelineModel from './DashboardTimelineModel.js';
-import GanttPresentation from './GanttPresentation.js';
+import M from './DashboardTimelineModel.js';
+import V from './GanttPresentation.js';
 import GanttPresentationUI from './GanttPresentationUI.jsx';
 import { TimelineZoom, timelineZoomKey, timelineZoomStep, EmptyState } from './ResourceControls.jsx';
 import PointContract from './PointContract.js';
@@ -8,7 +8,7 @@ import PointGantt from './PointGantt.jsx';
 import PointGanttModel from './PointGanttModel.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 
-const M = DashboardTimelineModel, V = GanttPresentation, ZOOM_MAX = 64;
+const ZOOM_MAX = 64;
 
 function TaskBar({ item, model, width, selectedBatch, onSelect, onHover }) {
   const task = item.task, point = PointContract.isPoint(task), risk = model.risks.get(task.batch_ref);

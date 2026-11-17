@@ -1,11 +1,9 @@
-import PlanGanttModel from './PlanGanttModel.js';
+import { instant, timeLabel, visibleItems, visibleRows } from './PlanGanttModel.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import PointContract from './PointContract.js';
 import PointGanttModel from './PointGanttModel.js';
 
-const geometry = PlanGanttModel;
-const { instant, timeLabel, visibleItems, visibleRows } = geometry;
 // The candidate DTO preserves integers above MAX_SAFE_INTEGER as exact decimal text.
 // Comparison metrics keep up to three decimals; a one-decimal summary would make distinct candidates look identical.
 const number = value => typeof value === 'string' ? WorkbenchFormat.integerText(value) : WorkbenchFormat.number(value, { digits: 3, trim: true });
@@ -18,8 +16,11 @@ const executionLabels = { target_quantity: '目标数量', known_completed_quant
 // 生成时的执行记录按项取词：执行状态与现场记录同一套叫法；数据质量的 complete 是“完整”，不能和执行状态的“已完工”混成一个词。
 const executionTexts = { execution_state: WorkbenchTerms.execution_states, data_quality: WorkbenchTerms.data_quality, target_basis: { piece: '件', batch: '批' },
   completion_basis: { complete_reports: '逐次报工记录' } };
+// 候选的生成时执行记录读取时已按值域准入（facts/candidate_facts.py 的 _execution_at_generation，读不出记 null 并给缺项）；
+// 试调草稿与方案里的执行记录是保存时的副本，读取时不再准入。所以登记过的项遇到词表外的码显示“其他取值”，没有值显示“未知”。
 function executionValue(value, key = 'execution_state') {
-  if (Object.prototype.hasOwnProperty.call(executionTexts[key] || {}, value)) return executionTexts[key][value];
+  const table = executionTexts[key];
+  if (table && value != null) return Object.prototype.hasOwnProperty.call(table, value) ? table[value] : '其他取值';
   if (['first_actual_start', 'confirmed_finish'].includes(key)) return timeLabel(value);
   if (typeof value === 'boolean') return ['records_complete', 'quantity_complete'].includes(key) ? value ? '完整' : '不完整' : value ? '是' : '否';
   return typeof value === 'string' ? value : number(value);
@@ -38,7 +39,7 @@ function quantityLabel(task, key = 'quantity') {
   const problem = fields.map(field => task.data_gaps.find(item => item.field === field)).find(Boolean);
   return problem ? problem.message : key === 'quantity' ? '生成时工序目标量缺少依据。' : '生成时整批量缺少依据。';
 }
-const pieceLabel = t => t.piece_id === null ? (t.data_gaps || []).some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : '分件 ' + t.piece_id;
+const pieceLabel = t => t.piece_id === null ? t.data_gaps.some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : '分件 ' + t.piece_id;
 const searchText = t => [t.row_ref, t.operation_ref, t.batch_ref, t.batch_label, t.part_label, t.sequence, t.process_label, pieceLabel(t),
   t.machine && t.machine.label, t.operator && t.operator.label, t.reason && t.reason.message].filter(v => v != null).join(' ').toLocaleLowerCase();
 function matches(item, needle, operationRefs, focus) {
@@ -63,7 +64,7 @@ function resourceLabel(side, kind) {
   const problem = gap(kind) || gap(kind + '.ref');
   if (problem) return label + '身份未记录：' + problem.message;
   if (['unscheduled', 'skipped'].includes(side.status)) return '尚未安排';
-  if (kind === 'supplier' && side.source === 'internal') return '不适用（内部工序）';
+  if (kind === 'supplier' && side.source === 'internal') return '不适用（自制工序）';
   if (kind !== 'supplier' && side.source === 'external') return '不适用（外协工序）';
   if (kind !== 'supplier' && PointContract.isPoint(side)) return '不占用（零工时工序）';
   return '未指定';

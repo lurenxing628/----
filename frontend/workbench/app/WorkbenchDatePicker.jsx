@@ -1,7 +1,7 @@
 import React from './shared/runtime/react.js';
 import M from './WorkbenchDatePickerModel.js';
-import C from './CalendarContract.js';
 import ResourceControls from './ResourceControls.jsx';
+import { dateKey, monthDays, moveDay, today } from './shared/contract/kit.js';
 
 const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
 
@@ -41,22 +41,22 @@ function TimeFields({ time, units, onChange, initial }) {
 }
 
 function DateGrid({ view, cursor, selected, props, root, onBrowse, onChoose }) {
-  const first = view.slice(0, 7) + '-01', leading = M.weekday(first), count = C.monthDays(Number(view.slice(0, 4)), Number(view.slice(5, 7)));
+  const first = view.slice(0, 7) + '-01', leading = M.weekday(first), count = monthDays(Number(view.slice(0, 4)), Number(view.slice(5, 7)));
   const dates = Array.from({ length: 42 }, (_, index) => {
     const offset = index - leading;
     if (first === '0001-01-01' && offset < 0 || first === '9999-12-01' && offset >= count) return null;
-    return M.moveDay(first, offset);
+    return moveDay(first, offset);
   });
   function keydown(event, day) {
     const offsets = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7, Home: -M.weekday(day), End: 6 - M.weekday(day) };
     let next;
-    if (Object.prototype.hasOwnProperty.call(offsets, event.key)) next = M.moveDay(day, offsets[event.key]);
+    if (Object.prototype.hasOwnProperty.call(offsets, event.key)) next = moveDay(day, offsets[event.key]);
     else if (['PageUp', 'PageDown'].includes(event.key)) next = M.moveMonth(day, (event.key === 'PageUp' ? -1 : 1) * (event.shiftKey ? 12 : 1));
     else if (['Enter', ' '].includes(event.key)) { event.preventDefault(); event.stopPropagation(); onChoose(day); return; }
     else return;
     event.preventDefault(); event.stopPropagation(); onBrowse(next, true);
   }
-  const currentDay = M.today();
+  const currentDay = today();
   return <div className="wb-picker-grid" ref={root} role="grid" aria-label={view.slice(0, 4) + ' 年 ' + Number(view.slice(5, 7)) + ' 月'}>
     <div role="row" className="wb-picker-row">{weekdays.map(day => <span role="columnheader" className="wb-picker-weekday" key={day}>周{day}</span>)}</div>
     {Array.from({ length: 6 }, (_, week) => <div role="row" key={week} className="wb-picker-row">
@@ -74,7 +74,7 @@ function DateGrid({ view, cursor, selected, props, root, onBrowse, onChoose }) {
 }
 
 function MonthGrid({ view, cursor, selected, props, root, onBrowse, onChoose, browseMonth }) {
-  const year = view.slice(0, 4), selectedMonth = selected.slice(0, 7), currentMonth = M.today().slice(0, 7);
+  const year = view.slice(0, 4), selectedMonth = selected.slice(0, 7), currentMonth = today().slice(0, 7);
   const availability = React.useMemo(() => Array.from({ length: 12 }, (_, index) => M.monthSelectable(props, year + '-' + M.pad(index + 1))),
     [year, props.type, props.value, props.valueAttribute, props.min, props.max, props.step]);
   function keydown(event, key) {
@@ -139,8 +139,8 @@ function DatePickerBody(props) {
     if (type === 'month') { choose(key); return; }
     if (!yearApplied) { applyYear(); return; }
     if (!M.monthSelectable(props, key)) return;
-    const [targetYear, targetMonth] = M.monthParts(key), targetDay = Math.min(Number(monthAnchor.current.slice(8)), C.monthDays(targetYear, targetMonth));
-    setPickerView('days'); browse(M.dateKey(targetYear, targetMonth, targetDay), true);
+    const [targetYear, targetMonth] = M.monthParts(key), targetDay = Math.min(Number(monthAnchor.current.slice(8)), monthDays(targetYear, targetMonth));
+    setPickerView('days'); browse(dateKey(targetYear, targetMonth, targetDay), true);
   }
   function toggleMonths() {
     const anchor = yearApplied ? cursor : applyYear();
@@ -150,19 +150,19 @@ function DatePickerBody(props) {
   }
   function applyYear() {
     if (!/^\d{1,4}$/.test(year) || Number(year) < 1 || Number(year) > 9999) { setYearError('年份须为 1 至 9999。'); return; }
-    const month = Number(view.slice(5, 7)), day = Math.min(Number(cursor.slice(8)), C.monthDays(Number(year), month));
-    const next = M.dateKey(Number(year), month, day);
+    const month = Number(view.slice(5, 7)), day = Math.min(Number(cursor.slice(8)), monthDays(Number(year), month));
+    const next = dateKey(Number(year), month, day);
     browse(next, false); return next;
   }
   function confirm() {
     if (!yearApplied) { applyYear(); return; }
     if (check.valid && !yearError) onCommit(check.value); else setEdited(true);
   }
-  const currentDay = M.today(), shortcut = type === 'month' ? currentDay.slice(0, 7) : currentDay;
+  const currentDay = today(), shortcut = type === 'month' ? currentDay.slice(0, 7) : currentDay;
   const shortcutAllowed = hasDate && (type === 'month' ? M.validate(props, shortcut).valid : M.daySelectable(props, shortcut));
   const move = showMonths ? 12 : 1;
   const browseYear = /^\d{1,4}$/.test(year) && Number(year) >= 1 ? Number(year) : Number(view.slice(0, 4));
-  const browseBase = M.dateKey(browseYear, Number(view.slice(5, 7)), Math.min(Number(view.slice(8)), C.monthDays(browseYear, Number(view.slice(5, 7)))));
+  const browseBase = dateKey(browseYear, Number(view.slice(5, 7)), Math.min(Number(view.slice(8)), monthDays(browseYear, Number(view.slice(5, 7)))));
   const previous = M.moveMonth(browseBase, -move), next = M.moveMonth(browseBase, move);
   const title = label || ({ date: '选择日期', time: '选择时间', month: '选择月份', 'datetime-local': '选择日期和时间', 'factory-local': '选择日期和时间' })[type];
   return <div className="wb-date-picker" data-picker-type={type} data-picker-view={pickerView}

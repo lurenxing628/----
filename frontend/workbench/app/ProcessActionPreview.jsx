@@ -1,12 +1,14 @@
 import React from './shared/runtime/react.js';
 import { Button } from './ResourceControls.jsx';
 import APSProcessActions from './ProcessActionContract.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
 
 function text(key, value) {
   if (value === null) return '未填写';
   if (value === '') return '空白';
-  if (key === 'route_parsed') return value === 'yes' ? '已解析' : value === 'no' ? '未解析' : '原标记：' + String(value);
-  if (key === 'source') return value === 'internal' ? '自制' : value === 'external' ? '外协' : String(value);
+  // 路线解析标记来自零件库（Parts.route_parsed 恒为 yes/no）；归属是库里或后端从文件规范后的 internal/external。
+  if (key === 'route_parsed') return value === 'yes' ? '已解析' : '未解析';
+  if (key === 'source') return WorkbenchTerms.operation_sources[value];
   if (typeof value === 'boolean') return value ? '是' : '否';
   return String(value);
 }

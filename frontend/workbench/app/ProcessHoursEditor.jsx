@@ -2,11 +2,14 @@ import React, { createPortal } from './shared/runtime/react.js';
 import C from './resource-contract.js';
 import P from './ProcessContract.js';
 import E from './ProcessStageEditor.jsx';
-import { Button, Modal, Issues } from './ResourceControls.jsx';
+import { Button, FieldCell, Modal, Issues } from './ResourceControls.jsx';
 import ProcessFileButtons from './ProcessControls.jsx';
 import ProcessGroupEditor from './ProcessGroupEditor.jsx';
+import { failure } from './shared/contract/kit.js';
 
 const numericText = value => value === null ? '' : String(value);
+// 工时页负责的工序项：三列数值格，以及本地检查发现的未定归属。
+const cellKeys = ['setup_hours', 'unit_hours', 'external_days', 'source'];
 function mergedGroups(entity, active) {
   const refs = new Set(active.map(row => row.external_group_ref));
   return entity.external_groups.filter(row => row.merge_mode === 'merged' && refs.has(row.ref));
@@ -28,24 +31,26 @@ function reconcile(draft, before, after) {
   });
   return next;
 }
-function number(text, label, positive) {
-  if (text === null || text === undefined || String(text).trim() === '' || !Number.isFinite(Number(text)) || (positive ? Number(text) <= 0 : Number(text) < 0))
-    throw C.failure(label + (positive ? '必须填写大于 0 的数。' : '必须填写大于等于 0 的数。'));
+// 提交前只确认填了能解析成有限数的值；工时与周期的取值范围由后端校验，422 带字段路径。
+// 本地错误与后端用同一套路径：工序格是 operations.<工序编号>.<项>，已有合并组是 groups.<外协组编号>.total_days。
+function rejectAt(path, message) { throw failure(message, { fields: [{ path, message }] }); }
+function number(text, path, label) {
+  if (text === null || text === undefined || String(text).trim() === '' || !Number.isFinite(Number(text))) rejectAt(path, label + '要填写数字。');
   return Number(text);
 }
-function input(entity, draft, pageSize) {
+function input(entity, draft) {
   const active = E.active(entity), mergedRows = mergedGroups(entity, active), merged = new Set(mergedRows.map(row => row.ref)), groups = P.groupIndex(entity.external_groups);
   const operations = active.map(row => {
-    const current = draft.operations[row.ref];
-    try {
-      if (row.source === 'external') return { ref: row.ref, external_days: P.groupCycle(row, groups) || merged.has(row.external_group_ref)
-        && current.external_days.trim() === '' && !row.issues.some(item => item.code === 'value_invalid') ? null : number(current.external_days, '工序 ' + row.sequence + ' 外协周期', true) };
-      if (row.source !== 'internal') throw C.failure('工序 ' + row.sequence + ' 请先选定归属。');
-      return { ref: row.ref, setup_hours: number(current.setup_hours, '工序 ' + row.sequence + ' 换型工时', false), unit_hours: number(current.unit_hours, '工序 ' + row.sequence + ' 单件工时', false) };
-    } catch (error) { error.locate_page = Math.floor(entity.operations.indexOf(row) / pageSize) + 1; throw error; }
+    const current = draft.operations[row.ref], at = key => 'operations.' + row.ref + '.' + key;
+    // 合并外协段里的工序周期由整段周期决定，留空就提交 null。
+    if (row.source === 'external') return { ref: row.ref, external_days: P.groupCycle(row, groups) || merged.has(row.external_group_ref)
+      && current.external_days.trim() === '' ? null : number(current.external_days, at('external_days'), '工序 ' + row.sequence + ' 外协周期') };
+    if (row.source !== 'internal') rejectAt(at('source'), '工序 ' + row.sequence + ' 请先选定归属。');
+    return { ref: row.ref, setup_hours: number(current.setup_hours, at('setup_hours'), '工序 ' + row.sequence + ' 换型工时'), unit_hours: number(current.unit_hours, at('unit_hours'), '工序 ' + row.sequence + ' 单件工时') };
   });
-  if (!operations.length) throw C.failure('尚无有效工序，不能保存工时。');
-  return { operations, groups: mergedRows.map(row => ({ ref: row.ref, total_days: number(draft.groups[row.ref], '外协组 ' + row.start_sequence + ' 至 ' + row.end_sequence + ' 总周期', true) })), confirm_zero_unit_hours: false };
+  if (!operations.length) throw failure('尚无有效工序，不能保存工时。');
+  return { operations, groups: mergedRows.map(row => ({ ref: row.ref,
+    total_days: number(draft.groups[row.ref], 'groups.' + row.ref + '.total_days', '外协组 ' + row.start_sequence + ' 至 ' + row.end_sequence + ' 总周期') })), confirm_zero_unit_hours: false };
 }
 function zeroRows(entity, body) {
   const before = new Map(entity.operations.map(row => [row.ref, row])), rows = [];
@@ -55,8 +60,8 @@ function zeroRows(entity, body) {
   }
   return rows;
 }
-function ProcessHoursEditor({ adapter, result, command, disabled, saved, groupSaved, onDirty, onOverlay, onFileAction }) {
-  const model = E.useDraft({ result, adapter, stage: 'hours', build, reconcile, saved, onDirty });
+function ProcessHoursEditor({ result, command, disabled, saved, groupSaved, onDirty, onOverlay, onFileAction }) {
+  const model = E.useDraft({ result, stage: 'hours', build, reconcile, saved, onDirty });
   const entity = model.base.data, draft = model.draft, paging = E.usePage(entity.operations), [zero, setZero] = React.useState(null), [groupsOpen, setGroupsOpen] = React.useState(false);
   const groups = React.useMemo(() => P.groupIndex(entity.external_groups), [entity.external_groups]);
   const blocked = disabled || command.locked || command.phase === 'done', stageReason = E.reason(model, 'hours');
@@ -74,24 +79,27 @@ function ProcessHoursEditor({ adapter, result, command, disabled, saved, groupSa
     if (command.phase === 'done' && command.intent && command.intent.action === 'groups_confirm') setGroupsOpen(false);
   }, [command.phase, command.intent]);
   React.useEffect(() => { if (onOverlay) onOverlay(!!zero || groupsOpen); return () => { if (onOverlay) onOverlay(false); }; }, [!!zero, groupsOpen, onOverlay]);
-  function change(ref, patch) { model.edit(current => ({ ...current, operations: { ...current.operations, [ref]: { ...current.operations[ref], ...patch } } })); }
-  function changeGroup(ref, total) { model.edit(current => ({ ...current, groups: { ...current.groups, [ref]: total } })); }
+  // 改了输入就清掉被拒的提交，标红跟着消失；本页检查的错误由 model.edit 清。
+  function change(ref, patch) { model.edit(current => ({ ...current, operations: { ...current.operations, [ref]: { ...current.operations[ref], ...patch } } })); command.clearRejection(); }
+  function changeGroup(ref, total) { model.edit(current => ({ ...current, groups: { ...current.groups, [ref]: total } })); command.clearRejection(); }
   async function save(acknowledged = false) {
     if (blocked || stageReason) return;
     try {
-      const body = input(entity, draft, paging.page.size), rows = zeroRows(entity, body);
+      const body = input(entity, draft), rows = zeroRows(entity, body);
       if (rows.length && !acknowledged) { setZero(rows); return; }
       setZero(null); model.setError(null);
       await command.submit('process', 'hours_confirm', entity.ref, entity.write_context, { ...body, confirm_zero_unit_hours: acknowledged === true });
     } catch (error) { model.setError(error); }
   }
   const active = E.active(entity), merged = mergedGroups(entity, active), internal = paging.rows.filter(row => row.source !== 'external'), external = paging.rows.filter(row => row.source === 'external');
+  // 本页检查的错误优先；否则是这道工艺上次提交被拒的错误（工时确认的路径不会和归属、外协段的路径重名）。
+  const shownError = model.error || command.error;
   function operation(row) { return <><b>{row.sequence}</b> {row.label}<div className="muted">{row.op_type_label || '未选工种'}</div></>; }
   function record(row) { return <>{row.status !== 'active' ? '已停用工序' : <E.Confirmation record={row.confirmation.hours} />}<Issues issues={row.issues.filter(item => item.code !== 'zero_unit_hours_review')} /></>; }
   function cell(row, key, title, positive = false) {
     const current = draft.operations[row.ref];
-    return <input className="wt-in" type="number" step="any" min="0" aria-label={'工序 ' + row.sequence + ' ' + title} placeholder={positive ? '大于 0' : '未填写'} value={current ? current[key] : numericText(row[key])} disabled={editBlocked || !current}
-      onChange={event => change(row.ref, { [key]: event.target.value })} />;
+    return <FieldCell path={'operations.' + row.ref + '.' + key} error={shownError}><input className="wt-in" type="number" step="any" min="0" aria-label={'工序 ' + row.sequence + ' ' + title} placeholder={positive ? '大于 0' : '未填写'} value={current ? current[key] : numericText(row[key])} disabled={editBlocked || !current}
+      onChange={event => change(row.ref, { [key]: event.target.value })} /></FieldCell>;
   }
   return <section data-process-hours-editor><div className="toolbar"><E.Search paging={paging} disabled={blocked} /><span>共 {active.length} 道有效工序</span><span className="tb-spacer" /><ProcessFileButtons disabled={blocked} hoursOnly onAction={onFileAction} /></div>
     <section className="process-hours-section" aria-label="自制工时"><h3>自制工时</h3><p className="muted">加工时长 = 换型工时 + 单件工时 × 批次数量。</p>
@@ -105,11 +113,11 @@ function ProcessHoursEditor({ adapter, result, command, disabled, saved, groupSa
         <tbody>{external.map(row => { const cycle = P.groupCycle(row, groups); return <tr key={row.ref}><td>{operation(row)}</td><td>{row.supplier_label || '未选供应商'}</td>
           <td>{cycle ? <span className="process-group-cycle" data-process-cycle-group={row.external_group_ref}>{cycle}<small>在下方外协组填写统一周期</small></span> : cell(row, 'external_days', '外协周期', true)}</td><td>{record(row)}</td></tr>; })}
           {!external.length && <tr><td colSpan={4}>当前页没有外协工序。</td></tr>}</tbody></table></div>
-      {!!merged.length && <E.Groups rows={merged} totals={draft.groups} disabled={editBlocked} onTotal={changeGroup} title="外协段统一周期" />}</section>
+      {!!merged.length && <E.Groups rows={merged} totals={draft.groups} disabled={editBlocked} onTotal={changeGroup} title="外协段统一周期" error={shownError} />}</section>
     <E.Pager paging={paging} disabled={blocked} />
     {!!changedTypes.length && <p role="status">工序 {changedTypes.map(row => row.sequence).join('、')} 的实际工种已更换。接受最新资料后将采用新工种的工时，原工种未保存的工时不会沿用，请重新核对填写。</p>}
-    <E.Feedback model={model} disabled={blocked} paging={paging} /><div className="pd-foot"><span className="muted">保存全部 {active.length} 道有效工序，包含其他页和筛选隐藏的工序。</span><Button className="btn primary" icon="check" disabled={blocked} reason={stageReason} onClick={() => save()}>保存工时</Button></div>
-    {groupsOpen && <ProcessGroupEditor adapter={adapter} result={result} command={command} disabled={blocked} onDirty={onDirty} onClose={() => setGroupsOpen(false)} />}
+    <E.Feedback model={model} disabled={blocked} paging={paging} page={E.errorPage(shownError, entity.operations, paging.page.size, cellKeys)} /><div className="pd-foot"><span className="muted">保存全部 {active.length} 道有效工序，包含其他页和筛选隐藏的工序。</span><Button className="btn primary" icon="check" disabled={blocked} reason={stageReason} onClick={() => save()}>保存工时</Button></div>
+    {groupsOpen && <ProcessGroupEditor result={result} command={command} disabled={blocked} onDirty={onDirty} onClose={() => setGroupsOpen(false)} />}
     {zero && createPortal(<div className="plana process-detail"><Modal title="按零单件工时保存" icon="check" onClose={() => setZero(null)} locked={blocked} footer={<><Button disabled={blocked} onClick={() => setZero(null)}>返回修改</Button><Button className="btn primary" icon="check" disabled={blocked} onClick={() => save(true)}>按 0 保存</Button></>}>
       <div className="modal-b"><p>以下工序的单件工时为 0，排产只计算换型工时，数量增加不会增加加工时长。</p><ul>{zero.map(row => <li key={row.ref}>工序 {row.sequence} · {row.label}</li>)}</ul></div></Modal></div>, document.body)}
   </section>;

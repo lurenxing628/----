@@ -15,18 +15,10 @@ function numberValue(document, value) {
   return probe.valueAsNumber;
 }
 
-function declaredStep(input) {
-  const value = input.getAttribute('data-wb-step');
-  if (value !== null) {
-    const amount = numberValue(input.ownerDocument, value);
-    if (!Number.isFinite(amount) || amount <= 0) throw new Error('wb_step_must_be_finite_positive');
-  }
-  return value;
-}
-
 function nextValue(input, direction) {
   if (!editable(input) || input.validity.badInput || input.value !== '' && !Number.isFinite(input.valueAsNumber)) return null;
-  const increment = declaredStep(input);
+  // data-wb-step 只由表单写死的正数步长给出（如效率 5、工时 0.1）。
+  const increment = input.getAttribute('data-wb-step');
   if (increment !== null && input.value === '') return null;
   const probe = input.ownerDocument.createElement('input');
   probe.type = 'number';

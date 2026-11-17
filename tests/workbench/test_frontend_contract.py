@@ -1,10 +1,12 @@
 """Frontend workbench contracts for navigation, dirty guards, memoized projections, and single-pass receipt validation."""
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
 from tests._support.node_runtime_support import node_runtime
+from web.routes.workbench.navigation_metadata import NAVIGATION_RULES
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -14,6 +16,7 @@ def _run_node(script: str) -> dict:
     result = subprocess.run(
         [node_runtime(), "-e", wrapped],
         cwd=str(ROOT),
+        env=dict(os.environ, WORKBENCH_NAVIGATION_RULES=json.dumps(NAVIGATION_RULES)),
         capture_output=True,
         text=True,
         timeout=30,
@@ -55,6 +58,7 @@ def test_scroll_and_context_save_errors_keep_workspace_and_dirty_guard_mounted()
             titles: { dashboard: '值班台', batches: '批次管理', system: '系统管理' },
             enabled_views: ['dashboard', 'batches', 'system'],
             view_aliases: {},
+            navigation_rules: JSON.parse(process.env.WORKBENCH_NAVIGATION_RULES),
             nav_groups: [{ title: '主导航', items: [
               { id: 'dashboard', label: '值班台', icon: 'home' },
               { id: 'batches', label: '批次管理', icon: 'box' },
@@ -245,8 +249,15 @@ def test_scroll_and_context_save_errors_keep_workspace_and_dirty_guard_mounted()
         assert.equal(h.stats().workspaceMounts, 1);
         assert.equal(h.stats().dirty, true);
 
-        // Trigger rememberPage while restoring is true and replaceState throws.
-        h.setReplaceError(new Error('无法写入历史状态：达到配额上限'));
+        // Navigation errors go through WorkbenchError: kit copy is shown, other errors show the shell fallback and keep
+        // their original text only in the collapsed reference.
+        const shown = node => !node || typeof node !== 'object' ? (node == null || typeof node === 'boolean' ? '' : String(node))
+          : Array.isArray(node) ? node.map(shown).join('') : node.type === 'details' ? '' : shown(node.props && node.props.children);
+        const errorBox = tree => h.find(tree, n => n.props && n.props.className === 'wb-error' && n.props.role === 'alert');
+
+        // Trigger rememberPage while restoring is true and replaceState throws a browser (non-kit) error.
+        const browserError = "Failed to execute 'replaceState' on 'History': QuotaExceededError";
+        h.setReplaceError(new Error(browserError));
         h.getRemembered()({ filter: 'urgent' });
         h.triggerPagehide();
         tree = h.render();
@@ -254,27 +265,28 @@ def test_scroll_and_context_save_errors_keep_workspace_and_dirty_guard_mounted()
         assert.equal(h.stats().workspaceUnmounts, 0, 'Active workspace must NOT unmount on replaceState failure');
         assert.equal(h.stats().dirty, true, 'Dirty guard must remain active');
         assert.ok(h.find(tree, n => n.props && n.props['data-workspace'] === 'batches'), 'BatchWorkspace stays mounted');
-        let navAlert = h.find(tree, n => n.props && n.props.className === 'wb-navigation-error');
-        assert.ok(navAlert && navAlert.props.children === '无法写入历史状态：达到配额上限');
+        let navAlert = errorBox(tree);
+        assert.equal(shown(navAlert), '页面跳转或位置记录没有完成，请从侧栏重新打开。');
+        assert.ok(JSON.stringify(navAlert).includes(browserError), 'The original browser message stays in the collapsed reference');
 
         // Trigger onRestore via popstate when captured snapshot exists and remember throws: sets navigationError and keeps workspace mounted.
         h.setDirty(false);
         h.render();
-        h.setReplaceError(new Error('恢复历史状态失败：达到配额上限'));
+        h.setReplaceError(h.w.__wbRuntime.getModule('shared/contract/kit.js').failure('恢复历史状态失败：达到配额上限'));
         h.triggerPopstate();
         tree = h.render();
         assert.equal(h.stats().workspaceMounts, 1);
         assert.equal(h.stats().workspaceUnmounts, 0);
         assert.ok(h.find(tree, n => n.props && n.props['data-workspace'] === 'batches'), 'Restored BatchWorkspace stays mounted when remember throws');
-        navAlert = h.find(tree, n => n.props && n.props.className === 'wb-navigation-error');
-        assert.ok(navAlert && navAlert.props.children === '恢复历史状态失败：达到配额上限');
+        navAlert = errorBox(tree);
+        assert.equal(shown(navAlert), '恢复历史状态失败：达到配额上限');
 
         // 2. Unresolvable initial route still sets page.error and does not mount workspace.
         const bad = createHarness('http://127.0.0.1:8080/workbench?view=nonexistent');
         const badTree = bad.render();
         assert.equal(bad.stats().workspaceMounts, 0);
         assert.equal(bad.find(badTree, n => n.props && n.props['data-workspace'] === 'batches'), null);
-        assert.ok(bad.find(badTree, n => n.props && n.props.role === 'alert' && n.props.className === 'sm-error'));
+        assert.equal(shown(errorBox(badTree)), '页面地址里的定位信息无效，没有自动改成别的记录或范围。请从侧栏重新打开。');
 
         console.log(JSON.stringify({ ok: true }));
         """
@@ -537,6 +549,7 @@ def test_four_interactive_views_do_zero_redundant_work_on_unrelated_state_change
         const path = require('node:path');
         const vm = require('node:vm');
         const { compile, bundleProduction } = require('./scripts/workbench/compile.cjs');
+        const { routeFetch, browser, envelope } = require('./tests/workbench/route_fetch.cjs');
 
         const root = process.cwd();
         const appDir = path.join(root, 'frontend/workbench/app');
@@ -704,7 +717,7 @@ def test_four_interactive_views_do_zero_redundant_work_on_unrelated_state_change
           const FieldDetail = w.__wbRuntime.getModule('FieldDetail.jsx').FieldDetail;
 
           const renderDetail = () => host.render(() => host.React.createElement(FieldDetail, {
-            adapter: {}, taskRef: ref(1), scope: {}, snapshot: 's', revision: 0,
+            taskRef: ref(1), scope: {}, snapshot: 's', revision: 0,
             command: { locked: false }, editor: null, retained: null,
             onDraft() {}, onEdit() {}, onCloseEditor() {}, onDone() {}, onNavigate() {}, nextDraft: null, onContinueReady() {}, onRefresh() {},
           }));
@@ -761,19 +774,18 @@ def test_four_interactive_views_do_zero_redundant_work_on_unrelated_state_change
             },
           });
           realCtx.window = realCtx;
+          // 详情读取走真实 FieldAPI 与 transport，只替换网络应答。
+          browser(realCtx, routeFetch({ 'POST /api/workbench/v1/execution/tasks/*': call => {
+            detailCalls.push({ targetRef: call.path.split('/').at(-1), snapshot_ref: call.body.snapshot_ref });
+            return envelope({ task });
+          } }));
           vm.runInContext(compiled.outputs[0].code, realCtx);
           const RealFieldDetail = realCtx.__wbRuntime.getModule('FieldDetail.jsx').FieldDetail;
-          const realAdapter = {
-            async detail(targetRef, query) {
-              detailCalls.push({ targetRef, snapshot_ref: query.snapshot_ref });
-              return { data: { task } };
-            },
-          };
           let snap = null, rev = 1, pendingNextDraft = { continueAfter: true };
           const fixedScope = { plan_ref: ref(2) };
           const handleContinueReady = res => continueResults.push(res);
           const renderRealDetail = () => realHost.render(() => realHost.React.createElement(RealFieldDetail, {
-            adapter: realAdapter, taskRef: ref(1), scope: fixedScope, snapshot: snap, revision: rev,
+            taskRef: ref(1), scope: fixedScope, snapshot: snap, revision: rev,
             command: { locked: false }, editor: null, retained: null,
             onDraft() {}, onEdit() {}, onCloseEditor() {}, onDone() {}, onNavigate() {},
             nextDraft: pendingNextDraft, onContinueReady: handleContinueReady, onRefresh() {},
@@ -787,7 +799,7 @@ def test_four_interactive_views_do_zero_redundant_work_on_unrelated_state_change
 
           snap = 'snap-2';
           renderRealDetail();
-          for (let tick = 0; tick < 6; tick++) await Promise.resolve();
+          for (let tick = 0; tick < 3; tick++) await new Promise(resolve => setImmediate(resolve));
           renderRealDetail();
           assert.deepEqual(detailCalls, [{ targetRef: ref(1), snapshot_ref: 'snap-2' }], 'Ready snapshot issues exactly 1 detail request');
           assert.equal(continueResults.length, 1, 'Ready detail resolves nextDraft continuation once');
@@ -847,7 +859,7 @@ def test_four_interactive_views_do_zero_redundant_work_on_unrelated_state_change
             relationships: { machine_permissions: basePermissions },
           };
           const renderPerm = () => host.render(() => host.React.createElement(OperatorMachinePermissions, {
-            adapter: {}, entity, source: 'production', command: { phase: 'idle', locked: false, reset() {} },
+            entity, source: 'production', command: { phase: 'idle', locked: false, reset() {} },
             onClose() {}, Feedback: () => null,
           }));
           let tree = renderPerm();
@@ -871,9 +883,9 @@ def test_four_interactive_views_do_zero_redundant_work_on_unrelated_state_change
           w.JSON.stringify = (...args) => { stringifyCalls++; return origStringify(...args); };
           searchInput.props.onChange({ target: { value: '车床2' } });
           tree = renderPerm();
-          // PermissionSelect renders 2 selects per row (each with value + 3/2 options = 7 JSON.stringify calls), 0 for fields(rows)/fields(original).
+          // PermissionSelect uses the stored codes as option values (no JSON encoding); only re-running fields(rows)/fields(original) would call JSON.stringify.
           w.JSON.stringify = origStringify;
-          assert.equal(stringifyCalls, 7, 'Search change must do 0 JSON.stringify calls on fields(rows) or fields(original)');
+          assert.equal(stringifyCalls, 0, 'Search change must do 0 JSON.stringify calls on fields(rows) or fields(original)');
         }
 
         // 3. BatchMaterialEditor: 0 operation scans and 0 op.label reads on material search changes (#28).
@@ -905,7 +917,6 @@ def test_four_interactive_views_do_zero_redundant_work_on_unrelated_state_change
             React: host.React,
             __wbStubs: {
               'BatchContract.js': {},
-              'resource-contract.js': { failure: m => new Error(m) },
               'shared/session/query.js': {
                 useQuery: () => ({ loading: false, error: null, result: { meta: { snapshot_ref: 's' }, data: { page: {}, entities: [] } } }),
               },
@@ -914,6 +925,7 @@ def test_four_interactive_views_do_zero_redundant_work_on_unrelated_state_change
                 Modal: p => host.React.createElement('div', p, p.children, p.footer),
                 ErrorBox: () => null,
                 Field: p => host.React.createElement('label', p, p.children),
+                FieldCell: p => p.children,
                 Pager: () => null,
               },
               'ResourceForms.jsx': { Feedback: () => null },
@@ -927,7 +939,7 @@ def test_four_interactive_views_do_zero_redundant_work_on_unrelated_state_change
           const BatchMaterialEditor = w.__wbRuntime.getModule('BatchMaterialEditor.jsx').BatchMaterialEditor;
 
           const renderMat = () => host.render(() => host.React.createElement(BatchMaterialEditor, {
-            adapter: {}, entity, command: { phase: 'idle', locked: false, clearRejection() {}, reset() {} },
+            entity, command: { phase: 'idle', locked: false, clearRejection() {}, reset() {} },
             onCommitted() {}, onClose() {},
           }));
           let tree = renderMat();
@@ -971,7 +983,7 @@ def test_four_interactive_views_do_zero_redundant_work_on_unrelated_state_change
             React: host.React,
             ReactDOM: { createPortal: el => el },
             __wbStubs: {
-              'resource-contract.js': { failure: m => new Error(m), own: (o, k) => Object.prototype.hasOwnProperty.call(o, k), blocked: () => '' },
+              'resource-contract.js': { own: (o, k) => Object.prototype.hasOwnProperty.call(o, k), blocked: () => '' },
               'ProcessContract.js': { sourceLabel: s => s, stagePreview: v => v },
               'ResourceControls.jsx': {
                 Button: p => host.React.createElement('button', p, p.children),
@@ -979,6 +991,7 @@ def test_four_interactive_views_do_zero_redundant_work_on_unrelated_state_change
                 Search: p => host.React.createElement('input', p),
                 ErrorBox: () => null,
                 Issues: () => null,
+                FieldCell: p => p.children,
               },
               'ResourceTables.jsx': { Pager: () => null },
               'ResourceForms.jsx': { Feedback: () => null },
@@ -995,7 +1008,7 @@ def test_four_interactive_views_do_zero_redundant_work_on_unrelated_state_change
 
           const result = { data: entity, meta: { source: 'production', snapshot_ref: 's'.repeat(32) } };
           const renderGroups = () => host.render(() => host.React.createElement(ProcessGroupEditor, {
-            adapter: {}, result, command: { phase: 'idle', locked: false }, disabled: false, onDirty() {}, onClose() {},
+            result, command: { phase: 'idle', locked: false, clearRejection() {} }, disabled: false, onDirty() {}, onClose() {},
           }));
           let tree = renderGroups();
           assert.equal(activeCalls, 1, 'E.active(entity) called once on mount');
@@ -1047,6 +1060,8 @@ def test_field_editor_choices_and_single_receipt_validation():
         const path = require('node:path');
         const vm = require('node:vm');
         const { compile, bundleProduction } = require('./scripts/workbench/compile.cjs');
+        const { envelope } = require('./tests/workbench/route_fetch.cjs');
+        const { memoryStorage } = require('./tests/_support/memory_storage.cjs');
 
         const root = process.cwd();
         const appDir = path.join(root, 'frontend/workbench/app');
@@ -1055,7 +1070,7 @@ def test_field_editor_choices_and_single_receipt_validation():
           'ResourceControls.jsx', 'FieldEditorFields.jsx',
           'BatchContract.js', 'BatchAPI.js', 'BatchForms.jsx', 'BatchMaterialEditor.jsx',
           'BatchOperationEditor.jsx', 'BatchSplitPanel.jsx', 'BatchFiles.jsx',
-          'SystemRestoreStatus.js', 'SystemMaintenanceAPI.js', 'SystemMaintenanceControls.jsx', 'SystemMaintenanceConfig.jsx'
+          'SystemRestoreStatus.js', 'SystemMaintenanceAPI.js', 'SystemMaintenanceControls.jsx', 'SystemMaintenanceConfig.jsx', 'shared/session/query.js'
         ];
         const compiled = compile({
           sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(appDir, name), 'utf8') })),
@@ -1070,18 +1085,8 @@ def test_field_editor_choices_and_single_receipt_validation():
           crypto: { getRandomValues: b => b.fill(7) },
           CustomEvent: class { constructor(t, o) { this.type = t; this.detail = o && o.detail; } },
           location: new URL('http://127.0.0.1:8080/workbench'),
-          sessionStorage: {
-            data: new Map(),
-            getItem(k) { return this.data.has(k) ? this.data.get(k) : null; },
-            setItem(k, v) { this.data.set(k, v); },
-            removeItem(k) { this.data.delete(k); },
-          },
-          localStorage: {
-            data: new Map(),
-            getItem(k) { return this.data.has(k) ? this.data.get(k) : null; },
-            setItem(k, v) { this.data.set(k, v); },
-            removeItem(k) { this.data.delete(k); },
-          },
+          sessionStorage: memoryStorage(),
+          localStorage: memoryStorage(),
           navigator: { locks: { request: (_k, _o, fn) => fn({}) } },
           document: { body: {}, activeElement: null, addEventListener() {}, removeEventListener() {} },
           addEventListener() {}, removeEventListener() {}, dispatchEvent() {},
@@ -1178,16 +1183,9 @@ def test_field_editor_choices_and_single_receipt_validation():
           return { ...node, props: { ...(node.props || {}), children } };
         }
         const task = { source: 'internal', execution: { known_completed_quantity: 5, remaining_quantity: 5, target_quantity: 10, unknown_record_count: 0 } };
-        const adapter = {
-          choices: async () => ({
-            ok: true, schema_version: 1, warnings: [],
-            meta: { as_of: '2026-10-30T08:00:00', request_ref: 'a'.repeat(32), snapshot_ref: 's'.repeat(32), source: 'production', time_basis: 'factory_local' },
-            data: { kind: 'choices', page: { number: 1, size: 50, total: 0, pages: 1, sort: [] }, entities: [] },
-          }),
-        };
         cursor = 0;
         hostRender(w.React.createElement(FieldEditorFields, {
-          task, record, action: 'correct', adapter,
+          task, record, action: 'correct',
           draft: { completed_quantity: '5', effective_processing_hours: '1', actual_start: '', actual_end: '', actual_machine_ref: ref(1), actual_operator_ref: ref(2), remark: '', reason: '纠偏', declared_operator: '王工' },
           suggestions: {}, disabled: false, first: { current: null }, change() {}, error: null,
         }));
@@ -1205,7 +1203,7 @@ def test_field_editor_choices_and_single_receipt_validation():
         capturedOriginals = [];
         cursor = 0;
         hostRender(w.React.createElement(FieldEditorFields, {
-          task, record, action: 'correct', adapter,
+          task, record, action: 'correct',
           draft: { completed_quantity: '6', effective_processing_hours: '1.5', actual_start: '', actual_end: '', actual_machine_ref: ref(1), actual_operator_ref: ref(2), remark: '修改', reason: '纠偏', declared_operator: '王工' },
           suggestions: {}, disabled: false, first: { current: null }, change() {}, error: null,
         }));
@@ -1226,7 +1224,7 @@ def test_field_editor_choices_and_single_receipt_validation():
           json: async () => mockResponse,
         });
 
-        const batchApi = APSBatchAPI.create();
+        const batchApi = APSBatchAPI.APSBatchAPI;
         mockResponse = {
           ok: true, result: 'committed', receipt_ref: 'r'.repeat(32), replayed: false, warnings: [],
           data: { entity_ref: ref(50), operation_ref: ref(51) },
@@ -1249,7 +1247,6 @@ def test_field_editor_choices_and_single_receipt_validation():
         const opEditorSlot = slots.length;
         cursor = opEditorSlot;
         BatchOperationEditor({
-          adapter: { operationChoices: async () => ({ data: { machines: [], operators: [], suppliers: [], authorizations: [] } }) },
           entity: { ref: ref(50), write_context: { write_token: 'w'.repeat(32), capabilities: { 'batch.operation_update': true }, blocked_reasons: [] } },
           operation: { ref: ref(51), sequence: 10, label: '车削', source: 'internal', external_group: null },
           source: 'production',
@@ -1297,29 +1294,22 @@ def test_field_editor_choices_and_single_receipt_validation():
             useDirtyGuard: spec => { lastGuard = spec; return 'owner'; },
             confirmLeave: async () => true,
           });
-          w.__wbRuntime.setStub('SystemMaintenanceControls.jsx', {
-            useRead: () => ({
-              loading: false,
-              error: null,
-              data: {
-                data: {
-                  section: { state: 'available', message: '正常', error: null },
-                  write_token: 't'.repeat(32),
-                  write_blocked_reasons: [],
-                  defaulted_fields: [],
-                  values: {
-                    auto_backup_enabled: true,
-                    auto_backup_interval_minutes: 60,
-                    auto_backup_cleanup_enabled: true,
-                    auto_backup_keep_days: 7,
-                    auto_backup_cleanup_interval_minutes: 120,
-                    auto_log_cleanup_enabled: true,
-                    auto_log_cleanup_keep_days: 14,
-                    auto_log_cleanup_interval_minutes: 180,
-                  },
-                },
-              },
-            }),
+          // 配置读取走真实的 useQuery、SystemMaintenanceAPI 与 transport，只替换网络应答。
+          mockResponse = envelope({
+            section: { state: 'available', message: '正常', error: null },
+            write_token: 't'.repeat(32),
+            write_blocked_reasons: [],
+            defaulted_fields: [],
+            values: {
+              auto_backup_enabled: true,
+              auto_backup_interval_minutes: 60,
+              auto_backup_cleanup_enabled: true,
+              auto_backup_keep_days: 7,
+              auto_backup_cleanup_interval_minutes: 120,
+              auto_log_cleanup_enabled: true,
+              auto_log_cleanup_keep_days: 14,
+              auto_log_cleanup_interval_minutes: 180,
+            },
           });
           const cfgSlot = slots.length;
           function renderCfg(active, locked = false) {
@@ -1333,6 +1323,8 @@ def test_field_editor_choices_and_single_receipt_validation():
             while (effects.length) effects.shift()();
             return tree;
           }
+          renderCfg(true);
+          await new Promise(resolve => setImmediate(resolve));
           renderCfg(true);
           let tree = renderCfg(true);
           assert.equal(lastGuard.dirty, false);
@@ -1380,7 +1372,7 @@ def test_field_editor_choices_and_single_receipt_validation():
           });
           isoCtx.window = isoCtx;
           vm.runInContext(isolatedCode, isoCtx, { filename: 'resource-api.js' });
-          const countsRes = isoCtx.__wbRuntime.getModule('resource-api.js').useCounts({ summary: async () => ({}) }, 'production');
+          const countsRes = isoCtx.__wbRuntime.getModule('resource-api.js').useCounts(0);
           assert.ok(countsRes && 'machine' in countsRes && 'summary' in countsRes,
             'useCounts() in isolated context resolves transitive C.nodes from resource-contract.js without preloading window.APSResourceContract');
 
@@ -1459,11 +1451,7 @@ def test_field_editor_choices_and_single_receipt_validation():
           const themeObserved = [];
           const themeCtx = vm.createContext({
             console, Object, Array, Set, Map, WeakMap, WeakSet, Error, TypeError,
-            localStorage: {
-              store: new Map(),
-              getItem(k) { return this.store.has(k) ? this.store.get(k) : null; },
-              setItem(k, v) { this.store.set(k, v); },
-            },
+            localStorage: memoryStorage(),
             document: {
               cookie: '',
               documentElement: { setAttribute() {} },
@@ -1509,23 +1497,12 @@ def test_field_editor_choices_and_single_receipt_validation():
                 : fs.readFileSync(path.join(appDir, name), 'utf8'),
             }));
             const compiledOrder = compile({ sources, check_combined: false });
-            let failWrite = false;
-            const backing = new Map();
+            const pendingStorage = memoryStorage();
             const pendingCtx = vm.createContext({
               console, URL, Set, Map, WeakMap, WeakSet, Object, Array, String, Number, Boolean, JSON, RegExp, Promise, Error, TypeError,
               AbortController, DOMException,
               CustomEvent: class { constructor(t, init) { this.type = t; this.detail = init && init.detail; } },
-              localStorage: {
-                getItem(k) { return backing.has(k) ? backing.get(k) : null; },
-                setItem(k, v) {
-                  if (failWrite) throw new Error('QuotaExceededError');
-                  backing.set(k, String(v));
-                },
-                removeItem(k) {
-                  if (failWrite) throw new Error('QuotaExceededError');
-                  backing.delete(k);
-                },
-              },
+              localStorage: pendingStorage,
               addEventListener() {},
               removeEventListener() {},
               dispatchEvent() {},
@@ -1556,7 +1533,7 @@ def test_field_editor_choices_and_single_receipt_validation():
             const settledDone = { phase: 'done', request_key: 'req-singleton-1' };
             storeFromModule.save(initialPending, null);
             assert.deepEqual(storeFromImport.read(), initialPending);
-            failWrite = true;
+            pendingStorage.failSet = pendingStorage.failRemove = new Error('QuotaExceededError');
             assert.throws(
               () => storeFromModule.save(settledDone, initialPending),
               err => err.message === '写入待确认状态失败' && err.saved && err.saved.phase === 'done' && err.saved.request_key === 'req-singleton-1',
@@ -2339,18 +2316,22 @@ def test_vendor_react_metadata_size_contracts_and_esbuild_already_installed_shor
             return wrong_size_plat_tarball
         raise AssertionError(f"Unexpected URL: {url}")
 
+    host_platform = vendor_react.current_esbuild_platform_key()
     monkeypatch.setattr(vendor_react, "read_url", fake_read_url_esbuild)
     with pytest.raises(ValueError, match=r"esbuild binary size mismatch"):
         vendor_react.install_esbuild_vendor(
-            root=esbuild_root,
-            platform_key="win32-x64",
-            manifest_path=custom_manifest_path,
+            esbuild_root,
+            vendor_react.load_esbuild_manifest(custom_manifest_path),
+            host_platform=host_platform,
+            target_platform="win32-x64",
         )
 
     def forbidden_read_url(_url):
         raise AssertionError("install_esbuild_vendor must not call read_url when local vendor passes verification")
 
     monkeypatch.setattr(vendor_react, "read_url", forbidden_read_url)
-    short_circuited = vendor_react.install_esbuild_vendor(root=ROOT)
+    short_circuited = vendor_react.install_esbuild_vendor(
+        ROOT, manifest, host_platform=host_platform, target_platform=host_platform
+    )
     assert short_circuited["status"] == "already_installed"
     assert short_circuited["version"] == vendor_react.ESBUILD_VERSION

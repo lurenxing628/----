@@ -1,11 +1,10 @@
 import React from './shared/runtime/react.js';
-import FieldContract from './FieldContract.js';
-import FieldControls from './FieldControls.jsx';
+import C from './FieldContract.js';
+import { Button } from './FieldControls.jsx';
 import ResourceControls from './ResourceControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 
-const C = FieldContract, { Button } = FieldControls;
-function FieldEditorFields({ task, record, action, adapter, draft, suggestions, disabled, first, change, error }) {
+function FieldEditorFields({ task, record, action, draft, suggestions, disabled, first, change, error }) {
   const Field = ResourceControls.Field;
   const readonly = key => disabled || action === 'supplement' && record[key] != null && record[key] !== '';
   const original = React.useMemo(() => record ? {
@@ -16,7 +15,7 @@ function FieldEditorFields({ task, record, action, adapter, draft, suggestions, 
       actual_operator: record.actual_operator_ref && record.actual_operator_label ? { ref: record.actual_operator_ref, label: record.actual_operator_label } : null
     }
   } : null, [record]);
-  const choices = (key, label, kind) => <ResourceControls.Choice adapter={adapter} field={{ key, label, kind }} value={draft[key]} disabled={readonly(key)} error={error}
+  const choices = (key, label, kind) => <ResourceControls.Choice field={{ key, label, kind }} value={draft[key]} disabled={readonly(key)} error={error}
     original={original} onChange={value => change(key, value)} />;
   const amount = value => value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
   const quantity = amount(draft.completed_quantity), effectiveHours = amount(draft.effective_processing_hours);
@@ -52,9 +51,9 @@ function FieldEditorFields({ task, record, action, adapter, draft, suggestions, 
       ? '外协工序不占用本厂设备和人员，实际设备、实际人员要留空；原记录已填的请用「更正」清除。跟进人请填在经办人里。'
       : '外协工序不占用本厂设备和人员，不用填实际设备和人员；跟进人请填在经办人里。'}</p>}
     {resourceShown('actual_machine_ref') && choices('actual_machine_ref', '实际设备', 'machine')}{resourceShown('actual_operator_ref') && choices('actual_operator_ref', '实际人员', 'operator')}
-    <Field label="作业备注" path="remark" error={error}><textarea aria-label="作业备注" maxLength="2000" value={draft.remark} disabled={readonly('remark')} onChange={event => change('remark', event.target.value)} /></Field>
-    {record && <Field label={reasonLabel} path="reason" error={error} required><textarea required aria-label={reasonLabel} maxLength="2000" value={draft.reason} disabled={disabled} onChange={event => change('reason', event.target.value)} /></Field>}
-    <Field label="经办人" path="declared_operator" error={error}><input aria-label="经办人" maxLength="2000" value={draft.declared_operator} disabled={disabled} onChange={event => change('declared_operator', event.target.value)} /></Field>
+    <Field label="作业备注" path="remark" error={error}><textarea aria-label="作业备注" value={draft.remark} disabled={readonly('remark')} onChange={event => change('remark', event.target.value)} /></Field>
+    {record && <Field label={reasonLabel} path="reason" error={error} required><textarea required aria-label={reasonLabel} value={draft.reason} disabled={disabled} onChange={event => change('reason', event.target.value)} /></Field>}
+    <Field label="经办人" path="declared_operator" error={error}><input aria-label="经办人" value={draft.declared_operator} disabled={disabled} onChange={event => change('declared_operator', event.target.value)} /></Field>
   </div></details></>;
 }
 export { FieldEditorFields };

@@ -3,10 +3,14 @@ import A from './SystemMaintenanceAPI.js';
 import C from './SystemMaintenanceControls.jsx';
 import T from './shared/network/transport.js';
 import { exclusive } from './shared/session/pending-store.js';
+import { failure } from './shared/contract/kit.js';
 import SystemRestoreStatus from './SystemRestoreStatus.js';
 import SystemRestorePanel from './SystemRestorePanel.jsx';
 import SystemMaintenanceRecords from './SystemMaintenanceRecords.jsx';
 import SystemMaintenanceConfig from './SystemMaintenanceConfig.jsx';
+import { WorkbenchError, errorText } from './WorkbenchReferences.jsx';
+
+const HOST_FAILED = '维护状态查询失败，请点「重新查询」。';
 
 function useCommand(onChanged, revision) {
   const [initial] = React.useState(A.inspectPending), [intent, setIntent] = React.useState(initial.intent), [storageError, setStorageError] = React.useState(initial.storageError);
@@ -45,8 +49,8 @@ function useCommand(onChanged, revision) {
   const maintenanceRequired = restorePending || !!(host && host.state !== 'ready');
   const suspended = maintenanceRequired || !!hostError || !host;
   const readReason = maintenanceRequired ? host && host.state !== 'ready' ? SystemRestoreStatus.hostLabels[host.state] : '恢复请求结果待确认。'
-    : hostError ? hostError.message : !host ? '正在查询维护状态。' : '';
-  const lockedReason = storageError ? storageError.message : readReason || (intent ? intent.summary + '结果待确认，请查询结果。'
+    : hostError ? errorText(hostError, HOST_FAILED) : !host ? '正在查询维护状态。' : '';
+  const lockedReason = storageError ? errorText(storageError) : readReason || (intent ? intent.summary + '结果待确认，请查询结果。'
     : busy ? '正在执行维护操作。' : !host.operations_available ? '当前维护操作暂不可用，请重新查询状态。' : '');
   const acknowledge = () => runAcknowledge(ctx, suspended);
   return { intent, result, error, storageError, busy, host, hostError, hostBusy, suspended, readReason, maintenanceRequired, inspectHost, selection, lockedReason,
@@ -143,7 +147,7 @@ function reloadCommandState(ctx, lookup, inspectHost) {
       ctx.setIntent(null); ctx.setResult(state.result); ctx.setError(state.error || null);
       inspectHost(); return;
     }
-    ctx.setStorageError(new Error('本机存的上次操作记录已变化，页面仍然停在等待确认的状态。请不要再操作，联系维护人员。'));
+    ctx.setStorageError(failure('本机存的上次操作记录已变化，页面仍然停在等待确认的状态。请不要再操作，联系维护人员。', { committed: 'unknown' }));
     lookup(); return;
   }
   ctx.startedHere.current = Boolean(state.startedHere);
@@ -187,7 +191,7 @@ async function runExecuteCommand(ctx, action, token, input, selected) {
         }
       }
     });
-    if (!acquired && ctx.mounted.current) ctx.setError(new Error('另一个页面正在处理维护操作，请稍后重试。'));
+    if (!acquired && ctx.mounted.current) ctx.setError(failure('另一个页面正在处理维护操作，请稍后重试。'));
   } catch (problem) { if (ctx.mounted.current) ctx.setError(problem); }
   finally { if (original) await runInspectHost(ctx); ctx.running.current = false; if (ctx.mounted.current) ctx.setBusy(false); }
 }
@@ -198,7 +202,7 @@ async function runAcknowledge(ctx, suspended) {
   ctx.running.current = true;
   try { await exclusive(A.PENDING_KEY, { wait: true }, () => A.pending.finish(original, true)); }
   catch (problem) {
-    if (problem && problem.conflict === true) completeDismissal(ctx, original, { kind: 'rejected' });
+    if (problem.conflict === true) completeDismissal(ctx, original, { kind: 'rejected' });
     else if (ctx.mounted.current) ctx.setStorageError(problem);
     return;
   }
@@ -220,7 +224,7 @@ function SystemMaintenanceWorkspace({ tab, theme, onSetTheme, pageSize, onPageSi
 
     {command.maintenanceRequired ? <SystemRestorePanel command={command} theme={theme} onSetTheme={onSetTheme} /> : <>
       {command.hostError && <section className="sm-section sm-notice sm-tone-danger" role="alert" data-system-status-error>
-        <h3>维护状态查询失败</h3><p>{command.hostError.message}</p>
+        <h3>维护状态查询失败</h3><WorkbenchError error={command.hostError} fallback={HOST_FAILED} />
         <div className="sm-actions"><C.Button icon="refresh-cw" busy={command.hostBusy} onClick={command.inspectHost}>重新查询</C.Button>
           <a href="/workbench?view=dashboard">返回工作台</a></div>
       </section>}

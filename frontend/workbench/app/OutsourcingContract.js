@@ -1,31 +1,25 @@
-import APSWorkbenchTransport from './shared/network/transport.js';
+import T from './shared/network/transport.js';
 import { equal } from './shared/session/pending-store.js';
+import { object, nonempty, ref48, localSecond, checker } from './shared/contract/kit.js';
 
-const T = APSWorkbenchTransport, BASE = '/api/workbench/v1/outsourcing', COMMANDS = '/api/workbench/v1/commands/';
+// 定型对象：transport 校验过的信封——数据在 .data，数据版本在 .meta.snapshot_ref，提示在 .warnings，其余元信息在 .meta。
+// 本文件另外保证：页码与数据版本和请求一致，详情属于所选登记；登记回执与本次登记对得上。
+const BASE = '/api/workbench/v1/outsourcing', COMMANDS = '/api/workbench/v1/commands/';
 const states = { in_transit: '在途', returned: '已回厂', awaiting_confirmation: '待确认' };
 const fields = ['sent', 'planned', 'returned', 'confirmedState'];
 const labels = { sent: '实际发出', planned: '计划回厂', returned: '实际回厂', confirmedState: '确认状态' };
-const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
-const ref = v => typeof v === 'string' && /^[a-f0-9]{48}$/.test(v);
-const text = v => typeof v === 'string' && v.length > 0;
+const INVALID = '外协读到的数据不完整，请刷新后重试。';
+// 登记回执与回执查询都在命令发出之后：核对不过时结果未知，本机待确认记录不能清。
+const check = checker(INVALID), checkResult = checker(INVALID, { committed: 'unknown' });
 
-function check(ok, message = '外协读到的数据不完整，请刷新后重试。') { if (!ok) throw new Error(message); }
-
-function time(v) {
-  if (typeof v !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(v)) return false;
-  const n = v.match(/\d+/g).map(Number), date = new Date(0);
-  date.setUTCFullYear(n[0], n[1] - 1, n[2]); date.setUTCHours(n[3], n[4], n[5], 0);
-  return n[0] > 0 && date.toISOString().slice(0, 19) === v;
-}
-
-function stamp(v) { const s = typeof v === 'string' && v.length === 16 ? v + ':00' : v; check(time(s), '请按 2026-09-13 08:30 这样填写日期和时间。'); return s; }
+function stamp(v) { const s = typeof v === 'string' && v.length === 16 ? v + ':00' : v; check(localSecond(s), '请按 2026-09-13 08:30 这样填写日期和时间。'); return s; }
 
 // 回厂事实与外协目标：校验只在读取、预检、回执、本机记录和表单这些边界各做一次；已校验的值用 factValues / targetValues 直接取字段。
 const factValues = v => Object.fromEntries(fields.map(k => [k, v[k]]));
 
 function facts(v) {
-  check(object(v) && fields.every(k => Object.prototype.hasOwnProperty.call(v, k)) && time(v.sent) && time(v.planned)
-    && (v.returned === null || time(v.returned)) && Object.prototype.hasOwnProperty.call(states, v.confirmedState));
+  check(object(v) && fields.every(k => Object.prototype.hasOwnProperty.call(v, k)) && localSecond(v.sent) && localSecond(v.planned)
+    && (v.returned === null || localSecond(v.returned)) && Object.prototype.hasOwnProperty.call(states, v.confirmedState));
   check(v.planned >= v.sent && (v.returned === null || v.returned >= v.sent), '计划回厂和实际回厂不能早于实际发出。');
   check((v.confirmedState === 'returned') === (v.returned !== null), '已回厂状态和实际回厂时间要一起填。还没回厂就点「清除实际回厂」。');
   return true;
@@ -35,8 +29,8 @@ function facts(v) {
 const targetValues = t => ({ kind: t.kind, batch_ref: t.batch_ref, supplier_ref: t.supplier_ref, operation_refs: t.operation_refs.slice().sort() });
 
 function target(t) {
-  check(object(t) && ['single', 'merged'].includes(t.kind) && ref(t.batch_ref) && ref(t.supplier_ref) && Array.isArray(t.operation_refs)
-    && t.operation_refs.length >= 1 && t.operation_refs.length <= 200 && t.operation_refs.every(ref) && new Set(t.operation_refs).size === t.operation_refs.length
+  check(object(t) && ['single', 'merged'].includes(t.kind) && ref48(t.batch_ref) && ref48(t.supplier_ref) && Array.isArray(t.operation_refs)
+    && t.operation_refs.length >= 1 && t.operation_refs.length <= 200 && t.operation_refs.every(ref48) && new Set(t.operation_refs).size === t.operation_refs.length
     && (t.kind === 'single') === (t.operation_refs.length === 1), '单工序要选 1 道，合并发出至少选 2 道，而且不能重复。');
   return targetValues(t);
 }
@@ -47,14 +41,14 @@ function query(kind, value) {
   const q = { page: 1, size: 10, ...value };
   check(object(value) && Object.keys(q).every(k => allowed.includes(k)) && Number.isSafeInteger(q.page) && q.page >= 1 && q.page <= 1000000
     && Number.isSafeInteger(q.size) && q.size >= 1 && q.size <= 100
-    && (q.status === undefined || ['all', 'awaiting', 'overdue', 'returned'].includes(q.status)) && (q.snapshot_ref === undefined || text(q.snapshot_ref))
+    && (q.status === undefined || ['all', 'awaiting', 'overdue', 'returned'].includes(q.status)) && (q.snapshot_ref === undefined || nonempty(q.snapshot_ref))
     && (q.query === undefined || typeof q.query === 'string' && q.query.length <= 200 && !q.query.includes('\0'))
-    && (q.page === 1 || text(q.snapshot_ref)), '外协的筛选或翻页条件无效，当前范围没有变化。请重新选择。'); return q;
+    && (q.page === 1 || nonempty(q.snapshot_ref)), '外协的筛选或翻页条件无效，当前范围没有变化。请重新选择。'); return q;
 }
 
 // 信封已由 transport 校验；外协列表翻页钉在这次读取的数据版本上，所以列表读取的数据版本不能为空。
 function envelope(v, q) {
-  check(text(v.meta.snapshot_ref));
+  check(nonempty(v.meta.snapshot_ref));
   if (q.snapshot_ref) check(q.snapshot_ref === v.meta.snapshot_ref, '数据已更新，请刷新后重试。刚才的选择已保留。'); return v.data;
 }
 
@@ -86,7 +80,7 @@ function previewResult(v, input) {
 
 function receipt(v, intent) {
   const d = v && v.data;
-  check(v && v.ok === true && v.result === 'committed' && object(d)
+  checkResult(v && v.ok === true && v.result === 'committed' && object(d)
     && (!intent.input.outsourcing_ref || d.outsourcing_ref === intent.input.outsourcing_ref)
     && equal(factValues(d), intent.after) && equal(targetValues(d.target), targetValues(intent.target))
     && d.declared_operator === intent.input.declared_operator && d.reason === intent.input.reason,
@@ -97,7 +91,7 @@ function receipt(v, intent) {
 // 外协读取、预检、提交和回执查询都按 30 秒等待；提交失败的结果编号指向通用命令回执。
 async function read(kind, args, selected, signal) {
   const q = query(kind, args); check(['targets', 'receipts', 'detail', 'history'].includes(kind));
-  if (['detail', 'history'].includes(kind)) check(ref(selected));
+  if (['detail', 'history'].includes(kind)) check(ref48(selected));
   const path = ['targets', 'receipts'].includes(kind) ? '/' + kind : '/receipts/' + selected + (kind === 'history' ? '/history' : '');
   return catalog(await T.read(BASE + path, q, { signal, timeout: 30000 }), kind, q, selected);
 }
@@ -111,12 +105,12 @@ async function command(intent, token) {
 
 async function lookup(intent) {
   const v = await T.lookup(COMMANDS + intent.request_key, {}, { timeout: 30000 });
-  check(object(v) && ['recorded', 'not_observed'].includes(v.state));
+  checkResult(object(v) && ['recorded', 'not_observed'].includes(v.state));
   if (v.state === 'not_observed') return null;
   return receipt(v.receipt, intent);
 }
 
-const OutsourcingContract = { states, fields, labels, object, ref, text, time, check, equal, stamp, facts, factValues, target, targetValues, receipt, read, preview, command, lookup };
+const OutsourcingContract = { states, fields, labels, check, equal, stamp, facts, factValues, target, targetValues, receipt, read, preview, command, lookup };
 
-export { OutsourcingContract, states, fields, labels, object, ref, text, time, check, equal, stamp, facts, factValues, target, targetValues, receipt, read, preview, command, lookup };
+export { OutsourcingContract, states, fields, labels, check, equal, stamp, facts, factValues, target, targetValues, receipt, read, preview, command, lookup };
 export default OutsourcingContract;

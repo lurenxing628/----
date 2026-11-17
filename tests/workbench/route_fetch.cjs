@@ -114,37 +114,4 @@ function loadTransport(context) {
   return context.__wbRuntime.getModule('shared/network/transport.js');
 }
 
-// A synchronous render fixture for APSResourceSession.useQuery: the first render starts each read,
-// settle() awaits them and renders again until no new read starts. Keys are the read source plus
-// its dependencies, so a later render with the same request reuses the settled answer.
-function settledQueries() {
-  let cache = new Map(), pending = [];
-  const ids = new WeakMap(); let nextId = 0;
-  const identity = value => { if (!ids.has(value)) ids.set(value, ++nextId); return ids.get(value); };
-  const keyOf = (load, deps) => load.toString() + '\u0000' + JSON.stringify(deps || [], (_key, value) =>
-    typeof value === 'function' ? 'fn:' + identity(value) : value);
-  function useQuery(load, deps, enabled = true) {
-    if (!enabled) return { result: null, loading: false, error: null, reload() {} };
-    const key = keyOf(load, deps);
-    if (!cache.has(key)) {
-      const entry = { result: null, loading: true, error: null, reload() { cache.delete(key); } };
-      cache.set(key, entry);
-      pending.push(Promise.resolve().then(() => load(new AbortController().signal)).then(
-        result => { cache.set(key, { ...entry, result, loading: false }); },
-        error => { cache.set(key, { ...entry, error, loading: false }); }));
-    }
-    return cache.get(key);
-  }
-  async function settle(render, rounds = 8) {
-    for (let round = 0; round < rounds; round++) {
-      const tree = render();
-      if (!pending.length) return tree;
-      const waiting = pending; pending = [];
-      await Promise.all(waiting);
-    }
-    throw new Error('Reads did not settle within ' + rounds + ' renders');
-  }
-  return { useQuery, settle, reset() { cache = new Map(); pending = []; } };
-}
-
-module.exports = { ORIGIN, meta, envelope, failure, json, file, text, abortError, deferred, routeFetch, browser, loadTransport, settledQueries };
+module.exports = { ORIGIN, meta, envelope, failure, json, file, text, abortError, deferred, routeFetch, browser, loadTransport };

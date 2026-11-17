@@ -1,7 +1,6 @@
 import React from './shared/runtime/react.js';
 import CalibrationAPI from './CalibrationAPI.js';
 import CalibrationControls from './CalibrationControls.jsx';
-import APSProcessAPI from './ProcessAPI.js';
 import APSResourceContract from './resource-contract.js';
 import WorkbenchPageContext from './WorkbenchPageContext.jsx';
 import WorkbenchTerms from './WorkbenchTerms.js';
@@ -9,18 +8,14 @@ import WorkbenchFormat from './WorkbenchFormat.js';
 import CalibrationAdoptionAction from './CalibrationAdoptionAction.jsx';
 import { EmptyState } from './ResourceControls.jsx';
 import CalibrationDetail from './CalibrationDetail.jsx';
-import ProcessDetail from './ProcessDetail.jsx';
+import { ProcessDetailView } from './ProcessDetail.jsx';
 import WorkbenchCaption from './WorkbenchCaption.jsx';
+import { failure } from './shared/contract/kit.js';
+import { useQuery } from './shared/session/query.js';
 
 function Workspace({ initialContext, initialInput, onNavigate }) {
   const A = CalibrationAPI, C = CalibrationControls;
-  const { Button, ErrorBox, useRead } = C;
-  // 本页只读查看零件工艺：没有写入会话，不读取也不接续工艺页留下的待确认操作。
-  const partAdapter = React.useMemo(() => ({
-    pendingKey: 'aps.workbench.calibration.part_readonly.v1',
-    detail: APSProcessAPI.create().detail,
-    readPending: () => null
-  }), []);
+  const { Button, ErrorBox } = C;
   const [part, setPart] = React.useState(null);
   const [input, setInput] = React.useState(initialInput);
   const [widths, setWidths] = React.useState(initialContext.table_widths || {});
@@ -28,18 +23,19 @@ function Workspace({ initialContext, initialInput, onNavigate }) {
   const [revision, refresh] = React.useReducer(value => value + 1, 0), [format, setFormat] = React.useState('csv');
   const [notice, setNotice] = React.useState(''), [error, setError] = React.useState(null), [downloading, setDownloading] = React.useState(false);
   const [stale, setStale] = React.useState(false), downloadAbort = React.useRef(null);
-  const identity = JSON.stringify(input) + ':' + revision;
-  const request = useRead(signal => A.readView(input, signal), identity, A);
+  const request = useQuery(signal => A.readView(input, signal), [JSON.stringify(input), revision]);
   const result = request.result, data = result && result.data;
   const bound = { ...input, snapshot_ref: result ? result.meta.snapshot_ref : input.snapshot_ref };
-  const detail = useRead(signal => A.detail(selected, bound, signal),
-    selected + ':' + JSON.stringify(bound) + ':' + revision, A, !!(selected && result && data.capabilities.view === true && !stale));
-  const isStale = failure => APSResourceContract.stale(failure, ['calibration_source_changed']);
-  WorkbenchPageContext.useSnapshot(data ? {
+  const detail = useQuery(signal => A.detail(selected, bound, signal),
+    [selected, JSON.stringify(bound), revision], { enabled: !!(selected && result && data.capabilities.view === true && !stale) });
+  const isStale = error => APSResourceContract.stale(error, ['calibration_source_changed']);
+  // 页面记忆和「执行复盘」的返回链接是同一份状态。
+  const remembered = data ? {
     scope: Object.fromEntries(Object.entries(input).filter(([key]) => !['page', 'size', 'sort', 'direction', 'snapshot_ref'].includes(key))),
     table: { page: input.page, size: input.size, sort: input.sort, direction: input.direction },
     selected, sample_ref: sampleRef, table_widths: widths
-  } : null, !!data && !request.busy && !request.error && !stale && (!selected || !!detail.result && !detail.busy && !detail.error));
+  } : null;
+  WorkbenchPageContext.useSnapshot(remembered, !!data && !request.loading && !request.error && !stale && (!selected || !!detail.result && !detail.loading && !detail.error));
   React.useEffect(() => { if (isStale(request.error) || isStale(detail.error)) setStale(true); }, [request.error, detail.error]);
   React.useEffect(() => () => { if (downloadAbort.current) downloadAbort.current.abort(); }, []);
   function reload() {
@@ -60,25 +56,18 @@ function Workspace({ initialContext, initialInput, onNavigate }) {
     try {
       const receipt = await A.download(result, bound, format, controller.signal);
       if (!controller.signal.aborted) setNotice('已导出 ' + receipt.rows + ' 项。');
-    } catch (failure) { if (!controller.signal.aborted) { setError(failure); if (isStale(failure)) setStale(true); } }
+    } catch (error) { if (!controller.signal.aborted) { setError(error); if (isStale(error)) setStale(true); } }
     finally { if (downloadAbort.current === controller) { downloadAbort.current = null; setDownloading(false); } }
   }
-  const disabled = request.busy || downloading || stale;
+  const disabled = request.loading || downloading || stale;
   // 错误正文就是通用“数据已更新”句时，只保留下面带保留说明的过期提示，不重复报两遍；具体原因照常显示。
   const shownError = request.error || error, staleOnly = !!(stale && shownError && shownError.message === WorkbenchTerms.outcomes.stale);
-  const viewError = selected && data && data.capabilities.view !== true ? A.failure(C.viewReason + '没有读取完工记录来源。') : null;
+  const viewError = selected && data && data.capabilities.view !== true ? failure(C.viewReason + '没有读取完工记录来源。') : null;
   return <section className="calib-workbench calibration-live" aria-label="工时定额校准" data-ready={!!data} data-source="production" data-stale={stale}>
     <header className="ca-heading"><div><h2 className="wb-page-title">工时定额校准</h2><p className="ca-muted wb-page-context">模板定额与实际加工记录{result ? ' · ' + WorkbenchTerms.data_as_of(WorkbenchFormat.dateTime(result.meta.as_of)) : ''}</p></div>
-      <div className="ca-actions"><Button icon="refresh-cw" aria-label="刷新校准数据" busy={request.busy} disabled={downloading} onClick={reload} />
-        <CalibrationAdoptionAction detail={detail.result && detail.result.data} stale={stale || detail.busy} onRefresh={reload} />
-        <Button icon="arrow-right" disabled={!data || disabled} onClick={() => onNavigate('review', {
-          returnTo: {
-            view: 'calib', context: {
-              scope: Object.fromEntries(Object.entries(input).filter(([key]) => !['page', 'size', 'sort', 'direction', 'snapshot_ref'].includes(key))),
-              table: { page: input.page, size: input.size, sort: input.sort, direction: input.direction }, selected, sample_ref: sampleRef, table_widths: widths
-            }
-          }
-        })}>执行复盘</Button></div></header>
+      <div className="ca-actions"><Button icon="refresh-cw" aria-label="刷新校准数据" busy={request.loading} disabled={downloading} onClick={reload} />
+        <CalibrationAdoptionAction detail={detail.result && detail.result.data} stale={stale || detail.loading} onRefresh={reload} />
+        <Button icon="arrow-right" disabled={!data || disabled} onClick={() => onNavigate('review', { return_to: { view: 'calib', context: remembered } })}>执行复盘</Button></div></header>
     <div className="ca-overview">
       <C.Filters value={input} onChange={change} disabled={disabled} />
       {input.part_ref && <p className="ca-muted">已限定零件来源 <Button icon="x" aria-label="清除零件限定" disabled={disabled} onClick={() => change({ part_ref: null })} /></p>}
@@ -88,7 +77,7 @@ function Workspace({ initialContext, initialInput, onNavigate }) {
     <ErrorBox error={staleOnly ? null : shownError} />
     {stale && <p className="ca-note" role="alert">{WorkbenchTerms.outcomes.stale}</p>}
     {(stale || request.error) && <Button icon="refresh-cw" disabled={downloading} onClick={reload}>刷新</Button>}
-    {request.busy && <EmptyState kind="loading" title="正在读取校准记录" />}{notice && <p role="status">{notice}</p>}
+    {request.loading && <EmptyState kind="loading" title="正在读取校准记录" />}{notice && <p role="status">{notice}</p>}
     <div className={selected ? 'wb-detail-layout' : ''}><div className="ca-list-pane">
       {data && data.source_constraints.map(item => <p className="ca-note" key={item.code}>{item.message}</p>)}
       <div className="ca-tools"><h3>校准明细</h3><label>排序<select aria-label="排序列" disabled={disabled} value={input.sort} onChange={event => change({ sort: event.target.value })}>
@@ -96,15 +85,14 @@ function Workspace({ initialContext, initialInput, onNavigate }) {
         <label>顺序<select aria-label="排序方向" disabled={disabled} value={input.direction} onChange={event => change({ direction: event.target.value })}><option value="asc">升序</option><option value="desc">降序</option></select></label>
         <div className="ca-actions ca-actions-end"><label>格式<select aria-label="导出格式" value={format} disabled={disabled || !data} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option></select></label>
           <Button transfer="export" busy={downloading} disabled={disabled || !data} reasonDisplay="tooltip" reason={data ? A.exportReason(data, format) : ''} onClick={download}>导出全部筛选</Button></div></div>
-      <C.Table rows={data ? data.items : []} loading={request.busy && !data} selected={selected} disabled={disabled} canView={data ? data.capabilities.view === true : false} onPart={setPart} onSelect={value => { setSelected(value); setSample(null); }}
-        scope={bound} adapter={A} widths={widths} total={data ? data.summary.total : undefined} onResize={(key, value) => setWidths(old => ({ ...old, [key]: value }))}
+      <C.Table rows={data ? data.items : []} loading={request.loading && !data} selected={selected} disabled={disabled} canView={data ? data.capabilities.view === true : false} onPart={setPart} onSelect={value => { setSelected(value); setSample(null); }}
+        scope={bound} widths={widths} total={data ? data.summary.total : undefined} onResize={(key, value) => setWidths(old => ({ ...old, [key]: value }))}
         onSort={(sort, direction) => change({ sort: direction ? sort : 'part_no', direction: direction || 'asc' })}
         onFilter={(key, rule) => { const filters = { ...input.column_filters }; if (rule === null) delete filters[key]; else filters[key] = rule; change({ column_filters: filters }); }} />
       <C.Page page={data ? data.page : { number: input.page, size: input.size, total_pages: 1, total: undefined }} onChange={page} disabled={disabled || !data} />
-    </div>{selected && <CalibrationDetail result={detail.result} busy={detail.busy || request.busy} error={detail.error || viewError} stale={stale} selected={selected} sampleRef={sampleRef} onSample={setSample}
+    </div>{selected && <CalibrationDetail result={detail.result} busy={detail.loading || request.loading} error={detail.error || viewError} stale={stale} selected={selected} sampleRef={sampleRef} onSample={setSample}
       onClose={() => { setSelected(null); setSample(null); }} onRefresh={reload} />}</div>
-    {part && <ProcessDetail adapter={partAdapter} partRef={part.part_ref} initialStage="hours" templateOperationRef={part.template_operation_ref}
-      navigationReadOnly disabled onClose={() => setPart(null)} />}
+    {part && <ProcessDetailView partRef={part.part_ref} initialStage="hours" templateOperationRef={part.template_operation_ref} onClose={() => setPart(null)} />}
   </section>;
 }
 

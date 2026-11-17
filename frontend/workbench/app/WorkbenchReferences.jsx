@@ -1,4 +1,5 @@
 import React from './shared/runtime/react.js';
+import { isFailure } from './shared/contract/kit.js';
 
 const present = value => value !== null && value !== undefined && value !== '';
 const text = value => typeof value === 'string' ? value : typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
@@ -23,23 +24,27 @@ function technical(message) {
     trimmed.startsWith('[') && trimmed.endsWith(']') || trimmed.startsWith('{') && trimmed.endsWith('}');
 }
 
-function WorkbenchError({ error, fallback = '操作未完成，请核对后重试。', fields = [], excludePaths = [], hideMessage = false }) {
+// 界面错误文案只在这里判定：kit 统一错误对象（transport 转来的后端固定文案、前端自己写的中文）的 message 才是用户文案；
+// 其余错误（TypeError、浏览器异常等）一律显示 fallback 中文通用句，原文只进折叠的“原始错误信息”。kit 文案里夹着编码时（technical）同样不上屏。
+const GENERIC = '操作未完成，请核对后重试。';
+const userCopy = error => isFailure(error) && !!error.message && !technical(error.message);
+// 只能放一句话的地方（按钮禁用理由等）用 errorText，和 WorkbenchError 走同一条规则。
+const errorText = (error, fallback = GENERIC) => userCopy(error) ? error.message : fallback;
+// fields 是 kit 错误的字段行，调用方（ErrorBox）已滤掉页面上就地标红的项。
+function WorkbenchError({ error, fallback = GENERIC, fields = [], hideMessage = false }) {
   if (!error) return null;
-  const message = typeof error === 'string' ? error : typeof error.message === 'string' ? error.message : '';
+  const message = error.message;
   const entries = {}, messages = [];
-  if (message && technical(message)) entries['原始错误信息'] = message;
-  if (!hideMessage) messages.push(message && !technical(message) ? message : fallback);
-  // 统一错误对象（transport.js）的编号字段。
+  if (present(message) && !userCopy(error)) entries['原始错误信息'] = message;
+  if (!hideMessage) messages.push(errorText(error, fallback));
   const labels = { code: '错误编号', status: '状态码', requestKey: '操作编号', requestRef: '结果编号' };
   Object.entries(labels).forEach(([key, label]) => { if (present(error[key])) entries[label] = error[key]; });
   if (error.name && error.name !== 'Error') entries['错误类型'] = error.name;
   fields.forEach((field, index) => {
-    if (!field || excludePaths.includes(field.path)) return;
-    const detail = typeof field.message === 'string' ? field.message : '';
+    const detail = field.message;
     if (!detail) return;
     if (technical(detail)) { entries['填写项说明 ' + (index + 1)] = detail; if (!messages.length) messages.push(fallback); }
     else if (!messages.includes(detail)) messages.push(detail);
-    if (present(field.code)) entries['填写项编号 ' + (index + 1)] = field.code;
   });
   if (!messages.length && !Object.keys(entries).length) return null;
   return <div className="wb-error" role="alert">
@@ -48,5 +53,5 @@ function WorkbenchError({ error, fallback = '操作未完成，请核对后重�
   </div>;
 }
 
-export { WorkbenchReference, WorkbenchError };
-export default { WorkbenchReference, WorkbenchError };
+export { WorkbenchReference, WorkbenchError, errorText };
+export default { WorkbenchReference, WorkbenchError, errorText };

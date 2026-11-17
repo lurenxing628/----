@@ -1,6 +1,7 @@
 // 工作台唯一的传输通道：地址守卫、取消与超时、信封校验、统一错误对象、命令确定/不确定判定、下载与存盘、request_key。
 // 统一错误对象：{ message, code, fields, conflicts, committed, status, requestRef, requestKey, resultTarget }。
 import WorkbenchTerms from '../../WorkbenchTerms.js';
+import { object, text, localSecond, failure, isFailure } from '../contract/kit.js';
 
 const PREFIX = '/api/workbench/v1/';
 // 工作台下载只有这四种文件；领域写 types: [T.types.csv] 这种形式。
@@ -21,19 +22,7 @@ const MAGIC = {
 // 后端附件文件名的唯一后缀：导出都按格式拼 .csv / .xlsx，诊断包是 .zip，备份文件恒为 aps_backup_*.db。
 const EXTENSION = { [types.csv]: '.csv', [types.xlsx]: '.xlsx', [types.zip]: '.zip', [types.sqlite]: '.db' };
 const ENVELOPE_KEYS = 'data,meta,ok,schema_version,warnings', META_KEYS = 'as_of,request_ref,snapshot_ref,source,time_basis';
-const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-const text = value => typeof value === 'string';
 const essence = value => (value || '').split(';')[0].trim().toLowerCase();
-const faults = new WeakSet();
-
-function fault(message, details) {
-  const error = Object.assign(new Error(message), {
-    code: null, fields: [], conflicts: [], committed: false, status: null,
-    requestRef: null, requestKey: null, resultTarget: null
-  }, details);
-  faults.add(error);
-  return error;
-}
 
 const unknown = () => WorkbenchTerms.outcomes.pending('操作');
 const readCopy = {
@@ -53,20 +42,11 @@ const modes = Object.freeze({
 function url(path, query = {}) {
   // 只接受以 /api/workbench/v1/ 开头的绝对路径；规范化后（如带 ..）仍须留在前缀内。
   const target = new URL(path, location.origin);
-  if (!path.startsWith(PREFIX) || !target.pathname.startsWith(PREFIX)) throw fault('数据地址不属于本机工作台。');
+  if (!path.startsWith(PREFIX) || !target.pathname.startsWith(PREFIX)) throw failure('数据地址不属于本机工作台。');
   if (query) Object.keys(query).forEach(key => {
     if (query[key] !== undefined && query[key] !== null && query[key] !== '') target.searchParams.set(key, String(query[key]));
   });
   return target.href;
-}
-
-// 工厂本地秒级时间，按真实日历校验（与 PlanContract 的 localTime 同一口径，不带小数秒）。
-function localSecond(value) {
-  if (!text(value) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(value)) return false;
-  const [year, month, day, hour, minute, second] = value.split(/[-T:]/).map(Number);
-  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1] && hour < 24 && minute < 60 && second < 60;
 }
 
 // 成功信封唯一的校验点：唯一生产者是 web/api_responses.py 的 query_payload，顶层 5 个键、meta 5 个键都固定。
@@ -77,7 +57,7 @@ function envelope(payload, mode = modes.read) {
       || meta.source !== 'production' || meta.time_basis !== 'factory_local' || !text(meta.request_ref) || !/^[0-9a-f]{32}$/.test(meta.request_ref)
       || !(meta.snapshot_ref === null || text(meta.snapshot_ref) && /^[A-Za-z0-9_-]{32}$/.test(meta.snapshot_ref)) || !localSecond(meta.as_of)
       || !Array.isArray(payload.warnings) || !payload.warnings.every(item => object(item) && text(item.code) && text(item.message)))
-    throw fault('读到的数据不完整，页面没有改动。请刷新后重试。', { code: 'invalid_response', committed: mode.committed });
+    throw failure('读到的数据不完整，页面没有改动。请刷新后重试。', { code: 'invalid_response', committed: mode.committed });
   return payload;
 }
 
@@ -97,20 +77,21 @@ function failed(payload) {
 }
 
 // 失败信封唯一的解析点：web/api_responses.py 的 failure_payload、pages.py 的统一兜底与 run_decision.py 的内嵌资源失败。
-function failure(payload, status, mode = modes.read) {
+function envelopeFailure(payload, status, mode = modes.read) {
   if (!failed(payload) || !Number.isInteger(status) || status < 400 || status > 599 || payload.status !== undefined && payload.status !== status)
-    return fault(mode.failed(), { code: 'invalid_response', committed: mode.committed, status });
+    return failure(mode.failed(), { code: 'invalid_response', committed: mode.committed, status });
   const e = payload.error;
-  return fault(e.message, {
+  return failure(e.message, {
     code: e.code, fields: e.fields, conflicts: e.conflicts || [], committed: payload.committed, status,
     requestRef: e.request_ref, requestKey: e.request_key || null, resultTarget: e.result_target || null
   });
 }
 
-function encode(body) {
-  if (body instanceof FormData) return { body, headers: { Accept: 'application/json' } };
-  try { return { body: JSON.stringify(body), headers: { Accept: 'application/json', 'Content-Type': 'application/json' } }; }
-  catch (_) { throw fault('保存内容无法转换，本次没有提交。'); }
+// 请求体的唯一编码：preview、command 与带请求体的 download 共用；accept 只有下载会换成文件类型。
+function encode(body, accept = 'application/json') {
+  if (body instanceof FormData) return { body, headers: { Accept: accept } };
+  try { return { body: JSON.stringify(body), headers: { Accept: accept, 'Content-Type': 'application/json' } }; }
+  catch (_) { throw failure('保存内容无法转换，本次没有提交。'); }
 }
 
 async function send(target, init, { signal, timeout = 20000 }, mode, consume) {
@@ -122,9 +103,9 @@ async function send(target, init, { signal, timeout = 20000 }, mode, consume) {
     const response = await fetch(target, { ...init, signal: controller.signal, credentials: 'same-origin', redirect: 'error', cache: 'no-store' });
     return await consume(response);
   } catch (error) {
-    if (timedOut) throw fault(mode.timeout(), { code: 'timeout', committed: mode.committed });
-    if (error.name === 'AbortError' || faults.has(error)) throw error;
-    throw fault(mode.network(), { committed: mode.committed });
+    if (timedOut) throw failure(mode.timeout(), { code: 'timeout', committed: mode.committed });
+    if (error.name === 'AbortError' || isFailure(error)) throw error;
+    throw failure(mode.network(), { committed: mode.committed });
   } finally {
     clearTimeout(timer);
     if (signal) signal.removeEventListener('abort', abort);
@@ -133,11 +114,11 @@ async function send(target, init, { signal, timeout = 20000 }, mode, consume) {
 
 async function parse(response, mode) {
   if (essence(response.headers.get('content-type')) !== 'application/json')
-    throw fault(mode.format(), { code: 'invalid_response', committed: mode.committed, status: response.status });
+    throw failure(mode.format(), { code: 'invalid_response', committed: mode.committed, status: response.status });
   try { return await response.json(); }
   catch (error) {
     if (error.name === 'AbortError') throw error;
-    throw fault(mode.parse(), { code: 'invalid_response', committed: mode.committed, status: response.status });
+    throw failure(mode.parse(), { code: 'invalid_response', committed: mode.committed, status: response.status });
   }
 }
 
@@ -145,9 +126,9 @@ async function answer(response) {
   const payload = await parse(response, modes.read);
   if (failed(payload)) {
     if (response.status === 499 && payload.error.code === 'request_superseded') throw new DOMException('筛选条件已更新，前一次读取已取消。', 'AbortError');
-    throw failure(payload, response.status);
+    throw envelopeFailure(payload, response.status);
   }
-  if (!response.ok) throw fault(modes.read.failed(), { code: 'invalid_response', status: response.status });
+  if (!response.ok) throw failure(modes.read.failed(), { code: 'invalid_response', status: response.status });
   return envelope(payload);
 }
 
@@ -165,14 +146,14 @@ async function command(path, body, { timeout, expect } = {}) {
   return send(url(path), { method: 'POST', ...encode(body) }, { timeout }, modes.write, async response => {
     const payload = await parse(response, modes.write);
     if (failed(payload)) {
-      const error = failure(payload, response.status, modes.write);
+      const error = envelopeFailure(payload, response.status, modes.write);
       if ((error.requestKey !== null || error.resultTarget !== null) && (error.requestKey !== body.request_key || error.resultTarget !== expect))
-        throw fault('返回的结果编号和上次提交对不上，这里没有读取其他结果。请点「查询结果」。',
+        throw failure('返回的结果编号和上次提交对不上，这里没有读取其他结果。请点「查询结果」。',
           { code: 'invalid_response', committed: 'unknown', status: response.status, requestRef: error.requestRef });
       throw error;
     }
     if (!response.ok || !object(payload) || payload.ok !== true)
-      throw fault(unknown(), { code: 'invalid_response', committed: 'unknown', status: response.status });
+      throw failure(unknown(), { code: 'invalid_response', committed: 'unknown', status: response.status });
     return payload;
   });
 }
@@ -182,9 +163,9 @@ async function lookup(path, query = {}, { signal, timeout } = {}) {
   return send(url(path, query), { method: 'GET', headers: { Accept: 'application/json' } }, { signal, timeout }, modes.lookup, async response => {
     const payload = await parse(response, modes.lookup);
     if (failed(payload)) {
-      throw Object.assign(failure(payload, response.status), { committed: 'unknown' });
+      throw Object.assign(envelopeFailure(payload, response.status), { committed: 'unknown' });
     }
-    if (!response.ok || !object(payload)) throw fault(modes.lookup.failed(), { code: 'invalid_response', committed: 'unknown', status: response.status });
+    if (!response.ok || !object(payload)) throw failure(modes.lookup.failed(), { code: 'invalid_response', committed: 'unknown', status: response.status });
     return payload;
   });
 }
@@ -192,35 +173,37 @@ async function lookup(path, query = {}, { signal, timeout } = {}) {
 // 下载必须是带文件名的附件，文件名后缀要与实际文件类型一致；文件名只认后端附件头这一个来源。
 function filename(disposition, type, status) {
   const value = disposition || '';
-  if (!/^attachment(?:;|$)/i.test(value)) throw fault('下载内容不是附件，没有保存文件。', { code: 'invalid_response', status });
+  if (!/^attachment(?:;|$)/i.test(value)) throw failure('下载内容不是附件，没有保存文件。', { code: 'invalid_response', status });
   const extended = /(?:^|;)\s*filename\*\s*=\s*UTF-8''([^;]+)/i.exec(value);
   const plain = /(?:^|;)\s*filename\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]+))/i.exec(value);
   let name;
   try { name = extended ? decodeURIComponent(extended[1].trim()) : plain ? (plain[1] !== undefined ? plain[1].replace(/\\(.)/g, '$1') : plain[2].trim()) : ''; }
-  catch (_) { throw fault('下载文件名编码无效，没有保存文件。', { code: 'invalid_response', status }); }
-  if (!name) throw fault('下载内容缺少文件名，没有保存文件。', { code: 'invalid_response', status });
-  if (/[\x00-\x1f\x7f/\\]/.test(name)) throw fault('下载文件名无效，没有保存文件。', { code: 'invalid_response', status });
-  if (!name.toLowerCase().endsWith(EXTENSION[type])) throw fault('下载文件名后缀与文件类型不一致，没有保存文件。', { code: 'invalid_response', status });
+  catch (_) { throw failure('下载文件名编码无效，没有保存文件。', { code: 'invalid_response', status }); }
+  if (!name) throw failure('下载内容缺少文件名，没有保存文件。', { code: 'invalid_response', status });
+  if (/[\x00-\x1f\x7f/\\]/.test(name)) throw failure('下载文件名无效，没有保存文件。', { code: 'invalid_response', status });
+  if (!name.toLowerCase().endsWith(EXTENSION[type])) throw failure('下载文件名后缀与文件类型不一致，没有保存文件。', { code: 'invalid_response', status });
   return name;
 }
 
 // types 是调用方允许的 MIME 列表；X-Workbench-* 等业务头由领域经 header(name) 核对。
-async function download(path, query, { signal, timeout, types: allowedTypes }) {
-  const init = { method: 'GET', headers: { Accept: allowedTypes.concat('application/json').join(',') } };
+// 给了 body 就像 preview 一样以 POST 发出请求体（范围里的批次列表可能长过请求行），query 留空。
+async function download(path, query, { signal, timeout, types: allowedTypes, body }) {
+  const accept = allowedTypes.concat('application/json').join(',');
+  const init = body === undefined ? { method: 'GET', headers: { Accept: accept } } : { method: 'POST', ...encode(body, accept) };
   return send(url(path, query), init, { signal, timeout }, modes.read, async response => {
     const type = essence(response.headers.get('content-type'));
     if (type === 'application/json') {
       const payload = await parse(response, modes.read);
-      if (failed(payload)) throw failure(payload, response.status);
-      throw fault('下载内容格式不正确，没有保存成文件。', { code: 'invalid_response', status: response.status });
+      if (failed(payload)) throw envelopeFailure(payload, response.status);
+      throw failure('下载内容格式不正确，没有保存成文件。', { code: 'invalid_response', status: response.status });
     }
-    if (!response.ok) throw fault(modes.read.failed(), { code: 'invalid_response', status: response.status });
-    if (!allowedTypes.includes(type)) throw fault('下载内容格式不正确，没有保存成文件。', { code: 'invalid_response', status: response.status });
+    if (!response.ok) throw failure(modes.read.failed(), { code: 'invalid_response', status: response.status });
+    if (!allowedTypes.includes(type)) throw failure('下载内容格式不正确，没有保存成文件。', { code: 'invalid_response', status: response.status });
     const name = filename(response.headers.get('content-disposition'), type, response.status), blob = await response.blob();
-    if (!blob.size) throw fault('下载文件是空的，没有当成导出成功。', { code: 'invalid_response', status: response.status });
+    if (!blob.size) throw failure('下载文件是空的，没有当成导出成功。', { code: 'invalid_response', status: response.status });
     const head = new Uint8Array(await blob.slice(0, MAGIC[type].length).arrayBuffer());
     if (!MAGIC[type].every((byte, index) => head[index] === byte))
-      throw fault('下载内容与文件类型不符，没有保存成文件。', { code: 'invalid_response', status: response.status });
+      throw failure('下载内容与文件类型不符，没有保存成文件。', { code: 'invalid_response', status: response.status });
     return { blob, contentType: type, filename: name, header: key => response.headers.get(key) };
   });
 }
@@ -248,11 +231,11 @@ const rejected = error => error.committed === false && error.code !== 'request_k
 
 const APSWorkbenchTransport = {
   types, modes, url, read, preview, command, lookup, download, saveBlob, downloadJSON,
-  requestKey, rejected, envelope, failure
+  requestKey, rejected, envelope, envelopeFailure
 };
 
 export {
   types, modes, url, read, preview, command, lookup, download, saveBlob, downloadJSON,
-  requestKey, rejected, envelope, failure, APSWorkbenchTransport
+  requestKey, rejected, envelope, envelopeFailure, APSWorkbenchTransport
 };
 export default APSWorkbenchTransport;

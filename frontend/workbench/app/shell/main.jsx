@@ -5,7 +5,6 @@ import WorkbenchNavigation from '../WorkbenchNavigation.js';
 import WorkbenchScrollShadows from '../WorkbenchScrollShadows.js';
 import ResourceControls from '../ResourceControls.jsx';
 import WorkbenchCaption from '../WorkbenchCaption.jsx';
-import APSBatchAPI from '../BatchAPI.js';
 import WorkbenchDensity from '../WorkbenchDensity.js';
 import WorkbenchGuards from '../WorkbenchGuards.js';
 import TrialContract from '../TrialContract.js';
@@ -29,8 +28,12 @@ import ActualGanttWorkspace from '../ActualGanttWorkspace.jsx';
 import WorkbenchTrialWorkspace from '../TrialWorkspace.jsx';
 import TrialAdoptionAction from '../TrialAdoptionAction.jsx';
 import WorkbenchTerms from '../WorkbenchTerms.js';
+import { WorkbenchError } from '../WorkbenchReferences.jsx';
+import { failure, object } from '../shared/contract/kit.js';
 
 const root = typeof document !== 'undefined' && typeof document.getElementById === 'function' ? document.getElementById('root') : null;
+// 页面定位读取和页面之间跳转失败时，非 kit 错误（浏览器写历史状态的异常等）显示这句，原文进折叠区。
+const NAVIGATION_FALLBACK = '页面跳转或位置记录没有完成，请从侧栏重新打开。';
 let boot;
 function href(view) {
   return WorkbenchNavigation.href(boot, view);
@@ -38,7 +41,7 @@ function href(view) {
 function WorkbenchShell({ page, theme, density, navigate, switchTab, openHelp, messages, dismissMessage, navigationError, children }) {
   const view = page.view, active = boot.view_aliases[view] || view;
   // The plan-center tab strip only describes the plan views; inside 排产历史 it would contradict the header and content.
-  const planTabs = ['analysis', 'gantt', 'delay'], showPlanTabs = planTabs.includes(view) && !WorkbenchNavigation.historyView(page);
+  const planTabs = ['analysis', 'gantt', 'delay'], showPlanTabs = planTabs.includes(view) && !WorkbenchNavigation.historyView(boot, page);
   const content = React.useRef(null);
   React.useEffect(() => WorkbenchScrollShadows.attach(content.current), []);
   return <div className="app-container operations-shell">
@@ -75,7 +78,7 @@ function WorkbenchShell({ page, theme, density, navigate, switchTab, openHelp, m
           <span className="wb-server-badge">{{error: '失败', danger: '失败', warning: '注意', success: '成功'}[value.category] || '提示'}</span>
           <p>{value.message}</p><button type="button" aria-label="关闭消息" title="关闭消息" onClick={() => dismissMessage(index)}><Ico name="x" /></button>
         </div>)}</section>}
-      {navigationError && <p className="wb-navigation-error" role="alert">{navigationError}</p>}
+      <WorkbenchError error={navigationError} fallback={NAVIGATION_FALLBACK} />
       {showPlanTabs && <div className="wb-view-tabs wb-surface plan-view-tabs" role="tablist" aria-label="计划中心视图" onKeyDown={event => {
         if (event.altKey || event.ctrlKey || event.metaKey) return;
         const tabs = Array.from(event.currentTarget.querySelectorAll('[role="tab"]')), index = tabs.indexOf(document.activeElement);
@@ -92,18 +95,17 @@ function WorkbenchShell({ page, theme, density, navigate, switchTab, openHelp, m
   function App() {
     function currentPage() {
       try { return WorkbenchNavigation.read(boot); }
-      catch (error) { return { view: boot.view, context: {}, key: 0, error: error.message }; }
+      catch (error) { return { view: boot.view, context: {}, key: 0, error }; }
     }
     const [page, setPage] = React.useState(currentPage);
     const [messages, setMessages] = React.useState(boot.messages);
-    const [navigationError, setNavigationError] = React.useState('');
+    const [navigationError, setNavigationError] = React.useState(null);
     const activePage = React.useRef(page), restoring = React.useRef(true), historyGuard = React.useRef(null), scrollMemory = React.useRef(null);
     // History cannot replace the entry that the browser just left. Keep the newest page snapshot by history key so an
     // immediate Back/Forward inside the 200 ms throttle window can apply it when that exact entry becomes current again.
     const pageSnapshots = React.useRef(new Map());
     activePage.current = page;
     const { view, context } = page;
-    const batchAdapter = React.useMemo(() => APSBatchAPI.create(), []);
     const [preference, setPreference] = React.useState(() => APSWorkbenchTheme.get());
     const [density, setDensity] = React.useState(() => WorkbenchDensity.get());
     React.useEffect(() => {
@@ -126,7 +128,7 @@ function WorkbenchShell({ page, theme, density, navigate, switchTab, openHelp, m
           } else WorkbenchNavigation.remember(boot, activePage.current, captured.scroll, captured.context);
           if (historyGuard.current) historyGuard.current.sync();
         }
-        catch (error) { setNavigationError(error.message); }
+        catch (error) { setNavigationError(error); }
       };
       const memory = WorkbenchNavigation.scrollMemory(save); scrollMemory.current = memory;
       const scroll = () => {
@@ -134,17 +136,17 @@ function WorkbenchShell({ page, theme, density, navigate, switchTab, openHelp, m
         const key = activePage.current.key;
         pageSnapshots.current.set(key, { ...pageSnapshots.current.get(key), scroll: WorkbenchNavigation.captureScroll() }); memory.schedule();
       };
-      const restore = () => { restoring.current = true; memory.cancel(); setMessages([]); setNavigationError('');
+      const restore = () => { restoring.current = true; memory.cancel(); setMessages([]); setNavigationError(null);
         let next = currentPage();
         const captured = !next.error && pageSnapshots.current.get(next.key);
         if (captured) {
           try { WorkbenchNavigation.remember(boot, next, captured.scroll, captured.context); next = history.state.workbench; }
-          catch (error) { setNavigationError(error.message); }
+          catch (error) { setNavigationError(error); }
         }
         activePage.current = next; setPage(next); };
       if (!activePage.current.error) historyGuard.current = WorkbenchNavigation.guardHistory(boot, {
         hasDirty: () => WorkbenchGuards.hasDirty(), confirmLeave: () => WorkbenchGuards.confirmLeave(),
-        onRestore: restore, onError: error => setNavigationError(error.message),
+        onRestore: restore, onError: setNavigationError,
       });
       window.addEventListener('pagehide', memory.flush);
       document.addEventListener('scroll', scroll, true);
@@ -177,23 +179,23 @@ function WorkbenchShell({ page, theme, density, navigate, switchTab, openHelp, m
         // pushState truncates the Forward branch. Drop snapshots whose numeric keys can now be reused by the new branch.
         for (const key of pageSnapshots.current.keys()) if (key >= next.key) pageSnapshots.current.delete(key);
         if (historyGuard.current) historyGuard.current.sync();
-        restoring.current = true; activePage.current = next; setMessages([]); setNavigationError(''); setPage(next);
-      } catch (error) { setNavigationError(error.message); }
+        restoring.current = true; activePage.current = next; setMessages([]); setNavigationError(null); setPage(next);
+      } catch (error) { setNavigationError(error); }
     };
     const switchTab = target => {
       if (target === view) return;
       try { navigate(target, (pageSnapshots.current.get(page.key) || {}).context || context); }
-      catch (error) { setNavigationError(error.message); }
+      catch (error) { setNavigationError(error); }
     };
     const openHelp = async () => {
       const origin = activePage.current;
       try { await WorkbenchGuards.leaveExternal(() => { if (activePage.current === origin) location.assign(WorkbenchNavigation.helpUrl(boot, origin)); }); }
-      catch (error) { setNavigationError(error.message); }
+      catch (error) { setNavigationError(error); }
     };
     const rememberTrialTarget = nextContext => {
       TrialContract.target(nextContext);
       const entry = currentPage();
-      if (entry.view !== 'trial' || entry.key !== page.key) throw new Error('当前页面已变化，没有保存这次选择。请刷新后重新选择。');
+      if (entry.view !== 'trial' || entry.key !== page.key) throw failure('当前页面已变化，没有保存这次选择。请刷新后重新选择。');
       const captured = pageSnapshots.current.get(entry.key) || {};
       pageSnapshots.current.set(entry.key, { ...captured, context: nextContext });
       if (scrollMemory.current) scrollMemory.current.cancel();
@@ -209,7 +211,7 @@ function WorkbenchShell({ page, theme, density, navigate, switchTab, openHelp, m
         pageSnapshots.current.set(key, { ...pageSnapshots.current.get(key), context: nextContext });
         if (scrollMemory.current) scrollMemory.current.schedule();
       }
-      catch (error) { setNavigationError(error.message); }
+      catch (error) { setNavigationError(error); }
     }, [view, page.key]);
     return <><WorkbenchControlStyles /><WorkbenchControls /><WorkbenchNumberControls /><WorkbenchGuardHost />
     <WorkbenchPageContext.Provider key={view + ':' + page.key} remember={rememberPage} navigate={navigate}>
@@ -219,18 +221,18 @@ function WorkbenchShell({ page, theme, density, navigate, switchTab, openHelp, m
       {preference.error && <p role="alert" className="sm-error">{preference.error}</p>}
       {density.error && <p role="alert" className="sm-error">{density.error}</p>}
       <WorkbenchBoundary key={view + ':' + page.key}>
-      {page.error ? <p role="alert" className="sm-error">{page.error}</p>
+      {page.error ? <WorkbenchError error={page.error} fallback={NAVIGATION_FALLBACK} />
       : view === 'dashboard' ? <WorkbenchDashboardWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
       : view === 'system' ? <SystemLive boot={boot} theme={preference.theme} initialContext={context} /> : view === 'process' ? <ResourceLive key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
-      : view === 'batches' ? <BatchWorkspace key={view + ':' + page.key} adapter={batchAdapter} onNav={navigate} initialContext={context} />
-      : view === 'analysis' || view === 'gantt' || view === 'delay' ? <PlanCenterWorkspace key={view + ':' + page.key} view={view} onNavigate={navigate} initialContext={context} />
+      : view === 'batches' ? <BatchWorkspace key={view + ':' + page.key} onNav={navigate} initialContext={context} />
+      : view === 'analysis' || view === 'gantt' || view === 'delay' ? <PlanCenterWorkspace key={view + ':' + page.key} view={view} variant={WorkbenchNavigation.variant(boot, view, context)} onNavigate={navigate} initialContext={context} />
       : view === 'reports' ? <ReportWorkspace key={view + ':' + page.key} onNav={navigate} initialContext={context} />
       : view === 'review' ? <ReviewWorkspace key={view + ':' + page.key} onNav={navigate} initialContext={context} />
       : view === 'calib' ? <CalibrationWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
       : view === 'basedata' ? <MasterOverviewWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
       : view === 'field' ? <FieldWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
       : view === 'fieldgantt' ? <ActualGanttWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
-      : view === 'run' ? <RunWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
+      : view === 'run' ? <RunWorkspace key={view + ':' + page.key} variant={WorkbenchNavigation.variant(boot, view, context)} onNavigate={navigate} initialContext={context} />
       : view === 'trial' ? <WorkbenchTrialWorkspace key={view + ':' + page.key} onNavigate={navigate} initialTarget={context} onTargetChange={rememberTrialTarget}
         renderAdoption={props => <TrialAdoptionAction {...props} />} />
       : <section className="wb-page-panel" aria-label={boot.titles[view] || '工作区不存在'}>
@@ -246,11 +248,10 @@ function WorkbenchShell({ page, theme, density, navigate, switchTab, openHelp, m
       const alert = document.createElement('p'); alert.setAttribute('role', 'alert'); alert.textContent = message;
       const retry = document.createElement('a'); retry.href = location.href; retry.textContent = '重新加载'; root.replaceChildren(alert, retry);
     };
-    try {
-      boot = JSON.parse(document.getElementById('workbench-boot').textContent);
-      if (!boot || typeof boot !== 'object' || Array.isArray(boot)) throw new Error('Invalid boot object');
-    }
-    catch (_) { fail('工作台启动信息无法读取，请重新打开本机应用。'); return; }
+    const unreadable = '工作台启动信息无法读取，请重新打开本机应用。';
+    try { boot = JSON.parse(document.getElementById('workbench-boot').textContent); }
+    catch (_) { fail(unreadable); return; }
+    if (!object(boot)) { fail(unreadable); return; }
     if (boot.schema_version !== 1 || !hasVendorRuntime) {
       fail('工作台资源未完整加载，请检查本机安装文件。'); return;
     }

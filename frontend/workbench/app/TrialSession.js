@@ -1,12 +1,11 @@
 import React from './shared/runtime/react.js';
-import TrialAPI from './TrialAPI.js';
-import APSWorkbenchTransport from './shared/network/transport.js';
+import A from './TrialAPI.js';
+import T from './shared/network/transport.js';
 import { exclusive } from './shared/session/pending-store.js';
 import { createCommandSession, useCommandSession } from './shared/session/command-session.js';
-import { useQuery } from './shared/session/query.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
+import { failure } from './shared/contract/kit.js';
 
-const A = TrialAPI, T = APSWorkbenchTransport;
 const session = createCommandSession({
   key: A.PENDING_KEY,
   channel: 'trial',
@@ -53,11 +52,6 @@ async function syncSession() {
   }
 }
 
-function useRead(load, deps, enabled = true) {
-  const read = useQuery(load, deps, enabled);
-  return { ...read, busy: read.loading };
-}
-
 // 服务端结论已定后只剩清除本机 key；删不掉时权威槽位记 key:null 与写错，发起实例保留 key 投影，不扣下已确认回执。
 function releaseKey(key, done, note, isRejected, live, retainedKey) {
   try {
@@ -67,7 +61,7 @@ function releaseKey(key, done, note, isRejected, live, retainedKey) {
     session.setState(s => ({ ...s, key: null, ...done }));
   } catch (error) {
     meta().rejected = false;
-    if (error && error.conflict === true) {
+    if (error.conflict === true) {
       retainedKey.current = null;
       session.setState(s => s.key && s.key !== key ? s : { ...s, key: null, error, note: '' });
       return false;
@@ -130,7 +124,7 @@ function useCommands(onReceipt) {
           return false;
         }
       });
-      if (!acquired) session.setState(s => ({ ...s, error: new Error('另一个页面正在提交试调，请稍后重试。') }));
+      if (!acquired) session.setState(s => ({ ...s, error: failure('另一个页面正在提交试调，请稍后重试。') }));
       return acquired && value;
     } catch (error) { session.setState(s => ({ ...s, error })); return false; }
     finally { running.current = false; const m = meta(); m.busyCount -= 1; session.setState(s => ({ ...s, busy: m.busyCount > 0 })); }
@@ -155,6 +149,6 @@ function useCommands(onReceipt) {
   }
   return { ...state, key: displayedKey, execute, lookup, restore, clearError, blocked: state.busy || !!displayedKey || !!state.error };
 }
-const TrialSession = { useRead, useCommands };
-export { TrialSession, useRead, useCommands };
+const TrialSession = { useCommands };
+export { TrialSession, useCommands };
 export default TrialSession;

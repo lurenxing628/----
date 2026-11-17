@@ -1,8 +1,8 @@
 import React from './shared/runtime/react.js';
-import TrialAPI from './TrialAPI.js';
-import TrialContract from './TrialContract.js';
-import TrialControls from './TrialControls.jsx';
-import TrialSession from './TrialSession.js';
+import A from './TrialAPI.js';
+import C from './TrialContract.js';
+import U from './TrialControls.jsx';
+import S from './TrialSession.js';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
@@ -13,8 +13,9 @@ import TrialCatalog from './TrialCatalog.jsx';
 import TrialResults from './TrialResults.jsx';
 import TrialGantt from './TrialGantt.jsx';
 import TrialDetails from './TrialDetails.jsx';
+import { failure } from './shared/contract/kit.js';
+import { useQuery } from './shared/session/query.js';
 
-const A = TrialAPI, C = TrialContract, U = TrialControls, S = TrialSession;
 function Finish({ data, kind, commands, onClose, onRecheck }) {
   const [name, setName] = React.useState(''), [confirm, setConfirm] = React.useState(false);
   React.useEffect(() => { setConfirm(false); }, [data]);
@@ -32,8 +33,8 @@ function Finish({ data, kind, commands, onClose, onRecheck }) {
       onClick={() => commands.execute({ action: kind, draft_ref: data.draft_ref, input: save ? { name } : { confirm: true } }, data.write_context.write_token)}>
       {save ? '确认保存试调方案' : '确认放弃'}</U.Button></>}><div className="trial-modal-body">
       <p>{save ? '保存后草稿关闭，可继续查看试调方案和调整记录。' : '放弃后草稿不可继续调整，可查看历史记录。'}</p>
-      <p>已安排 {data.task_count} 道工序{data.unplanned_operations.length > 0 && '；' + data.unplanned_operations.length + ' 道工序未安排'} · 约束检查{U.statusLabel(data.validation.constraints_status)}</p>
-      {save && <label className="tt-naming">试调方案名称<input aria-label="试调方案名称" maxLength={120} value={name} onChange={e => { setName(e.target.value); setConfirm(false); }} autoComplete="off" /></label>}
+      <p>已安排 {data.task_count} 道工序{data.unplanned_operations.length > 0 && '；' + data.unplanned_operations.length + ' 道工序未安排'} · 约束检查{WorkbenchTerms.trial_constraint_status(data.validation.constraints_status)}</p>
+      {save && <label className="tt-naming">试调方案名称<input aria-label="试调方案名称" value={name} onChange={e => { setName(e.target.value); setConfirm(false); }} autoComplete="off" /></label>}
       <label className="tt-check"><input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)} />{save ? '确认保存试调方案，冲突和未安排工序一并保留' : '确认放弃当前草稿'}</label>
       <U.ErrorBox error={commands.error} />
       {commands.key && <section className="tt-notice" aria-label="待确认的试调提交"><p>{commands.note || '上次提交结果尚未确认。'}</p><WorkbenchReference value={commands.key} /></section>}
@@ -65,15 +66,14 @@ function Session({ initialTarget, onNavigate, renderAdoption, onTargetChange }) 
   const [error, setError] = React.useState(null), [notice, setNotice] = React.useState(''), [directory, setDirectory] = React.useState(!initialTarget.draft_ref && !initialTarget.scenario_ref);
   const [origin, setOrigin] = React.useState(initialTarget.task_origin || null), locatedOrigin = React.useRef(null);
   function notifyTarget(next) {
-    const failed = () => setError(new Error('试调记录已定位，但页面地址更新失败。可从试调列表重新打开。'));
-    try { Promise.resolve(onTargetChange({ ...next, ...(initialTarget.return_decision_history_context ? { return_decision_history_context: initialTarget.return_decision_history_context } : {}), ...(origin && next.draft_ref ? { task_origin: origin } : {}) })).catch(failed); } catch (_) { failed(); }
+    const failed = () => setError(failure('试调记录已定位，但页面地址更新失败。可从试调列表重新打开。'));
+    try { Promise.resolve(onTargetChange({ ...next, ...(initialTarget.return_to ? { return_to: initialTarget.return_to } : {}), ...(origin && next.draft_ref ? { task_origin: origin } : {}) })).catch(failed); } catch (_) { failed(); }
   }
-  const key = target.scenario_ref || target.draft_ref || '', isScenario = !!target.scenario_ref;
-  const read = S.useRead(async signal => {
-    const v = await A.read('/trial/' + (isScenario ? 'scenarios/' : 'drafts/') + key, {}, signal); C.workspace(v.data, target); return v;
-  }, [key, isScenario, revision], !!key);
+  const key = target.scenario_ref || target.draft_ref || '', isScenario = !!target.scenario_ref, historyOrigin = DecisionHistoryAPI.historyOrigin(initialTarget);
+  const read = useQuery(signal => A.read('/trial/' + (isScenario ? 'scenarios/' : 'drafts/') + key, {}, signal), [key, isScenario, revision], { enabled: !!key });
   if (read.result) stored.current = { key, result: read.result };
   React.useEffect(() => { if (read.result) setBase(read.result.data.base); }, [read.result]);
+  // 刷新期间页面沿用上次读到的内容；导出只收当前结果 read.result，保存、放弃、调整和采用由 actions.blocked 限定在读到当前结果之后。
   const result = read.result || stored.current && stored.current.key === key && stored.current.result, data = result && result.data;
   const originalTask = React.useMemo(() => {
     if (!origin || !read.result) return { task: null, error: null };
@@ -83,10 +83,10 @@ function Session({ initialTarget, onNavigate, renderAdoption, onTargetChange }) 
   React.useEffect(() => {
     if (originalTask.task && locatedOrigin.current !== key) { setSelected(originalTask.task.task_ref); setDetailsOpen(true); locatedOrigin.current = key; }
   }, [originalTask.task, key]);
-  WorkbenchCaption.useCaption(data && read.result && !read.busy && !read.error ? {
+  WorkbenchCaption.useCaption(data && read.result && !read.loading && !read.error ? {
     reference: data.scenario_ref || data.draft_ref, label: data.scenario_ref ? '当前试调方案' : '当前试调草稿',
     name: data.name || U.sourceLabel(data.base_identity),
-    status: data.scenario_ref ? '已保存的试调方案' : '试调草稿 · ' + U.statusLabel(data.status),
+    status: data.scenario_ref ? '已保存的试调方案' : '试调草稿 · ' + WorkbenchTerms.trial_draft_status(data.status),
     ...(data.baseline.version !== null ? { version: '建草稿时的正式计划 第 ' + data.baseline.version + ' 版' } : {}),
   } : null);
   const commands = S.useCommands(receipt => {
@@ -95,7 +95,7 @@ function Session({ initialTarget, onNavigate, renderAdoption, onTargetChange }) 
     setNotice(d.scenario_ref ? '试调方案已保存。' : d.status === 'discarded' ? '草稿已放弃。' : '试调已保存。');
     notifyTarget(next);
   });
-  const actions = { ...commands, blocked: commands.blocked || !!key && (!read.result || !!read.error || read.busy || !!origin && !originalTask.task) };
+  const actions = { ...commands, blocked: commands.blocked || !!key && (!read.result || !!read.error || read.loading || !!origin && !originalTask.task) };
   WorkbenchGuards.useDirtyGuard({ owner: guardOwner, dirty: false, locked: commands.busy || !!commands.key,
     message: '上次提交的结果还没查到，请先留在这个页面。' });
   async function guard() {
@@ -127,11 +127,11 @@ function Session({ initialTarget, onNavigate, renderAdoption, onTargetChange }) 
   return <div className="plana trial-workspace" data-trial-workspace data-open-ref={key} data-open-kind={isScenario ? 'scenario' : 'draft'}>
     <h2 className="wb-page-title">试调排产方案</h2><header className="tt-tools">
       <U.Button icon="chevron-left" onClick={() => onNavigate('analysis', base || {})}>返回方案</U.Button>
-      {initialTarget.return_decision_history_context && <U.Button icon="history" onClick={() => onNavigate('analysis', DecisionHistoryAPI.historyContext(initialTarget))}>返回历史走势</U.Button>}
+      {historyOrigin && <U.Button icon="history" onClick={() => onNavigate('analysis', historyOrigin)}>返回历史走势</U.Button>}
       <U.Button icon="folder-open" onClick={() => setDirectory(!directory)} aria-expanded={directory}>草稿 / 试调方案列表</U.Button>
       <U.Button icon="plus" className="btn primary" disabled={commands.blocked} onClick={async () => { if (await guard()) setModal('create'); }}>新增试调</U.Button>
-      {key && <U.Button icon="refresh-cw" aria-label="刷新当前试调" busy={read.busy} disabled={commands.busy || !!commands.key} onClick={reload}>刷新</U.Button>}
-      {data && <><U.Download data={data} /><details className="tt-refs wb-ref"><summary title={WorkbenchFormat.dateTime(data.time_scope.start, { seconds: true, fractions: true }) + ' 至 ' + WorkbenchFormat.dateTime(data.time_scope.end, { seconds: true, fractions: true })}>{WorkbenchFormat.compactRange(data.time_scope.start, data.time_scope.end)}</summary>
+      {key && <U.Button icon="refresh-cw" aria-label="刷新当前试调" busy={read.loading} disabled={commands.busy || !!commands.key} onClick={reload}>刷新</U.Button>}
+      {data && <><U.Download data={read.result ? read.result.data : null} /><details className="tt-refs wb-ref"><summary title={WorkbenchFormat.dateTime(data.time_scope.start, { seconds: true, fractions: true }) + ' 至 ' + WorkbenchFormat.dateTime(data.time_scope.end, { seconds: true, fractions: true })}>{WorkbenchFormat.compactRange(data.time_scope.start, data.time_scope.end)}</summary>
         <div className="tt-source-body"><dl className="tt-source-facts">
           <div><dt>原安排</dt><dd>{U.sourceLabel(data.base_identity)} · 创建草稿时保存</dd></div><div><dt>试调安排</dt><dd>{data.scenario_ref ? '已保存的调整结果' : '当前调整结果'}</dd></div>
           {data.baseline.version !== null && <div><dt>建草稿时的正式计划</dt><dd>第 {data.baseline.version} 版</dd></div>}
@@ -150,14 +150,14 @@ function Session({ initialTarget, onNavigate, renderAdoption, onTargetChange }) 
     {notice && <p role="status" className="tt-notice">{notice}</p>}
     {directory && <TrialCatalog.Directory revision={revision} onOpen={open} filterBase={base}
       fixedBase={origin ? { plan_ref: origin.plan_ref } : null} />}
-    <U.ErrorBox error={read.error} />{key && (read.busy || read.error) && <p className="tt-muted" role="status">{read.busy ? '正在刷新，暂时不能提交。' : '下面是上次读到的内容，刷新成功后可继续提交。'}</p>}
-    {!data && <div className="tt-empty" role="status">{read.busy ? '正在读取试调…' : '尚未打开试调草稿或试调方案'}</div>}
+    <U.ErrorBox error={read.error} />{key && (read.loading || read.error) && <p className="tt-muted" role="status">{read.loading ? '正在刷新，暂时不能提交。' : '下面是上次读到的内容，刷新成功后可继续提交。'}</p>}
+    {!data && <div className="tt-empty" role="status">{read.loading ? '正在读取试调…' : '尚未打开试调草稿或试调方案'}</div>}
     {data && <>
       <TrialResults.Summary data={data} /><div className="tt-main wb-gantt-detail-layout" data-details-open={detailsOpen || undefined}><div className="wb-gantt-main-column">
         <TrialGantt key={key} data={data} selected={selected} onSelect={select} detailsOpen={detailsOpen} onToggleDetails={toggleDetails} />
         <TrialResults.Results key={key} data={data} onSelect={inspectTask} /></div>
         {detailsOpen && <TrialDetails data={data} selected={selected} commands={actions} onSelect={inspectTask} onEditing={setEditing} onRecheck={reload} guardOwner={guardOwner} editorRevision={editorRevision} inspectFocus={inspectFocus} onCollapse={toggleDetails} />}</div>
-      <footer className="tt-footer">{data.validation.constraints_status !== 'valid' && <strong>约束检查：{U.statusLabel(data.validation.constraints_status)}</strong>}
+      <footer className="tt-footer">{data.validation.constraints_status !== 'valid' && <strong>约束检查：{WorkbenchTerms.trial_constraint_status(data.validation.constraints_status)}</strong>}
         <div className="tt-tools"><U.Button icon="x" disabled={data.status !== 'editing' || actions.blocked || !data.write_context || data.write_context.capabilities['trial.discard'] !== true} onClick={async () => { if (await guard()) setModal('discard'); }}>放弃草稿</U.Button>
           <U.Button icon="check" className="btn primary" disabled={data.status !== 'editing' || actions.blocked || !data.write_context || data.write_context.capabilities['trial.save'] !== true} onClick={async () => { if (await guard()) setModal('save'); }}>保存试调方案</U.Button>
           {data.scenario_ref ? renderAdoption({ scenarioRef: data.scenario_ref, data, onNavigate, disabled: actions.blocked,
@@ -174,7 +174,9 @@ function Session({ initialTarget, onNavigate, renderAdoption, onTargetChange }) 
 function WorkbenchTrialWorkspace({ initialTarget, onNavigate, renderAdoption, onTargetChange }) {
   try { C.target(initialTarget); }
   catch (error) { return <div className="trial-workspace"><U.ErrorBox error={error} /></div>; }
-  const navigate = (view, context = {}) => onNavigate(view, { ...context, ...(initialTarget.return_decision_history_context && context.source !== 'run_history' ? { return_decision_history_context: initialTarget.return_decision_history_context } : {}) });
+  // 从试调去的页面沿用试调的返回链接，历史走势这类根返回入口仍能沿返回链找到；回到历史走势本身时不再挂。
+  const back = initialTarget.return_to;
+  const navigate = (view, context = {}) => onNavigate(view, back && context.source !== 'run_history' ? { ...context, return_to: back } : context);
   return <Session key={JSON.stringify(initialTarget)} initialTarget={initialTarget} onNavigate={navigate} renderAdoption={renderAdoption} onTargetChange={onTargetChange} />;
 }
 export { WorkbenchTrialWorkspace, Session as TrialWorkspaceSession, Finish as TrialFinish };

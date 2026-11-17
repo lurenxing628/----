@@ -1,18 +1,18 @@
 import React from './shared/runtime/react.js';
-import { Scope, Tabs, Sort, Page, Button, ErrorBox, useRead } from './ReportControls.jsx';
+import { Scope, Tabs, Sort, Page, Button, ErrorBox } from './ReportControls.jsx';
+import { useQuery } from './shared/session/query.js';
 import { Table, Metrics } from './ReportTable.jsx';
 import ReportAPI from './ReportAPI.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import WorkbenchCaption from './WorkbenchCaption.jsx';
 import WorkbenchPageContext from './WorkbenchPageContext.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
-import FieldContract from './FieldContract.js';
-import APSResourceContract from './resource-contract.js';
 import ReviewCharts from './ReviewCharts.jsx';
 import { NoFeedback } from './ReportEvidence.jsx';
 import ReportDetail from './ReportDetail.jsx';
 import ReportCatalog from './ReportCatalog.jsx';
 import { EmptyState } from './ResourceControls.jsx';
+import { failure, ref48 } from './shared/contract/kit.js';
 
 let pendingViewFocus = null;
 
@@ -27,13 +27,13 @@ function Workspace({ mode = 'reports', initialContext, initialScope, initialStat
   const [resourceView, setResourceView] = React.useState(initialContext.resourceView || { kind: 'machine', page: 1 });
   const [detailView, setDetailView] = React.useState(initialContext.detailView || { page: 1, size: 10 });
   const [lastChoices, setLastChoices] = React.useState({});
-  const lastScope = React.useRef(initialScope), lastSnapshotRef = React.useRef(null);
+  const lastScope = React.useRef(initialScope);
   const input = { ...scope, ...state };
-  const request = useRead(signal => ReportAPI.readView(input, signal), JSON.stringify(input) + revision);
-  const response = request.result, data = response && response.data;
-  if (data) { lastScope.current = data.scope; lastSnapshotRef.current = response.meta.snapshot_ref; }
-  else if (!request.busy) lastSnapshotRef.current = null;
-  const captionPlan = !request.busy && !request.error && data && data.plan;
+  // 换页、排序、刷新期间已打开的工序详情继续按上一次读到的快照显示；换范围时 changeScope 先收起详情。
+  const request = useQuery(signal => ReportAPI.readView(input, signal), [JSON.stringify(input), revision], { keep: 'readView' });
+  const response = request.result, data = response && response.data, shown = request.shown;
+  if (data) lastScope.current = data.scope;
+  const captionPlan = !request.loading && !request.error && data && data.plan;
   const captionStatus = captionPlan && (captionPlan.is_current_official ? WorkbenchTerms.current_official : WorkbenchTerms.historical_official);
   WorkbenchCaption.useCaption(captionStatus ? {
     reference: captionPlan.plan_ref, label: mode === 'review' ? '复盘计划' : '报表计划', name: captionPlan.display_name, status: captionStatus,
@@ -48,10 +48,10 @@ function Workspace({ mode = 'reports', initialContext, initialScope, initialStat
         direction: data.page.sort[0].direction
       }, selected, chartsOpen,
       catalogOpen: catalog, scroll: currentScroll, resourceView, detailView,
-      ...(initialContext.returnTo !== undefined ? { returnTo: initialContext.returnTo } : {})
+      ...(initialContext.return_to !== undefined ? { return_to: initialContext.return_to } : {})
     };
   }
-  WorkbenchPageContext.useSnapshot(data ? pageContext() : null, !!data && !request.busy && !request.error);
+  WorkbenchPageContext.useSnapshot(data ? pageContext() : null, !!data && !request.loading && !request.error);
   React.useEffect(() => {
     let frame = 0;
     const remember = event => {
@@ -83,7 +83,7 @@ function Workspace({ mode = 'reports', initialContext, initialScope, initialStat
     });
     return () => cancelAnimationFrame(frame);
   }, [response]);
-  const changeScope = next => { lastSnapshotRef.current = null; setScope(next); setState(old => ({ ...old, page: 1, snapshot_ref: undefined })); setSelected(null); setCatalog(false); setNotice(''); setError(null); };
+  const changeScope = next => { setScope(next); setState(old => ({ ...old, page: 1, snapshot_ref: undefined })); setSelected(null); setCatalog(false); setNotice(''); setError(null); };
   const changePage = patch => { setState(old => ({ ...old, ...patch, snapshot_ref: response ? response.meta.snapshot_ref : old.snapshot_ref })); setSelected(null); };
   const changeTopic = topic => changePage({ topic, sort: ReportAPI.sorts[topic][0], page: 1 });
   function reload() { if (data) setScope(ReportAPI.scope(data.scope)); setState(old => ({ ...old, snapshot_ref: undefined })); setNotice(''); setError(null); refresh(); }
@@ -108,18 +108,18 @@ function Workspace({ mode = 'reports', initialContext, initialScope, initialStat
     return pageContext({ mainTop: main ? main.scrollTop : 0, windowTop: pageYOffset, tableLeft: table ? table.scrollLeft : 0, tableTop: table ? table.scrollTop : 0 });
   }
   const go = (target, resume = false) => {
-    if (!resume && initialContext.returnTo && initialContext.returnTo.view === target) return onNav(target, initialContext.returnTo.context);
+    if (!resume && initialContext.return_to && initialContext.return_to.view === target) return onNav(target, initialContext.return_to.context);
     const context = { scope: ReportAPI.scope(data.scope), topic: state.topic };
-    onNav(target, { ...context, returnTo: { view: mode, context: currentContext() } }, resume);
+    onNav(target, { ...context, return_to: { view: mode, context: currentContext() } }, resume);
   };
   function drill(topic, patch) {
-    onNav('reports', { topic, scope: ReportAPI.scope({ ...data.scope, ...patch }), returnTo: { view: mode, context: currentContext() } });
+    onNav('reports', { topic, scope: ReportAPI.scope({ ...data.scope, ...patch }), return_to: { view: mode, context: currentContext() } });
   }
   function navigateOperation(operationRef, original, row, target = 'field', reportRef = null) {
     if (!data || !response) return;
-    if (!row || row.operation_ref !== operationRef || !FieldContract.ref(row.task_ref) || !data.plan.is_current_official
+    if (!row || row.operation_ref !== operationRef || !ref48(row.task_ref) || !data.plan.is_current_official
       || data.scope.source !== 'production' || original.snapshot_ref !== response.meta.snapshot_ref || !['field', 'fieldgantt'].includes(target)
-      || reportRef !== null && !FieldContract.ref(reportRef)) { setError(APSResourceContract.failure('来源任务、记录或计划没有通过核对，没有改指其他工序。')); return; }
+      || reportRef !== null && !ref48(reportRef)) { setError(failure('来源任务、记录或计划没有通过核对，没有改指其他工序。')); return; }
     const targetScope = { plan_ref: data.plan.plan_ref };
     for (const key of ['plan_finish_date_from', 'plan_finish_date_to']) if (data.scope[key]) targetScope[key] = data.scope[key];
     onNav(target, {
@@ -129,11 +129,11 @@ function Workspace({ mode = 'reports', initialContext, initialScope, initialStat
   }
   return <section ref={root} className={review ? 'er-workbench rw-workbench' : 'rw-workbench'} aria-label={title} data-source="production" data-ready={!!data}>
     <header className="rw-header"><div><h2 className="wb-page-title">{title}</h2><p className="wb-page-context">{data ? data.plan.display_name + ' · 当前正式计划与报工记录' : '当前正式计划'}{response && <span className="rw-asof">{WorkbenchTerms.data_as_of(WorkbenchFormat.dateTime(response.meta.as_of))}</span>}</p></div>
-      <div className="rw-actions">{initialContext.returnTo && initialContext.returnTo.view === 'calib' && <Button icon="arrow-left"
+      <div className="rw-actions">{initialContext.return_to && initialContext.return_to.view === 'calib' && <Button icon="arrow-left"
         onClick={() => go('calib')}>返回工时校准</Button>}
-        {initialContext.returnTo && ['reports', 'review'].includes(initialContext.returnTo.view) && <Button icon="arrow-left"
-          onClick={() => go(initialContext.returnTo.view)}>返回来源</Button>}
-        <Button icon="refresh-cw" aria-label="刷新报表" busy={request.busy} onClick={reload} /></div></header>
+        {initialContext.return_to && ['reports', 'review'].includes(initialContext.return_to.view) && <Button icon="arrow-left"
+          onClick={() => go(initialContext.return_to.view)}>返回来源</Button>}
+        <Button icon="refresh-cw" aria-label="刷新报表" busy={request.loading} onClick={reload} /></div></header>
     <div className="rw-query wb-surface"><div className="wb-view-tabs" role="tablist" aria-label="统计分析视图">
       {[['reports', '报表中心'], ['review', '执行复盘']].map(([target, label], index) => <button type="button" key={target} role="tab" id={'analytics-view-' + target}
         aria-selected={mode === target} aria-controls="analytics-view-panel" tabIndex={mode === target ? 0 : -1} disabled={!data}
@@ -144,29 +144,29 @@ function Workspace({ mode = 'reports', initialContext, initialScope, initialStat
           const button = document.getElementById('analytics-view-' + next); if (button && !button.disabled) { button.focus(); if (next !== mode) { pendingViewFocus = next; go(next, true); } }
         }}>{label}</button>)}
     </div>
-      <Scope value={scope} onChange={changeScope} choices={lastChoices} busy={request.busy} /></div>
+      <Scope value={scope} onChange={changeScope} choices={lastChoices} busy={request.loading} /></div>
     <div id="analytics-view-panel" role="tabpanel" aria-labelledby={'analytics-view-' + mode}>
-      {review && <ReviewCharts data={data} loading={request.busy && !data} expanded resourceView={resourceView} onResourceView={setResourceView} onDrill={drill} />}
+      {review && <ReviewCharts data={data} loading={request.loading && !data} expanded resourceView={resourceView} onResourceView={setResourceView} onDrill={drill} />}
       <div className="rw-results wb-surface">
         {!review && <Tabs topic={state.topic} onChange={changeTopic} />}
         <ErrorBox error={request.error || error} />{request.error && <Button icon="refresh-cw" onClick={reload}>刷新报表数据</Button>}
         {notice && <p className="rw-notice" role="status">{notice}</p>}
-        {request.busy && <EmptyState kind="loading" title="正在读取当前范围" />}
+        {request.loading && <EmptyState kind="loading" title="正在读取当前范围" />}
         <div id="report-topic-panel" role={review ? undefined : 'tabpanel'} aria-labelledby={review ? undefined : 'report-tab-' + state.topic}>
           {data && <div className="rw-summary"><Metrics summary={data.summary} topic={state.topic} />
             <NoFeedback summary={data.summary} /></div>}
           <div className="rw-table-heading wb-surface-row wb-surface-divider"><div className="rw-table-title"><h3>{state.topic === 'records' ? '逐次报工记录' : ['machines', 'people'].includes(state.topic) ? '实际资源记录' : '范围内工序'}</h3>{data && <span>{data.page.total} 项</span>}</div>
             <div className="rw-filters"><Sort topic={state.topic} state={state} onChange={changePage} />
-              {!review && <><label>格式<select aria-label="导出格式" value={format} disabled={request.busy || !data} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option></select></label>
-                <Button transfer="export" busy={downloading} disabled={request.busy || !data} reasonDisplay="inline" reason={data && !data.page.total ? '当前范围没有可导出的结果。' : ''} onClick={download}>导出范围</Button></>}</div></div>
-          <div className={'rw-result-content' + (selected && (data || (request.busy && lastSnapshotRef.current)) ? ' wb-detail-layout' : '')}><div className="rw-list-pane">
-            {data && <Table data={data} onDetail={ref => { setSelected(ref); setDetailView({ page: 1, size: 10 }); }} busy={request.busy} primary />}
-            <Page page={data ? data.page : { number: state.page, size: state.size }} onChange={changePage} busy={request.busy || !data} /></div>
-            {selected && (data || (request.busy && lastSnapshotRef.current)) && <ReportDetail operationRef={selected} input={{ ...ReportAPI.scope(data ? data.scope : lastScope.current), ...ReportAPI.table(state, data ? data.topic : state.topic), snapshot_ref: response ? response.meta.snapshot_ref : lastSnapshotRef.current }} busy={request.busy || !data} onClose={() => setSelected(null)}
+              {!review && <><label>格式<select aria-label="导出格式" value={format} disabled={request.loading || !data} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option></select></label>
+                <Button transfer="export" busy={downloading} disabled={request.loading || !data} reasonDisplay="inline" reason={data && !data.page.total ? '当前范围没有可导出的结果。' : ''} onClick={download}>导出范围</Button></>}</div></div>
+          <div className={'rw-result-content' + (selected && shown ? ' wb-detail-layout' : '')}><div className="rw-list-pane">
+            {data && <Table data={data} onDetail={ref => { setSelected(ref); setDetailView({ page: 1, size: 10 }); }} busy={request.loading} primary />}
+            <Page page={data ? data.page : { number: state.page, size: state.size }} onChange={changePage} busy={request.loading || !data} /></div>
+            {selected && shown && <ReportDetail operationRef={selected} input={{ ...ReportAPI.scope(data ? data.scope : lastScope.current), ...ReportAPI.table(state, data ? data.topic : state.topic), snapshot_ref: shown.meta.snapshot_ref }} busy={request.loading || !data} onClose={() => setSelected(null)}
               initialView={detailView} onView={setDetailView} onOpenOperation={navigateOperation} />}</div>
         </div>
       </div>
-      {!review && <ReviewCharts data={data} loading={request.busy && !data} open={chartsOpen} onChange={setChartsOpen} resourceView={resourceView} onResourceView={setResourceView} onDrill={drill} />}
+      {!review && <ReviewCharts data={data} loading={request.loading && !data} open={chartsOpen} onChange={setChartsOpen} resourceView={resourceView} onResourceView={setResourceView} onDrill={drill} />}
       <div className="rw-support"><details className="rw-limitations"><summary>统计说明与待补资料</summary>{data ? <ul>{data.data_gaps.map(text => <li key={text}>{text}</li>)}</ul> : <p className="rw-muted">正在读取统计说明与待补资料。</p>}</details>
         <details className="rw-catalog" open={catalog} onToggle={event => setCatalog(event.currentTarget.open)}><summary>其他报表</summary>
           {catalog && <ReportCatalog scope={data ? data.scope : lastScope.current} snapshot={response ? response.meta.snapshot_ref : undefined} />}</details></div>
@@ -180,16 +180,16 @@ function GuardedWorkspace({ initialContext, ...props }) {
   try {
     initialScope = ReportAPI.scope(initialContext.scope);
     const topic = props.mode === 'review' || initialContext.topic === undefined ? 'delivery' : initialContext.topic;
-    if (!ReportAPI.topics.includes(topic)) throw APSResourceContract.failure('原报表专题无效，未改用默认专题。');
+    if (!ReportAPI.topics.includes(topic)) throw failure('原报表专题无效，未改用默认专题。');
     initialState = ReportAPI.table(initialContext.table, topic);
-    if (initialContext.selected !== undefined && initialContext.selected !== null && !/^[0-9a-f]{48}$/.test(initialContext.selected))
-      throw APSResourceContract.failure('原工序编号无效，没有改选其他工序。');
+    if (initialContext.selected !== undefined && initialContext.selected !== null && !ref48(initialContext.selected))
+      throw failure('原工序编号无效，没有改选其他工序。');
     const value = initialContext.resourceView;
     if (value !== undefined && (!value || !['machine', 'operator'].includes(value.kind) || !Number.isSafeInteger(value.page) || value.page < 1))
-      throw APSResourceContract.failure('资源工时查看状态无效，未改选其他资源。');
+      throw failure('资源工时查看状态无效，未改选其他资源。');
     const detail = initialContext.detailView;
     if (detail !== undefined && (!detail || !Number.isSafeInteger(detail.page) || detail.page < 1 || ![10, 20, 50].includes(detail.size)))
-      throw APSResourceContract.failure('报表记录详情分页无效，未改选其他记录。');
+      throw failure('报表记录详情分页无效，未改选其他记录。');
   }
   catch (error) { return <section className="rw-workbench"><h2 className="wb-page-title">{props.mode === 'review' ? '执行复盘' : '报表中心'}</h2><ErrorBox error={error} /></section>; }
   return <Workspace {...props} initialContext={initialContext} initialScope={initialScope} initialState={initialState} />;

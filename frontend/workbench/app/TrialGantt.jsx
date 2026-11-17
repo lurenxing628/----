@@ -1,7 +1,7 @@
 import React from './shared/runtime/react.js';
-import TrialControls from './TrialControls.jsx';
-import ResourceControls from './ResourceControls.jsx';
-import PlanGanttModel from './PlanGanttModel.js';
+import U from './TrialControls.jsx';
+import { TimelineZoom } from './ResourceControls.jsx';
+import { instant as wall } from './PlanGanttModel.js';
 import PointContract from './PointContract.js';
 import TrialViewState from './TrialViewState.js';
 import GanttPresentationUI from './GanttPresentationUI.jsx';
@@ -9,7 +9,7 @@ import GanttPresentation from './GanttPresentation.js';
 import PointGantt from './PointGantt.jsx';
 
 // Axis numbers encode factory-local wall-clock fields; UTC extraction must not shift them to the browser timezone.
-const U = TrialControls, { TimelineZoom } = ResourceControls, ZOOM_MAX = 8, wall = PlanGanttModel.instant;
+const ZOOM_MAX = 8;
 const EMPTY_SCOPE = {};
 const pieceLabel = t => t.piece_id === null ? '共同工序' : '分件 ' + t.piece_id;
 const taskLabel = t => t.batch_id + ' · ' + t.sequence + ' ' + t.process_label + ' · ' + pieceLabel(t);
@@ -18,7 +18,7 @@ function resourceNames(data) {
   let name = resourceNamesCache.get(data.resources);
   if (!name) {
     const names = new Map(); ['machines', 'operators'].forEach(k => data.resources[k].forEach(r => names.set(r.ref, r.business_code + ' · ' + (r.label || '名称未填写'))));
-    name = ref => ref === null ? '无内部资源' : names.get(ref) || '原资源名称不可读';
+    name = ref => ref === null ? '不占设备人员' : names.get(ref) || '原资源名称不可读';
     resourceNamesCache.set(data.resources, name);
   }
   return name;
@@ -73,11 +73,20 @@ function Gantt({ data, selected, onSelect, detailsOpen, onToggleDetails }) {
     return entries.sort((a, b) => compareText(String(a.group), String(b.group)) || compareText(a.t.start, b.t.start) || compareText(a.t.task_ref, b.t.task_ref));
   }, [filtered, view, baseline]);
   const current = Math.min(page, Math.max(1, Math.ceil(rows.length / 30))), visible = rows.slice((current - 1) * 30, current * 30);
-  const bounds = React.useMemo(() => {
-    let start = Infinity, end = -Infinity;
-    data.tasks.forEach(t => { start = Math.min(start, wall(t.start), wall(t.original.start)); end = Math.max(end, wall(t.end), wall(t.original.end)); });
-    const pad = Math.max(60000, (end - start) * .025); return { start: start - pad, end: end + pad };
-  }, [data]);
+  // Each current and original arrangement is parsed once per task list; pixel widths still follow the measured chart width.
+  const { bounds, placement } = React.useMemo(() => {
+    let low = Infinity, high = -Infinity;
+    const spans = data.tasks.flatMap(t => [t, t.original]).map(value => {
+      const start = wall(value.start), end = wall(value.end);
+      low = Math.min(low, start); high = Math.max(high, end); return { value, start, end };
+    });
+    const pad = Math.max(60000, (high - low) * .025), bounds = { start: low - pad, end: high + pad }, range = bounds.end - bounds.start;
+    const placement = new Map(spans.map(({ value, start, end }) => {
+      const share = (end - start) / range;
+      return [value, { share, style: { left: (start - bounds.start) / range * 100 + '%', width: share * 100 + '%' } }];
+    }));
+    return { bounds, placement };
+  }, [data.tasks]);
   const axis = React.useMemo(() => GanttPresentation.axis({ ...bounds, ...chart }), [bounds, chart]);
   const measure = () => {
     const node = board.current, track = axisHost.current;
@@ -87,16 +96,12 @@ function Gantt({ data, selected, onSelect, detailsOpen, onToggleDetails }) {
     measure(); const observer = new ResizeObserver(measure); observer.observe(board.current); observer.observe(axisHost.current);
     return () => observer.disconnect();
   }, []);
-  const position = t => {
-    const start = wall(t.start);
-    return { left: (start - bounds.start) / (bounds.end - bounds.start) * 100 + '%', width: (wall(t.end) - start) / (bounds.end - bounds.start) * 100 + '%' };
-  };
   const pointTitle = (t, original) => (original ? '原安排 · ' : '') + taskLabel(t) + '\n'
     + U.timeLabel((original ? t.original : t).start) + '\n零工时工序 · 0 小时 · 不占设备人员';
   function pointMarker(t, original) {
     const value = original ? t.original : t, title = pointTitle(t, original);
     return <PointGantt.Marker task={original ? { ...t, start: value.start, end: value.end } : t} data-task-ref={original ? undefined : t.task_ref} data-baseline-ref={original ? t.task_ref : undefined}
-      title={title} x={position(value).left} top={original ? 46 : 15} tone={original ? 'before' : t.issues.length ? 'critical' : t.locked ? 'success' : ''}
+      title={title} x={placement.get(value).style.left} top={original ? 46 : 15} tone={original ? 'before' : t.issues.length ? 'critical' : t.locked ? 'success' : ''}
       selected={selected === t.task_ref} onSelect={() => { setHover(null); onSelect(t.task_ref); }}
       onHover={event => setHover(event ? { title, x: event.clientX, y: event.clientY } : null)} />;
   }
@@ -121,12 +126,12 @@ function Gantt({ data, selected, onSelect, detailsOpen, onToggleDetails }) {
     if (limit && !matchesScope(hiddenSelectedTask, scope, batchRefs)) setLimit(false);
   }
   function bar(t) {
-    const label = taskLabel(t), width = (wall(t.end) - wall(t.start)) / (bounds.end - bounds.start) * chart.width;
+    const label = taskLabel(t), place = placement.get(t), width = place.share * chart.width;
     const lines = GanttPresentation.taskLines({ sequence: t.sequence, process: t.process_label, batch: t.batch_id,
       piece: pieceLabel(t), resource: name(t.machine_ref) }, view, width);
     return <button type="button" className={'tt-bar' + (t.issues.length ? ' conflict' : '') + (t.locked ? ' locked' : '')}
       data-task-ref={t.task_ref} aria-label={'安排时段 ' + label} aria-pressed={selected === t.task_ref}
-      title={label + '\n本工序目标量 ' + U.number(t.quantity) + ' · 整批量 ' + U.number(t.batch_quantity) + '\n' + U.timeLabel(t.start) + ' 至 ' + U.timeLabel(t.end)} style={position(t)} onClick={() => onSelect(t.task_ref)}>
+      title={label + '\n本工序目标量 ' + U.number(t.quantity) + ' · 整批量 ' + U.number(t.batch_quantity) + '\n' + U.timeLabel(t.start) + ' 至 ' + U.timeLabel(t.end)} style={place.style} onClick={() => onSelect(t.task_ref)}>
       <span className="tt-bar-face"><strong>{lines.primary}</strong>{lines.secondary && <small>{lines.secondary}</small>}{t.locked && <i className="tt-lock-mark" aria-hidden="true" />}</span>
     </button>;
   }
@@ -153,7 +158,7 @@ function Gantt({ data, selected, onSelect, detailsOpen, onToggleDetails }) {
           <div className="tt-track">{axis.ticks.map(tick => <i key={tick.at} className="tt-gridline" style={{ left: tick.x / chart.width * 100 + '%' }} />)}
             {!r.ghost && (isPoint ? pointMarker(r.t, false) : bar(r.t))}
             {baseline && (view === 'batch' || r.ghost || r.t.original[key] === r.group) && (isPoint ? pointMarker(r.t, true) : <span className="tt-baseline" data-baseline-ref={r.t.task_ref} role="img"
-              style={position(r.t.original)} aria-label={'原安排 ' + label + '，' + U.timeLabel(r.t.original.start) + ' 至 ' + U.timeLabel(r.t.original.end)} title={'原安排 ' + label + '\n' + U.timeLabel(r.t.original.start) + ' 至 ' + U.timeLabel(r.t.original.end)} />)}</div></div></React.Fragment>;
+              style={placement.get(r.t.original).style} aria-label={'原安排 ' + label + '，' + U.timeLabel(r.t.original.start) + ' 至 ' + U.timeLabel(r.t.original.end)} title={'原安排 ' + label + '\n' + U.timeLabel(r.t.original.start) + ' 至 ' + U.timeLabel(r.t.original.end)} />)}</div></div></React.Fragment>;
       })}
       {!visible.length && <div className="tt-empty">当前显示范围没有匹配工序</div>}</div></div>
     <div className="tt-heading"><div className="tt-legend"><span><i />试调安排</span>{baseline && <span><i className="baseline" />原安排</span>}<span><i className="conflict" />约束问题</span><span><i className="locked" />已锁定</span></div>

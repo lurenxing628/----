@@ -1,11 +1,12 @@
-import PlanGanttModel from './PlanGanttModel.js';
-import FieldContract from './FieldContract.js';
+import PlanGanttModel, { instant } from './PlanGanttModel.js';
+// 报工状态只有 FieldContract 那一份词表，本页不再另起一套叫法。
+import FieldContract, { quantityReasons, states } from './FieldContract.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import PointContract from './PointContract.js';
 import PointGanttModel from './PointGanttModel.js';
+import Hours from './shared/hours.js';
 
 const HOUR = 3600000;
-const instant = PlanGanttModel.instant;
 const wire = value => new Date(value).toISOString().slice(0, 19);
 // Same label rule as the field records: minute precision, seconds shown only when they are not :00.
 const time = value => FieldContract.date(value);
@@ -14,9 +15,6 @@ const number = value => WorkbenchFormat.number(value, { digits: 2 });
 const hours = value => WorkbenchFormat.hours(value, { digits: 2 });
 const pieceLabel = task => task.piece_id === null ? '共同工序' : '分件 ' + task.piece_id;
 const taskLabel = task => task.batch_id + ' · ' + task.sequence + ' ' + task.process_label + ' · ' + pieceLabel(task);
-const quantityReasons = FieldContract.quantityReasons;
-// 报工状态只有 FieldContract 那一份词表，本页不再另起一套叫法。
-const states = FieldContract.states;
 const views = { machine: '设备', operator: '人员', batch: '批次' };
 const lateLabels = { all: '全部工序', finishLate: '已晚完成', unclosed: '到期未确认完成', forecastLate: '剩余安排预计晚完成' };
 const names = data => new Map(data.resources.map(row => [row.ref, row.label || row.business_code]));
@@ -118,11 +116,7 @@ function groupPrepared(prepared, mode) {
   for (const g of groups.values()) for (const member of g.members.values()) {
     const ts = tracks(member.reports); if (!ts.length) ts.push([]);
     member.reportCount = member.reports.length;
-    member.knownCount = 0; member.knownHours = 0; member.unknownHours = 0;
-    for (const { report } of member.reports) {
-      if (report.effective_processing_hours == null) member.unknownHours++;
-      else { member.knownCount++; member.knownHours += report.effective_processing_hours; }
-    }
+    member.hours = Hours.sumHours(member.reports.map(({ report }) => report.effective_processing_hours_exact));
     member.rows = ts.map((segments, i) => ({ key: g.id + ':' + member.item.task.task_ref + ':' + i, item: member.item,
       reports: segments.map(fact => fact.report), baseline: i === 0 && member.baseline, kind: 'actual', height: 88,
       track: i + 1, trackCount: ts.length, planEnd: member.fact.baseline.end,
@@ -137,13 +131,9 @@ function selectPrepared(prepared, view) {
   for (const source of prepared.groups) {
     const members = new Map(Array.from(source.members).filter(([ref]) => shown.has(ref)));
     if (!members.size) continue;
-    const g = { ...source, members, reportCount: 0, knownHours: null, unknownHours: 0 };
-    let knownCount = 0, knownHours = 0;
-    for (const member of members.values()) {
-      g.reportCount += member.reportCount; g.unknownHours += member.unknownHours;
-      knownCount += member.knownCount; knownHours += member.knownHours;
-    }
-    g.knownHours = knownCount ? knownHours : null; groups.push(g);
+    const shownMembers = Array.from(members.values());
+    groups.push({ ...source, members, reportCount: shownMembers.reduce((count, member) => count + member.reportCount, 0),
+      hours: Hours.combineHours(shownMembers.map(member => member.hours)) });
   }
   return { ...prepared, items: selected.map(fact => fact.item), shownRefs: shown, groups };
 }

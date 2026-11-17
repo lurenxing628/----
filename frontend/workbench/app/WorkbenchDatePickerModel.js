@@ -1,44 +1,24 @@
-import C from './CalendarContract.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
+import { dateKey, isDate, monthDays, today } from './shared/contract/kit.js';
 
 const types = ['date', 'time', 'month', 'datetime-local', 'factory-local'];
 const pad = (value, size = 2) => String(value).padStart(size, '0');
-const monthKey = (year, month) => pad(year, 4) + '-' + pad(month);
-const dateKey = (year, month, day) => monthKey(year, month) + '-' + pad(day);
 const monthParts = value => typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value)
   && Number(value.slice(0, 4)) >= 1 ? [Number(value.slice(0, 4)), Number(value.slice(5))] : null;
-const dateParts = value => C.isDate(value) ? value.split('-').map(Number) : null;
-
-function today() {
-  const now = new Date();
-  return dateKey(now.getFullYear(), now.getMonth() + 1, now.getDate());
-}
+const dateParts = value => isDate(value) ? value.split('-').map(Number) : null;
 
 function weekday(value) {
   const [year, month, day] = dateParts(value), previous = year - 1;
   let count = previous * 365 + Math.floor(previous / 4) - Math.floor(previous / 100) + Math.floor(previous / 400) + day - 1;
-  for (let i = 1; i < month; i++) count += C.monthDays(year, i);
+  for (let i = 1; i < month; i++) count += monthDays(year, i);
   return count % 7;
-}
-
-function moveDay(value, offset) {
-  let [year, month, day] = dateParts(value);
-  const direction = Math.sign(offset);
-  for (let i = 0; i < Math.abs(offset); i++) {
-    if (direction < 0 && year === 1 && month === 1 && day === 1) break;
-    if (direction > 0 && year === 9999 && month === 12 && day === 31) break;
-    day += direction;
-    if (day < 1) { month--; if (month === 0) { year--; month = 12; } day = C.monthDays(year, month); }
-    if (day > C.monthDays(year, month)) { day = 1; month++; if (month === 13) { year++; month = 1; } }
-  }
-  return dateKey(year, month, day);
 }
 
 function moveMonth(value, offset) {
   const [year, month, day = 1] = value.split('-').map(Number);
   const index = Math.max(0, Math.min(9999 * 12 - 1, (year - 1) * 12 + month - 1 + offset));
   const nextYear = Math.floor(index / 12) + 1, nextMonth = index % 12 + 1;
-  return dateKey(nextYear, nextMonth, Math.min(day, C.monthDays(nextYear, nextMonth)));
+  return dateKey(nextYear, nextMonth, Math.min(day, monthDays(nextYear, nextMonth)));
 }
 
 function nativeField(props) {
@@ -59,7 +39,7 @@ function factoryTime(value) {
 
 function nextInstant(value) {
   const canonical = factoryTime(value), seconds = canonical.slice(0, 19);
-  const fraction = Number((canonical.slice(20) || '').padEnd(6, '0')) + 1;
+  const fraction = Number(canonical.slice(20).padEnd(6, '0')) + 1;
   if (fraction < 1000000) return seconds + '.' + String(fraction).padStart(6, '0');
   return new Date(Date.parse(seconds + 'Z') + 1000).toISOString().slice(0, 19);
 }
@@ -125,7 +105,7 @@ function monthSelectable(props, month) {
   if (props.type === 'month') return validate(props, month).valid;
   if (!['date', 'datetime-local', 'factory-local'].includes(props.type)) return false;
   // Month navigation keeps the original date/time constraints, including their step base.
-  for (let day = 1; day <= C.monthDays(parts[0], parts[1]); day++) {
+  for (let day = 1; day <= monthDays(parts[0], parts[1]); day++) {
     if (daySelectable(props, month + '-' + pad(day))) return true;
   }
   return false;
@@ -169,12 +149,12 @@ function seed(props) {
 }
 
 const WorkbenchDatePickerModel = {
-  pad, dateKey, monthParts, dateParts, today, weekday,
-  moveDay, moveMonth, factoryTime, nextInstant, validate, daySelectable, monthSelectable, precision, readTime, timeValue, seed
+  pad, monthParts, dateParts, weekday,
+  moveMonth, factoryTime, nextInstant, validate, daySelectable, monthSelectable, precision, readTime, timeValue, seed
 };
 export {
-  pad, dateKey, monthParts, dateParts, today, weekday,
-  moveDay, moveMonth, factoryTime, nextInstant, validate, daySelectable, monthSelectable, precision, readTime, timeValue, seed,
+  pad, monthParts, dateParts, weekday,
+  moveMonth, factoryTime, nextInstant, validate, daySelectable, monthSelectable, precision, readTime, timeValue, seed,
   WorkbenchDatePickerModel
 };
 export default WorkbenchDatePickerModel;

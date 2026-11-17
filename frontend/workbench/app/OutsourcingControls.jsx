@@ -1,14 +1,14 @@
 import React from './shared/runtime/react.js';
-import OutsourcingContract from './OutsourcingContract.js';
-import OutsourcingSession from './OutsourcingSession.js';
+import C from './OutsourcingContract.js';
+import S from './OutsourcingSession.js';
 import { Button, ErrorBox, Issues, Modal, Field, focusFirstInvalid, EmptyState, Pager as BasePager } from './ResourceControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import APSWorkbenchTransport from './shared/network/transport.js';
+import { useQuery } from './shared/session/query.js';
 
-const C = OutsourcingContract, S = OutsourcingSession;
 const formPaths = ['sent', 'planned', 'returned', 'confirmedState', 'declared_operator', 'reason'];
 const value = v => v === null || v === undefined || v === '' ? '未填写' : typeof v === 'object' ? '原值格式不对' : String(v);
 const when = v => WorkbenchFormat.dateTime(v, { seconds: true });
@@ -22,8 +22,7 @@ function Target({ target }) {
   return <section className="os-target" aria-label="本次外协成员"><div className="os-heading"><b>{value(target.batch.business_code)} · {value(target.batch.label)}</b>
     <span>{value(target.supplier.label)} · {target.kind === 'merged' ? '合并发出' : '单工序'} · {target.operations.length} 道工序</span></div>
     {target.part && <div className="os-muted">图号：{value(target.part.business_code)} · {value(target.part.label)}</div>}
-    <div className="os-members">{target.operations.map(o => <span key={o.operation_ref}>第 {value(o.sequence)} 序 · {value(o.label)} · {value(o.business_code)}{o.piece !== null ? ' · 分件 ' + value(o.piece) : ' · 整批'}</span>)}</div>
-    {target.source_resolution && target.source_resolution.basis === 'current_relation' && <div className="os-muted">这批旧工序按本页列出的批次登记。</div>}</section>;
+    <div className="os-members">{target.operations.map(o => <span key={o.operation_ref}>第 {value(o.sequence)} 序 · {value(o.label)} · {value(o.business_code)}{o.piece !== null ? ' · 分件 ' + value(o.piece) : ' · 整批'}</span>)}</div></section>;
 }
 
 function Facts({ facts, before }) {
@@ -34,7 +33,7 @@ function Facts({ facts, before }) {
 
 function TargetPicker({ mode, selected, onSelect, onMode, disabled, onOpen }) {
   const [q, setQuery] = React.useState(() => ({ page: 1, size: 10 }));
-  const read = S.useRead(signal => C.read('targets', q, undefined, signal), [q]);
+  const read = useQuery(signal => C.read('targets', q, undefined, signal), [q]);
   const result = read.result, data = result && result.data;
   function change(patch, paging = false) {
     const next = { ...q, ...patch, page: paging ? patch.page : 1 }; delete next.snapshot_ref;
@@ -60,7 +59,8 @@ function TargetPicker({ mode, selected, onSelect, onMode, disabled, onOpen }) {
           <td>{r.batch ? (r.batch.business_code || '编号未填写') + ' · ' + (r.batch.label || '名称未填写') : '批次未读取'}<div className="os-muted">{r.supplier && r.supplier.label || '供应商名称未填写'}</div></td>
           <td className="wb-col-actions">{r.outsourcing_ref ? <Button className="mini" icon="arrow-right" disabled={disabled} onClick={() => onOpen(r.outsourcing_ref)}>打开已有登记</Button> : r.can_register ? other || '可登记' : '不可登记'}<Issues issues={r.issues} /></td></tr>;
       })}
-    </tbody></table></div>{!data.items.length && <EmptyState kind={q.query ? 'filtered' : 'empty'} title={q.query ? '没有匹配的外协工序' : '没有可读取的外协工序'} hint="可修改查找条件、刷新工序列表，或返回资源资料核对外协工艺。" />}
+    </tbody></table></div>{!data.items.length && <EmptyState kind={q.query ? 'filtered' : 'empty'} title={q.query ? '没有匹配的外协工序' : '没有可读取的外协工序'} hint="可修改查找条件、刷新工序列表，或返回资源资料核对外协工艺。"
+        action={q.query ? <Button disabled={disabled} onClick={() => change({ query: '' })}>清除筛选</Button> : undefined} />}
       <Pager page={data.page} label="工序" busy={disabled || read.loading} onPage={page => change({ page }, true)} onSize={size => change({ size })} />
       <div className="os-selected" aria-label="已选择成员"><b>已选 {selected.length} 道</b>{selected.map(r => <span key={r.operation_ref}>第 {value(r.sequence)} 序 · {value(r.label)} · {r.piece === null ? '整批' : '分件 ' + value(r.piece)} · {value(r.business_code)}
         <Button className="mini" icon="x" aria-label={'移除工序 ' + value(r.business_code)} disabled={disabled} onClick={() => onSelect(selected.filter(s => s.operation_ref !== r.operation_ref))} /></span>)}</div></>}
@@ -72,9 +72,9 @@ function FormFields({ draft, update, disabled, error }) {
     {['sent', 'planned', 'returned'].map(k => <Field key={k} label={C.labels[k]} path={k} error={error} required={k !== 'returned'}><input type="datetime-local" step="1" aria-label={C.labels[k]} value={draft[k]} disabled={disabled} onChange={e => update(k, e.target.value)} /></Field>)}
     <Field label="确认状态" path="confirmedState" error={error} required><select aria-label="外协确认状态" value={draft.confirmedState} disabled={disabled} onChange={e => update('confirmedState', e.target.value)}>
       {Object.entries(C.states).map(([k, label]) => <option key={k} value={k}>{label}</option>)}</select></Field>
-    <Field label="经办人" path="declared_operator" error={error} required><input type="text" aria-label="外协经办人" maxLength={200} value={draft.declared_operator} disabled={disabled} onChange={e => update('declared_operator', e.target.value)} /></Field>
+    <Field label="经办人" path="declared_operator" error={error} required><input type="text" aria-label="外协经办人" value={draft.declared_operator} disabled={disabled} onChange={e => update('declared_operator', e.target.value)} /></Field>
     <div className="os-clear"><Button icon="x" disabled={disabled || !draft.returned} onClick={() => update('returned', '')}>清除实际回厂</Button></div>
-    <Field label="本次核实 / 更正原因" path="reason" error={error} required full><textarea aria-label="外协核实原因" maxLength={2000} value={draft.reason} disabled={disabled} onChange={e => update('reason', e.target.value)} /></Field>
+    <Field label="本次核实 / 更正原因" path="reason" error={error} required full><textarea aria-label="外协核实原因" value={draft.reason} disabled={disabled} onChange={e => update('reason', e.target.value)} /></Field>
   </div>;
 }
 
@@ -107,7 +107,7 @@ function Editor({ item, command, onClose, onFinish, onOpen }) {
   }, [error]);
   // 被拒后原预检结果已失效：清掉它，表单回到可编辑状态，改好后重新预检再提交；填写内容不动。
   React.useEffect(() => { if (!saved && command.error && APSWorkbenchTransport.rejected(command.error)) setPreview(null); }, [saved, command.error]);
-  function update(k, v) { setDraft(d => ({ ...d, [k]: v })); setPreview(null); setError(null); }
+  function update(k, v) { setDraft(d => ({ ...d, [k]: v })); setPreview(null); setError(null); command.clearRejection(); }
   async function review() {
     if (running.current || saved || command.storageError) return;
     running.current = true; setBusy(true); setError(null);
@@ -126,7 +126,8 @@ function Editor({ item, command, onClose, onFinish, onOpen }) {
         <dl className="os-facts"><div><dt>经办人</dt><dd>{preview.data.input.declared_operator}</dd></div><div><dt>核实原因</dt><dd>{preview.data.input.reason}</dd></div></dl>
         <div className="os-note">{preview.data.execution.reason}</div><div className="os-muted">核对时点 {when(preview.meta.as_of)}</div></> : <>
         {item ? <Target target={item.target} /> : <TargetPicker mode={draft.kind} selected={selected} onSelect={setSelected} onMode={v => update('kind', v)} disabled={locked} onOpen={openExisting} />}
-        <FormFields draft={draft} update={update} disabled={locked} error={error} /></>}
+        {/* 预检错误与提交被拒的错误（同一套字段路径）都标在表单上。 */}
+        <FormFields draft={draft} update={update} disabled={locked} error={error || command.error} /></>}
       {command.notice && <div className="os-note" role="status">{command.notice}</div>}
     </div></Modal>;
 }

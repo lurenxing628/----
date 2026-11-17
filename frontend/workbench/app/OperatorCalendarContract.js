@@ -1,14 +1,13 @@
-import APSResourceContract from './resource-contract.js';
 import APSWorkPeriods from './WorkPeriods.js';
+import { object, isDate, failure } from './shared/contract/kit.js';
 
+// 定型对象：transport 校验过的信封——数据在 .data，数据版本在 .meta.snapshot_ref，提示在 .warnings，其余元信息在 .meta。
+// 本文件另外保证：个人日历属于所选人员与月份，清除预检的日期范围与所选一致。
 // 个人日历只描述"这个人这天哪几个时段上班"，工时由后端按工作时段算。
-const C = APSResourceContract;
-const isDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
-  && new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
 function month(result, expected) {
   const data = result.data;
-  if (!C.object(data) || data.year !== expected.year || data.month !== expected.month || data.operator_ref !== expected.ref)
-    throw C.failure('读到的个人日历不是当前人员的这个月，请刷新后重试。');
+  if (data.year !== expected.year || data.month !== expected.month || data.operator_ref !== expected.ref)
+    throw failure('读到的个人日历不是当前人员的这个月，请刷新后重试。');
   return result;
 }
 function draftOf(value) {
@@ -32,13 +31,14 @@ function input(draft, original) {
     fields.allowNormal = 'no'; fields.allowUrgent = 'no';
   } else {
     const efficiency = Number(draft.eff.trim());
-    if (!Number.isFinite(efficiency) || efficiency <= 0 || efficiency > 200)
-      throw C.failure('效率须大于 0 且不超过 200%。', [{ path: 'fields.eff', message: '请填 0 到 200 之间的数字。' }]);
+    // 提交前只确认能解析成有限数；取值范围由后端校验，422 带字段路径。
+    if (!draft.eff.trim() || !Number.isFinite(efficiency))
+      throw failure('请填写有效的效率。', { fields: [{ path: 'fields.eff', message: '请输入有效数字。' }] });
     if (!original.explicit || draft.eff !== draftOf(original).eff) fields.eff = efficiency;
   }
   const periods = draft.type === 'rest' ? [] : draft.periods;
   const issue = APSWorkPeriods.validate(periods);
-  if (issue) throw C.failure(issue, [{ path: 'fields.periods', message: issue }]);
+  if (issue) throw failure(issue, { fields: [{ path: 'fields.periods', message: issue }] });
   fields.periods = APSWorkPeriods.clone(periods);
   const note = draft.note.trim();
   fields.note = note === '' ? null : note;
@@ -52,15 +52,15 @@ function tag(value) {
 }
 function rangeInput(range) {
   if (!isDate(range.start_date) || !isDate(range.end_date))
-    throw C.failure('请选择正确的开始和结束日期。', [{ path: !isDate(range.start_date) ? 'start_date' : 'end_date', message: '日期须有效。' }]);
+    throw failure('请选择正确的开始和结束日期。', { fields: [{ path: !isDate(range.start_date) ? 'start_date' : 'end_date', message: '日期须有效。' }] });
   if (range.start_date > range.end_date)
-    throw C.failure('结束日期不能早于开始日期。', [{ path: 'end_date', message: '结束日期不能早于开始日期。' }]);
+    throw failure('结束日期不能早于开始日期。', { fields: [{ path: 'end_date', message: '结束日期不能早于开始日期。' }] });
   return { start_date: range.start_date, end_date: range.end_date };
 }
 function rangePreview(result, expected) {
   const data = result.data;
-  if (!C.object(data.range) || data.range.start_date !== expected.start_date || data.range.end_date !== expected.end_date)
-    throw C.failure('预检的日期范围和选的不一致，没有清除任何设置。请重新点「预检要清除的日期」。');
+  if (!object(data.range) || data.range.start_date !== expected.start_date || data.range.end_date !== expected.end_date)
+    throw failure('预检的日期范围和选的不一致，没有清除任何设置。请重新点「预检要清除的日期」。');
   return result;
 }
 const APSOperatorCalendar = { month, draftOf, switchType, input, tag, rangeInput, rangePreview };

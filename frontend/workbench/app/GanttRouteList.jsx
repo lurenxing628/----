@@ -1,9 +1,8 @@
 import React from './shared/runtime/react.js';
-import ResourceControls from './ResourceControls.jsx';
-import GanttGraph from './GanttGraph.js';
-import WorkbenchFormat from './WorkbenchFormat.js';
+import { Button } from './ResourceControls.jsx';
+import G from './GanttGraph.js';
+import F from './WorkbenchFormat.js';
 
-const { Button } = ResourceControls, G = GanttGraph, F = WorkbenchFormat;
 const pieceLabel = node => node.piece_id === null ? '共同工序' : '分件 ' + node.piece_id;
 const operationLabel = node => (node.sequence === null ? '' : node.sequence + ' ') + (node.process_label || '工序名称未记录');
 function RouteGroup({ group, target, previous, loadedRefs, onSelect, disabled, collapsible }) {

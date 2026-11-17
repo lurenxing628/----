@@ -1,54 +1,48 @@
 import React from './shared/runtime/react.js';
-import OutsourcingContract from './OutsourcingContract.js';
-import APSWorkbenchTransport from './shared/network/transport.js';
+import C from './OutsourcingContract.js';
+import T from './shared/network/transport.js';
 import { pendingStore, exclusive } from './shared/session/pending-store.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
-import { useQuery } from './shared/session/query.js';
+import { object, nonempty, ref48, localSecond, failure } from './shared/contract/kit.js';
 
-const C = OutsourcingContract, T = APSWorkbenchTransport, KEY = 'aps_outsourcing_pending_v1', EVENT = KEY + '_changed';
+const KEY = 'aps_outsourcing_pending_v1', EVENT = KEY + '_changed';
 
 // 磁盘记录的唯一校验点：回厂事实与目标先按契约核过，提交内容再对照它们；写入的记录由已校验的预检构造，写前不再重验。
 function originalInput(v) {
   const p = v.input, creating = Object.prototype.hasOwnProperty.call(p, 'target');
   const allowed = ['declared_operator', 'reason', creating ? 'target' : 'outsourcing_ref', ...C.fields];
-  return Object.keys(p).every(k => allowed.includes(k)) && ['declared_operator', 'reason'].every(k => C.text(p[k]) && p[k] === p[k].trim() && !p[k].includes('\0'))
-    && p.declared_operator.length <= 200 && p.reason.length <= 2000 && C.fields.every(k => creating || Object.prototype.hasOwnProperty.call(p, k) ? p[k] === v.after[k] : true)
-    && (creating ? C.equal(p.target, C.targetValues(v.target)) : C.ref(p.outsourcing_ref));
+  return Object.keys(p).every(k => allowed.includes(k)) && ['declared_operator', 'reason'].every(k => nonempty(p[k]) && p[k] === p[k].trim() && !p[k].includes('\0'))
+    && C.fields.every(k => creating || Object.prototype.hasOwnProperty.call(p, k) ? p[k] === v.after[k] : true)
+    && (creating ? C.equal(p.target, C.targetValues(v.target)) : ref48(p.outsourcing_ref));
 }
 
 function entityLabel(entity, expected) {
-  return entity === null || C.object(entity) && entity.ref === expected && C.ref(expected)
-    && ['business_code', 'label'].every(k => entity[k] === null || C.text(entity[k]) && entity[k].trim().length > 0);
-}
-
-function resolution(v) {
-  return C.object(v) && ['birth_record', 'current_relation', 'registration_confirmation'].includes(v.basis)
-    && (v.basis === 'registration_confirmation' ? C.ref(v.confirmation_ref) : v.confirmation_ref === null);
+  return entity === null || object(entity) && entity.ref === expected && ref48(expected)
+    && ['business_code', 'label'].every(k => entity[k] === null || nonempty(entity[k]) && entity[k].trim().length > 0);
 }
 
 function validStoredTarget(t) {
   const { operation_refs } = C.target(t);
-  return t.grouping_basis === 'explicit_receipt_membership' && C.object(t.batch) && t.batch.ref === t.batch_ref
-    && C.object(t.supplier) && t.supplier.ref === t.supplier_ref && Array.isArray(t.operations) && t.operations.length === operation_refs.length
+  return t.grouping_basis === 'explicit_receipt_membership' && object(t.batch) && t.batch.ref === t.batch_ref
+    && object(t.supplier) && t.supplier.ref === t.supplier_ref && Array.isArray(t.operations) && t.operations.length === operation_refs.length
     && C.equal(t.operations.map(o => o && o.operation_ref).sort(), operation_refs)
-    && (t.part === undefined || C.object(t.part) && C.ref(t.part.ref) && entityLabel(t.part, t.part.ref))
-    && (t.source_resolution === undefined || resolution(t.source_resolution));
+    && (t.part === undefined || object(t.part) && ref48(t.part.ref) && entityLabel(t.part, t.part.ref));
 }
 
 function validStoredReceipt(r, v) {
   C.receipt(r, v);
   if (typeof r.receipt_ref !== 'string' || !/^[a-f0-9]{32}$/.test(r.receipt_ref) || typeof r.replayed !== 'boolean' || !Array.isArray(r.warnings)) return false;
   const d = r.data, e = d.execution;
-  return C.ref(d.outsourcing_ref) && C.ref(d.fact_ref) && C.equal(d.target, v.target) && C.text(d.local_operator) && C.time(d.confirmed_at)
-    && d.refresh_required === true && C.object(e) && e.automatically_reported === false && Array.isArray(e.operation_refs)
+  return ref48(d.outsourcing_ref) && ref48(d.fact_ref) && C.equal(d.target, v.target) && nonempty(d.local_operator) && localSecond(d.confirmed_at)
+    && d.refresh_required === true && object(e) && e.automatically_reported === false && Array.isArray(e.operation_refs)
     && C.equal(e.operation_refs.slice().sort(), C.targetValues(d.target).operation_refs)
-    && e.service === 'WorkbenchProductionReportService' && C.text(e.reason);
+    && e.service === 'WorkbenchProductionReportService' && nonempty(e.reason);
 }
 
 function valid(v) {
   try {
     return v && v.version === 1 && /^outsourcing-[a-f0-9]{48}$/.test(v.request_key) && ['pending', 'confirmed', 'rejected'].includes(v.phase)
-      && C.object(v.input) && C.facts(v.after) && validStoredTarget(v.target) && originalInput(v) && !Object.prototype.hasOwnProperty.call(v, 'write_token')
+      && object(v.input) && C.facts(v.after) && validStoredTarget(v.target) && originalInput(v) && !Object.prototype.hasOwnProperty.call(v, 'write_token')
       && (v.phase !== 'confirmed' || validStoredReceipt(v.receipt, v));
   } catch (_) { return false; }
 }
@@ -140,7 +134,7 @@ function useCommand() {
           }
         }
       });
-      if (!acquired && mounted.current) setError(new Error('另一个页面有还没确认的外协登记，请先在那里点「查询结果」。'));
+      if (!acquired && mounted.current) setError(failure('另一个页面有还没确认的外协登记，请先在那里点「查询结果」。'));
     } catch (e) { if (mounted.current) setError(e); }
     finally { running.current = false; if (mounted.current) setBusy(false); }
     if (mounted.current && needLookup && active.current && active.current.request_key === original.request_key && active.current.phase === 'pending') await lookup(true);
@@ -157,10 +151,10 @@ function useCommand() {
   }
   // 「刷新上次操作记录」在跨页互斥里把本页没写进去的记录写回再读。
   const reload = () => exclusive(KEY, { wait: true }, () => sync(undefined, flush)).catch(setStorageError);
-  return { saved, storageError, error, notice, busy, sync: reload, submit, lookup: () => lookup(), finish };
+  // 用户改了表单就清掉被拒的错误和它的标红（与 command-session 的 clearRejection 同一协议）；有本机记录时错误属于那条记录，不清。
+  function clearRejection() { if (!active.current) setError(null); }
+  return { saved, storageError, error, notice, busy, sync: reload, submit, lookup: () => lookup(), finish, clearRejection };
 }
-
-function useRead(load, deps) { return useQuery(load, deps); }
 
 function memberConflict(first, row) {
   if (!first) return '';
@@ -171,10 +165,10 @@ function memberConflict(first, row) {
 }
 
 function input(draft, selected, item) {
+  // 表单只把日期时间转成提交形状、核两项必填；时间先后与状态联动由后端校验，422 带字段路径。
   const values = { sent: C.stamp(draft.sent), planned: C.stamp(draft.planned), returned: draft.returned ? C.stamp(draft.returned) : null, confirmedState: draft.confirmedState };
-  C.facts(values);
   const p = { declared_operator: draft.declared_operator.trim(), reason: draft.reason.trim() };
-  C.check(p.declared_operator && p.declared_operator.length <= 200 && !p.declared_operator.includes('\0') && p.reason && p.reason.length <= 2000 && !p.reason.includes('\0'), '请填写经办人和本次核实 / 更正原因。');
+  C.check(p.declared_operator && p.reason, '请填写经办人和本次核实 / 更正原因。');
   if (item) { p.outsourcing_ref = item.outsourcing_ref; C.fields.forEach(k => { if (values[k] !== item[k]) p[k] = values[k]; }); }
   else {
     C.check(selected.length > 0 && selected.every(r => r.can_register && !memberConflict(selected[0], r)), '请选择同一批次、同一分件、同一供应商的真实可登记工序。');
@@ -183,7 +177,7 @@ function input(draft, selected, item) {
   return p;
 }
 
-const OutsourcingSession = { KEY, read, save, useCommand, useRead, input, memberConflict };
+const OutsourcingSession = { KEY, read, save, useCommand, input, memberConflict };
 
-export { OutsourcingSession, KEY, read, save, useCommand, useRead, input, memberConflict };
+export { OutsourcingSession, KEY, read, save, useCommand, input, memberConflict };
 export default OutsourcingSession;

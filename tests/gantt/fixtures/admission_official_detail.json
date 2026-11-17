@@ -48,7 +48,6 @@
           "due_date": "2026-10-17",
           "due_issue": null,
           "due_state": "specified",
-          "invalid_task_count": 0,
           "is_overdue": false,
           "issues": [],
           "operation_count": 2,
@@ -70,19 +69,12 @@
       "summary": {
         "batch_count": 1,
         "complete_batch_count": 1,
-        "complete_batch_refs": [
-          "20fd9d930393fd9fa8afa5839016aa7019559f98205b8bb7"
-        ],
         "deferred_batch_count": 0,
-        "deferred_batch_refs": [],
         "due_eligible_count": 1,
         "due_evaluation_count": 1,
         "excluded_due_count": 0,
         "incomplete_batch_count": 0,
         "invalid_due_count": 0,
-        "known_batch_refs": [
-          "20fd9d930393fd9fa8afa5839016aa7019559f98205b8bb7"
-        ],
         "known_due_count": 1,
         "known_on_time_count": 1,
         "known_overdue_count": 0,
@@ -91,7 +83,6 @@
         "overdue_count": 0,
         "state": "complete",
         "total_tardiness_hours": 0.0,
-        "unknown_batch_refs": [],
         "unknown_count": 0,
         "unknown_due_count": 0
       }
@@ -376,34 +367,11 @@
       "version": 1
     },
     "scope": {
-      "batch_refs": [
-        "0985d4b9feff43ddcbcb260fe72d41f47763b9fa19cfd4b7",
-        "20fd9d930393fd9fa8afa5839016aa7019559f98205b8bb7",
-        "9f1c7e9e060ee33df2a8752fed1a48acadeadbb81189398b",
-        "b11ffc315fb627a971f756bc9bdbd8a9674a2fa31e11ccce",
-        "b581c59bbc02c5437029ebb72eee3ed90e32e295a9f98e50",
-        "cea311fb3d2249bb650d7bd17c8200c90e5fe8905f935ce7"
-      ],
+      "batch_count": 6,
       "comparison_mode": "admission_official",
       "delta_basis": "candidate_minus_reference",
       "metric_scope": "full_admission",
-      "operation_refs": [
-        "2886ac6322a059dc6cede71207b411995f078349e788ad68",
-        "33c238b3b8fe4c22dea83d88040a2babe5dbab3b83e851f7",
-        "44ad48c5ad2d58c7d7bdcff51eef41fd12147641531c1369",
-        "452af8dbde1cd473f12db3b9fdc983963f5b80d608bc6a3b",
-        "4ecb85ae1e75b36f13f73860ef4a164f4b1a5c98191c338b",
-        "78fc4cac8f249756fa8cba857a2d4d9cd44ba14d42b286d8",
-        "7f765e07b62ae8625bbf4138d83e42788974df102e0df1d3",
-        "875fd8cb7d0deb3543023e603c27d3b130dd0d5bb3fe8a10",
-        "889e1c4d5a408651097088d86b7a8037be82b29f2658e714",
-        "8b31c7f93b2e2248470bb325c91ffd6b21b0392c05b2baac",
-        "8b885af19a1a6a5b4893cf088526e48616e687aa8abdd42b",
-        "ce3fba2b8dadc7c0f751b98c76effbc515a6cb81e6619032",
-        "ce56cbba6e1845ac34ed2e081a6967882f45367794c264b2",
-        "d5805de18805f629c6f192a9cc7c79d7c7e80e9c1c1bc1db",
-        "e7b5ff4b65955f02a5c73c3e68614bb203b6d3f38da3fbaf"
-      ],
+      "operation_count": 15,
       "range_end": "2026-10-15T11:06:00",
       "range_start": "2026-10-13T08:00:00",
       "reference": {
@@ -446,7 +414,6 @@
           "target_quantity": 7,
           "unknown_record_count": 0
         },
-        "interval_comparable": true,
         "locked": false,
         "machine": {
           "label": "数控车床",

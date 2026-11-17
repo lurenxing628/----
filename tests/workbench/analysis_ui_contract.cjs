@@ -93,18 +93,23 @@ const masterPartial = statistics({ overview: { ...overview, complete: false, sta
   domains: overview.domains.map((domain, index) => index ? domain : { ...domain, loaded: false, count: null }) } });
 assert.equal(values(masterPartial)[3], '未知'); assert.equal(values(masterPartial)[4], '未读取');
 assert(text(masterPartial).includes('已读取资料')); assert.equal(skeletons(masterPartial).length, 0, '返回后的实际来源缺口不是loading');
-const sample = { kind: 'delivery', plan_ref: 'a'.repeat(48), request_key: 'c'.repeat(48), code: 'qualification.empty',
+const sample = { kind: 'planned_delivery', plan_ref: 'a'.repeat(48), request_key: 'c'.repeat(48), code: 'qualification.empty',
   evaluation: { delay_days: 0, planned_finish: null }, requirements: [{ label: '原料', business_code: 'M-001', required_quantity: 0, available_quantity: null }] };
 const tree = expand(h(DashboardEvidence.Structure, { value: sample }));
 assert.match(text(tree), /0/); assert.match(text(tree), /未知/); assert.match(text(tree), /原料/);
 assert(!text(tree).includes('a'.repeat(48)), '完整引用不能进入普通可见字段');
 assert(!text(tree).includes('c'.repeat(48)) && !text(tree).includes('qualification.empty'), '请求键与规则码只能进编号折叠区');
-assert.match(text(tree), /M-001/); assert.match(text(tree), /交期风险/); assert(!text(tree).includes('delivery'), '来源类型显示中文类别，不显示内部取值');
+assert.match(text(tree), /M-001/); assert.match(text(tree), /正式计划交付推算/); assert(!text(tree).includes('planned_delivery'), '来源类型显示中文，不显示内部取值');
 const references = nodes(tree).filter(row => row.type === 'reference');
 assert(references.some(row => Object.values(row.props.entries || {}).includes('a'.repeat(48))), '完整引用必须保留在编号折叠区');
 assert(references.some(row => Object.values(row.props.entries || {}).includes('c'.repeat(48))), '请求键必须保留在编号折叠区');
 assert(!references.some(row => Object.values(row.props.entries || {}).includes('M-001')), '业务编号不是技术引用，不得折叠');
 assert(!nodes(tree).some(row => row.type === 'pre'), '来源字段必须结构化呈现');
+// 折叠编号区的项名一律中文：生产方输出的项按登记名显示，处置历史里旧来源带的未登记项按“其他记录项”依次编号。
+const folded = expand(h(DashboardEvidence.Structure, { value: { kind: 'registered_downtime_overlap', machine_ref: 'd'.repeat(48),
+  time_basis: 'factory_local', stored_status: 'pending', retired_key: 1, another_retired_key: 2 } }));
+const foldedNames = Object.keys(Object.assign({}, ...nodes(folded).filter(row => row.type === 'reference').map(row => row.props.entries || {})));
+assert.equal(JSON.stringify(foldedNames.sort()), JSON.stringify(['其他记录项 1', '其他记录项 2', '批次状态', '时间计算方式', '设备编号'].sort()));
 const page = { number: 3, pages: 8, total: 15, size: 2 }, onPage = () => {}, onSize = () => {};
 const pager = DashboardPanels.Pager({ page, onPage, onSize });
 assert.equal(pager.props.page, page, '恢复范围的页码与总数原样传入');
@@ -158,6 +163,13 @@ assert.equal(show('on_time', 'risk'), '预计按期');
 assert.equal(show(0.004, 'required_quantity'), '0.004');
 assert.equal(show(2.0005, 'available_quantity'), '2.0005');
 assert.equal(show(1.5, 'overlap_hours'), '1.50');
+// 受控项按项取词；物料编号、名称、单位、停机原因这些自由文本恰好写成 internal、partial、yes 也照原值显示，不再按取值猜。
+assert.deepEqual([['internal', 'business_code'], ['partial', 'label'], ['yes', 'unit'], ['merged', 'reason'], ['complete', 'message']].map(([value, key]) => show(value, key)),
+  ['internal', 'partial', 'yes', 'merged', 'complete']);
+assert.deepEqual([['yes', 'ready_status'], ['batch_readiness', 'kind'], ['registered_downtime_overlap', 'kind'], ['execution_projection', 'kind'],
+  ['union_of_registered_downtime_intersections', 'basis'], ['not_currently_evaluated', 'basis'], ['incomplete', 'completion_state']].map(([value, key]) => show(value, key)),
+  ['齐套', '批次齐套检查', '已登记停机与正式安排重叠', '现场报工记录', '已登记有效停机与安排重叠时段合并计算', '现在没有评估', '工序未排齐']);
+assert.equal(show('new_kind', 'kind'), '其他取值');
 const materials = text(expand(h(realEvidence.Structure, { value: { requirements: [{ label: '原料', required_quantity: 0.004, ready_status: 'partial' }] } })));
 assert.match(materials, /0\.004/); assert.match(materials, /部分齐套/); assert(!materials.includes('部分完成'), materials);
 const note = text(expand(h(realEvidence.Evidence, { source: { kind: 'execution_deviation', execution_state: 'complete', data_quality: 'complete' } })));
@@ -203,7 +215,7 @@ const timelineData = { time_scope: { range_start: stamp(12, '22'), range_end: st
   resources: [], resource_common: { cohort: [200, 201].map(id => ({ ref: reference(id), label: '设备 ' + id, kind: 'machine' })) },
   pagination: { section: 'timeline', number: 1, size: 20, total: 4, pages: 1 },
   overlaps: [], deliveries: [{ batch_ref: reference(300), risk: 'overdue' }, { batch_ref: reference(301), risk: 'on_time' }],
-  downtimes: [{ downtime_ref: reference(500), machine_ref: reference(200), valid: true,
+  downtimes: [{ downtime_ref: reference(500), machine_ref: reference(200),
     start: stamp(12, '23'), end: stamp(13, '00'), recorded_at: stamp(12, '20'), reason: '保养' }] };
 const timelineBefore = JSON.stringify(timelineData), selectedBatches = [];
 for (const mode of ['delivery', 'downtime']) {

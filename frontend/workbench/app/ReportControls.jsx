@@ -1,7 +1,6 @@
 import React from './shared/runtime/react.js';
 import { Icon, ErrorBox, Button as BaseButton, Pager } from './ResourceControls.jsx';
 import ReportAPI from './ReportAPI.js';
-import { useQuery } from './shared/session/query.js';
 
 function Button({ className = '', ...props }) {
   return <BaseButton {...props} className={'wb-action ' + className} />;
@@ -79,12 +78,7 @@ function Sort({ topic, state, onChange }) {
     <label>顺序<select aria-label="排序方向" value={state.direction} onChange={event => onChange({ direction: event.target.value, page: 1 })}><option value="asc">升序</option><option value="desc">降序</option></select></label></>;
 }
 
-function useRead(load, identity) {
-  const read = useQuery(load, [identity]);
-  return { ...read, busy: read.loading };
-}
+const ReportControls = { Scope, Tabs, Page, Sort, Button, Icon, ErrorBox };
 
-const ReportControls = { Scope, Tabs, Page, Sort, useRead, Button, Icon, ErrorBox };
-
-export { ReportControls, Scope, Tabs, Page, Sort, useRead, Button, Icon, ErrorBox };
+export { ReportControls, Scope, Tabs, Page, Sort, Button, Icon, ErrorBox };
 export default ReportControls;

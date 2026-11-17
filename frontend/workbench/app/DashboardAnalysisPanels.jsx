@@ -1,19 +1,18 @@
 import React from './shared/runtime/react.js';
 import { Button, Issues, ErrorBox, EmptyState } from './ResourceControls.jsx';
-import DashboardTimelineModel from './DashboardTimelineModel.js';
-import WorkbenchTerms from './WorkbenchTerms.js';
+import M from './DashboardTimelineModel.js';
+import T from './WorkbenchTerms.js';
 import DashboardTimeline from './DashboardTimeline.jsx';
-import DashboardSession from './DashboardSession.js';
+import { useQuery } from './shared/session/query.js';
 import DashboardAnalysisAPI from './DashboardAnalysisAPI.js';
 import DashboardPanels from './DashboardPanels.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 
-const M = DashboardTimelineModel;
 // Counts stay whole numbers; hours and other measured values keep two decimals.
 // 不足 0.01 的非零值写“不到 0.01”，不能读成 0。
 const tiny = v => typeof v === 'number' && v !== 0 && Number(Math.abs(v).toFixed(2)) === 0;
 const value = v => v === null || v === undefined ? '未知' : tiny(v) ? '不到 0.01' : typeof v === 'number' ? M.number(v, { digits: Number.isInteger(v) ? 0 : 2 }) : String(v);
-const T = WorkbenchTerms, risks = T.delivery_risks;
+const risks = T.delivery_risks;
 const risk = row => row.risk === 'overdue' ? (tiny(row.delay_hours) ? '超期不到 0.01 小时' : '超期 ' + value(row.delay_hours) + ' 小时') : risks[row.risk] || risks.unknown;
 
 function Batch({ row, selected, onSelect }) {
@@ -29,7 +28,7 @@ function Delivery({ data, selected, onSelect, onCompare }) {
           <td><Batch row={row} selected={selected} onSelect={onSelect} /><small>{value(row.part_label)}</small></td><td>{T.due_date(row.due_date, row.due_state, row.due_issue)}</td>
           <td>{T.delivery_completion_states[row.completion_state]}{row.planned_finish && <div>{M.timeLabel(row.planned_finish)}</div>}
             {row.partial_planned_finish && <small>{T.arrangement_labels.partial_finish}：{M.timeLabel(row.partial_planned_finish)}</small>}{row.unscheduled_operation_count > 0 && <small>{T.missing_arrangements(row.ordinary_unscheduled_operation_count, row.deferred_operation_count)}</small>}</td>
-          <td>{risk(row)}</td><td>{({ normal: '普通', urgent: '急件', critical: '特急' })[row.priority] || '未知'}</td></tr>)}</tbody></table></div>
+          <td>{risk(row)}</td><td>{T.batch_priorities[row.priority] || '未知'}</td></tr>)}</tbody></table></div>
       {!data.deliveries.length && <EmptyState kind="empty" title="当前正式计划没有批次交付记录。" />}
     </section>
   </>;
@@ -56,7 +55,7 @@ function Material({ data }) {
   return <section aria-label="待排批次与齐套日期"><h3>待排批次与齐套日期</h3><div className="dy-context">待排 {value(p.count)} 批 · 本页 {p.items.length} 批 · 已确认待排 {p.known_count} 批</div>
     <div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">待排批次与齐套日期</caption><thead><tr><th scope="col">批次 / 零件</th><th scope="col">数量</th><th scope="col">交期</th><th scope="col">齐套状态</th><th scope="col">齐套日期</th></tr></thead><tbody>{p.items.map(row => <tr key={row.batch_ref} data-pending-batch={row.batch_ref}>
       <td><b>{row.batch_id}</b><small>{value(row.part_label)}</small></td><td>{value(row.quantity)}</td><td>{value(row.due_date)}</td>
-      <td>{({ yes: '齐套', no: '未齐套', partial: '部分齐套' })[row.ready_status] || '未知'}</td><td>{value(row.ready_date)}</td></tr>)}</tbody></table></div>
+      <td>{T.ready_statuses[row.ready_status] || '未知'}</td><td>{value(row.ready_date)}</td></tr>)}</tbody></table></div>
     {!p.items.length && <EmptyState kind="empty" title={p.count === 0 ? '当前没有待排批次。' : '当前页没有待排批次。'} />}
     <div className="dy-context">当前范围：全部待排批次 · 齐套检查和缺设备人员的规则在「执行排产」里按本次选择设定，已保存候选方案的规则见「方案对比」。</div>
   </section>;
@@ -74,7 +73,7 @@ function Actual({ data, navigate }) {
 }
 
 function Section({ section, planRef, resourceRef, locateBatchRef, snapshotRef, enabled = true, label, render }) {
-  const loadedPage = React.useRef(null), lastDataRef = React.useRef(null);
+  const loadedPage = React.useRef(null);
   const base = React.useMemo(() => ({
     section, page: 1, size: 20, ...(resourceRef ? { resource_ref: resourceRef } : {}),
     ...(locateBatchRef ? { locate_batch_ref: locateBatchRef } : {})
@@ -87,11 +86,8 @@ function Section({ section, planRef, resourceRef, locateBatchRef, snapshotRef, e
     if (section === 'timeline' && loaded && loaded.planRef === planRef && loaded.snapshotRef === snapshotRef && loaded.query.size === paging.query.size && loaded.batches.has(locateBatchRef)) return loaded.query;
     return { ...base, size: paging.query.size };
   }, [base, paging, snapshotRef]);
-  const read = DashboardSession.useRead(signal => DashboardAnalysisAPI.read(planRef, signal, query), [planRef, query, snapshotRef], enabled);
-  const result = read.result, data = result && result.data, dataKey = section + ':' + planRef;
-  if (data) lastDataRef.current = { key: dataKey, data };
-  else if (!read.loading || (lastDataRef.current && lastDataRef.current.key !== dataKey)) lastDataRef.current = null;
-  const displayData = data || (read.loading && lastDataRef.current && lastDataRef.current.key === section + ':' + planRef ? lastDataRef.current.data : null);
+  const read = useQuery(signal => DashboardAnalysisAPI.read(planRef, signal, query), [planRef, query, snapshotRef], { enabled, keep: section + ':' + planRef });
+  const result = read.result, data = result && result.data, displayData = read.shown && read.shown.data;
   React.useEffect(() => {
     if (data && section === 'timeline') loadedPage.current = {
       planRef, snapshotRef, query,

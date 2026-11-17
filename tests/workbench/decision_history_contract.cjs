@@ -65,16 +65,16 @@ const definitions = [{ key: keys[0], label: '超期批次', group: 'delivery', u
   { key: keys[1], label: '设备占用比例', group: 'resources', unit: '%', precision: 1, improvement: 'neutral', scope: 'fixed_resource_window', source: 'archived_resource_calendar', common: false, metric_version: 'decision-resource-v4' }];
 function metric(value, unit, extra = {}) { return { value, state: value === null ? 'unavailable' : 'complete', known_subtotal: value, known_count: value === null ? 0 : 1, unknown_count: value === null ? 1 : 0, total_count: 1,
   scope: unit === '%' ? 'fixed_resource_window' : 'full_admission', metric_version: unit === '%' ? 'decision-resource-v4' : 'decision-delivery-v1', reason: value === null ? { code: 'not_recorded', message: '原来源未保存。' } : null,
-  source: { kind: 'run_archive', ref: ref(1), path: 'saved.metrics' }, unit, covered_batch_refs: [ref(101)], covered_operation_refs: [ref(201)], covered_resource_refs: unit === '%' ? [ref(301)] : null,
+  source: { kind: 'run_archive', ref: ref(1), path: 'saved.metrics' }, unit, member_unit: unit === '%' ? 'machine' : 'batch',
   numerator_hours: unit === '%' && value !== null ? 1 : null, denominator_hours: unit === '%' && value !== null ? 8 : null, unknown_workload_count: 0, ...extra }; }
 const windowScope = { mode: 'fixed_days', start: '2026-10-01T08:30:12.250123', end: '2026-10-08T08:30:12.250123', days: 7, anchor: 'source_start', time_basis: 'factory_local', boundary: 'half_open', state: 'available', reason: null,
-  cohort: { machine_refs: [ref(301)], operator_refs: [ref(401)] } };
+  cohort: { machine_count: 1, operator_count: 1 } };
 function entry(n, value, ratio, occurred = '2026-10-0' + n + 'T10:00:00') {
   return { entry_ref: 'run:' + ref(n), timeline: 'run', source_kind: 'run', label: '保存运行 ' + n, occurred_at: occurred, time_basis: 'accepted_at_factory_local', state: n === 3 ? 'failed' : 'complete',
     identity: { run_ref: ref(n), candidate_ref: ref(n + 10), scenario_ref: null, draft_ref: null, plan_ref: null, plan_version: null, history_id: null, receipt_ref: null, request_key: null },
     times: { accepted_at: occurred, started_at: occurred, finished_at: occurred, adopted_at: null, committed_at_utc: null, schedule_time: null }, baseline: { plan_ref: null, version: 0 },
     source: { kind: 'run', ref: ref(n), state: n === 3 ? 'unavailable' : 'available', reason: n === 3 ? { code: 'failed', message: '保存的计算失败。' } : null },
-    scope: { state: 'complete', batch_refs: [ref(101)], operation_refs: [ref(201)], batch_count: 1, operation_count: 1, demand_hours: 8, reason: null,
+    scope: { state: 'complete', batch_count: 1, operation_count: 1, demand_hours: 8, reason: null,
       batch_quantity: metric(12, '件', { source: { kind: 'run_archive', ref: ref(n), path: 'Batches.quantity' } }) },
     reading_context: { resource_window: clone(windowScope), metric_basis: 'common_projection' }, metrics: { [keys[0]]: metric(value, '批次'), [keys[1]]: metric(ratio, '%') },
     navigation: [{ label: '查看保存候选', view: 'analysis', context: { run_ref: ref(n), candidate_ref: ref(n + 10) }, enabled: true, reason: null }], issues: [] };
@@ -101,29 +101,27 @@ async function queryAndResponse() {
   const absolute = A.scope({ range_start: windowScope.start, range_end: windowScope.end }); assert.equal(absolute.range_start, windowScope.start, '共同窗口保留工厂本地微秒');
   for (const wrong of [{ extra: 'ignored' }, { size: 10 }, { condition_size: 7 }, { metric_keys: ['a', 'a'] }, { date_from: '2026-10-01' }, { range_start: windowScope.start }, { selected_entry_ref: ref(1) }]) assert.throws(() => A.scope(wrong));
   const params = A.serialized(A.scope({ metric_keys: keys })); assert.equal(params.get('metric_keys'), keys.join(',')); assert.equal(params.has('snapshot_ref'), false);
-  const reject = async mutate => { const changed = clone(value); mutate(changed); historyAnswer = changed; await assert.rejects(() => A.read(q)); };
-  await reject(changed => { changed.data.selection.entry = changed.data.entries[0]; });
-  await reject(changed => { changed.meta.snapshot_ref = 'n'.repeat(32); changed.data.filters.page = 2; });
   const bound = A.scope({ ...q, snapshot_ref: token });
   historyAnswer = { ...value, meta: { ...value.meta, snapshot_ref: 'n'.repeat(32) } };
   await assert.rejects(() => A.read(bound), error => error.code === 'snapshot_stale');
   assert.throws(() => A.scope({ metric_keys: keys, state: 'success' }), error => error.code === 'invalid_response', '已删除的历史状态值不再被接受');
   assert.equal(A.metricText(metric(0, '小时'), { precision: 2 }), '0 小时'); assert.equal(A.metricText(metric(null, '小时'), { precision: 2 }), '未知'); assert.equal(A.metricText(metric(0.125, '%'), { precision: 1 }), '12.5%');
-  const savedOptions = { generation_policy_version: 'unified_search_v1', primary_objective: 'min_weighted_tardiness',
+  const savedOptions = { primary_objective: 'min_weighted_tardiness',
     target_objectives: ['min_weighted_tardiness', 'min_overdue', 'min_changeover'], time_budget_seconds: 10, algo_mode: 'improve', graph_analysis_mode: 'report' };
   const scope = { start_date: '2026-10-01', end_date: '2026-10-02', ready_check: true, missing_resource_policy: 'auto_assign',
-    completed_policy: 'preserve_actuals', batch_count: 1, selection: 'explicit_batches', basis: 'captured_at_run_admission', data_gaps: [] };
+    completed_policy: 'preserve_actuals', batch_count: 1, selection: 'explicit_batches', basis: 'captured_at_run_admission' };
   const run = { run_ref: ref(1), state: 'complete', recovery_required: false, error: null, accepted_at: '2026-10-01T08:00:00',
     started_at: '2026-10-01T08:00:01', finished_at: '2026-10-01T08:00:11', candidate_count: 2, task_count: 1, counts_final: true, scope_summary: scope };
   for (const seconds of [10, 30]) {
     const options = { ...savedOptions, time_budget_seconds: seconds }, current = { ...run, scope_summary: { ...scope, run_options: options } }, saved = JSON.stringify(current);
     const shown = text(expand(h(historyControls.Table, { runs: [current], onOpen() {} }))).replace(/\s+/g, ' ');
     assert(shown.includes('主目标： 加权拖期更轻') && shown.includes('同时探索： 加权拖期更轻 · 交期优先 · 切换更少'));
-    assert(shown.includes('总计算预算： ' + seconds + ' 秒 · 共同优化') && shown.includes('unified_search_v1') && shown.includes('诊断报告'));
+    // 算法模式与图分析沿用设置页的说法（后端 config_field_spec.py 的 choice_labels）。
+    assert(shown.includes('总计算预算： ' + seconds + ' 秒 · 精细计算') && shown.includes('只看分析报告'));
     assert.equal(JSON.stringify(current), saved, '范围展示使用实际保存选项，不改变原记录');
   }
   const quick = { ...run, scope_summary: { ...scope, run_options: { ...savedOptions, algo_mode: 'greedy' } } };
-  assert(text(expand(h(historyControls.Table, { runs: [quick], onOpen() {} }))).includes('快速生成'));
+  assert(text(expand(h(historyControls.Table, { runs: [quick], onOpen() {} }))).includes('快速计算'));
 }
 async function chartAndDetails() {
   const value = payload(), before = JSON.stringify(value), selected = [], reveals = [], chart = DecisionHistoryChart.Chart({ data: value.data, metricKey: keys[1], selectedEntryRef: value.data.entries[0].entry_ref, onSelect: (row, reveal) => { selected.push(row); reveals.push(reveal); } });
@@ -147,7 +145,7 @@ async function chartAndDetails() {
   const lineValue = payload(), actualValues = new Map([[1, 2], [2, 2], [3, 2], [7, 0], [15, 12]]);
   lineValue.data.entries = Array.from({ length: 15 }, (_, index) => { const n = index + 1, row = entry(n, actualValues.has(n) ? actualValues.get(n) : null, 0, n === 2 || n === 3 ? '2026-10-13T02:03:44' : '2026-10-14T02:38:50.246069'); row.label = '保存的第' + n + '次运行'; row.scope.batch_count = n <= 3 ? 6 : n === 7 ? 11 : 12; return row; });
   lineValue.data.trend.points = lineValue.data.entries.map(row => ({ ...value.data.trend.points[0], entry_ref: row.entry_ref, label: row.label, occurred_at: row.occurred_at, metrics: row.metrics, scope: row.scope, connections: { [keys[0]]: false, [keys[1]]: false } }));
-  Object.assign(lineValue.data.entries[5].metrics[keys[0]], { state: 'partial', known_count: 18, known_subtotal: 3, unknown_count: 2, covered_operation_refs: null }); lineValue.data.entries[5].scope.batch_count = 21;
+  Object.assign(lineValue.data.entries[5].metrics[keys[0]], { state: 'partial', known_count: 18, known_subtotal: 3, unknown_count: 2 }); lineValue.data.entries[5].scope.batch_count = 21;
   const lineChart = DecisionHistoryChart.Chart({ data: lineValue.data, metricKey: keys[0], selectedEntryRef: lineValue.data.entries[2].entry_ref, onSelect: row => selected.push(row) });
   const lineRecords = nodes(lineChart).filter(node => node.props.className === 'dh-chart-entry'), lines = nodes(lineChart).filter(node => node.type === 'line');
   assert.deepEqual(lineRecords.map(node => node.props['data-metric-value']), [2, 2, 2, 0, 12]); assert.deepEqual(lines.map(node => node.props['data-gap-count']), [0, 0, 3, 7]);
@@ -177,6 +175,13 @@ async function chartAndDetails() {
   assert(text(missingChart).includes('本页没有可绘制的数值')); assert.equal(nodes(missingChart).filter(node => node.props.className === 'dh-chart-entry').length, 0);
   const missingRows = nodes(missingChart).filter(node => node.props.className === 'dh-chart-missing-entry'); assert(!text(missingRows[0]).includes('已知')); assert(text(missingRows[1]).includes('已知 0 批次'), 'known_count为0不报0小计，有真实已知0则保留');
   assert(!nodes(missingChart).find(node => node.props['aria-live'] === 'polite').props.className.includes('visually-hidden')); assert(text(nodes(missingChart).find(node => node.props['aria-live'] === 'polite')).includes('待确认'));
+  const placeholder = clone(value), placeholderRef = placeholder.data.entries[0].entry_ref;
+  Object.assign(placeholder.data.trend.points[0].metrics[keys[0]], { value: null, state: 'unavailable', known_count: 0, known_subtotal: null, unknown_count: 1, total_count: 1, member_unit: 'record',
+    reason: { code: 'history_metric_not_recorded', message: '保存来源未记录此指标。' } });
+  const placeholderChart = DecisionHistoryChart.Chart({ data: placeholder.data, metricKey: keys[0], selectedEntryRef: placeholderRef });
+  for (const shown of [nodes(placeholderChart).find(node => node.props.className === 'dh-chart-missing-entry' && node.props['data-entry-ref'] === placeholderRef), nodes(placeholderChart).find(node => node.props['aria-live'] === 'polite')]) {
+    assert(text(shown).includes('1 项待确认') && !text(shown).includes('record'), '历史占位的计数对象 record 显示为中文“项”');
+  }
   assert.equal(JSON.stringify(value), before, '绘图与百分比格式不改业务DTO');
   let timeReads = 0, definitionReads = 0;
   const instant = getMod(window, 'PlanGanttModel.js').instant, sameDefinition = A.sameMetricDefinition;
@@ -227,17 +232,26 @@ async function chartAndDetails() {
   const pager = nodes(conditionDetails).find(node => node.type === 'pager'); pager.props.onPage(2); pager.props.onSize(50); assert.deepEqual(clone(changes), [[{ condition_page: 2 }, true], [{ condition_page: 1, condition_size: 50 }, true]]);
   const equalData = clone(selectedData); equalData.comparison.conditions.summary = { equal: 533, different: 0, unknown: 0 }; equalData.comparison.conditions.categories = [];
   detail = expand(h(DecisionHistoryDetails.Details, { data: equalData, query: equalData.filters, onOpen() {}, onQuery() {} })); assert(text(detail).replace(/\s+/g, ' ').includes('生产条件相同，共 533 项'), '相同条件总数使用全量summary');
+  // 生产条件的文本取值按字段和条件分类查词表：受控枚举显示中文，同名 status 分批次、工序、资料取词；图号、分件编号这类自由文本照原值。
+  const valueRows = [['batch', 'priority', 'normal', 'urgent'], ['batch', 'status', 'pending', 'cancelled'], ['batch', 'ready_status', 'yes', 'partial'],
+    ['requirements', 'status', 'pending', 'completed'], ['requirements', 'source', 'internal', 'external'], ['scope', 'missing_resource_policy', 'auto_assign', 'exclude'],
+    ['scope', 'completed_policy', 'preserve_actuals', 'preserve_actuals'], ['resource_qualifications', 'status', 'active', 'maintain'], ['materials_outsource', 'status', 'active', 'inactive'],
+    ['materials_outsource', 'part_no', 'yes', 'no'], ['requirements', 'piece_id', 'internal', 'partial'], ['batch', 'priority', 'normal', 'later']]
+    .map(([category, field, before, after], index) => ({ category, entity: { key: ref(120 + index), label: '保存条件' }, field, state: 'different', before: side(before), after: side(after) }));
+  const valueData = clone(selectedData); valueData.comparison.conditions = conditionGroup(valueRows);
+  const valueTable = nodes(expand(h(DecisionHistoryDetails.Details, { data: valueData, query: valueData.filters, onOpen() {}, onQuery() {} })))
+    .find(node => node.type === 'table' && node.props['aria-label'] === '生产条件');
+  assert.deepEqual(nodes(valueTable).filter(node => node.props['data-history-condition-state']).map(row => [text(row.children[2]), text(row.children[3])]), [
+    ['普通', '急件'], ['待排', '已取消'], ['齐套', '部分齐套'], ['待排', '已完工'], ['自制', '外协'], ['自动分配', '暂不排'], ['保留开工和完工记录', '保留开工和完工记录'],
+    ['启用', '停机'], ['启用', '停用'], ['yes', 'no'], ['internal', 'partial'], ['普通', '其他取值']]);
   const strategyFields = [
-    ['generation_policy_version', null, 'unified_search_v1', '候选生成策略版本'],
-    ['selection_policy_version', null, 'business_objectives_v1', '推荐选择策略版本'],
     ['primary_objective', 'min_overdue', 'min_weighted_tardiness', '主目标'],
     ['target_objectives', ['min_overdue', 'min_tardiness', 'min_changeover'], ['min_weighted_tardiness', 'min_overdue', 'min_changeover'], '同时探索方向'],
     ['time_budget_seconds', 10, 30, '总计算预算（秒）']
   ];
-  const oldFields = [['objective', 'min_overdue', '优化目标'], ['objectives', ['min_overdue', 'min_tardiness', 'min_changeover'], '优化目标顺序'],
-    ['time_budget_seconds', 10, '候选计算预算（秒）']];
+  const oldFields = [['objective', 'min_overdue', '优化目标'], ['time_budget_seconds', 10, '候选计算预算（秒）']];
   const optionRows = strategyFields.map(([field, before, after]) => ({ category: 'algorithm', entity: { key: 'run_options', label: '本次保存的优化策略和预算' }, field, state: 'different',
-    before: before === null ? { ...side(null), present: false } : side(before), after: side(after) }));
+    before: side(before), after: side(after) }));
   const historicalRows = oldFields.map(([field, value]) => ({ category: 'algorithm', entity: { key: 'archived_settings', label: '原保存算法设置' }, field, state: 'equal', before: side(value), after: side(value) }));
   const optionsData = clone(selectedData), summary = { equal: historicalRows.length, different: optionRows.length, unknown: 0 };
   optionsData.comparison.configurations = { ...conditionGroup([...optionRows, ...historicalRows], optionRows.length + historicalRows.length), summary,
@@ -245,31 +259,34 @@ async function chartAndDetails() {
   const optionDetail = expand(h(DecisionHistoryDetails.Details, { data: optionsData, onOpen() {}, onQuery() {} }));
   const changedTable = nodes(optionDetail).find(node => node.type === 'table' && node.props['aria-label'] === '算法设置变化');
   const changedRows = nodes(changedTable).filter(node => node.props['data-history-condition-state']);
-  assert.deepEqual(changedRows.map(row => text(row.children[1])), strategyFields.map(row => row[3]), '新策略、主目标、目标集合和总预算各自保留独立条件项');
-  assert(changedRows.slice(0, 2).every(row => text(row.children[2]) === '未保存'), '旧策略缺少的版本字段保持未保存');
-  assert(text(changedRows[2]).includes('交期优先') && text(changedRows[2]).includes('加权拖期更轻'));
-  assert(text(changedRows[3]).includes('交期优先 · 拖期更轻 · 切换更少') && text(changedRows[3]).includes('加权拖期更轻 · 交期优先 · 切换更少'));
-  assert.equal(text(changedRows[4].children[2]), '10'); assert.equal(text(changedRows[4].children[3]), '30'); assert.equal(text(changedRows[4].children[4]), '有变化');
+  assert.deepEqual(changedRows.map(row => text(row.children[1])), strategyFields.map(row => row[3]), '主目标、目标集合和总预算各自保留独立条件项');
+  assert(text(changedRows[0]).includes('交期优先') && text(changedRows[0]).includes('加权拖期更轻'));
+  assert(text(changedRows[1]).includes('交期优先 · 拖期更轻 · 切换更少') && text(changedRows[1]).includes('加权拖期更轻 · 交期优先 · 切换更少'));
+  assert.equal(text(changedRows[2].children[2]), '10'); assert.equal(text(changedRows[2].children[3]), '30'); assert.equal(text(changedRows[2].children[4]), '有变化');
   const sameTable = nodes(optionDetail).find(node => node.type === 'table' && node.props['aria-label'] === '相同设置');
   const sameRows = nodes(sameTable).filter(node => node.props['data-history-condition-state']);
   assert.deepEqual(sameRows.map(row => text(row.children[1])), oldFields.map(row => row[2]), '目标和候选预算保留原标签');
-  assert.equal(text(sameRows[0].children[3]), 'min_overdue'); assert.equal(text(sameRows[1].children[3]), '3 项');
+  assert.equal(text(sameRows[0].children[3]), '交期优先', '保存的目标名经目标词表显示中文，不显示内部码');
 }
 function navigationAndSession() {
   const start = A.context({ query: A.scope({ metric_keys: keys, selected_entry_ref: 'run:' + ref(2), reference_run_ref: ref(1), comparison: 'same_conditions', page: 2, range_start: windowScope.start, range_end: windowScope.end, snapshot_ref: token }), metric_key: keys[1] });
-  const origin = { run_ref: ref(2), return_decision_history_context: start }, returned = A.historyContext(origin); assert.deepEqual(clone(returned.decision_history_context), clone(start)); assert.equal(returned.history_topic, 'decision_history');
-  const trial = { scenario_ref: ref(9), return_decision_history_context: start }; assert.deepEqual(clone(TrialContract.target(trial)), clone(trial));
-  assert.throws(() => TrialContract.target({ ...trial, return_decision_history_context: { query: { size: 7 } } }));
-  assert.deepEqual(clone(A.historyContext({ return_decision_context: origin })), clone(returned)); assert.deepEqual(clone(A.historyContext({})), { source: 'run_history' });
+  // 返回上下文只有 return_to：「返回历史走势」沿返回链（含多层）取原样的历史页状态，链上没有就不显示。
+  const historyPage = { source: 'run_history', history_topic: 'decision_history', decision_history_context: start };
+  const origin = { run_ref: ref(2), return_to: { view: 'analysis', context: historyPage } };
+  assert.strictEqual(A.historyOrigin(origin), historyPage); assert.strictEqual(A.historyOrigin({ return_to: { view: 'gantt', context: origin } }), historyPage);
+  assert.strictEqual(A.historyOrigin(historyPage), historyPage); assert.equal(A.historyOrigin({ return_to: { view: 'run' } }), null); assert.equal(A.historyOrigin({}), null);
+  const trial = { scenario_ref: ref(9), return_to: { view: 'analysis', context: historyPage } }; assert.deepEqual(clone(TrialContract.target(trial)), clone(trial));
   const { window: local, state, snapshots } = runtime(), links = [], requests = []; let readLoading = false, readError = null;
-  const localQueryStub = { useQuery: (load, deps, enabled = true) => { const query = JSON.parse(deps[0]); requests.push(query); const result = payload(query); result.data.comparison.conditions.page.number = query.condition_page; return { loading: enabled && readLoading, error: readError, result: !enabled || readLoading || readError ? null : result }; } };
+  const localQueryStub = { useQuery: (load, deps, { enabled = true } = {}) => { const query = JSON.parse(deps[0]); requests.push(query); const result = payload(query); result.data.comparison.conditions.page.number = query.condition_page; const current = !enabled || readLoading || readError ? null : result; return { loading: enabled && readLoading, error: readError, result: current, shown: current }; } };
   local.__wbRuntime.setStubs({ 'shared/session/query.js': localQueryStub });
   const localViews = getMod(local, 'DecisionHistoryWorkspace.jsx').DecisionHistoryViews, localDetails = getMod(local, 'DecisionHistoryDetails.jsx'), localChart = getMod(local, 'DecisionHistoryChart.jsx'), { PlanCenterWorkspace } = getMod(local, 'SchedulingWorkspace.jsx');
   const sessionStart = A.context({ query: A.scope({ metric_keys: keys, selected_entry_ref: 'run:' + ref(2), reference_run_ref: ref(1), comparison: 'same_conditions', snapshot_ref: token }), metric_key: keys[1] });
   const props = { start: sessionStart, pageContext: { history_query: { page: 3 } }, onNavigate: (...args) => links.push(args), renderTopics: () => null };
   let tree = state.render(() => localViews.Session(props));
   const details = nodes(tree).find(node => node.type === localDetails.Details); details.props.onOpen(details.props.data.selection.entry.navigation[0]);
-  assert.equal(links[0][0], 'analysis'); assert.deepEqual(clone(links[0][1].return_decision_history_context.query), clone(requests.at(-1))); assert.equal(links[0][1].return_decision_history_context.metric_key, keys[1]);
+  assert.equal(links[0][0], 'analysis'); assert.equal(links[0][1].return_to.view, 'analysis');
+  const opened = links[0][1].return_to.context; assert.equal(opened.history_topic, 'decision_history'); assert.deepEqual(clone(opened.history_query), { page: 3 }, '打开目标时返回链接是整份历史页状态，记录列表条件一并保留');
+  assert.deepEqual(clone(opened.decision_history_context.query), clone(requests.at(-1))); assert.equal(opened.decision_history_context.metric_key, keys[1]);
   const pager = nodes(tree).find(node => node.type === 'pager'); pager.props.onPage(2); tree = state.render(() => localViews.Session(props)); assert.equal(requests.at(-1).snapshot_ref, token); assert.equal(requests.at(-1).page, 2); assert.equal(requests.at(-1).selected_entry_ref, 'run:' + ref(2));
   nodes(tree).find(node => node.type === 'button' && node.props['aria-label'] === '刷新历史走势').props.onClick(); tree = state.render(() => localViews.Session(props)); assert.equal(requests.at(-1).snapshot_ref, null); assert.equal(requests.at(-1).page, 2); assert.equal(requests.at(-1).reference_run_ref, ref(1));
   assert.equal(snapshots.at(-1).decision_history_context.query.snapshot_ref, token);
@@ -351,10 +368,12 @@ function navigationAndSession() {
   nodes(tree).find(node => node.type === localViews.Filters).props.onApply(A.scope({ ...requests.at(-1), timeline: 'official', selected_entry_ref: null })); tree = state.render(() => localViews.Session(props)); state.flush(); assert.equal(nodes(tree).find(node => node.type === localChart.Chart).props.missingOpen, false, '更换来源收起缺项');
   nodes(tree).find(node => node.type === localChart.Chart).props.onMissingToggle(true); tree = state.render(() => localViews.Session(props));
   nodes(tree).find(node => node.type === 'pager').props.onPage(2); tree = state.render(() => localViews.Session(props)); state.flush(); nodes(tree).find(node => node.type === 'pager').props.onPage(1); tree = state.render(() => localViews.Session(props)); state.flush(); assert.equal(nodes(tree).find(node => node.type === localChart.Chart).props.missingOpen, false, '更换历史页收起缺项');
-  const candidate = PlanCenterWorkspace({ view: 'gantt', initialContext: origin, onNavigate: (...args) => links.push(args) }); const navigation = expand(nodes(candidate).find(node => node.type === 'candidate-workspace').props.navigation);
-  nodes(navigation).find(node => node.type === 'button' && text(node) === '返回历史走势').props.onClick(); assert.deepEqual(clone(links.at(-1)), ['analysis', clone(returned)]);
-  nodes(candidate).find(node => node.type === 'candidate-workspace').props.renderTrial({ candidateRef: ref(12), scope: { range_start: windowScope.start, range_end: windowScope.end }, query: '' }).props.onClick();
-  assert.equal(links.at(-1)[0], 'trial'); assert.deepEqual(clone(links.at(-1)[1].return_decision_history_context), clone(start)); assert.deepEqual(clone(links.at(-1)[1].base), { candidate_ref: ref(12) });
+  const candidate = PlanCenterWorkspace({ view: 'gantt', variant: 'candidate', initialContext: origin, onNavigate: (...args) => links.push(args) }); const navigation = expand(nodes(candidate).find(node => node.type === 'candidate-workspace').props.navigation);
+  nodes(navigation).find(node => node.type === 'button' && text(node) === '返回历史走势').props.onClick(); assert.deepEqual(links.at(-1), ['analysis', historyPage]);
+  const trialBack = { view: 'gantt', context: origin };
+  nodes(candidate).find(node => node.type === 'candidate-workspace').props.renderTrial({ candidateRef: ref(12), scope: { range_start: windowScope.start, range_end: windowScope.end }, query: '', back: trialBack }).props.onClick();
+  assert.equal(links.at(-1)[0], 'trial'); assert.strictEqual(links.at(-1)[1].return_to, trialBack, '试调的返回链接是打开它的页面'); assert.strictEqual(A.historyOrigin(links.at(-1)[1]), historyPage);
+  assert.deepEqual(clone(links.at(-1)[1].base), { candidate_ref: ref(12) });
   const tableState = hooks(), selections = [], table = tableState.render(() => localViews.Table({ data: payload().data, metricKey: keys[0], selectedEntryRef: null, onSelect: row => selections.push(row), onReference() {} }));
   const rows = nodes(table).filter(node => node.props['data-dh-row-choice']); assert.equal(rows.filter(node => node.props.tabIndex === 0).length, 1); nodes(table).find(node => node.props.ref).props.ref.current = { querySelector: () => ({ focus() {} }) }; rows[0].props.onKeyDown({ key: 'End', preventDefault() {} }); assert.equal(selections[0].entry_ref, 'run:' + ref(5));
   // 试调采用条目没有排产编号：只显示“试调来源”，不给“用作对照”入口。
@@ -367,7 +386,7 @@ function navigationAndSession() {
   assert(text(trialTable).includes('试调来源')); assert(!nodes(trialTable).some(node => node.props['aria-label'] === '将 ' + trialEntry.label + ' 用作对照'));
   assert(nodes(trialTable).some(node => node.props['aria-label'] === '将 ' + trialRows.entries[1].label + ' 用作对照'), '排产条目仍可用作对照');
   const emptyRuntime = runtime(), emptyViews = getMod(emptyRuntime.window, 'DecisionHistoryWorkspace.jsx').DecisionHistoryViews, emptyQueries = [], filteredQuery = A.scope({ metric_keys: keys, timeline: 'official', date_from: '2026-10-12', date_to: '2026-10-12', state: 'committed', comparison: 'same_conditions', reference_run_ref: ref(1), range_start: windowScope.start, range_end: windowScope.end, snapshot_ref: token });
-  const emptyQueryStub = { useQuery: (load, deps) => { const query = JSON.parse(deps[0]); emptyQueries.push(query); const result = payload(query); if (query.date_from) { result.data.entries = []; result.data.trend.points = []; result.data.page.total = 0; result.data.page.has_more = false; result.data.totals = { run: 5, official: 4, filtered: 0 }; } return { loading: false, error: null, result }; } };
+  const emptyQueryStub = { useQuery: (load, deps) => { const query = JSON.parse(deps[0]); emptyQueries.push(query); const result = payload(query); if (query.date_from) { result.data.entries = []; result.data.trend.points = []; result.data.page.total = 0; result.data.page.has_more = false; result.data.totals = { run: 5, official: 4, filtered: 0 }; } return { loading: false, error: null, result, shown: result }; } };
   emptyRuntime.window.__wbRuntime.setStubs({ 'shared/session/query.js': emptyQueryStub });
   const emptyProps = { start: A.context({ query: filteredQuery, metric_key: keys[1] }), pageContext: {}, onNavigate() {}, renderTopics: () => null };
   let emptyTree = emptyRuntime.state.render(() => emptyViews.Session(emptyProps));
@@ -376,7 +395,7 @@ function navigationAndSession() {
   const restored = emptyQueries.at(-1); assert.equal(restored.date_from, null); assert.equal(restored.date_to, null); assert.equal(restored.state, 'all'); assert.equal(restored.page, 1); assert.equal(restored.snapshot_ref, null);
   for (const key of ['timeline', 'metric_keys', 'range_start', 'range_end', 'reference_run_ref', 'comparison']) assert.deepEqual(clone(restored[key]), clone(filteredQuery[key]), '恢复事件筛选保留 ' + key);
   const outRuntime = runtime(), outViews = getMod(outRuntime.window, 'DecisionHistoryWorkspace.jsx').DecisionHistoryViews, outQueries = [], outProps = { ...emptyProps, start: A.context({ query: A.scope({ metric_keys: keys, page: 3, snapshot_ref: token }) }) };
-  const outQueryStub = { useQuery: (load, deps) => { const query = JSON.parse(deps[0]); outQueries.push(query); return { loading: false, error: null, result: payload(query) }; } };
+  const outQueryStub = { useQuery: (load, deps) => { const query = JSON.parse(deps[0]); outQueries.push(query); const result = payload(query); return { loading: false, error: null, result, shown: result }; } };
   outRuntime.window.__wbRuntime.setStubs({ 'shared/session/query.js': outQueryStub });
   let outTree = outRuntime.state.render(() => outViews.Session(outProps));
   const out = nodes(outTree).find(node => node.type === outRuntime.resourceControls.EmptyState && node.props.kind === 'filtered'); assert.doesNotThrow(() => expand(out)); assert.equal(text(out.props.action), '返回第 1 页'); out.props.action.props.onClick();

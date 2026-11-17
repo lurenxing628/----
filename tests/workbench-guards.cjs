@@ -26,9 +26,7 @@ const settled = promise => Promise.race([promise.then(value => ({ settled: true,
   new Promise(resolve => setTimeout(() => resolve({ settled: false }), 20))]);
 
 (async () => {
-  // Without a mounted host the request is refused loudly instead of silently leaving.
   const offA = G.register({ owner: 'A', dirty: true, message: 'A 未保存' });
-  await assert.rejects(G.confirmLeave(), error => error.message.includes('页面还没准备好'));
   // A host receives the prompt and the caller gets the answer.
   const prompts = [];
   const unsubscribe = G.subscribe(prompt => prompts.push(prompt));

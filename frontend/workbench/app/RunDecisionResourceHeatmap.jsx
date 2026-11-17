@@ -1,10 +1,9 @@
 import React from './shared/runtime/react.js';
-import RunCandidateControls from './RunCandidateControls.jsx';
+import C from './RunCandidateControls.jsx';
 import RunDecisionResources from './RunDecisionResources.jsx';
-import WorkbenchTerms from './WorkbenchTerms.js';
-import WorkbenchFormat from './WorkbenchFormat.js';
+import T from './WorkbenchTerms.js';
+import F from './WorkbenchFormat.js';
 
-const C = RunCandidateControls, T = WorkbenchTerms, F = WorkbenchFormat;
 const modes = [['after', '当前方案占用'], ['before', '对照占用'], ['delta', '占用差值']];
 const grains = { hour: '小时', shift: '班次', day: '天', week: '周' };
 function exactRange(value) { return F.dateTime(value.start, { seconds: true, fractions: true }) + ' 至 ' + F.dateTime(value.end, { seconds: true, fractions: true }); }

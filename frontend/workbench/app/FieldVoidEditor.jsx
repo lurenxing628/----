@@ -1,11 +1,11 @@
 import React from './shared/runtime/react.js';
-import FieldContract from './FieldContract.js';
-import FieldControls from './FieldControls.jsx';
-import APSResourceContract from './resource-contract.js';
+import C from './FieldContract.js';
+import FieldAPI from './FieldAPI.js';
+import FieldControls, { Button, ErrorBox, Feedback, Issues } from './FieldControls.jsx';
 import ResourceControls from './ResourceControls.jsx';
+import { failure } from './shared/contract/kit.js';
 
-const C = FieldContract, { Button, ErrorBox, Feedback, Issues } = FieldControls;
-function FieldVoidEditor({ task, record, adapter, command, retained, onDraft, onClose, onDone }) {
+function FieldVoidEditor({ task, record, command, retained, onDraft, onClose, onDone }) {
   const [draft, setDraft] = React.useState(() => retained ? retained.draft : { reason: '', declared_operator: '' });
   const [baseline] = React.useState(() => retained ? retained.baseline : { report_ref: record.report_ref, revision_ref: record.revision_ref });
   const [preview, setPreview] = React.useState(null), [error, setError] = React.useState(null), [reading, setReading] = React.useState(false);
@@ -28,9 +28,9 @@ function FieldVoidEditor({ task, record, adapter, command, retained, onDraft, on
     if (locked || !form.current.reportValidity()) return;
     const controller = new AbortController(); request.current = controller; setReading(true); setError(null);
     try {
-      const result = await adapter.previewVoid(record.report_ref, input(), controller.signal), value = result.data;
+      const result = await FieldAPI.previewVoid(record.report_ref, input(), controller.signal), value = result.data;
       if (!value.target_report || value.target_report.report_ref !== record.report_ref || value.target_report.original_revision_ref !== baseline.revision_ref)
-        throw APSResourceContract.failure('撤销预检与原报工不一致，请刷新后重试。');
+        throw failure('撤销预检与原报工不一致，请刷新后重试。');
       // A fresh preview supersedes the last rejected confirmation.
       setPreview(value); command.clearRejection({ includeStale: true });
     } catch (failure) { if (!controller.signal.aborted) setError(failure); }
@@ -45,9 +45,9 @@ function FieldVoidEditor({ task, record, adapter, command, retained, onDraft, on
     <div className="field-editor-heading"><h3>撤销这次报工 · {record.report_no}</h3></div>
     <p>本次数量 {C.display(record.completed_quantity)} 件 · 有效工时 {C.hours(record.effective_processing_hours)} 小时。撤销后不再计入进度和工时，原记录及更正历史保留。</p>
     <div className="field-extra"><ResourceControls.Field label="撤销原因" path="reason" error={shownError} required>
-      <textarea ref={inputRef} aria-label="撤销原因" required maxLength="2000" value={draft.reason} disabled={locked} onChange={event => change('reason', event.target.value)} />
+      <textarea ref={inputRef} aria-label="撤销原因" required value={draft.reason} disabled={locked} onChange={event => change('reason', event.target.value)} />
     </ResourceControls.Field><ResourceControls.Field label="经办人" path="declared_operator" error={shownError}>
-      <input aria-label="经办人" maxLength="2000" value={draft.declared_operator} disabled={locked} onChange={event => change('declared_operator', event.target.value)} />
+      <input aria-label="经办人" value={draft.declared_operator} disabled={locked} onChange={event => change('declared_operator', event.target.value)} />
     </ResourceControls.Field></div>
     {preview && <section aria-label="撤销影响" className="field-note"><h4>撤销后</h4>
       <p>累计完成 {C.quantity(preview.before.known_completed_quantity)} → {C.quantity(preview.after.known_completed_quantity)} 件；剩余 {C.quantity(preview.after.remaining_quantity)} 件；状态 {C.states[preview.after.execution_state]}。</p>

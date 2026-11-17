@@ -1,19 +1,18 @@
 import React from './shared/runtime/react.js';
-import RunCandidateModel from './RunCandidateModel.js';
-import RunBaselineModel from './RunBaselineModel.js';
-import RunCandidateControls from './RunCandidateControls.jsx';
+import M from './RunCandidateModel.js';
+import B from './RunBaselineModel.js';
+import { Button } from './RunCandidateControls.jsx';
 import WorkbenchControls from './WorkbenchControls.jsx';
 import { useQuery } from './shared/session/query.js';
 import RunBaselineAPI from './RunBaselineAPI.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
-import { WorkbenchReference } from './WorkbenchReferences.jsx';
+import { WorkbenchReference, WorkbenchError } from './WorkbenchReferences.jsx';
 
-const M = RunCandidateModel, B = RunBaselineModel, { Button } = RunCandidateControls;
 function usePrintLayout() { return WorkbenchControls.usePrintLayout(); }
 function useBaseline(data, available) {
   const [enabled, setEnabled] = React.useState(false);
   const active = enabled && available;
-  const read = useQuery(signal => RunBaselineAPI.read(data, signal), [data], active);
+  const read = useQuery(signal => RunBaselineAPI.read(data, signal), [data], { enabled: active });
   return { ...read, retainedResult: read.result, result: active ? read.result : null, error: active ? read.error : null,
     busy: active && read.loading, enabled: active, toggle: setEnabled, retry: read.reload };
 }
@@ -22,10 +21,9 @@ function Toggle({ state }) {
 }
 function Source({ workspace, comparison }) {
   const { algorithm, baseline } = workspace.generation;
-  const algorithmLabel = [algorithm.mode_label, algorithm.strategy_label].filter(Boolean).join(' · ');
   const source = comparison && comparison.baseline;
   return <div className="wb-gantt-comparison-source" data-candidate-comparison-source>
-    <span title={algorithmLabel || '计算方式未记录'}><strong>新安排</strong>：{workspace.candidate.label || '当前候选'}</span>
+    <span title={algorithm.mode_label + ' · ' + algorithm.strategy_label}><strong>新安排</strong>：{workspace.candidate.label || '当前候选'}</span>
     <span title={M.timeLabel(baseline.captured_at)}><strong>原安排</strong>：{source && source.available === false ? source.reason.message : <>排产时的正式计划{baseline.version === null ? '（版本未记录）' : ' v' + M.number(baseline.version)} · {WorkbenchFormat.dateTime(baseline.captured_at)}</>}
       {source && source.available && !source.comparison_available && ' · 当前没有可对照工序'}</span>
   </div>;
@@ -44,21 +42,16 @@ function Problems({ workspace, issues, onInspect }) {
       </li>;
     })}</ul></details>;
 }
-function Segments({ row, chosen }) {
-  const printing = usePrintLayout(), [top, setTop] = React.useState(0), host = React.useRef(null), first = printing ? 0 : Math.max(0, Math.floor(top / 76) - 2);
-  const segments = printing ? row.baseline_segments : row.baseline_segments.slice(first, first + 6);
-  React.useEffect(() => {
-    const index = chosen ? row.baseline_segments.findIndex(s => s.row_ref === chosen.row_ref) : 0;
-    if (host.current) host.current.scrollTop = Math.max(0, index) * 76;
-  }, [row, chosen]);
-  return <div ref={host} className="rb-segments" data-baseline-segments role="region" aria-label="原安排完整分段" onScroll={e => setTop(e.currentTarget.scrollTop)}>
-    <div style={{ height: row.baseline_segments.length * 76, position: 'relative', minWidth: 510 }}>
-      {segments.map((s, i) => <div key={s.row_ref} data-baseline-segment={s.row_ref} className="rb-segment"
-        style={{ top: (first + i) * 76 }} aria-current={!!chosen && chosen.row_ref === s.row_ref ? 'true' : undefined}>
-        <div>{M.timeLabel(s.start)} 至 {M.timeLabel(s.end)}{!s.interval_comparable && ' · 起止不可比较'}</div>
+function Segment({ row, chosen }) {
+  const s = row.baseline_segment;
+  return <div className="rb-segments" data-baseline-segments role="region" aria-label="原安排完整分段">
+    <div style={{ height: s ? 76 : 0, position: 'relative', minWidth: 510 }}>
+      {s && <div data-baseline-segment={s.row_ref} className="rb-segment"
+        style={{ top: 0 }} aria-current={!!chosen && chosen.row_ref === s.row_ref ? 'true' : undefined}>
+        <div>{M.timeLabel(s.start)} 至 {M.timeLabel(s.end)}</div>
         <div>{B.sourceLabel(s)} · 设备 {B.resourceLabel(s, 'machine')} · 人员 {B.resourceLabel(s, 'operator')} · 供应商 {B.resourceLabel(s, 'supplier')} · 起止时长 {M.number(s.elapsed_hours)} 小时</div>
-        <small>{s.data_gaps.map(g => g.message).join(' · ')}</small><WorkbenchReference value={s.row_ref} /></div>)}
-    </div>{!row.baseline_segments.length && <div>原安排没有该工序安排。</div>}</div>;
+        <small>{s.data_gaps.map(g => g.message).join(' · ')}</small><WorkbenchReference value={s.row_ref} /></div>}
+    </div>{!s && <div>原安排没有该工序安排。</div>}</div>;
 }
 function Detail({ row, segment, workspace }) {
   const c = row.candidate, delta = row.delta, execution = row.execution_at_generation;
@@ -68,7 +61,7 @@ function Detail({ row, segment, workspace }) {
     {c ? <><div>新安排：{M.timeLabel(c.start)} 至 {M.timeLabel(c.end)} · {B.sourceLabel(c)} · 设备 {B.resourceLabel(c, 'machine')} · 人员 {B.resourceLabel(c, 'operator')} · 供应商 {B.resourceLabel(c, 'supplier')}</div>
       <WorkbenchReference entries={{ '新安排编号': c.row_ref }} />
       {!workspace.tasks.some(t => t.row_ref === c.row_ref) && <div>该新安排在所选时间范围外。</div>}</> : <div>此候选方案未安排该工序。</div>}
-    <Segments key={row.operation_ref} row={row} chosen={segment} />
+    <Segment row={row} chosen={segment} />
     {row.comparison_available && <div>安排变动（新安排减原安排）：开始 {M.number(delta.start_hours)} 小时 · 结束 {M.number(delta.end_hours)} 小时 · 起止时长 {M.number(delta.elapsed_hours)} 小时
       <small>设备变化：{B.resourceChange(row, 'machine')} · 人员变化：{B.resourceChange(row, 'operator')} · 供应商变化：{B.resourceChange(row, 'supplier')}</small></div>}
     <div>生成时报工：{execution ? M.executionField(row, 'execution_state') : '提交试排时的报工记录缺失'}</div>
@@ -90,7 +83,7 @@ function ComparisonList({ rows, chosen, onChoose }) {
       <div className="rb-row" data-baseline-operation={r.operation_ref} key={r.operation_ref} style={{ top: (first + i) * 40 }}
         aria-current={!!chosen && chosen.comparison.operation_ref === r.operation_ref ? 'true' : undefined}>
         <span title={r.batch_label || '未记录'}>{r.batch_label || '未记录'}</span><span title={r.process_label || '未记录'}>{M.number(r.sequence)} {r.process_label || '未记录'}</span>
-        <span>{B.statusLabels[r.status]}</span><span>{r.baseline_segments.length} 段{r.execution_affected && ' · 有报工影响'}</span>
+        <span>{B.statusLabels[r.status]}</span><span>{r.baseline_segment ? '有原安排' : '无原安排'}{r.execution_affected && ' · 有报工影响'}</span>
         <Button icon="search" className="mini" aria-label={'原安排对照 ' + (r.batch_label || '批次未记录') + ' ' + M.number(r.sequence) + ' ' + (r.process_label || '工序未记录')} onClick={() => onChoose({ comparison: r, segment: null })} /></div>)}</div>
     {!rows.length && <div className="rc-empty">当前范围没有匹配对照。</div>}</div>;
 }
@@ -99,7 +92,7 @@ function Panel({ state, rows, chosen, onChoose, workspace, inspecting, onShowAll
   React.useEffect(() => { if (chosen || inspecting) setOpen(true); }, [chosen, inspecting]);
   return <>{state.enabled && <>
     {state.busy && <div className="rc-muted" role="status">正在读取排产时的原安排。</div>}
-    {state.error && <div role="alert">{state.error.message}<Button icon="refresh-cw" onClick={state.retry}>刷新原安排</Button></div>}
+    {state.error && <><WorkbenchError error={state.error} fallback="排产时的原安排读取失败，请点「刷新原安排」重试。" /><Button icon="refresh-cw" onClick={state.retry}>刷新原安排</Button></>}
     {d && <><div className="rb-legend"><span><i />新安排</span><span><i className="rb-before" />原安排</span><span><i className="rb-selected" />已选工序</span></div>
       <details className="rb-panel" open={open} onToggle={e => setOpen(e.currentTarget.open)}><summary>{inspecting ? '无法对照工序' : '原安排对照明细'}（{rows.length}）</summary>
         {open && <><div>提交于 {M.timeLabel(d.generation.accepted_at)} · {d.baseline.captured_task_count} 段原安排 · 有报工影响 {d.execution_affected_count} 道</div>

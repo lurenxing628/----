@@ -1,20 +1,18 @@
 import React from './shared/runtime/react.js';
-import RunCandidateControls from './RunCandidateControls.jsx';
+import C from './RunCandidateControls.jsx';
 import RunDecisionComparison from './RunDecisionComparison.jsx';
 import RunDecisionProcessChart from './RunDecisionProcessChart.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
 import RunDecisionAPI from './RunDecisionAPI.js';
 import { useQuery } from './shared/session/query.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
 
 // 优化过程只有共同优化一种存档（unified-optimization-process-v1），由 RunDecisionAPI.processDetails 校验。
-const C = RunCandidateControls;
 const queryKeys = ['process_candidate_ref', 'objective', 'record_kind', 'sort', 'order', 'page', 'size', 'snapshot_ref'];
 const stopLabels = { time_budget: '时间预算已用完', iteration_limit: '达到迭代上限', search_exhausted: '当前搜索已结束', baseline_scheduled: '保留原算法结果', all_candidates_rejected: '搜索候选全部被拒绝', no_improvement: '本阶段没有进一步改善', completed: '计算完成', reserved_for_later_phases: '为后续阶段保留预算', candidate_time_budget_reached: '候选预算已用完', disabled: '此阶段未启用', stages_exhausted: '可执行尝试已结束', graph_ready_uses_graph_candidate_phase: '改用按规则生成和调整排法的阶段' };
-const flagLabels = RunDecisionProcessChart.flagLabels;
 const number = value => value === null ? '—' : WorkbenchFormat.number(value, { digits: 3, trim: true });
-const savedText = value => value === null || value === undefined || value === '' ? '未记录' : String(value);
-const phaseText = RunDecisionProcessChart.phaseText;
+const phaseText = WorkbenchTerms.search_stage;
 function Elapsed({ value }) { return <span title={value === null ? undefined : String(value) + ' ms'}>{value === null ? '—' : value < 1000 ? number(value) + ' 毫秒' : number(value / 1000) + ' 秒'}</span>; }
 function Primary({ value, objective }) { return <span title={value === null ? undefined : String(value)}>{number(value)}{value !== null && objective.unit && ' ' + objective.unit}</span>; }
 function Score({ value, objective }) {
@@ -33,8 +31,9 @@ function Scope({ scope, scopeRef }) {
 }
 function Origin({ origin, data }) {
   return <>{origin && <span>{phaseText(origin.phase)} · {objectiveLabel(data, origin.search_objective)}</span>}
-    <details className="rd-process-facts"><summary>实际生成与派工</summary>{origin ? <><dl>{[['strategy', '生成策略'], ['dispatch_mode', '派工模式'], ['dispatch_rule', '派工规则']].map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{savedText(origin[key])}</dd></div>)}</dl>
-      <WorkbenchReference entries={{ '来源类型': origin.origin, '搜索阶段': origin.phase, '搜索方向': origin.search_objective }} /></> : <p className="rc-muted">正在等待实际生成与派工。</p>}</details></>;
+    <details className="rd-process-facts"><summary>实际生成与派工</summary>{origin ? <><dl>{[['来源类型', phaseText(origin.origin)], ['生成策略', WorkbenchTerms.condition_value('sort_strategy', origin.strategy)],
+        ['派工模式', WorkbenchTerms.condition_value('dispatch_mode', origin.dispatch_mode)], ['派工规则', WorkbenchTerms.condition_value('dispatch_rule', origin.dispatch_rule)]]
+        .map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></> : <p className="rc-muted">正在等待实际生成与派工。</p>}</details></>;
 }
 function CandidateTable({ data, overview, anchorRef, onAnchor }) {
   return <div className="rc-table wb-table-frame rd-process-candidate-frame" data-sticky-head data-sticky-key data-sticky-actions data-wb-scroll-key="decision-process-candidates"><table className="wb-table rd-process-source-table" aria-label="本次候选来源定位">
@@ -50,7 +49,7 @@ function Summary({ data }) {
     <div><dt>总计算用时</dt><dd><Elapsed value={data.summary.elapsed_ms} /></dd></div><div><dt>首个完整解</dt><dd>{data.summary.first_complete_elapsed_ms === null ? '本次未产生完整解' : <Elapsed value={data.summary.first_complete_elapsed_ms} />}</dd></div>
     <div data-process-first-improvement-ms={data.summary.first_improvement_elapsed_ms}><dt>当前方向首次评分改善</dt><dd>{data.summary.first_improvement_elapsed_ms === null ? '本方向未发生评分改善' : <Elapsed value={data.summary.first_improvement_elapsed_ms} />}</dd></div>
     <div><dt>总计算预算</dt><dd>{number(data.budget.configured_seconds)} 秒</dd></div>{countLabels.map(([key, label]) => <div key={key} data-unified-count={key}><dt>{label}</dt><dd>{number(data.counts[key])}</dd></div>)}</dl>
-    <p className="rd-process-chart-note">{skipLabels[data.stop_reason] || '停止原因已保存'}<WorkbenchReference entries={{ '停止原因': data.stop_reason }} /></p>
+    <p className="rd-process-chart-note">{skipLabels[data.stop_reason] || '停止原因已保存'}</p>
     <p className="rd-process-chart-note" data-process-opportunity={direction.objective_status}>{opportunityLabels[direction.objective_status]}{direction.budget_reason && <small>{skipLabels[direction.budget_reason] || '预算原因已保存'}</small>}</p>
   </>;
 }
@@ -59,14 +58,14 @@ function Records({ data }) {
   return <div className="rc-table wb-table-frame rd-process-frame" data-sticky-head data-wb-scroll-key="decision-process-records"><table className={'wb-table rd-process-record-table ' + (progress ? 'rd-process-point-table' : 'rd-process-action-table')} aria-label={progress ? '进步曲线数值等价表' : '保存的搜索动作'}>
     <thead><tr>{(progress ? ['来源事件 / 阶段', '累计计算耗时', objective.primary_metric_label, '评价范围', '核验 / 评分'] : ['动作 / 阶段', '实际起止 / 耗时', '评估 / 已核验', '新决策 / 复用', '实际结果']).map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
     <tbody>{data.items.map((row, index) => progress ? <tr key={row.source_event_id + ':' + row.elapsed_ms + ':' + index} data-process-point={row.source_event_id}>
-      <td><strong>来源事件 {row.source_event_id}</strong><small>{phaseText(row.phase)}</small>{row.flags.length > 0 && <small>{row.flags.map(flag => flagLabels[flag] || flag).join(' · ')}</small>}</td>
+      <td><strong>来源事件 {row.source_event_id}</strong><small>{phaseText(row.phase)}</small>{row.flags.length > 0 && <small>{row.flags.map(WorkbenchTerms.process_flag).join(' · ')}</small>}</td>
       <td><Elapsed value={row.elapsed_ms} /></td><td><Primary value={row.primary_value} objective={objective} /></td><td><Scope scope={data.scopes[row.scope_ref]} scopeRef={row.scope_ref} /></td>
       <td>{row.verified ? '已核验' : '未核验'}<Score value={row.score} objective={objective} /></td>
     </tr> : <tr key={row.action_id} data-process-action={row.action_id}>
       <td><strong>动作 {row.action_id}</strong><small>{phaseText(row.phase)}</small>{row.initial_construction && <small>构建起始排法</small>}</td>
       <td><Elapsed value={row.started_elapsed_ms} /><small>至 <Elapsed value={row.finished_elapsed_ms} /></small><small>动作耗时 <Elapsed value={row.elapsed_ms} /></small></td>
       <td>{number(row.evaluation_count)} / {number(row.verified_evaluation_count)}</td><td>{number(row.new_decisions)} / {number(row.reused_decisions)}</td>
-      <td>{row.skip_reason ? skipLabels[row.skip_reason] || '动作未执行' : row.improved_objectives.length ? '改善：' + row.improved_objectives.map(name => objectiveLabel(data, name)).join(' · ') : '本动作未带来评分改善'}{row.skip_reason && <WorkbenchReference entries={{ '动作未执行原因': row.skip_reason }} />}</td>
+      <td>{row.skip_reason ? skipLabels[row.skip_reason] || '动作未执行' : row.improved_objectives.length ? '改善：' + row.improved_objectives.map(name => objectiveLabel(data, name)).join(' · ') : '本动作未带来评分改善'}</td>
     </tr>)}</tbody></table></div>;
 }
 function Stages({ values }) {
@@ -103,7 +102,7 @@ function Pane({ result, query, onQuery, enabled }) {
   const paneRef = React.useRef(null), recordsRef = React.useRef(null), catalogRef = React.useRef(null), pendingFocus = React.useRef(null);
   const [paused, setPaused] = React.useState(false);
   React.useEffect(() => { setPaused(false); }, [runRef, key, result.meta.snapshot_ref]);
-  const read = useQuery(signal => RunDecisionAPI.process(runRef, q, signal), [runRef, key, result.meta.snapshot_ref], enabled && !paused);
+  const read = useQuery(signal => RunDecisionAPI.process(runRef, q, signal), [runRef, key, result.meta.snapshot_ref], { enabled: enabled && !paused });
   const detail = read.result, data = detail && detail.data;
   React.useEffect(() => {
     const root = paneRef.current;

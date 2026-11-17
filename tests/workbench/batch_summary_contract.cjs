@@ -1,6 +1,9 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('../../scripts/workbench/compile.cjs');
+// 只替换网络应答：请求照样走真实的 BatchAPI / resource-api、APSWorkbenchTransport 与校验。
+const { routeFetch, browser, deferred } = require('./route_fetch.cjs');
+const { memoryStorage } = require('../_support/memory_storage.cjs');
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
 const files = ['resource-contract.js', 'shared/session/query.js', 'shared/session/command-session.js', 'BatchContract.js', 'BatchTable.jsx', 'BatchWorkspace.jsx'];
 const built = compile({
@@ -9,7 +12,7 @@ const clone = value => JSON.parse(JSON.stringify(value));
 const batchRef = 'a'.repeat(48), operationRef = 'b'.repeat(48), partRef = 'c'.repeat(48);
 const scope = { page: 1, size: 20, sort: 'business_code', direction: 'asc', column_filters: {} };
 const writeContext = { write_token: 'latest-batch', capabilities: { 'batch.delete': true, 'batch.bulk_confirm': true }, blocked_reasons: [] };
-const full = { ref: batchRef, business_code: 'B001', label: '试件', status: 'pending',
+const full = { ref: batchRef, business_code: 'B001', label: '试件', status: 'pending', display_ready_status: 'yes',
   fields: { quantity: 10, due_date: null, priority: 'normal', ready_status: 'yes', ready_date: null, remark: null },
   relationships: { part_ref: partRef, part_no: 'P001', part_name: '试件', operation_count: 1, completed_count: 0, gap_count: 0,
     plan_reference_count: 0, execution_reference_count: 0, material_requirement_count: 0 },
@@ -20,7 +23,7 @@ const full = { ref: batchRef, business_code: 'B001', label: '试件', status: 'p
   materials: { requirements: [] }, template: { complete: true, operation_count: 1, diagnostics: [] } };
 const summary = clone(full); delete summary.operations; delete summary.materials; delete summary.template;
 const envelope = data => ({ ok: true, schema_version: 1, data, warnings: [],
-  meta: { request_ref: 'request', snapshot_ref: 'snapshot', source: 'production', time_basis: 'factory_local', as_of: '2026-10-18T02:00:00' } });
+  meta: { request_ref: '1'.repeat(32), snapshot_ref: 's'.repeat(32), source: 'production', time_basis: 'factory_local', as_of: '2026-10-18T02:00:00' } });
 const listPayload = row => envelope({ entities: [row], create_context: clone(writeContext),
   page: { number: 1, size: 20, total: 1, pages: 1, sort: [{ field: 'business_code', direction: 'asc' }] } });
 function hooks() {
@@ -38,7 +41,7 @@ function hooks() {
     render(fn) { cursor = 0; return fn(); }, flush() { while (effects.length) effects.shift()(); },
     unmount() { effects.length = 0; slots.forEach(slot => { if (slot.cleanup) { slot.cleanup(); slot.cleanup = null; } }); } };
 }
-function environment() {
+function environment(routes = {}) {
   const h = hooks();
   const resourceControls = { Button: 'button', Modal: 'modal', ErrorBox: 'error-box', Icon: 'icon', EmptyState: 'empty', Pager: 'pager' };
   const workbenchFormat = { number: String, date: value => value || '未填写' };
@@ -55,6 +58,7 @@ function environment() {
     },
   };
   const context = vm.createContext({ window, React: h.React, AbortController, DOMException });
+  browser(context, routeFetch(routes));
   built.outputs.forEach(file => vm.runInContext(file.code, context, { filename: file.path }));
   const getMod = rel => context.__wbRuntime.getModule(rel);
   return { h, window, context, getMod, resourceControls, workbenchFormat, workbenchTerms, workbenchGuards };
@@ -68,15 +72,16 @@ function text(node) {
   if (Array.isArray(node)) return node.map(text).join('');
   return node && typeof node === 'object' ? text(node.props.children) : node == null || node === false ? '' : String(node);
 }
-const turns = async () => { for (let index = 0; index < 8; index++) await Promise.resolve(); };
-function overview(adapter, initialRow = summary) {
-  const env = environment(), { BatchTable } = env.getMod('BatchTable.jsx');
-  const table = env.h.render(() => BatchTable({ adapter, rows: [initialRow], scope, selected: [], setSelected() {} }));
+// 网络应答经 Response.json() 解析，要让出一次宏任务才能落到 useQuery。
+const turns = async () => { for (let index = 0; index < 8; index++) await Promise.resolve(); await new Promise(resolve => setTimeout(resolve, 0)); };
+function overview(routes, initialRow = summary) {
+  const env = environment(routes), { BatchTable } = env.getMod('BatchTable.jsx');
+  const table = env.h.render(() => BatchTable({ rows: [initialRow], scope, selected: [], setSelected() {} }));
   const child = nodes(table).find(node => typeof node.type === 'function' && node.type.name === 'OperationOverview');
-  assert.ok(child, 'Every batch row owns its operation overview'); assert.equal(child.props.adapter, adapter);
+  assert.ok(child, 'Every batch row owns its operation overview');
   env.h.unmount(); const h = hooks(); env.context.React = h.React;
   let row = initialRow, node;
-  const render = () => { node = h.render(() => child.type({ adapter, row })); return node; };
+  const render = () => { node = h.render(() => child.type({ row })); return node; };
   return { ...env, h, render, flush: () => h.flush(), setRow(value) { row = value; },
     toggle(open) { node.props.onToggle({ currentTarget: { open } }); return render(); } };
 }
@@ -84,8 +89,8 @@ async function calendarRefreshContracts() {
   const outputs = compile({
     sources: ['OperatorCalendarPanel.jsx', 'ResourceWorkspace.jsx', 'ResourceCalendar.jsx', 'ResourceLive.jsx']
       .map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
-  function calendarEnvironment() {
-    const env = environment();
+  function calendarEnvironment(routes) {
+    const env = environment(routes);
     Object.assign(env.resourceControls, { Issues: 'issues', Field: 'field' });
     Object.assign(env.workbenchFormat, { dateTime: String });
     Object.assign(env.workbenchTerms, { personal_calendar: '个人日历', data_as_of: value => value });
@@ -111,23 +116,28 @@ async function calendarRefreshContracts() {
   function monthPayload(month, note = 'old', explicit = true) {
     const day = { date: stamp(month), day: 1, calendar_ref: explicit ? note : null, explicit, note,
       fields: { type: 'rest', periods: [], eff: '100', note } };
-    return { data: { ...month, days: [day], cells: [day], as_of: '2026-10-20T09:00:00',
+    return envelope({ ...month, days: [day], cells: [day], as_of: '2026-10-20T09:00:00',
       stats: { configured: explicit ? 1 : 0, work_days: 0, weekend_rest: 1, overrides: 0 }, previous_month: null, next_month: null,
-      write_context: { write_token: 'current', capabilities: { 'operator.calendar_upsert': true, 'operator.calendar_delete': true, 'operator.calendar_range_clear': true }, blocked_reasons: [] } },
-      meta: { source: 'production' }, warnings: [] };
+      write_context: { write_token: 'current', capabilities: { 'operator.calendar_upsert': true, 'operator.calendar_delete': true, 'operator.calendar_range_clear': true }, blocked_reasons: [] } });
   }
+  const askedMonth = call => ({ year: Number(call.query.year), month: Number(call.query.month) });
+  // 会话存储里只放这一条附属资料的待确认记录；读到它就交给 ResourceLive 的恢复入口。
+  const calendarFilesKey = 'aps_workbench_resource_pending_v1_work_calendar_files';
   for (const action of ['calendar_upsert', 'calendar_delete', 'calendar_range_clear']) {
-    const env = calendarEnvironment(), { OperatorCalendarPanel } = env.getMod('OperatorCalendarPanel.jsx'), requests = [], submissions = [];
+    const requests = [], submissions = [];
+    const env = calendarEnvironment({
+      'GET /api/workbench/v1/entities/operator/*/calendar/month': call => {
+        const month = askedMonth(call);
+        if (!requests.length) { requests.push({ path: call.path, month, signal: call.signal }); return monthPayload(month); }
+        const answer = deferred(); requests.push({ path: call.path, month, signal: call.signal, ...answer }); return answer.promise;
+      },
+      'POST /api/workbench/v1/entities/operator/*/calendar/range-preview': call =>
+        envelope({ count: 1, days: [{ date: call.body.input.start_date }], range: call.body.input, write_context: {} })
+    }), { OperatorCalendarPanel } = env.getMod('OperatorCalendarPanel.jsx');
     let parentRetries = 0;
     const command = { phase: 'idle', locked: false, reset: () => true, clearRejection: () => false, submit: (...args) => submissions.push(args) };
     const props = { entity: { ref: batchRef, business_code: 'OP-1' }, source: 'production', command,
-      onClose() {}, onRefresh: () => { parentRetries++; }, refreshState: {}, Feedback: 'feedback', adapter: {
-        query(path, month, signal) {
-          if (!requests.length) { requests.push({ path, month, signal }); return Promise.resolve(monthPayload(month)); }
-          return new Promise((resolve, reject) => requests.push({ path, month, signal, resolve, reject }));
-        },
-        async preview(path, body) { return { data: { count: 1, days: [{ date: body.input.start_date }], range: body.input, write_context: {} } }; }
-      } };
+      onClose() {}, onRefresh: () => { parentRetries++; }, refreshState: {}, Feedback: 'feedback' };
     let tree;
     const render = () => { tree = env.h.render(() => OperatorCalendarPanel(props)); env.h.flush(); return tree; };
     const settle = async () => { for (let index = 0; index < 3; index++) { render(); await turns(); } return render(); };
@@ -167,30 +177,18 @@ async function calendarRefreshContracts() {
     render(); await turns(); assert.equal(requests.length, 3); env.h.unmount();
   }
   for (const restored of [false, true]) {
-    const env = calendarEnvironment(), host = env.h, workspace = hooks(), calendar = hooks();
+    let months = 0, summaries = 0, note = 'old', rootTree, calendarTree, calendarProps;
+    const env = calendarEnvironment({
+      'GET /api/workbench/v1/resources/summary': () => { summaries++; return envelope({ counts: {} }); },
+      'GET /api/workbench/v1/calendar/month': call => { months++; return monthPayload(askedMonth(call), note); }
+    }), host = env.h, workspace = hooks(), calendar = hooks();
     const { ResourceLive } = env.getMod('ResourceLive.jsx'), { ResourceWorkspace } = env.getMod('ResourceWorkspace.jsx'), { ResourceCalendar } = env.getMod('ResourceCalendar.jsx');
     const idle = { phase: 'idle', locked: false, reset: () => true }, calendarCommand = { ...idle };
-    let pending = restored ? { kind: 'work_calendar_import', action: 'confirm', request_key: 'old-import' } : null;
-    let months = 0, summaries = 0, note = 'old', rootTree, calendarTree, calendarProps;
-    const rawQuery = env.getMod('shared/session/query.js').useQuery;
+    const session = env.window.sessionStorage = memoryStorage(restored
+      ? [[calendarFilesKey, JSON.stringify({ kind: 'work_calendar_import', action: 'confirm', request_key: 'resource-' + 'e'.repeat(48) })]] : []);
+    const calendarApi = env.getMod('resource-api.js').forNamespace('calendar');
     env.context.__wbRuntime.setStubs({
-      'shared/session/command-session.js': {
-        useCommand: adapter => adapter.family === 'calendar' ? calendarCommand : idle,
-      },
-      'shared/session/query.js': { useQuery: rawQuery },
-      'resource-api.js': {
-        useSummary: (adapter, revision, enabled = true) => rawQuery(signal => adapter.summary(signal), [adapter, revision], enabled),
-        useCounts: (adapter, revision) => ({ summary: rawQuery(signal => adapter.summary(signal), [adapter, revision]) }),
-        create(family) {
-          return {
-            family,
-            readPending: () => family === 'work_calendar_files' ? pending : null,
-            async summary() { summaries++; return { data: {} }; },
-            async query(path, month) { months++; return monthPayload(month, note); }
-          };
-        }
-      },
-      'ProcessAPI.js': { create: () => ({ readPending: () => null }) },
+      'shared/session/command-session.js': { useCommand: api => api === calendarApi ? calendarCommand : idle },
     });
     const now = new Date(), month = { year: now.getFullYear(), month: now.getMonth() + 1 };
     const props = { initialContext: restored ? undefined : { source: 'production', kind: 'calendar', month: stamp(month).slice(0, 7) } };
@@ -215,7 +213,7 @@ async function calendarRefreshContracts() {
       calendarProps.onOpenFile('import', { source: 'production', month }); await settle();
     }
     const file = find(rootTree, 'calendar-file-actions'); assert(file, 'A normal or restored import is owned by the shared host');
-    pending = null; note = 'imported';
+    session.removeItem(calendarFilesKey); note = 'imported';
     file.props.onCommitted({ result: 'committed', receipt_ref: 'import-receipt' }); await settle();
     assert.equal(months, 2); assert.equal(summaries, 2, 'Each import refreshes the month and shared summary once');
     assert.equal(calendarProps.externalRevision, 1);
@@ -229,31 +227,16 @@ async function calendarRefreshContracts() {
     calendar.unmount(); workspace.unmount(); host.unmount();
   }
   {
-    const env = calendarEnvironment(), host = env.h, workspace = hooks(), calendar = hooks();
+    const env = calendarEnvironment({
+      'GET /api/workbench/v1/resources/summary': () => envelope({ counts: {} }),
+      'GET /api/workbench/v1/calendar/month': call => monthPayload(askedMonth(call), 'ok')
+    }), host = env.h, workspace = hooks(), calendar = hooks();
     const { ResourceLive } = env.getMod('ResourceLive.jsx'), { ResourceWorkspace } = env.getMod('ResourceWorkspace.jsx'), { ResourceCalendar } = env.getMod('ResourceCalendar.jsx');
     const idle = { phase: 'idle', locked: false, reset: () => true };
-    let corrupt = true, pendingReads = 0, rootTree;
-    const rawQuery = env.getMod('shared/session/query.js').useQuery;
-    env.context.__wbRuntime.setStubs({
-      'shared/session/command-session.js': { useCommand: () => idle },
-      'shared/session/query.js': { useQuery: rawQuery },
-      'resource-api.js': {
-        useSummary: (adapter, revision, enabled = true) => rawQuery(signal => adapter.summary(signal), [adapter, revision], enabled),
-        useCounts: (adapter, revision) => ({ summary: rawQuery(signal => adapter.summary(signal), [adapter, revision]) }),
-        create(family) {
-          return {
-            family,
-            readPending() {
-              if (family === 'work_calendar_files') { pendingReads++; if (corrupt) throw new Error('记录已损坏'); }
-              return null;
-            },
-            async summary() { return { data: {} }; },
-            async query(path, month) { return monthPayload(month, 'ok'); }
-          };
-        }
-      },
-      'ProcessAPI.js': { create: () => ({ readPending: () => null }) },
-    });
+    let pendingReads = 0, rootTree;
+    const session = env.window.sessionStorage = memoryStorage([[calendarFilesKey, '{记录已损坏']]);
+    session.onAccess = (method, key, phase) => { if (method === 'getItem' && key === calendarFilesKey && phase === 'before') pendingReads++; };
+    env.context.__wbRuntime.setStubs({ 'shared/session/command-session.js': { useCommand: () => idle } });
     function renderCorrupt() {
       env.context.React = host.React; rootTree = host.render(() => ResourceLive({})); host.flush();
       const parent = find(rootTree, ResourceWorkspace);
@@ -269,8 +252,8 @@ async function calendarRefreshContracts() {
     assert.equal(readsAfterBoot <= 3, true, 'Corrupt secondary pending record does not cause an infinite recovery loop');
     await settleCorrupt();
     assert.equal(pendingReads, readsAfterBoot, 'Subsequent renders with navigationReady=true do not re-trigger recovery');
-    assert.equal(find(rootTree, 'error-box').props.error.message, '记录已损坏');
-    corrupt = false;
+    assert.equal(find(rootTree, 'error-box').props.error.message, '读不到上次操作记录，请重新打开页面；暂时不能继续保存。');
+    session.data.delete(calendarFilesKey);
     find(rootTree, 'button', props => text(props.children) === '刷新上次操作记录').props.onClick();
     await settleCorrupt();
     assert.equal(find(rootTree, 'error-box').props.error, undefined);
@@ -284,22 +267,32 @@ async function main() {
   assert.throws(() => B.list(listPayload(summary), { ...scope, snapshot_ref: 'different' }), /批次列表不完整/);
   assert.equal(B.detail(envelope(full), batchRef).data, full);
   assert.throws(() => B.detail(envelope(full), 'd'.repeat(48)), /不是这个批次/);
+  // “齐套显示”列显示有效齐套：后端按物料记录算不出时 display_ready_status 是 null（字段原值仍是 yes），单元格与列筛选值都读作“待核对”。
+  const { BatchTable: ReadyTable } = env.getMod('BatchTable.jsx');
+  const readyPill = row => text(nodes(env.h.render(() => ReadyTable({ rows: [row], scope, selected: [], setSelected() {} })))
+    .filter(node => node.type === 'span' && /^pill /.test(node.props.className))[1]);
+  assert.equal(readyPill({ ...summary, display_ready_status: null }), '待核对');
+  assert.equal(readyPill({ ...summary, display_ready_status: 'partial' }), '部分齐套');
+  const facets = environment({ 'POST /api/workbench/v1/entities/batch/facets': call => envelope({ field: call.body.field, values: ['yes', null], count: 2 }) });
+  const { ColumnFilter } = facets.getMod('BatchTable.jsx');
+  const facetProps = { scope: { ...scope, snapshot_ref: 's'.repeat(32) }, field: 'ready_status', onApply() {}, onClose() {} };
+  facets.h.render(() => ColumnFilter(facetProps)); facets.h.flush(); await turns();
+  assert.deepEqual(nodes(facets.h.render(() => ColumnFilter(facetProps))).filter(node => node.type === 'label').map(text), ['齐套', '待核对']);
+  facets.h.unmount();
   const preview = envelope({ operation: 'batch.bulk_confirm', preview_ref: 'p'.repeat(32), write_context: clone(writeContext), commit_policy: 'atomic',
     action: 'delete', count: 1, rows: [{ entity_ref: batchRef, before: full, after: null }] });
   assert.equal(B.preview(preview, 'bulk', null, { refs: [batchRef], action: 'delete' }).count, 1);
 
-  // The workspace passes the same reader into list rows; its detail route stays separate.
-  const workspace = environment(), adapter = {};
   const wsCommandStub = { useCommand: () => ({ phase: 'idle', locked: false }) };
   const wsQueryStub = { useQuery: () => ({ result: listPayload(summary), loading: false, error: null }) };
-  workspace.context.__wbRuntime.setStubs({
-    'shared/session/command-session.js': wsCommandStub,
-    'shared/session/query.js': wsQueryStub,
-  });
-  const { BatchWorkspace: WsBatchWorkspace } = workspace.getMod('BatchWorkspace.jsx'), { BatchTable: WsBatchTable } = workspace.getMod('BatchTable.jsx');
-  const workspaceNode = workspace.h.render(() => WsBatchWorkspace({ adapter, initialContext: {} }));
-  assert.equal(find(workspaceNode, WsBatchTable).props.adapter, adapter);
-  const links = [], bulkPatches = [], nextWorkspace = environment(), hiddenRef = 'd'.repeat(48);
+  const links = [], bulkPatches = [], hiddenRef = 'd'.repeat(48);
+  const nextWorkspace = environment({ 'POST /api/workbench/v1/entities/batch/bulk-preview': call => {
+    const input = call.body.input;
+    bulkPatches.push(input.patch);
+    return envelope({ operation: 'batch.bulk_confirm', preview_ref: 'p'.repeat(32), write_context: clone(writeContext),
+      commit_policy: 'atomic', action: input.action, count: input.refs.length,
+      rows: input.refs.map(ref => ({ entity_ref: ref, before: { ...full, ref }, after: { ...full, ref } })) });
+  } });
   nextWorkspace.workbenchGuards.confirmLeave = async () => true;
   nextWorkspace.context.__wbRuntime.setStubs({
     'shared/session/command-session.js': { useCommand: () => ({ phase: 'idle', locked: false, reset: () => true }) },
@@ -307,12 +300,7 @@ async function main() {
     'BatchForms.jsx': { Preview: 'batch-preview', default: { Preview: 'batch-preview' } },
   });
   const { BatchWorkspace: NextBatchWorkspace } = nextWorkspace.getMod('BatchWorkspace.jsx'), { BatchTable: NextBatchTable } = nextWorkspace.getMod('BatchTable.jsx');
-  const nextProps = { adapter: { async preview(action, entityRef, input) {
-    bulkPatches.push(input.patch);
-    return envelope({ operation: 'batch.bulk_confirm', preview_ref: 'p'.repeat(32), write_context: clone(writeContext),
-      commit_policy: 'atomic', action: input.action, count: input.refs.length,
-      rows: input.refs.map(ref => ({ entity_ref: ref, before: { ...full, ref }, after: { ...full, ref } })) });
-  } }, onNav: (...args) => links.push(args), initialContext: {} };
+  const nextProps = { onNav: (...args) => links.push(args), initialContext: {} };
   let nextTree = nextWorkspace.h.render(() => NextBatchWorkspace(nextProps));
   find(nextTree, NextBatchTable).props.setSelected([batchRef, hiddenRef]);
   nextTree = nextWorkspace.h.render(() => NextBatchWorkspace(nextProps));
@@ -348,26 +336,39 @@ async function main() {
   nextWorkspace.h.unmount();
   // A return entry is always { view, context? }; the removed bare-string form is not restored.
   for (const returnTarget of [{ view: 'run' }, { view: 'dashboard', context: { tab: 'analysis' } }]) {
-    const returning = environment();
+    const returning = environment(), snapshots = [];
     returning.context.__wbRuntime.setStubs({
       'shared/session/command-session.js': wsCommandStub,
       'shared/session/query.js': wsQueryStub,
+      'WorkbenchPageContext.jsx': { useSnapshot(value, enabled) { if (enabled) snapshots.push(value); } },
     });
     const { BatchWorkspace: RetBatchWorkspace } = returning.getMod('BatchWorkspace.jsx'), { BatchTable: RetBatchTable } = returning.getMod('BatchTable.jsx');
-    const returnProps = { adapter, initialContext: { return_to: returnTarget }, onNav: (...args) => links.push(args) };
+    const returnProps = { initialContext: { focus: 'gaps', batchIds: ['B1'], return_to: returnTarget }, onNav: (...args) => links.push(args) };
     let returned = returning.h.render(() => RetBatchWorkspace(returnProps));
     find(returned, RetBatchTable).props.setSelected([hiddenRef]);
     returned = returning.h.render(() => RetBatchWorkspace(returnProps));
     find(returned, 'button', props => ['返回排产', '返回值班台'].includes(text(props.children))).props.onClick();
     assert.deepEqual(clone(links.at(-1)), clone([returnTarget.view, returnTarget.context]),
-      'Returning to a source preserves its original navigation protocol'); returning.h.unmount();
+      'Returning to a source preserves its original navigation protocol');
+    // The return envelope is remembered at the top level like every page, beside the restorable read view and
+    // independent of which batch is open; restoring that memory keeps the same exit.
+    const remembered = snapshots.at(-1);
+    assert.deepEqual(Object.keys(remembered), ['read_view', 'return_to']); assert.strictEqual(remembered.return_to, returnTarget);
+    assert(!('source_context' in remembered.read_view)); returning.h.unmount();
+    const restoring = environment();
+    restoring.context.__wbRuntime.setStubs({ 'shared/session/command-session.js': wsCommandStub, 'shared/session/query.js': wsQueryStub });
+    const restored = restoring.h.render(() => restoring.getMod('BatchWorkspace.jsx').BatchWorkspace({ ...returnProps, initialContext: remembered }));
+    find(restored, 'button', props => ['返回排产', '返回值班台'].includes(text(props.children))).props.onClick();
+    assert.deepEqual(clone(links.at(-1)), clone([returnTarget.view, returnTarget.context]), 'Page memory keeps the return chain');
+    restoring.h.unmount();
   }
 
-  const requests = [], reader = { detail(kind, ref, signal) { return new Promise((resolve, reject) => requests.push({ kind, ref, signal, resolve, reject })); } };
+  const requests = [], reader = { 'GET /api/workbench/v1/entities/batch/*': call => {
+    const answer = deferred(); requests.push({ path: call.path, signal: call.signal, ...answer }); return answer.promise; } };
   const ui = overview(reader);
   ui.render(); ui.flush(); await turns(); assert.equal(requests.length, 0, 'Collapsed rows do not request details');
   ui.toggle(true); ui.flush(); await turns(); assert.match(text(ui.render()), /正在读取工序/);
-  assert.equal(requests.length, 1); assert.equal(requests[0].kind, 'batch'); assert.equal(requests[0].ref, batchRef);
+  assert.equal(requests.length, 1); assert.equal(requests[0].path, '/api/workbench/v1/entities/batch/' + batchRef);
   assert.equal(requests[0].signal.aborted, false);
   requests[0].resolve(envelope(clone(full))); await turns(); assert.match(text(ui.render()), /10 · 车削/);
   ui.toggle(false); ui.flush(); ui.toggle(true); ui.flush(); await turns();

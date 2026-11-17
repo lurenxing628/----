@@ -1,11 +1,14 @@
 import React, { createPortal } from './shared/runtime/react.js';
 import C from './resource-contract.js';
 import P from './ProcessContract.js';
+import APSProcessAPI from './ProcessAPI.js';
+import APSResourceAPI from './resource-api.js';
 import { useQuery } from './shared/session/query.js';
 import E from './ProcessStageEditor.jsx';
-import { Button, Modal, ErrorBox, Issues, Icon } from './ResourceControls.jsx';
+import { Button, FieldCell, Modal, ErrorBox, Issues, Icon } from './ResourceControls.jsx';
 import { Pager as ResourceTablePager } from './ResourceTables.jsx';
 import ProcessOpTypeCreate from './ProcessOpTypeCreate.jsx';
+import { failure } from './shared/contract/kit.js';
 
 function build(entity) {
   return Object.fromEntries(E.active(entity).map(row => [row.ref, { ref: row.ref, source: row.source, op_type_ref: row.op_type_ref,
@@ -46,29 +49,24 @@ function supplierReason(row, targetCheck) {
   const unsupported = targetCheck.members.filter(item => !refs.has(item.op_type_ref));
   return unsupported.length ? '不能承接：' + unsupported.map(item => '工序 ' + item.sequence + ' ' + item.op_type_label).join('、') + '。' : '';
 }
-function locateFailure(error, entity, pageSize) {
-  const paths = C.fieldErrors(error).map(row => row.path);
-  const index = entity.operations.findIndex(row => paths.some(path => path === 'operations.' + row.ref + '.supplier_ref'));
-  if (index >= 0) error.locate_page = Math.floor(index / pageSize) + 1;
-  return error;
-}
-const complete = row => ['internal', 'external'].includes(row.source) && !!row.op_type_ref && (row.source === 'internal' || !!row.supplier_ref);
-function input(entity, draft, pageSize) {
+// 归属页负责的工序项；后端的供应商拒绝报 operations.<工序编号>.supplier_ref，本地缺项按第一项缺的报。
+const rowKeys = ['source', 'op_type_ref', 'supplier_ref'];
+const missing = row => !['internal', 'external'].includes(row.source) ? 'source' : !row.op_type_ref ? 'op_type_ref'
+  : row.source === 'external' && !row.supplier_ref ? 'supplier_ref' : null;
+function input(entity, draft) {
   const operations = E.active(entity).map(row => {
-    const current = draft[row.ref];
-    if (!complete(current)) {
-      const error = C.failure('工序 ' + row.sequence + ' 请补齐归属、工种和外协供应商。', [{ path: 'operations.' + row.sequence, message: '工序 ' + row.sequence + ' 资料未填完整。' }]);
-      error.locate_page = Math.floor(entity.operations.indexOf(row) / pageSize) + 1; throw error;
-    }
+    const current = draft[row.ref], key = missing(current);
+    if (key) throw failure('工序 ' + row.sequence + ' 请补齐归属、工种和外协供应商。',
+      { fields: [{ path: 'operations.' + row.ref + '.' + key, message: '工序 ' + row.sequence + ' 资料未填完整。' }] });
     return { ref: row.ref, source: current.source, op_type_ref: current.op_type_ref, supplier_ref: current.source === 'internal' ? null : current.supplier_ref, confirmed: true };
   });
-  if (!operations.length) throw C.failure('尚无有效工序，不能确认归属。');
+  if (!operations.length) throw failure('尚无有效工序，不能确认归属。');
   return { operations, discard_group_refs: [] };
 }
-function ProcessSourcePicker({ adapter, target, onSelect, onClose, disabled }) {
+function ProcessSourcePicker({ target, onSelect, onClose, disabled }) {
   const [search, setSearch] = React.useState(''), [scope, setScope] = React.useState({ query: '', page: 1, size: 50 });
-  const read = useQuery(signal => adapter.choices(target.kind, { ...scope, ...(target.kind === 'op_type' ? { category: target.source } : {}) }, signal),
-    [adapter, target.kind, target.source, scope]);
+  const read = useQuery(signal => APSResourceAPI.forNamespace('resources').choices(target.kind, { ...scope, ...(target.kind === 'op_type' ? { category: target.source } : {}) }, signal),
+    [target.kind, target.source, scope]);
   const data = read.result && read.result.data, title = target.kind === 'op_type' ? P.sourceLabel(target.source) + '工种' : '供应商';
   const targetCheck = React.useMemo(() => prepareSupplierTarget(target), [target]);
   const reasonsByRef = React.useMemo(() => {
@@ -94,8 +92,8 @@ function ProcessSourcePicker({ adapter, target, onSelect, onClose, disabled }) {
           onSize={size => setScope(current => ({ ...current, size, page: 1, snapshot_ref: undefined }))} /></>}
     </div></Modal>;
 }
-function ProcessSourceEditor({ adapter, result, command, disabled, saved, onDirty, onOverlay, onResourceCommitted }) {
-  const model = E.useDraft({ result, adapter, stage: 'source', build, reconcile, saved, onDirty });
+function ProcessSourceEditor({ result, command, disabled, saved, onDirty, onOverlay, onResourceCommitted }) {
+  const model = E.useDraft({ result, stage: 'source', build, reconcile, saved, onDirty });
   const entity = model.base.data, draft = model.draft, rows = entity.operations, paging = E.usePage(rows);
   const groups = React.useMemo(() => P.groupIndex(entity.external_groups), [entity.external_groups]);
   const [picker, setPicker] = React.useState(null), [create, setCreate] = React.useState(null);
@@ -109,7 +107,9 @@ function ProcessSourceEditor({ adapter, result, command, disabled, saved, onDirt
   React.useEffect(() => () => { if (request.current) request.current.abort(); }, []);
   // The parent overlay follows the open dialogs, including a remount or unmount while one is open.
   React.useEffect(() => { onOverlay(!!picker || !!create); return () => onOverlay(false); }, [!!picker, !!create, onOverlay]);
-  function change(ref, patch) { invalidate(); model.edit(current => ({ ...current, [ref]: { ...current[ref], ...patch } })); }
+  // 改了草稿：旧预检作废，被拒的提交和它的标红一起清掉。
+  function edit(next) { invalidate(); model.edit(next); command.clearRejection(); }
+  function change(ref, patch) { edit(current => ({ ...current, [ref]: { ...current[ref], ...patch } })); }
   function openPicker(row, kind) {
     invalidate();
     const members = supplierMembers(entity, draft, row, groups).map(item => ({ ...item, ...draft[item.ref] }));
@@ -117,8 +117,7 @@ function ProcessSourceEditor({ adapter, result, command, disabled, saved, onDirt
   }
   function closePicker() { setPicker(null); }
   function choose(row) {
-    invalidate();
-    model.edit(current => {
+    edit(current => {
       const next = { ...current }, members = supplierMembers(entity, current, picker, groups);
       if (picker.kind === 'supplier') members.forEach(item => { next[item.ref] = { ...next[item.ref], supplier_ref: row.ref, supplier_label: row.label }; });
       else {
@@ -130,8 +129,7 @@ function ProcessSourceEditor({ adapter, result, command, disabled, saved, onDirt
     closePicker();
   }
   function clearSupplier(row) {
-    invalidate();
-    model.edit(current => {
+    edit(current => {
       const next = { ...current };
       supplierMembers(entity, current, row, groups).forEach(item => { next[item.ref] = { ...next[item.ref], supplier_ref: null, supplier_label: null }; });
       return next;
@@ -142,13 +140,13 @@ function ProcessSourceEditor({ adapter, result, command, disabled, saved, onDirt
     invalidate(); model.setError(null);
     const controller = new AbortController(); request.current = controller;
     try {
-      const body = input(entity, draft, paging.page.size); setChecking(true);
-      const response = P.stagePreview(await adapter.stagePreview(entity.ref, 'source_confirm', body, model.base.meta.snapshot_ref, controller.signal), entity.ref, 'source_confirm');
+      const body = input(entity, draft); setChecking(true);
+      const response = P.stagePreview(await APSProcessAPI.stagePreview(entity.ref, 'source_confirm', body, model.base.meta.snapshot_ref, controller.signal), entity.ref, 'source_confirm');
       if (!controller.signal.aborted && request.current === controller) {
         setPreview({ response, body, base: model.base, draft }); setChecking(false);
         if (commit && !response.data.affected_groups.length) await command.submit('process', 'source_confirm', entity.ref, response.data.write_context, body);
       }
-    } catch (error) { if (!controller.signal.aborted && request.current === controller) { model.setError(locateFailure(error, entity, paging.page.size)); setChecking(false); } }
+    } catch (error) { if (!controller.signal.aborted && request.current === controller) { model.setError(error); setChecking(false); } }
     finally { if (request.current === controller) request.current = null; }
   }
   const affected = preview ? preview.response.data.affected_groups : [], acknowledgement = affected.every(row => discarded.includes(row.ref));
@@ -160,6 +158,8 @@ function ProcessSourceEditor({ adapter, result, command, disabled, saved, onDirt
     await command.submit('process', 'source_confirm', entity.ref, preview.response.data.write_context, { ...preview.body, discard_group_refs: discarded });
   }
   const active = E.active(entity);
+  // 本页检查的错误优先；否则是这道工艺上次提交被拒的错误。
+  const shownError = model.error || command.error;
   return <section data-process-source-editor>
     {active.some(row => draft[row.ref] && row.op_type_ref !== draft[row.ref].op_type_ref) && <p role="status">更换实际工种后，将清除原换型工时、单件工时和本序外协周期，请重新填写并确认。</p>}
     <div className="toolbar"><E.Search paging={paging} disabled={blocked} /><span>共 {active.length} 道有效工序</span><span className="tb-spacer" />
@@ -168,21 +168,22 @@ function ProcessSourceEditor({ adapter, result, command, disabled, saved, onDirt
     <div className="wb-table-frame"><table className="tbl wb-table wb-table--editable" aria-label="归属明细" style={{ minWidth: 950, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{'归属明细'}</caption>
       <thead><tr><th scope="col" style={{ width: 150 }}>工序</th><th scope="col" style={{ width: 160 }}>工种</th><th scope="col" style={{ width: 160 }}>归属</th><th scope="col" style={{ width: 190 }}>供应商</th><th scope="col">保存记录</th></tr></thead><tbody>{paging.rows.map(row => {
         const current = draft[row.ref] || row, inactive = row.status !== 'active', cycle = current.source === row.source && P.groupCycle(row, groups);
-        return <tr key={row.ref} data-process-location={row.ref}><td><b>{row.sequence}</b> {row.label}{cycle && <div className="muted" data-process-cycle-group={row.external_group_ref}>{cycle}</div>}</td><td>{current.op_type_label || '未选工种'}<div><Button icon="search" aria-label={'选择工序 ' + row.sequence + ' 工种'} disabled={editBlocked || inactive || !current.source} onClick={() => openPicker(row, 'op_type')} /></div></td>
-          <td><span className="segm" role="group" aria-label={'工序 ' + row.sequence + ' 归属'}>{['internal', 'external'].map(source => <Button key={source} className={current.source === source ? 'on ' + (source === 'internal' ? 'int' : 'ext') : ''}
-            aria-pressed={current.source === source} disabled={editBlocked || inactive} onClick={() => { if (source !== current.source) change(row.ref, { source, op_type_ref: null, op_type_label: null, supplier_ref: null, supplier_label: null }); }}>{P.sourceLabel(source)}</Button>)}</span>{!current.source && <div>未归类</div>}</td>
-          <td>{current.source === 'internal' ? '不适用' : <>{current.supplier_label || '未选供应商'}<div><Button icon="search" aria-label={'选择工序 ' + row.sequence + ' 供应商'} disabled={editBlocked || inactive || current.source !== 'external'} onClick={() => openPicker(row, 'supplier')} />
+        const at = key => 'operations.' + row.ref + '.' + key;
+        return <tr key={row.ref} data-process-location={row.ref}><td><b>{row.sequence}</b> {row.label}{cycle && <div className="muted" data-process-cycle-group={row.external_group_ref}>{cycle}</div>}</td><td><FieldCell path={at('op_type_ref')} error={shownError}><span>{current.op_type_label || '未选工种'}</span></FieldCell><div><Button icon="search" aria-label={'选择工序 ' + row.sequence + ' 工种'} disabled={editBlocked || inactive || !current.source} onClick={() => openPicker(row, 'op_type')} /></div></td>
+          <td><FieldCell path={at('source')} error={shownError}><span className="segm" role="group" aria-label={'工序 ' + row.sequence + ' 归属'}>{['internal', 'external'].map(source => <Button key={source} className={current.source === source ? 'on ' + (source === 'internal' ? 'int' : 'ext') : ''}
+            aria-pressed={current.source === source} disabled={editBlocked || inactive} onClick={() => { if (source !== current.source) change(row.ref, { source, op_type_ref: null, op_type_label: null, supplier_ref: null, supplier_label: null }); }}>{P.sourceLabel(source)}</Button>)}</span></FieldCell>{!current.source && <div>未归类</div>}</td>
+          <td>{current.source === 'internal' ? '不适用' : <><FieldCell path={at('supplier_ref')} error={shownError}><span>{current.supplier_label || '未选供应商'}</span></FieldCell><div><Button icon="search" aria-label={'选择工序 ' + row.sequence + ' 供应商'} disabled={editBlocked || inactive || current.source !== 'external'} onClick={() => openPicker(row, 'supplier')} />
             {current.supplier_ref && <Button icon="x" aria-label={'清除工序 ' + row.sequence + ' 供应商'} title={row.external_group_ref ? '清除本外协段所有工序的供应商' : '清除供应商'} disabled={editBlocked || inactive} onClick={() => clearSupplier(row)} />}</div>{row.external_group_ref && <div className="muted">选择或清除供应商会应用到本外协段。</div>}</>}</td>
           <td>{inactive ? '已停用工序' : <div className="muted"><E.Confirmation record={row.confirmation.source} /></div>}<Issues issues={row.issues} /></td></tr>;
       })}{!paging.rows.length && <tr><td colSpan={5}>{rows.length ? '没有匹配的工序。' : '尚无工序记录。'}</td></tr>}</tbody></table></div><E.Pager paging={paging} disabled={blocked} />
     <E.Groups rows={displayGroups} affected={affected.map(row => row.ref)} discarded={discarded} onDiscard={preview ? setDiscarded : undefined} disabled={blocked} />
     {entity.external_groups.length > 0 && <p className="muted">需要让段内工序改用不同供应商或改为自制时，请先到工时定额页管理、拆分外协段。</p>}
     {preview && affected.length > 0 && <><Issues issues={preview.response.warnings} /><p role="status">本次修改将解除 {affected.length} 个外协组，请确认下方列出的变化。</p></>}
-    <E.Feedback model={model} disabled={blocked || checking} paging={paging} />
+    <E.Feedback model={model} disabled={blocked || checking} paging={paging} page={E.errorPage(shownError, entity.operations, paging.page.size, rowKeys)} />
     <div className="pd-foot"><span className="muted">保存全部 {active.length} 道有效工序，包含其他页和筛选隐藏的工序。</span>
       <Button icon="check" className="btn primary" busy={checking} disabled={blocked} reason={saveReason} onClick={save}>保存归属并继续</Button></div>
-    {picker && createPortal(<div className="plana process-detail"><ProcessSourcePicker adapter={adapter} target={picker} onSelect={choose} onClose={closePicker} disabled={blocked} /></div>, document.body)}
-    {create && createPortal(<div className="plana process-detail"><ProcessOpTypeCreate adapter={adapter.resourceAdapter} onClose={() => setCreate(null)} onCommitted={receipt => { invalidate(); model.reload(); if (onResourceCommitted) onResourceCommitted(receipt); }} /></div>, document.body)}
+    {picker && createPortal(<div className="plana process-detail"><ProcessSourcePicker target={picker} onSelect={choose} onClose={closePicker} disabled={blocked} /></div>, document.body)}
+    {create && createPortal(<div className="plana process-detail"><ProcessOpTypeCreate onClose={() => setCreate(null)} onCommitted={receipt => { invalidate(); model.reload(); if (onResourceCommitted) onResourceCommitted(receipt); }} /></div>, document.body)}
   </section>;
 }
 

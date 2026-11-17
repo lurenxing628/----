@@ -1,16 +1,16 @@
 import React from './shared/runtime/react.js';
-import OutsourcingContract from './OutsourcingContract.js';
-import OutsourcingSession from './OutsourcingSession.js';
-import OutsourcingControls from './OutsourcingControls.jsx';
+import C from './OutsourcingContract.js';
+import S from './OutsourcingSession.js';
+import P from './OutsourcingControls.jsx';
 import { Button, ErrorBox, Issues, EmptyState } from './ResourceControls.jsx';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
-
-const C = OutsourcingContract, S = OutsourcingSession, P = OutsourcingControls;
+import { ref48, failure } from './shared/contract/kit.js';
+import { useQuery } from './shared/session/query.js';
 
 function Records({ selected, revision, onEdit, onClose, blocked }) {
   const [q, setQuery] = React.useState({ page: 1, size: 10 });
-  const read = S.useRead(signal => C.read('history', q, selected, signal), [q, selected, revision]);
+  const read = useQuery(signal => C.read('history', q, selected, signal), [q, selected, revision]);
   const result = read.result, data = result && result.data, item = data && data.item;
   function reload() { const next = { ...q, page: 1 }; delete next.snapshot_ref; setQuery(next); }
   function change(patch, paging = false) {
@@ -36,11 +36,10 @@ function Content({ outsourcingRef, onUpdated }) {
   const command = S.useCommand();
   const [q, setQuery] = React.useState(() => ({ page: 1, size: 10, status: 'all' }));
   const [selected, setSelected] = React.useState(outsourcingRef || null), [dialog, setDialog] = React.useState(null), [revision, refresh] = React.useReducer(n => n + 1, 0);
-  const read = S.useRead(signal => C.read('receipts', q, undefined, signal), [q, revision]);
+  // 刷新、换筛选、翻页期间继续显示上一次读到的列表，只标 aria-busy，不把整块清空：保留键固定不变。
+  const read = useQuery(signal => C.read('receipts', q, undefined, signal), [q, revision], { keep: 'receipts' });
   const result = read.result, blocked = command.busy || !!command.saved || !!command.storageError;
-  // 刷新期间继续显示上一次读到的列表，只标 aria-busy，不把整块清空。
-  const last = React.useRef(null); if (result) last.current = result;
-  const shown = result || (read.loading && last.current) || null, data = shown && shown.data;
+  const shown = read.shown, data = shown && shown.data;
   const filterNames = { awaiting: '待回厂', overdue: '超期未回', returned: '已回厂' };
   function change(patch, paging = false) {
     const next = { ...q, ...patch, page: paging ? patch.page : 1 }; delete next.snapshot_ref;
@@ -82,7 +81,7 @@ function Content({ outsourcingRef, onUpdated }) {
 }
 
 function OutsourcingWorkspace({ outsourcingRef, onUpdated }) {
-  if (outsourcingRef !== undefined && !C.ref(outsourcingRef)) return <ErrorBox error={new Error('本页数据已过期，请刷新后重试。')} />;
+  if (outsourcingRef !== undefined && !ref48(outsourcingRef)) return <ErrorBox error={failure('本页数据已过期，请刷新后重试。')} />;
   return <Content key={outsourcingRef || ''} outsourcingRef={outsourcingRef} onUpdated={onUpdated} />;
 }
 

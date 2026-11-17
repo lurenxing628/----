@@ -1,10 +1,9 @@
 import React from './shared/runtime/react.js';
-import ResourceControls from './ResourceControls.jsx';
-import ActualGanttModel from './ActualGanttModel.js';
+import { Button, Icon, TimelineZoom } from './ResourceControls.jsx';
+import M from './ActualGanttModel.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 
-const { Button, Icon, TimelineZoom } = ResourceControls, M = ActualGanttModel;
-function Toolbar({ view, patch, model, data, zoom, width, onZoom, onFit, onLocate, onExport, busy }) {
+function Toolbar({ view, patch, model, data, zoom, width, onZoom, onFit, onLocate, onExport, exportReady, busy }) {
   const allCollapsed = model.groups.length > 0 && model.groups.every(g => view.collapsed[g.id]);
   const counts = React.useMemo(() => {
     const counts = { all: data.items.length, finishLate: 0, unclosed: 0, forecastLate: 0 };
@@ -23,7 +22,7 @@ function Toolbar({ view, patch, model, data, zoom, width, onZoom, onFit, onLocat
       <label className="fg-search"><Icon name="search" /><input type="search" aria-label="搜索现场甘特" placeholder="批次 / 工序 / 设备 / 人员" maxLength={200} value={view.query} onChange={e => patch({ query: e.target.value })} /></label>
       <span className="fg-muted" data-actual-count>{model.groups.length} 组 · {model.items.length} / {data.task_count} 道工序</span>
       <label className="fg-late-filter">{WorkbenchTerms.overdue}<select aria-label={WorkbenchTerms.overdue + '筛选'} value={view.late} onChange={e => patch({ late: e.target.value })}>{Object.entries(M.lateLabels).map(([key, label]) => <option key={key} value={key}>{label} ({counts[key]})</option>)}</select></label>
-      <Button transfer="export" busy={busy} disabled={!model.items.length || data.availability.state !== 'available'} onClick={onExport}>导出</Button>
+      <Button transfer="export" busy={busy} disabled={!exportReady || !model.items.length || data.availability.state !== 'available'} onClick={onExport}>导出</Button>
     </div>
     <div className="fg-toolbar-chart"><div className="fg-legend"><span className="fg-lg"><i className="fg-sw-plan" />原计划</span><span className="fg-lg"><i className="fg-sw-act" />实际报工</span><span className="fg-lg"><i className="fg-sw-remaining" />已有剩余安排</span>
       </div>

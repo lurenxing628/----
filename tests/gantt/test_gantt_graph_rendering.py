@@ -42,31 +42,29 @@ for (const isCandidate of [false,true]) {
   const component=isCandidate?'RunCandidateGantt':'PlanGantt', data=isCandidate?candidate:plan;
   const model=h.module(isCandidate?'RunCandidateModel.js':'PlanGanttModel.js');
   const Component=h.module(component+'.jsx').default;
-  const choices=[], props={data,prepared:h.prepare(model,data),...(isCandidate?{}:{graph:GanttGraph.create(data.gantt_graph)}),query:'',selected:null,onSelect:(task,before)=>choices.push(isCandidate?task:{task,before}),
+  const choices=[], props={data,prepared:h.prepare(model,data),...(isCandidate?{}:{graph:GanttGraph.create(data.gantt_graph),baselineSlice:h.slice(),graphSlice:h.slice()}),query:'',selected:null,onSelect:(task,before)=>choices.push(isCandidate?task:{task,before}),
     onQuery:()=>{},asOf:'2026-05-11T12:00:00'};
-  const render=states=>h.render(Component,props,states||{});
   const edges=tree=>h.walk(tree).filter(node=>node.props['data-gantt-edge']);
-  let tree=render();
+  const gantt=h.mount(Component,props);
+  let tree=gantt.tree;
   assert.equal(edges(tree).length,0,component+' starts with clear critical marks and no global lines');
   assert(h.walk(tree).some(node=>node.props.className==='wb-gantt-route-caption'),'The hover caption reserves its slot before interaction');
   assert(h.walk(tree).some(node=>node.type==='button'&&h.text(node.children)==='清除工艺聚焦'&&node.props.disabled),'The clear action reserves its slot before interaction');
   if (!isCandidate) assert.equal(h.walk(tree).filter(node=>node.props['data-gantt-critical']).length,3);
-  const target=h.walk(tree).find(node=>isCandidate?node.props['data-candidate-lane']:
+  const target=tree=>h.walk(tree).find(node=>isCandidate?node.props['data-candidate-lane']:
     node.props['data-plan-task']===data.tasks[1].task_ref);
   const pointer={clientX:300,clientY:20};
-  (isCandidate?target.props.onMouseMove:target.props.onMouseEnter)(pointer);
-  const hover=h.updates().find(update=>update.name===component&&update.value&&
-    (isCandidate?update.value.taskRef:update.value.task));
-  assert(hover,component+' hover reaches the owning component');
-  tree=render({[component]:{[hover.index]:hover.value}});
+  (isCandidate?target(tree).props.onMouseMove:target(tree).props.onMouseEnter)(pointer);
+  // The pointer reaches the owning gantt: its route caption and related lines follow the hovered task.
+  tree=gantt.update();
   assert.equal(edges(tree).filter(node=>node.props['data-gantt-edge-kind']==='related').length,2);
   assert(h.text(tree).includes('完整工艺')&&h.text(tree).includes('3 道'));
   if (!isCandidate) assert.equal(h.walk(tree).filter(node=>node.props['data-gantt-related']).length,3);
-  target.props.onClick(pointer);
+  target(tree).props.onClick(pointer);
   assert.equal(choices.length,1);
-  props.selected=choices[0];
-  // No hover override: after the mouse leaves, the persisted selection owns the route.
-  tree=render();
+  // After the mouse leaves, the persisted selection owns the route.
+  target(gantt.update()).props.onMouseLeave();
+  tree=gantt.render({...props,selected:choices[0]});
   assert.equal(edges(tree).filter(node=>node.props['data-gantt-edge-kind']==='related').length,2);
   if (!isCandidate) assert.equal(h.walk(tree).filter(node=>node.props['data-gantt-related']).length,3);
 }
@@ -95,7 +93,7 @@ try {
     const Component=h.module(isCandidate?'RunCandidateGantt.jsx':'PlanGantt.jsx').default;
     const model=h.module(isCandidate?'RunCandidateModel.js':'PlanGanttModel.js');
     const tree=h.render(Component,{
-      data,prepared:h.prepare(model,data),...(isCandidate?{}:{graph:GanttGraph.create(data.gantt_graph)}),query:'',selected:isCandidate?task:{task,before:false},onSelect:()=>{},onQuery:()=>{},asOf:'2026-05-11T12:00:00'});
+      data,prepared:h.prepare(model,data),...(isCandidate?{}:{graph:GanttGraph.create(data.gantt_graph),baselineSlice:h.slice(),graphSlice:h.slice()}),query:'',selected:isCandidate?task:{task,before:false},onSelect:()=>{},onQuery:()=>{},asOf:'2026-05-11T12:00:00'});
     const nodes=h.walk(tree), rows=nodes.filter(node=>node.props.className===(isCandidate?'rc-lane':'plan-lane'));
     const slices=nodes.filter(node=>node.props['data-gantt-graph-lines']);
     assert.equal(rows.length,3); assert.equal(slices.length,rows.length,'Printing must not keep an independently paginating whole-chart SVG');
@@ -143,29 +141,27 @@ return true;
 
 def test_field_detail_keeps_positive_microsecond_interval_distinct_from_point():
     result = run_current_js(r"""
-const APSResourceSession=h.module('shared/session/query.js'),
-  FieldContract=h.module('FieldContract.js'), FieldDetail=h.module('FieldDetail.jsx').default;
-const ref=h.reference(100),task={task_ref:ref,plan_ref:ref,operation_ref:ref,
+const FieldDetail=h.module('FieldDetail.jsx').default;
+const ref=h.reference(100),snapshot='f'.repeat(32),task={task_ref:ref,plan_ref:ref,operation_ref:ref,
   planned_start:'2026-10-12T08:00:00.000001',planned_end:'2026-10-12T08:00:00.000002',
   piece_id:null,quantity:1,batch_quantity:1,quantity_basis:'run_admission',quantity_reason:null,batch_id:'B1',operation_label:'精加工',
   execution:{operation_ref:ref,comparison_task_ref:ref,execution_state:'unreported',data_quality:'complete',target_quantity:1,
     known_completed_quantity:0,remaining_quantity:1,records_complete:true,quantity_complete:false,unknown_record_count:0,
     data_gaps:[],reports:[],voided_reports:[],write_context:{write_token:null,capabilities:{},blocked_reasons:[]},completion_basis:null}};
-const response={ok:true,schema_version:1,meta:{source:'production',time_basis:'factory_local',snapshot_ref:ref,as_of:'2026-10-12T08:00:00'},data:{task}};
-try {
-  h.setStub('shared/session/query.js',{...APSResourceSession,useQuery:()=>({result:FieldContract.detail(response,ref),loading:false,error:null})});
-  const render=()=>h.render(FieldDetail,{taskRef:ref,adapter:{},scope:{},snapshot:ref,revision:0,command:{locked:false}},{FieldDetail:{1:true}});
-  let nodes=h.walk(render()),bar=nodes.find(node=>node.props.className==='field-timeline-bar planned');
-  assert(bar,'A positive interval must render the actual planned bar');
-  assert(Number.isFinite(parseFloat(bar.props.style.left))); assert(Number.isFinite(parseFloat(bar.props.style.width)));
-  assert(parseFloat(bar.props.style.width)>0,'Sub-millisecond positive duration must not collapse into zero width');
-  assert(nodes.filter(node=>node.props.className==='wb-gantt-axis-band').every(node=>Number.isFinite(node.props.style.left)&&Number.isFinite(node.props.style.width)));
-  task.planned_end=task.planned_start;
-  Object.assign(task,{event_kind:'point',duration_seconds:0,occupies_resources:false});
-  nodes=h.walk(render());
-  assert(nodes.some(node=>node.props['data-field-point']==='plan'));
-  assert(!nodes.some(node=>node.props.className==='field-timeline-bar planned'),'A real point keeps the existing marker contract');
-} finally { h.setStub('shared/session/query.js',undefined); }
+// The detail read answers at the network: FieldAPI, transport and FieldContract.detail check the envelope.
+h.serve({['POST /api/workbench/v1/execution/tasks/'+ref]:()=>h.route.envelope({task:h.clone(task)},{snapshot_ref:snapshot,as_of:'2026-10-12T08:00:00'})});
+const props={taskRef:ref,scope:{},snapshot,revision:0,command:{locked:false}}, detail=h.mount(FieldDetail,props);
+h.walk(await detail.settle()).find(node=>node.type==='button'&&h.text(node)==='作业时间线').props.onClick({currentTarget:{},preventDefault(){}});
+let nodes=h.walk(detail.update()),bar=nodes.find(node=>node.props.className==='field-timeline-bar planned');
+assert(bar,'A positive interval must render the actual planned bar');
+assert(Number.isFinite(parseFloat(bar.props.style.left))); assert(Number.isFinite(parseFloat(bar.props.style.width)));
+assert(parseFloat(bar.props.style.width)>0,'Sub-millisecond positive duration must not collapse into zero width');
+assert(nodes.filter(node=>node.props.className==='wb-gantt-axis-band').every(node=>Number.isFinite(node.props.style.left)&&Number.isFinite(node.props.style.width)));
+task.planned_end=task.planned_start;
+Object.assign(task,{event_kind:'point',duration_seconds:0,occupies_resources:false});
+detail.render({...props,revision:1}); nodes=h.walk(await detail.settle());
+assert(nodes.some(node=>node.props['data-field-point']==='plan'));
+assert(!nodes.some(node=>node.props.className==='field-timeline-bar planned'),'A real point keeps the existing marker contract');
 return true;
 """)
     assert result["result"] is True
@@ -177,11 +173,15 @@ const PlanGantt=h.module('PlanGantt.jsx').default, PlanGanttModel=h.module('Plan
 const full=h.processFixture();
 const incomplete={...full,gantt_graph:{...full.gantt_graph,nodes:[],node_count:full.gantt_graph.nodes.length,
   nodes_complete:false,critical_task_refs:[],critical_edges:[]}};
-const renderPlan=(data,extra={})=>h.render(PlanGantt,{
+const props=(data,extra={})=>({
   data,prepared:h.prepare(PlanGanttModel,data),graph:GanttGraph.create(data.gantt_graph),query:'',selected:null,onSelect:()=>{},onQuery:()=>{},
-  asOf:'2026-05-11T12:00:00',...extra},{PlanGantt:{7:true}});
+  asOf:'2026-05-11T12:00:00',baselineSlice:h.slice(),graphSlice:h.slice(),...extra});
 const tools=tree=>h.walk(tree).find(node=>node.props.className==='wb-gantt-graph-tools');
 const checkbox=tree=>h.walk(tools(tree)).find(node=>node.type==='input'&&node.props.type==='checkbox');
+// The user turns the chain lines on while the graph is complete; later reads of the same gantt may carry an incomplete graph.
+const gantt=h.mount(PlanGantt,props(full)), renderPlan=(data,extra)=>gantt.render(props(data,extra));
+checkbox(gantt.tree).props.onChange({target:{checked:true}});
+assert.equal(checkbox(gantt.update()).props.checked,true);
 
 let tree=renderPlan(incomplete);
 assert.equal(checkbox(tree).props.disabled,true);
@@ -190,17 +190,20 @@ assert(!h.text(tools(tree)).includes('0 道关键任务'));
 assert(h.text(tools(tree)).includes('关键链与工序关联未加载'));
 assert(h.text(tools(tree)).includes('关键链与工序关联未加载。'));
 
-tree=renderPlan(incomplete,{graphLoading:true});
+tree=renderPlan(incomplete,{graphSlice:h.slice({loading:true})});
 assert.equal(checkbox(tree).props.disabled,true);
 assert(!h.text(tools(tree)).includes('0 道关键任务'));
 assert(h.text(tools(tree)).includes('关键链与工序关联加载中…'));
 assert(h.text(tools(tree)).includes('正在加载关键链与工序关联…'));
 
-tree=renderPlan(incomplete,{graphError:new Error('图读取失败')});
+let graphRetries=0;
+tree=renderPlan(incomplete,{graphSlice:h.slice({error:new Error('图读取失败'),request:()=>graphRetries++})});
 assert.equal(checkbox(tree).props.disabled,true);
 assert(!h.text(tools(tree)).includes('0 道关键任务'));
 assert(h.text(tools(tree)).includes('关键链与工序关联读取失败'));
 assert(h.text(tools(tree)).includes('工序关联读取失败，请重试加载。'));
+h.walk(tree).find(node=>node.type==='button'&&h.text(node)==='重试加载工序关联').props.onClick({currentTarget:{}});
+assert.equal(graphRetries,1,'The graph retry action re-requests the graph slice');
 
 tree=renderPlan(full);
 assert.equal(checkbox(tree).props.disabled,false);

@@ -1,8 +1,10 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+const { spawnSync } = require('node:child_process');
 const { compile } = require('../../scripts/workbench/compile.cjs');
+const { memoryStorage } = require('../_support/memory_storage.cjs');
 
-// Run the current source through the isolated vm.Context sandbox using real HTTP/storage adapters.
+// Run the current source through the isolated vm.Context sandbox with the real transport and browser storage.
 async function contract(h, assert) {
   const w = h.runtime, getMod = rel => w.__wbRuntime.getModule(rel);
   const C = getMod('PreflightContract.js');
@@ -30,7 +32,7 @@ async function contract(h, assert) {
     operation_count: 0, batches: input.batch_refs.map((batch_ref, index) => ({batch_ref,batch_id:'B'+(index+1),part_no:null,part_label:null})),
     objective:'min_overdue',objective_label:'减少超期批次',selection:'explicit_batches',basis:'captured_at_run_admission',data_gaps:[],
     // Every admitted run records its unified run options (core/services/workbench/run/jobs.py).
-    run_options:{generation_policy_version:'unified_search_v1',primary_objective:'min_overdue',target_objectives:['min_overdue','min_tardiness','min_changeover'],
+    run_options:{primary_objective:'min_overdue',target_objectives:['min_overdue','min_tardiness','min_changeover'],
       time_budget_seconds:17,algo_mode:'improve',graph_analysis_mode:'off'} };
   const timed = { accepted_at:'2026-10-11T08:00:00.000000',started_at:'2026-10-11T08:00:00.100000',finished_at:'2026-10-11T08:00:00.189123' };
   assert.equal(RunPresentation.elapsed(timed),'0.089123 秒','Real saved microseconds survive the elapsed display');
@@ -41,7 +43,11 @@ async function contract(h, assert) {
   const preferences = (value, token = writeToken) => envelope({ input: value, write_context: { write_token: token,
     expires_at: '2026-10-11T09:00:00', capabilities: { 'scheduling.preferences.save': true }, blocked_reasons: [] } });
   const receipt = value => ({ ok: true, result: 'committed', receipt_ref: 'receipt', replayed: false, data: { input: value }, warnings: [] });
-  const response = (value, status = 200) => ({ ok: true, status, headers: { get: () => 'application/json' }, json: async () => value });
+  const response = (value, status = 200) => ({ ok: status < 400, status, headers: { get: () => 'application/json' }, json: async () => value });
+  // 路由要给出非 200 应答时返回 Answer；其余返回值按 200（排产受理 202）JSON 应答。
+  class Answer { constructor(value, status) { this.response = response(value, status); } }
+  const failed = message => new Answer({ ok: false, committed: false, error: { code: 'read_failed', message, fields: [], retryable: true, request_ref: '1'.repeat(32) } }, 500);
+  const batchPath = '/api/workbench/v1/entities/batch/';
   const requests = [];
   let route;
   w.location.origin = 'http://localhost';
@@ -49,14 +55,15 @@ async function contract(h, assert) {
   w.fetch = async (url, options) => {
     const request = { path: new URL(url, w.location.href).pathname, method: options.method || 'GET',
       body: options.body ? JSON.parse(options.body) : null, signal: options.signal };
-    requests.push(request); return response(await route(request), request.path.endsWith('/runs') && request.method === 'POST' ? 202 : 200);
+    requests.push(request);
+    const answer = await route(request);
+    return answer instanceof Answer ? answer.response : response(answer, request.path.endsWith('/runs') && request.method === 'POST' ? 202 : 200);
   };
-  const api = PreflightAPI.create();
 
   // An earlier read must not become the write credential; each save reads the current context.
   let reads = 0;
   route = request => request.method === 'GET' ? preferences(null, (++reads === 1 ? 'o' : 'n').repeat(32)) : receipt(request.body.input);
-  await api.preferences(); await api.savePreferences(input);
+  await PreflightAPI.preferences(); await PreflightAPI.savePreferences(input);
   assert.deepStrictEqual(requests.map(row => row.method), ['GET', 'GET', 'POST']);
   assert.strictEqual(requests[2].body.write_token, 'n'.repeat(32));
   assert(/^preferences-[0-9a-f]{48}$/.test(requests[2].body.request_key));
@@ -64,19 +71,19 @@ async function contract(h, assert) {
   const sortedKeys = obj => Object.fromEntries(Object.keys(obj).sort().map(key => [key, obj[key]]));
   requests.length = 0;
   route = () => preferences(sortedKeys(input));
-  h.equal(await api.savePreferences({ ...input, batch_refs: [other, batch] }), input);
+  h.equal(await PreflightAPI.savePreferences({ ...input, batch_refs: [other, batch] }), input);
   assert.deepStrictEqual(requests.map(row => row.method), ['GET'], 'The same normalized selection must not create a write even with sorted backend keys');
   requests.length = 0;
   route = request => request.method === 'GET' ? preferences(null) : receipt(sortedKeys(request.body.input));
-  h.equal(await api.savePreferences(input), input);
+  h.equal(await PreflightAPI.savePreferences(input), input);
 
   // Uncertain/inconsistent writes stop the caller; none substitutes defaults.
   route = request => request.method === 'GET' ? preferences(null) : { ok: true, data: { input } };
-  await assert.rejects(api.savePreferences(input), error => error.committed === 'unknown' && /保存结果不完整/.test(error.message));
+  await assert.rejects(PreflightAPI.savePreferences(input), error => error.committed === 'unknown' && /保存结果不完整/.test(error.message));
   route = request => request.method === 'GET' ? preferences(null) : receipt({ ...input, end_date: '2026-10-18' });
-  await assert.rejects(api.savePreferences(input), /保存的排产范围与本次选择不一致/);
+  await assert.rejects(PreflightAPI.savePreferences(input), /保存的排产范围与本次选择不一致/);
 
-  const options = seconds => ({ generation_policy_version: 'unified_search_v1', primary_objective: 'min_overdue',
+  const options = seconds => ({ primary_objective: 'min_overdue',
     target_objectives: ['min_overdue', 'min_tardiness', 'min_changeover'], time_budget_seconds: seconds, algo_mode: 'improve', graph_analysis_mode: 'off' });
   function checked(value, seconds = value.time_budget_seconds === undefined ? 17 : value.time_budget_seconds) {
     const normalized = C.input({ ...value, time_budget_seconds: seconds });
@@ -89,9 +96,9 @@ async function contract(h, assert) {
       calendar_check: 'not_evaluated', config_scope: 'single_run', run_blocked: true,
       write_context: { write_token: null, capabilities: { 'scheduling.run': false } }, no_route_batches: [], unready_batches: [],
       included_batches: [], excluded_batches: value.batch_refs.map(batch_ref => ({ batch_ref, batch_id: 'B1' })),
-      scope: { source: 'production', batch_refs: value.batch_refs }, effective_config: { ready_check: value.ready_check,
-        material_strategy: value.material_strategy, missing_resource_policy: value.missing_resource_policy,
-        completed_policy: value.completed_policy, hold_window: value.hold_window === undefined ? null : value.hold_window,
+      scope: { source: 'production', batch_refs: value.batch_refs }, effective_config: { ready_check: normalized.ready_check,
+        material_strategy: normalized.material_strategy, missing_resource_policy: normalized.missing_resource_policy,
+        completed_policy: normalized.completed_policy, hold_window: value.hold_window === undefined ? null : value.hold_window,
         hold_window_source: value.hold_window === undefined ? 'default' : 'explicit' },
       effective_start: value.start_date + 'T00:00:00', eligible_tasks: 0, auto_assign_required: 0, skipped_tasks: 0 });
   }
@@ -112,9 +119,13 @@ async function contract(h, assert) {
       unmount() { slots.forEach(slot => { if (slot.cleanup) slot.cleanup(); }); } };
   }
   const turns = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
-  const nodes = tree => tree == null || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.props.children)];
+  // 错误框由显示层 WorkbenchError 判定上屏文案，展开成它真实渲染出的节点再查。
+  const { WorkbenchError, WorkbenchReference } = getMod('WorkbenchReferences.jsx');
+  const nodes = tree => tree == null || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes)
+    : tree.type === WorkbenchError ? nodes(WorkbenchError(tree.props)) : [tree, ...nodes(tree.props.children)];
   const text = tree => tree == null || typeof tree === 'boolean' ? '' : typeof tree !== 'object' ? String(tree) : Array.isArray(tree) ? tree.map(text).join('') : text(tree.props.children);
-  WorkbenchPageContext.useSnapshot = () => {};
+  let remembered = null;
+  WorkbenchPageContext.useSnapshot = (value, enabled) => { if (enabled) remembered = value; };
   const workspace = hooks(), noRunPanel = () => null, preflightProps = { initialContext: {}, renderRunPanel: noRunPanel };
   route = request => request.path.endsWith('/preferences') ? request.method === 'GET' ? preferences(input) : receipt(request.body.input) : checked(request.body);
   requests.length = 0;
@@ -162,7 +173,18 @@ async function contract(h, assert) {
       state.unmount();
     }
   }
-  for (const context of [{ scope: { source: 'sample', batch_refs: [other] } }, { scope: { source: 'production', batch_refs: [other] }, unknown: true }]) {
+  // 页面记忆与地址定位同在顶层带返回信封：去批次补资料再回来，返回链仍在。
+  {
+    const back = { view: 'analysis', context: { source: 'run_history', history_topic: 'decision_history', decision_history_context: { query: {} } } };
+    const state = hooks(), props = { initialContext: { entity_ref: other, return_to: back }, renderRunPanel: noRunPanel };
+    route = request => request.path.endsWith('/preferences') ? preferences(input) : checked(request.body); remembered = null;
+    state.render(PreflightWorkspace, props); state.flush(); await turns(); state.render(PreflightWorkspace, props);
+    assert.strictEqual(remembered.return_to, back, 'Preflight page memory keeps the return envelope at the top level');
+    h.equal(Object.fromEntries(Object.entries(remembered).filter(([key]) => key !== 'return_to')), C.input({ ...input, batch_refs: [other] }));
+    state.unmount();
+  }
+  // 键集由受控导航声明在 WorkbenchNavigation.admit 准入（runtime_reuse_contract 覆盖）；页面只核取值。
+  for (const context of [{ scope: { source: 'sample', batch_refs: [other] } }]) {
     const state = hooks(), props = { initialContext: context, renderRunPanel: noRunPanel };
     route = () => preferences(input); requests.length = 0;
     state.render(PreflightWorkspace, props); state.flush(); await turns();
@@ -180,15 +202,18 @@ async function contract(h, assert) {
   assert.equal(requests.length, 1, 'Without saved preferences, an empty fresh form does not check all batches'); emptyState.unmount();
 
   const pickerState = hooks(), pickerCalls = [], selections = [], completedRef = h.reference(40);
+  // 后端按物料记录算不出有效齐套时 display_ready_status 是 null（字段原值仍是 yes）。
   const completedRow = { ref: completedRef, business_code: 'DONE-001', label: '旧完工批次', status: 'completed',
-    fields: { due_date: '2026-10-10', priority: 'normal', ready_status: 'yes' }, relationships: { part_no: 'P1', operation_count: 1 } };
-  const pickerProps = { selected: [], onChange: refs => selections.push(refs), disabled: false, adapter: {
-    async list(scope) { pickerCalls.push({ kind: 'list', scope }); return envelope({ entities: [completedRow], page: { number: 1, size: 20, total: 1, pages: 1 } }); },
-    async selection(scope) { pickerCalls.push({ kind: 'selection', scope }); return envelope({ refs: [completedRef], count: 1 }); }
-  } };
+    fields: { due_date: '2026-10-10', priority: 'normal', ready_status: 'yes' }, display_ready_status: null, relationships: { part_no: 'P1', operation_count: 1 } };
+  const pickerProps = { selected: [], onChange: refs => selections.push(refs), disabled: false };
+  route = request => {
+    if (request.path === batchPath + 'query') { pickerCalls.push({ kind: 'list', scope: request.body }); return envelope({ entities: [completedRow], page: { number: 1, size: 20, total: 1, pages: 1 } }); }
+    assert.equal(request.path, batchPath + 'selection'); pickerCalls.push({ kind: 'selection', scope: request.body }); return envelope({ refs: [completedRef], count: 1 });
+  };
   pickerState.render(PreflightBatchPicker, pickerProps); pickerState.flush(); await turns();
   let pickerTree = pickerState.render(PreflightBatchPicker, pickerProps);
   assert(text(pickerTree).includes(APSBatchContract.label('status', 'completed')), 'Completed rows expose their actual status');
+  assert(text(pickerTree).includes('已完成 · 待核对'), 'An effective readiness that cannot be computed reads 待核对, not 未填写');
   nodes(pickerTree).find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange();
   h.equal(selections.at(-1), [completedRef]);
   for (const label of ['全部待排', '仅齐套', '全选当前筛选']) {
@@ -200,9 +225,44 @@ async function contract(h, assert) {
     'Visible and shortcut selections retain completed batches for official-scope coverage');
   pickerState.unmount();
 
+  // 批次列表读取走真实 useQuery，只替换列表应答：换范围时中止旧读取、丢弃晚到的应答；读取出错后重试期间不闪回旧列表；
+  // 换范围同时撤下上一次选择动作的错误，列表读取错误一直留到下一次读取。
+  const heldPicker = hooks(), heldLists = [];
+  const heldPickerProps = { selected: [], onChange() {}, disabled: false };
+  // 被中止的请求像浏览器 fetch 一样以 AbortError 结束。
+  route = request => new Promise((resolve, reject) => {
+    assert.equal(request.path, batchPath + 'query', 'selection is not reached');
+    request.signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), { once: true });
+    heldLists.push({ scope: request.body, signal: request.signal, resolve, reject });
+  });
+  const heldPage = row => envelope({ entities: [row], page: { number: 1, size: 20, total: 1, pages: 1 } });
+  const renderPicker = () => { const tree = heldPicker.render(PreflightBatchPicker, heldPickerProps); heldPicker.flush(); return tree; };
+  const settlePicker = async () => { renderPicker(); await turns(); return renderPicker(); };
+  const pickerButton = (tree, label) => nodes(tree).find(node => node.type === PreflightControls.Button && text(node) === label);
+  const pickerErrors = tree => nodes(tree).filter(node => node.type === PreflightControls.ErrorBox && node.props.error).map(node => node.props.error.message);
+  const otherRow = { ...completedRow, ref: h.reference(41), business_code: 'NEW-001' };
+  let heldTree = await settlePicker(); assert.equal(heldLists.length, 1);
+  pickerButton(heldTree, '刷新范围').props.onClick(); heldTree = renderPicker();
+  assert.equal(heldLists[0].signal.aborted, true, '换范围中止上一轮批次读取');
+  heldTree = await settlePicker(); heldLists[0].resolve(heldPage(completedRow)); heldTree = await settlePicker();
+  assert(!text(heldTree).includes('DONE-001'), '晚到的上一轮列表不上屏');
+  assert(nodes(heldTree).some(node => node.props.title === '正在读取批次'));
+  heldLists[1].resolve(heldPage(otherRow)); heldTree = await settlePicker(); assert(text(heldTree).includes('NEW-001'));
+  pickerButton(heldTree, '刷新范围').props.onClick(); heldTree = await settlePicker();
+  heldLists[2].resolve(failed('批次读取失败，请刷新后重试。')); heldTree = await settlePicker();
+  h.equal(pickerErrors(heldTree), ['批次读取失败，请刷新后重试。']); assert(!text(heldTree).includes('NEW-001'));
+  pickerButton(heldTree, '刷新批次').props.onClick(); heldTree = await settlePicker();
+  assert.equal(heldLists.length, 4); assert(!text(heldTree).includes('NEW-001'), '重试期间不闪回出错前的列表'); h.equal(pickerErrors(heldTree), []);
+  heldLists[3].resolve(heldPage(otherRow)); heldTree = await settlePicker();
+  const failedShortcut = pickerButton(heldTree, '全部待排').props.onClick(); await turns();
+  heldLists[4].resolve(failed('全部待排批次读取失败。')); await failedShortcut; heldTree = renderPicker();
+  h.equal(pickerErrors(heldTree), ['全部待排批次读取失败。']); assert(text(heldTree).includes('NEW-001'), '选择动作失败不影响已读到的列表');
+  pickerButton(heldTree, '刷新范围').props.onClick(); heldTree = await settlePicker();
+  h.equal(pickerErrors(heldTree), [], '换范围撤下上一次选择动作的错误');
+  heldPicker.unmount(); assert.equal(heldLists[5].signal.aborted, true);
+
   // The automatic run preview may open confirmation, but accept only belongs to the final callback.
-  const store = new Map(); w.localStorage = { getItem: key => store.has(key) ? store.get(key) : null,
-    setItem: (key, value) => store.set(key, value), removeItem: key => store.delete(key) };
+  w.localStorage = memoryStorage(); const store = w.localStorage.data;
   w.navigator = { locks: { request: async (_key, _options, fn) => fn({}) } };
   w.document.hidden = false;
   const runRef = h.reference(3), dataContext = JSON.stringify({database_scope:'/tmp/aps-context.db',successful_restores:[]}), admitted = { run_ref: runRef, job_ref: runRef, state: 'queued', stage: 'queued', progress: null,
@@ -254,7 +314,7 @@ async function contract(h, assert) {
   await nodes(contended.render(RunJobPanel, props)).find(node => node.type === RunJobControls.Confirmation).props.onConfirm();
   const kept = nodes(contended.render(RunJobPanel, props)).find(node => node.type === RunJobControls.Confirmation);
   assert(kept && kept.props.preview && !kept.props.busy, 'Lock contention keeps the confirmation and its preview');
-  assert(/另一个页面正在处理排产记录，请稍后重试。/.test(kept.props.error));
+  assert.equal(kept.props.error.message, '另一个页面正在处理排产记录，请稍后重试。');
   assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/runs/preview']); assert.strictEqual(store.size, 0);
   w.navigator = { locks: { request: async (_key, _options, fn) => fn({}) } };
   await kept.props.onConfirm();
@@ -264,8 +324,11 @@ async function contract(h, assert) {
 
   // A 202 admission is published even when the local run reference cannot be saved; the failure stays a storage error.
   store.clear(); requests.length = 0;
-  w.localStorage = { getItem: key => store.has(key) ? store.get(key) : null, removeItem: key => store.delete(key),
-    setItem: (key, value) => { if (key === RunJobAPI.PENDING_KEY && store.has(key)) throw new Error('QuotaExceededError'); store.set(key, value); } };
+  // 新打开的一页，记录与上一页共用；已有排产记录时写不进新的运行编号。
+  w.localStorage = memoryStorage(store);
+  w.localStorage.onAccess = (method, key, phase) => {
+    if (method === 'setItem' && phase === 'before' && key === RunJobAPI.PENDING_KEY && store.has(key)) throw new Error('QuotaExceededError');
+  };
   const unattached = hooks();
   unattached.render(RunJobPanel, props); unattached.flush(); await turns();
   await nodes(unattached.render(RunJobPanel, props)).find(node => node.type === RunJobControls.Confirmation).props.onConfirm();
@@ -278,7 +341,60 @@ async function contract(h, assert) {
   assert(!unattachedAlerts.some(value => value.includes(WorkbenchTerms.outcomes.pending('排产'))), 'The attach failure is not shown as an unconfirmed submission');
   assert(!nodes(unattachedTree).some(node => node.type === RunJobControls.Confirmation), 'An admitted run closes its confirmation');
   unattached.unmount();
-  w.localStorage = { getItem: key => store.has(key) ? store.get(key) : null, setItem: (key, value) => store.set(key, value), removeItem: key => store.delete(key) };
+  w.localStorage = memoryStorage(store);
+
+  // 本机没能生成操作编号这类程序内部错误照原样进 storageError：面板只显示兜底句，英文原文只在折叠区。
+  store.clear(); requests.length = 0;
+  const crypto = w.crypto, internal = "Cannot read properties of undefined (reading 'getRandomValues')";
+  w.crypto = { getRandomValues() { throw new TypeError(internal); } };
+  const unclaimed = hooks();
+  unclaimed.render(RunJobPanel, props); unclaimed.flush(); await turns();
+  await nodes(unclaimed.render(RunJobPanel, props)).find(node => node.type === RunJobControls.Confirmation).props.onConfirm();
+  w.crypto = crypto;
+  const unclaimedTree = unclaimed.render(RunJobPanel, props);
+  assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/runs/preview'], 'A failed local claim never submits');
+  const shown = nodes(unclaimedTree).flatMap(node => [node.props.children].flat(Infinity)).filter(value => typeof value === 'string');
+  assert(nodes(unclaimedTree).some(node => node.props.role === 'alert' && text(node) === '操作未完成，请核对后重试。'), 'An internal storage error shows the fallback sentence');
+  assert(!shown.some(value => value.includes(internal)), 'An internal storage error never shows its English text');
+  assert(nodes(unclaimedTree).some(node => node.type === WorkbenchReference && node.props.entries['原始错误信息'] === internal), 'The original text stays in the folded details');
+  unclaimed.unmount();
+
+  // 计算程序没接上时，按钮理由和原因列表都照后端阻断原因的原话显示（core/services/workbench/run/jobs.py 的 _reasons）。
+  const runRoute = route, workerReason = { code: 'run_worker_not_connected', message: '排产功能尚未开通，这次排产不能开始。请联系维护人员。' };
+  const workerPreview = h.clone(runnablePreview);
+  workerPreview.data.write_context = { write_token: null, expires_at: null, capabilities: { 'scheduling.run': false }, blocked_reasons: [workerReason] };
+  route = request => { assert(request.path.endsWith('/runs/preview')); return workerPreview; };
+  const workerless = hooks();
+  workerless.render(RunJobPanel, props); workerless.flush(); await turns();
+  const workerlessTree = workerless.render(RunJobPanel, props);
+  assert.equal(nodes(workerlessTree).find(node => node.props.className === 'rj-muted rj-action-reason').props.children, workerReason.message);
+  const workerReasons = nodes(workerlessTree).find(node => node.type === RunJobControls.Reasons);
+  assert.equal(text(workerReasons.type(workerReasons.props)), workerReason.message);
+  assert(nodes(workerlessTree).some(node => node.type === RunJobControls.Button && text(node) === '重新核对排产条件'), 'An unavailable worker keeps the recheck action');
+  workerless.unmount(); route = runRoute;
+
+  // 核对失败的错误对象原样交给显示层：本页一致性核对和后端拒绝都显示这次失败自己的说明，后端的结果编号留在折叠区。
+  {
+    store.clear();
+    const panelFetch = w.fetch, mismatched = h.clone(runnablePreview);
+    mismatched.data.normalized_input = { ...mismatched.data.normalized_input, end_date: '2026-10-18' };
+    const rejection = (status, code, message) => async () => ({ ok: false, status, headers: { get: () => 'application/json' },
+      json: async () => ({ ok: false, committed: false, error: { code, message, fields: [], retryable: false, request_ref: 'e'.repeat(32) } }) });
+    const stale = '排产检查之后批次范围或现场记录有变化，这次排产没有开始。请重新点「开始排产检查」。';
+    const unread = '排产记录没有读出来。请刷新重试；仍不行请联系维护人员，并告知下方编号。';
+    for (const [fetch, expected, requestRef] of [[async () => response(mismatched), '核对结果与本次排产检查不一致，请重新检查。', null],
+      [rejection(409, 'snapshot_stale', stale), stale, 'e'.repeat(32)], [rejection(500, 'storage_failure', unread), unread, 'e'.repeat(32)]]) {
+      w.fetch = fetch;
+      const failed = hooks();
+      failed.render(RunJobPanel, props); failed.flush(); await turns();
+      const failedTree = failed.render(RunJobPanel, props);
+      h.equal(nodes(failedTree).filter(node => node.props && node.props.role === 'alert').map(text), [expected]);
+      assert(!nodes(failedTree).some(node => node.type === RunJobControls.Confirmation), 'A failed check keeps the confirmation closed');
+      if (requestRef) assert(nodes(failedTree).some(node => node.type === WorkbenchReference && node.props.entries['结果编号'] === requestRef), 'The backend reference stays with its error');
+      failed.unmount();
+    }
+    w.fetch = panelFetch;
+  }
 
   const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
   const modern = budgetChecked(input);
@@ -434,8 +550,8 @@ async function contract(h, assert) {
 
   // Drive the actual polling effect with a virtual clock: no 32-second wall-clock sleep.
   const NativeDate = w.Date;
-  async function polling({ found = true, failed = false, knownRef = true, recovery = false, finishedAt = Infinity, replaced = false, failRecent = false, failPending = false } = {}) {
-    let now = 0, nextTimer = 0; const timers = new Map(), listeners = new Map(), lookups = [], posts = [], navigations = [], storage = new Map();
+  async function polling({ found = true, failed = false, rejected = null, knownRef = true, recovery = false, finishedAt = Infinity, replaced = false, failRecent = false, failPending = false } = {}) {
+    let now = 0, nextTimer = 0; const timers = new Map(), listeners = new Map(), lookups = [], posts = [], navigations = [], local = memoryStorage(), storage = local.data;
     const epoch = NativeDate.parse('2026-10-11T08:00:00'), intent = { schema_version: 2, input_ref: inputRef,
       request_key: 'run-' + 'b'.repeat(48), run_ref: knownRef ? runRef : null, data_context_ref: dataContext };
     storage.set(RunJobAPI.PENDING_KEY, JSON.stringify(intent));
@@ -445,18 +561,21 @@ async function contract(h, assert) {
     w.document.hidden = false;
     w.document.addEventListener = (name, fn) => listeners.set(name, fn);
     w.document.removeEventListener = (name, fn) => { if (listeners.get(name) === fn) listeners.delete(name); };
-    w.localStorage = { getItem: key => storage.has(key) ? storage.get(key) : null, removeItem: key => storage.delete(key),
-      setItem: (key, value) => { if ((failRecent && key === RunJobAPI.RECENT_KEY) || (failPending && key === RunJobAPI.PENDING_KEY)) throw new Error('QuotaExceededError'); storage.set(key, value); } };
+    local.onAccess = (method, key, phase) => {
+      if (method === 'setItem' && phase === 'before' && (failRecent && key === RunJobAPI.RECENT_KEY || failPending && key === RunJobAPI.PENDING_KEY)) throw new Error('QuotaExceededError');
+    };
+    w.localStorage = local;
     route = request => {
       if (request.method === 'POST') posts.push(request);
       assert.strictEqual(request.path, '/api/workbench/v1/scheduling/requests/' + intent.request_key);
       lookups.push(now);
       if (failed) throw new TypeError('offline');
+      if (rejected) return new Answer({ ok: false, committed: false, error: { ...rejected, fields: [], retryable: true, request_ref: 'e'.repeat(32) } }, 500);
       const done = now >= finishedAt, running = { ...admitted, state: 'running', stage: recovery ? 'awaiting_reconciliation' : 'computing',
         recovery_required: recovery, started_at: '2026-10-11T08:00:00' };
       const complete = { ...running, state: 'complete', stage: 'finished', result_persisted: true,
         finished_at: '2026-10-11T08:00:32', receipt_ref: h.reference(4),
-        candidates: [{ candidate_ref: h.reference(5), label: '方案一', status: 'completed', task_count: 1, selected: true }] };
+        candidates: [{ candidate_ref: h.reference(5), label: '方案一', task_count: 1, selected: true }] };
       return envelope({ found, run: found ? done ? complete : running : null, data_context_ref: dataContext, resolution: found ? 'found' : replaced ? 'context_replaced' : 'unresolved' });
     };
     const state = hooks(), props = { preflight: null, onNavigate: (...args) => navigations.push(args) };
@@ -494,13 +613,13 @@ async function contract(h, assert) {
   route = () => { throw new TypeError('offline'); };
   const remountProps = { preflight: null, onNavigate() {} };
   let failRecentGet = true, recentGetCount = 0;
-  const origGetItem = w.localStorage.getItem;
-  w.localStorage.getItem = key => {
-    if (key === RunJobAPI.RECENT_KEY) {
+  const quota = w.localStorage.onAccess;
+  w.localStorage.onAccess = (method, key, phase) => {
+    if (method === 'getItem' && key === RunJobAPI.RECENT_KEY && phase === 'before') {
       recentGetCount++;
       if (failRecentGet) { failRecentGet = false; throw new Error('SecurityError'); }
     }
-    return origGetItem(key);
+    quota(method, key, phase);
   };
   const transientErrPanel = hooks();
   transientErrPanel.render(RunJobPanel, remountProps); transientErrPanel.flush(); await turns();
@@ -514,7 +633,7 @@ async function contract(h, assert) {
   remounted.render(RunJobPanel, remountProps);
   assert.strictEqual(recentGetCount, 1, 'Normal terminal remount reads RECENT_KEY exactly once');
   remounted.flush(); await turns();
-  w.localStorage.getItem = origGetItem;
+  w.localStorage.onAccess = quota;
   const remountedRecord = nodes(remounted.render(RunJobPanel, remountProps)).find(node => node.type === RunJobControls.Record).props;
   assert.strictEqual(remountedRecord.title, '上次排产');
   assert.strictEqual(remountedRecord.run.state, 'complete');
@@ -560,6 +679,17 @@ async function contract(h, assert) {
     assert.deepStrictEqual(unsettled.lookups, [0, 2000, 6000, 14000, 30000, 60000], 'Unknown receipts, not-found runs and failures retain the existing backoff');
     assert.strictEqual(unsettled.record().retryPaused, true, 'An unresolved result pauses after 60 seconds');
     assert.strictEqual(unsettled.posts.length, 0); unsettled.stop();
+  }
+  // 查询失败：错误框原样显示后端的中文说明、错误编号、状态码和请求编号，重试提示在错误框下另起一行；
+  // 记录对不上时后端说明已写明下一步，不再附重试提示，也不再换成前端自拟的句子。
+  for (const [rejected, retry] of [[{ code: 'storage_failure', message: '排产记录没有读出来。请刷新重试；仍不行请联系维护人员，并告知下方编号。' }, true],
+    [{ code: 'run_result_inconsistent', message: '排产结果不确定，可能已经生效。请刷新后核对，不要重复提交。' }, false]]) {
+    const failing = await polling({ rejected }), view = failing.view(), alerts = nodes(view).filter(node => node.props && node.props.role === 'alert');
+    h.equal(alerts.map(text), [rejected.message]);
+    const entries = nodes(alerts[0]).find(node => node.type === WorkbenchReference).props.entries;
+    h.equal([entries['错误编号'], entries['状态码'], entries['结果编号']], [rejected.code, 500, 'e'.repeat(32)]);
+    h.equal(nodes(view).filter(node => node.props && node.props.className === 'rj-notice').map(text), retry ? ['查询暂未成功，请点「查询结果」重试。'] : []);
+    assert.strictEqual(failing.record().resolution, 'lookup_failed'); failing.stop();
   }
   const hidden = await polling({ finishedAt: 22000 }); await hidden.advance(3000); await hidden.visible(false);
   assert.strictEqual(hidden.record().paused, true); await hidden.advance(20000);
@@ -608,23 +738,77 @@ async function contract(h, assert) {
     h.equal(unfinished.navigations, options.failRecent ? [] : [['run', { run_ref: h.reference(3) }]]);
     unfinished.stop();
   }
+  // 排产记录页轮询读取是只读查询：失败原样交给显示层，显示后端或传输层的说明，不套用命令“可能已经生效”的说法。
+  {
+    w.setTimeout = () => 0; w.clearTimeout = () => {}; w.document.hidden = false;
+    w.document.addEventListener = () => {}; w.document.removeEventListener = () => {};
+    const readFailure = (status, code, message) => async () => ({ ok: false, status, headers: { get: () => 'application/json' },
+      json: async () => ({ ok: false, committed: false, error: { code, message, fields: [], retryable: false, request_ref: 'f'.repeat(32) } }) });
+    const unread = '排产记录没有读出来。请刷新重试；仍不行请联系维护人员，并告知下方编号。', missing = '找不到这次排产，页面没有打开。请到「排产记录」重新选择。';
+    for (const [fetch, expected] of [[readFailure(500, 'storage_failure', unread), unread], [readFailure(404, 'entity_not_found', missing), missing],
+      [async () => { throw new TypeError('Failed to fetch'); }, '无法连接本机服务，请确认应用仍在运行后重试。']]) {
+      w.fetch = fetch;
+      const reader = hooks(), element = RunWorkspace({ variant: 'candidate', initialContext: { run_ref: h.reference(7) }, onNavigate() {} });
+      reader.render(element.type, element.props); reader.flush(); await turns();
+      h.equal(nodes(reader.render(element.type, element.props)).filter(node => node.props && node.props.role === 'alert').map(text), [expected]);
+      reader.unmount();
+    }
+    w.fetch = routedFetch;
+  }
   return { preferences: 'read/write contracts', workspace: 'restore and save-before-check', run: 'preview-before-confirmed-accept',
     budget: 'effective initial value, preflight→preview, latest owner, close/unmount isolation, completed custom input and unchanged durable protocol',
     poll: { backend_finished_ms: 32000, ui_found_ms: detectedAt, unresolved: '2/4/8/16/30 seconds then paused', visibility: 'suspend/resume' }, runtime: h.mode };
 }
 const root = path.join(__dirname, '../..');
-const document = { body: { style: {} }, documentElement: { setAttribute() {} }, addEventListener() {}, removeEventListener() {},
-  getElementById: id => id === 'workbench-boot' ? { textContent: '{}' } : { setAttribute() {}, replaceChildren() {} }, createElement: () => ({ setAttribute() {} }) };
-const runtime = vm.createContext({ console, document, URL, URLSearchParams, Map, Set, Date, setTimeout, clearTimeout, setInterval, clearInterval, AbortController, FormData, innerWidth: 1280, innerHeight: 800 });
-Object.assign(runtime, { window: runtime, self: runtime, addEventListener() {}, removeEventListener() {}, dispatchEvent() {}, location: { href: 'http://localhost/workbench' },
-  CustomEvent: class { constructor(type, value) { this.type = type; this.detail = value.detail; } } });
-vm.runInContext(fs.readFileSync(path.join(root, 'static/workbench/vendor/react-18.3.1.production.min.js'), 'utf8'), runtime, { filename: 'static/workbench/vendor/react-18.3.1.production.min.js' });
-const files = ['WorkbenchTerms.js', 'WorkbenchFormat.js', 'resource-contract.js', 'shared/session/command-session.js', 'shared/network/transport.js',
-  'WorkbenchReferences.jsx', 'ResourceControls.jsx', 'WorkbenchPageContext.jsx', 'WorkbenchCaption.jsx', 'BatchContract.js',
-  'RunGenerationContract.js', 'RunPresentation.js', 'PreflightContract.js', 'PreflightAPI.js', 'PreflightControls.jsx',
-  'PreflightBatchPicker.jsx', 'PreflightWorkspace.jsx', 'RunJobAPI.js', 'RunJobControls.jsx', 'RunJobPanel.jsx', 'SchedulingWorkspace.jsx'];
-for (const output of compile({
-  sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') })) }).outputs) vm.runInContext(output.code, runtime, { filename: output.path });
-const h = { runtime, mode: 'current-source', reference: number => number.toString(16).padStart(48, '0'), clone: value => JSON.parse(JSON.stringify(value)),
-  equal: (left, right) => assert.equal(JSON.stringify(left), JSON.stringify(right)) };
-contract(h, assert).then(result => console.log(JSON.stringify({ mode: 'current-source', result })), error => { console.error(error.stack); process.exitCode = 1; });
+// 排产日期是工厂日历日：判日、不重排时段上界和默认范围在任何浏览器时区下都一样，每个时区在子进程里各跑一遍。
+// Pacific/Apia 整天跳过了 2011-12-30，America/Sao_Paulo 当年在零点切换夏令时。值是固定“现在”下的本机今天与默认结束日。
+const TIMEZONE_DEFAULTS = { 'Pacific/Apia': ['2011-12-24', '2011-12-30'], 'Asia/Shanghai': ['2011-12-25', '2011-12-31'], 'America/Sao_Paulo': ['2011-12-24', '2011-12-30'] };
+function timezoneContract() {
+  // 本机“现在”固定为 2011-12-24T22:00Z：Apia、圣保罗还是 24 日，上海已是 25 日。
+  class FixedDate extends Date { constructor(...args) { super(...(args.length ? args : [Date.UTC(2011, 11, 24, 22)])); } }
+  const context = vm.createContext({ window: {}, Date: FixedDate });
+  const source = { path: 'PreflightContract.js', code: fs.readFileSync(path.join(root, 'frontend/workbench/app/PreflightContract.js'), 'utf8') };
+  for (const output of compile({ sources: [source] }).outputs) vm.runInContext(output.code, context, { filename: output.path });
+  const C = context.__wbRuntime.getModule('PreflightContract.js');
+  for (const [start, end, max] of [['2011-12-29', '2011-12-29', '2011-12-30'], ['2011-12-30', '2011-12-30', '2011-12-31'],
+    ['2018-11-03', '2018-11-03', '2018-11-04'], ['2018-11-04', '2018-11-04', '2018-11-05'], ['2024-02-28', '2024-02-29', '2024-03-01'],
+    ['2023-02-28', '2023-02-28', '2023-03-01'], ['2026-04-30', '2026-04-30', '2026-05-01'], ['2026-12-31', '2026-12-31', '2027-01-01'],
+    ['9999-12-30', '9999-12-30', '9999-12-31']])
+    assert.equal(JSON.stringify(C.holdBounds(start, end)), JSON.stringify({ min: start + 'T00:00', max: max + 'T00:00' }), start + ' .. ' + end);
+  // 只拦日历上不存在的日期；排产日期能取的年份范围由后端校验（D6-6），前端不再镜像 1900～9999。
+  for (const value of ['2023-02-29', '2026-04-31', '0000-01-01']) assert.equal(C.holdBounds(value, value), null, value);
+  const defaults = C.defaults();
+  assert.deepEqual([defaults.start_date, defaults.end_date], TIMEZONE_DEFAULTS[process.env.TZ], 'The default range starts on the browser date and ends 6 calendar days later');
+  const hold = { start: '2011-12-30T08:00', end: '2011-12-31T00:00' }, range = { ...defaults, start_date: '2011-12-29', end_date: '2011-12-30' };
+  assert.deepEqual({ ...C.input({ ...range, hold_window: hold }).hold_window }, hold, 'A hold window may end at midnight after the last planning day');
+  assert.throws(() => C.input({ ...range, hold_window: { ...hold, end: '2011-12-31T00:01' } }), /不重排时段/);
+  // 止日是最后一个可排日期 9999-12-30 时，窗口照样可以结束在它的次日零点。
+  const lastHold = { start: '9999-12-30T08:00', end: '9999-12-31T00:00' }, lastRange = { ...defaults, start_date: '9999-12-30', end_date: '9999-12-30' };
+  assert.deepEqual({ ...C.input({ ...lastRange, hold_window: lastHold }).hold_window }, lastHold, 'A hold window may end at midnight after the last supported planning day');
+  process.stdout.write('Preflight calendar dates passed: ' + process.env.TZ + '\n');
+}
+function currentSource() {
+  const document = { body: { style: {} }, documentElement: { setAttribute() {} }, addEventListener() {}, removeEventListener() {},
+    getElementById: id => id === 'workbench-boot' ? { textContent: '{}' } : { setAttribute() {}, replaceChildren() {} }, createElement: () => ({ setAttribute() {} }) };
+  const runtime = vm.createContext({ console, document, URL, URLSearchParams, Map, Set, Date, setTimeout, clearTimeout, setInterval, clearInterval, AbortController, FormData, innerWidth: 1280, innerHeight: 800 });
+  Object.assign(runtime, { window: runtime, self: runtime, addEventListener() {}, removeEventListener() {}, dispatchEvent() {}, location: { href: 'http://localhost/workbench' },
+    CustomEvent: class { constructor(type, value) { this.type = type; this.detail = value.detail; } } });
+  vm.runInContext(fs.readFileSync(path.join(root, 'static/workbench/vendor/react-18.3.1.production.min.js'), 'utf8'), runtime, { filename: 'static/workbench/vendor/react-18.3.1.production.min.js' });
+  const files = ['WorkbenchTerms.js', 'WorkbenchFormat.js', 'resource-contract.js', 'shared/session/command-session.js', 'shared/network/transport.js',
+    'WorkbenchReferences.jsx', 'ResourceControls.jsx', 'WorkbenchPageContext.jsx', 'WorkbenchCaption.jsx', 'BatchContract.js',
+    'RunGenerationContract.js', 'RunPresentation.js', 'PreflightContract.js', 'PreflightAPI.js', 'PreflightControls.jsx',
+    'PreflightBatchPicker.jsx', 'PreflightWorkspace.jsx', 'RunJobAPI.js', 'RunJobControls.jsx', 'RunJobPanel.jsx', 'SchedulingWorkspace.jsx'];
+  for (const output of compile({
+    sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') })) }).outputs) vm.runInContext(output.code, runtime, { filename: output.path });
+  return { runtime, mode: 'current-source', reference: number => number.toString(16).padStart(48, '0'), clone: value => JSON.parse(JSON.stringify(value)),
+    equal: (left, right) => assert.equal(JSON.stringify(left), JSON.stringify(right)) };
+}
+if (process.argv[2] === '--timezone') timezoneContract();
+else contract(currentSource(), assert).then(result => {
+  for (const timezone of Object.keys(TIMEZONE_DEFAULTS)) {
+    const child = spawnSync(process.execPath, [__filename, '--timezone'], { encoding: 'utf8', env: { ...process.env, TZ: timezone } });
+    assert.equal(child.status, 0, child.stdout + child.stderr);
+    process.stdout.write(child.stdout);
+  }
+  console.log(JSON.stringify({ mode: 'current-source', result }));
+}).catch(error => { console.error(error.stack); process.exitCode = 1; });

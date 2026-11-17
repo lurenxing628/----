@@ -1,5 +1,6 @@
 import React from './shared/runtime/react.js';
-import { useRead, Button, ErrorBox, Page } from './ReportControls.jsx';
+import { Button, ErrorBox, Page } from './ReportControls.jsx';
+import { useQuery } from './shared/session/query.js';
 import { text, time, amount, hoursText, Table } from './ReportTable.jsx';
 import ReportAPI from './ReportAPI.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
@@ -35,13 +36,8 @@ function Evidence({ record }) {
 }
 
 function Detail({ operationRef, input, busy = false, onClose, onOpenOperation, initialView, onView }) {
-  const identity = operationRef + JSON.stringify(input);
-  const request = useRead(signal => ReportAPI.detail(operationRef, input, signal), identity);
-  const rawDetail = request.result && request.result.data.detail;
-  const lastDetailRef = React.useRef(null);
-  if (rawDetail) lastDetailRef.current = { operationRef, detail: rawDetail };
-  else if (!request.busy || (lastDetailRef.current && lastDetailRef.current.operationRef !== operationRef)) lastDetailRef.current = null;
-  const detail = rawDetail || (request.busy && lastDetailRef.current && lastDetailRef.current.operationRef === operationRef ? lastDetailRef.current.detail : null);
+  const request = useQuery(signal => ReportAPI.detail(operationRef, input, signal), [operationRef, JSON.stringify(input)], { keep: operationRef });
+  const detail = request.shown && request.shown.data.detail;
   const [page, setPage] = React.useState(initialView ? initialView.page : 1), [size, setSize] = React.useState(initialView ? initialView.size : 10);
   const prevRef = React.useRef(operationRef);
   React.useEffect(() => {
@@ -52,7 +48,7 @@ function Detail({ operationRef, input, busy = false, onClose, onOpenOperation, i
       setSize(initialView ? initialView.size : 10);
     }
   }, [operationRef]);
-  const row = detail && detail.operation, disabled = !row || request.busy || busy;
+  const row = detail && detail.operation, disabled = !row || request.loading || busy;
   const actions = <div className="rw-actions">
     <Button icon="arrow-right" disabled={disabled}
       onClick={() => onOpenOperation(operationRef, input, row, 'field')}>查看现场记录</Button>
@@ -69,10 +65,10 @@ function Detail({ operationRef, input, busy = false, onClose, onOpenOperation, i
   const records = React.useMemo(() => detail ? detail.records.slice((currentPage - 1) * size, currentPage * size) : [], [detail, currentPage, size]);
   return <WorkbenchDetailPanel className="rw-detail" detailKey={operationRef} title={row ? row.batch_label + ' · ' + row.operation_label : '工序详情'}
     subtitle="工序报表详情" actions={actions} onClose={onClose}>
-    <ErrorBox error={request.error} />{request.busy && <EmptyState kind="loading" title="正在读取工序记录" />}
+    <ErrorBox error={request.error} />{request.loading && <EmptyState kind="loading" title="正在读取工序记录" />}
     {row && <><dl className="rw-detail-facts"><div><dt>整道完成</dt><dd>{row.execution_label}</dd></div><div><dt>已确认完工时间</dt><dd>{time(row.confirmed_finish)}</dd></div><div><dt>已知累计数量</dt><dd>{text(row.known_completed_quantity)}；数量未知 {row.unknown_record_count} 条</dd></div><div><dt>有效加工工时</dt><dd>{hoursText(row.effective_processing_hours)}；已知小计 {hoursText(row.known_effective_processing_hours)}</dd></div></dl>
       <p>逐次报工 {row.production_report_count} 条。剩余数量：{text(row.remaining_quantity)}。</p>
-      <p>{row.data_gaps.join(' ')}</p><Table data={{ topic: 'records', rows: records }} busy={request.busy || busy} empty={{ title: '这道工序暂无报工记录', hint: '' }}
+      <p>{row.data_gaps.join(' ')}</p><Table data={{ topic: 'records', rows: records }} busy={request.loading || busy} empty={{ title: '这道工序暂无报工记录', hint: '' }}
         onLocate={record => { if (!disabled) onOpenOperation(operationRef, input, row, 'fieldgantt', record.report_ref); }} />
       {records.map(record => <Evidence key={record.record_kind + ':' + record.projection_index} record={record} />)}
       <div className="rw-detail-pager"><Page page={{ number: currentPage, size, total: detail.records.length, pages }} onChange={patch => {

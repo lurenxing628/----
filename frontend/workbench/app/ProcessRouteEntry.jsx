@@ -1,6 +1,8 @@
 import React from './shared/runtime/react.js';
 import C from './resource-contract.js';
 import P from './ProcessContract.js';
+import APSProcessAPI from './ProcessAPI.js';
+import APSResourceAPI from './resource-api.js';
 import { useQuery } from './shared/session/query.js';
 import E from './ProcessStageEditor.jsx';
 import D from './ProcessRouteDraft.js';
@@ -8,6 +10,7 @@ import { Button, Modal, ErrorBox, Issues } from './ResourceControls.jsx';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import { Feedback } from './ResourceForms.jsx';
+import { failure } from './shared/contract/kit.js';
 
 // The op_type page caps at 200 rows (core/models/workbench_resource_query.py), so a single read is the whole candidate list it can offer.
 const OP_TYPE_PAGE_SIZE = 200;
@@ -40,7 +43,7 @@ function Preview({ result }) {
 // a route without operations shows its saved route text and one blank row.
 const openingText = (data, rows) => rows.length ? D.serialize(rows) : data.fields.route_raw === null ? '' : data.fields.route_raw;
 const openingRows = rows => rows.length ? rows : [{ seq: '', op_type_name: '' }];
-function ProcessRouteEntry({ adapter, result, command, onClose, onDirty, refreshState = {}, onRefresh, active = true, disabled = false }) {
+function ProcessRouteEntry({ result, command, onClose, onDirty, refreshState = {}, onRefresh, active = true, disabled = false }) {
   const [context, setContext] = React.useState(result);
   const entity = context.data, sequence = React.useRef(0), request = React.useRef(null);
   const initialRows = React.useRef(null);
@@ -57,13 +60,13 @@ function ProcessRouteEntry({ adapter, result, command, onClose, onDirty, refresh
   // Read the op_type catalog once on entry so the row inputs can suggest real names. Free text stays allowed and
   // the server route preflight remains the only authority on what is recognized.
   const opTypeListId = React.useId();
-  const opTypes = useQuery(signal => adapter.choices('op_type', { query: '', page: 1, size: OP_TYPE_PAGE_SIZE }, signal),
-    [adapter]);
+  const opTypes = useQuery(signal => APSResourceAPI.forNamespace('resources').choices('op_type', { query: '', page: 1, size: OP_TYPE_PAGE_SIZE }, signal),
+    []);
   const opTypeNames = React.useMemo(() => opTypes.result ? Array.from(new Set(opTypes.result.data.entities.map(item => item.label).filter(Boolean))) : [],
     [opTypes.result]);
   function abort() { if (request.current) request.current.abort(); request.current = null; }
   React.useEffect(() => () => abort(), []);
-  React.useEffect(() => { invalidate(); }, [adapter, result, disabled, active, command.error]);
+  React.useEffect(() => { invalidate(); }, [result, disabled, active, command.error]);
   React.useEffect(() => {
     if (result !== context) {
       if (!active && draftText === baselineDraft.current && !state.result && !state.error) acceptFresh(result);
@@ -78,10 +81,10 @@ function ProcessRouteEntry({ adapter, result, command, onClose, onDirty, refresh
     const controller = new AbortController(); request.current = controller;
     try {
       const body = P.previewBody('text', mode === 'rows' ? D.serialize(rows) : routeRaw, rows, snapshot);
-      const response = P.preview(await adapter.routePreview(entity.ref, body, controller.signal), entity.ref, body);
+      const response = P.preview(await APSProcessAPI.routePreview(entity.ref, body, controller.signal), entity.ref, body);
       if (controller.signal.aborted || request.current !== controller) return null;
       const syntaxInvalid = !response.data.operations.length || response.data.diagnostics.some(row => row.severity === 'error' && !['legacy_sequence_invalid'].includes(row.code));
-      if (syntaxInvalid) { setState({ busy: false, result: response, error: C.failure('当前输入还不能准确识别，已保留原输入。请按路线预检提示修正后再继续。') }); return null; }
+      if (syntaxInvalid) { setState({ busy: false, result: response, error: failure('当前输入还不能准确识别，已保留原输入。请按路线预检提示修正后再继续。') }); return null; }
       return response.data.operations.map(row => ({ seq: String(row.sequence), op_type_name: row.op_type_name }));
     } catch (error) { if (!controller.signal.aborted) throw error; return null; }
     finally { if (request.current === controller) request.current = null; }
@@ -113,7 +116,7 @@ function ProcessRouteEntry({ adapter, result, command, onClose, onDirty, refresh
   }
   async function acceptLatest() {
     if (blocked || state.busy) return;
-    if (mergeReview) { try { acceptMerged(D.resolve(mergeReview, mergeChoices)); } catch (error) { setState({ busy: false, result: null, error: C.failure(error.message) }); } return; }
+    if (mergeReview) { try { acceptMerged(D.resolve(mergeReview, mergeChoices)); } catch (error) { setState({ busy: false, result: null, error }); } return; }
     // Nothing was typed or changed locally: there is no draft to merge, so take the latest route as is.
     if (draftText === baselineDraft.current || !draftText.trim() && !initialRows.current.length) { acceptFresh(); return; }
     abort(); setState({ busy: true, result: null, error: null });
@@ -131,7 +134,7 @@ function ProcessRouteEntry({ adapter, result, command, onClose, onDirty, refresh
     setState({ busy: true, result: null, error: null });
     try {
       const body = P.previewBody(mode, routeRaw, rows, context.meta.snapshot_ref);
-      const response = P.preview(await adapter.routePreview(entity.ref, body, controller.signal), entity.ref, body);
+      const response = P.preview(await APSProcessAPI.routePreview(entity.ref, body, controller.signal), entity.ref, body);
       if (!controller.signal.aborted && request.current === controller) { const { snapshot_ref, ...route } = body; setState({ busy: false, result: response, route, error: null }); }
     } catch (error) {
       if (!controller.signal.aborted && request.current === controller) setState({ busy: false, result: null, error });
@@ -142,7 +145,7 @@ function ProcessRouteEntry({ adapter, result, command, onClose, onDirty, refresh
     abort(); const controller = new AbortController(); request.current = controller;
     setState({ busy: true, result: null, error: null, reading: true });
     try {
-      const fresh = P.detail(await adapter.detail('part', entity.ref, controller.signal), entity.ref);
+      const fresh = P.detail(await APSProcessAPI.detail('part', entity.ref, controller.signal), entity.ref);
       if (!controller.signal.aborted && request.current === controller) { setReview(fresh); setMergeReview(null); setMergeChoices({}); setState({ busy: false, result: null, error: null, refreshed: true }); }
     } catch (error) {
       if (!controller.signal.aborted && request.current === controller) setState({ busy: false, result: null, error });

@@ -45,7 +45,7 @@ const SANDBOX_RUNTIME_CODE = `(function (__g) {
         value: {
           factories: Object.create(null), sourceHashes: Object.create(null), modules: Object.create(null),
           liveExports: Object.create(null), evaluating: Object.create(null), stubs: Object.create(null),
-          stubsCleared: false, stubDefaultProxies: Object.create(null), moduleProxies: Object.create(null),
+          stubsCleared: false, partialStubDefaults: Object.create(null), moduleProxies: Object.create(null),
         },
         configurable: true, enumerable: false, writable: true,
       });
@@ -163,16 +163,12 @@ const SANDBOX_RUNTIME_CODE = `(function (__g) {
     };
     return new Proxy(target, handler);
   }
-  function isPlainDefault(v) {
-    if (!v || typeof v !== 'object' || Array.isArray(v) || Object.isFrozen(v)) return false;
-    const proto = Object.getPrototypeOf(v);
-    return proto === Object.prototype || proto === null;
-  }
-  function getStubDefaultProxy(rel, hasCS, cs) {
+  // 桩对象只替换部分成员、不含 default 时的 default 视图：桩里有的成员取桩，其余成员回落真实模块。
+  function partialStubDefault(rel, hasCS, cs) {
     const st = getState(), ck = hasCS ? rel + '\0cs' : rel;
-    if (!st.stubDefaultProxies[ck]) {
+    if (!st.partialStubDefaults[ck]) {
       const r0 = st.modules[rel];
-      st.stubDefaultProxies[ck] = makeProxy(
+      st.partialStubDefaults[ck] = makeProxy(
         (r0 && typeof r0.default === 'function') ? function () {} : {}, rel, hasCS, cs,
         k => {
           const { hasStub, stub } = getActiveStub(rel, hasCS, cs);
@@ -195,13 +191,13 @@ const SANDBOX_RUNTIME_CODE = `(function (__g) {
         }
       );
     }
-    return st.stubDefaultProxies[ck];
+    return st.partialStubDefaults[ck];
   }
   function resolveModuleProp(rel, key, hasCS, cs) {
     const { hasStub, stub } = getActiveStub(rel, hasCS, cs);
     if (hasStub) {
       if (stub !== null && typeof stub === 'object') {
-        if (key === 'default') return ('default' in stub) ? stub.default : getStubDefaultProxy(rel, hasCS, cs);
+        if (key === 'default') return ('default' in stub) ? stub.default : partialStubDefault(rel, hasCS, cs);
         if (key in stub) return stub[key];
         if (isObjOrFn(stub.default) && key in stub.default) return stub.default[key];
         const r = ensureEvaluated(rel);
@@ -213,7 +209,7 @@ const SANDBOX_RUNTIME_CODE = `(function (__g) {
     }
     const st = getState(), rm = st.modules[rel] || (st.evaluating[rel] ? st.liveExports[rel] : ensureEvaluated(rel));
     if (!rm) return undefined;
-    return (key === 'default' && isPlainDefault(rm.default)) ? getStubDefaultProxy(rel, hasCS, cs) : rm[key];
+    return rm[key];
   }
   function dep(rel, exportNames, compileStub) {
     const hasCS = arguments.length >= 3, st = getState(), mod = {}, keySet = new Set(exportNames || []);
@@ -265,7 +261,6 @@ const SANDBOX_RUNTIME_CODE = `(function (__g) {
           if (getActiveStub(rel, false, undefined).hasStub) return resolveModuleProp(rel, prop, false, undefined);
           const rm = ensureEvaluated(rel);
           if (!rm) return undefined;
-          if (prop === 'default' && isPlainDefault(rm.default)) return getStubDefaultProxy(rel, false, undefined);
           return (prop in rm) ? rm[prop] : (isObjOrFn(rm.default) && prop in rm.default ? rm.default[prop] : undefined);
         },
         prop => {

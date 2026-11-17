@@ -1,14 +1,14 @@
 import React from './shared/runtime/react.js';
 import { Button, Modal } from './ResourceControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
-import WorkbenchTerms from './WorkbenchTerms.js';
+import T from './WorkbenchTerms.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
 
 // 计量值保留两位小数；不足 0.01 的非零值写“不到 0.01”，不能读成 0（与执行排产候选对比的“不到 0.001”同一规则）。
 const tiny = v => typeof v === 'number' && v !== 0 && Number(Math.abs(v).toFixed(2)) === 0;
 const number = v => tiny(v) ? '不到 0.01' : WorkbenchFormat.number(v, { digits: Number.isInteger(v) ? 0 : 2 });
 const signed = (v, scale = 1) => v === null ? '未知' : v === 0 ? '0' : (v > 0 ? '+' : '-') + number(Math.abs(v * scale));
-const T = WorkbenchTerms, risks = T.delivery_risks;
+const risks = T.delivery_risks;
 const risk = row => row.risk === 'overdue' ? (tiny(row.delay_hours) ? '超期不到 0.01 小时' : '超期 ' + number(row.delay_hours) + ' 小时') : risks[row.risk] || risks.unknown;
 
 function DeliveryValue({ summary, metric }) {
@@ -61,7 +61,7 @@ function Peak({ value }) { return value.peak_utilization !== null ? <>{Workbench
 
 function Metrics({ data }) {
   const old = data.summary.before, selected = data.summary.after;
-  return <section className="dy-comparison-metrics" aria-label="所选候选比较"><Tradeoffs data={data} /><h3>批次交付对比汇总</h3><div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">批次交付对比汇总</caption><thead><tr><th scope="col">指标</th><th scope="col">{WorkbenchTerms.baseline_plan}</th><th scope="col">所选候选方案</th></tr></thead><tbody>
+  return <section className="dy-comparison-metrics" aria-label="所选候选比较"><Tradeoffs data={data} /><h3>批次交付对比汇总</h3><div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">批次交付对比汇总</caption><thead><tr><th scope="col">指标</th><th scope="col">{T.baseline_plan}</th><th scope="col">所选候选方案</th></tr></thead><tbody>
     <tr><td>{T.overdue_count}</td><td><DeliveryValue summary={old} metric="overdue_count" /></td><td><DeliveryValue summary={selected} metric="overdue_count" /></td></tr>
     <tr><td>{T.total_tardiness_hours}（小时）</td><td><DeliveryValue summary={old} metric="total_tardiness_hours" /></td><td><DeliveryValue summary={selected} metric="total_tardiness_hours" /></td></tr>
     <tr><td>同范围{T.changeover_count}</td><td>{number(old.changeovers.value)}{old.changeovers.value === null && old.changeovers.reason && <small>{old.changeovers.reason}</small>}</td>
@@ -96,8 +96,8 @@ function Batches({ data, selected, onSelect }) {
 
 function Summary({ data, onClose }) {
   return <Modal title="候选方案摘要" icon="chart-gantt" onClose={onClose} footer={<Button reasonDisplay="inline" icon="arrow-left" onClick={onClose}>返回比较</Button>}>
-    <div className="modal-b form dy-candidate-summary"><h3>{data.candidate.label || WorkbenchTerms.name_missing}</h3><dl className="dy-facts">
-      <div><dt>{WorkbenchTerms.baseline_plan}</dt><dd>{data.baseline.baseline_ref ? '已读到排产时的正式计划' : '排产时没有正式计划'}</dd></div>
+    <div className="modal-b form dy-candidate-summary"><h3>{data.candidate.label}</h3><dl className="dy-facts">
+      <div><dt>{T.baseline_plan}</dt><dd>{data.baseline.baseline_ref ? '已读到排产时的正式计划' : '排产时没有正式计划'}</dd></div>
       <div><dt>{T.overdue_count}</dt><dd><DeliveryValue summary={data.summary.after} metric="overdue_count" /></dd></div><div><dt>{T.total_tardiness_hours}（小时）</dt><dd><DeliveryValue summary={data.summary.after} metric="total_tardiness_hours" /></dd></div>
       <div><dt>同范围{T.changeover_count}</dt><dd>{number(data.summary.after.changeovers.value)}</dd></div><div><dt>换设备工序</dt><dd>{number(data.machine_changes.count)} · 已确认 {data.machine_changes.known_count} · 未知 {data.machine_changes.unknown_count}</dd></div>
     </dl><p className="dy-context">{T.delivery_coverage(data.summary.after)}</p><Tradeoffs data={data} /><WorkbenchReference entries={{ '候选编号': data.candidate.candidate_ref, '排产时正式计划编号': data.baseline.baseline_ref }} /><details className="wb-ref"><summary>换设备工序编号</summary>{data.machine_changes.operation_refs.map(ref => <p key={ref}>{ref}</p>)}{!data.machine_changes.operation_refs.length && <p>没有已确认换设备的工序。</p>}</details></div>

@@ -2,16 +2,28 @@
 'use strict';
 const fs = require('fs'), path = require('path'), vm = require('vm'), assert = require('assert');
 const { compile, normalizeRelPath } = require('../../scripts/workbench/compile.cjs');
+const { createTreeHost, walk } = require('./hook_host.cjs');
+const route = require('../workbench/route_fetch.cjs');
+const { memoryStorage } = require('./memory_storage.cjs');
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const root = path.resolve(input.root), loaded = [];
-const document = {body: {style: {}}, documentElement: {setAttribute() {}}, addEventListener() {}, removeEventListener() {}, elementFromPoint: () => null};
+const document = {body: {style: {}}, documentElement: {setAttribute() {}}, addEventListener() {}, removeEventListener() {}, elementFromPoint: () => null,
+  querySelector: () => null, querySelectorAll: () => []};
 const runtime = vm.createContext({console, document, URL, URLSearchParams, Map, Set, Date,
-  setTimeout, clearTimeout, AbortController, DOMException, FormData, Blob, Headers, Response, TextEncoder, TextDecoder, innerWidth: 1280, innerHeight: 800});
+  setTimeout, clearTimeout, queueMicrotask, AbortController, DOMException, FormData, Blob, Headers, Response, TextEncoder, TextDecoder, innerWidth: 1280, innerHeight: 800});
 runtime.window = runtime; runtime.self = runtime;
-runtime.addEventListener = () => {}; runtime.removeEventListener = () => {};
-runtime.dispatchEvent = () => {}; runtime.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
+// Window events reach the listeners mounted effects registered (storage, online, same-page pending-store events).
+const windowListeners = new Map();
+runtime.addEventListener = (type, listener) => { if (!windowListeners.has(type)) windowListeners.set(type, new Set()); windowListeners.get(type).add(listener); };
+runtime.removeEventListener = (type, listener) => { if (windowListeners.has(type)) windowListeners.get(type).delete(listener); };
+runtime.dispatchEvent = event => { for (const listener of Array.from(windowListeners.get(event.type) || [])) listener(event); return true; };
+runtime.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
 runtime.matchMedia = query => ({media: String(query), matches: String(query).trim().toLowerCase() === 'screen', addEventListener() {}, removeEventListener() {}});
 runtime.location = {origin: 'http://localhost', href: 'http://localhost/workbench'};
+// Mounted trees run their effects (h.mount(...).settle()); layout effects observe these browser surfaces.
+runtime.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+runtime.history = {state: null, replaceState() {}, pushState() {}};
+runtime.requestAnimationFrame = callback => setTimeout(callback, 0); runtime.cancelAnimationFrame = clearTimeout;
 function load(relative) {
   const absolute = path.resolve(root, relative);
   assert(absolute.startsWith(root + path.sep));
@@ -20,28 +32,13 @@ function load(relative) {
 }
 load('static/workbench/vendor/react-18.3.1.production.min.js');
 const realReact = runtime.React;
-let frame = null, overrides = {}, updates = [], frames = [], nextId = 0;
 const fixtureAsOf = '2026-05-11T12:00:00';
-const contextValues = new Map(), providerType = realReact.createContext(null).Provider.$$typeof;
+// Stub DOM nodes for object refs: the harness has no parent chain, so ancestor lookups find nothing.
 const stubNode = () => ({scrollLeft: 0, scrollTop: 0, clientWidth: 1000, clientHeight: 440,
-  focus() {}, getBoundingClientRect: () => ({left:0, top:0, width:1000, height:440}), querySelectorAll: () => []});
-runtime.React = Object.assign({}, realReact, {
-  useState(value) {
-    assert(frame, 'Hooks need a component frame');
-    const current = frame, index = current.index++;
-    const values = overrides[current.name] || {};
-    const initial = Object.prototype.hasOwnProperty.call(values, index) ? values[index] : typeof value === 'function' ? value() : value;
-    return [initial, next => updates.push({name: current.name, index, value: typeof next === 'function' ? next(initial) : next})];
-  },
-  useReducer(reducer, value) {
-    const [state, setState] = runtime.React.useState(value);
-    return [state, action => setState(current => reducer(current, action))];
-  },
-  useMemo: fn => fn(), useCallback: fn => fn, useRef: value => ({current:value}),
-  useId: () => ':gantt-contract-' + (++nextId) + ':',
-  useContext: context => contextValues.has(context) ? contextValues.get(context) : context._currentValue,
-  useEffect() {}, useLayoutEffect() {},
-});
+  focus() {}, closest: () => null, getBoundingClientRect: () => ({left:0, top:0, width:1000, height:440}), querySelector: () => null, querySelectorAll: () => []});
+// Mounted trees (h.mount) keep hook state per component instance; tests/_support/hook_host.cjs describes the identities.
+const treeHost = createTreeHost(realReact, {refNode: stubNode}), mountTree = treeHost.mount;
+runtime.React = Object.assign({}, realReact, treeHost.hooks);
 // Compile and load initial workbench modules; additional modules are compiled on demand via h.module(relPath).
 document.getElementById = id => id === 'workbench-boot' ? {textContent:'{}'} : {setAttribute() {}, replaceChildren() {}};
 document.createElement = () => ({setAttribute() {}});
@@ -77,38 +74,6 @@ function setStubs(stubsByRel) {
   runtime.__wbRuntime.setStubs(stubsByRel);
 }
 
-function expand(element) {
-  if (element === null || element === undefined || typeof element === 'boolean') return null;
-  if (typeof element === 'string' || typeof element === 'number') return element;
-  if (Array.isArray(element)) return element.map(expand);
-  assert(realReact.isValidElement(element), 'Only actual React elements may be expanded');
-  if (element.type === realReact.Fragment) return expand(element.props.children);
-  if (element.type && element.type.$$typeof === providerType) {
-    const context = element.type._context, hadValue = contextValues.has(context), previous = contextValues.get(context);
-    contextValues.set(context, element.props.value);
-    try { return expand(element.props.children); }
-    finally { if (hadValue) contextValues.set(context, previous); else contextValues.delete(context); }
-  }
-  if (typeof element.type === 'function') {
-    const previous = frame;
-    frame = {name:element.type.name, index:0}; frames.push(frame.name);
-    try {
-      const child = element.type.prototype && element.type.prototype.isReactComponent
-        ? new element.type(element.props).render() : element.type(element.props);
-      return expand(child);
-    } finally { frame = previous; }
-  }
-  assert.strictEqual(typeof element.type, 'string', 'A required component dependency is missing or unsupported in the inspected surface');
-  assert(!Object.prototype.hasOwnProperty.call(element.props, 'dangerouslySetInnerHTML'), 'Raw HTML is forbidden on this surface');
-  if (element.ref && typeof element.ref === 'object') element.ref.current = stubNode();
-  return {type:element.type, props:element.props, children:expand(element.props.children)};
-}
-function walk(tree) {
-  if (tree === null || tree === undefined) return [];
-  if (Array.isArray(tree)) return tree.flatMap(walk);
-  if (typeof tree !== 'object') return [];
-  return [tree, ...walk(tree.children)];
-}
 function text(tree) {
   if (tree === null || tree === undefined) return '';
   if (Array.isArray(tree)) return tree.map(text).join('');
@@ -121,10 +86,8 @@ function text(tree) {
   }
   return text(tree.children);
 }
-function render(component, props, states = {}) {
-  overrides = states; updates = []; frames = []; nextId = 0;
-  return expand(realReact.createElement(component, props));
-}
+// One render without effects: what the component shows for these props on its first paint.
+const render = (component, props) => mountTree(component, props).tree;
 function styles() {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json'), 'utf8'));
   return manifest.styles.map(relative => fs.readFileSync(path.join(root, 'static', relative), 'utf8')).join('\n');
@@ -158,15 +121,16 @@ function prepare(model, data, ...args) {
   facts.graph = getModule('GanttGraph.js').create(data.gantt_graph);
   return facts;
 }
+// 计划页按需子读取（useResultSlice 的返回）夹具：默认空闲，按需覆盖 loading / error / request。
+const slice = (state = {}) => Object.assign({value:null, loading:false, error:null, request() {}}, state);
 function gantt(data, options = {}) {
   const selections = [], queries = [];
-  const states = Object.assign({}, options.states || {});
   // The product receives meta.as_of from its workspace response. Synthetic fixtures use a fixed local clock.
   const asOf = options.asOf === undefined ? input.data && input.data.meta && input.data.meta.as_of || fixtureAsOf : options.asOf;
   const planGanttModel = getModule('PlanGanttModel.js');
-  const tree = render(getModule('PlanGantt.jsx').default, {data,prepared:prepare(planGanttModel,data),graph:getModule('GanttGraph.js').create(data.gantt_graph),asOf,query:options.query || '',selected:options.selected || null,
-    onSelect:(task,before) => selections.push({task,before}),onQuery:value => queries.push(value)}, states);
-  return {tree, nodes:walk(tree), selections, queries};
+  const mounted = mountTree(getModule('PlanGantt.jsx').default, {data,prepared:prepare(planGanttModel,data),graph:getModule('GanttGraph.js').create(data.gantt_graph),asOf,query:options.query || '',selected:options.selected || null,
+    baselineSlice:slice(),graphSlice:slice(),onSelect:(task,before) => selections.push({task,before}),onQuery:value => queries.push(value)});
+  return {mounted, tree:mounted.tree, nodes:mounted.nodes, selections, queries};
 }
 function processFixture() {
   const data = fixture(['A1','A2','A3'].map((label,index) => [label,'2026-05-11T'+String(8+index).padStart(2,'0')+':00:00','2026-05-11T'+String(9+index).padStart(2,'0')+':00:00']));
@@ -178,8 +142,13 @@ function processFixture() {
     critical_task_refs:data.tasks.map(task => task.task_ref),critical_edges:edges};
   return data;
 }
-const h = {runtime,module:getModule,getModule,setStub,setStubs,load,loaded,render,walk,text,styles,fixture,processFixture,prepare,gantt,reference,clone:value => JSON.parse(JSON.stringify(value)),
-  updates:() => updates.slice(), equal:(left,right) => assert.strictEqual(JSON.stringify(left),JSON.stringify(right))};
-Promise.resolve(new Function('h','assert','sourceData',input.program)(h,assert,input.data))
+// Fetch-level answers (tests/workbench/route_fetch.cjs): requests still pass through the shipped API modules and transport.
+const serve = routes => (runtime.fetch = route.routeFetch(routes, {origin: runtime.location.origin}));
+// 本机存储替身（tests/_support/memory_storage.cjs）：契约按页面换一份，挂到 h.runtime.localStorage / sessionStorage。
+const h = {runtime,module:getModule,getModule,setStub,setStubs,load,loaded,render,mount:mountTree,serve,route,memoryStorage,walk,text,styles,fixture,processFixture,prepare,gantt,slice,reference,
+  clone:value => JSON.parse(JSON.stringify(value)), equal:(left,right) => assert.strictEqual(JSON.stringify(left),JSON.stringify(right))};
+// Programs may await mounted trees settling.
+const AsyncFunction = (async () => {}).constructor;
+new AsyncFunction('h','assert','sourceData',input.program)(h,assert,input.data)
   .then(result => process.stdout.write(JSON.stringify({result:result === undefined ? true : result,loaded})))
   .catch(error => {console.error(error.stack);process.exitCode=1;});

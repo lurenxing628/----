@@ -34,12 +34,13 @@ function Fields({ value, onChange, disabled, error, noteEnabled = true }) {
 function Policy({ value }) {
   const fields = value.fields, stored = value.stored;
   const number = APSCalendarContract.displayNumber;
-  const yesNo = item => ({ yes: '可排', no: '不可排' })[item] || String(item);
+  // stored 是 WorkCalendar 的行或领域模型准入后的提议行：日类型只有工作日和假期，两个允许项只有 yes/no。
+  const yesNo = item => ({ yes: '可排', no: '不可排' })[item];
   return <div style={{ overflowWrap: 'anywhere', lineHeight: 1.65 }}>
     <div><b>{value.explicit ? '单独设置' : '默认规则'}</b> · {value.effective.is_working ? '可排产' : '不排产'}</div>
     <div>{number(fields.hours)} 小时 · 效率 {number(fields.eff)}% · 普通件{fields.allowNormal === 'yes' ? '可排' : '不可排'} · 急件{fields.allowUrgent === 'yes' ? '可排' : '不可排'}</div>
     <div className="muted">有效时段：{APSWorkPeriods.describe(value.effective.periods)}</div>
-    {stored && <div className="muted">原始配置（只读）：{({ workday: '工作日', holiday: '休息日' })[stored.day_type] || String(stored.day_type)}；效率 {typeof stored.efficiency === 'number' ? number(stored.efficiency * 100) + '%' : String(stored.efficiency)}；普通件{yesNo(stored.allow_normal)}；急件{yesNo(stored.allow_urgent)}</div>}
+    {stored && <div className="muted">原始配置（只读）：{({ workday: '工作日', holiday: '休息日' })[stored.day_type]}；效率 {typeof stored.efficiency === 'number' ? number(stored.efficiency * 100) + '%' : String(stored.efficiency)}；普通件{yesNo(stored.allow_normal)}；急件{yesNo(stored.allow_urgent)}</div>}
     <div className="muted">备注：{fields.note || '未填写'}</div>
   </div>;
 }

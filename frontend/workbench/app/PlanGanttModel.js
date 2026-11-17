@@ -1,7 +1,8 @@
 import WorkbenchFormat from './WorkbenchFormat.js';
-import FieldContract from './FieldContract.js';
+import { quantityReasons } from './FieldContract.js';
 import PointContract from './PointContract.js';
 import PointGanttModel from './PointGanttModel.js';
+import { failure } from './shared/contract/kit.js';
 
 // Factory-local wall-clock coordinates, deliberately independent of browser DST.
 // Date truncates below milliseconds; add the factory-local fractional seconds separately.
@@ -13,7 +14,6 @@ const number = value => WorkbenchFormat.number(value, { digits: 2 });
 const count = value => WorkbenchFormat.number(value, { digits: 0 });
 const quantityLabel = (value, reason) => value === null ? quantityReasons[reason] || '未知' : typeof value === 'string' ? value : number(value);
 const pieceLabel = task => task.piece_id === null ? '共同工序' : '分件 ' + task.piece_id;
-const quantityReasons = FieldContract.quantityReasons;
 const kindLabels = { machine: '设备', operator: '人员', batch: '批次' };
 function scopeCaption(data) {
   const includesPlanEnd = data.scope.range_start === null && data.plan_span.end_inclusive === true;
@@ -98,7 +98,7 @@ function prepareBaseline(data, taskFacts, baselineItems = null) {
     for (const item of rawItems) {
       const current = item.after && item.after.task_ref ? taskIndex.get(item.after.task_ref) : null;
       if (item.after_in_scope && (!item.after || !current)) {
-        throw new Error('原安排对照的分页或明细与所选计划不一致，请刷新。');
+        throw failure('原安排对照的分页或明细与所选计划不一致，请刷新。');
       }
       const after = item.after && item.after.start === undefined && current ? current.task : item.after;
       comparisons.set(item.operation_ref, {
@@ -113,10 +113,10 @@ function prepareBaseline(data, taskFacts, baselineItems = null) {
   return { before, baselineLoaded, beforeIndex, comparisons, changed };
 }
 function prepareOccupancy(data, previous, occupancyProjection, baseLabels) {
-  const occ = occupancyProjection || data.projections && data.projections.occupancy;
+  const occ = occupancyProjection || data.projections.occupancy;
   const labels = baseLabels;
   const prevMap = previous && previous.occupancy;
-  const occupancy = new Map((occ && occ.resources || []).map(row => {
+  const occupancy = new Map(occ.resources.map(row => {
     const raw = row.has_overlap ? row.conflict_segments : [];
     const prev = prevMap && prevMap.get(row.resource_ref);
     const prevSegments = prev && prev.segments;

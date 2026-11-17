@@ -1,6 +1,7 @@
 import React from './shared/runtime/react.js';
-import FieldContract from './FieldContract.js';
-import FieldControls from './FieldControls.jsx';
+import C from './FieldContract.js';
+import FieldAPI from './FieldAPI.js';
+import { Button, ErrorBox, Issues, State } from './FieldControls.jsx';
 import WorkbenchControls from './WorkbenchControls.jsx';
 import GanttPresentation from './GanttPresentation.js';
 import PlanGanttModel from './PlanGanttModel.js';
@@ -14,7 +15,6 @@ import { EmptyState } from './ResourceControls.jsx';
 import FieldVoidEditor from './FieldVoidEditor.jsx';
 import FieldEditor from './FieldEditor.jsx';
 
-const C = FieldContract, { Button, ErrorBox, Issues, State } = FieldControls;
 function Timeline({ task }) {
   const [selected, setSelected] = React.useState(null), [tip, setTip] = React.useState(null);
   const axisHost = React.useRef(null), [width, setWidth] = React.useState(640);
@@ -83,11 +83,11 @@ function History({ record }) {
       {record.correction_history.map((item, index) => <div key={index}><strong>{C.reportActions[item.action]}</strong> {C.date(item.recorded_at)} · {item.reason}
         {item.before && item.after && <dl>{C.fields.filter(key => item.before[key] !== item.after[key]).map(key => <React.Fragment key={key}><dt>{({ completed_quantity: '数量', effective_processing_hours: '有效工时', actual_start: '实际开工', actual_end: '本次完工', actual_machine_ref: '实际设备', actual_operator_ref: '实际人员', remark: '备注' })[key]}</dt><dd>{key.endsWith('_ref') ? '资源已更正' : C.display(item.before[key]) + ' → ' + C.display(item.after[key])}</dd></React.Fragment>)}</dl>}</div>)}</div>;
 }
-function FieldDetail({ adapter, taskRef, scope, returnContext, snapshot, revision, command, editor, retained, onDraft, onEdit, onCloseEditor, onDone, onNavigate, nextDraft, onContinueReady, onRefresh }) {
+function FieldDetail({ taskRef, scope, returnContext, snapshot, revision, command, editor, retained, onDraft, onEdit, onCloseEditor, onDone, onNavigate, nextDraft, onContinueReady, onRefresh }) {
   const [historyRef, setHistoryRef] = React.useState(null);
   const [timeline, setTimeline] = React.useState(false);
   const detail = React.useRef(null);
-  const request = useQuery(async signal => C.detail(await adapter.detail(taskRef, { ...scope, snapshot_ref: snapshot }, signal), taskRef), [adapter, taskRef, scope, snapshot, revision], Boolean(snapshot));
+  const request = useQuery(async signal => C.detail(await FieldAPI.detail(taskRef, { ...scope, snapshot_ref: snapshot }, signal), taskRef), [taskRef, scope, snapshot, revision], { enabled: Boolean(snapshot) });
   const waiting = !snapshot || request.loading;
   const task = request.result && request.result.data.task, p = task && task.execution;
   React.useEffect(() => {
@@ -127,8 +127,8 @@ function FieldDetail({ adapter, taskRef, scope, returnContext, snapshot, revisio
           <Button icon="rotate-ccw" aria-label={'撤销 ' + record.report_no} reasonDisplay="tooltip" reason={C.blocked(record.write_context, 'report_void')} disabled={command.locked || !!editor} onClick={() => onEdit({ taskRef, reportRef: record.report_ref, action: 'report_void' })}>撤销</Button></div></td></tr>{historyRef === record.report_ref && <tr><td colSpan="8"><History record={record} /></td></tr>}</React.Fragment>)}
         {!p.reports.length && <tr><td colSpan="8"><EmptyState title="暂无逐次报工" hint="可新增本次报工。" /></td></tr>}</tbody></table></div>
     {missingOriginal && <div className="field-note"><p role="alert">原记录已失效，暂存编辑无法保存。请刷新后重选。</p><Button onClick={onCloseEditor} disabled={command.locked}>取消暂存编辑</Button></div>}
-    {editor && !missingOriginal && editor.action === 'report_void' && report && <FieldVoidEditor key={'void:' + editor.reportRef} task={task} record={report} adapter={adapter} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
-    {editor && editor.action !== 'report_void' && !missingOriginal && (editor.action === 'create' || report) && <FieldEditor key={editor.action + ':' + (editor.reportRef || taskRef)} task={task} record={report} action={editor.action} adapter={adapter} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
+    {editor && !missingOriginal && editor.action === 'report_void' && report && <FieldVoidEditor key={'void:' + editor.reportRef} task={task} record={report} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
+    {editor && editor.action !== 'report_void' && !missingOriginal && (editor.action === 'create' || report) && <FieldEditor key={editor.action + ':' + (editor.reportRef || taskRef)} task={task} record={report} action={editor.action} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
     {p.voided_reports.length > 0 && <details className="field-note"><summary>已撤销报工 · {p.voided_reports.length} 条</summary>{p.voided_reports.map(item => <section key={item.void_fact.void_fact_ref}>
       <h4>{item.report.report_no} · 已撤销</h4><p>{C.date(item.void_fact.recorded_at)} · {item.void_fact.local_operator}{item.void_fact.declared_operator ? ' · 经办人 ' + item.void_fact.declared_operator : ''} · {item.void_fact.reason}</p>
       <p>原数量 {C.display(item.report.completed_quantity)} 件 · 原有效工时 {C.hours(item.report.effective_processing_hours)} 小时</p>

@@ -4,22 +4,22 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { compile } = require('../scripts/workbench/compile.cjs');
+const { memoryStorage } = require('./_support/memory_storage.cjs');
 const source = compile({
   sources: [{ path: 'WorkbenchDensity.js', code: fs.readFileSync(path.join(__dirname, '../frontend/workbench/app/WorkbenchDensity.js'), 'utf8') }],
   check_combined: false,
 }).outputs[0].code;
 function host(saved = null, denied = false) {
-  const events = {}, attributes = {}, storage = { value: saved, denied };
+  const events = {}, attributes = {}, storage = memoryStorage(saved === null ? [] : [['aps_density', saved]]);
+  storage.onAccess = (_method, key) => assert.equal(key, 'aps_density');
+  if (denied) storage.failGet = storage.failSet = new Error('unavailable');
   const context = {
     window: {
       addEventListener(name, callback) { events[name] = callback; },
       removeEventListener(name, callback) { if (events[name] === callback) delete events[name]; }
     },
     document: { documentElement: { setAttribute(name, value) { attributes[name] = value; } } },
-    localStorage: {
-      getItem(key) { assert.equal(key, 'aps_density'); if (storage.denied) throw new Error('unavailable'); return storage.value; },
-      setItem(key, value) { assert.equal(key, 'aps_density'); if (storage.denied) throw new Error('unavailable'); storage.value = value; }
-    }
+    localStorage: storage
   };
   vm.runInNewContext(source, context);
   return { api: context.__wbRuntime.getModule('WorkbenchDensity.js'), storage, attributes, events };
@@ -36,7 +36,7 @@ const observed = [], unsubscribe = saved.api.subscribe(value => observed.push(va
 assert.equal(typeof saved.events.storage, 'function');
 assert.equal(typeof saved.events.pageshow, 'function');
 saved.api.set('comfortable');
-assert.equal(saved.storage.value, 'comfortable');
+assert.equal(saved.storage.data.get('aps_density'), 'comfortable');
 assert.equal(observed[0].density, 'comfortable');
 unsubscribe();
 assert.deepEqual(saved.events, {}, 'Unsubscribing the last listener must remove global listeners');
@@ -55,7 +55,7 @@ assert.equal(denied.api.get().density, 'compact'); assert.match(denied.api.get()
 stopDenied();
 assert.deepEqual(denied.events, {});
 const stopSaved = saved.api.subscribe(() => {});
-saved.storage.value = 'comfortable'; saved.events.storage({ key: 'unrelated' });
+saved.storage.data.set('aps_density', 'comfortable'); saved.events.storage({ key: 'unrelated' });
 assert.equal(saved.api.get().density, 'compact');
 saved.events.storage({ key: 'aps_density' }); assert.equal(saved.api.get().density, 'comfortable');
 stopSaved();
@@ -64,7 +64,7 @@ const snapshot = saved.api.get(); snapshot.density = 'compact';
 assert.equal(saved.api.get().density, 'comfortable');
 const quiet = host('compact'), notices = [], stopQuiet = quiet.api.subscribe(value => notices.push(value));
 quiet.events.pageshow(); assert.equal(notices.length, 0, 'pageshow with an unchanged preference must not notify');
-quiet.storage.value = 'comfortable'; quiet.events.pageshow(); assert.equal(notices.length, 1); assert.equal(notices[0].density, 'comfortable');
+quiet.storage.data.set('aps_density', 'comfortable'); quiet.events.pageshow(); assert.equal(notices.length, 1); assert.equal(notices[0].density, 'comfortable');
 stopQuiet();
 assert.deepEqual(quiet.events, {});
 console.log('workbench density preference contract passed');

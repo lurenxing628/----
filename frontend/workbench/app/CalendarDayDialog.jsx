@@ -1,13 +1,14 @@
 import React from './shared/runtime/react.js';
 import C from './resource-contract.js';
 import K from './CalendarContract.js';
+import APSResourceAPI from './resource-api.js';
 import { Button, ErrorBox, Modal, focusFirstInvalid } from './ResourceControls.jsx';
 import { Fields, Policy, RefreshResult, fieldPaths } from './CalendarFields.jsx';
 import { Feedback } from './ResourceForms.jsx';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 
-function CalendarDayDialog({ adapter, day, source, command, onClose, refreshState, onRefresh }) {
+function CalendarDayDialog({ day, source, command, onClose, refreshState, onRefresh }) {
   const [base, setBase] = React.useState(day), [value, setValue] = React.useState(() => K.draft(day));
   const [error, setError] = React.useState(null), [review, setReview] = React.useState(null), [reading, setReading] = React.useState(false);
   const [clearing, setClearing] = React.useState(false), [readError, setReadError] = React.useState(null);
@@ -26,7 +27,7 @@ function CalendarDayDialog({ adapter, day, source, command, onClose, refreshStat
     controller.current = new AbortController();
     try {
       const year = Number(base.date.slice(0, 4)), month = Number(base.date.slice(5, 7));
-      const result = K.month(await adapter.query(K.path + '/month', { year, month }, controller.current.signal), year, month);
+      const result = K.month(await APSResourceAPI.forNamespace('calendar').query(K.path + '/month', { year, month }, controller.current.signal), year, month);
       if (mounted.current) setReview({ day: result.data.days.find(row => row.date === base.date), source: result.meta.source });
     } catch (failure) { if (mounted.current) setReadError(failure); }
     finally { if (mounted.current) setReading(false); }

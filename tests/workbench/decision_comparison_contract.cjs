@@ -2,16 +2,17 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const { routeFetch, browser, loadTransport, json, file, failure } = require('./route_fetch.cjs');
+const { memoryStorage } = require('../_support/memory_storage.cjs');
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
 const runRef = 'a'.repeat(48), first = 'b'.repeat(48), recommended = 'c'.repeat(48), third = 'd'.repeat(48);
 const snapshot = 's'.repeat(32), range_start = '2026-10-01T00:00:00', range_end = '2026-10-05T00:00:00';
 const coreMetricKeys = ['expected_operation_count', 'scheduled_operation_count', 'unplanned_operation_count', 'deferred_operation_count', 'overdue_count', 'total_tardiness_hours', 'makespan_hours', 'weighted_tardiness_hours', 'elapsed_seconds', 'changeover_count', 'machine_used_count', 'operator_used_count', 'machine_busy_hours_total', 'operator_busy_hours_total', 'machine_util_avg', 'operator_util_avg'];
-// Transport contracts send requests through the real RunDecisionAPI, APSWorkbenchTransport and validators; only the network answer comes from these routes.
+// Transport contracts send requests through the real RunDecisionAPI and APSWorkbenchTransport; only the network answer comes from these routes.
 const routes = {}, network = routeFetch(routes), DECISION = 'GET /api/workbench/v1/scheduling/runs/*/decision';
 const h = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity).filter(value => value !== null && value !== false && value !== undefined) });
 const writes = [], navigation = [], remembered = [];
 const React = { createElement: h, Fragment: 'fragment', useId: () => 'process-chart', useMemo: fn => fn(), useState: initial => { let value = typeof initial === 'function' ? initial() : initial; return [value, update => { value = typeof update === 'function' ? update(value) : update; writes.push(value); }]; }, useRef: initial => ({ current: initial }), useEffect: () => {}, useReducer: () => [0, () => {}] };
-const defaultQueryStub = { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) };
+const defaultQueryStub = { useQuery: (load, deps, { enabled = true } = {}) => { const result = enabled ? load() : null; return { result, shown: result, loading: false, error: null }; } };
 const baseStubs = {
   'ResourceControls.jsx': { Button: 'button', Modal: 'modal', Pager: 'pager', EmptyState: 'empty-state' },
   'WorkbenchReferences.jsx': { WorkbenchReference: 'reference' },
@@ -59,7 +60,10 @@ const definitions = [
 ].map(([key, label, group, unit], index) => ({ key, label, group, unit, precision: 3, common: index !== 2, metric_version: 'decision-preparation-v4',
   scope: group === 'resources' ? 'fixed_resource_window' : key === 'type_changeover_count' ? 'fixed_changeover_window' : ['makespan_hours', 'changeover_count'].includes(key) ? 'full_candidate' : 'full_admission',
   source: group === 'resources' ? 'archived_resource_calendar' : key === 'changed_operation_count' ? 'candidate_comparison' : key === 'scheduled_setup_hours' ? 'runtime_operation_effort' : key === 'type_changeover_count' ? 'archived_changeover_events' : ['makespan_hours', 'changeover_count'].includes(key) ? 'saved_algorithm' : 'archived_delivery' }));
-const metric = { scope: 'full_admission', value: 2, state: 'complete', known_subtotal: 2, known_count: 3, unknown_count: 0, total_count: 3, reason: null, metric_version: 'decision-preparation-v4' };
+const memberUnitFor = key => ['overdue_count', 'total_tardiness_hours', 'weighted_tardiness_hours'].includes(key) ? 'batch'
+  : ['expected_operation_count', 'scheduled_operation_count', 'unplanned_operation_count', 'deferred_operation_count', 'changed_operation_count', 'scheduled_setup_hours', 'type_changeover_count'].includes(key) ? 'operation'
+  : key.startsWith('machine_') ? 'machine' : key.startsWith('operator_') ? 'operator' : 'record';
+const metric = { scope: 'full_admission', value: 2, state: 'complete', known_subtotal: 2, known_count: 3, unknown_count: 0, total_count: 3, reason: null, metric_version: 'decision-preparation-v4', member_unit: 'record' };
 const delta = { value: -1, state: 'comparable', direction: 'better', reference_value: 3, selected_value: 2 };
 const clone = value => JSON.parse(JSON.stringify(value));
 const fieldOrders = {
@@ -73,20 +77,20 @@ const BaselineAPI = getBaseMod('RunBaselineAPI.js').default, CandidateAPI = getB
 const RecommendationMod = getBaseMod('RunDecisionRecommendation.jsx').default, Transport = getBaseMod('shared/network/transport.js').default;
 // Candidates come only from the unified search by business objective, carrying its generation metadata.
 const objectives = ['min_overdue', 'min_tardiness', 'min_changeover'];
-const scoringScope = { scheduled_operation_refs: [], complete_batch_refs: ['e'.repeat(48)], objective_scope: 'all_batches', components_known: true, is_complete: true };
+const scoringScope = { scheduled_operation_count: 0, complete_batch_count: 1, objective_scope: 'all_batches', components_known: true, is_complete: true };
 const score = (objective, index) => fieldOrders[objective].map((_, field) => field ? index + 1 : 0);
-const generation = (objective, index) => ({ generation_policy_version: 'unified_search_v1', representative_objectives: [objective],
+const generation = (objective, index) => ({ representative_objectives: [objective],
   evaluations: { [objective]: { field_order: fieldOrders[objective], score: score(objective, index), scoring_scope: clone(scoringScope) } },
   origin: { search_objective: objective, phase: 'construct', origin: 'seed', dispatch_mode: null, dispatch_rule: null, strategy: 'greedy', repair_decision: null },
   first_found_elapsed_ms: 10 * (index + 1), search_evidence_ref: { run_ref: runRef, source_event_id: null } });
 const candidateObjectives = ['min_tardiness', 'min_overdue', 'min_changeover'];
-const candidates = [first, recommended, third].map((candidate_ref, index) => ({ candidate_ref, label: ['拖期更轻方案', '交期优先方案', '切换更少方案'][index], kind: 'business_objective', status: 'completed', persisted_status: 'completed', completeness: 'complete', task_count: 3,
+const candidates = [first, recommended, third].map((candidate_ref, index) => ({ candidate_ref, label: ['拖期更轻方案', '交期优先方案', '切换更少方案'][index], status: 'completed', completeness: 'complete', task_count: 3,
   ...generation(candidateObjectives[index], index), selection_role: index === 1 ? ['recommended', 'min_overdue'] : [candidateObjectives[index]],
   capabilities: { view: true, compare: true, gantt: true, adoption_preview: true, adopt: false },
-  coverage: { search: { state: 'complete', completed_count: 3, total_count: 3 }, schedulable: { state: 'complete', scheduled_count: 3, expected_count: 3, missing_count: 0, deferred_count: 1 }, delivery: { complete_batch_count: 1, batch_count: 2, deferred_batch_count: 1 } },
-  metrics: Object.fromEntries(definitions.map(row => [row.key, { ...metric }])), deltas: Object.fromEntries(definitions.map(row => [row.key, { ...delta }])) }));
-// Recommendation follows business_objectives_v1: the saved primary objective, per-objective winners and the selected score; the old health evidence slots stay null.
-const basis = { generation_policy_version: 'unified_search_v1', selection_policy_version: 'business_objectives_v1', primary_objective: 'min_overdue', target_objectives: objectives,
+  coverage: { schedulable: { state: 'complete', scheduled_count: 3, expected_count: 3, missing_count: 0, deferred_count: 1 }, delivery: { complete_batch_count: 1, batch_count: 2, deferred_batch_count: 1 } },
+  metrics: Object.fromEntries(definitions.map(row => [row.key, { ...metric, member_unit: memberUnitFor(row.key) }])), deltas: Object.fromEntries(definitions.map(row => [row.key, { ...delta }])) }));
+// Recommendation follows the business objectives: the saved primary objective, per-objective winners and the selected score.
+const basis = { primary_objective: 'min_overdue', target_objectives: objectives,
   selected_candidate_ref: recommended, objective_winners: { min_overdue: recommended, min_tardiness: first, min_changeover: null }, objective_winner_reasons: { min_overdue: null, min_tardiness: null, min_changeover: '本轮未保存该方向的代表方案。' },
   objective_field_order: Object.fromEntries(objectives.map(name => [name, fieldOrders[name]])), selected_score: score('min_overdue', 1), reason_code: 'primary_objective_best_found',
   scoring_scope: clone(scoringScope), evidence_state: 'partial',
@@ -95,11 +99,11 @@ const basis = { generation_policy_version: 'unified_search_v1', selection_policy
     { key: 'score_failed_ops', label: '未安排工序', text: '按计算时保存的完整指标顺序选择。', state: 'complete', unit: '道', selected_value: 0, source: 'saved_selection', scope: 'saved_scoring_scope' },
     { key: 'score_total_tardiness_hours', label: '总拖期', text: '按计算时保存的完整指标顺序选择。', state: 'complete', unit: '小时', selected_value: 2, source: 'saved_selection', scope: 'saved_scoring_scope' }
   ], issues: [{ code: 'score_components_unavailable', message: '所选范围缺少完整评分分量。' }] } };
-const runOptions = { generation_policy_version: 'unified_search_v1', primary_objective: 'min_overdue', target_objectives: objectives, time_budget_seconds: 10, algo_mode: 'improve', graph_analysis_mode: 'off' };
+const runOptions = { primary_objective: 'min_overdue', target_objectives: objectives, time_budget_seconds: 10, algo_mode: 'improve', graph_analysis_mode: 'off' };
 const prepKeys = ['pending_setup_hours', 'scheduled_setup_hours', 'unplanned_setup_hours', 'deferred_setup_hours', 'pending_processing_hours', 'scheduled_processing_hours', 'unplanned_processing_hours', 'deferred_processing_hours'];
 const completionScope = { scope: 'full_admission', state: 'partial', source_available: true, complete_batch_count: 1, incomplete_batch_count: 1, ordinary_incomplete_batch_count: 0, deferred_batch_count: 1, unknown_batch_count: 0,
-  unplanned_operation_count: 0, deferred_operation_count: 1, sample_batch_refs: { complete: ['e'.repeat(48)], incomplete: [], deferred: [], unknown: [] },
-  remaining_work: { metrics: Object.fromEntries(prepKeys.map(key => [key, { ...metric }])), operation_count: 1, unplanned_operation_count: 0, deferred_operation_count: 1 },
+  unplanned_operation_count: 0, deferred_operation_count: 1,
+  remaining_work: { metrics: Object.fromEntries(prepKeys.map(key => [key, { ...metric, member_unit: 'operation' }])), operation_count: 1, unplanned_operation_count: 0, deferred_operation_count: 1 },
   drill: { run_ref: runRef, candidate_ref: recommended, reference_candidate_ref: first, comparison_mode: 'candidates', resource_view: 'selected_batches', range_start, range_end, selected_candidate_ref: recommended, comparison_tab: 'preparation', detail_query: { work_scope: 'remaining' } } };
 const allDifferences = definitions.map((definition, index) => {
   const neutral = definition.key === 'scheduled_setup_hours', direction = neutral ? 'neutral' : index < 4 ? 'better' : 'worse';
@@ -107,23 +111,21 @@ const allDifferences = definitions.map((definition, index) => {
   return { metric_key: definition.key, label: neutral ? '少安排的准备需求' : definition.label, unit: definition.unit, precision: definition.precision,
     value: direction === 'worse' ? 1 : -1, reference_value: 3, selected_value: direction === 'worse' ? 4 : 2, state: neutral ? 'different_coverage' : 'comparable', direction,
     scope: definition.group === 'delivery' ? 'common_completed_batches' : definition.scope, source: definition.source, metric_version: 'decision-preparation-v4', reason: neutral ? { code: 'fewer_arranged_operations', message: '减少来自未安排需求，具体剩余工序另列。' } : null,
-    text: neutral ? '少安排的准备需求；减少来自未安排工序，方向保持中性。' : definition.label + '按本次保存差值核对。', compared_batch_count: definition.group === 'delivery' ? 1 : null, sample_compared_batch_refs: definition.group === 'delivery' ? ['e'.repeat(48)] : [],
+    text: neutral ? '少安排的准备需求；减少来自未安排工序，方向保持中性。' : definition.label + '按本次保存差值核对。', compared_batch_count: definition.group === 'delivery' ? 1 : 0, sample_compared_batch_refs: definition.group === 'delivery' ? ['e'.repeat(48)] : [],
     supporting_refs: [{ kind: { batches: 'batch', resources: 'resource', operations: 'operation', preparation: 'preparation', changeovers: 'changeover' }[tab], ref: 'e'.repeat(48), candidate_ref: recommended,
       drill: { run_ref: runRef, candidate_ref: recommended, reference_candidate_ref: first, comparison_mode: 'candidates', resource_view: 'selected_batches', range_start, range_end, comparison_tab: tab, detail_query: {} } }] };
 });
-const data = { run: { run_ref: runRef, accepted_at: range_start, finished_at: range_end }, scope: { run_ref: runRef, comparison_mode: 'candidates', resource_view: 'selected_batches', resource_refs: { machine: [], operator: [] }, selected_candidate_ref: third, reference: { kind: 'candidate', candidate_ref: first }, reference_state: 'available', range_start, range_end, batch_refs: ['e'.repeat(48)], operation_refs: ['f'.repeat(48)], run_options: runOptions }, candidates, metric_definitions: definitions, metric_version: 'decision-preparation-v4', catalog_complete: true,
+const data = { run: { run_ref: runRef, accepted_at: range_start, finished_at: range_end }, scope: { run_ref: runRef, comparison_mode: 'candidates', resource_view: 'selected_batches', resource_refs: { machine: [], operator: [] }, selected_candidate_ref: third, reference: { kind: 'candidate', candidate_ref: first }, reference_state: 'available', range_start, range_end, batch_count: 1, operation_count: 1, run_options: runOptions }, candidates, metric_definitions: definitions, catalog_complete: true,
   baseline: { kind: 'candidate', candidate_ref: first, baseline_ref: null, version: null, label: candidates[0].label, state: 'available', source_candidate_ref: null },
-  completion_groups: [{ group_index: 1, source_available: true, candidate_refs: [first, recommended, third], complete_batch_count: 1, sample_complete_batch_refs: ['e'.repeat(48)] }],
   recommendation: { recommendation_version: 'decision-recommendation-v1', candidate_ref: recommended, viewed_candidate_ref: third, state: 'available', recommendation_type: 'schedulable_scope', headline: '本次应排工序已安排，待料工序继续暂缓。',
-    axes: { algorithm: { state: 'selected', reason_code: basis.reason_code, evidence_state: basis.evidence_state }, completion: { search: candidates[1].coverage.search, schedulable: candidates[1].coverage.schedulable, delivery: completionScope }, preflight: { state: 'not_checked', source: 'existing_adoption_preview' } }, completion_scope: completionScope,
+    axes: { algorithm: { state: 'selected', reason_code: basis.reason_code, evidence_state: basis.evidence_state }, completion: { schedulable: candidates[1].coverage.schedulable, delivery: completionScope }, preflight: { state: 'not_checked', source: 'existing_adoption_preview' } }, completion_scope: completionScope,
     current_comparison: { state: 'available', candidate_ref: recommended, viewed_candidate_ref: third, reference: { kind: 'candidate', candidate_ref: first }, benefits: allDifferences.filter(row => row.direction === 'better').slice(0, 3), costs: allDifferences.filter(row => row.direction === 'worse').slice(0, 3), all_differences: allDifferences,
-      common_completed_delivery: { scope: 'common_completed_batches', state: 'complete', batch_count: 1, sample_batch_refs: ['e'.repeat(48)], before: { total_tardiness_hours: 3 }, after: { total_tardiness_hours: 2 }, delay_delta_hours: -1, overdue_delta_count: -1 } } }, selection_basis: basis };
+      common_completed_delivery: { scope: 'common_completed_batches', state: 'complete', batch_count: 1, before: { total_tardiness_hours: 3 }, after: { total_tardiness_hours: 2 }, delay_delta_hours: -1, overdue_delta_count: -1 } } }, selection_basis: basis };
 data.baseline.metrics = JSON.parse(JSON.stringify(candidates[0].metrics)); data.baseline.coverage = JSON.parse(JSON.stringify(candidates[0].coverage));
-data.difference_summary = { scope: 'full_admission', items: ['overdue_count', 'total_tardiness_hours', 'makespan_hours'].map(key => ({ ...definitions.find(row => row.key === key), ...delta, reference_coverage: { ...metric }, selected_coverage: { ...metric } })) };
+data.difference_summary = { scope: 'full_admission', items: ['overdue_count', 'total_tardiness_hours', 'makespan_hours'].map(key => ({ ...definitions.find(row => row.key === key), ...delta, reference_coverage: { ...metric, member_unit: memberUnitFor(key) }, selected_coverage: { ...metric, member_unit: memberUnitFor(key) } })) };
 const payload = { ok: true, schema_version: 1, data, warnings: [], meta: { request_ref: '1'.repeat(32), source: 'production', time_basis: 'factory_local', snapshot_ref: snapshot, as_of: range_end } };
-const summaryPayload = clone(payload); delete summaryPayload.data.completion_groups;
+const summaryPayload = clone(payload);
 for (const row of [...summaryPayload.data.candidates, summaryPayload.data.baseline]) { row.metrics = Object.fromEntries(coreMetricKeys.map(key => [key, row.metrics[key]])); if (row.deltas) row.deltas = Object.fromEntries(coreMetricKeys.map(key => [key, row.deltas[key]])); }
-delete summaryPayload.data.baseline.coverage.search;
 function bindRecommendationScope(value) {
   const { scope, recommendation: rec } = value.data, current = rec.current_comparison;
   rec.viewed_candidate_ref = current.viewed_candidate_ref = scope.selected_candidate_ref; current.reference = clone(scope.reference);
@@ -144,7 +146,7 @@ function visibleText(node) { if (node == null || typeof node !== 'object') retur
 const D = getBaseMod('RunDecisionComparison.jsx').default, API = getBaseMod('RunDecisionAPI.js').default;
 const comparisonCode = built.outputs.find(output => output.path === 'RunDecisionComparison.jsx').code;
 // Component-ownership renders answer the Workspace's own reads on its RunDecisionAPI object (a deviation from fetch-level stubs for synchronous renders);
-// the HTTP path and validators of decisionSummary/decision/resourceWorkspace are covered by transportContracts.
+// the HTTP path, envelope and snapshot binding of decisionSummary/decision/resourceWorkspace are covered by transportContracts.
 function comparisonWindow(reads, extraStubs = {}, react = React) {
   const ctx = createSandbox({ react, stubs: { ...extraStubs, 'RunDecisionAPI.js': { ...API, ...reads } } });
   vm.runInContext(comparisonCode, ctx, { filename: 'RunDecisionComparison.jsx' });
@@ -214,8 +216,9 @@ assert(text(recommendation).includes(recommendedLabel), '查看第三候选仍�
 assert(text(recommendation).includes('共同优化') && text(recommendation).includes('未安排工序'), '推荐详情展示保存的共同优化选择依据');
 nodes(recommendation).find(node => node.type === 'button' && node.props['aria-label'] === '查看推荐方案：' + recommendedLabel).props.onClick();
 assert.equal(writes.at(-1), recommended);
-const original = { run_ref: runRef, candidate_ref: third, selected_batch_ref: 'e'.repeat(48), return_history_context: { accepted_from: '2026-10-01', accepted_to: '2026-10-14', state: 'complete', sort: 'accepted_at', order: 'asc', page: 2, size: 20 }, range_start, range_end, reference_candidate_ref: first };
-const runHistoryReturn = { view: 'analysis', context: { source: 'run_history', history_topic: 'run_catalog', history_query: original.return_history_context } };
+const catalogReturn = { view: 'analysis', context: { source: 'run_history', history_topic: 'run_catalog', history_query: { accepted_from: '2026-10-01', accepted_to: '2026-10-14', state: 'complete', sort: 'accepted_at', order: 'asc', page: 2, size: 20 } } };
+const original = { run_ref: runRef, candidate_ref: third, selected_batch_ref: 'e'.repeat(48), return_to: catalogReturn, range_start, range_end, reference_candidate_ref: first };
+const runHistoryReturn = { view: 'analysis', context: { source: 'run_history', history_topic: 'run_catalog', history_query: catalogReturn.context.history_query } };
 const workspace = expand(h(comparisonWorkspace({ decisionSummary: () => payload }), { ...workspaceDefaults, initialContext: original, runHistoryReturn, onNavigate: (page, context) => navigation.push({ page, context }), renderAdoption: (ref, metadata) => h('adoption', { candidateRef: ref, ...metadata }) }));
 const workspaceRemembered = remembered.at(-1);
 baseStubs['RunDecisionResources.jsx'] = { Pane: 'resource-pane' }; baseCtx.__wbRuntime.setStub('RunDecisionResources.jsx', baseStubs['RunDecisionResources.jsx']);
@@ -225,14 +228,15 @@ assert.equal(nodes(resourceEntry).find(node => node.type === 'resource-pane').pr
 assert.equal(nodes(workspace).filter(node => node.props['data-decision-candidate']).length, 3, '默认展示全部候选卡片');
 assert.equal(nodes(workspace).find(node => node.type === 'detail-pane').props.section, 'delivery', '默认阅读当前交期与未排');
 assert.equal(nodes(workspace).filter(node => node.type === 'table' && node.props['aria-label'] === '全部候选详细指标比较').length, 0, '全部指标表按需打开');
-assert.equal(nodes(workspace).filter(node => node.props.className === 'rd-run-coverage').length, 1, '本次搜索覆盖只在共同范围栏展示一次');
+assert.deepEqual(nodes(workspace).filter(node => node.props.className === 'rd-run-coverage').map(node => text(node).replace(/\s+/g, ' ')), ['共保存 3 个候选方案'], '本次候选数只在共同范围栏展示一次');
 const gantt = nodes(workspace).find(node => node.type === 'button' && text(node) === '看甘特');
 gantt.props.onClick();
 const target = navigation.at(-1);
 assert.equal(target.page, 'gantt'); assert.equal(target.context.candidate_ref, third); assert.equal(target.context.reference_candidate_ref, first);
-assert.deepEqual(clone(target.context.return_decision_context), clone(workspaceRemembered), '甘特返回上下文完整保留基准、查看候选、时间窗和来源');
-assert.equal(target.context.return_decision_context.range_start, range_start); assert.deepEqual(clone(target.context.return_decision_context.return_history_context), original.return_history_context);
-assert.equal(target.context.return_decision_context.selected_batch_ref, original.selected_batch_ref, '返回同一批次阅读锚');
+assert.equal(target.context.return_to.view, 'analysis');
+assert.deepEqual(clone(target.context.return_to.context), clone(workspaceRemembered), '甘特返回链接是方案对比当前状态：基准、查看候选、时间窗和来源');
+assert.equal(target.context.return_to.context.range_start, range_start); assert.deepEqual(clone(target.context.return_to.context.return_to), catalogReturn, '方案对比自己的返回链接（排产记录列表）原样接在返回链上');
+assert.equal(target.context.return_to.context.selected_batch_ref, original.selected_batch_ref, '返回同一批次阅读锚');
 assert.equal(nodes(workspace).find(node => node.type === 'adoption').props.candidateRef, third, '采用入口对应当前查看候选');
 assert.deepEqual(clone(nodes(workspace).find(node => node.type === 'adoption').props.candidateDisplay), { candidate_ref: third, label: candidates[2].label, batch_count: 1, operation_count: 1 }, '采用名称、候选身份与计算范围来自同份共同选择资料');
 const batchRef = 'e'.repeat(48), operationRef = 'f'.repeat(48), resourceRef = '0'.repeat(48), planRef = '1'.repeat(48);
@@ -260,7 +264,7 @@ function detailsFixture(section, query = {}) {
     items: [{ batch_ref: batchRef, operation_ref: operationRef, before: { row_ref: otherRowRef }, after: { row_ref: rowRef }, change_kinds: ['moved'],
       drill: { selected: drill, reference: formal ? { ...drill, reference_view: true, plan_ref: planRef } : { ...drill, candidate_ref: first } } }],
     page: { number: query.page || 1, size: query.size || 20, total: 21, has_more: (query.page || 1) === 1 },
-    summary: { operation_changes: { changed_operation_count: { ...metric }, machine_change_count: { ...metric } }, before: {}, after: {}, common_completed_batch_refs: [batchRef], common_delivery: { before: {}, after: {}, delay_delta_hours: 0, overdue_delta_count: 0 } },
+    summary: { operation_changes: { changed_operation_count: { ...metric, member_unit: 'operation' }, machine_change_count: { ...metric, member_unit: 'operation' } }, before: {}, after: {}, common_completed_batch_count: 1, common_delivery: { before: {}, after: {}, delay_delta_hours: 0, overdue_delta_count: 0 } },
     metric_version: 'decision-delivery-v2' } };
 }
 function referenceFixture(query = {}) {
@@ -276,33 +280,21 @@ async function rejected(value, change, read, message) {
 }
 async function detailContracts() {
   assert.deepEqual(await readDecision(payload, runRef, query), clone(data));
-  const wrongRun = clone(payload); wrongRun.data.run.run_ref = third;
-  await assert.rejects(() => readDecision(wrongRun, runRef, query), /排产记录/);
-  const wrongReference = clone(payload); wrongReference.data.scope.reference.candidate_ref = third;
-  await assert.rejects(() => readDecision(wrongReference, runRef, query), /基准/);
-  const wrongSelected = clone(payload); wrongSelected.data.scope.selected_candidate_ref = recommended;
-  await assert.rejects(() => readDecision(wrongSelected, runRef, query), /查看方案/);
+  await rejected(payload, value => { value.meta.snapshot_ref = 't'.repeat(32); }, value => readDecision(value, runRef, { ...query, snapshot_ref: snapshot }), '概览须继续绑定同一份比较快照');
+  assert.throws(() => API.scope('invalid-run', query), /排产记录/);
+  assert.throws(() => API.scope(runRef, { ...query, range_end: undefined }), /开始和结束时间/);
   const batchQuery = { ...query, batch_ref: batchRef, change_kind: 'later', sort: 'delay_delta_hours', order: 'asc', page: 2, size: 50, snapshot_ref: snapshot };
   const batchPayload = detailsFixture('batches', batchQuery), readBatch = value => readDetails(value, runRef, batchQuery, 'batches');
   assert.deepEqual(await readBatch(batchPayload), clone(batchPayload.data));
-  for (const key of ['batch_ref', 'change_kind', 'sort', 'order'])
-    await rejected(batchPayload, value => { value.data.filters[key] = key === 'batch_ref' ? recommended : 'changed'; }, readBatch, '批次筛选和排序必须按请求回显：' + key);
-  await rejected(batchPayload, value => { value.data.page.number = 1; }, readBatch, '第 2 页不能接受第 1 页响应');
-  await rejected(batchPayload, value => { value.data.scope.reference.candidate_ref = recommended; }, readBatch, '明细保留独立候选基准');
-  await rejected(batchPayload, value => { value.data.scope.range_end = '2026-10-06T00:00:00'; }, readBatch, '返回时间窗须与当前比较一致');
   await rejected(batchPayload, value => { value.meta.snapshot_ref = 't'.repeat(32); }, readBatch, '翻页须继续读取同一份明细快照');
   assert.throws(() => API.detailScope(runRef, {}, 'batches'), /候选|方案/, '明细必须显式选择候选');
   for (const paging of [{ page: 0 }, { size: 10 }]) assert.throws(() => API.detailScope(runRef, { ...query, ...paging }, 'operations'), /20|页码/);
   const operationQuery = { ...query, resource_ref: resourceRef, change_kind: 'machine_changed', sort: 'end_delta_hours', order: 'desc' };
   const operations = detailsFixture('operations', operationQuery);
   assert.deepEqual(await readDetails(operations, runRef, operationQuery, 'operations'), clone(operations.data));
-  await rejected(operations, value => { value.data.filters.resource_ref = recommended; }, value => readDetails(value, runRef, operationQuery, 'operations'), '设备/人员筛选须按当前资源回显');
   const formalQuery = { comparison_mode: 'admission_official', selected_candidate_ref: third, range_start, range_end };
   const formal = detailsFixture('operations', formalQuery), readFormal = value => readDetails(value, runRef, formalQuery, 'operations');
   assert.deepEqual(await readFormal(formal), clone(formal.data));
-  await rejected(formal, value => { value.data.scope.reference.kind = 'candidate'; }, readFormal, '正式比较不能接受候选基准身份');
-  await rejected(formal, value => { value.data.baseline.baseline_ref = first; }, readFormal, '正式归档编号须与 scope 一致');
-  await rejected(formal, value => { value.data.baseline.state = 'absent'; }, readFormal, '正式归档存在性须与 scope 一致');
   assert.throws(() => API.scope(runRef, { ...formalQuery, reference_candidate_ref: first }), /正式|基准/);
   const absent = clone(formal); absent.data.scope.reference = { kind: 'admission_official', baseline_ref: null }; absent.data.scope.reference_state = 'absent';
   absent.data.baseline = { ...officialBaseline, baseline_ref: null, plan_ref: null, version: null, state: 'absent', source_candidate_ref: null, source_run_ref: null };
@@ -311,20 +303,13 @@ async function detailContracts() {
   const overview = { ...clone(payload), data: { ...clone(data), scope: comparisonScope(formalQuery), baseline: clone(officialBaseline) } };
   bindRecommendationScope(overview);
   assert.equal((await readDecision(overview, runRef, formalQuery)).scope.reference.kind, 'admission_official');
-  await rejected(overview, value => { value.data.scope.range_start = '2026-10-02T00:00:00'; }, value => readDecision(value, runRef, formalQuery), '概览回显当前甘特时间窗');
 }
 async function referenceContracts() {
   const q = { comparison_mode: 'admission_official', selected_candidate_ref: third, plan_ref: planRef, batch_ref: batchRef, range_start, range_end, snapshot_ref: snapshot };
   const value = referenceFixture(q), read = result => readReferenceWorkspace(result, runRef, q);
   assert.deepEqual(await read(value), clone(value.data));
   assert.equal(value.data.candidate.candidate_ref, third); assert.equal(value.data.reference.source_candidate_ref, recommended, '导航候选身份和正式归档来源分别保存');
-  await rejected(value, result => { result.data.candidate.candidate_ref = recommended; }, read, '正式归档保留当前比较的所选候选身份');
-  await rejected(value, result => { result.data.reference.plan_ref = first; }, read, '正式归档的 plan_ref 与 baseline_ref 一致');
-  await rejected(value, result => { result.data.plan_ref = first; }, read, '正式甘特必须使用 drill 指定的保存归档');
-  await rejected(value, result => { result.data.plan_ref = result.data.reference.plan_ref = result.data.reference.baseline_ref = first; }, read, '返回的完整正式身份仍须与 drill 指定归档一致');
   await rejected(value, result => { result.meta.snapshot_ref = 't'.repeat(32); }, read, '正式甘特刷新快照身份不得串范围');
-  await rejected(value, result => { result.data.batch_ref = null; }, read, '正式甘特保持当前批次筛选');
-  await rejected(value, result => { result.data.time_scope.range_end = '2026-10-06T00:00:00'; }, read, '正式甘特保持当前查看时间窗');
   {
     const dueCases = [
       { due_date: '2026-10-16', due_state: 'specified', due_issue: null },
@@ -368,30 +353,30 @@ async function referenceContracts() {
 async function recommendationContracts() {
   const read = value => readDecision(value, runRef, query);
   const readSummary = value => readDecisionSummary(value, runRef, query), savedSummary = clone(summaryPayload);
-  assert.deepEqual(await readSummary(summaryPayload), clone(summaryPayload.data), '首屏使用独立core合同，推荐真实重指标由共同目录验证');
-  assert.deepEqual(clone(summaryPayload), savedSummary, '摘要校验保留候选原数、范围、推荐和导出快照');
-  await rejected(summaryPayload, value => { value.data.scope.selected_candidate_ref = first; }, readSummary, '首屏拒绝其他当前候选的响应');
+  assert.deepEqual(await readSummary(summaryPayload), clone(summaryPayload.data), '首屏读取轻量core指标摘要与保存推荐');
+  assert.deepEqual(clone(summaryPayload), savedSummary, '摘要读取保留候选原数、范围、推荐和导出快照');
+  await rejected(summaryPayload, value => { value.meta.snapshot_ref = 't'.repeat(32); }, value => readDecisionSummary(value, runRef, { ...query, snapshot_ref: snapshot }), '首屏拒绝失配快照');
   const unselectedSummary = clone(summaryPayload);
   unselectedSummary.data.candidates = [];
   unselectedSummary.data.scope.selected_candidate_ref = null;
   unselectedSummary.data.scope.reference_state = 'selection_required';
   unselectedSummary.data.scope.reference = { kind: 'candidate', candidate_ref: null };
   unselectedSummary.data.baseline = { kind: 'candidate', candidate_ref: null, label: null, state: 'selection_required', metrics: {}, coverage: { schedulable: { state: 'unavailable' } } };
-  unselectedSummary.data.selection_basis = { generation_policy_version: null, selection_policy_version: null, primary_objective: null, target_objectives: [],
+  unselectedSummary.data.selection_basis = { primary_objective: null, target_objectives: [],
     selected_candidate_ref: null, objective_winners: {}, objective_winner_reasons: {}, objective_field_order: {}, selected_score: [], reason_code: null,
     scoring_scope: null, evidence_state: 'unavailable', explanation: { headline: '本次排产尚未保存推荐方案。', entries: [], issues: [] } };
   unselectedSummary.data.recommendation = { ...unselectedSummary.data.recommendation, state: 'unavailable', candidate_ref: null, viewed_candidate_ref: null,
     recommendation_type: null, completion_scope: null, axes: { ...unselectedSummary.data.recommendation.axes, algorithm: { state: 'unavailable', reason_code: null, evidence_state: 'unavailable' } },
     current_comparison: { state: 'selection_required', candidate_ref: null, viewed_candidate_ref: null, reference: { kind: 'candidate', candidate_ref: null }, benefits: [], costs: [], all_differences: [], common_completed_delivery: null } };
-  assert.deepEqual(await readDecisionSummary(unselectedSummary, runRef, { range_start, range_end }), clone(unselectedSummary.data), '未产出候选的运行摘要通过空selection_basis校验');
-  const statusCtx = createSandbox(), partialCandidate = { ...data.candidates[0], status: 'partial', persisted_status: 'completed', completeness: 'partial' };
+  assert.deepEqual(await readDecisionSummary(unselectedSummary, runRef, { range_start, range_end }), clone(unselectedSummary.data), '未产出候选的运行摘要按缺省范围原样读取空selection_basis');
+  const statusCtx = createSandbox(), partialCandidate = { ...data.candidates[0], status: 'partial', completeness: 'partial' };
   const statusMod = runFiles(statusCtx, ['RunCandidateControls.jsx', 'RunDecisionRecommendation.jsx']);
   const unselectedPanel = expand(h(statusMod('RunDecisionRecommendation.jsx').Panel, { data: unselectedSummary.data, onSelect: () => {}, onSupport: () => {} }));
   assert(visibleText(unselectedPanel).includes('本次排产暂无推荐方案') && text(unselectedPanel).includes('共同优化的推荐规则与数值') && !text(unselectedPanel).includes('推荐评分范围'), '未产出候选时推荐面板与依据渲染不读取空scoring_scope');
   const status = expand(h(statusMod('RunCandidateControls.jsx').Status, { candidate: partialCandidate }));
   assert.equal(Terms.candidate_statuses.partial, Terms.delivery_completion_states.incomplete, 'partial候选沿共同工序安排状态表达');
-  assert(nodes(status).some(node => node.props['data-candidate-status'] === partialCandidate.status) && nodes(status).some(node => node.props['data-candidate-persisted-status'] === partialCandidate.persisted_status), '计算完成与工序未排齐分别绑定原始状态');
-  assert(text(status).includes(Terms.candidate_statuses.partial) && text(status).includes(Terms.candidate_statuses.completed));
+  assert(nodes(status).some(node => node.props['data-candidate-status'] === partialCandidate.status), '工序未排齐绑定派生状态');
+  assert(text(status).includes(Terms.candidate_statuses.partial));
   for (const kind of ['complete', 'schedulable_scope', 'partial']) {
     const value = clone(data); value.recommendation.recommendation_type = kind;
     const tree = expand(h(Recommendation, { data: value, onSelect: () => {}, onSupport: () => {} }));
@@ -404,7 +389,7 @@ async function recommendationContracts() {
   assert(compactShown.includes(basis.explanation.headline), '推荐主文使用保存的推荐主因，完整目标、容差和原数继续保留');
   assert(!compactShown.includes('主要收益') && text(compact).includes('主要收益') && text(compact).includes('主要代价'), '紧凑入口仍在原生详情内保留全部当前取舍');
   const summaryData = clone(data);
-  summaryData.difference_summary = { scope: 'full_admission', items: ['overdue_count', 'total_tardiness_hours', 'makespan_hours'].map((key, index) => ({ ...definitions.find(row => row.key === key), value: [0, null, 0.00009][index], state: index === 1 ? 'unavailable' : 'comparable', direction: ['equal', 'neutral', 'worse'][index], reference_value: [2, null, 12][index], selected_value: [2, null, 12.00009][index], reference_coverage: clone(metric), selected_coverage: clone(metric) })) };
+  summaryData.difference_summary = { scope: 'full_admission', items: ['overdue_count', 'total_tardiness_hours', 'makespan_hours'].map((key, index) => ({ ...definitions.find(row => row.key === key), value: [0, null, 0.00009][index], state: index === 1 ? 'unavailable' : 'comparable', direction: ['equal', 'neutral', 'worse'][index], reference_value: [2, null, 12][index], selected_value: [2, null, 12.00009][index], reference_coverage: { ...metric, member_unit: memberUnitFor(key) }, selected_coverage: { ...metric, member_unit: memberUnitFor(key) } })) };
   const summarySaved = clone(summaryData), summary = expand(h(D.DifferenceSummary, { data: summaryData }));
   const zero = nodes(summary).find(row => row.props['data-summary-metric'] === 'overdue_count'), unknown = nodes(summary).find(row => row.props['data-summary-metric'] === 'total_tardiness_hours'), tiny = nodes(summary).find(row => row.props['data-summary-metric'] === 'makespan_hours');
   assert(zero.props.className.endsWith('rd-equal') && visibleText(zero).includes('持平'), '真实零差值保持中性');
@@ -450,8 +435,8 @@ async function recommendationContracts() {
   assert.equal(remainingMetrics.length, prepKeys.length);
   remainingMetrics.forEach((row, index) => assert.strictEqual(row.props.metric, remainingWork.metrics[prepKeys[index]], '共同剩余工时表沿用原metric'));
   assert.equal(nodes(expand(sharedRemaining)).filter(row => row.type === 'p' && text(row) === longReason).length, 1, '共同剩余工时表只显示一次完整缺项原因');
-  for (const [key, unit] of [['overdue_count', '批'], ['scheduled_setup_hours', '道工序'], ['machine_high_pressure_count', '台设备'], ['operator_high_pressure_count', '人'], ['makespan_hours', '份统计记录']]) {
-    const definition = definitions.find(row => row.key === key), empty = { ...metric, value: null, state: 'unavailable', known_count: 0, known_subtotal: 0, unknown_count: 1, total_count: 1 }, savedEmpty = clone(empty);
+  for (const [key, unit] of [['overdue_count', '批'], ['scheduled_setup_hours', '道工序'], ['machine_high_pressure_count', '台设备'], ['operator_high_pressure_count', '人'], ['makespan_hours', '项']]) {
+    const definition = definitions.find(row => row.key === key), empty = { ...metric, member_unit: memberUnitFor(key), value: null, state: 'unavailable', known_count: 0, known_subtotal: 0, unknown_count: 1, total_count: 1 }, savedEmpty = clone(empty);
     for (const Component of [D.Metric, D.CompactValue]) {
       const shownEmpty = expand(h(Component, { metric: empty, definition })), primary = nodes(shownEmpty).find(row => row.type === 'strong');
       assert.equal(text(primary).trim(), '1 ' + unit + '待确认', '覆盖人数沿实际对象grain显示：' + key);
@@ -464,7 +449,7 @@ async function recommendationContracts() {
     assert.deepEqual(clone(empty), savedEmpty);
   }
   const original = { run_ref: runRef, candidate_ref: third, reference_candidate_ref: first, comparison_mode: 'candidates', resource_view: 'selected_batches', range_start, range_end, comparison_tab: 'delivery',
-    return_history_context: { query: '第5验收' }, detail_queries: { 'completion-batches': { completion_filter: 'ordinary', open: false, page: 2, size: 50, snapshot_ref: snapshot }, operations: { page: 2, size: 50, batch_ref: batchRef, snapshot_ref: snapshot }, resources: { page: 3, heatmap_page: 2, day_page: 4, resource_kind: 'operator', resource_ref: resourceRef, snapshot_ref: snapshot, day_snapshot_ref: 't'.repeat(32) }, preparation: { page: 2, size: 20, allocation_state: 'unplanned', snapshot_ref: snapshot }, changeovers: { event_side: 'reference', sort: 'machine_label', order: 'desc', snapshot_ref: snapshot } } };
+    return_to: { view: 'analysis', context: { source: 'run_history', history_topic: 'run_catalog', history_query: { state: 'complete' } } }, detail_queries: { 'completion-batches': { completion_filter: 'ordinary', open: false, page: 2, size: 50, snapshot_ref: snapshot }, operations: { page: 2, size: 50, batch_ref: batchRef, snapshot_ref: snapshot }, resources: { page: 3, heatmap_page: 2, day_page: 4, resource_kind: 'operator', resource_ref: resourceRef, snapshot_ref: snapshot, day_snapshot_ref: 't'.repeat(32) }, preparation: { page: 2, size: 20, allocation_state: 'unplanned', snapshot_ref: snapshot }, changeovers: { event_side: 'reference', sort: 'machine_label', order: 'desc', snapshot_ref: snapshot } } };
   const links = [], main = expand(h(comparisonWorkspace({ decisionSummary: () => payload }), { ...workspaceDefaults, initialContext: original, onNavigate: (page, context) => links.push({ page, context }) }));
   const originalRemembered = clone(remembered.at(-1)), differences = nodes(main).filter(row => row.props['data-recommendation-difference']);
   const seen = new Set();
@@ -473,7 +458,8 @@ async function recommendationContracts() {
     button.props.onClick(); const target = links.at(-1), pane = target.context.comparison_tab; seen.add(pane);
     assert.equal(target.page, 'analysis'); assert.equal(target.context.candidate_ref, recommended); assert.equal(target.context.reference_candidate_ref, first);
     assert.equal(target.context.range_start, range_start); assert.equal(target.context.resource_view, 'selected_batches');
-    assert.deepEqual(clone(target.context.return_recommendation_context), originalRemembered, '返回保留第三候选、基准、窗口、指标、页签、所有筛选/页码/快照');
+    assert.equal(target.context.return_to.view, 'analysis');
+    assert.deepEqual(clone(target.context.return_to.context), originalRemembered, '返回保留第三候选、基准、窗口、指标、页签、所有筛选/页码/快照');
     assert.equal(target.context.detail_queries[pane].page, 1);
     for (const query of Object.values(target.context.detail_queries)) { assert.equal(query.snapshot_ref, undefined); assert.equal(query.day_snapshot_ref, undefined, '新推荐支撑范围清除原候选各页签快照'); }
   }
@@ -485,7 +471,7 @@ async function recommendationContracts() {
   const directPage = expand(h(comparisonWorkspace({ decisionSummary: () => direct }), { ...workspaceDefaults, initialContext: original, onNavigate: (page, context) => links.push({ page, context }) }));
   nodes(nodes(directPage).find(row => row.props['data-recommendation-difference'] === 'changed_operation_count')).find(node => node.type === 'button').props.onClick();
   assert.equal(links.at(-1).page, 'gantt'); assert.equal(links.at(-1).context.candidate_ref, recommended); assert.equal(links.at(-1).context.operation_ref, operationRef); assert.equal(links.at(-1).context.selected_row_ref, rowRef);
-  assert.deepEqual(clone(links.at(-1).context.return_decision_context), originalRemembered, '真实工序甘特返回原第三候选比较，保留原窗口');
+  assert.deepEqual(clone(links.at(-1).context.return_to.context), originalRemembered, '真实工序甘特返回原第三候选比较，保留原窗口');
   const referenceSupport = clone(direct), beforeTarget = referenceSupport.data.recommendation.current_comparison.all_differences.find(row => row.metric_key === 'changed_operation_count').supporting_refs[0];
   beforeTarget.side = 'reference'; beforeTarget.drill.candidate_ref = first;
   assert.deepEqual(await read(referenceSupport), clone(referenceSupport.data), '已移除工序支撑使用实际候选基准侧，推荐锚点仍固定');
@@ -493,7 +479,7 @@ async function recommendationContracts() {
   const beforeButton = nodes(nodes(referencePage).find(row => row.props['data-recommendation-difference'] === 'changed_operation_count')).find(node => node.type === 'button');
   assert(text(beforeButton).includes('基准')); beforeButton.props.onClick();
   assert.equal(links.at(-1).page, 'gantt'); assert.equal(links.at(-1).context.candidate_ref, first); assert.equal(links.at(-1).context.selected_candidate_ref, recommended); assert.equal(links.at(-1).context.selected_row_ref, rowRef);
-  assert.deepEqual(clone(links.at(-1).context.return_decision_context), originalRemembered, '基准侧定位返回原第三查看与比较范围');
+  assert.deepEqual(clone(links.at(-1).context.return_to.context), originalRemembered, '基准侧定位返回原第三查看与比较范围');
   const formalSupport = bindRecommendationScope({ ...clone(referenceSupport), data: { ...clone(referenceSupport.data), scope: comparisonScope({ comparison_mode: 'admission_official' }), baseline: clone(officialBaseline) } });
   const formalBefore = formalSupport.data.recommendation.current_comparison.all_differences.find(row => row.metric_key === 'changed_operation_count').supporting_refs[0];
   Object.assign(formalBefore.drill, { candidate_ref: recommended, reference_view: true, plan_ref: planRef });
@@ -503,7 +489,7 @@ async function recommendationContracts() {
   const supportData = bindRecommendationScope({ ...clone(payload), data: { ...clone(data), scope: { ...clone(data.scope), selected_candidate_ref: recommended } } });
   const supportPage = expand(h(comparisonWorkspace({ decisionSummary: () => supportData }), { ...workspaceDefaults, initialContext: supportContext, onNavigate: (page, context) => links.push({ page, context }) }));
   nodes(supportPage).find(node => node.type === 'detail-pane').props.onDrill({ run_ref: runRef, candidate_ref: recommended, reference_candidate_ref: first, comparison_mode: 'candidates', batch_ref: batchRef, operation_ref: operationRef, range_start, range_end });
-  assert.equal(links.at(-1).page, 'gantt'); assert.deepEqual(clone(links.at(-1).context.return_decision_context.return_recommendation_context), originalRemembered, '第二层甘特完整携带返回原比较链');
+  assert.equal(links.at(-1).page, 'gantt'); assert.deepEqual(clone(links.at(-1).context.return_to.context.return_to.context), originalRemembered, '第二层甘特完整携带返回原比较链');
   nodes(supportPage).find(node => node.type === 'button' && text(node) === '返回原比较').props.onClick();
   assert.deepEqual(clone(links.at(-1).context), originalRemembered);
 }
@@ -536,8 +522,8 @@ function schedulingNavigationContracts() {
   });
   const navMod = runFiles(navCtx, ['RunHistoryAPI.js', 'DecisionHistoryAPI.js', 'PlanNavigation.js', 'SchedulingWorkspace.jsx']);
   const PlanCenterWorkspace = navMod('SchedulingWorkspace.jsx').PlanCenterWorkspace;
-  const onNavigate = (page, context) => links.push({ page, context }), context = { ...original, return_history_context: historyQuery };
-  const analysis = PlanCenterWorkspace({ view: 'analysis', initialContext: context, onNavigate });
+  const onNavigate = (page, context) => links.push({ page, context }), context = { ...original, return_to: { view: 'analysis', context: { source: 'run_history', history_topic: 'run_catalog', history_query: historyQuery } } };
+  const analysis = PlanCenterWorkspace({ view: 'analysis', variant: 'candidate', initialContext: context, onNavigate });
   const candidate = nodes(analysis).find(node => node.type === 'candidate-workspace'), navigation = candidate.props.navigation;
   assert(navigation, '候选分析页将唯一计划中心导航交给比较工作区');
   assert.strictEqual(candidate.props.initialContext, context); assert.strictEqual(candidate.props.onNavigate, onNavigate);
@@ -548,21 +534,21 @@ function schedulingNavigationContracts() {
   buttons.find(node => node.props.icon === 'files').props.onClick(); assert.deepEqual(clone(links.at(-1)), { page: 'analysis', context: {} });
   assert(!buttons.some(node => node.props.icon === 'history'), '候选外层导航的记录入口由工作区唯一返回列表承接');
   for (const view of ['gantt', 'delay']) {
-    const tree = expand(PlanCenterWorkspace({ view, initialContext: context, onNavigate })), work = nodes(tree).find(node => node.type === 'candidate-workspace');
+    const tree = expand(PlanCenterWorkspace({ view, variant: 'candidate', initialContext: context, onNavigate })), work = nodes(tree).find(node => node.type === 'candidate-workspace');
     assert.equal(nodes(tree).filter(node => node.props.className === 'scheduling-navigation').length, 0, '候选甘特/交付页外层由工作区页头承接导航：' + view);
     assert(work.props.navigation); assert.equal(nodes(expand(work.props.navigation)).filter(node => node.props.className === 'scheduling-navigation').length, 1); assert.equal(work.props.view, view); assert.strictEqual(work.props.initialContext, context);
   }
   for (const view of ['analysis', 'gantt', 'delay']) {
     const formal = { plan_ref: planRef };
-    const tree = expand(PlanCenterWorkspace({ view, initialContext: formal, onNavigate })), work = nodes(tree).find(node => node.type === 'formal-workspace');
+    const tree = expand(PlanCenterWorkspace({ view, variant: 'plan', initialContext: formal, onNavigate })), work = nodes(tree).find(node => node.type === 'formal-workspace');
     assert(work && work.props.navigation); assert.equal(nodes(tree).filter(node => node.props.className === 'scheduling-navigation').length, 0);
     assert.strictEqual(work.props.initialContext, formal, '正式计划分支把导航边界接受的原对象交给计划页，不拷贝');
     assert.equal(nodes(expand(work.props.navigation)).filter(node => node.props.className === 'scheduling-navigation').length, 1, '正式计划工作区继续拥有原导航：' + view);
   }
-  const history = expand(PlanCenterWorkspace({ view: 'analysis', initialContext: { source: 'run_history', history_query: historyQuery }, onNavigate }));
+  const history = expand(PlanCenterWorkspace({ view: 'analysis', variant: 'history', initialContext: { source: 'run_history', history_query: historyQuery }, onNavigate }));
   const historyWork = nodes(history).find(node => node.type === 'history-workspace'); assert.equal(nodes(history).filter(node => node.props.className === 'scheduling-navigation').length, 0); assert(historyWork.props.navigation); assert.equal(nodes(expand(historyWork.props.navigation)).filter(node => node.props.className === 'scheduling-navigation').length, 1); assert.deepEqual(clone(historyWork.props.initialContext), historyQuery);
   // 页面记忆里的列表条件带着本次快照钉（RunHistoryWorkspace 的 remembered）；“排产记录”入口发出的返回条件不带它。
-  const pinned = expand(PlanCenterWorkspace({ view: 'analysis', initialContext: { source: 'run_history', history_query: { ...historyQuery, snapshot_ref: 'S'.repeat(32) } }, onNavigate }));
+  const pinned = expand(PlanCenterWorkspace({ view: 'analysis', variant: 'history', initialContext: { source: 'run_history', history_query: { ...historyQuery, snapshot_ref: 'S'.repeat(32) } }, onNavigate }));
   nodes(expand(nodes(pinned).find(node => node.type === 'history-workspace').props.navigation)).find(node => node.type === 'button' && node.props.icon === 'history').props.onClick();
   assert.deepEqual(clone(links.at(-1)), { page: 'analysis', context: { source: 'run_history', history_topic: 'run_catalog', history_query: historyQuery } }, '返回排产记录去掉快照钉，其余列表条件原样带回');
   runFiles(navCtx, ['RunCandidateWorkspace.jsx']);
@@ -578,7 +564,7 @@ function comparisonHeaderContracts({ navigation, runHistoryReturn }) {
       react: state.React,
       stubs: {
         'WorkbenchPageContext.jsx': { useSnapshot: current => snapshots.push(clone(current)) },
-        'shared/session/query.js': { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) },
+        'shared/session/query.js': defaultQueryStub,
         'RunDecisionAPI.js': { ...API, decisionSummary: (run, current) => { queries.push(clone(current)); return value; } },
       },
     });
@@ -649,7 +635,7 @@ async function candidateWorkspace(context, value, loadWorkspace = () => value) {
 }
 async function workspaceContracts() {
   {
-    // The Workspace's own reads are answered on its RunDecisionAPI object; their HTTP path and validators are covered by transportContracts.
+    // The Workspace's own reads are answered on its RunDecisionAPI object; their HTTP path, envelope and snapshot binding are covered by transportContracts.
     const state = hooks(), reads = [], decisionReads = { ...API };
     const wsCtx1 = createSandbox({
       react: state.React,
@@ -660,7 +646,7 @@ async function workspaceContracts() {
       },
     });
     const wsMod1 = runFiles(wsCtx1, ['shared/session/query.js', 'RunDecisionComparison.jsx']);
-    const response = q => { const value = clone(summaryPayload); value.data.scope = { ...comparisonScope(q), resource_refs: { machine: [], operator: [] }, batch_refs: [batchRef], operation_refs: [operationRef] };
+    const response = q => { const value = clone(summaryPayload); value.data.scope = { ...comparisonScope(q), resource_refs: { machine: [], operator: [] }, batch_count: 1, operation_count: 1 };
       value.data.baseline.candidate_ref = value.data.scope.reference.candidate_ref; return bindRecommendationScope(value); };
     const saved = { resource_kind: 'operator', pressure_threshold: 0.8, page: 2, heatmap_page: 2, snapshot_ref: 'r'.repeat(32) };
     Object.assign(decisionReads, {
@@ -808,6 +794,17 @@ async function workspaceContracts() {
   assert.equal(candidateOnly.calls.filter(call => call.name === 'workspace').length, 2);
   assert.equal(candidateOnly.calls.filter(call => call.name === 'adoptions').length, 2, '显式刷新候选后重读当前采用记录');
   console.log(JSON.stringify({ r18_candidate: { first_workspace: 1, discovered_catalog: 1, history_reopen: 0, refreshed_workspace: 1, refreshed_history: 1 } }));
+  // 主结果未就绪时不启动候选子读取；就绪后以主结果的 candidate.run_ref 作为必需的预期身份读取。
+  {
+    let release; const gate = new Promise(resolve => { release = resolve; });
+    const pendingMain = await candidateWorkspace({ candidate_ref: third }, value, () => gate);
+    assert.equal(pendingMain.calls.filter(call => call.name === 'workspace').length, 1);
+    assert.equal(pendingMain.calls.filter(call => call.name === 'analysis').length, 0, '主结果未就绪时不启动候选分析子读取');
+    release(value); await pendingMain.render();
+    const analysisCalls = pendingMain.calls.filter(call => call.name === 'analysis');
+    assert.equal(analysisCalls.length, 1, '主结果就绪后才读取候选分析');
+    assert.deepEqual(analysisCalls[0].args.slice(0, 2), [third, value.data.candidate.run_ref], '子读取以主结果的 run_ref 作为预期身份');
+  }
   const base = { run_ref: runRef, candidate_ref: third, operation_ref: operationRef, selected_row_ref: otherRowRef };
   const candidate = await candidateWorkspace(base, value);
   assert.equal(candidate.chosen.row_ref, rowRef, 'rowRef 指向其他工序时按 operation_ref 定位目标工序');
@@ -828,7 +825,7 @@ async function workspaceContracts() {
   const returnContext = { run_ref: runRef, candidate_ref: third, comparison_mode: 'admission_official', comparison_tab: 'operations',
     detail_queries: { operations: { batch_ref: batchRef, resource_ref: resourceRef, page: 2, size: 50, snapshot_ref: snapshot } }, range_start, range_end };
   const formal = await candidateWorkspace({ ...base, selected_row_ref: secondSegmentRef, reference_view: true, comparison_mode: 'admission_official', plan_ref: planRef,
-    return_decision_context: returnContext }, value);
+    return_to: { view: 'analysis', context: returnContext } }, value);
   assert.equal(formal.chosen.row_ref, secondSegmentRef, 'rowRef 属于目标工序时保留指定正式 segment');
   assert.equal(formal.calls.filter(call => call.name === 'referenceWorkspace').length, 1);
   assert.equal(formal.calls.filter(call => ['catalog', 'workspace', 'analysis', 'adoptions'].includes(call.name)).length, 0, '正式甘特读取受理时 reference-workspace');
@@ -930,6 +927,33 @@ async function paneContracts() {
   const unknown = { ...clone(known), operation_ref: missingOperationRef, sequence: 2, before: null, after: null, before_state: { status: 'deferred', reason: { code: 'material_deferred', message: '排产时保存的待料原因。' } }, after_state: { status: 'deferred', reason: { code: 'material_deferred', message: '排产时保存的待料原因。' } }, start_delta_hours: null, end_delta_hours: null, changed_fields: [], change_kinds: ['unknown'] };
   const chainData = { ...deferred, items: [known, unknown] }, savedChain = clone(chainData), chain = expand(h(detailsMod.OperationChain, { data: chainData, difference: true }));
   assert.equal(nodes(chain).filter(row => row.props['data-decision-operation']).length, 2, '完整工序链保留已安排与待料工序');
+  assert(!text(chain).includes('查看未安排工序'), '工序行不渲染批次级查看未安排工序入口');
+  const batchDrill = { ...deferred.items[0].drill.selected }; delete batchDrill.operation_ref;
+  const drillTargets = [], drillState = hooks(), drillCtx = createSandbox({
+    react: drillState.React,
+    stubs: {
+      'resource-contract.js': {},
+      'RunOperationEffort.jsx': { Effort: 'effort-facts', Standard: 'standard-facts' },
+      'RunDecisionAPI.js': { ...API, decisionDetails: async () => detailsFixture('operations') },
+    },
+  });
+  const drillDetailsMod = runFiles(drillCtx, ['shared/session/query.js', 'BatchContract.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunDecisionDetails.jsx'])('RunDecisionDetails.jsx');
+  const renderBatchChain = batch => drillState.render(() => expand(h(drillDetailsMod.BatchChain, { result: payload, batch, difference: false, query: {}, onQuery() {}, onDrill: target => drillTargets.push(target), headingRef: { current: null }, enabled: false })));
+  const deferredBatch = { ...clone(deferred.items[0]), drill: { ...clone(deferred.items[0].drill), selected: batchDrill } };
+  nodes(renderBatchChain(deferredBatch)).find(row => row.type === 'button' && text(row) === '查看未安排工序').props.onClick();
+  assert.deepEqual(clone(drillTargets[0]), { ...batchDrill, candidate_tab: 'unplanned' }, '待料未排批次钻取携带 candidate_tab=unplanned');
+  assert.equal('detail_tab' in drillTargets[0], false, '未安排工序钻取不含错误的 detail_tab');
+  const ordinaryBatch = { ...clone(deferredBatch), after: { ...clone(deferredBatch.after), ordinary_unscheduled_operation_count: 1, deferred_operation_count: 0 } };
+  nodes(renderBatchChain(ordinaryBatch)).find(row => row.type === 'button' && text(row) === '查看未安排工序').props.onClick();
+  assert.deepEqual(clone(drillTargets[1]), { ...batchDrill, candidate_tab: 'unplanned' }, '普通未排批次钻取携带 candidate_tab=unplanned');
+  assert.equal('detail_tab' in drillTargets[1], false);
+  const completeBatch = { ...clone(deferredBatch), after: { ...clone(deferredBatch.after), ordinary_unscheduled_operation_count: 0, deferred_operation_count: 0 } };
+  assert(!nodes(renderBatchChain(completeBatch)).some(row => row.type === 'button' && text(row) === '查看未安排工序'), '工序已排齐的批次不显示查看未安排工序按钮');
+  const batchUnplanned = referenceFixture(); batchUnplanned.data.unplanned_operations = [{ operation_ref: operationRef, batch_ref: batchRef, row_ref: null, reason: { message: '保存记录中的未安排工序' } }]; batchUnplanned.data.unplanned_operation_count = 1;
+  const drilledWorkspace = await candidateWorkspace(drillTargets[0], batchUnplanned);
+  assert.equal(nodes(drilledWorkspace.tree).find(node => node.props.id === 'rc-detail-tab-unplanned').props['aria-selected'], true, '接收端候选工作区消费 candidate_tab=unplanned 切到未安排工序页签');
+  const summaryTree = expand(h(detailsMod.Summary, { data: deferred }));
+  assert(text(summaryTree).replace(/\s+/g, ' ').includes('双方都已排齐 · 1 批'), '共同已排齐批次使用标量计数展示');
   assert(nodes(chain).some(row => row.props.title && row.props.title.includes('11:10:48')), '变化安排保留真实秒值');
   const unknownRow = nodes(chain).find(row => row.props['data-decision-operation'] === missingOperationRef);
   assert(visibleText(unknownRow).includes('待料未排') && visibleText(unknownRow).includes('差值待确认') && visibleText(unknownRow).includes('排产时保存的待料原因。'), '双方都未排继续展示未知时间及真实原因');
@@ -948,20 +972,19 @@ function completionFixture(q = {}, state = 'complete') {
     return { batch_ref, batch_label: 'B-' + String(index + 1).padStart(3, '0'), part_no: 'P-001', part_label: null, quantity: 1,
       completion_state: unfinished && state === 'unknown' ? 'unknown' : unfinished ? 'incomplete' : 'complete', schedule_complete: !unfinished,
       scheduled_operation_count: 1, unplanned_operation_count: count, deferred_operation_count: 0,
-      remaining_work: { operation_count: count, metrics: clone(metrics) }, issues: unfinished ? ['schedule_time_invalid'] : [],
+      remaining_work: { operation_count: count, metrics: clone(metrics) }, issues: unfinished ? [state === 'unknown' ? 'operations_missing' : 'operations_unscheduled'] : [],
       remaining_drill: count ? { ...clone(drill), detail_query: { work_scope: 'remaining', batch_ref } } : null };
   });
   const incomplete = items.filter(row => row.schedule_complete !== true), complete = items.filter(row => row.schedule_complete === true), ordinary = items.filter(row => row.completion_state === 'incomplete'), unknown = items.filter(row => row.completion_state === 'unknown');
   const summary = { ...clone(completionScope), state: incomplete.length ? state === 'unknown' ? 'unavailable' : 'partial' : 'complete', source_available: true,
     complete_batch_count: complete.length, incomplete_batch_count: incomplete.length, ordinary_incomplete_batch_count: ordinary.length, deferred_batch_count: 0, unknown_batch_count: unknown.length,
     unplanned_operation_count: remaining, deferred_operation_count: 0,
-    sample_batch_refs: { complete: complete.slice(0, 3).map(row => row.batch_ref), incomplete: incomplete.slice(0, 3).map(row => row.batch_ref), deferred: [], unknown: unknown.slice(0, 3).map(row => row.batch_ref) },
     remaining_work: { operation_count: remaining, unplanned_operation_count: remaining, deferred_operation_count: 0, metrics: clone(metrics) }, drill };
   items = items.filter(row => q.completion_filter === 'all' || q.completion_filter === 'complete' && row.schedule_complete === true || q.completion_filter === 'unfinished' && row.schedule_complete !== true || q.completion_filter === 'ordinary' && row.completion_state === 'incomplete' || q.completion_filter === 'unknown' && row.completion_state === 'unknown');
   if (q.order === 'desc') items.reverse();
   const total = items.length;
-  return { ...clone(payload), data: { run_ref: runRef, scope: { ...clone(data.scope), selected_candidate_ref: q.selected_candidate_ref, batch_refs: refs }, baseline: clone(data.baseline),
-    candidate: { candidate_ref: q.selected_candidate_ref, label: '完成集合成员', persisted_status: 'completed' },
+  return { ...clone(payload), data: { run_ref: runRef, scope: { ...clone(data.scope), selected_candidate_ref: q.selected_candidate_ref, batch_count: refs.length }, baseline: clone(data.baseline),
+    candidate: { candidate_ref: q.selected_candidate_ref, label: '完成集合成员' },
     source: { role: 'completion_anchor', grain: 'full_admission_per_candidate_batch', candidate_ref: q.selected_candidate_ref, available: true, reason: null },
     filters: { section: 'completion-batches', completion_filter: q.completion_filter, sort: q.sort, order: q.order },
     summary, items: items.slice((q.page - 1) * q.size, q.page * q.size), page: { number: q.page, size: q.size, total, has_more: q.page * q.size < total }, metric_version: 'decision-preparation-v4' } };
@@ -974,9 +997,7 @@ async function completionContracts() {
   assert.deepEqual(await readCompletionBatches(all, runRef, { ...q, size: 50 }), clone(all.data));
   assert.equal(one.data.items.length, 20); assert.equal(two.data.items.length, 1);
   assert.deepEqual([...one.data.items, ...two.data.items], all.data.items, '同一成员的完整集合逐页20+1与50条一页保持同源、完整且无重复');
-  await rejected(one, value => { value.data.scope.selected_candidate_ref = third; }, read, '批次清单只属于当前查看方案');
-  assert.throws(() => API.completionScope(runRef, { range_start, range_end }), /请选择要查看批次安排的方案/, '批次清单必须显式选择当前方案');
-  await rejected(one, value => { value.data.source.candidate_ref = third; }, read, '批次来源必须属于集合锚点');
+  await rejected(two, value => { value.meta.snapshot_ref = 't'.repeat(32); }, value => readCompletionBatches(value, runRef, { ...q, page: 2, snapshot_ref: snapshot }), '批次清单翻页快照失配拒绝');  assert.throws(() => API.completionScope(runRef, { range_start, range_end }), /请选择要查看批次安排的方案/, '批次清单必须显式选择当前方案');
   const remainingQuery = { ...q, completion_filter: 'ordinary' }, remaining = completionFixture(remainingQuery, 'ordinary');
   assert.deepEqual(await readCompletionBatches(remaining, runRef, remainingQuery), clone(remaining.data));
   const unknownQuery = { ...q, completion_filter: 'unknown' }, unknown = completionFixture(unknownQuery, 'unknown');
@@ -1049,9 +1070,9 @@ async function processPaneContracts() {
   assert.equal(nodes(main).find(node => node.props.className === 'rd-recommend-cause').children[0], data.selection_basis.explanation.headline, '切换共同查看方案保留保存的推荐原因');
   const savedContext = clone(remembered.at(-1)); nodes(main).find(node => node.type === 'button' && text(node) === '看甘特').props.onClick();
   assert.equal(targets.at(-1).page, 'gantt'); assert.equal(targets.at(-1).value.candidate_ref, first);
-  assert.equal(targets.at(-1).value.return_decision_context.candidate_ref, first); assert.equal(targets.at(-1).value.return_decision_context.reference_candidate_ref, first);
-  assert.deepEqual(clone(targets.at(-1).value.return_decision_context), savedContext, '过程甘特返回同一共同方案、固定对照、窗口及记录筛选');
-  assert.deepEqual(clone(targets.at(-1).value.return_decision_context.detail_queries.process), normalizedLeaf);
+  assert.equal(targets.at(-1).value.return_to.context.candidate_ref, first); assert.equal(targets.at(-1).value.return_to.context.reference_candidate_ref, first);
+  assert.deepEqual(clone(targets.at(-1).value.return_to.context), savedContext, '过程甘特返回同一共同方案、固定对照、窗口及记录筛选');
+  assert.deepEqual(clone(targets.at(-1).value.return_to.context.detail_queries.process), normalizedLeaf);
   nodes(main).find(node => node.props['aria-label'] === '候选比较基准').props.onChange({ target: { value: 'admission_official' } }); renderMain();
   assert.equal(mainQueries.at(-1).comparison_mode, 'admission_official'); assert.equal(mainQueries.at(-1).reference_candidate_ref, undefined); assert.equal(mainQueries.at(-1).selected_candidate_ref, first, '同一对照入口切正式基准时保留共同查看对象');
   nodes(main).find(node => node.props['aria-label'] === '候选比较基准').props.onChange({ target: { value: first } }); renderMain();
@@ -1088,7 +1109,7 @@ async function processPaneContracts() {
   assert.deepEqual(clone(returned.links.at(-1).context), savedContext, '真实候选甘特返回入口沿用原过程叶，不切到保存推荐');
 }
 async function processTransportContracts() {
-  // The captured unified process answer travels through the real RunDecisionAPI.process, APSWorkbenchTransport and processDetails.
+  // The captured unified process answer travels through the real RunDecisionAPI.process and APSWorkbenchTransport.
   const processRaw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/unified_process_http.json'), 'utf8'));
   const native = processRaw.decision_summary, nativeRun = native.run.run_ref, nativeCandidate = native.scope.selected_candidate_ref;
   const envelope = value => ({ ok: true, schema_version: 1, data: value, warnings: [], meta: { request_ref: '1'.repeat(32), source: 'production', time_basis: 'factory_local', snapshot_ref: snapshot, as_of: '2026-10-15T02:00:00' } });
@@ -1096,7 +1117,7 @@ async function processTransportContracts() {
   routes[DECISION + '/**'] = () => responses.shift();
   const q = { selected_candidate_ref: nativeCandidate, objective: 'min_tardiness', snapshot_ref: snapshot };
   responses.push(envelope(process)); const read = await API.process(nativeRun, q);
-  assert.deepEqual(clone(read.data), process, '真实共同优化过程经过传输层与公开 DTO 校验');
+  assert.deepEqual(clone(read.data), process, '真实共同优化过程经过传输层信封校验与快照绑定');
   const params = calls.at(-1).url.searchParams;
   assert.equal(calls.at(-1).url.pathname, '/api/workbench/v1/scheduling/runs/' + nativeRun + '/decision/process');
   assert.equal(params.get('snapshot_ref'), snapshot); assert.equal(params.get('objective'), 'min_tardiness'); assert.equal(params.get('page'), '1');
@@ -1139,7 +1160,7 @@ async function transportContracts() {
   assert.equal(calls.at(-1).url.pathname, '/api/workbench/v1/scheduling/runs/' + runRef + '/decision/summary');
   assert.equal(calls.at(-1).url.searchParams.get('range_start'), range_start); assert.equal(calls.at(-1).url.searchParams.get('range_end'), range_end);
   responses.push(summaryPayload);
-  await assert.rejects(() => API.decisionSummary(runRef, { ...query, selected_candidate_ref: first }), /查看方案/, '摘要读取拒绝其他当前候选的响应');
+  await assert.rejects(() => API.decisionSummary(runRef, { ...query, snapshot_ref: 't'.repeat(32) }), /比较资料已更新/, '摘要读取拒绝失配快照');
   const reads = calls.length;
   responses.push(exportFile('csv', '21', summary.meta.snapshot_ref));
   assert.equal((await API.decisionExport(runRef, query, summary.meta.snapshot_ref, 'csv')).filename, '排产方案对比.csv');
@@ -1158,15 +1179,15 @@ async function transportContracts() {
   for (const key of ['heatmap_mode', 'day_resource_ref', 'day_page']) assert.equal(params.has(key), false, '呈现状态不带入服务查询：' + key);
   assert.equal(resourceRequest.method, 'GET'); assert.equal(resourceRequest.init.cache, 'no-store'); assert.equal(resourceRequest.init.credentials, 'same-origin');
   assert.equal(resourceRequest.signal.aborted, false);
-  for (const mutate of [value => { value.data.resource_result = null; }, value => { value.data.resource_query.pressure_threshold = 0.7; }, value => { value.data.scope.selected_candidate_ref = first; }]) {
+  for (const mutate of [value => { value.data.resource_result = null; }, value => { value.data.resource_result = { ok: true, schema_version: 2 }; }]) {
     const invalid = clone(combined); mutate(invalid); responses.push(invalid); await assert.rejects(() => API.resourceWorkspace(runRef, query, savedResources));
   }
-  // An embedded failure is left to the resource tab, which parses it at the single failure point (APSWorkbenchTransport.failure).
-  const embedded = clone(combined.data.resource_result), parsed = Transport.failure(embedded, embedded.status);
-  assert.deepEqual([parsed.code, parsed.status, parsed.committed], ['snapshot_stale', 409, false]);
-  embedded.error.fields = [{}]; assert.equal(Transport.failure(embedded, embedded.status).code, 'invalid_response', '内嵌失败的字段错误形态不合法时按无效响应处理');
   responses.push(combined);
-  await assert.rejects(() => API.resourceWorkspace(runRef, query, { ...savedResources, pressure_threshold: 0.7 }), /筛选/, '资源首屏读取核对实际采用的资源筛选');
+  await assert.rejects(() => API.resourceWorkspace(runRef, { ...query, snapshot_ref: 't'.repeat(32) }, savedResources), /比较资料已更新/);
+  // An embedded failure is left to the resource tab, which parses it at the single failure point (APSWorkbenchTransport.envelopeFailure).
+  const embedded = clone(combined.data.resource_result), parsed = Transport.envelopeFailure(embedded, embedded.status);
+  assert.deepEqual([parsed.code, parsed.status, parsed.committed], ['snapshot_stale', 409, false]);
+  embedded.error.fields = [{}]; assert.equal(Transport.envelopeFailure(embedded, embedded.status).code, 'invalid_response', '内嵌失败的字段错误形态不合法时按无效响应处理');
   // The embedded resource read lives only in data; the old top-level placement is an envelope the transport rejects.
   responses.push({ ...summaryPayload, resource_query: combined.data.resource_query, resource_result: combined.data.resource_result });
   await assert.rejects(() => API.resourceWorkspace(runRef, query, savedResources), error => error.code === 'invalid_response', '信封顶层多出资源字段时整份拒绝');
@@ -1212,14 +1233,13 @@ async function unifiedGenerationContracts() {
   const calls = network.calls.slice(start);
   assert.equal(calls.length, 1); assert(calls[0].path.endsWith('/candidates/' + savedCandidate + '/identity') && !calls[0].path.includes('/workspace'));
   assert.equal(calls[0].init.cache, 'no-store'); assert.equal(calls[0].init.credentials, 'same-origin');
-  const badIdentity = clone(identity); badIdentity.data.candidate_ref = first; identityAnswers.push(badIdentity);
-  await assert.rejects(() => ugCandidateAPI.identity(savedCandidate), /身份|方案/, 'identity 读取同样绑定永久候选编号');
+  await assert.rejects(() => ugCandidateAPI.identity('invalid-ref'));
   // Component ownership: the Workspace's identity lookup and summary read are answered on its own API module objects.
   const state = hooks(), lookups = [], summaries = [];
   const uiCtx = createSandbox({
     react: state.React,
     stubs: {
-      'shared/session/query.js': { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) },
+      'shared/session/query.js': defaultQueryStub,
       'RunCandidateAPI.js': { ...ugCandidateAPI, identity: (reference, signal) => { lookups.push({ reference, signal }); return identity; },
         workspace: () => { throw new Error('比较入口的运行编号查找只调用轻量 identity'); } },
       'RunDecisionAPI.js': { ...API, decisionSummary: (reference, query) => { summaries.push({ reference, query }); return null; } },
@@ -1239,15 +1259,16 @@ async function unifiedGenerationContracts() {
     assert.equal(process.summary.last_improvement_elapsed_ms, null, '真实快速生成未改善，按保存事实显示');
   }
   assert.deepEqual(await readProcess(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, {}), clone(processRaw.process_by_objective.min_tardiness));
-  await assert.rejects(() => readProcess(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, { objective: 'min_overdue' }), /优化方向/);
-  await assert.rejects(() => readProcess(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, { process_candidate_ref: first }), /过程来源定位/);
+  assert.throws(() => API.processScope(nativeRun, { objective: 'unknown_objective' }), /优化方向/);
+  assert.throws(() => API.processScope(nativeRun, { process_candidate_ref: 'bad' }), /方案/);
+  await assert.rejects(() => readProcess(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, { snapshot_ref: 't'.repeat(32) }), /比较资料已更新/);
   const controlledRaw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/unified_process_controlled.json'), 'utf8'));
   assert.equal(controlledRaw.provenance.actual_http, false); assert.equal(controlledRaw.provenance.solver_calls, 0);
   const improved = controlledRaw.improvement, improvementQuery = { ...improved.filters,
     selected_candidate_ref: improved.scope.selected_candidate_ref, reference_candidate_ref: improved.scope.reference.candidate_ref };
   delete improvementQuery.section;
   const acceptedImprovement = await readProcess(envelope(improved), improved.run_ref, improvementQuery);
-  assert.deepEqual(acceptedImprovement, clone(improved), '真实metrics→SharedSearch→build_shared_process→projection先经过严格公开DTO边界');
+  assert.deepEqual(acceptedImprovement, clone(improved), '真实metrics→SharedSearch→build_shared_process→projection经传输层原样读取');
   assert.deepEqual(improved.progress.points.map(point => [point.elapsed_ms, point.flags]), [[10, ['first_valid', 'first_expected_complete']], [15, ['strict_improvement']], [100, ['final']]]);
   const curveState = hooks(), curveCtx = createSandbox({ react: curveState.React });
   const curveMod = runFiles(curveCtx, ['RunDecisionProcessChart.jsx']);
@@ -1320,7 +1341,7 @@ async function unifiedGenerationContracts() {
       'RunDecisionResources.jsx': { Pane: 'resource-pane' },
       'RunDecisionDetails.jsx': { Pane: 'detail-pane' },
       'RunDecisionCompletion.jsx': { Pane: 'completion-pane' },
-      'shared/session/query.js': { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) },
+      'shared/session/query.js': defaultQueryStub,
     },
   });
   vm.runInContext(outputs.find(output => output.path === 'RunDecisionComparison.jsx').code, compareCtx, { filename: 'RunDecisionComparison.jsx' });
@@ -1346,8 +1367,8 @@ async function unifiedGenerationContracts() {
   nodes(compareTree).find(node => node.type === 'resource-pane').props.onView('full_candidate'); renderCompare();
   assert.equal(compareQueries.at(-1).selected_candidate_ref, third); assert.equal(compareQueries.at(-1).reference_candidate_ref, first); assert.equal(processLeaf().query.objective, 'min_tardiness');
   nodes(compareTree).find(node => node.type === 'button' && text(node) === '看甘特').props.onClick();
-  assert.equal(returns.at(-1).context.candidate_ref, third); assert.equal(returns.at(-1).context.return_decision_context.detail_queries.process.process_candidate_ref, first);
-  assert.equal(returns.at(-1).context.return_decision_context.detail_queries.process.objective, 'min_tardiness'); assert.equal(nodes(compareTree).find(node => node.type === 'adoption').props.candidateRef, third, '采用对象继续绑定当前查看方案');
+  assert.equal(returns.at(-1).context.candidate_ref, third); assert.equal(returns.at(-1).context.return_to.context.detail_queries.process.process_candidate_ref, first);
+  assert.equal(returns.at(-1).context.return_to.context.detail_queries.process.objective, 'min_tardiness'); assert.equal(nodes(compareTree).find(node => node.type === 'adoption').props.candidateRef, third, '采用对象继续绑定当前查看方案');
   nodes(compareTree).find(node => node.props.className === 'rd-official rd-data-source').props.onToggle({ currentTarget: { open: true } }); renderCompare();
   nodes(compareRaw).find(node => node.type === compareComp.CandidateFacts).props.onProcess(display.candidates[0]); renderCompare();
   assert.equal(compareQueries.at(-1).selected_candidate_ref, third); assert.equal(processLeaf().query.process_candidate_ref, nativeCandidate, '候选保存依据定位来源保持查看和采用对象');
@@ -1356,7 +1377,7 @@ async function unifiedGenerationContracts() {
     react: processState.React,
     stubs: {
       'RunDecisionAPI.js': { ...API, process: (reference, q) => { processCalls.push(clone(q)); return envelope(processRaw.process_by_objective[q.objective || native.selection_basis.primary_objective]); } },
-      'shared/session/query.js': { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) },
+      'shared/session/query.js': defaultQueryStub,
     },
   });
   const paneMod = runFiles(paneCtx, ['RunDecisionProcessChart.jsx', 'RunDecisionProcess.jsx']);
@@ -1664,9 +1685,8 @@ async function unifiedGenerationContracts() {
     real_improvement_ms: improved.summary.last_improvement_elapsed_ms, sampled_improvement_ms: sampled.summary.last_improvement_elapsed_ms } }));
 }
 async function adoptionContextContracts() {
-  const state = hooks(), values = new Map(), listeners = new Map(), calls = [];
+  const state = hooks(), storage = memoryStorage(), listeners = new Map(), calls = [];
   let random = 0;
-  const storage = { getItem: key => values.has(key) ? values.get(key) : null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
   const local = { localStorage: storage, crypto: { getRandomValues(bytes) { bytes.fill(++random); return bytes; } },
     navigator: { locks: { request: async (_key, _options, fn) => fn({}) } },
     addEventListener(type, fn) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(fn); },
@@ -1718,7 +1738,10 @@ async function adoptionContextContracts() {
   // Every saved intent carries its data source (schema_version 2); records without it are no longer readable.
   assert.deepEqual(clone(A.input({ confirm: true, reason: '  ' + '原'.repeat(1000) + '  ', declared_operator: '  ' + '人'.repeat(100) + '  ' })),
     { confirm: true, reason: '原'.repeat(1000), declared_operator: '人'.repeat(100) });
-  assert.throws(() => A.input({ confirm: true, reason: '原'.repeat(1001), declared_operator: '人' }), /原因/);
+  // 字数上限归后端（422 带字段路径）；前端只管勾选与两项必填。
+  assert.deepEqual(clone(A.input({ confirm: true, reason: '原'.repeat(1001), declared_operator: '人' })), { confirm: true, reason: '原'.repeat(1001), declared_operator: '人' });
+  assert.throws(() => A.input({ confirm: true, reason: '  ', declared_operator: '人' }), /请填写采用原因和经办人/);
+  assert.throws(() => A.input({ confirm: false, reason: '原', declared_operator: '人' }), /请勾选确认正式采用/);
   const modern = A.pending.begin({ ...summary, data_context_ref: oldContext }, input, null);
   assert.equal(modern.schema_version, 2); assert.equal(modern.data_context_ref, oldContext); assert.equal(A.pending.read().request_key, modern.request_key);
   for (const legacy of [{ ...modern, schema_version: 1 }, (({ data_context_ref, ...rest }) => ({ ...rest, schema_version: 1 }))(modern), { ...modern, data_context_ref: 'd'.repeat(64) },
@@ -1740,7 +1763,8 @@ async function adoptionContextContracts() {
   assert.throws(() => A.pending.dismissReplaced(modern, proof), /记录已变化/, 'CAS preserves a newer stored record');
   assert.deepEqual(clone(A.pending.read()), clone(changed));
   storage.setItem(A.PENDING_KEY, JSON.stringify(modern));
-  const blockedStorage = { ...storage, removeItem() { throw new Error('disk full'); } };
+  // 同一来源的另一页删不掉记录。
+  const blockedStorage = memoryStorage(storage.data); blockedStorage.failRemove = new Error('disk full');
   local.localStorage = blockedStorage;
   assert.throws(() => A.pending.dismissReplaced(modern, proof), /存不下/);
   local.localStorage = storage;

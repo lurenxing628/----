@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const { routeFetch, envelope, failure, json: respond, deferred, browser } = require('./route_fetch.cjs');
+const { memoryStorage } = require('../_support/memory_storage.cjs');
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
 const names = ['WorkbenchTerms.js', 'shared/session/pending-store.js', 'shared/network/transport.js', 'resource-contract.js', 'resource-api.js', 'shared/session/command-session.js',
   'ProcessContract.js', 'ProcessAPI.js', 'BatchContract.js', 'BatchAPI.js',
@@ -68,12 +69,11 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 // An unanswered write: the transport turns it into the single "result unknown" error.
 const offline = log => call => { log.push(call.body); throw new Error('网络中断'); };
 const unknownOutcome = WorkbenchTerms.outcomes.pending('操作');
+// 每次 getItem 都计入 counters.reads，读失败的那次也计。
 function storage() {
-  const data = new Map(), writes = [];
-  return { data, writes, failGet: null, failSet: null, failRemove: null,
-    getItem(key) { counters.reads++; if (this.failGet) throw this.failGet; return data.has(key) ? data.get(key) : null; },
-    setItem(key, value) { writes.push(['set', key]); if (this.failSet) throw this.failSet; data.set(key, value); },
-    removeItem(key) { writes.push(['remove', key]); if (this.failRemove) throw this.failRemove; data.delete(key); } };
+  const store = memoryStorage();
+  store.onAccess = (method, _key, phase) => { if (method === 'getItem' && phase === 'before') counters.reads++; };
+  return store;
 }
 const reset = () => { counters.reads = counters.parses = counters.validations = 0; contextParses = 0; };
 // Web Locks fixtures: a browser without Web Locks, a lock held by another page, and a lock that is granted.
@@ -191,6 +191,11 @@ async function main() {
     w.localStorage.data.set(module.KEY, '{broken'); assert.throws(() => module.read(), /损坏/);
     host.unmount(); contract[row.leaf] = leaf;
   }
+  // 后端按码点限长（经办人 200、原因 2000）：取满上限的扩展区汉字登记，本机记录照常读回，不按 UTF-16 长度判成不完整。
+  w.localStorage = storage();
+  const wideOutsourcing = { ...sessions[1].value, input: { ...sessions[1].value.input, declared_operator: '𠀀'.repeat(200), reason: '𠀀'.repeat(2000) } };
+  OutsourcingSession.save(wideOutsourcing, null);
+  assert.equal(JSON.stringify(OutsourcingSession.read()), JSON.stringify(wideOutsourcing));
 
   // Trial recovery carries the preview's data source; only a settled, replaced source releases PENDING.
   const trialAPI = TrialAdoptionAPI, trialState = TrialAdoptionState;
@@ -256,9 +261,10 @@ async function main() {
   lookupCall = fetch.calls.at(-1);
   assert.equal(lookupCall.path, '/api/workbench/v1/scheduling/candidates/' + ref(10) + '/adoption-commands/' + adopted.request_key);
   assert.equal(lookupCall.query.run_ref, ref(11)); assert.equal(lookupCall.query.data_context_ref, dataContext);
-  assert.equal(runDialog().props.error, '查询采用结果失败，采用可能已经生效。请点「查询结果」重试，不要重新采用。'); assert.equal(runDialog().props.draft.reason, values.reason);
+  assert.equal(runDialog().props.error.message, '查询采用结果失败，采用可能已经生效。请点「查询结果」重试，不要重新采用。'); assert.equal(runDialog().props.error.committed, 'unknown');
+  assert.equal(runDialog().props.draft.reason, values.reason);
   w.localStorage.data.delete(RunAdoptionAPI.PENDING_KEY); w.dispatchEvent({ type: 'storage', key: RunAdoptionAPI.PENDING_KEY });
-  assert.equal(runDialog().props.intent, null); assert.equal(runDialog().props.error, '');
+  assert.equal(runDialog().props.intent, null); assert.equal(runDialog().props.error, null);
   assert.equal(JSON.stringify(runDialog().props.draft), JSON.stringify({ reason: '', declared_operator: '经办人' })); runHost.unmount();
 
   // Web Locks contention and a browser without Web Locks are operation errors, not damaged stored records:
@@ -297,38 +303,39 @@ async function main() {
   // and the command carries the trimmed values.
   w.navigator = granted;
   {
-    const trialInput = TrialAdoptionAPI.input; let trialInputs = 0;
-    TrialAdoptionAPI.input = (...args) => { trialInputs++; return trialInput(...args); };
-    try { await renderTrial().submit(); } finally { TrialAdoptionAPI.input = trialInput; }
+    const RunAdoptionAPI = getMod('RunAdoptionAPI.js'), trialInput = RunAdoptionAPI.input; let trialInputs = 0;
+    RunAdoptionAPI.input = (...args) => { trialInputs++; return trialInput(...args); };
+    try { await renderTrial().submit(); } finally { RunAdoptionAPI.input = trialInput; }
     assert.equal(trialInputs, 1, '入口只规整一次，锁内只核对草稿未变');
   }
   assert.equal(trialAdopts.length, 1); assert.deepEqual(trialAdopts[0].input, values);
-  assert.equal(renderTrial().error, WorkbenchTerms.outcomes.unknown('采用')); assert.equal(renderTrial().saved.phase, 'pending');
+  assert.equal(renderTrial().error.message, WorkbenchTerms.outcomes.unknown('采用')); assert.equal(renderTrial().error.committed, 'unknown');
+  assert.equal(renderTrial().saved.phase, 'pending');
   w.localStorage = storage(); renderTrial().sync();
   routes['POST /api/workbench/v1/trial/scenarios/*/adopt'] = stale(() => { w.localStorage.failSet = quota; });
   renderTrial().change({ reason: values.reason, declared_operator: values.declared_operator });
   await renderTrial().inspect(); renderTrial().setConsent(true); await renderTrial().submit();
-  assert.equal(renderTrial().saved.phase, 'rejected'); assert.equal(renderTrial().storageError, '本次采用未通过，但本机没能保存这次操作记录。');
+  assert.equal(renderTrial().saved.phase, 'rejected'); assert.equal(renderTrial().storageError.message, '本次采用未通过，但本机没能保存这次操作记录。');
   {
     const remountHost = hooks(), remounted = remountHost.render(() => TrialAdoptionState.useSession({ scenarioRef: scope.scenario_ref, data: trialData, disabled: false, onAdopted() {} }));
     remountHost.flush();
-    assert.equal(remounted.saved.phase, 'rejected'); assert.equal(remounted.storageError, '本次采用未通过，但本机没能保存这次操作记录。');
+    assert.equal(remounted.saved.phase, 'rejected'); assert.equal(remounted.storageError.message, '本次采用未通过，但本机没能保存这次操作记录。');
     const dialog = remountHost.render(() => TrialAdoptionControls.Dialog({ session: remounted, scenarioRef: scope.scenario_ref, onNavigate() {}, name: '试调' }));
     assert.equal(Boolean(findButton(dialog, '结束本次未采用').props.disabled), false);
     remountHost.unmount();
   }
   w.localStorage.failSet = null;
-  await renderTrial().sync(); assert.equal(renderTrial().storageError, ''); assert.equal(renderTrial().saved.phase, 'rejected');
+  await renderTrial().sync(); assert.equal(renderTrial().storageError, null); assert.equal(renderTrial().saved.phase, 'rejected');
   assert.equal(JSON.parse(w.localStorage.data.get(TrialAdoptionState.KEY)).phase, 'rejected');
-  await renderTrial().finish(); assert.equal(renderTrial().saved, null); assert.equal(renderTrial().storageError, '');
+  await renderTrial().finish(); assert.equal(renderTrial().saved, null); assert.equal(renderTrial().storageError, null);
   routes['POST /api/workbench/v1/trial/scenarios/*/adopt'] = () => { w.localStorage.failSet = quota; return trialReceipt(); };
   renderTrial().change({ reason: values.reason, declared_operator: values.declared_operator });
   await renderTrial().inspect(); renderTrial().setConsent(true); await renderTrial().submit();
-  assert.equal(renderTrial().saved.phase, 'committed'); assert.equal(renderTrial().storageError, '已收到采用结果，但本机没能保存这次操作记录。');
+  assert.equal(renderTrial().saved.phase, 'committed'); assert.equal(renderTrial().storageError.message, '已收到采用结果，但本机没能保存这次操作记录。');
   {
     const remountHost = hooks(), remounted = remountHost.render(() => TrialAdoptionState.useSession({ scenarioRef: scope.scenario_ref, data: trialData, disabled: false, onAdopted() {} }));
     remountHost.flush();
-    assert.equal(remounted.saved.phase, 'committed'); assert.equal(remounted.storageError, '已收到采用结果，但本机没能保存这次操作记录。');
+    assert.equal(remounted.saved.phase, 'committed'); assert.equal(remounted.storageError.message, '已收到采用结果，但本机没能保存这次操作记录。');
     const dialog = remountHost.render(() => TrialAdoptionControls.Dialog({ session: remounted, scenarioRef: scope.scenario_ref, onNavigate() {}, name: '试调' }));
     assert.equal(Boolean(findButton(dialog, '完成').props.disabled), false);
     remountHost.unmount();
@@ -338,15 +345,15 @@ async function main() {
       const secHost = hooks(), secRemounted = secHost.render(() => TrialAdoptionState.useSession({ scenarioRef: scope.scenario_ref, data: trialData, disabled: false, onAdopted() {} }));
       secHost.flush();
       assert.equal(secRemounted.saved.phase, 'committed', 'TrialAdoptionState preserves committed phase when localStorage getter throws SecurityError');
-      assert.equal(secRemounted.storageError, '已收到采用结果，但本机没能保存这次操作记录。');
+      assert.equal(secRemounted.storageError.message, '已收到采用结果，但本机没能保存这次操作记录。');
       secHost.unmount();
     } finally {
       if (prevDesc) Object.defineProperty(w, 'localStorage', prevDesc); else w.localStorage = backing;
     }
   }
   w.localStorage.failSet = null;
-  await renderTrial().sync(); assert.equal(renderTrial().storageError, ''); assert.equal(renderTrial().saved.phase, 'committed');
-  await renderTrial().finish(); assert.equal(renderTrial().saved, null); assert.equal(renderTrial().storageError, '');
+  await renderTrial().sync(); assert.equal(renderTrial().storageError, null); assert.equal(renderTrial().saved.phase, 'committed');
+  await renderTrial().finish(); assert.equal(renderTrial().saved, null); assert.equal(renderTrial().storageError, null);
   trialHost.unmount();
   {
     const lookupHost = hooks(), renderLookup = () => lookupHost.render(() => TrialAdoptionState.useSession({ disabled: true, onAdopted() {} }));
@@ -362,7 +369,7 @@ async function main() {
     await tick();
     let current = renderLookup();
     assert.equal(current.saved.request_key, otherTrial.request_key);
-    assert.equal(current.notice, ''); assert.equal(current.error, '');
+    assert.equal(current.notice, ''); assert.equal(current.error, null);
     lookupGate = deferred();
     const pendingError = current.lookup();
     w.localStorage.data.set(TrialAdoptionState.KEY, JSON.stringify(thirdTrial));
@@ -371,7 +378,7 @@ async function main() {
     await pendingError;
     current = renderLookup();
     assert.equal(current.saved.request_key, thirdTrial.request_key);
-    assert.equal(current.notice, ''); assert.equal(current.error, '');
+    assert.equal(current.notice, ''); assert.equal(current.error, null);
     lookupHost.unmount();
     routes['GET /api/workbench/v1/trial/scenarios/*/adoption-commands/*'] = () => trialStatus();
   }
@@ -430,22 +437,23 @@ async function main() {
   gate.resolve(); await precheck; renderRace().setConsent(true);
   let calibration = renderRace(); assert(calibration.preview && calibration.consent, 'The late precheck still lands after the other page wrote');
   await calibration.submit(); calibration = renderRace();
-  assert.equal(calibration.saved.request_key, otherPage.request_key); assert.equal(calibration.storageError, ''); assert.equal(raceAdopts.length, 0); assert.deepEqual(w.localStorage.writes, []);
+  assert.equal(calibration.saved.request_key, otherPage.request_key); assert.equal(calibration.storageError, null); assert.equal(raceAdopts.length, 0); assert.deepEqual(w.localStorage.writes, []);
   raceHost.flush(); await tick();
   assert.equal(fetch.calls.at(-1).path, '/api/workbench/v1/calibration/' + templateRef + '/adopt/receipts/' + otherPage.request_key);
-  assert.equal(renderRace().error, '上次操作的结果还没确认。无法连接本机服务，请确认应用仍在运行后重试。');
+  // 查询失败的原因留在错误对象里，“还没确认”由提示说明。
+  assert.equal(renderRace().error.message, '无法连接本机服务，请确认应用仍在运行后重试。'); assert.equal(renderRace().notice, '上次操作的结果还没确认。');
   w.localStorage.data.delete(calibrationKey); w.dispatchEvent({ type: 'storage', key: calibrationKey }); calibration = renderRace();
-  assert.equal(calibration.saved, null); assert.equal(calibration.error, ''); assert.equal(calibration.preview, null);
+  assert.equal(calibration.saved, null); assert.equal(calibration.error, null); assert.equal(calibration.preview, null);
   assert.equal(JSON.stringify(calibration.draft), JSON.stringify({ reason: '', declared_operator: '' }));
   routes[PREVIEW] = () => calibrationPreview;
   routes[ADOPT] = call => { raceAdopts.push(call.body); w.localStorage.failSet = quota; return calibrationReceipt(call.body); };
   renderRace().change(calibrationInput); await renderRace().inspect(); renderRace().setConsent(true); await renderRace().submit();
   calibration = renderRace(); assert.equal(raceAdopts.length, 1);
-  assert.equal(calibration.storageError, '已收到采用结果，但本机没能保存这次操作记录。'); assert.equal(calibration.error, ''); assert.equal(calibration.saved.phase, 'committed');
+  assert.equal(calibration.storageError.message, '已收到采用结果，但本机没能保存这次操作记录。'); assert.equal(calibration.error, null); assert.equal(calibration.saved.phase, 'committed');
   {
     const remountHost = hooks(), remounted = remountHost.render(() => CalibrationAdoptionState.useSession({ detail: calibrationDetail, stale: false }));
     remountHost.flush();
-    assert.equal(remounted.saved.phase, 'committed'); assert.equal(remounted.storageError, '已收到采用结果，但本机没能保存这次操作记录。');
+    assert.equal(remounted.saved.phase, 'committed'); assert.equal(remounted.storageError.message, '已收到采用结果，但本机没能保存这次操作记录。');
     const dialog = remountHost.render(() => CalibrationAdoptionControls.Dialog({ session: remounted, detail: calibrationDetail, stale: false, onRefresh() {} }));
     assert.equal(Boolean(findButton(dialog, '完成').props.disabled), false);
     remountHost.unmount();
@@ -455,7 +463,7 @@ async function main() {
       const secHost = hooks(), secRemounted = secHost.render(() => CalibrationAdoptionState.useSession({ detail: calibrationDetail, stale: false }));
       secHost.flush();
       assert.equal(secRemounted.saved.phase, 'committed', 'CalibrationAdoptionState preserves committed phase when localStorage getter throws SecurityError');
-      assert.equal(secRemounted.storageError, '已收到采用结果，但本机没能保存这次操作记录。');
+      assert.equal(secRemounted.storageError.message, '已收到采用结果，但本机没能保存这次操作记录。');
       secHost.unmount();
     } finally {
       if (prevDesc) Object.defineProperty(w, 'localStorage', prevDesc); else w.localStorage = backing;
@@ -463,10 +471,10 @@ async function main() {
   }
   w.localStorage.failSet = null;
   await calibration.sync(); calibration = renderRace();
-  assert.equal(calibration.storageError, ''); assert.equal(calibration.saved.phase, 'committed');
+  assert.equal(calibration.storageError, null); assert.equal(calibration.saved.phase, 'committed');
   assert.equal(JSON.parse(w.localStorage.data.get(calibrationKey)).phase, 'committed');
   await calibration.finish(); calibration = renderRace();
-  assert.equal(calibration.saved, null); assert.equal(calibration.storageError, ''); assert.equal(w.localStorage.data.has(calibrationKey), false);
+  assert.equal(calibration.saved, null); assert.equal(calibration.storageError, null); assert.equal(w.localStorage.data.has(calibrationKey), false);
   {
     const sameQuotaBaseline = { ...suggestion, old_unit_hours: 2, suggested_unit_hours: 2 };
     const sameQuotaPending = { version: 1, request_key: 'calibration-' + '7'.repeat(48), phase: 'pending', baseline: CalibrationAdoptionAPI.binding(sameQuotaBaseline), input: { ...calibrationInput, confirm: true } };
@@ -485,21 +493,21 @@ async function main() {
   routes[ADOPT] = stale(() => { w.localStorage.failSet = quota; });
   renderRace().change(calibrationInput); await renderRace().inspect(); renderRace().setConsent(true); await renderRace().submit();
   calibration = renderRace();
-  assert.equal(calibration.storageError, '本次采用未通过，但本机没能保存这次操作记录。'); assert.equal(calibration.saved.phase, 'rejected');
+  assert.equal(calibration.storageError.message, '本次采用未通过，但本机没能保存这次操作记录。'); assert.equal(calibration.saved.phase, 'rejected');
   {
     const remountHost = hooks(), remounted = remountHost.render(() => CalibrationAdoptionState.useSession({ detail: calibrationDetail, stale: false }));
     remountHost.flush();
-    assert.equal(remounted.saved.phase, 'rejected'); assert.equal(remounted.storageError, '本次采用未通过，但本机没能保存这次操作记录。');
+    assert.equal(remounted.saved.phase, 'rejected'); assert.equal(remounted.storageError.message, '本次采用未通过，但本机没能保存这次操作记录。');
     const dialog = remountHost.render(() => CalibrationAdoptionControls.Dialog({ session: remounted, detail: calibrationDetail, stale: false, onRefresh() {} }));
     assert.equal(Boolean(findButton(dialog, '放弃上次采用记录').props.disabled), false);
     remountHost.unmount();
   }
   w.localStorage.failSet = null;
   await calibration.sync(); calibration = renderRace();
-  assert.equal(calibration.storageError, ''); assert.equal(calibration.saved.phase, 'rejected');
+  assert.equal(calibration.storageError, null); assert.equal(calibration.saved.phase, 'rejected');
   assert.equal(JSON.parse(w.localStorage.data.get(calibrationKey)).phase, 'rejected');
   await calibration.finish(); calibration = renderRace();
-  assert.equal(calibration.saved, null); assert.equal(calibration.storageError, '');
+  assert.equal(calibration.saved, null); assert.equal(calibration.storageError, null);
   raceHost.unmount();
   {
     const lookupHost = hooks(), renderLookup = () => lookupHost.render(() => CalibrationAdoptionState.useSession({ detail: calibrationDetail, stale: false }));
@@ -515,7 +523,7 @@ async function main() {
     await tick();
     let current = renderLookup();
     assert.equal(current.saved.request_key, otherCalibration.request_key);
-    assert.equal(current.notice, ''); assert.equal(current.error, '');
+    assert.equal(current.notice, ''); assert.equal(current.error, null);
     lookupGate = deferred();
     lookupHost.flush();
     w.localStorage.data.set(calibrationKey, JSON.stringify(thirdCalibration));
@@ -524,7 +532,7 @@ async function main() {
     await tick();
     current = renderLookup();
     assert.equal(current.saved.request_key, thirdCalibration.request_key);
-    assert.equal(current.notice, ''); assert.equal(current.error, '');
+    assert.equal(current.notice, ''); assert.equal(current.error, null);
     lookupGate = deferred();
     renderLookup(); lookupHost.flush();
     assert.equal(renderLookup().busy, true);
@@ -559,10 +567,10 @@ async function main() {
       getterDialog().props.onConsent(true);
       await getterDialog().props.onConfirm();
       assert.equal(getterDialog().props.intent.phase, 'rejected');
-      assert.equal(getterDialog().props.storageError, '读不到上次采用的操作记录，不要重新采用。');
+      assert.equal(getterDialog().props.storageError.message, '读不到上次采用的操作记录，不要重新采用。');
       allow(backing);
       await getterDialog().props.onReadStorage();
-      assert.equal(getterDialog().props.storageError, '');
+      assert.equal(getterDialog().props.storageError, null);
       assert.equal(getterDialog().props.intent.phase, 'rejected');
       assert.equal(JSON.parse(backing.data.get(RunAdoptionAPI.PENDING_KEY)).phase, 'rejected');
       await getterDialog().props.onCancelRejected();
@@ -570,6 +578,17 @@ async function main() {
       assert.equal(backing.data.has(RunAdoptionAPI.PENDING_KEY), false);
       getterHost.unmount();
     }
+  }
+  {
+    // 本页没有未刷盘记录时读不到本机记录：按读错误的 unreadable 标识认出它，接着显示本页会话里的待确认采用，不当成没有记录。
+    const backing = storage(); w.localStorage = backing;
+    RunAdoptionAPI.pending.begin(candidate, values, null);
+    backing.failGet = securityError();
+    const unreadHost = hooks(), unreadElement = RunAdoptionAction({ candidateRef: ref(10), candidateCatalog: [] });
+    const unreadTree = unreadHost.render(() => unreadElement.type(unreadElement.props));
+    assert.deepEqual(unreadTree.props.children[0].props.children, ['查询采用结果'], 'The page session keeps the pending adoption while storage is unreadable');
+    assert.equal(unreadTree.props.children[1].props.children[0], '读不到上次采用的操作记录，不要重新采用。');
+    unreadHost.unmount(); allow(backing);
   }
   {
     w.localStorage = storage();
@@ -591,7 +610,7 @@ async function main() {
     await tick();
     assert.equal(raceRunDialog().props.intent.request_key, secondAdopt.request_key);
     assert.equal(raceRunDialog().props.replacedInfo, null);
-    assert.equal(raceRunDialog().props.error, '');
+    assert.equal(raceRunDialog().props.error, null);
     lookupGate = deferred();
     renderRaceRun(); raceRunHost.flush();
     w.localStorage.data.set(RunAdoptionAPI.PENDING_KEY, JSON.stringify(thirdAdopt));
@@ -599,7 +618,7 @@ async function main() {
     lookupGate.reject(new Error('网络中断'));
     await tick();
     assert.equal(raceRunDialog().props.intent.request_key, thirdAdopt.request_key);
-    assert.equal(raceRunDialog().props.error, '');
+    assert.equal(raceRunDialog().props.error, null);
     assert.equal(raceRunDialog().props.replacedInfo, null);
     raceRunHost.unmount();
   }
@@ -610,13 +629,13 @@ async function main() {
       const runControlsHost = hooks();
       const rejectedDialog = runControlsHost.render(() => RunAdoptionControls.Dialog({
         value: candidate, intent: { ...adopted, phase: 'rejected' }, result: null, preview: null, candidateDisplay: null,
-        draft: values, consent: true, busy: false, error: '采用未通过', storageError: '无法保存', notice: '', replacedInfo: null,
+        draft: values, consent: true, busy: false, error: getMod('shared/contract/kit.js').failure('采用未通过'), storageError: getMod('shared/contract/kit.js').failure('无法保存'), notice: '', replacedInfo: null,
         onReadStorage() {}, onChange() {}, onConsent() {}, onClose() {}, onPreview() {}, onConfirm() {}, onLookup() {}, onFinish() {}, onCancelRejected() {}, onDismissReplaced() {}, onNavigate() {}
       }));
       assert.equal(Boolean(findButton(rejectedDialog, '结束本次未采用').props.disabled), false);
       const replacedDialog = runControlsHost.render(() => RunAdoptionControls.Dialog({
         value: candidate, intent: { ...adopted, phase: 'pending' }, result: null, preview: null, candidateDisplay: null,
-        draft: values, consent: true, busy: false, error: '', storageError: '无法保存', notice: '', replacedInfo: { reason: 'replaced' },
+        draft: values, consent: true, busy: false, error: null, storageError: getMod('shared/contract/kit.js').failure('无法保存'), notice: '', replacedInfo: { reason: 'replaced' },
         onReadStorage() {}, onChange() {}, onConsent() {}, onClose() {}, onPreview() {}, onConfirm() {}, onLookup() {}, onFinish() {}, onCancelRejected() {}, onDismissReplaced() {}, onNavigate() {}
       }));
       assert.equal(Boolean(findButton(replacedDialog, '结束旧来源待确认记录').props.disabled), false);
@@ -772,11 +791,11 @@ async function main() {
     w.localStorage.failRemove = new Error('removeItem unavailable');
     await remountAdoptDialog1().props.onFinish();
     assert.equal(remountAdoptDialog1().props.result.result, 'committed');
-    assert.match(remountAdoptDialog1().props.storageError, /存不下/);
+    assert.match(remountAdoptDialog1().props.storageError.message, /存不下/);
     await remountAdoptDialog1().props.onReadStorage();
     assert.ok(remountAdoptDialog1().props.intent);
     assert.equal(remountAdoptDialog1().props.result.result, 'committed');
-    assert.match(remountAdoptDialog1().props.storageError, /存不下/);
+    assert.match(remountAdoptDialog1().props.storageError.message, /存不下/);
     remountAdoptHost1.unmount();
 
     const remountAdoptHost2 = hooks(), remountAdoptEl2 = RunAdoptionAction({ candidateRef: ref(6), candidateCatalog: [] });
@@ -1233,20 +1252,21 @@ async function main() {
     out413Host.unmount();
     delete w.navigator;
   }
-  // APSResourceSession preserves terminal rejected state across APSResourceAPI.create(namespace) remounts when clearPending fails.
+  // APSResourceSession preserves terminal rejected state across remounts of each namespace singleton when clearPending fails.
   {
+    const resources = APSResourceAPI.forNamespace('resources');
     w.sessionStorage = storage();
     routes['POST /api/workbench/v1/entities/machine/*/update'] = stale(() => { w.sessionStorage.failRemove = new Error('removeItem unavailable'); });
-    const resHost1 = hooks(), adapter1 = APSResourceAPI.create('resources');
-    const renderRes1 = () => resHost1.render(() => APSResourceSession.useCommand(adapter1));
+    const resHost1 = hooks();
+    const renderRes1 = () => resHost1.render(() => APSResourceSession.useCommand(resources));
     renderRes1(); resHost1.flush();
     await renderRes1().submit('machine', 'update', ref(50), { write_token: 'w'.repeat(32) }, { fields: {} });
     const cmd1 = renderRes1();
     assert.equal(cmd1.phase, 'rejected');
     assert.equal(cmd1.error.message, '结果已确认，但上次操作记录没清掉；重新打开页面后可以再点「查询结果」。');
     resHost1.unmount();
-    const resHost2 = hooks(), adapter2 = APSResourceAPI.create('resources');
-    const renderRes2 = () => resHost2.render(() => APSResourceSession.useCommand(adapter2));
+    const resHost2 = hooks();
+    const renderRes2 = () => resHost2.render(() => APSResourceSession.useCommand(resources));
     let cmd2 = renderRes2(); resHost2.flush(); cmd2 = renderRes2();
     assert.equal(cmd2.phase, 'rejected');
     assert.equal(cmd2.intent.request_key, cmd1.intent.request_key);
@@ -1254,54 +1274,54 @@ async function main() {
     assert.equal(cmd2.reset(), true);
     cmd2 = renderRes2();
     assert.equal(cmd2.phase, 'idle');
-    assert.equal(w.sessionStorage.data.has(adapter2.pendingKey), false);
+    assert.equal(w.sessionStorage.data.has(resources.pendingKey), false);
     resHost2.unmount();
 
     routes['POST /api/workbench/v1/process/parts/create'] = stale(() => { w.sessionStorage.failRemove = new Error('removeItem unavailable'); });
-    const procHost1 = hooks(), procAdapter1 = APSProcessAPI.create();
-    const renderProc1 = () => procHost1.render(() => APSResourceSession.useCommand(procAdapter1));
+    const procHost1 = hooks();
+    const renderProc1 = () => procHost1.render(() => APSResourceSession.useCommand(APSProcessAPI));
     renderProc1(); procHost1.flush();
     await renderProc1().submit('process', 'create', null, { write_token: 'w'.repeat(32) }, { fields: {} });
     const procCmd1 = renderProc1();
     assert.equal(procCmd1.phase, 'rejected');
     procHost1.unmount();
     w.sessionStorage.failGet = new Error('getItem unavailable');
-    const procHost2 = hooks(), procAdapter2 = APSProcessAPI.create();
-    const renderProc2 = () => procHost2.render(() => APSResourceSession.useCommand(procAdapter2));
+    const procHost2 = hooks();
+    const renderProc2 = () => procHost2.render(() => APSResourceSession.useCommand(APSProcessAPI));
     let procCmd2 = renderProc2(); procHost2.flush(); procCmd2 = renderProc2();
     assert.equal(procCmd2.phase, 'rejected');
     assert.equal(procCmd2.intent.request_key, procCmd1.intent.request_key);
     w.sessionStorage.failGet = null; w.sessionStorage.failRemove = null;
     assert.equal(procCmd2.reset(), true);
     assert.equal(renderProc2().phase, 'idle');
-    assert.equal(w.sessionStorage.data.has(procAdapter2.pendingKey), false);
+    assert.equal(w.sessionStorage.data.has(APSProcessAPI.pendingKey), false);
     procHost2.unmount();
 
     routes['POST /api/workbench/v1/entities/batch/create'] = stale(() => { w.sessionStorage.failRemove = new Error('removeItem unavailable'); });
-    const batchHost1 = hooks(), batchAdapter1 = APSBatchAPI.create();
-    const renderBatch1 = () => batchHost1.render(() => APSResourceSession.useCommand(batchAdapter1));
+    const batchHost1 = hooks();
+    const renderBatch1 = () => batchHost1.render(() => APSResourceSession.useCommand(APSBatchAPI));
     renderBatch1(); batchHost1.flush();
     await renderBatch1().submit('batch', 'create', null, { write_token: 'w'.repeat(32) }, { fields: {} });
     const batchCmd1 = renderBatch1();
     assert.equal(batchCmd1.phase, 'rejected');
     batchHost1.unmount();
     w.sessionStorage.failGet = new Error('getItem unavailable');
-    const batchHost2 = hooks(), batchAdapter2 = APSBatchAPI.create();
-    const renderBatch2 = () => batchHost2.render(() => APSResourceSession.useCommand(batchAdapter2));
+    const batchHost2 = hooks();
+    const renderBatch2 = () => batchHost2.render(() => APSResourceSession.useCommand(APSBatchAPI));
     let batchCmd2 = renderBatch2(); batchHost2.flush(); batchCmd2 = renderBatch2();
     assert.equal(batchCmd2.phase, 'rejected');
     assert.equal(batchCmd2.intent.request_key, batchCmd1.intent.request_key);
     w.sessionStorage.failGet = null; w.sessionStorage.failRemove = null;
     assert.equal(batchCmd2.reset(), true);
     assert.equal(renderBatch2().phase, 'idle');
-    assert.equal(w.sessionStorage.data.has(batchAdapter2.pendingKey), false);
+    assert.equal(w.sessionStorage.data.has(APSBatchAPI.pendingKey), false);
     batchHost2.unmount();
 
     w.sessionStorage = storage();
     routes['POST /api/workbench/v1/entities/machine/*/update'] = offline([]);
     routes['GET /api/workbench/v1/commands/*'] = () => ({ state: 'not_observed', receipt: null, may_be_in_flight: true, resolution: 'unresolved' });
-    const pendHost1 = hooks(), pendAdapter1 = APSResourceAPI.create('resources');
-    const renderPend1 = () => pendHost1.render(() => APSResourceSession.useCommand(pendAdapter1));
+    const pendHost1 = hooks();
+    const renderPend1 = () => pendHost1.render(() => APSResourceSession.useCommand(resources));
     renderPend1(); pendHost1.flush();
     await renderPend1().submit('machine', 'update', ref(50), { write_token: 'w'.repeat(32) }, { fields: {} });
     const pendCmd1 = renderPend1();
@@ -1309,8 +1329,8 @@ async function main() {
     assert.ok(pendCmd1.intent && pendCmd1.intent.request_key);
     pendHost1.unmount();
     w.sessionStorage.failGet = new Error('getItem unavailable');
-    const pendHost2 = hooks(), pendAdapter2 = APSResourceAPI.create('resources');
-    const renderPend2 = () => pendHost2.render(() => APSResourceSession.useCommand(pendAdapter2));
+    const pendHost2 = hooks();
+    const renderPend2 = () => pendHost2.render(() => APSResourceSession.useCommand(resources));
     let pendCmd2 = renderPend2(); pendHost2.flush(); pendCmd2 = renderPend2();
     assert.equal(pendCmd2.phase, 'pending');
     assert.equal(pendCmd2.intent.request_key, pendCmd1.intent.request_key);
@@ -1332,28 +1352,28 @@ async function main() {
     Object.defineProperty(w, 'sessionStorage', { configurable: true, get() { if (failSessionGetter) throw new Error('SecurityError'); return backingSession; }, set() {} });
     try {
       routes['POST /api/workbench/v1/entities/machine/*/update'] = stale(() => { failSessionGetter = true; });
-      const secRejHost1 = hooks(), secRejAdapter1 = APSResourceAPI.create('resources');
-      const renderSecRej1 = () => secRejHost1.render(() => APSResourceSession.useCommand(secRejAdapter1));
+      const secRejHost1 = hooks();
+      const renderSecRej1 = () => secRejHost1.render(() => APSResourceSession.useCommand(resources));
       renderSecRej1(); secRejHost1.flush();
       await renderSecRej1().submit('machine', 'update', ref(50), { write_token: 'w'.repeat(32) }, { fields: {} });
       const secRejCmd1 = renderSecRej1();
       assert.equal(secRejCmd1.phase, 'rejected');
       secRejHost1.unmount();
 
-      const secRejHost2 = hooks(), secRejAdapter2 = APSResourceAPI.create('resources');
-      const renderSecRej2 = () => secRejHost2.render(() => APSResourceSession.useCommand(secRejAdapter2));
+      const secRejHost2 = hooks();
+      const renderSecRej2 = () => secRejHost2.render(() => APSResourceSession.useCommand(resources));
       let secRejCmd2 = renderSecRej2(); secRejHost2.flush(); secRejCmd2 = renderSecRej2();
       assert.equal(secRejCmd2.phase, 'rejected');
       assert.equal(secRejCmd2.intent.request_key, secRejCmd1.intent.request_key);
       failSessionGetter = false;
       assert.equal(secRejCmd2.reset(), true);
       assert.equal(renderSecRej2().phase, 'idle');
-      assert.equal(backingSession.data.has(secRejAdapter2.pendingKey), false);
+      assert.equal(backingSession.data.has(resources.pendingKey), false);
       secRejHost2.unmount();
 
       failSessionGetter = true;
-      const secHost = hooks(), secAdapter = APSResourceAPI.create('resources');
-      const secCmd = secHost.render(() => APSResourceSession.useCommand(secAdapter));
+      const secHost = hooks();
+      const secCmd = secHost.render(() => APSResourceSession.useCommand(resources));
       secHost.flush();
       assert.equal(secCmd.phase, 'pending');
       assert.equal(secCmd.error.message, '读不到上次操作记录，请重新打开页面；暂时不能继续保存。');
@@ -1361,6 +1381,53 @@ async function main() {
     } finally {
       if (prevDesc) Object.defineProperty(w, 'sessionStorage', prevDesc);
     }
+  }
+
+  // 命名空间隔离：14 个命名空间各是一个单例，待确认键沿用原名（resources 无后缀），一个命名空间的记录不出现在别的命名空间。
+  {
+    w.sessionStorage = storage();
+    const namespaces = ['resources', 'calendar', 'catalog', 'process', 'batches', 'execution',
+      ...['material', 'op_type', 'machine', 'operator', 'supplier', 'operator_machine', 'work_calendar', 'operator_calendar'].map(kind => kind + '_files')];
+    const apis = namespaces.map(namespace => APSResourceAPI.forNamespace(namespace));
+    assert.deepEqual(apis.map(api => api.pendingKey), namespaces.map(namespace => 'aps_workbench_resource_pending_v1' + (namespace === 'resources' ? '' : '_' + namespace)));
+    assert.equal(new Set(apis).size, 14);
+    namespaces.forEach((namespace, index) => assert.strictEqual(APSResourceAPI.forNamespace(namespace), apis[index]));
+    assert.equal(APSProcessAPI.pendingKey, apis[3].pendingKey); assert.equal(APSBatchAPI.pendingKey, apis[4].pendingKey);
+    const saved = { kind: 'machine', action: 'update', ref: ref(51), request_key: 'resource-' + 'c'.repeat(48) };
+    apis[0].savePending(saved);
+    assert.equal(apis[0].readPending().request_key, saved.request_key);
+    assert.ok(apis.slice(1).every(api => api.readPending() === null), 'A resources record never shows up in another namespace');
+    apis[0].clearPending(saved);
+  }
+  // 持久化恢复：刷新页面（同一份会话存储换成新的存储对象）后，该命名空间读回未确认的命令并自动查询结果，别的命名空间不受牵连。
+  {
+    const calendar = APSResourceAPI.forNamespace('calendar'), before = storage();
+    w.sessionStorage = before;
+    routes['POST /api/workbench/v1/calendar/upsert'] = offline([]);
+    routes['GET /api/workbench/v1/commands/*'] = () => ({ state: 'not_observed', receipt: null, may_be_in_flight: true, resolution: 'unresolved' });
+    const firstHost = hooks(), renderFirst = () => firstHost.render(() => APSResourceSession.useCommand(calendar));
+    renderFirst(); firstHost.flush();
+    await renderFirst().submit('calendar', 'upsert', '2026-10-10', { write_token: 'w'.repeat(32) }, { fields: {} });
+    const sent = renderFirst();
+    assert.equal(sent.phase, 'pending');
+    firstHost.unmount();
+    const reloaded = storage();
+    before.data.forEach((value, key) => reloaded.data.set(key, value));
+    w.sessionStorage = reloaded;
+    let lookups = 0;
+    routes['GET /api/workbench/v1/commands/*'] = call => { lookups++; return { state: 'recorded', may_be_in_flight: false, resolution: 'recorded',
+      receipt: { ok: true, result: 'committed', receipt_ref: 'b'.repeat(32), replayed: false, warnings: [], data: { request_key: call.path.split('/').at(-1) } } }; };
+    const secondHost = hooks(), renderSecond = () => secondHost.render(() => APSResourceSession.useCommand(calendar));
+    let restored = renderSecond();
+    assert.equal(restored.phase, 'pending');
+    assert.equal(restored.intent.request_key, sent.intent.request_key);
+    secondHost.flush(); await tick(); restored = renderSecond();
+    assert.equal(restored.phase, 'done');
+    assert.equal(lookups, 1);
+    assert.equal(APSResourceAPI.forNamespace('resources').readPending(), null);
+    assert.equal(restored.reset(), true);
+    assert.equal(reloaded.data.has(calendar.pendingKey), false);
+    secondHost.unmount();
   }
 
   // Viewing preferences merges the current stored patch once; reset publishes known defaults to peer hooks.
@@ -1457,6 +1524,26 @@ async function main() {
     assert.equal(JSON.parse(w.localStorage.data.get(SystemMaintenanceAPI.PENDING_KEY)).request_key, otherTabIntent.request_key);
     assert.equal(SystemMaintenanceAPI.inspectPending().intent.request_key, otherTabIntent.request_key);
     assert.equal(SystemMaintenanceAPI.inspectPending().result, null);
+  }
+
+  // 命令发出之后的结果校验失败一律是“结果未知”（committed:'unknown'）：系统文件结果查询、排产受理回执，以及排产请求查询里
+  // 经 runOk() 的间接校验，都不能被 T.rejected 判成“确定没生效”，否则本机待确认记录会被误清、用户会被提示可以重做。
+  {
+    const T = APSWorkbenchTransport, unknownError = promise => promise.then(() => assert.fail('结果校验应当失败'), error => error);
+    const fileIntent = { request_key: 'system-' + '7'.repeat(48), action: 'backup', summary: '手动备份' };
+    routes['GET /api/workbench/v1/system/results/*'] = () => respond(envelope({ kind: 'file_operation',
+      operation: { request_key: 'system-' + '6'.repeat(48), action: 'backup', state: 'succeeded' } }));
+    const fileError = await unknownError(SystemMaintenanceAPI.lookup(fileIntent));
+    assert.equal(fileError.message, '读到的维护数据不完整，页面没有改动。请刷新后重试。'); assert.equal(fileError.committed, 'unknown', '系统文件结果对不上本次操作：结果未知'); assert.equal(T.rejected(fileError), false);
+    const runIntent = { schema_version: 2, input_ref: 'i'.repeat(32), request_key: 'run-' + '5'.repeat(48), run_ref: null, data_context_ref: 'ctx' };
+    routes['GET /api/workbench/v1/scheduling/requests/*'] = () => respond(envelope({ data_context_ref: 'ctx', resolution: 'found', found: true, run: { run_ref: 'not-a-ref' } }));
+    const lookupError = await unknownError(RunJobAPI.lookup(runIntent));
+    assert.equal(lookupError.message, '读到的排产数据不完整，请刷新重试。'); assert.equal(lookupError.committed, 'unknown', '排产请求查询里 run_ref 无效（runOk 间接校验）：结果未知'); assert.equal(T.rejected(lookupError), false);
+    const runRef = ref(5);
+    routes['POST /api/workbench/v1/scheduling/runs'] = () => respond({ ok: true, result: 'accepted', run_ref: runRef, job_ref: runRef, receipt_ref: 'a'.repeat(32),
+      status_target: '/api/workbench/v1/scheduling/runs/' + runRef, data_context_ref: 'ctx', data: { run_ref: ref(6) } }, 202);
+    const acceptError = await unknownError(RunJobAPI.accept(runIntent, 'w'.repeat(32)));
+    assert.equal(acceptError.message, '读到的排产数据不完整，请刷新重试。'); assert.equal(acceptError.committed, 'unknown', '受理回执里的排产记录和回执编号对不上（runOk 间接校验）：结果未知'); assert.equal(T.rejected(acceptError), false);
   }
 
   console.log(JSON.stringify({ compiled_sources: names.length, sessions: sessionCounts, synchronous_write_post_reads: 0,

@@ -1,15 +1,20 @@
 import React from './shared/runtime/react.js';
-import C from './resource-contract.js';
 import M from './ResourceCatalogModel.js';
-import { Button, Issues, Field as SharedField, EmptyState } from './ResourceControls.jsx';
+import { Button, Issues, Field as SharedField, FieldCell, EmptyState } from './ResourceControls.jsx';
 import APSWorkPeriods from './WorkPeriods.js';
 import WorkPeriodFields from './WorkPeriodFields.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 
-const names = ['business_code', 'label', 'status', 'remark', 'anchor_date', 'cycle_days'];
-const fieldPaths = names.concat(names.map(name => 'fields.' + name));
-function Field({ label, name, required, errors, children, full }) {
-  return <SharedField label={label} path={name} required={required} errors={errors} full={full}>
+// 编号、名称在请求顶层，其余项在 fields 下；逐日规则第 i 天的工作安排是 fields.pattern.<i>，当天时段是 fields.pattern.<i>.periods。
+const path = name => ['business_code', 'label'].includes(name) ? name : 'fields.' + name;
+const dayPath = index => 'fields.pattern.' + index;
+// 表单上就地标红的全部路径；整表的 fields.pattern（天数与逐日规则对不上）没有单独的输入框，留在总错误框里。
+function fieldPaths(value) {
+  return ['business_code', 'label', 'status', 'remark', 'anchor_date', 'cycle_days'].map(path)
+    .concat(...value.pattern.map((_, index) => [dayPath(index), dayPath(index) + '.periods']));
+}
+function Field({ label, name, required, error, children, full }) {
+  return <SharedField label={label} path={path(name)} required={required} error={error} full={full}>
     {React.cloneElement(children, { name, 'aria-label': label })}</SharedField>;
 }
 function Pattern({ value, defaultPeriods, onChange, disabled, error, onValidationError }) {
@@ -38,7 +43,6 @@ function Pattern({ value, defaultPeriods, onChange, disabled, error, onValidatio
     }
     onChange('pattern', rows);
   }
-  const invalidDays = new Set(C.fieldErrors(error).map(item => item.path));
   return <section className="rc-pattern" aria-label="轮换逐日规则">
     <div className="rc-section-head"><h3>逐日规则</h3><span className="muted">{value.pattern.length} 天</span>
       <Button icon="calendar-days" disabled={disabled || trim !== null} onClick={generate}>{value.pattern.length ? '调整逐日规则' : '生成逐日规则'}</Button></div>
@@ -48,15 +52,13 @@ function Pattern({ value, defaultPeriods, onChange, disabled, error, onValidatio
         <Button icon="minus" disabled={disabled} onClick={() => { resize(trim); setTrim(null); }}>确认移除末尾 {value.pattern.length - trim} 天</Button></div></div>}
     {!value.pattern.length ? <EmptyState kind="empty" title="尚未登记逐日规则" hint="填写轮换天数后，生成并核对每一天的工作安排。" /> : <div className="wb-table-frame rc-pattern-scroll" data-sticky-head data-sticky-actions><table className="tbl wb-table rc-pattern-table"><caption className="wb-visually-hidden">班次档逐日轮换规则</caption><thead><tr>
       <th scope="col" className="wb-col-key">轮换日</th><th scope="col">工作 / 休息</th><th scope="col">开始</th><th scope="col">结束</th><th scope="col">跨夜</th></tr></thead><tbody>
-      {value.pattern.map((row, index) => {
-        const rowInvalid = invalidDays.has('pattern.' + index) || undefined;
-        return <tr key={index}>
-        <td className="wb-col-key">第 {index + 1} 天</td><td className="field"><select aria-label={'第 ' + (index + 1) + ' 天工作安排'} aria-invalid={rowInvalid} value={row.is_rest === null ? '' : row.is_rest ? 'rest' : 'work'} disabled={disabled || trim !== null}
-          onChange={event => rowChange(index, 'is_rest', event.target.value === 'rest')}><option value="" disabled>请选择</option><option value="work">工作</option><option value="rest">休息</option></select></td>
+      {value.pattern.map((row, index) => <tr key={index}>
+        <td className="wb-col-key">第 {index + 1} 天</td><td className="field"><FieldCell path={dayPath(index)} error={error}><select aria-label={'第 ' + (index + 1) + ' 天工作安排'} value={row.is_rest === null ? '' : row.is_rest ? 'rest' : 'work'} disabled={disabled || trim !== null}
+          onChange={event => rowChange(index, 'is_rest', event.target.value === 'rest')}><option value="" disabled>请选择</option><option value="work">工作</option><option value="rest">休息</option></select></FieldCell></td>
         <td colSpan={3}>
-          <WorkPeriodFields label={'第 ' + (index + 1) + ' 天工作时段'} value={row.periods} disabled={disabled || trim !== null || row.is_rest !== false}
+          <WorkPeriodFields label={'第 ' + (index + 1) + ' 天工作时段'} value={row.periods} path={dayPath(index) + '.periods'} error={error} disabled={disabled || trim !== null || row.is_rest !== false}
             onChange={periods => rowChange(index, 'periods', periods)} /></td>
-      </tr>; })}</tbody></table></div>}
+      </tr>)}</tbody></table></div>}
   </section>;
 }
 function Facts({ kind, entity }) {
@@ -70,17 +72,16 @@ function Facts({ kind, entity }) {
 }
 function ResourceCatalogEditor({ kind, editor, disabled, error, onChange, onValidationError, onAcknowledge }) {
   const { draft: value, action, base } = editor;
-  const normalizedErrors = React.useMemo(() => C.fieldErrors(error).map(row => ({ ...row, path: row.path.replace(/^input\./, '').replace(/^fields\./, '') })), [error]);
   // Deleting takes the same checkbox confirmation as the other delete paths; the host turns an unchecked box into the confirm button's reason.
   if (action === 'delete') return <><p>确认删除该{M.names[kind]}？系统会再次核对关联关系，已被使用的记录不能删除。</p><Facts kind={kind} entity={base} />
     <label className="rm-check"><input type="checkbox" checked={!!editor.acknowledged} disabled={disabled} onChange={event => onAcknowledge(event.target.checked)} />我已核对要删除的资料及其关联关系</label></>;
-  const field = (name, label, options = {}) => <Field name={name} label={label} required={options.required} errors={normalizedErrors} full={options.full}>
+  const field = (name, label, options = {}) => <Field name={name} label={label} required={options.required} error={error} full={options.full}>
     {options.area ? <textarea value={value[name]} disabled={disabled} onChange={event => onChange(name, event.target.value)} /> :
       <input type={options.type || 'text'} value={value[name]} disabled={disabled} readOnly={options.readOnly} min={options.type === 'number' ? 1 : undefined}
         max={options.type === 'number' ? 366 : undefined} step={options.type === 'number' ? 1 : undefined} onChange={event => onChange(name, event.target.value)} />}</Field>;
   return <><div className="fgrid">
     {field('business_code', '编号', { required: action === 'create', readOnly: action !== 'create' })}{field('label', '名称', { required: true })}
-    <Field name="status" label="状态" required errors={normalizedErrors}><select value={value.status} disabled={disabled} onChange={event => onChange('status', event.target.value)}>
+    <Field name="status" label="状态" required error={error}><select value={value.status} disabled={disabled} onChange={event => onChange('status', event.target.value)}>
       <option value="" disabled>请选择状态</option><option value="active">启用</option><option value="inactive">停用</option></select></Field>
     {kind === 'shift_profile' && <>{field('anchor_date', '周期起始日期', { required: true, type: 'date' })}{field('cycle_days', '轮换天数', { required: true, type: 'number' })}</>}
     {field('remark', '备注', { area: true, full: true })}</div>

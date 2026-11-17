@@ -59,20 +59,31 @@ const zeroData={...data,tasks:data.tasks.map(row=>row.task_ref===zeroTask.task_r
 const zeroDetail=h.render(PlanDetailsUI.TaskDetail,{data:zeroData,prepared:h.prepare(PlanGanttModel,zeroData),graph:GanttGraph.create(zeroData.gantt_graph),selected:{task:zeroTask,before:false},onSelect:()=>{},renderTrial:()=>null,onCollapse:()=>{}});
 assert(h.text(zeroDetail).includes('本工序目标量0.00'),'A recorded zero must remain a quantity');
 const minOverdueFields = ['failed_ops', 'overdue_count', 'weighted_tardiness_hours', 'total_tardiness_hours', 'makespan_hours', 'changeover_count'];
-const candidateAlgorithm={mode:'greedy',mode_label:'候选计算',strategy:null,strategy_label:null,
-  generation_policy_version:'unified_search_v1',primary_objective:'min_overdue',target_objectives:['min_overdue','min_tardiness','min_changeover'],
-  representative_objectives:['min_overdue'],evaluations:{min_overdue:{field_order:minOverdueFields,score:minOverdueFields.map(()=>0),
-    scoring_scope:{scheduled_operation_refs:[],complete_batch_refs:[],objective_scope:'all_batches',components_known:true,is_complete:true}}},
+const businessFields={representative_objectives:['min_overdue'],evaluations:{min_overdue:{field_order:minOverdueFields,score:minOverdueFields.map(()=>0),
+    scoring_scope:{scheduled_operation_count:0,complete_batch_count:0,objective_scope:'all_batches',components_known:true,is_complete:true}}},
   origin:{search_objective:'min_overdue',phase:'construct',origin:'greedy',dispatch_mode:null,dispatch_rule:null,strategy:'priority_first',repair_decision:null},
   first_found_elapsed_ms:1,search_evidence_ref:{run_ref:h.reference(302),source_event_id:null}};
+const candidateAlgorithm={mode:'greedy',mode_label:'快速计算',strategy:'priority_first',strategy_label:'优先级优先',...businessFields,
+  primary_objective:'min_overdue',target_objectives:['min_overdue','min_tardiness','min_changeover']};
+const readCapabilities={view:true,export:true,edit_draft:false,adopt:false,report_actual:false};
+const candidateBlocked=[{capability:'adopt',code:'candidate_adoption_preview_required',message:'正式采用前，请先检查完整候选方案。'},
+  {capability:'edit_draft',code:'candidate_draft_not_connected',message:'调整候选方案需先新增试调草稿。'},
+  {capability:'report_actual',code:'candidate_execution_write_not_connected',message:'正式采用方案后，才能按计划报工。'}];
 const generation=h.render(RunCandidateControls.Generation,{data:{
-  candidate:{label:'候选A',status:'completed',completeness:'complete',candidate_ref:h.reference(301),data_gaps:[],blocked_reasons:[],
-    metrics:{}},
+  candidate:{candidate_ref:h.reference(301),run_ref:h.reference(302),label:'候选A',status:'completed',task_count:0,completeness:'complete',
+    metrics:{},metric_scopes:{delivery:'completed_batches_only',resources:'scheduled_results_only'},
+    capabilities:readCapabilities,blocked_reasons:candidateBlocked,...businessFields},
   generation:{run_ref:h.reference(302),accepted_at:'2026-05-11T07:00:00',finished_at:'2026-05-11T07:01:00',
+    metadata_basis:'captured_at_run_admission',execution_basis:'captured_at_run_admission',
+    input:{start_date:'2026-05-11',end_date:'2026-05-12',ready_check:false,missing_resource_policy:'exclude',completed_policy:'preserve_actuals',
+      material_strategy:'strict',time_budget_seconds:10},
     algorithm:candidateAlgorithm,
-    input:{start_date:'2026-05-11',end_date:'2026-05-12',material_strategy:'strict',ready_check:false,hold_window:null,missing_resource_policy:'exclude',completed_policy:'preserve_actuals'},
-    baseline:{captured_task_count:0},data_gaps:[]},data_gaps:[],blocked_reasons:[]
+    baseline:{baseline_ref:null,version:null,kind:'admission_official',captured_at:'2026-05-11T07:00:00',captured_task_count:0}},
+  capabilities:readCapabilities,blocked_reasons:candidateBlocked
 }});
+const generationFacts=h.walk(generation).filter(node=>node.type==='dd').map(node=>h.text(node));
+assert(generationFacts.includes('快速计算 · 优先级优先') && generationFacts.includes('10 秒'),'The saved computing mode and total budget read their admitted values');
+assert(generationFacts.some(text=>text.startsWith('保留开工和完工记录')),'The saved completed_policy reads the shared execution-record wording');
 assert(!h.walk(generation).some(node=>node.type==='dt'&&h.text(node)==='实际工时 / 成本'),'Candidate metrics must not invent an unavailable actual-hours/cost metric');
 const missingNames={...candidateTask,machine:{ref:h.reference(401),label:null},operator:{ref:h.reference(402),label:null},supplier:null,
   data_gaps:[{field:'machine',code:'source_missing',message:'排产时设备目录已不存在。'},{field:'operator.label',code:'not_recorded',message:'排产时人员姓名未填写。'}]};
@@ -166,8 +177,10 @@ const resourceBefore=JSON.stringify(resourceData),
   oldSessionQuery=SessionQuery.useQuery, oldSnapshot=WorkbenchPageContext.useSnapshot;
 const resourceResult={data:resourceData,meta:{as_of:'2026-05-11T12:00:00',snapshot_ref:'resource-read'},warnings:[]};
 try {
-  SessionQuery.useQuery=(_read,dependencies)=>({loading:false,error:null,reload:()=>{},
-    result:dependencies[0]===resourceData.plan.plan_ref?resourceResult:{data:{plans:[resourceData.plan],page:{has_more:false}},warnings:[]}});
+  SessionQuery.useQuery=(_read,dependencies)=>{
+    const result=dependencies[0]===resourceData.plan.plan_ref?resourceResult:{data:{plans:[resourceData.plan],page:{has_more:false}},warnings:[]};
+    return {loading:false,error:null,reload:()=>{},result,shown:result};
+  };
   WorkbenchPageContext.useSnapshot=value=>remembered.push(JSON.parse(JSON.stringify(value)));
   const props={view:'analysis',
     initialContext:initial,onNavigate:(target,context)=>navigated.push({target,context}),renderTrial:()=>null};
@@ -181,7 +194,7 @@ try {
   assert.equal(target.resource_kind,'operator'); assert.equal(target.selected_task_ref,resourceData.tasks[0].task_ref);
   assert.equal(target.selected_task_side,'current');
   assert.equal(target.query,'','The resource opens by saved task identity rather than the source search text');
-  const targetGantt=h.render(PlanGantt,{data:resourceData,prepared:h.prepare(PlanGanttModel,resourceData),graph:GanttGraph.create(resourceData.gantt_graph),asOf:resourceResult.meta.as_of,
+  const targetGantt=h.render(PlanGantt,{data:resourceData,prepared:h.prepare(PlanGanttModel,resourceData),graph:GanttGraph.create(resourceData.gantt_graph),asOf:resourceResult.meta.as_of,baselineSlice:h.slice(),graphSlice:h.slice(),
     query:target.query,initialMode:target.resource_kind,selected:{task:resourceData.tasks[0],before:false,locate:true},onSelect:()=>{},onQuery:()=>{}});
   assert(h.walk(targetGantt).some(node=>node.props['aria-label']==='人员甘特时间轴'));
   assert(h.walk(targetGantt).some(node=>node.props['data-plan-task']===target.selected_task_ref&&node.props['aria-pressed']===true));
@@ -201,43 +214,54 @@ Object.assign(returnData.plan,{display_name:'Formal plan 5',is_current_official:
 returnData.projections.baseline={state:'available',items_complete:true,baseline_plan:{...returnData.plan,plan_ref:originalTask.plan_ref,version:4},
   items:[{operation_ref:originalTask.operation_ref,change:'changed',before_in_scope:true,after_in_scope:true,before:originalTask,after:returnData.tasks[0]}]};
 const returnResult={data:returnData,meta:{as_of:'2026-05-11T12:00:00',snapshot_ref:'return-read'},warnings:[]},
-  returnedContexts=[], restoreEffects=[], oldEffect=h.runtime.React.useEffect;
+  returnedContexts=[];
 try {
-  SessionQuery.useQuery=(_read,dependencies)=>({loading:false,error:null,reload:()=>{},
-    result:dependencies[0]===returnData.plan.plan_ref?returnResult:{data:{plans:[returnData.plan],page:{has_more:false}},warnings:[]}});
+  SessionQuery.useQuery=(_read,dependencies)=>{
+    const result=dependencies[0]===returnData.plan.plan_ref?returnResult:{data:{plans:[returnData.plan],page:{has_more:false}},warnings:[]};
+    return {loading:false,error:null,reload:()=>{},result,shown:result};
+  };
   WorkbenchPageContext.useSnapshot=value=>returnedContexts.push(JSON.parse(JSON.stringify(value)));
   const props={view:'gantt',
     initialContext:{plan_ref:returnData.plan.plan_ref},onNavigate:()=>{},renderTrial:()=>null};
-  const originalView=h.gantt(returnData,{states:{PlanGantt:{1:true}}});
-  originalView.nodes.find(node=>node.type==='button'&&node.props['data-plan-task']===originalTask.task_ref).props.onClick();
+  const showBaseline=tree=>h.walk(tree).find(node=>node.type==='input'&&node.props['aria-label']==='显示原安排').props.onChange({target:{checked:true}});
+  const bar=(tree,task,before)=>h.walk(tree).find(node=>node.type==='button'&&node.props['data-plan-task']===task.task_ref&&!!node.props['data-before']===before);
+  const inspector=tree=>h.walk(tree).find(node=>node.props.className==='plan-muted plan-inspector-kind');
+  const board=tree=>h.walk(tree).find(node=>node.props['data-plan-scroll']).dom;
+  const originalView=h.gantt(returnData);
+  showBaseline(originalView.tree);
+  bar(originalView.mounted.update(),originalTask,true).props.onClick();
   assert.equal(originalView.selections[0].task,originalTask); assert.equal(originalView.selections[0].before,true);
-  h.render(PlanWorkspace,props,{WorkspaceSession:{7:{task:originalTask,before:true,result:returnResult}},PlanGantt:{1:true}});
-  const saved=returnedContexts.pop();
+  // On the workspace the user shows the original lane and picks the original task; the remembered context keeps its side.
+  const picking=h.mount(PlanWorkspace,props); await picking.settle();
+  showBaseline(picking.tree); bar(picking.update(),originalTask,true).props.onClick();
+  assert.equal(bar(await picking.settle(),originalTask,true).props['aria-pressed'],true);
+  const saved=returnedContexts[returnedContexts.length-1];
   assert.equal(saved.selected_task_ref,originalTask.task_ref); assert.equal(saved.selected_task_side,'before');
-  h.runtime.React.useEffect=(callback,dependencies)=>{if(dependencies&&dependencies[1]===returnResult)restoreEffects.push(callback);};
+  picking.unmount();
+  // Returning mounts a new page with the saved context; its first successful read applies the saved selection.
   const restore=context=>{
-    restoreEffects.length=0;
-    const page=h.render(PlanWorkspace,{...props,initialContext:context});
-    for(const effect of restoreEffects)effect();
-    return {page,updates:h.updates(),selected:h.updates().find(item=>item.name==='WorkspaceSession'&&item.index===7)};
+    const page=h.mount(PlanWorkspace,{...props,initialContext:context});
+    return {first:page.tree,settled:page.settle().then(tree=>{page.unmount();return tree;})};
   };
   const restored=restore(saved);
-  assert(h.walk(restored.page).some(node=>node.props['data-plan-task']===originalTask.task_ref&&node.props['data-before']), 'The original lane is visible before the saved selection is applied');
-  assert.equal(restored.selected.value.task,originalTask); assert.equal(restored.selected.value.before,true); assert.equal(restored.selected.value.locate,true);
-  const selectedPage=h.render(PlanWorkspace,{...props,initialContext:saved},{WorkspaceSession:{7:restored.selected.value}});
-  assert(h.walk(selectedPage).some(node=>node.props['data-plan-task']===originalTask.task_ref&&node.props['aria-pressed']===true));
-  assert(h.walk(selectedPage).some(node=>node.props.className==='plan-muted plan-inspector-kind'&&h.text(node)==='原安排'));
+  assert(h.walk(restored.first).some(node=>node.props['data-plan-task']===originalTask.task_ref&&node.props['data-before']), 'The original lane is visible before the saved selection is applied');
+  const selectedPage=await restored.settled;
+  assert.equal(bar(selectedPage,originalTask,true).props['aria-pressed'],true);
+  assert.equal(h.text(inspector(selectedPage)),'原安排');
+  assert.notEqual(board(selectedPage).scrollLeft,0,'The restored original task in the read scope is located on the board');
   const cleared=returnedContexts[returnedContexts.length-1];
   assert.equal(cleared.selected_task_ref,originalTask.task_ref); assert.equal(cleared.selected_task_side,'before');
   returnData.projections.baseline.items[0].before_in_scope=false;
-  const outside=restore(saved);
-  assert.equal(outside.selected.value.task,originalTask); assert.equal(outside.selected.value.before,true);
-  assert.equal(outside.selected.value.locate,undefined,'An original task outside the read scope restores detail without automatic location');
-  const current=restore({...saved,selected_task_ref:returnData.tasks[0].task_ref,selected_task_side:undefined});
-  assert.equal(current.selected.value.task,returnData.tasks[0]); assert.equal(current.selected.value.before,false,'Older contexts restore the current side');
+  const outside=await restore(saved).settled;
+  assert.equal(h.text(inspector(outside)),'原安排');
+  assert.equal(board(outside).scrollLeft,0,'An original task outside the read scope restores detail without automatic location');
+  const current=await restore({...saved,selected_task_ref:returnData.tasks[0].task_ref,selected_task_side:undefined}).settled;
+  assert.equal(bar(current,returnData.tasks[0],false).props['aria-pressed'],true);
+  assert.equal(h.text(inspector(current)),'当前所选计划安排','Older contexts restore the current side');
   returnData.projections.baseline.items=[];
-  const missing=restore(saved);
-  assert(!missing.selected); assert.equal(missing.updates.find(item=>item.name==='WorkspaceSession'&&item.index===4).value.message,'要恢复的原安排已不存在。');
+  const missing=await restore(saved).settled;
+  assert(!inspector(missing) && !h.walk(missing).some(node=>node.props['aria-pressed']===true && node.props['data-plan-task']));
+  assert(h.text(missing).includes('要恢复的原安排已不存在。'));
   const emptyContext=returnedContexts[returnedContexts.length-1];
   assert(!Object.hasOwn(emptyContext,'selected_task_ref')&&!Object.hasOwn(emptyContext,'selected_task_side'));
   returnData.plan_span.end_inclusive=true;
@@ -249,7 +273,6 @@ try {
   assert.equal(PlanGanttModel.scopeCaption(returnData),'计划时刻：'+PlanGanttModel.timeLabel(returnData.plan_span.end));
 } finally {
   SessionQuery.useQuery=oldSessionQuery; WorkbenchPageContext.useSnapshot=oldSnapshot;
-  h.runtime.React.useEffect=oldEffect;
 }
 return true;
 """)
@@ -314,7 +337,7 @@ for (const [label,value] of Object.entries({
 assert(nodes.some(node=>node.type==='summary'&&h.text(node)==='排产时的开工和完工记录'));
 assert(nodes.every(node=>node.type!=='dt'||h.text(node)), 'Every saved execution field has a business label');
 assert.strictEqual(JSON.stringify(data),before,'Detail formatting preserves all saved business facts');
-for (const [workspace,label] of [[data,'正式归档'],[{...data,reference:undefined,generation:{...data.generation,algorithm:{mode_label:'候选计算',strategy_label:null}}},'新安排']]) {
+for (const [workspace,label] of [[data,'正式归档'],[{...data,reference:undefined,generation:{...data.generation,algorithm:{mode_label:'快速计算',strategy_label:'优先级优先'}}},'新安排']]) {
   const gantt=h.render(RunCandidateGantt,{data:workspace,prepared:h.prepare(RunCandidateModel,workspace),query:'',selected:task,comparison:null,onQuery:()=>{},onSelect:()=>{}});
   const rendered=h.walk(gantt), kind=rendered.find(node=>node.props.className==='rc-lane-kind');
   const lane=rendered.find(node=>node.type==='canvas'&&node.props['data-candidate-lane']);

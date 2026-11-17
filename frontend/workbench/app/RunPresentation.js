@@ -1,7 +1,7 @@
 import WorkbenchDatePickerModel from './WorkbenchDatePickerModel.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 
-// 排产任务一律走共同优化（run_options 由 RunJobAPI 校验为 unified_search_v1），计算阶段直接按共同优化表述。
+// 排产任务只有共同优化一种生成方式，计算阶段直接按共同优化表述。
 const stages = { queued: '等待计算', computing: '正在共同优化方案', awaiting_reconciliation: '核对排产记录', finished: '排产已结束' };
 function step(input, checked) { return !input || !input.batch_refs.length ? 1 : checked ? 3 : 2; }
 function elapsed(run, now = Date.now()) {

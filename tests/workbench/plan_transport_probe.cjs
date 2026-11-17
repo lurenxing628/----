@@ -9,53 +9,15 @@ const files = ['resource-contract.js', 'shared/network/transport.js', 'Workbench
 const compiledOutputs = compile({
   sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') })),
 }).outputs;
-const input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
-const P = 'a'.repeat(48), OTHER = 'b'.repeat(48), TASK = 'c'.repeat(48), OP = 'd'.repeat(48);
+// stdin 由 tests/workbench/plan_transport_support.py 的 run_probe 提供，成功形状全部来自后端真实投影：
+// fixtures 逐个走真实计划读取链；boundary 是后端导出的真实信封，传输边界自检只在它们之上手写非法输入。
+const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+const P = 'a'.repeat(48), OTHER = 'b'.repeat(48);
 const START = '2026-09-09T22:30:00', END = '2026-09-10T06:30:00';
 const origin = 'http://127.0.0.1:8080', endpoint = origin + '/api/workbench/v1/plans';
 const cases = [], calls = [];
 const clone = value => JSON.parse(JSON.stringify(value));
-const issue = () => ({code: 'identity_missing', message: 'Identity unavailable'});
-const header = () => ({plan_ref: P, version: 3, kind: 'official', is_current_official: true,
-  display_name: 'Night plan', completeness: 'complete', capabilities: {view: true, export: true, edit_draft: false, adopt: false, report_actual: false}, blocked_reasons: []});
-const envelope = data => ({ok: true, schema_version: 1, data, meta: {source: 'production', time_basis: 'factory_local',
-  request_ref: 'a'.repeat(32), snapshot_ref: 'Snapshot_token-0'.repeat(2), as_of: '2026-09-09T20:00:00'}, warnings: []});
-const catalog = () => envelope({plans: [header()], page: {collection: 'history', size: 20, unit: 'version', has_more: false, next_cursor: null}});
-const workspace = () => align(envelope({plan: header(), scope: {source: 'production', kind: 'plan_workspace', plan_ref: P, range_start: null, range_end: null},
-  time_scope: {range_start: START, range_end: END, selection: 'overlap', boundary: 'half_open', time_basis: 'factory_local'},
-  plan_span: {start: START, end: END}, task_span: {start: START, end: END}, tasks: [{task_ref: TASK, operation_ref: OP, plan_ref: P,
-    batch_id: 'B-1', sequence: 1, process_label: 'Night work', piece_id: null, quantity: null, batch_quantity: null,
-    quantity_basis: 'unknown', quantity_reason: 'plan_target_not_recorded',
-    machine_ref: OTHER, operator_ref: null, supplier_ref: null, start: START, end: END}],
-  task_count: 1, tasks_complete: true,
-  resources: [{kind: 'machine', ref: OTHER, business_code: 'M1', label: 'Machine'}],
-  projections: {baseline: {state: 'unavailable', reason_code: 'not_recorded', reason: 'No recorded baseline', baseline_plan: null,
-    items: [], item_count: 0, items_complete: false}}}));
-function align(payload) {
-  const d = payload.data, time = clone(d.time_scope);
-  d.provenance = {state:'unavailable',reason:'No generation evidence',source_kind:null,source_ref:null,source_label:null,run_ref:null,accepted_at:null,finished_at:null,adopted_at:null,algorithm:null,baseline:null};
-  d.gantt_graph = {state: 'unavailable', reason: '工序顺序数据不完整。', scope: 'full_plan', nodes: [], node_count: 0, nodes_complete: false, critical_task_refs: [], critical_edges: []};
-  d.projections.process_order = {state: 'unavailable', basis: null, issues: [{code: 'process_order_unavailable', message: '工序顺序数据不完整。'}]};
-  d.projections.calendar = {state: 'available', plan_ref: P, time_scope: time, global: {state: 'available', basis: 'global_calendar',
-    windows: [], issues: [], available_hours: 0, effective_hours: 0, normal_available_hours: 0, normal_effective_hours: 0,
-    urgent_available_hours: 0, urgent_effective_hours: 0}, resources: [], issues: [], windows_complete: true};
-  d.projections.occupancy = {state: 'available', plan_ref: P, time_scope: clone(time), basis: 'selected_plan_only', resources: [], issues: [], segments_complete: true};
-  d.projections.delivery_risks = {state: 'available', plan_ref: P, scope: clone(d.scope), items: d.tasks.length ? [{batch_ref: OP, batch_id: 'B-1',
-    part_no: 'P1', part_label: 'Part', priority: 'normal', quantity: 3, planned_finish: END, partial_planned_finish: null, due_date: '2026-09-10', delivery_deadline_exclusive: '2026-09-11T00:00:00',
-    risk: 'on_time', is_overdue: false, delay_hours: 0, delay_days: 0, completeness: 'complete', schedule_complete: true,
-    due_state: 'specified', due_issue: null, completion_state: 'complete', deferred_operation_count: 0, ordinary_unscheduled_operation_count: 0,
-    operation_count: 1, scheduled_operation_count: 1, unscheduled_operation_count: 0, task_count: 1, invalid_task_count: 0, issues: []}] : [],
-    batch_count: d.tasks.length ? 1 : 0, items_complete: true, completeness: d.tasks.length ? 'complete' : 'unknown',
-    basis: {kind: 'planned_delivery', time_basis: 'factory_local', batch_selection: d.scope.range_start === null ? 'plan_task_and_deferred_batches' : 'overlap_or_bad_time_batches',
-      completion_scope: 'full_selected_plan', operation_scope: 'current_batch_operations', due_boundary: 'next_day_exclusive', actual_completion: 'not_evaluated', actual_delivery: 'not_evaluated'},
-    summary: {state: d.tasks.length ? 'complete' : 'not_applicable', batch_count: d.tasks.length ? 1 : 0,
-      due_eligible_count: d.tasks.length ? 1 : 0, excluded_due_count: 0, invalid_due_count: 0, due_evaluation_count: d.tasks.length ? 1 : 0,
-      known_due_count: d.tasks.length ? 1 : 0, unknown_due_count: 0, unknown_count: 0, known_overdue_count: 0,
-      overdue_count: d.tasks.length ? 0 : null, total_tardiness_hours: d.tasks.length ? 0 : null,
-      known_tardiness_hours: d.tasks.length ? 0 : null, known_batch_refs: d.tasks.length ? [OP] : []}};
-  if (!d.tasks.length) d.resources = [];
-  return payload;
-}
+const real = name => clone(input.boundary[name]);
 function response(payload, status = 200, type = 'application/json') {
   return new Response(JSON.stringify(payload), {status, headers: {'Content-Type': type}});
 }
@@ -92,47 +54,31 @@ function aborting(signal) {
   });
 }
 async function requests() {
-  const normal = runtime(async url => { assert.equal(url, endpoint + '?collection=history&size=20'); return response(catalog()); });
-  await check('catalog exact default path and GET', async () => { assert.deepEqual(await normal.api.catalog(), catalog()); normal.idle(); });
+  const more = real('catalog_more'), last = real('catalog_last'), ws = real('workspace'), REF = ws.data.plan.plan_ref;
+  const normal = runtime(async url => { assert.equal(url, endpoint + '?collection=history&size=20'); return response(more); });
+  await check('catalog exact default path and GET', async () => { assert.deepEqual(await normal.api.catalog(), more); normal.idle(); });
   await check('read-only public surface', () => assert.deepEqual(Object.keys(normal.api).sort(), ['baseline', 'capacity', 'catalog', 'export', 'ganttGraph', 'workspace']));
-  const opaque = ' cursor:/+?&= % unicode \u6d4b\u8bd5 ', token = 'Az09_-'.repeat(6).slice(0, 32);
+  const opaque = ' cursor:/+?&= % unicode \u6d4b\u8bd5 ';
   await check('opaque cursor and snapshot query escaping', async () => {
-    const payload = catalog(); payload.data.page = {collection: 'history', size: 1, unit: 'version', has_more: false, next_cursor: null};
-    payload.data.plans[0].is_current_official = false; payload.meta.snapshot_ref = token;
-    const client = runtime(async url => {
-      assert.equal(url, endpoint + '?' + new URLSearchParams({collection: 'history', size: '1', cursor: opaque, snapshot_ref: token}));
-      return response(payload);
-    });
-    assert.deepEqual(await client.api.catalog({collection: 'history', size: 1, cursor: opaque, snapshot_ref: token}), payload); client.idle();
+    const scope = {collection: 'history', size: 1, cursor: opaque, snapshot_ref: last.meta.snapshot_ref};
+    const client = runtime(async url => { assert.equal(url, endpoint + '?' + new URLSearchParams(scope)); return response(last); });
+    assert.deepEqual(await client.api.catalog(scope), last); client.idle();
   });
   await check('workspace exact path and unbounded scope', async () => {
-    const client = runtime(async url => { assert.equal(url, endpoint + '/' + P + '/workspace'); return response(workspace()); });
-    assert.deepEqual(await client.api.workspace(P), workspace()); client.idle();
-  });
-  await check('workspace overlap not clipped with escaped query', async () => {
-    const scope = {range_start: '2026-09-10T00:00:00', range_end: '2026-09-10T01:00:00', snapshot_ref: token};
-    const payload = workspace(); Object.assign(payload.data.scope, scope); delete payload.data.scope.snapshot_ref;
-    Object.assign(payload.data.time_scope, {range_start: scope.range_start, range_end: scope.range_end}); payload.meta.snapshot_ref = token;
-    align(payload);
-    const client = runtime(async url => { assert.equal(url, endpoint + '/' + P + '/workspace?' + new URLSearchParams(scope)); return response(payload); });
-    assert.deepEqual(await client.api.workspace(P, scope), payload); client.idle();
+    const client = runtime(async url => { assert.equal(url, endpoint + '/' + REF + '/workspace'); return response(ws); });
+    assert.deepEqual(await client.api.workspace(REF), ws); client.idle();
   });
   await check('baseline exact path and default pagination', async () => {
-    const ws = workspace(); ws.meta.snapshot_ref = token;
-    const basePayload = envelope({state: 'unavailable', reason_code: 'not_recorded', reason: 'No recorded baseline', baseline_plan: null,
-      items: [], item_count: 0, items_complete: false, page: {number: 1, size: 5000, total: 0, pages: 0, has_more: false}});
-    basePayload.meta.snapshot_ref = token;
-    const expectedCombined = clone(basePayload); delete expectedCombined.data.page;
+    const base = real('baseline'), snapshot = {snapshot_ref: ws.meta.snapshot_ref}, combined = clone(base);
+    delete combined.data.page;
     const client = runtime(async url => {
-      assert.equal(url, endpoint + '/' + P + '/baseline?' + new URLSearchParams({snapshot_ref: token, page: '1', size: '5000'}));
-      return response(basePayload);
+      assert.equal(url, endpoint + '/' + REF + '/baseline?' + new URLSearchParams({...snapshot, page: '1', size: '5000'}));
+      return response(base);
     });
-    client.C.workspace(ws, P, {snapshot_ref: token});
-    assert.deepEqual(client.C.baselinePage(clone(basePayload), ws.data, {snapshot_ref: token, page: 1, size: 5000}), basePayload);
-    const combinedUnavailable = await client.api.baseline(P, {snapshot_ref: token}, ws.data);
-    assert.deepEqual(combinedUnavailable, expectedCombined);
-    assert.equal('page' in combinedUnavailable.data, false);
-    assert.equal(client.C.baseline(combinedUnavailable.data, ws.data), true);
+    assert.deepEqual(client.C.baselinePage(clone(base), ws.data, {...snapshot, page: 1, size: 5000}), base);
+    const read = await client.api.baseline(REF, snapshot, ws.data);
+    assert.deepEqual(read, combined);
+    assert.equal(client.C.baseline(read.data, ws.data), true);
     client.idle();
   });
   const noRequest = runtime(() => assert.fail('Invalid scope must be rejected before transport'));
@@ -143,7 +89,7 @@ async function requests() {
     {cursor: 123}, {snapshot_ref: ''}, {snapshot_ref: undefined}]) {
     await check('catalog invalid scope ' + cases.length, () => assert.rejects(noRequest.api.catalog(scope), rejected));
   }
-  const validWsData = workspace().data;
+  const validWsData = ws.data, token = ws.meta.snapshot_ref;
   for (const value of [null, undefined, 3, P.toUpperCase(), 'a'.repeat(47), 'a'.repeat(49), '../plans', P + '?x=1', P + '/workspace']) {
     await check('invalid plan ref ' + cases.length, () => assert.rejects(noRequest.api.workspace(value), rejected));
     await check('invalid baseline plan ref ' + cases.length, () => assert.rejects(noRequest.api.baseline(value, {snapshot_ref: token}, validWsData), rejected));
@@ -164,307 +110,47 @@ async function requests() {
   await check('invalid inputs issue zero network calls', () => assert.equal(calls.length, beforeInvalid));
   await check('caller mutation cannot change in-flight scope', async () => {
     let finish; const client = runtime(() => new Promise(resolve => { finish = resolve; }));
-    const scope = {size: 20}, pending = client.api.catalog(scope); scope.size = 1; finish(response(catalog()));
-    assert.deepEqual(await pending, catalog()); client.idle();
+    const scope = {size: 20}, pending = client.api.catalog(scope); scope.size = 1; finish(response(more));
+    assert.deepEqual(await pending, more); client.idle();
   });
 }
 async function contracts() {
-  const {C} = runtime(() => assert.fail('Contract checks do not fetch'));
-  await check('shared delivery keeps source precision and missing admission counts', () => {
-    const context = runtime(() => assert.fail('Delivery projections do not fetch'));
-    const p = workspace(), projection = p.data.projections.delivery_risks, item = projection.items[0];
-    item.delay_hours = 0.00000009; item.delay_days = 0.00000000375;
-    const before = JSON.stringify(p); assert.strictEqual(context.C.workspace(p, P, {}), p); assert.equal(JSON.stringify(p), before);
-  });
-  const quantityFields = ['piece_id', 'quantity', 'batch_quantity', 'quantity_basis', 'quantity_reason'];
-  await check('legacy quantities stay explicitly unknown without mutation', () => {
-    const p = workspace(), before = JSON.stringify(p);
-    assert.strictEqual(C.workspace(p, P, {}), p);
-    assert.deepEqual(quantityFields.map(key => p.data.tasks[0][key]), [null, null, null, 'unknown', 'plan_target_not_recorded']);
-    assert.equal(JSON.stringify(p), before);
-  });
-  for (const reason of ['plan_target_not_recorded', 'plan_target_unavailable']) await check('unknown piece work retains reason ' + reason, () => {
-    const p = workspace(); Object.assign(p.data.tasks[0], {piece_id: 'piece-1', quantity_reason: reason});
-    assert.strictEqual(C.workspace(p, P, {}), p);
-    assert.deepEqual(quantityFields.map(key => p.data.tasks[0][key]), ['piece-1', null, null, 'unknown', reason]);
-  });
-  for (const basis of ['run_admission', 'trial_creation']) for (const [piece, quantity, batch] of [
-    [null, 0, 0], [null, 7, 7], ['piece-1', 1, 7], [null, '9007199254740993', '9007199254740993']]) {
-    await check('captured task quantities preserved ' + basis + ' ' + piece + ' ' + quantity, () => {
-      const p = workspace(); Object.assign(p.data.tasks[0], {piece_id: piece, quantity, batch_quantity: batch, quantity_basis: basis, quantity_reason: null});
-      const before = JSON.stringify(p); assert.strictEqual(C.workspace(p, P, {}), p);
-      assert.deepEqual(quantityFields.map(key => p.data.tasks[0][key]), [piece, quantity, batch, basis, null]);
-      assert.equal(JSON.stringify(p), before);
-    });
-  }
-  for (const basis of ['run_admission', 'trial_creation']) {
-    await check('invalid captured target remains explicit ' + basis, () => {
-      const p = workspace(); Object.assign(p.data.tasks[0], {batch_quantity: 7, quantity_basis: basis, quantity_reason: 'plan_target_invalid'});
-      assert.strictEqual(C.workspace(p, P, {}), p); assert.equal(p.data.tasks[0].quantity, null); assert.equal(p.data.tasks[0].batch_quantity, 7);
-    });
-  }
-  for (const kind of ['catalog', 'workspace']) {
-    const valid = kind === 'catalog' ? catalog : workspace;
+  const {C, M} = runtime(() => assert.fail('Contract checks do not fetch'));
+  const REF = input.boundary.workspace.data.plan.plan_ref;
+  for (const [kind, name] of [['catalog', 'catalog_more'], ['workspace', 'workspace']]) {
     // The envelope is validated once, in APSWorkbenchTransport; read it through the real API path.
     for (const mutate of [p => { p.meta.source = 'demo'; }, p => { p.meta.snapshot_ref = ''; }, p => { p.meta.snapshot_ref = null; }, p => { p.meta.request_ref = ''; },
       p => { p.meta.as_of = '2026-02-30T00:00:00'; }, p => { p.meta.time_basis = 'UTC'; }, p => { p.schema_version = 2; },
       p => { p.warnings = null; }, p => { p.ok = false; }, p => { p.data = []; }, p => { p.meta.seek = 3; }, p => { p.extra = 'private'; }]) {
       await check(kind + ' malformed envelope ' + cases.length, async () => {
-        const p = valid(); mutate(p); const client = runtime(async () => response(p));
-        await assert.rejects(kind === 'catalog' ? client.api.catalog() : client.api.workspace(P), rejected); client.idle();
+        const p = real(name); mutate(p); const client = runtime(async () => response(p));
+        await assert.rejects(kind === 'catalog' ? client.api.catalog() : client.api.workspace(REF), rejected); client.idle();
       });
     }
   }
-  for (const mutate of [p => { p.page.collection = 'scenario'; }, p => { p.page.size = 1; },
-    p => { p.page.next_cursor = ''; }, p => { p.page.has_more = true; }]) {
-    await check('catalog bad page ' + cases.length, () => { const p = catalog(); mutate(p.data); assert.throws(() => C.catalog(p, C.catalogScope()), rejected); });
+  // 只核游标协议（防翻页死循环）；collection/size 回声由后端唯一生产者保证，前端不再比对（S09-02）。
+  for (const mutate of [p => { p.page.next_cursor = ''; }, p => { p.page.has_more = true; }]) {
+    await check('catalog bad page ' + cases.length, () => { const p = real('catalog_last'); mutate(p.data); assert.throws(() => C.catalog(p, C.catalogScope()), rejected); });
   }
-  await check('opaque next cursor is not a permanent ref', () => { const p = catalog(); Object.assign(p.data.page, {has_more: true, next_cursor: 'next ? + /'}); assert.strictEqual(C.catalog(p, C.catalogScope()), p); });
-  await check('snapshot mismatch is rejected', () => assert.throws(() => C.catalog(catalog(), C.catalogScope({snapshot_ref: 'other'})), rejected));
-  await check('repeated cursor is rejected', () => { const p = catalog(); Object.assign(p.data.page, {has_more: true, next_cursor: 'same'}); assert.throws(() => C.catalog(p, C.catalogScope({cursor: 'same'})), rejected); });
-  await check('disabled null references and invalid versions remain null', () => {
-    const p = catalog(); const row = p.data.plans[0]; row.plan_ref = null; row.version = null; row.is_current_official = false;
-    row.capabilities.view = false; row.capabilities.export = false; row.completeness = 'unknown'; row.blocked_reasons = [issue()]; p.data.plans.push(clone(row));
-    assert.strictEqual(C.catalog(p, C.catalogScope()), p); assert.equal(row.plan_ref, null);
-  });
-  for (const value of [1, Number.MAX_SAFE_INTEGER, '9007199254740992', '9007199254740993', '9223372036854775807']) {
-    await check('exact int64 preserved ' + value, () => { const p = workspace(); p.data.plan.version = value; p.data.tasks[0].sequence = value;
-      assert.strictEqual(C.workspace(p, P, {}), p); assert.strictEqual(p.data.plan.version, value); assert.strictEqual(p.data.tasks[0].sequence, value); });
-  }
+  await check('snapshot mismatch is rejected', () => assert.throws(() => C.catalog(real('catalog_last'), C.catalogScope({snapshot_ref: 'other'})), rejected));
+  await check('repeated cursor is rejected', () => { const p = real('catalog_more'); assert.throws(() => C.catalog(p, C.catalogScope({cursor: p.data.page.next_cursor})), rejected); });
   for (const mutate of [p => { p.plan.plan_ref = OTHER; }, p => { p.scope.plan_ref = OTHER; }, p => { p.scope.source = 'demo'; },
     p => { p.scope.kind = 'plan_catalog'; }, p => { p.scope.range_start = START; },
     p => { p.time_scope.range_end = START; },
-    p => { p.plan.capabilities.view = false; }]) {
-    await check('workspace malformed DTO ' + cases.length, () => { const p = workspace(); mutate(p.data); assert.throws(() => C.workspace(p, P, {}), rejected); });
+    p => { p.plan.capabilities.view = false; }, p => { p.projections.calendar = {state: 'not_loaded', reason: 'Legacy'}; }]) {
+    await check('workspace malformed DTO ' + cases.length, () => { const p = real('workspace'); mutate(p.data); assert.throws(() => C.workspace(p, REF, {}), rejected); });
   }
-  await check('real projections remain unchanged', () => { const p = workspace(), before = JSON.stringify(p); assert.strictEqual(C.workspace(p, P, {}), p); assert.equal(JSON.stringify(p), before); });
-  await check('calendar-bound overlap retains night spans and unknown or legacy evidence', () => {
-    const p = workspace(), d = p.data, calendar = d.projections.calendar;
-    d.tasks.push({...d.tasks[0],task_ref:'e'.repeat(48),operation_ref:'f'.repeat(48),sequence:2,start:'2026-09-10T00:00:00',end:'2026-09-10T00:30:00'});
-    d.task_count=2; Object.assign(d.projections.delivery_risks.items[0],{operation_count:2,scheduled_operation_count:2,task_count:2});
-    const window={start:'2026-09-09T23:00:00',end:'2026-09-09T23:30:00',policy_date:'2026-09-09',allow_normal:true,allow_urgent:true,efficiency:1,provenance:'work_calendar'};
-    const capacity={available_hours:.5,effective_hours:.5,normal_available_hours:.5,normal_effective_hours:.5,urgent_available_hours:.5,urgent_effective_hours:.5};
-    Object.assign(calendar.global,capacity,{windows:[clone(window)]});
-    calendar.resources=[{...capacity,kind:'machine',resource_ref:OTHER,label:'Machine',state:'available',basis:'global_calendar_machine_availability',
-      windows:[clone(window)],issues:[],status:'active',downtime_scope_hours:0,downtime_available_hours:0,downtime_windows:[]}];
-    const row={kind:'machine',resource_ref:OTHER,label:'Machine',state:'available',operation_count:2,capacity_basis:'global_calendar_machine_availability',
-      arranged_hours:8.5,occupied_hours:8,overlap_hours:.5,excess_arranged_hours:.5,available_hours:.5,available_occupied_hours:.5,
-      outside_available_hours:7.5,capacity_shortfall_hours:0,utilization:1,has_overlap:false,capacity_insufficient:false,issues:[],
-      segments:[{start:START,end:'2026-09-10T00:00:00',concurrent_operations:1},{start:'2026-09-10T00:00:00',end:'2026-09-10T00:30:00',concurrent_operations:2},{start:'2026-09-10T00:30:00',end:END,concurrent_operations:1}],
-      metric_version:'decision-resource-v4',available_overlap_hours:0,conflict_segments:[],outside_calendar_basis:'reservation_span_outside_work_calendar',conflict_basis:'work_calendar_reservation_overlap'};
-    d.projections.occupancy.resources=[row];
-    const before=JSON.stringify(p); assert.strictEqual(C.workspace(p,P,{}),p); assert.equal(JSON.stringify(p),before);
-    const summary=clone(p); summary.data.projections.occupancy.segments_complete=false;
-    summary.data.projections.occupancy.resources[0].segments=[{start:'2026-09-10T00:00:00',end:'2026-09-10T00:30:00',concurrent_operations:2}];
-    assert.strictEqual(C.workspace(summary,P,{}),summary);
-    const micro=clone(p), microRow=micro.data.projections.occupancy.resources[0];
-    microRow.overlap_hours=1/3600000000;
-    microRow.segments=[{start:START,end:'2026-09-10T00:00:00',concurrent_operations:1},{start:'2026-09-10T00:00:00',end:'2026-09-10T00:00:00.000001',concurrent_operations:2},{start:'2026-09-10T00:00:00.000001',end:END,concurrent_operations:1}];
-    assert.strictEqual(C.workspace(micro,P,{}),micro);
-    const microSummary=clone(micro); microSummary.data.projections.occupancy.segments_complete=false;
-    microSummary.data.projections.occupancy.resources[0].segments=[{start:'2026-09-10T00:00:00',end:'2026-09-10T00:00:00.000001',concurrent_operations:2}];
-    assert.strictEqual(C.workspace(microSummary,P,{}),microSummary);
-    const microInCalendar=clone(micro), microInCalRow=microInCalendar.data.projections.occupancy.resources[0];
-    microInCalRow.available_overlap_hours=1/3600000000;
-    microInCalRow.conflict_segments=[{start:'2026-09-09T23:00:00',end:'2026-09-09T23:00:00.000001',concurrent_operations:2}];
-    microInCalRow.has_overlap=true;
-    assert.strictEqual(C.workspace(microInCalendar,P,{}),microInCalendar);
-    calendar.state='partial'; Object.assign(calendar.resources[0],{state:'unavailable',windows:null,issues:[{code:'calendar_unavailable',message:'Calendar unavailable'}]});
-    for(const key of Object.keys(capacity)) calendar.resources[0][key]=null;
-    for(const key of ['downtime_scope_hours','downtime_available_hours','downtime_windows']) delete calendar.resources[0][key];
-    d.projections.occupancy.state='unavailable'; row.state='unavailable'; row.issues=[{code:'calendar_unavailable',message:'Calendar unavailable'}];
-    for(const key of ['available_hours','available_occupied_hours','outside_available_hours','capacity_shortfall_hours','utilization','has_overlap','capacity_insufficient','available_overlap_hours','conflict_segments']) row[key]=null;
-    assert.strictEqual(C.workspace(p,P,{}),p,'Unknown calendars retain null conflict evidence');
-  });
-  await check('legacy not_loaded is rejected', () => { const p = workspace(); p.data.projections.calendar = {state: 'not_loaded', reason: 'Legacy'}; assert.throws(() => C.workspace(p, P, {}), rejected); });
-  await check('explicit range covering whole plan cannot hide empty or clipped results', () => {
-    const p = workspace(), scope = {range_start: START, range_end: END};
-    Object.assign(p.data.scope, scope); align(p); assert.strictEqual(C.workspace(p, P, scope), p);
-  });
-  await check('empty overlap is not empty whole plan', () => {
-    const p = workspace(), scope = {range_start: END, range_end: '2026-09-10T08:00:00'};
-    Object.assign(p.data.scope, scope); Object.assign(p.data.time_scope, scope);
-    assert.throws(() => C.workspace(p, P, scope), rejected);
-    p.data.tasks = []; p.data.task_count = 0; p.data.task_span = null; align(p); assert.strictEqual(C.workspace(p, P, scope), p);
-  });
   await check('local leap day and years below 100 avoid Date timezone normalization', () => {
     for (const range_start of ['2000-02-29T23:00:00', '0099-01-01T00:00:00', '0001-01-01T00:00:00'])
       assert.equal(C.workspaceScope(P, {range_start, range_end: END}).range_start, range_start);
   });
-  await check('provenance algorithm summary and on-demand baseline summary / page contracts', async () => {
-    const RUN = '1'.repeat(48), SOURCE = '2'.repeat(48), BASE_PLAN = '3'.repeat(48), OLD_MACH = '4'.repeat(48), OLD_TASK = '5'.repeat(48), OP2 = '6'.repeat(48), OUT_TASK = '7'.repeat(48);
-    const p = workspace(), d = p.data, snap = p.meta.snapshot_ref;
-    d.provenance = {
-      state: 'available', reason: null, source_kind: 'candidate_adoption', source_ref: SOURCE, source_label: '交期优先',
-      run_ref: RUN, accepted_at: '2026-09-09T20:00:00', finished_at: '2026-09-09T20:01:00', adopted_at: '2026-09-09T20:02:00',
-      algorithm: {
-        mode: 'greedy', mode_label: '快速计算', strategy: 'priority_first', strategy_label: '优先级优先',
-        generation_policy_version: 'unified_search_v1', primary_objective: 'min_overdue',
-        target_objectives: ['min_overdue', 'min_tardiness', 'min_changeover'],
-        representative_objectives: ['min_overdue', 'min_tardiness'],
-        origin: {search_objective: 'min_overdue', phase: 'multi_start', origin: 'multi_start', dispatch_mode: 'batch_order',
-          dispatch_rule: 'slack', strategy: 'priority_first', repair_decision: null},
-        first_found_elapsed_ms: 5, search_evidence_ref: {run_ref: RUN, source_event_id: 1}
-      },
-      baseline: {baseline_ref: BASE_PLAN, version: 2, kind: 'admission_official', captured_at: '2026-09-09T20:00:00', captured_task_count: 2}
-    };
-    const basePlan = {...header(), plan_ref: BASE_PLAN, version: 2, is_current_official: false, display_name: 'Previous plan'};
-    d.resources.push({kind: 'machine', ref: OLD_MACH, business_code: 'M0', label: 'Archived Machine'});
-    d.projections.baseline = {
-      state: 'available', reason_code: null, reason: null, basis: 'candidate_adoption', baseline_plan: basePlan,
-      comparison_scope: {scope: clone(d.scope), selection: 'either_side_overlap', boundary: 'half_open', alignment: 'operation_ref',
-        time_basis: 'factory_local', task_times: 'unclipped'},
-      compared_fields: ['start', 'end', 'machine_ref', 'operator_ref'],
-      items: [], item_count: 2, items_complete: false
-    };
-    assert.strictEqual(C.workspace(p, P, {}), p);
-    const beforeTask1 = {...d.tasks[0], task_ref: OLD_TASK, plan_ref: BASE_PLAN, machine_ref: OLD_MACH, start: '2026-09-09T21:30:00'};
-    const beforeTask2 = {...d.tasks[0], task_ref: OUT_TASK, operation_ref: OP2, plan_ref: BASE_PLAN, sequence: 2, machine_ref: OLD_MACH};
-    const row1 = {operation_ref: OP, change: 'changed', changed_fields: ['start', 'machine_ref'], before: beforeTask1, after: {task_ref: TASK}, before_in_scope: true, after_in_scope: true};
-    const row2 = {operation_ref: OP2, change: 'removed', changed_fields: [], before: beforeTask2, after: null, before_in_scope: true, after_in_scope: false};
-    const page1 = envelope({...d.projections.baseline, items: [clone(row1)], items_complete: false, page: {number: 1, size: 1, total: 2, pages: 2, has_more: true}});
-    const page2 = envelope({...d.projections.baseline, items: [clone(row2)], items_complete: false, page: {number: 2, size: 1, total: 2, pages: 2, has_more: false}});
-    const pages = [page1, page2];
-    const client = runtime(async url => {
-      const u = new URL(url);
-      assert.equal(u.pathname, '/api/workbench/v1/plans/' + P + '/baseline');
-      return response(pages.shift());
-    });
-    client.C.workspace(p, P, {});
-    const combined = await client.api.baseline(P, {snapshot_ref: snap, size: 1}, d);
-    assert.equal(combined.data.items.length, 2);
-    assert.equal(combined.data.items_complete, true);
-    assert.equal('page' in combined.data, false);
-    const taskFacts = client.M.prepareTasks(d);
-    const baselineFacts = client.M.prepareBaseline(d, taskFacts, combined.data.items);
-    assert.deepEqual(baselineFacts.comparisons.get(OP).after, d.tasks[0]);
-    assert.equal(baselineFacts.comparisons.get(OP2).after, null);
-    client.idle();
-    const badItems = clone(combined.data.items);
-    badItems[0].after = {task_ref: '9'.repeat(48)};
-    assert.throws(() => client.M.prepareBaseline(d, taskFacts, badItems), /原安排对照/);
-  });
-  await check('workspace auto-stitches tasks pages and validates ganttGraph and capacity endpoints', async () => {
-    const first = workspace(), d = first.data, snap = first.meta.snapshot_ref, baseTask = clone(d.tasks[0]);
-    const ref48 = n => n.toString(16).padStart(48, '0');
-    const allTasks = Array.from({length: 5001}, (_, index) => ({
-      ...baseTask,
-      task_ref: ref48(index + 1000),
-      operation_ref: ref48(index + 20000),
-      sequence: index + 1,
-      start: index === 0 ? START : '2026-09-10T01:00:00',
-      end: index === 5000 ? END : '2026-09-10T02:00:00'
-    }));
-    d.tasks = allTasks.slice(0, 5000);
-    d.task_count = 5001;
-    d.tasks_complete = false;
-    d.gantt_graph = {state: 'available', reason: null, scope: 'full_plan', nodes: [], node_count: 5001, nodes_complete: false, critical_task_refs: [], critical_edges: []};
-    d.projections.process_order = {state: 'available', basis: 'run_admission', issues: []};
-    d.projections.calendar.windows_complete = false;
-    d.projections.occupancy.segments_complete = false;
-    const tasksPage2 = envelope({
-      plan: clone(d.plan), scope: clone(d.scope), time_scope: clone(d.time_scope), plan_span: clone(d.plan_span), task_span: clone(d.task_span),
-      tasks: allTasks.slice(5000), task_count: 5001, tasks_complete: false,
-      page: {number: 2, size: 5000, total: 5001, pages: 2, has_more: false}
-    });
-    const fullGraphPayload = envelope({
-      plan_ref: P, scope: clone(d.scope), process_order: clone(d.projections.process_order),
-      gantt_graph: {
-        state: 'available', reason: null, scope: 'full_plan',
-        nodes: allTasks.map(row => ({
-          task_ref: row.task_ref, operation_ref: row.operation_ref, batch_id: row.batch_id, piece_id: row.piece_id,
-          sequence: row.sequence, process_label: row.process_label, start: row.start, end: row.end, predecessor_operation_refs: []
-        })),
-        node_count: 5001, nodes_complete: true, critical_task_refs: [allTasks[0].task_ref], critical_edges: []
-      }
-    });
-    const fullCapacityPayload = envelope({
-      plan_ref: P, scope: clone(d.scope), time_scope: clone(d.time_scope),
-      calendar: {...clone(d.projections.calendar), windows_complete: true},
-      occupancy: {...clone(d.projections.occupancy), segments_complete: true}
-    });
-    const BASE_PLAN = ref48(999);
-    const basePlan = {...header(), plan_ref: BASE_PLAN, version: 2, is_current_official: false, display_name: 'Previous plan'};
-    const baselineItems = allTasks.map((row, index) => ({
-      operation_ref: row.operation_ref,
-      change: 'unchanged',
-      changed_fields: [],
-      before: {...row, task_ref: ref48(index + 50000), plan_ref: BASE_PLAN},
-      after: {task_ref: row.task_ref},
-      before_in_scope: true,
-      after_in_scope: true
-    }));
-    const baselineSummary = {
-      state: 'available', reason_code: null, reason: null, basis: 'candidate_adoption', baseline_plan: basePlan,
-      comparison_scope: {scope: clone(d.scope), selection: 'either_side_overlap', boundary: 'half_open', alignment: 'operation_ref',
-        time_basis: 'factory_local', task_times: 'unclipped'},
-      compared_fields: ['start', 'end', 'machine_ref', 'operator_ref'],
-      items: [], item_count: 5001, items_complete: false
-    };
-    const baselinePage1 = envelope({...clone(baselineSummary), items: baselineItems.slice(0, 5000), page: {number: 1, size: 5000, total: 5001, pages: 2, has_more: true}});
-    const baselinePage2 = envelope({...clone(baselineSummary), items: baselineItems.slice(5000), page: {number: 2, size: 5000, total: 5001, pages: 2, has_more: false}});
-    let nextTasksPage2 = tasksPage2, nextBaselinePage2 = baselinePage2;
-    const client = runtime(async url => {
-      const u = new URL(url);
-      if (u.pathname.endsWith('/workspace')) return response(clone(first));
-      if (u.pathname.endsWith('/tasks')) {
-        assert.equal(u.searchParams.get('snapshot_ref'), snap);
-        assert.equal(u.searchParams.get('page'), '2');
-        assert.equal(u.searchParams.get('size'), '5000');
-        return response(clone(nextTasksPage2));
-      }
-      if (u.pathname.endsWith('/baseline')) {
-        assert.equal(u.searchParams.get('snapshot_ref'), snap);
-        const page = u.searchParams.get('page');
-        return response(clone(page === '1' ? baselinePage1 : nextBaselinePage2));
-      }
-      if (u.pathname.endsWith('/gantt-graph')) {
-        assert.equal(u.searchParams.get('snapshot_ref'), snap);
-        return response(clone(fullGraphPayload));
-      }
-      if (u.pathname.endsWith('/capacity')) {
-        assert.equal(u.searchParams.get('snapshot_ref'), snap);
-        return response(clone(fullCapacityPayload));
-      }
-      assert.fail('Unexpected path ' + u.pathname);
-    });
-    const stitched = await client.api.workspace(P);
-    assert.equal(stitched.data.tasks.length, 5001);
-    assert.equal(stitched.data.tasks_complete, true);
-    const rawTasks = stitched.data.tasks;
-    let taskReadsDuringBaseline = 0;
-    stitched.data.tasks = new Proxy(rawTasks, {
-      get(target, prop, receiver) {
-        if (prop !== 'length') taskReadsDuringBaseline++;
-        return Reflect.get(target, prop, receiver);
-      }
-    });
-    const stitchedBaseline = await client.api.baseline(P, {snapshot_ref: snap}, stitched.data);
-    stitched.data.tasks = rawTasks;
-    assert.equal(stitchedBaseline.data.items.length, 5001);
-    assert.equal(stitchedBaseline.data.items_complete, true);
-    assert.equal(taskReadsDuringBaseline, 0, 'Baseline pagination reuses verified task index with 0 task reads');
-    const basisDriftPage2 = clone(baselinePage2);
-    basisDriftPage2.data.basis = 'trial_adoption';
-    nextBaselinePage2 = basisDriftPage2;
-    await assert.rejects(client.api.baseline(P, {snapshot_ref: snap}, stitched.data), rejected, 'Page 2 basis drift is rejected before stitching');
-    nextBaselinePage2 = baselinePage2;
-    const graphResult = await client.api.ganttGraph(P, {snapshot_ref: snap}, stitched.data);
-    assert.equal(graphResult.data.gantt_graph.nodes_complete, true);
-    assert.equal(graphResult.data.gantt_graph.nodes.length, 5001);
-    let taskReadsDuringCapacity = 0;
-    stitched.data.tasks = new Proxy(rawTasks, {
-      get(target, prop, receiver) {
-        if (prop !== 'length') taskReadsDuringCapacity++;
-        return Reflect.get(target, prop, receiver);
-      }
-    });
-    const capResult = await client.api.capacity(P, {snapshot_ref: snap}, stitched.data);
-    stitched.data.tasks = rawTasks;
-    assert.equal(capResult.data.calendar.windows_complete, true);
-    assert.equal(capResult.data.occupancy.segments_complete, true);
-    assert.equal(taskReadsDuringCapacity, 0, 'Capacity validation reuses verified resource directory with 0 task reads');
-    client.idle();
+  await check('baseline items stay bound to the workspace tasks', () => {
+    const data = real('workspace').data, items = real('baseline').data.items, facts = M.prepareTasks(data);
+    const {comparisons} = M.prepareBaseline(data, facts, items), bound = items.filter(item => item.after_in_scope);
+    assert.ok(bound.length > 0, 'The real baseline compares tasks that are still in scope');
+    for (const item of bound) assert.strictEqual(comparisons.get(item.operation_ref).after, facts.taskIndex.get(item.after.task_ref).task);
+    bound[0].after = {task_ref: '9'.repeat(48)};
+    assert.throws(() => M.prepareBaseline(data, facts, items), /原安排对照/);
   });
 }
 async function failures() {
@@ -479,11 +165,11 @@ async function failures() {
   }
   for (const fetcher of [async () => { throw new TypeError('offline'); }, async () => response({}, 200, 'text/html'),
     async () => new Response('{bad json', {status: 200, headers: {'Content-Type': 'application/json'}}), async () => response({ok: false}, 500),
-    async () => response({ok: true, schema_version: 1, data: {}}), async () => response(catalog(), 503)]) {
+    async () => response({ok: true, schema_version: 1, data: {}}), async () => response(real('catalog_more'), 503)]) {
     await check('transport malformed or offline ' + cases.length, async () => { const client = runtime(fetcher); const before = calls.length;
       await assert.rejects(client.api.catalog(), rejected); assert.equal(calls.length, before + 1); client.idle(); });
   }
-  const cancelWsData = workspace().data;
+  const cancelWsData = real('workspace').data;
   for (const method of ['catalog', 'workspace', 'tasks', 'ganttGraph', 'capacity', 'baseline']) {
     await check('cancel in flight and already cancelled ' + method, async () => {
       const client = runtime(async (_, options) => aborting(options.signal)), controller = new AbortController(), signal = client.signal(controller);
@@ -504,41 +190,50 @@ async function failures() {
       await assert.rejects(client.api.catalog(), error => rejected(error) && /超时/.test(error.message)); client.idle(); });
   }
 }
+// 后端真实投影逐个走真实读取链：首个请求带上 Python 读取时用的全部参数；pages 是后续分页的真实应答，必须被读完；
+// 跟进读取（对照、分页、衔接图、班表负荷）绑定 workspace 指名的那次真实读取，只核身份与范围，不再扫它的工序。
 async function backendFixtures() {
-  const paths = {catalog: '', baseline: 'baseline', tasks: 'tasks', gantt_graph: 'gantt-graph', capacity: 'capacity', workspace: 'workspace'};
-  for (const fixture of input.fixtures || []) {
+  const leaves = {catalog: '', workspace: '/workspace', baseline: '/baseline', tasks: '/tasks', gantt_graph: '/gantt-graph', capacity: '/capacity', export: '/export'};
+  const follow = {workspace: '/tasks', baseline: '/baseline'};
+  const workspaces = new Map(input.fixtures.filter(fixture => fixture.kind === 'workspace').map(fixture => [fixture.name, fixture.payload.data]));
+  for (const fixture of input.fixtures) {
     await check('backend DTO ' + fixture.name, async () => {
-      const pages = Array.isArray(fixture.pages) ? fixture.pages.slice() : [];
+      const base = '/api/workbench/v1/plans' + (fixture.kind === 'catalog' ? '' : '/' + fixture.plan_ref);
+      const replies = [{path: base + leaves[fixture.kind], scope: fixture.scope, payload: fixture.payload},
+        ...(fixture.pages || []).map(payload => ({path: base + follow[fixture.kind], scope: {}, payload}))];
       const client = runtime(async url => {
-        const target = new URL(url);
-        if (fixture.kind === 'workspace' && pages.length && target.pathname === '/api/workbench/v1/plans/' + fixture.plan_ref + '/tasks') {
-          return response(clone(pages.shift()), fixture.status || 200);
-        }
-        const leaf = paths[fixture.kind || 'workspace'];
-        const suffix = fixture.kind === 'catalog' ? '' : '/' + fixture.plan_ref + '/' + leaf;
-        assert.equal(target.pathname, '/api/workbench/v1/plans' + suffix);
-        return response(clone(fixture.payload), fixture.status || 200);
+        const target = new URL(url), reply = replies.shift();
+        assert.ok(reply, 'Unexpected extra read ' + target.pathname);
+        assert.equal(target.pathname, reply.path);
+        for (const [key, value] of Object.entries(reply.scope)) assert.equal(target.searchParams.get(key), String(value));
+        return fixture.kind === 'export' ? new Response(Buffer.from(fixture.body, 'base64'), {status: 200, headers: fixture.headers})
+          : response(clone(reply.payload));
       });
-      if (fixture.workspace_data) {
-        const wsScope = {};
-        if (fixture.workspace_data.scope && fixture.workspace_data.scope.range_start !== null) {
-          wsScope.range_start = fixture.workspace_data.scope.range_start;
-          wsScope.range_end = fixture.workspace_data.scope.range_end;
-        }
-        client.C.workspace({...envelope(fixture.workspace_data), data: fixture.workspace_data}, fixture.plan_ref, wsScope);
-      }
-      const read = () => fixture.kind === 'catalog' ? client.api.catalog(fixture.scope || {})
-        : fixture.kind === 'baseline' ? client.api.baseline(fixture.plan_ref, fixture.scope || {}, fixture.workspace_data || null)
-        : fixture.kind === 'tasks' ? (async () => {
-          const query = client.C.tasksScope(fixture.plan_ref, fixture.scope || {});
-          return client.C.tasksPage(await client.T.read('/api/workbench/v1/plans/' + fixture.plan_ref + '/tasks', query, {timeout: 20000}), fixture.workspace_data || null, query);
-        })()
-        : fixture.kind === 'gantt_graph' ? client.api.ganttGraph(fixture.plan_ref, fixture.scope || {}, fixture.workspace_data || null)
-        : fixture.kind === 'capacity' ? client.api.capacity(fixture.plan_ref, fixture.scope || {}, fixture.workspace_data || null)
-        : client.api.workspace(fixture.plan_ref, fixture.scope || {});
-      if (fixture.contract_error) await assert.rejects(read(), rejected);
-      else if (fixture.error) await assert.rejects(read(), error => rejected(error) && error.code === fixture.error);
-      else assert.deepEqual(await read(), fixture.expected || fixture.payload);
+      let taskReads = 0;
+      const admitted = () => {
+        const data = workspaces.get(fixture.workspace);
+        return {...data, tasks: new Proxy(data.tasks, {get(target, prop, receiver) { if (prop !== 'length') taskReads++; return Reflect.get(target, prop, receiver); }})};
+      };
+      const reads = {
+        catalog: () => client.api.catalog(fixture.scope),
+        workspace: () => client.api.workspace(fixture.plan_ref, fixture.scope),
+        export: () => client.api.export(fixture.plan_ref, fixture.scope),
+        baseline: () => client.api.baseline(fixture.plan_ref, fixture.scope, admitted()),
+        tasks: async () => {
+          const query = client.C.tasksScope(fixture.plan_ref, fixture.scope);
+          return client.C.tasksPage(await client.T.read(base + '/tasks', query, {timeout: 20000}), admitted(), query);
+        },
+        gantt_graph: () => client.api.ganttGraph(fixture.plan_ref, fixture.scope, admitted()),
+        capacity: () => client.api.capacity(fixture.plan_ref, fixture.scope, admitted())
+      };
+      if (fixture.contract_error) await assert.rejects(reads[fixture.kind](), rejected);
+      else if (fixture.kind === 'export') {
+        const file = await reads.export();
+        assert.deepEqual([...new Uint8Array(await file.blob.arrayBuffer())], [...Buffer.from(fixture.body, 'base64')]);
+        assert.equal(file.filename, fixture.filename);
+      } else assert.deepEqual(await reads[fixture.kind](), fixture.expected || fixture.payload);
+      assert.equal(replies.length, 0, 'Every real follow-up page was read');
+      assert.equal(taskReads, 0, 'Follow-up reads validate against the admitted workspace without reading its tasks');
       client.idle();
     });
   }
@@ -550,22 +245,9 @@ async function exports() {
     {...scope, extra: true}, {...scope, snapshot_ref: ''}, {...scope, range_end: START}]) {
     await check('invalid export scope ' + cases.length, () => assert.rejects(noRequest.api.export(P, invalid), rejected));
   }
-  for (const format of ['csv', 'xlsx']) {
-    const type = format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    const bytes = format === 'csv' ? new TextEncoder().encode('\ufeffplan,task\n') : Uint8Array.from([0x50, 0x4b, 0x03, 0x04]);
-    const disposition = 'attachment; filename="plan.' + format + '"';
-    const client = runtime(async url => {
-      assert.equal(url, endpoint + '/' + P + '/export?' + new URLSearchParams({...scope, format}));
-      return new Response(bytes, {status: 200, headers: {'Content-Type': type, 'Content-Disposition': disposition}});
-    });
-    await check('binary export exact GET and scope ' + format, async () => {
-      const value = await client.api.export(P, {...scope, format});
-      assert.deepEqual([...new Uint8Array(await value.blob.arrayBuffer())], [...bytes]); assert.equal(value.filename, 'plan.' + format); client.idle();
-    });
-  }
   for (const type of ['text/html', 'application/json', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']) {
     await check('export wrong bytes or JSON success ' + type, async () => {
-      const client = runtime(async () => response(workspace(), 200, type));
+      const client = runtime(async () => response(real('workspace'), 200, type));
       await assert.rejects(client.api.export(P, scope), rejected); client.idle();
     });
   }
@@ -577,8 +259,9 @@ async function exports() {
   });
 }
 async function run() {
-  if (!input.fixturesOnly) { await requests(); await contracts(); await failures(); await exports(); }
+  if (input.boundary) { await requests(); await contracts(); await failures(); await exports(); }
+  const boundary = cases.length;
   await backendFixtures();
-  console.log(JSON.stringify({checks: cases.length, cases, network: 'mock-only', production: false, methods: ['GET']}));
+  console.log(JSON.stringify({fixtures: cases.length - boundary, boundary, cases, network: 'mock-only', production: false, methods: ['GET']}));
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

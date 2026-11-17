@@ -1,11 +1,13 @@
 import React from './shared/runtime/react.js';
 import C from './resource-contract.js';
 import P from './ProcessContract.js';
-import { Button, ErrorBox, Issues, Search as ControlSearch } from './ResourceControls.jsx';
+import APSProcessAPI from './ProcessAPI.js';
+import { Button, ErrorBox, FieldCell, Issues, Search as ControlSearch } from './ResourceControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import { Pager as ResourceTablePager } from './ResourceTables.jsx';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
 import WorkbenchTerms from './WorkbenchTerms.js';
+import { failure, ref48 } from './shared/contract/kit.js';
 
 const active = entity => entity.operations.filter(row => row.status === 'active');
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -19,17 +21,16 @@ function Confirmation({ record }) {
   return <span className="process-confirmation">{record && record.state === 'confirmed' ? <>已确认{record.confirmed_at && <time dateTime={record.confirmed_at} title={record.confirmed_at}>{confirmationTime(record.confirmed_at)}</time>}{record.confirmed_by && <> · {record.confirmed_by}</>}</> : '未人工确认'}</span>;
 }
 function location(stage, operationRef, groupRef) {
-  const ref = item => typeof item === 'string' && /^[0-9a-f]{48}$/.test(item);
-  if (stage != null && !['route', 'source', 'hours'].includes(stage) || operationRef != null && !ref(operationRef) || groupRef != null && !ref(groupRef))
-    throw C.failure('所选阶段或工序已失效，请重新选择。');
+  if (stage != null && !['route', 'source', 'hours'].includes(stage) || operationRef != null && !ref48(operationRef) || groupRef != null && !ref48(groupRef))
+    throw failure('所选阶段或工序已失效，请重新选择。');
   return { stage: stage || null, operationRef: operationRef || null, groupRef: groupRef || null };
 }
 function locate(entity, target) {
   const operation = target.operationRef && entity.operations.find(row => row.ref === target.operationRef);
   const group = target.groupRef && entity.external_groups.find(row => row.ref === target.groupRef);
-  if (target.operationRef && (!operation || operation.status !== 'active')) throw C.failure('目标工序已删除、停用或不属于此零件，未按序号或同名替代。');
-  if (target.groupRef && !group) throw C.failure('目标外协组已删除或不属于此零件，未按工序范围替代。');
-  if (operation && group && operation.external_group_ref !== group.ref) throw C.failure('要定位的工序不属于指定外协组，不能混用两种定位。');
+  if (target.operationRef && (!operation || operation.status !== 'active')) throw failure('目标工序已删除、停用或不属于此零件，未按序号或同名替代。');
+  if (target.groupRef && !group) throw failure('目标外协组已删除或不属于此零件，未按工序范围替代。');
+  if (operation && group && operation.external_group_ref !== group.ref) throw failure('要定位的工序不属于指定外协组，不能混用两种定位。');
   return target;
 }
 function useFocus(root, ref, page) {
@@ -51,7 +52,7 @@ function usePage(rows, focusRef = null) {
   }, [rows, focusRef, size]);
   const filtered = React.useMemo(() => {
     const needle = query.toLowerCase();
-    return !needle ? rows : rows.filter(row => [row.sequence, row.label, row.op_type_label].some(item => String(item || '').toLowerCase().includes(needle)));
+    return !needle ? rows : rows.filter(row => [row.sequence, row.label, row.op_type_label].some(item => String(item ?? '').toLowerCase().includes(needle)));
   }, [rows, query]);
   const pages = Math.max(1, Math.ceil(filtered.length / size)), page = Math.min(number, pages);
   return { query, setQuery: text => { setQuery(text); setNumber(1); }, setNumber, setSize: next => { setSize(next); setNumber(1); }, rows: filtered.slice((page - 1) * size, page * size),
@@ -63,7 +64,8 @@ function Pager({ paging, disabled }) {
 function Search({ paging, disabled }) {
   return <ControlSearch aria-label="搜索工序、工种" placeholder="搜索工序、工种…" value={paging.query} disabled={disabled} onChange={event => paging.setQuery(event.target.value)} />;
 }
-function Groups({ rows, affected = [], discarded = [], onDiscard, totals, onTotal, disabled, title = '外协组原记录', empty = '尚无外协组记录。', focusRef = null }) {
+// error 只在工时页传入：已有合并组的统一周期报 groups.<外协组编号>.total_days，标在这一组的输入框上。
+function Groups({ rows, affected = [], discarded = [], onDiscard, totals, onTotal, disabled, title = '外协组原记录', empty = '尚无外协组记录。', focusRef = null, error = null }) {
   const selected = new Set(discarded), changed = new Set(affected);
   const paging = usePage(rows, focusRef), root = React.useRef(null);
   useFocus(root, focusRef, paging.page.number);
@@ -71,8 +73,8 @@ function Groups({ rows, affected = [], discarded = [], onDiscard, totals, onTota
     <div className="wb-table-frame wb-table-shell" data-sticky-head><table className={'tbl wb-table' + (onTotal || onDiscard ? ' wb-table--editable' : '')} aria-label={title} style={{ minWidth: 850, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{title}</caption>
       <thead><tr><th scope="col">工序范围</th><th scope="col">周期算法</th><th scope="col">总周期（天）</th><th scope="col">供应商</th><th scope="col">备注 / 问题</th>{onDiscard && <th scope="col">解除原组</th>}</tr></thead>
       <tbody>{paging.rows.map(row => <tr key={row.ref} data-process-location={row.ref} tabIndex={row.ref === focusRef ? -1 : undefined} aria-current={row.ref === focusRef ? 'true' : undefined}>
-        <td>{row.start_sequence} 至 {row.end_sequence}{row.ref === focusRef && <WorkbenchReference value={row.ref} />}</td><td>{({ merged: '合并设置', separate: '分别设置' })[row.merge_mode] || value(row.merge_mode)}</td>
-        <td>{onTotal && row.merge_mode === 'merged' && C.own(totals, row.ref) ? <input className="wt-in" type="number" step="any" min="0" aria-label={'外协组 ' + row.start_sequence + ' 至 ' + row.end_sequence + ' 总周期'} value={totals[row.ref]} disabled={disabled} onChange={event => onTotal(row.ref, event.target.value)} style={{ width: '100%' }} /> : P.valueText(row.total_days)}</td>
+        <td>{row.start_sequence} 至 {row.end_sequence}{row.ref === focusRef && <WorkbenchReference value={row.ref} />}</td><td>{WorkbenchTerms.merge_modes[row.merge_mode] || (row.merge_mode === null ? '未填写' : '其他周期规则')}</td>
+        <td>{onTotal && row.merge_mode === 'merged' && C.own(totals, row.ref) ? <FieldCell path={'groups.' + row.ref + '.total_days'} error={error}><input className="wt-in" type="number" step="any" min="0" aria-label={'外协组 ' + row.start_sequence + ' 至 ' + row.end_sequence + ' 总周期'} value={totals[row.ref]} disabled={disabled} onChange={event => onTotal(row.ref, event.target.value)} style={{ width: '100%' }} /></FieldCell> : P.valueText(row.total_days)}</td>
         <td>{value(row.supplier_label)}</td><td style={{ whiteSpace: 'pre-wrap' }}>{value(row.remark)}<Issues issues={row.issues} /></td>
         {onDiscard && <td>{changed.has(row.ref) ? <label><input type="checkbox" aria-label={'解除外协组 ' + row.start_sequence + ' 至 ' + row.end_sequence} checked={selected.has(row.ref)} disabled={disabled}
           onChange={event => onDiscard(event.target.checked ? discarded.concat(row.ref) : discarded.filter(ref => ref !== row.ref))} />明确解除</label> : '保持原组'}</td>}</tr>)}</tbody>
@@ -83,7 +85,7 @@ function changes(before, after) {
   const oldGroups = new Map(before.external_groups.map(row => [row.ref, row])), newGroups = new Map(after.external_groups.map(row => [row.ref, row]));
   const range = group => group ? value(group.start_sequence) + ' 至 ' + value(group.end_sequence) : '范围未填写';
   const stage = item => P.stageLabel(item);
-  const cycleMode = item => ({ merged: '合并设置', separate: '分别设置' })[item] || (item === null ? '未设置' : '原周期算法未明确');
+  const cycleMode = item => WorkbenchTerms.merge_modes[item] || (item === null ? '未设置' : '原周期算法未明确');
   function field(label, previous, current, format = value) {
     if (previous !== current) result.push({ label, previous: format(previous), current: format(current) });
   }
@@ -138,7 +140,7 @@ function Review({ before, after, onAccept, disabled }) {
     <Button icon="check" disabled={disabled} onClick={onAccept}>{WorkbenchTerms.accept_latest}</Button>
   </section>;
 }
-function useDraft({ result, adapter, stage, build, reconcile, saved, onDirty }) {
+function useDraft({ result, stage, build, reconcile, saved, onDirty }) {
   const [base, setBase] = React.useState(result), [draft, setDraft] = React.useState(() => build(result.data));
   const [review, setReview] = React.useState(null), [error, setError] = React.useState(null), [busy, setBusy] = React.useState(false);
   const baseline = React.useMemo(() => build(base.data), [base.data]);
@@ -156,7 +158,7 @@ function useDraft({ result, adapter, stage, build, reconcile, saved, onDirty }) 
   async function reload() {
     if (busy) return;
     const controller = new AbortController(); request.current = controller; setBusy(true); setError(null);
-    try { const fresh = P.detail(await adapter.detail('part', base.data.ref, controller.signal), base.data.ref); if (!controller.signal.aborted) setReview(fresh); }
+    try { const fresh = P.detail(await APSProcessAPI.detail('part', base.data.ref, controller.signal), base.data.ref); if (!controller.signal.aborted) setReview(fresh); }
     catch (failure) { if (!controller.signal.aborted) setError(failure); }
     finally { if (!controller.signal.aborted) setBusy(false); if (request.current === controller) request.current = null; }
   }
@@ -165,22 +167,27 @@ function useDraft({ result, adapter, stage, build, reconcile, saved, onDirty }) 
   }
   return { base, draft, edit, dirty, review, error, setError, busy, reload, accept };
 }
-function Feedback({ model, disabled, paging }) {
-  const page = model.error && model.error.locate_page;
+// 出错工序所在的页：字段路径 operations.<工序编号>.<项> 只认本页负责的项（keys），按工序在未筛选列表里的位置和当前每页条数换算，
+// 取第一道出错的工序。归属、工时页共用同一份命令，别页的被拒不会在这里定位。
+function errorPage(error, operations, size, keys) {
+  const paths = new Set(C.fieldErrors(error).map(row => row.path));
+  const index = operations.findIndex(row => keys.some(key => paths.has('operations.' + row.ref + '.' + key)));
+  return index < 0 ? null : Math.floor(index / size) + 1;
+}
+// 总错误框只显示本页检查的错误，命令错误由详情页统一显示；分页的工序表另传 paging 与 errorPage 算出的 page。
+function Feedback({ model, disabled, paging, page }) {
   return <><ErrorBox error={model.error} />
-    {page && paging && <Button icon="arrow-right" disabled={disabled} onClick={() => { paging.setQuery(''); paging.setNumber(page); }}>定位到第 {page} 页</Button>}
+    {page && <Button icon="arrow-right" disabled={disabled} onClick={() => { paging.setQuery(''); paging.setNumber(page); }}>定位到第 {page} 页</Button>}
     <Button icon="refresh-cw" busy={model.busy} disabled={disabled} onClick={model.reload}>{WorkbenchTerms.refresh_latest}</Button>
     {model.review && <Review before={model.base.data} after={model.review.data} disabled={disabled || model.busy} onAccept={model.accept} />}</>;
 }
-// Unconfirmed operations are reported with the page they sit on (unfiltered order, current page size),
-// so a 120-operation part can be fixed without paging blind; the first offending page rides on the error.
 function reason(model, stage) {
   const entity = model.base.data;
   return model.review ? '请先核对最新资料。' : model.busy ? '正在读取最新资料。' :
     (entity.workflow[stage === 'source' ? 'route' : 'source'].state !== 'confirmed' ? stage === 'source' ? '请先确认路线。' : '请先确认归属。' : '') ||
     (stage === 'source' ? model.base.meta.source !== 'production' ? '当前不是生产数据，不能保存。' : '' : C.blocked(entity.write_context, 'process', stage + '_confirm', model.base.meta.source));
 }
-const ProcessStageEditor = { active, same, value, Confirmation, usePage, Pager, Search, Groups, Review, useDraft, Feedback, reason, location, locate, useFocus };
+const ProcessStageEditor = { active, same, value, Confirmation, usePage, Pager, Search, Groups, Review, useDraft, errorPage, Feedback, reason, location, locate, useFocus };
 
 export {
   ProcessStageEditor,
@@ -194,6 +201,7 @@ export {
   Groups,
   Review,
   useDraft,
+  errorPage,
   Feedback,
   reason,
   location,

@@ -1,16 +1,16 @@
 import React from './shared/runtime/react.js';
-import DashboardContract from './DashboardContract.js';
-import APSWorkbenchTransport from './shared/network/transport.js';
+import C from './DashboardContract.js';
+import T from './shared/network/transport.js';
 import { pendingStore, exclusive } from './shared/session/pending-store.js';
-import { useQuery } from './shared/session/query.js';
+import { nonempty, object, ref48, failure } from './shared/contract/kit.js';
 
-const C = DashboardContract, T = APSWorkbenchTransport, KEY = 'aps_dashboard_pending_v1', EVENT = KEY + '_changed';
+const KEY = 'aps_dashboard_pending_v1', EVENT = KEY + '_changed';
 
 // 磁盘记录的唯一校验点；写入的记录由已校验的条目与表单构造，写前不再重验。
 function valid(v) {
   try {
-    return v && v.version === 1 && /^dashboard-[a-f0-9]{48}$/.test(v.request_key) && C.ref(v.item_ref) && C.text(v.subject) && ['transition', 'reopen'].includes(v.action)
-      && ['pending', 'confirmed', 'rejected'].includes(v.phase) && C.object(v.input) && C.object(v.source) && C.object(v.risk)
+    return v && v.version === 1 && /^dashboard-[a-f0-9]{48}$/.test(v.request_key) && ref48(v.item_ref) && nonempty(v.subject) && ['transition', 'reopen'].includes(v.action)
+      && ['pending', 'confirmed', 'rejected'].includes(v.phase) && object(v.input) && object(v.source) && object(v.risk)
       && !!C.handling(v.before) && !!C.handling(C.expected(v)) && (v.phase !== 'confirmed' || !!C.receipt(v.receipt, v));
   } catch (_) { return false; }
 }
@@ -76,7 +76,7 @@ function useCommand() {
       // 新处置的本机记录、提交和结果写回在跨页互斥里串行，持锁跨过提交命令。
       const { acquired } = await exclusive(KEY, {}, async () => {
         if (!mounted.current) return;
-        if (!item.write_context || item.write_context.capabilities[action] !== true) { setError(new Error('这条记录现在不能处置，请刷新后重试。')); return; }
+        if (!item.write_context || item.write_context.capabilities[action] !== true) { setError(failure('这条记录现在不能处置，请刷新后重试。')); return; }
         original = {
           version: 1, request_key: T.requestKey('dashboard'),
           phase: 'pending', item_ref: item.item_ref, subject: item.subject, action, input, before: C.baseHandling(item.handling), source: item.source, risk: item.risk
@@ -102,7 +102,7 @@ function useCommand() {
           }
         }
       });
-      if (!acquired && mounted.current) setError(new Error('另一个页面正在处置，这里没有开始新的处置。请先完成那边的处置。'));
+      if (!acquired && mounted.current) setError(failure('另一个页面正在处置，这里没有开始新的处置。请先完成那边的处置。'));
     } catch (e) { if (mounted.current) setError(e); }
     finally { running.current = false; if (mounted.current) setBusy(false); }
     // Only an unanswered command follows up; the lookup keeps the submit failure unless it finds a receipt or fails itself.
@@ -123,19 +123,17 @@ function useCommand() {
   return { saved, busy, error, storageError, notice, lookup: () => lookup(), submit, finish, sync: reload };
 }
 
-function useRead(load, dependencies, enabled = true) { return useQuery(load, dependencies, enabled); }
-
 const tabs = { items: '处置清单', analysis: '影响分析', compare: '方案对比', records: '处置历史' };
 
+// 页面状态的键集已由 WorkbenchNavigation.admit 按受控导航声明准入，这里只读取并核对取值。
 function context(value) {
-  C.check(C.object(value) && Object.keys(value).every(k => ['scope', 'tab', 'item_ref', 'history_page', 'source'].includes(k)) && (value.source === undefined || value.source === 'production'), '本页数据已过期，请刷新后重试。');
   const q = C.scope(value.scope === undefined ? {} : value.scope), tab = value.tab === undefined ? 'items' : value.tab;
   const selected = value.item_ref === undefined ? null : value.item_ref, historyPage = value.history_page === undefined ? 1 : value.history_page;
-  C.check(Object.prototype.hasOwnProperty.call(tabs, tab) && (selected === null || C.ref(selected)) && Number.isSafeInteger(historyPage) && historyPage > 0);
+  C.check(Object.prototype.hasOwnProperty.call(tabs, tab) && (selected === null || ref48(selected)) && Number.isSafeInteger(historyPage) && historyPage > 0);
   return { q, tab, selected, historyPage };
 }
 
-const DashboardSession = { KEY, read, save, useCommand, useRead, context, tabs };
+const DashboardSession = { KEY, read, save, useCommand, context, tabs };
 
-export { DashboardSession, KEY, read, save, useCommand, useRead, context, tabs };
+export { DashboardSession, KEY, read, save, useCommand, context, tabs };
 export default DashboardSession;

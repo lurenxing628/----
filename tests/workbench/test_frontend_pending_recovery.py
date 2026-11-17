@@ -33,8 +33,13 @@ function createLockManager() {
 
 def _run_node(script: str) -> dict:
     wrapped = f"'use strict';\n{LOCK_MANAGER}\n(async () => {{\n{script}\n}})().catch(err => {{ console.error(err); process.exit(1); }});"
+    # 以纯解释方式运行（--jitless）。跨页锁用例要建几十个 vm 隔离页，Node v24.15（darwin-arm64）的 V8 编译器在这种负载下
+    # 会随源码排布偶发段错误（返回码 -11），属于运行时崩溃，不是被测逻辑出错。2026-11-17 实测：
+    # - 默认参数：串行 5/12 失败；
+    # - 只关 Maglev（--no-maglev）：串行 0/12，6 路并发仍有 1/24 失败；
+    # - --jitless：6 路并发 0/24。
     result = subprocess.run(
-        [node_runtime(), "-e", wrapped],
+        [node_runtime(), "--jitless", "-e", wrapped],
         cwd=str(ROOT),
         capture_output=True,
         text=True,
@@ -66,18 +71,7 @@ def test_pending_store_cas_and_storage_failure_serialization():
           check_combined: false,
         });
 
-        function createStorage() {
-          const data = new Map();
-          return {
-            data,
-            failGet: null,
-            failSet: null,
-            failRemove: null,
-            getItem(k) { if (this.failGet) throw this.failGet; return data.has(k) ? data.get(k) : null; },
-            setItem(k, v) { if (this.failSet) throw this.failSet; data.set(k, v); },
-            removeItem(k) { if (this.failRemove) throw this.failRemove; data.delete(k); },
-          };
-        }
+        const { memoryStorage } = require('./tests/_support/memory_storage.cjs');
 
         let seq = 1;
         const events = [];
@@ -88,8 +82,8 @@ def test_pending_store_cas_and_storage_failure_serialization():
           crypto: { getRandomValues: b => { b.fill(seq++); return b; } },
           CustomEvent: class { constructor(t, o) { this.type = t; this.detail = o && o.detail; } },
           location: new URL('http://127.0.0.1:8080/workbench'),
-          localStorage: createStorage(),
-          sessionStorage: createStorage(),
+          localStorage: memoryStorage(),
+          sessionStorage: memoryStorage(),
           navigator: { locks: createLockManager() },
            dispatchEvent(ev) { events.push(ev); },
         });
@@ -104,7 +98,7 @@ def test_pending_store_cas_and_storage_failure_serialization():
 
         // 1. pendingStore CAS rejects stale save(null, old) or save(rejected, old) even when getItem throws!
         {
-          const backing = createStorage();
+          const backing = memoryStorage();
           const store = T.pendingStore({
             key: 'cas_test_v1',
             storage: () => backing,
@@ -132,10 +126,28 @@ def test_pending_store_cas_and_storage_failure_serialization():
           assert.deepEqual(store.read(), second, 'Active second record remains intact');
         }
 
+        // 1b. 读不到磁盘只按 unreadable 标识识别，不比对文案：损坏文案默认取读取文案时，损坏记录不算读不到；
+        //     没给 readError 的存储（系统维护、最近排产）原样抛浏览器的 SecurityError，同一个异常带上标识。
+        {
+          const backing = memoryStorage();
+          const store = T.pendingStore({ key: 'unreadable_test_v1', storage: () => backing,
+            validate: v => typeof v.request_key === 'string', readError: '读不到上次操作记录', writeError: '写入失败' });
+          backing.failGet = new Error('getItem blocked');
+          assert.throws(() => store.read(), err => err.unreadable === true && err.message === '读不到上次操作记录');
+          backing.failGet = null;
+          backing.data.set('unreadable_test_v1', '{broken');
+          assert.throws(() => store.read(), err => err.unreadable === undefined && err.message === '读不到上次操作记录',
+            'A corrupt record shares the read message but is not an unreadable store');
+          const blocked = new DOMException('The operation is insecure.', 'SecurityError');
+          const bare = T.pendingStore({ key: 'unreadable_test_v1', storage: () => { throw blocked; }, validate: () => true });
+          assert.throws(() => bare.read(), err => err === blocked && err.unreadable === true,
+            'A store without readError rethrows the browser exception itself, marked unreadable');
+        }
+
         // 2. APSResourceAPI savePending / clearPending CAS serialization.
         {
-          w.sessionStorage = createStorage();
-          const resApi = APSResourceAPI.create('batches');
+          w.sessionStorage = memoryStorage();
+          const resApi = APSResourceAPI.forNamespace('batches');
           const intent1 = { kind: 'batch', action: 'create', ref: null, request_key: 'resource-' + '1'.repeat(48), input: { business_code: 'B1' } };
           const intent2 = { kind: 'batch', action: 'create', ref: null, request_key: 'resource-' + '2'.repeat(48), input: { business_code: 'B2' } };
           resApi.savePending(intent1);
@@ -151,7 +163,7 @@ def test_pending_store_cas_and_storage_failure_serialization():
 
         // 3. RunJobAPI begin/attach/finish CAS, idempotent repeated finish, and F03/F04 storage recovery.
         {
-          const runStore = createStorage();
+          const runStore = memoryStorage();
           w.localStorage = runStore;
           const p = RunJobAPI.pending;
           const inputRef = 'i'.repeat(32);
@@ -227,18 +239,7 @@ def test_trial_session_terminal_state_survives_remount_and_unmount():
           check_combined: false,
         });
 
-        function createStorage() {
-          const data = new Map();
-          return {
-            data,
-            failGet: null,
-            failSet: null,
-            failRemove: null,
-            getItem(k) { if (this.failGet) throw this.failGet; return data.has(k) ? data.get(k) : null; },
-            setItem(k, v) { if (this.failSet) throw this.failSet; data.set(k, v); },
-            removeItem(k) { if (this.failRemove) throw this.failRemove; data.delete(k); },
-          };
-        }
+        const { memoryStorage } = require('./tests/_support/memory_storage.cjs');
 
         function createHost(w) {
           let cursor = 0;
@@ -278,7 +279,7 @@ def test_trial_session_terminal_state_survives_remount_and_unmount():
           setTimeout, clearTimeout,
           crypto: { getRandomValues: b => { b.fill(seq++); return b; } },
           location: new URL('http://127.0.0.1:8080/workbench/trial'),
-          localStorage: createStorage(),
+          localStorage: memoryStorage(),
           navigator: { locks: createLockManager() },
           addEventListener(type, fn) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(fn); },
           removeEventListener(type, fn) { if (listeners.has(type)) listeners.get(type).delete(fn); },
@@ -298,7 +299,7 @@ def test_trial_session_terminal_state_survives_remount_and_unmount():
         const TrialAPI = w.__wbRuntime.getModule('TrialAPI.js');
         const TrialSession = w.__wbRuntime.getModule('TrialSession.js');
 
-        const rejectedErr = T.failure({
+        const rejectedErr = T.envelopeFailure({
           ok: false,
           committed: false,
           error: { code: 'stale_write', message: '草稿已变化', fields: [], retryable: false, request_ref: '1'.repeat(32) },
@@ -538,18 +539,7 @@ def test_system_maintenance_terminal_state_and_session_origin_across_remounts():
           check_combined: false,
         });
 
-        function createStorage() {
-          const data = new Map();
-          return {
-            data,
-            failGet: null,
-            failSet: null,
-            failRemove: null,
-            getItem(k) { if (this.failGet) throw this.failGet; return data.has(k) ? data.get(k) : null; },
-            setItem(k, v) { if (this.failSet) throw this.failSet; data.set(k, v); },
-            removeItem(k) { if (this.failRemove) throw this.failRemove; data.delete(k); },
-          };
-        }
+        const { memoryStorage } = require('./tests/_support/memory_storage.cjs');
 
         function createHost(w) {
           let cursor = 0;
@@ -627,7 +617,7 @@ def test_system_maintenance_terminal_state_and_session_origin_across_remounts():
           setTimeout, clearTimeout,
           crypto: { getRandomValues: b => { b.fill(seq++); return b; } },
           location: new URL('http://127.0.0.1:8080/workbench?view=system'),
-          localStorage: createStorage(),
+          localStorage: memoryStorage(),
           navigator: { locks: createLockManager() },
           addEventListener(type, fn) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(fn); },
           removeEventListener(type, fn) { if (listeners.has(type)) listeners.get(type).delete(fn); },
@@ -655,7 +645,7 @@ def test_system_maintenance_terminal_state_and_session_origin_across_remounts():
         const SystemMaintenanceAPI = w.__wbRuntime.getModule('SystemMaintenanceAPI.js');
         const SystemMaintenanceWorkspace = w.__wbRuntime.getModule('SystemMaintenanceWorkspace.jsx').SystemMaintenanceWorkspace;
 
-        const rejectedProblem = T.failure({
+        const rejectedProblem = T.envelopeFailure({
           ok: false,
           committed: false,
           error: { code: 'maintenance_active', message: '恢复被拒绝', fields: [], retryable: false, request_ref: '1'.repeat(32) },
@@ -840,7 +830,7 @@ def test_system_maintenance_terminal_state_and_session_origin_across_remounts():
         // 4. R4-01 & R4-02: Once a request_key settles to terminal:true, late non-terminal lookup/error must not clobber result;
         //    and when current.intent is cleared and localStorage.getItem throws, late settle() must not resurrect the cleared intent.
         {
-          const isolatedStore = createStorage();
+          const isolatedStore = memoryStorage();
           w.localStorage = isolatedStore;
           const p = SystemMaintenanceAPI.pending;
           const intentC = p.begin('create', { key: 'bk-c', record_kind: 'backup_file' });
@@ -888,7 +878,7 @@ def test_system_maintenance_terminal_state_and_session_origin_across_remounts():
         //    flushes under the cross-page lock, clears storageError/intent/result, and triggers onChanged for non-rejected commands.
         {
           currentHost = readyHost;
-          const recoverStore = createStorage();
+          const recoverStore = memoryStorage();
           w.localStorage = recoverStore;
           const beforeChanges = changedCalls;
           cmdImpl = async intent => terminalOperation(intent, 'succeeded', 'f', '备份创建成功');
@@ -960,21 +950,9 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
           check_combined: false,
         });
 
-        // One origin = one shared localStorage plus one LockManager. Every access to the storage can fire a hook.
-        function createOrigin() {
-          const disk = new Map(), locks = createLockManager();
-          let hook = null;
-          const fire = (op, key, phase) => { if (hook) hook(op, key, phase); };
-          return {
-            disk, locks,
-            failGet: null,
-            setHook(fn) { hook = fn; },
-            getItem(key) { fire('getItem', key, 'before'); if (this.failGet) throw this.failGet; const value = disk.has(key) ? disk.get(key) : null; fire('getItem', key, 'after'); return value; },
-            setItem(key, value) { fire('setItem', key, 'before'); disk.set(key, String(value)); fire('setItem', key, 'after'); },
-            failRemove: null,
-            removeItem(key) { fire('removeItem', key, 'before'); if (this.failRemove) throw this.failRemove; disk.delete(key); fire('removeItem', key, 'after'); },
-          };
-        }
+        // One origin = one shared localStorage plus one LockManager. Every access to the storage fires its onAccess hook.
+        const { memoryStorage } = require('./tests/_support/memory_storage.cjs');
+        const createOrigin = () => Object.assign(memoryStorage(), { locks: createLockManager() });
         // A page is an isolated realm: its globals are built inside the realm; localStorage and navigator.locks are realm
         // wrappers that only call the origin's getItem/setItem/removeItem and LockManager.request through a bridge.
         function makePage(origin) {
@@ -1007,11 +985,11 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
         // Both are awaited before any assertion.
         async function interleave(origin, point, runA, launchB) {
           let fired = false, launched = null;
-          origin.setHook((op, key, phase) => {
+          origin.onAccess = (op, key, phase) => {
             if (!fired && op === point.op && key === point.key && phase === point.phase) { fired = true; launched = settled(launchB()); }
-          });
+          };
           const a = await settled(runA());
-          origin.setHook(null);
+          origin.onAccess = null;
           assert.ok(launched, `The hook fired at ${point.op}/${point.phase}`);
           return { a, b: await launched };
         }
@@ -1042,8 +1020,8 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
             assert.ok(!a.error && !b.error, `Both pages complete (${label})`);
             assert.equal(b.value.acquired, true, `B's section runs after A released the lock (${label})`);
             const y = b.value.value;
-            assert.equal(JSON.parse(origin.disk.get(KEY)).request_key, y.request_key, `B's new pending intent survives (${label})`);
-            const recent = JSON.parse(origin.disk.get(RECENT));
+            assert.equal(JSON.parse(origin.data.get(KEY)).request_key, y.request_key, `B's new pending intent survives (${label})`);
+            const recent = JSON.parse(origin.data.get(RECENT));
             assert.equal(recent.intent.request_key, x.request_key, `RECENT keeps the conclusion for X (${label})`);
             assert.equal(runA.pending.read().request_key, y.request_key, `Page A reads B's intent (${label})`);
             cases.push('probe:' + label);
@@ -1065,7 +1043,7 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
             assert.equal(a.value.acquired, true);
             if (wait) assert.match(b.error.message, /试调提交/, `A waiting reserve meets the conflict (${label})`);
             else assert.equal(b.value.acquired, false, `ifAvailable refuses the second reserve (${label})`);
-            assert.equal(origin.disk.get(KEY), a.value.value, `Only A's key is stored (${label})`);
+            assert.equal(origin.data.get(KEY), a.value.value, `Only A's key is stored (${label})`);
             cases.push('trial:' + label);
           }
         }
@@ -1081,7 +1059,7 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
             () => TB.exclusive(KEY, { wait: true }, () => runB.pending.begin(inputB, ctxRef)));
           assert.equal(a.value.acquired, true);
           assert.match(b.error.message, /上次排产还没确认结果/, `The second begin is refused (${point.op}/${point.phase})`);
-          assert.equal(JSON.parse(origin.disk.get(KEY)).request_key, a.value.value.request_key);
+          assert.equal(JSON.parse(origin.data.get(KEY)).request_key, a.value.value.request_key);
           cases.push(`run-begin:${point.op}/${point.phase}`);
         }
 
@@ -1101,7 +1079,7 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
             }));
           assert.equal(a.value.value.run_ref, ref(2));
           assert.equal(b.error.conflict, true, `B's stale reject conflicts (${point.op}/${point.phase})`);
-          const stored = JSON.parse(origin.disk.get(KEY));
+          const stored = JSON.parse(origin.data.get(KEY));
           assert.equal(stored.request_key, x.request_key);
           assert.equal(stored.run_ref, ref(2), `A's attach is kept (${point.op}/${point.phase})`);
           cases.push(`attach-reject:${point.op}/${point.phase}`);
@@ -1120,14 +1098,14 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
           const { value: y } = await TB.exclusive(KEY, {}, () => pB.begin(inputB, ctxRef));
           await assert.rejects(TA.exclusive(KEY, { wait: true }, () => pA.finish(xa, 'found')), err => err.conflict === true && /上次操作记录已变化/.test(err.message));
           await assert.rejects(TA.exclusive(KEY, { wait: true }, () => pA.attach(x, ref(3))), /上次操作记录已变化/);
-          assert.equal(JSON.parse(origin.disk.get(KEY)).request_key, y.request_key, 'Stale callers leave the newer intent in place');
-          assert.equal(JSON.parse(origin.disk.get(RECENT)).intent.request_key, xa.request_key, 'Stale callers leave RECENT untouched');
+          assert.equal(JSON.parse(origin.data.get(KEY)).request_key, y.request_key, 'Stale callers leave the newer intent in place');
+          assert.equal(JSON.parse(origin.data.get(RECENT)).intent.request_key, xa.request_key, 'Stale callers leave RECENT untouched');
           const { value: ya } = await TB.exclusive(KEY, { wait: true }, () => { const attached = pB.attach(y, ref(4)); pB.finish(attached, 'found'); return attached; });
-          const recentRaw = origin.disk.get(RECENT);
+          const recentRaw = origin.data.get(RECENT);
           await TA.exclusive(KEY, { wait: true }, () => pA.finish(ya, 'context_replaced'));
           await TA.exclusive(KEY, { wait: true }, () => pA.finish(xa, 'found'));
-          assert.equal(origin.disk.has(KEY), false);
-          assert.equal(origin.disk.get(RECENT), recentRaw, 'Repeated and late finishes are no-ops');
+          assert.equal(origin.data.has(KEY), false);
+          assert.equal(origin.data.get(RECENT), recentRaw, 'Repeated and late finishes are no-ops');
           assert.equal(pA.recent().resolution, 'found');
           assert.equal(pA.recent().intent.request_key, ya.request_key);
           cases.push('stale-between-locks');
@@ -1138,11 +1116,11 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
           const origin1 = createOrigin(), origin2 = createOrigin(), page1 = makePage(origin1), page2 = makePage(origin2);
           const run1 = page1.__wbRuntime.getModule('RunJobAPI.js'), run2 = page2.__wbRuntime.getModule('RunJobAPI.js');
           let intent2 = null;
-          origin1.setHook((op, key, phase) => {
+          origin1.onAccess = (op, key, phase) => {
             if (!intent2 && op === 'setItem' && key === run1.PENDING_KEY && phase === 'before') intent2 = run2.pending.begin(inputB, ctxRef);
-          });
+          };
           const intent1 = run1.pending.begin(inputA, ctxRef);
-          origin1.setHook(null);
+          origin1.onAccess = null;
           assert.ok(intent1 && intent2, '5f: Nested begin on distinct origins both succeed');
           assert.equal(run1.pending.read().request_key, intent1.request_key);
           assert.equal(run2.pending.read().request_key, intent2.request_key);
@@ -1167,10 +1145,10 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
           try { sa.save(null, intent); } catch (err) { settleErr = err; }
           assert.ok(settleErr && settleErr.saved === null, '5i: Store A records saved=null');
           assert.equal(JSON.stringify(sb.read()), JSON.stringify(intent), '5i: Store B keeps its record');
-          assert.ok(storageB.disk.has('rf2_shared_key'));
+          assert.ok(storageB.data.has('rf2_shared_key'));
           throwA = false;
           assert.equal(sa.flush(), null, '5i: Store A flushes its own null once storage A recovers');
-          assert.equal(storageA.disk.has('rf2_shared_key'), false);
+          assert.equal(storageA.data.has('rf2_shared_key'), false);
         }
 
         // 5u. Polling and the accept receipt may both attach the same run_ref from the original intent (run_ref null): the repeat is a no-op.
@@ -1204,13 +1182,15 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
           origin.failRemove = null;
           const writesByA = [];
           let inB = false;
-          const watchA = extra => origin.setHook((op, key, phase) => {
-            if (!inB && op !== 'getItem') writesByA.push(op + ':' + key);
-            if (extra) extra(op, key, phase);
-          });
+          const watchA = extra => {
+            origin.onAccess = (op, key, phase) => {
+              if (!inB && op !== 'getItem') writesByA.push(op + ':' + key);
+              if (extra) extra(op, key, phase);
+            };
+          };
           watchA();
           assert.throws(() => pA.read(), err => err.saved === null && /无法更新/.test(err.message), 'RF13-01: read() reports the unflushed removal');
-          assert.equal(JSON.parse(origin.disk.get(KEY)).request_key, x.request_key, 'RF13-01: read() leaves X on disk');
+          assert.equal(JSON.parse(origin.data.get(KEY)).request_key, x.request_key, 'RF13-01: read() leaves X on disk');
           let bWork = null, releaseB = null, bReady = null, y = null, newBeforeResume = null;
           const bHeld = new Promise(resolve => { bReady = resolve; });
           const bDone = TB.exclusive(KEY, { wait: true }, () => new Promise(release => {
@@ -1221,18 +1201,18 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
           watchA((op, key, phase) => {
             if (inB || newBeforeResume !== null || op !== 'getItem' || key !== KEY || phase !== 'after') return;
             bWork();
-            newBeforeResume = JSON.parse(origin.disk.get(KEY)).request_key === y.request_key;
+            newBeforeResume = JSON.parse(origin.data.get(KEY)).request_key === y.request_key;
           });
           assert.throws(() => pA.read(), err => err.saved === null && /无法更新/.test(err.message), 'RF13-01: A read X, so it still reports its removal');
-          origin.setHook(null);
+          origin.onAccess = null;
           releaseB(); assert.equal((await bDone).acquired, true);
           console.log('new before A resumes: ' + newBeforeResume);
           assert.equal(newBeforeResume, true, 'RF13-01: B wrote Y before A resumed');
           assert.deepEqual(writesByA, [], 'RF13-01: a lock-free read() never calls setItem/removeItem');
-          assert.equal(JSON.parse(origin.disk.get(KEY)).request_key, y.request_key, 'RF13-01: B new record survives A read()');
+          assert.equal(JSON.parse(origin.data.get(KEY)).request_key, y.request_key, 'RF13-01: B new record survives A read()');
           const { value: flushed } = await TA.exclusive(KEY, { wait: true }, () => pA.flush());
           assert.equal(flushed.request_key, y.request_key, 'RF13-01: A locked flush drops its stale record and returns Y');
-          assert.equal(JSON.parse(origin.disk.get(KEY)).request_key, y.request_key);
+          assert.equal(JSON.parse(origin.data.get(KEY)).request_key, y.request_key);
           assert.equal(pA.read().request_key, y.request_key);
           cases.push('rf13-01');
         }
@@ -1246,9 +1226,9 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
           origin.failGet = new Error('getItem blocked');
           await assert.rejects(TP.exclusive(KEY, { wait: true }, () => p.finish(x, 'found')), err => err.saved === null && /读不到上次排产的操作记录/.test(err.message));
           origin.failGet = null;
-          assert.equal(origin.disk.has(RECENT), false, `RF13-02: RECENT is not written while getItem fails (${consumer})`);
+          assert.equal(origin.data.has(RECENT), false, `RF13-02: RECENT is not written while getItem fails (${consumer})`);
           let recentWrites = 0, y = null;
-          origin.setHook((op, key, phase) => { if (op === 'setItem' && key === RECENT && phase === 'after') recentWrites++; });
+          origin.onAccess = (op, key, phase) => { if (op === 'setItem' && key === RECENT && phase === 'after') recentWrites++; };
           if (consumer === 'flush') {
             origin.failRemove = new Error('removeItem blocked');
             await assert.rejects(TP.exclusive(KEY, { wait: true }, () => p.flush()), err => err.saved === null && /无法更新/.test(err.message));
@@ -1260,15 +1240,15 @@ def test_cross_page_pending_transitions_are_serialized_by_web_locks():
             else if (consumer === 'retry') p.finish(x, 'found');
             else y = p.begin(inputB, ctxRef);
           });
-          origin.setHook(null);
+          origin.onAccess = null;
           assert.equal(recentWrites, 1, `RF13-02: RECENT is written exactly once (${consumer})`);
-          const recent = JSON.parse(origin.disk.get(RECENT));
+          const recent = JSON.parse(origin.data.get(RECENT));
           assert.equal(JSON.stringify(recent.intent), JSON.stringify(x), `RF13-02: RECENT keeps intent X (${consumer})`);
           assert.equal(recent.resolution, 'found');
           if (consumer === 'begin') {
-            assert.equal(JSON.parse(origin.disk.get(KEY)).request_key, y.request_key, 'RF13-02: the new begin replaces the deferred removal');
+            assert.equal(JSON.parse(origin.data.get(KEY)).request_key, y.request_key, 'RF13-02: the new begin replaces the deferred removal');
           } else {
-            assert.equal(origin.disk.has(KEY), false, `RF13-02: PENDING is removed (${consumer})`);
+            assert.equal(origin.data.has(KEY), false, `RF13-02: PENDING is removed (${consumer})`);
             assert.equal(p.read(), null);
           }
           cases.push('rf13-02:' + consumer);

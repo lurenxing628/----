@@ -114,7 +114,7 @@ data.projections.occupancy.resources.push(occupancy);
 assert.equal(PlanGanttModel.tone(tasks[0], new Map([['B1', 'on_time']])), 'primary', 'On-time tasks retain the normal pale-blue tone');
 assert.equal(PlanGanttModel.tone(tasks[0], new Map([['B1', 'overdue']])), 'critical');
 const candidateData = { gantt_graph: { ...graph, scope: 'full_candidate' }, task_span: data.task_span, unplanned_operations: [], tasks: candidateTasks.map(task => ({ ...task,
-  batch_ref: ref(task.batch_id === 'B1' ? 300 : 301), batch_label: task.batch_id, machine: { ref: task.machine_ref, label: 'Machine' } })) };
+  batch_ref: ref(task.batch_id === 'B1' ? 300 : 301), batch_label: task.batch_id, machine: { ref: task.machine_ref, label: 'Machine' }, data_gaps: [] })) };
 // Same chain as RunCandidateGantt without a loaded baseline.
 const candidateLayout = (value, mode, query, width = 1000, operationRefs = null) => {
   const M = RunCandidateModel, B = RunBaselineModel;
@@ -259,11 +259,12 @@ const pointTask = { ...candidateData.tasks[2], row_ref: ref(900), task_ref: ref(
 const candidateFacts = RunCandidateModel.prepare({ ...candidateData, tasks: [...candidateData.tasks, pointTask] });
 const candidateGroups = RunCandidateModel.groupPrepared(candidateFacts, 'machine');
 const preparedCandidate = RunCandidateModel.selectPrepared(candidateGroups, '', null, null);
-const baseline = { comparisons: [{ operation_ref: candidateData.tasks[2].operation_ref, baseline_segments: [
-  { ...candidateData.tasks[2], row_ref: ref(902), interval_comparable: true, start: at(0), end: at(0) },
-  { ...pointTask, row_ref: ref(903), interval_comparable: true, start: '2026-10-12T00:05:00', end: '2026-10-12T00:05:00' },
-  { ...candidateData.tasks[3], row_ref: ref(904), interval_comparable: true, start: at(1), end: at(2) }
-] }] };
+// 每道工序最多一段原安排（UNIQUE(candidate_ref, operation_ref)）：三段分属三道工序。
+const baseline = { comparisons: [
+  { ...candidateData.tasks[2], row_ref: ref(902), start: at(0), end: at(0) },
+  { ...pointTask, row_ref: ref(903), start: '2026-10-12T00:05:00', end: '2026-10-12T00:05:00' },
+  { ...candidateData.tasks[3], row_ref: ref(904), start: at(1), end: at(2) }
+].map(segment => ({ operation_ref: segment.operation_ref, baseline_segment: segment })) };
 const baselineGroups = RunBaselineModel.groupPrepared(RunBaselineModel.prepare(baseline), 'machine');
 const prepared = RunBaselineModel.selectPrepared(preparedCandidate, baselineGroups, '', null, true);
 const sorts = [context.__normalSorts, context.__baselineSorts, context.__pointSorts], pointCalls = [], layoutTracks = PointGanttModel.layoutTracks;

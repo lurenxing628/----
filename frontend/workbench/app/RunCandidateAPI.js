@@ -1,64 +1,41 @@
-import APSWorkbenchTransport from './shared/network/transport.js';
+import T from './shared/network/transport.js';
+import { object, ref48, token32, localTime, checker } from './shared/contract/kit.js';
 
-const T = APSWorkbenchTransport;
+// 定型对象：transport 校验过的信封——数据在 .data，数据版本在 .meta.snapshot_ref，提示在 .warnings，其余元信息在 .meta。
+// 本文件另外保证：候选列表属于所查的排产记录，候选详情钉在请求的数据版本上，从排产记录进入时候选属于这次排产。
 const BASE = '/api/workbench/v1/scheduling';
-const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
-const text = v => typeof v === 'string', count = v => Number.isSafeInteger(v) && v >= 0;
-const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v), token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
-function check(value, message = '候选数据不完整或不一致，请刷新后重试。') { if (!value) throw new Error(message); }
+const count = v => Number.isSafeInteger(v) && v >= 0;
+const check = checker('候选数据不完整或不一致，请刷新后重试。');
 function exactKeys(v, allowed) {
   return object(v) && Object.keys(v).every(k => allowed.includes(k));
-}
-function time(v) {
-  if (!text(v) || !/^(?!0000)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?![\s\S])/.test(v)) return false;
-  const calendar = v.slice(0, 19), n = Date.parse(calendar + 'Z');
-  return Number.isFinite(n) && new Date(n).toISOString().slice(0, 19) === calendar;
-}
-// Legacy scopes accept 1–6 fractional digits. Compare without Date's millisecond truncation or rewriting the supplied scope.
-const timeKey = value => value.slice(0, 19) + '.' + (value.split('.')[1] || '').padEnd(6, '0');
-function summary(v, runRef) {
-  check(object(v) && ref(v.candidate_ref) && ref(v.run_ref) && (!runRef || v.run_ref === runRef));
-  return v;
-}
-function validateIdentity(v, candidateRef) {
-  const data = v.data;
-  check(ref(candidateRef) && data.candidate_ref === candidateRef
-    && ref(data.run_ref) && data.status === 'completed', '候选身份与所选方案不一致，请重新打开。');
-  return data;
 }
 function catalogScope(query) {
   check(exactKeys(query, ['page', 'size', 'status', 'sort', 'order', 'snapshot_ref']));
   const q = { page: 1, size: 20, status: 'all', sort: 'sequence', order: 'asc', ...query };
   check(Number.isInteger(q.page) && q.page >= 1 && q.page <= 256 && Number.isInteger(q.size) && q.size >= 1 && q.size <= 50
     && ['all', 'completed', 'partial'].includes(q.status) && ['sequence', 'label', 'task_count'].includes(q.sort)
-    && ['asc', 'desc'].includes(q.order) && (q.snapshot_ref === undefined || token(q.snapshot_ref)));
+    && ['asc', 'desc'].includes(q.order) && (q.snapshot_ref === undefined || token32(q.snapshot_ref)));
   if (q.snapshot_ref === undefined) delete q.snapshot_ref;
   return q;
 }
-function _validateCatalog(v, runRef, q) {
-  const d = v.data;
-  check(ref(runRef) && d.run_ref === runRef && object(d.page)
-    && d.page.number === q.page && d.page.size === q.size
-    && token(v.meta.snapshot_ref) && (!q.snapshot_ref || v.meta.snapshot_ref === q.snapshot_ref));
-  return d;
+function _validateCatalog(v, q) {
+  check(token32(v.meta.snapshot_ref) && (!q.snapshot_ref || v.meta.snapshot_ref === q.snapshot_ref));
+  return v.data;
 }
 function workspaceScope(candidateRef, query) {
-  check(ref(candidateRef), '请选择有效的候选方案。');
+  check(ref48(candidateRef), '请选择有效的候选方案。');
   check(exactKeys(query, ['range_start', 'range_end', 'batch_ref', 'sort', 'order', 'snapshot_ref']));
   const q = { sort: 'sequence', order: 'asc', ...query };
   check(['sequence', 'start', 'end'].includes(q.sort) && ['asc', 'desc'].includes(q.order)
-    && (q.batch_ref === undefined || ref(q.batch_ref)) && (q.snapshot_ref === undefined || token(q.snapshot_ref)));
-  if (q.range_start !== undefined || q.range_end !== undefined) check(time(q.range_start) && time(q.range_end)
-    && timeKey(q.range_start) < timeKey(q.range_end), '读取范围需要成对时间，开始须早于结束。');
+    && (q.batch_ref === undefined || ref48(q.batch_ref)) && (q.snapshot_ref === undefined || token32(q.snapshot_ref)));
+  // 时间只认后端 isoformat 的规范形状，同一规范下直接比字符串就是比时刻。
+  if (q.range_start !== undefined || q.range_end !== undefined) check(localTime(q.range_start) && localTime(q.range_end)
+    && q.range_start < q.range_end, '读取范围需要成对时间，开始须早于结束。');
   return q;
 }
-function _validateWorkspace(v, candidateRef, q) {
-  const d = v.data;
-  check(object(d.candidate) && d.candidate.candidate_ref === candidateRef
-    && ref(d.candidate.run_ref)
-    && (!q.snapshot_ref || q.snapshot_ref === v.meta.snapshot_ref) && d.batch_ref === (q.batch_ref ?? null)
-    && object(d.time_scope) && d.time_scope.range_start === (q.range_start ?? null) && d.time_scope.range_end === (q.range_end ?? null));
-  return d;
+function _validateWorkspace(v, q) {
+  check(!q.snapshot_ref || q.snapshot_ref === v.meta.snapshot_ref);
+  return v.data;
 }
 // 文件名非空与后缀由传输层按 Content-Type 断言；这里只核对本领域业务头与当前读取范围。
 function download(value, result) {
@@ -69,27 +46,29 @@ function download(value, result) {
 }
 const read = (path, query, signal) => T.read(BASE + path, query, { signal, timeout: 60000 });
 async function identity(candidateRef, signal) {
-  check(ref(candidateRef)); const value = await read('/candidates/' + candidateRef + '/identity', {}, signal);
-  validateIdentity(value, candidateRef); return value;
+  check(ref48(candidateRef)); return read('/candidates/' + candidateRef + '/identity', {}, signal);
 }
 async function catalog(runRef, query, signal) {
-  check(ref(runRef)); const q = catalogScope(query), value = await read('/runs/' + runRef + '/candidates', q, signal);
-  _validateCatalog(value, runRef, q); return value;
+  check(ref48(runRef)); const q = catalogScope(query), value = await read('/runs/' + runRef + '/candidates', q, signal);
+  _validateCatalog(value, q); check(value.data.run_ref === runRef); return value;
 }
-async function workspace(candidateRef, query, signal) {
+// 从某次排产记录进入时带 runRef：读到的候选方案必须属于这次排产。
+async function workspace(candidateRef, query, signal, runRef) {
   const q = workspaceScope(candidateRef, query), value = await read('/candidates/' + candidateRef + '/workspace', q, signal);
-  _validateWorkspace(value, candidateRef, q); return value;
+  _validateWorkspace(value, q);
+  check(!runRef || value.data.candidate.run_ref === runRef, '候选方案不属于所选排产记录。');
+  return value;
 }
 // 传输层已校验附件、文件名与后缀、格式、魔数与非空；这里只取文件与本领域的四个响应头，与当前读取范围的核对在 download() 里做。
 async function exportFile(candidateRef, query, snapshotRef, fmt, signal) {
-  check(token(snapshotRef) && ['csv', 'xlsx'].includes(fmt)); const q = workspaceScope(candidateRef, { ...query, snapshot_ref: snapshotRef });
+  check(token32(snapshotRef) && ['csv', 'xlsx'].includes(fmt)); const q = workspaceScope(candidateRef, { ...query, snapshot_ref: snapshotRef });
   const file = await T.download(BASE + '/candidates/' + candidateRef + '/export', { ...q, format: fmt }, { signal, timeout: 60000, types: [T.types[fmt]] });
   const headerCount = key => { const raw = file.header(key); check(raw !== null && /^\d+$/.test(raw) && count(Number(raw))); return Number(raw); };
   return { blob: file.blob, filename: file.filename, candidate_ref: file.header('X-Workbench-Candidate-Ref'),
     snapshot_ref: file.header('X-Workbench-Snapshot-Ref'), task_count: headerCount('X-Workbench-Task-Count'), row_count: headerCount('X-Workbench-Row-Count') };
 }
-const RunCandidateAPI = { identity, catalog, workspace, export: exportFile, check, ref, time, timeKey, summary, validateIdentity, catalogScope,
+const RunCandidateAPI = { identity, catalog, workspace, export: exportFile, check, catalogScope,
   workspaceScope, download };
-export { RunCandidateAPI, identity, catalog, workspace, exportFile as export, check, ref, time, timeKey, summary, validateIdentity, catalogScope,
+export { RunCandidateAPI, identity, catalog, workspace, exportFile as export, check, catalogScope,
   workspaceScope, download };
 export default RunCandidateAPI;

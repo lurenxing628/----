@@ -1,9 +1,9 @@
 import React from './shared/runtime/react.js';
-import RunCandidateModel from './RunCandidateModel.js';
-import RunBaselineModel from './RunBaselineModel.js';
-import RunBaselineControls from './RunBaselineControls.jsx';
-import RunCandidateControls from './RunCandidateControls.jsx';
-import ResourceControls, { EmptyState } from './ResourceControls.jsx';
+import M from './RunCandidateModel.js';
+import B from './RunBaselineModel.js';
+import BC from './RunBaselineControls.jsx';
+import { Button } from './RunCandidateControls.jsx';
+import ResourceControls, { EmptyState, TimelineZoom, timelineZoomKey, timelineZoomStep } from './ResourceControls.jsx';
 import PointGantt from './PointGantt.jsx';
 import GanttPresentation from './GanttPresentation.js';
 import PointGanttModel from './PointGanttModel.js';
@@ -14,8 +14,7 @@ import GanttGraph from './GanttGraph.js';
 import { PlanSegmentUI } from './PlanGantt.jsx';
 import GanttGraphLayer from './GanttGraphLayer.jsx';
 
-const M = RunCandidateModel, B = RunBaselineModel, BC = RunBaselineControls, { Button } = RunCandidateControls;
-const { TimelineZoom, timelineZoomKey, timelineZoomStep } = ResourceControls, ZOOM_MAX = 128;
+const ZOOM_MAX = 128;
 function PointLane({ row, items, model, risks, width, left, viewport, printing, selected, baselineSelected, active, onSelect, onHover }) {
   const scale = width / (model.end - model.start);
   return <div data-candidate-point-lane style={{ position: 'absolute', left, width: viewport, height: row.height, overflow: 'hidden' }}>
@@ -127,7 +126,7 @@ function RunCandidateGantt({ data, prepared: facts, comparison, query, onQuery, 
   const operationRefs = displayChangedOnly ? changed : null;
   const inspected = React.useMemo(() => {
     const row = result && inspectedRef && result.data.comparisons.find(row => row.operation_ref === inspectedRef);
-    return row ? { comparison: row, segment: row.baseline_segments[0] || null } : null;
+    return row ? { comparison: row, segment: row.baseline_segment } : null;
   }, [result, inspectedRef]);
   const selectedItem = selection && selection.result === result ? selection.item : inspected;
   const candidateGroups = React.useMemo(() => M.groupPrepared(facts, mode), [facts, mode]);
@@ -244,7 +243,7 @@ function RunCandidateGantt({ data, prepared: facts, comparison, query, onQuery, 
       </div></div>
     {!data.reference && baseline.enabled && <BC.Source workspace={data} comparison={comparison} />}
     <BC.Problems workspace={data} issues={problems} onInspect={inspectProblem} />
-    <BC.Panel state={baseline} rows={(model.comparisons || []).filter(row => !inspectedRef || unknown.has(row.operation_ref))} chosen={chosen} onChoose={selectBaseline} workspace={data}
+    <BC.Panel state={baseline} rows={model.comparisons.filter(row => !inspectedRef || unknown.has(row.operation_ref))} chosen={chosen} onChoose={selectBaseline} workspace={data}
       inspecting={!!inspectedRef} onShowAll={canCompare ? () => setInspection(null) : undefined} />
     <GanttGraphLayer.Controls graph={data.gantt_graph} enabled={chainEnabled} onChange={setChainEnabled} active={active} geometry={geometry} onClear={() => { setHover(null); onSelect(null); }} />
     {model.unplottableTasks.length > 0 && <p className="rc-muted">{model.unplottableTasks.length} 道安排的时间缺项或无效，请在下方任务安排表或工序详情核对。</p>}

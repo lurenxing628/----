@@ -1,21 +1,22 @@
 import React from './shared/runtime/react.js';
-import RunCandidateControls from './RunCandidateControls.jsx';
+import C from './RunCandidateControls.jsx';
 import RunDecisionComparison from './RunDecisionComparison.jsx';
-import RunCandidateModel from './RunCandidateModel.js';
-import WorkbenchTerms from './WorkbenchTerms.js';
-import RunDecisionAPI from './RunDecisionAPI.js';
-import WorkbenchFormat from './WorkbenchFormat.js';
+import M from './RunCandidateModel.js';
+import T from './WorkbenchTerms.js';
+import A from './RunDecisionAPI.js';
+import F from './WorkbenchFormat.js';
 import WorkbenchDatePickerModel from './WorkbenchDatePickerModel.js';
 import { useQuery } from './shared/session/query.js';
 import APSWorkbenchTransport from './shared/network/transport.js';
 import RunDecisionResourceHeatmap from './RunDecisionResourceHeatmap.jsx';
+import { failure } from './shared/contract/kit.js';
 
-const C = RunCandidateControls, M = RunCandidateModel, T = WorkbenchTerms, A = RunDecisionAPI, F = WorkbenchFormat;
 const leafKeys = ['resource_kind', 'resource_ref', 'pressure_filter', 'pressure_threshold', 'grain', 'display_start', 'display_end', 'sort', 'order', 'page', 'size', 'snapshot_ref', 'heatmap_page', 'heatmap_size', 'heatmap_mode', 'heatmap_focus', 'day_resource_ref', 'day_page', 'day_size', 'day_snapshot_ref', 'day_bucket_start', 'day_bucket_end', 'day_grain'];
 const ratios = new Set(['utilization_ratio', 'demand_ratio', 'peak_utilization', 'known_utilization_ratio']);
 const sorts = [['after_peak_utilization', '当前单日最高占用比例'], ['after_utilization', '当前班表内占用比例'], ['utilization_delta', '占用比例增幅'], ['after_demand_hours', '当前逐工序占用合计'], ['after_available_hours', '当前可排总时长'], ['label', '资源名称']];
 const pressureFilters = [['all', '全部资源'], ['high_pressure', '高负荷'], ['demand_overload', '需求超载'], ['zero_capacity', '无可排时段仍有工作'], ['conflicts', '班表内冲突'], ['unknown', '班表待确认']];
 const grains = [['hour', '小时'], ['shift', '班次'], ['day', '天'], ['week', '周']];
+const noReferenceRanking = '没有参照方案，不能按增量排名';
 function storedQuery(query, cohort, scope) {
   const stored = Object.fromEntries(Object.entries(query).filter(([key]) => leafKeys.includes(key))), next = A.savedResourceView(stored, cohort, scope), refs = cohort[next.resource_kind || 'machine'];
   if (next.day_resource_ref && !refs.includes(next.day_resource_ref)) { delete next.day_resource_ref; delete next.day_snapshot_ref; delete next.day_bucket_start; delete next.day_bucket_end; delete next.day_grain; next.day_page = 1; }
@@ -25,7 +26,7 @@ function storedQuery(query, cohort, scope) {
   }
   return next;
 }
-function scalar(value, key) { return value === null || value === undefined ? '未知' : ratios.has(key) ? WorkbenchFormat.percent(value) : M.number(value); }
+function scalar(value, key) { return value === null || value === undefined ? '未知' : ratios.has(key) ? F.percent(value) : M.number(value); }
 function metricState(value, key) { return value[key] !== null ? value.state : key === 'balance_cv' ? value.balance_state : ratios.has(key) && value.available_hours === 0 ? 'not_applicable' : value.state; }
 function metricText(value, key) { return value[key] === null && metricState(value, key) === 'not_applicable' ? ratios.has(key) && value.available_hours === 0 ? '不适用（无可排时段）' : '不适用' : scalar(value[key], key); }
 function deltaText(value, key) {
@@ -67,11 +68,11 @@ function Calculation({ data }) {
     <p>安排保留跨度跨越休息时段时，跨休息部分继续保留在详情；其中可包含正常跨夜暂停。休息时段不计班表内加工占用，实际班外加工需保存的真实工作片段依据。统计范围占用比例按占用工时之和除以可排工时之和计算，热力图分页只改变当前显示时段。</p></details>;
 }
 function Coverage({ data }) {
-  return <details className="rres-coverage"><summary>正式安排对照与未安排工序</summary>{[['before', '基准'], ['after', '当前方案']].map(([side, label]) => { const value = data.coverage[side], missing = T.missing_arrangements(value.unplanned_operation_refs.length, value.deferred_operation_refs.length);
+  return <details className="rres-coverage"><summary>正式安排对照与未安排工序</summary>{[['before', '基准'], ['after', '当前方案']].map(([side, label]) => { const value = data.coverage[side], missing = T.missing_arrangements(value.unplanned_operation_count, value.deferred_operation_count);
     if (side === 'before' && data.baseline.state !== 'available') return <div key={side}><strong>{label}：</strong><span>{RunDecisionComparison.referenceNotice(data)}未安排工序与正式安排对照待确认。</span></div>;
     return <div key={side}><strong>{label}：</strong>{value.formal_state === 'absent' ? '排产时尚无正式计划。' : <>包含正式计划工序 {scalar(value.covered_formal_operation_count)} / {scalar(value.formal_operation_count)} 道{!value.formal_coverage_complete && ' · 还有正式工序未包含在内'}</>}
     {missing && <span>{missing}</span>}
-    {value.missing_formal_arrangements.length > 0 && <details><summary>缺失的正式安排 · {value.missing_formal_operation_refs.length} 道工序</summary>{value.missing_formal_arrangements.map((item, index) => <div key={item.row_ref || item.operation_ref + ':' + index}>{item.batch_label} · {item.process_label || T.name_missing}</div>)}</details>}</div>; })}
+    {value.missing_formal_arrangements.length > 0 && <details><summary>缺失的正式安排 · {value.missing_formal_operation_count} 道工序</summary>{value.missing_formal_arrangements.map((item, index) => <div key={item.row_ref || item.operation_ref + ':' + index}>{item.batch_label} · {item.process_label || T.name_missing}</div>)}</details>}</div>; })}
     </details>;
 }
 function Locate({ row, onDrill }) {
@@ -86,7 +87,8 @@ function ResourceTable({ data, definitions, onFocus, onDrill }) {
       <td className="wb-col-actions"><Locate row={row} onDrill={onDrill} /></td></tr>)}</tbody></table></div>;
 }
 function Rankings({ data, onFocus, onAll }) {
-  return <div className="rres-rankings">{[['top_pressure', '单日占用比例最高', 'after_peak_utilization'], ['top_increase', '占用比例增幅最大', 'utilization_delta']].map(([key, label, sort]) => <details key={key}><summary>{label} · 前 {data.rankings.limit} 个</summary><ol>{data.rankings[key].map(row => <li key={row.resource_ref}><C.Button className="btn link" onClick={() => onFocus(row)}>{row.label || T.name_missing}</C.Button><span>{key === 'top_pressure' ? metricText(row.after, 'peak_utilization') : deltaText(row.deltas.utilization_ratio, 'utilization_ratio')}</span></li>)}</ol><C.Button className="btn link" onClick={() => onAll(sort)}>在资源表展开全部</C.Button></details>)}</div>;
+  const referenced = data.baseline.state === 'available';
+  return <div className="rres-rankings">{[['top_pressure', '单日占用比例最高', 'after_peak_utilization'], ['top_increase', '占用比例增幅最大', 'utilization_delta']].map(([key, label, sort]) => <details key={key}><summary>{label} · 前 {data.rankings.limit} 个</summary>{key === 'top_increase' && !referenced ? <p className="rc-empty">{noReferenceRanking}</p> : <><ol>{data.rankings[key].map(row => <li key={row.resource_ref}><C.Button className="btn link" onClick={() => onFocus(row)}>{row.label || T.name_missing}</C.Button><span>{key === 'top_pressure' ? metricText(row.after, 'peak_utilization') : deltaText(row.deltas.utilization_ratio, 'utilization_ratio')}</span></li>)}</ol><C.Button className="btn link" onClick={() => onAll(sort)}>在资源表展开全部</C.Button></>}</details>)}</div>;
 }
 function DayFacts({ value, label, onDrill }) {
   return <details className="rres-day-facts"><summary>{label}：{value.tasks.length} 段安排记录{value.conflicts.length > 0 && ' · ' + value.conflicts.length + ' 段重叠'}</summary>
@@ -127,7 +129,8 @@ function RangeControls({ scope, onRange, title }) {
     try {
       const time = WorkbenchDatePickerModel.factoryTime;
       const range_start = time(value.range_start), range_end = time(value.range_end);
-      if (range_start >= range_end) throw new Error('请选择开始早于结束的资源时间范围。');
+      // 读取范围的本地拦截：后端 RunDecisionSource._scope 也拒绝倒置范围（不带字段路径），但要先解开排产决策和候选归档才判，这里先拦住白跑的重读取。
+      if (range_start >= range_end) { setError(failure('请选择开始早于结束的资源时间范围。')); return; }
       setError(null); close(); onRange({ range_start, range_end });
     } catch (problem) { setError(problem); }
   }
@@ -142,30 +145,27 @@ function Pane({ result, query, onQuery, onView, onRange, onDrill, enabled }) {
   const storedKey = JSON.stringify(stored);
   React.useEffect(() => { if (!enabled) return; const prior = Object.fromEntries(Object.entries(query).filter(([key]) => leafKeys.includes(key))); if (JSON.stringify(prior) !== storedKey) onQuery(stored); }, [enabled, storedKey, JSON.stringify(query)]);
   const [paused, setPaused] = React.useState(false), [daysPaused, setDaysPaused] = React.useState(false);
-  const consumed = React.useRef(null), lastDetailRef = React.useRef(null), qKey = JSON.stringify(q);
+  const consumed = React.useRef(null), qKey = JSON.stringify(q);
   React.useEffect(() => { setPaused(false); }, [runRef, qKey, result]);
   const read = useQuery(signal => {
     if (signal.aborted) throw new DOMException('读取已取消', 'AbortError');
-    // 资源首屏顺带读回的资源结果只消费一次；失败信封由 APSWorkbenchTransport.failure 统一解析。
+    // 资源首屏顺带读回的资源结果只消费一次；失败信封由 APSWorkbenchTransport.envelopeFailure 统一解析。
     const embedded = result.data.resource_result;
     if (embedded && consumed.current !== result
         && JSON.stringify(A.resourceScope(runRef, { ...result.data.resource_query, ...shared })) === qKey) {
       consumed.current = result;
-      if (embedded.ok !== true) throw APSWorkbenchTransport.failure(embedded, embedded.status);
+      if (embedded.ok !== true) throw APSWorkbenchTransport.envelopeFailure(embedded, embedded.status);
       return embedded;
     }
-    return A.resources(runRef, { ...q, expected_resource_refs: scope.resource_refs }, signal);
-  }, [runRef, qKey, result], enabled && !paused);
-  const detailKey = runRef + ':resources:' + q.selected_candidate_ref;
-  if (read.result) lastDetailRef.current = { key: detailKey, detail: read.result };
-  else if (!read.loading || (lastDetailRef.current && lastDetailRef.current.key !== detailKey)) lastDetailRef.current = null;
-  const detail = read.result || (read.loading && lastDetailRef.current && lastDetailRef.current.key === detailKey ? lastDetailRef.current.detail : null);
+    return A.resources(runRef, q, signal);
+  }, [runRef, qKey, result], { enabled: enabled && !paused, keep: runRef + ':resources:' + q.selected_candidate_ref });
+  const detail = read.shown;
   const data = detail && detail.data;
   const activeFilters = [q.resource_ref && data && data.filter_options.resources.find(row => row.ref === q.resource_ref)?.label, !['all', 'high_pressure', 'conflicts'].includes(q.pressure_filter) && pressureFilters.find(row => row[0] === q.pressure_filter)[1]].filter(Boolean);
   const dayRef = stored.day_resource_ref, dayQ = dayRef ? A.resourceScope(runRef, { ...shared, resource_kind: q.resource_kind, resource_ref: dayRef, grain: stored.day_grain || 'day', bucket_start: stored.day_bucket_start, bucket_end: stored.day_bucket_end, pressure_threshold: q.pressure_threshold, page: stored.day_page || 1, size: stored.day_size || 20, snapshot_ref: stored.day_snapshot_ref }, 'resource-days') : null;
   const dayKey = JSON.stringify(dayQ);
   React.useEffect(() => { setDaysPaused(false); }, [runRef, dayKey, result]);
-  const days = useQuery(signal => A.resourceDays(runRef, { ...dayQ, expected_resource_refs: scope.resource_refs }, signal), [runRef, dayKey, result], enabled && !!dayQ && !daysPaused);
+  const days = useQuery(signal => A.resourceDays(runRef, dayQ, signal), [runRef, dayKey, result], { enabled: enabled && !!dayQ && !daysPaused });
   function change(value, type = 'filter') {
     const next = { ...stored, ...value };
     if (type === 'filter' || type === 'refresh') { next.page = 1; delete next.snapshot_ref; }
@@ -209,7 +209,7 @@ function Pane({ result, query, onQuery, onView, onRange, onDrill, enabled }) {
     <label>排序<select aria-label="资源影响排序" value={q.sort} disabled={read.loading} onChange={event => change({ sort: event.target.value })}>{sorts.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>顺序<select aria-label="资源影响顺序" value={q.order} disabled={read.loading} onChange={event => change({ order: event.target.value })}><option value="desc">降序</option><option value="asc">升序</option></select></label>
     <label>每页<select aria-label="资源影响每页条数" value={q.size} disabled={read.loading} onChange={event => change({ size: Number(event.target.value) })}><option value="20">20 个</option><option value="50">50 个</option></select></label></div></details>
-    <div className="rc-tools rd-detail-actions">{data && <D.Export key={detail.meta.snapshot_ref} result={detail} initialSection="resources" filterQuery={{ ...q, ...data.filters }} />}<C.Button icon="refresh-cw" aria-label="刷新资源影响" disabled={read.loading} onClick={refresh} /></div></div>
+    <div className="rc-tools rd-detail-actions">{data && <D.Export key={read.result ? read.result.meta.snapshot_ref : 'unavailable'} result={read.result} initialSection="resources" filterQuery={{ ...q, ...data.filters }} />}<C.Button icon="refresh-cw" aria-label="刷新资源影响" disabled={read.loading} onClick={refresh} /></div></div>
     {q.grain === 'hour' && stored.display_start && <C.Button className="btn link" disabled={read.loading} onClick={() => change({ display_start: undefined, display_end: undefined, heatmap_page: 1 })}>恢复整个统计范围</C.Button>}
     <C.ErrorBox error={read.error} />{read.loading && <div className="rc-tools"><span role="status">正在读取所选时间范围的资源使用情况。</span><C.Button icon="x" onClick={() => setPaused(true)}>取消读取</C.Button></div>}{paused && <p className="rc-muted" role="status">资源影响读取已取消，点击刷新继续。</p>}
     {data && <><C.Reasons rows={detail.warnings} />
@@ -225,6 +225,6 @@ function Pane({ result, query, onQuery, onView, onRange, onDrill, enabled }) {
       <Coverage data={data} /><Calculation data={data} /><Rankings data={data} onFocus={focus} onAll={sort => change({ sort, order: 'desc', resource_ref: undefined })} /></details>}
   </section>;
 }
-const RunDecisionResources = { Pane, ResourceTable, Days, SelectedWindow, Summary, Coverage, RangeControls, scalar, metricState, metricText, deltaText, metricDefinition, Flags, storedQuery };
-export { RunDecisionResources, Pane, ResourceTable, Days, SelectedWindow, Summary, Coverage, RangeControls, scalar, metricState, metricText, deltaText, metricDefinition, Flags, storedQuery };
+const RunDecisionResources = { Pane, ResourceTable, Days, SelectedWindow, Summary, Coverage, Rankings, RangeControls, scalar, metricState, metricText, deltaText, metricDefinition, Flags, storedQuery };
+export { RunDecisionResources, Pane, ResourceTable, Days, SelectedWindow, Summary, Coverage, Rankings, RangeControls, scalar, metricState, metricText, deltaText, metricDefinition, Flags, storedQuery };
 export default RunDecisionResources;

@@ -1,6 +1,6 @@
 import React from './shared/runtime/react.js';
-import C from './resource-contract.js';
 import S from './shared/session/command-session.js';
+import APSResourceAPI from './resource-api.js';
 import { useQuery } from './shared/session/query.js';
 import APSResourceMaterial from './ResourceMaterialContract.js';
 import { Button, Modal, Icon, ErrorBox, Issues } from './ResourceControls.jsx';
@@ -10,6 +10,7 @@ import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
+import { failure } from './shared/contract/kit.js';
 
 function Format({ value, onChange, disabled }) {
   return <div className="rm-format"><span className="seclabel">文件格式</span><div className="seg" role="group" aria-label="文件格式">
@@ -21,15 +22,19 @@ function ExportOptions({ selection, setSelection, refs, disabled, kind, scopeLab
       <label key={key} className={'iorow' + (selection === key ? ' on' : '')}><input type="radio" name={kind + '-export-scope'} value={key} checked={selection === key} onChange={() => setSelection(key)} />
         <div><div className="iotitle">{title}</div><div className="iosub">{detail}</div></div></label>)}</fieldset>;
 }
-function ResourceFileActionFlow({ adapter, mode, request, onClose, onCommitted, contract: M }) {
+// 每个文件家族一个命名空间（M.kind + '_files'），待确认记录与命令会话按家族独立。
+function ResourceFileActionFlow({ mode, request, onClose, onCommitted, contract: M }) {
+  const api = APSResourceAPI.forNamespace(M.kind + '_files');
   // 宿主（ResourceLive 的恢复入口、ResourceWorkspace.openExternal、openCalendarFile）每次新建 request，refs 恒为数组、scope 恒为对象，无人原地改写。
   const [original] = React.useState(request);
   const [format, setFormat] = React.useState('xlsx'), [file, setFile] = React.useState(null);
   // 导出范围默认是三档单选里的"还没选"；给了 ExportScope 的契约自己决定初值（日历用的是日期区间）。
   const [selection, setSelection] = React.useState(() => M.exportScopeInitial === undefined ? '' : M.exportScopeInitial);
   const [job, setJob] = React.useState(null), [error, setError] = React.useState(null), [acknowledged, setAcknowledged] = React.useState(false);
+  // 已确认保存之后宿主刷新列表失败：原错误对象原样交给 ErrorBox，“已保存”这层意思由下面固定的中文说明给出。
+  const [refreshError, setRefreshError] = React.useState(null);
   const [download, setDownload] = React.useState({ busy: false, name: null }), [now, setNow] = React.useState(Date.now());
-  const command = S.useCommand(adapter), notified = React.useRef(null), alive = React.useRef(true), downloadAbort = React.useRef(null);
+  const command = S.useCommand(api), notified = React.useRef(null), alive = React.useRef(true), downloadAbort = React.useRef(null);
   const category = command.intent ? command.intent.category : original.scope.category;
   const label = M.resourceLabel ? M.resourceLabel(category) : M.label;
   const effectiveMode = command.intent && ['sending', 'pending', 'checking', 'done'].includes(command.phase)
@@ -45,15 +50,12 @@ function ResourceFileActionFlow({ adapter, mode, request, onClose, onCommitted, 
       body = new FormData(); body.append('file', job.file); body.append('format', job.format); body.append('mode', 'upsert');
       if (M.kind === 'op_type') body.append('category', M.category(original));
     } else body = job.body;
-    const raw = await adapter.preview(M.paths[effectiveMode], body, signal);
+    const raw = await api.preview(M.paths[effectiveMode], body, signal);
     if (isExport) {
-      const result = M.exportPreview(raw, job.selection, job.body);
-      if (M.rowsMatchSelection && job.selection === 'selected' && result.data.row_count !== M.selection(original).length)
-        throw C.failure('导出预检数量与勾选的' + label + '不一致，没有开始下载。');
-      return result;
+      return M.exportPreview(raw, job.selection, job.body);
     }
     return M.preview(raw, effectiveMode, effectiveMode === 'import' ? job.format : M.selection(original), original);
-  }, [adapter, job, effectiveMode, M], !!job);
+  }, [job, effectiveMode, M], { enabled: !!job });
   const result = query.result, data = result && result.data;
   const activeRead = !!job && query.loading;
   const controlsDisabled = command.locked || done || activeRead || download.busy;
@@ -68,8 +70,8 @@ function ResourceFileActionFlow({ adapter, mode, request, onClose, onCommitted, 
   React.useEffect(() => {
     if (!done || notified.current === command.intent.request_key) return;
     notified.current = command.intent.request_key;
-    Promise.resolve().then(() => onCommitted(command.result)).catch(failure => {
-      if (alive.current) setError(C.failure('已保存，但列表刷新失败：' + C.message(failure)));
+    Promise.resolve().then(() => onCommitted(command.result)).catch(error => {
+      if (alive.current) setRefreshError(error);
     });
   }, [done, command.intent, command.result, onCommitted]);
   async function close(detail) {
@@ -84,18 +86,18 @@ function ResourceFileActionFlow({ adapter, mode, request, onClose, onCommitted, 
   function chooseFile(files) {
     if (controlsDisabled) return;
     invalidate(); setFile(null);
-    if (!files || files.length !== 1) { setError(C.failure('一次只能选择一个 CSV 或 XLSX 文件。')); return; }
+    if (!files || files.length !== 1) { setError(failure('一次只能选择一个 CSV 或 XLSX 文件。')); return; }
     setFile(files[0]);
   }
   function preflight() {
     if (controlsDisabled || recovery) return;
     if (!command.reset()) return;
     setError(null); setAcknowledged(false); setDownload({ busy: false, name: null });
-    if (effectiveMode === 'import' && !file) { setError(C.failure('请先选择文件。')); return; }
-    if (isExport && !selection) { setError(C.failure('请先选择导出范围。')); return; }
+    if (effectiveMode === 'import' && !file) { setError(failure('请先选择文件。')); return; }
+    if (isExport && !selection) { setError(failure('请先选择导出范围。')); return; }
     try {
       if (M.category) M.category(original);
-      if (effectiveMode === 'bulk' && !M.selection(original).length) throw C.failure('未选中' + label + '，请选择后重试。');
+      if (effectiveMode === 'bulk' && !M.selection(original).length) throw failure('未选中' + label + '，请选择后重试。');
       const body = effectiveMode !== 'import' ? M.requestBody(effectiveMode, original, selection) : null;
       setJob({ file, format, selection, body }); setNow(Date.now());
     } catch (failure) { setJob(null); setError(failure); }
@@ -113,13 +115,13 @@ function ResourceFileActionFlow({ adapter, mode, request, onClose, onCommitted, 
   }
   async function downloadFile(template) {
     if (controlsDisabled || !template && (!data || expired)) return;
-    if (!template && !data.formats.includes(format)) { setError(C.failure('这次导出预检不支持所选文件格式，请重新预检。')); return; }
+    if (!template && !data.formats.includes(format)) { setError(failure('这次导出预检不支持所选文件格式，请重新预检。')); return; }
     const controller = new AbortController(); downloadAbort.current = controller;
     setDownload({ busy: true, name: null }); setError(null);
     try {
       const scope = template ? { format } : { export_ref: data.export_ref, format };
       if (template && M.kind === 'op_type') scope.category = M.category(original);
-      const response = await adapter.download(template ? M.paths.template : M.paths.download, scope, controller.signal);
+      const response = await api.download(template ? M.paths.template : M.paths.download, scope, controller.signal);
       if (controller.signal.aborted || !alive.current) return;
       const name = M.saveDownload(response, format);
       if (alive.current) setDownload({ busy: false, name });
@@ -127,6 +129,9 @@ function ResourceFileActionFlow({ adapter, mode, request, onClose, onCommitted, 
     finally { if (downloadAbort.current === controller) downloadAbort.current = null; }
   }
   const title = ({ import: '批量导入', export: '批量导出', bulk: '批量删除' }[effectiveMode] || '操作') + ' · ' + label;
+  // 自带导出范围表单（ExportScope）的领域同时给出范围项的字段路径：本地范围检查与后端导出预检的错误都标在范围项上，总错误框不再重复。
+  // 两种错误不会同时存在（本地检查失败时不发预检，useQuery 停用即清掉旧错误），先取本地的。
+  const scopePaths = isExport && M.ExportScope ? M.exportFieldPaths : [];
   return <div className={'plana rm-actions' + (data && !isExport ? ' rm-wide' : '')}>
     <Modal title={title} icon={effectiveMode === 'bulk' ? 'trash-2' : isExport ? 'file-output' : 'file-input'} onClose={close} guardOwner={guardOwner} locked={command.locked}
       footer={<><Button onClick={() => close()} reason={command.locked ? '结果还没确认，暂时不能关闭。' : ''}>{done || download.name ? '完成' : '取消'}</Button>
@@ -147,13 +152,13 @@ function ResourceFileActionFlow({ adapter, mode, request, onClose, onCommitted, 
         {!done && !command.locked && effectiveMode === 'import' && data && <div className="tmpl-row"><span className="tmpl-ico"><Icon name="file-input" /></span>
           <div><div className="tmpl-t">{file && file.name}</div><div className="tmpl-s">{format.toUpperCase()} · 按编号增量更新 · {data.rows.length} 行</div></div><Button icon="file-input" disabled={controlsDisabled} onClick={invalidate}>更换文件</Button></div>}
         {!recovery && !done && !command.locked && isExport && <div className="iopane on">
-          {M.ExportScope ? <M.ExportScope value={selection} onChange={value => { invalidate(); setSelection(value); }} disabled={controlsDisabled} refs={original.refs} error={error} />
+          {M.ExportScope ? <M.ExportScope value={selection} onChange={value => { invalidate(); setSelection(value); }} disabled={controlsDisabled} refs={original.refs} error={error || query.error} />
             : <ExportOptions selection={selection} setSelection={value => { invalidate(); setSelection(value); }} refs={original.refs} disabled={controlsDisabled} scopeLabel={M.scopeLabel || label} kind={M.kind} />}
           <Format value={format} onChange={chooseFormat} disabled={controlsDisabled} /></div>}
         {!done && effectiveMode === 'bulk' && (!recovery || command.intent) && (recovery || command.intent && !job ? <p>正在查询上次批量删除的结果，当前列表里新勾选的还没提交。</p> :
           <p>本次勾选了 <b>{original.refs.length}</b> 条{label}，含非当前页和当前筛选外的勾选项。</p>)}
         {activeRead && <p role="status">正在读取完整预检结果，尚未写入数据…</p>}
-        <ErrorBox error={error} excludePaths={isExport && Array.isArray(M.exportFieldPaths) ? M.exportFieldPaths : []} /><ErrorBox error={query.error} /><Issues issues={result ? result.warnings : undefined} />
+        <ErrorBox error={error} excludePaths={scopePaths} /><ErrorBox error={query.error} excludePaths={scopePaths} /><Issues issues={result ? result.warnings : undefined} />
         {data && !isExport && <><Preview data={data} mode={effectiveMode} contract={M} label={label} /><p className="iohint">本批整体确认；任意一行校验不通过，全部不写入。</p>
           {needsAcknowledgement && !done && <label className="rm-check"><input type="checkbox" checked={acknowledged} disabled={controlsDisabled} onChange={event => setAcknowledged(event.target.checked)} /><span>{effectiveMode === 'bulk' ? '已核对完整删除范围及明细，确认删除这些' + label + '。' : M.acknowledgeHint}</span></label>}
         </>}
@@ -162,6 +167,7 @@ function ResourceFileActionFlow({ adapter, mode, request, onClose, onCommitted, 
         {!isExport && <Feedback command={command} />}
         {command.intent && <WorkbenchReference entries={{ '操作编号': command.intent.request_key }} />}
         {done && <p role="status">{Number.isSafeInteger(command.result.data.deleted_count) ? '已删除 ' + command.result.data.deleted_count + ' 条。' : command.result.data.summary ? '导入结果已确认。' : '已查到上次操作的完成结果。'}</p>}
+        {refreshError && <><p role="alert">已保存，但列表刷新失败。</p><ErrorBox error={refreshError} /></>}
       </div></Modal></div>;
 }
 function ResourceMaterialActions(props) {

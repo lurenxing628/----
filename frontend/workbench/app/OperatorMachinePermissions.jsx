@@ -1,34 +1,32 @@
 import React from './shared/runtime/react.js';
 import C from './resource-contract.js';
 import { useQuery } from './shared/session/query.js';
+import APSResourceAPI from './resource-api.js';
 import { Button, Icon, ErrorBox, Modal } from './ResourceControls.jsx';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
+import { failure } from './shared/contract/kit.js';
 
-const levels = [['beginner', '初级'], ['normal', '普通'], ['expert', '熟练']];
-const primaries = [['no', '否'], ['yes', '是']];
+const levels = Object.entries(WorkbenchTerms.skill_levels), primaries = Object.entries(WorkbenchTerms.primary_machine);
 const fields = rows => rows.map(({ machine_ref, skill_level, is_primary }) => ({ machine_ref, skill_level, is_primary }));
-const isPrimary = value => ['yes', 'y', 'true', '是', '主', '主操', 'on', '1'].includes(String(value).trim().toLowerCase());
 function PermissionSelect({ value, choices, label, disabled, onChange }) {
-  const old = !choices.some(([item]) => item === value);
-  return <select aria-label={label} value={JSON.stringify(value)} disabled={disabled} onChange={event => onChange(JSON.parse(event.target.value))}>
-    {old && <option value={JSON.stringify(value)}>原值：{value === null ? '未填写' : String(value)}</option>}
-    {choices.map(([item, name]) => <option key={item} value={JSON.stringify(item)}>{name}</option>)}
+  return <select aria-label={label} value={value} disabled={disabled} onChange={event => onChange(event.target.value)}>
+    {choices.map(([item, name]) => <option key={item} value={item}>{name}</option>)}
   </select>;
 }
-function OperatorMachinePermissions({ adapter, entity, source, command, onClose, refreshState = {}, onRefresh, Feedback }) {
+function OperatorMachinePermissions({ entity, source, command, onClose, refreshState = {}, onRefresh, Feedback }) {
+  const api = APSResourceAPI.forNamespace('resources');
   const [current, setCurrent] = React.useState(entity);
   const original = current.relationships.machine_permissions;
-  const [rows, setRows] = React.useState(() => Array.isArray(original) ? original.map(row => ({ ...row })) : []);
+  const [rows, setRows] = React.useState(() => original.map(row => ({ ...row })));
   const [search, setSearch] = React.useState(''), [query, setQuery] = React.useState(''), [selected, setSelected] = React.useState('');
   const [preview, setPreview] = React.useState(null), [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null);
   const done = command.phase === 'done', disabled = busy || command.locked || done;
   React.useEffect(() => { if (command.phase === 'rejected') setPreview(null); }, [command.phase]);
-  const read = useQuery(signal => adapter.choices('machine', { query, page: 1, size: 20, sort: 'business_code', direction: 'asc' }, signal), [adapter, query]);
+  const read = useQuery(signal => api.choices('machine', { query, page: 1, size: 20, sort: 'business_code', direction: 'asc' }, signal), [query]);
   const choices = read.result && read.result.data.entities || [];
-  const reason = !Array.isArray(original) ? '设备关联尚未完整读取，请关闭后重新打开人员详情。'
-    : C.blocked(current.write_context, 'operator', 'update', source);
-  const originalFieldsJson = React.useMemo(() => JSON.stringify(fields(original || [])), [original]);
+  const reason = C.blocked(current.write_context, 'operator', 'update', source);
+  const originalFieldsJson = React.useMemo(() => JSON.stringify(fields(original)), [original]);
   const { rowsFields, rowsFieldsJson, machineRefSet } = React.useMemo(() => {
     const projected = fields(rows);
     return {
@@ -47,8 +45,7 @@ function OperatorMachinePermissions({ adapter, entity, source, command, onClose,
   function resetCommand() { if (command.phase !== 'idle' && !command.locked) command.reset(); }
   function change(next) { resetCommand(); setRows(next); setPreview(null); setError(null); }
   function edit(ref, key, value) {
-    change(rows.map(row => row.machine_ref === ref ? { ...row, [key]: value }
-      : key === 'is_primary' && value === 'yes' && isPrimary(row.is_primary) ? { ...row, is_primary: 'no' } : row));
+    change(rows.map(row => row.machine_ref === ref ? { ...row, [key]: value } : row));
   }
   function add() {
     const machine = choices.find(item => item.ref === selected);
@@ -60,37 +57,31 @@ function OperatorMachinePermissions({ adapter, entity, source, command, onClose,
     if (disabled || !await WorkbenchGuards.confirmLeave({ owner })) return;
     resetCommand(); setBusy(true); setError(null);
     try {
-      const result = await adapter.detail('operator', entity.ref, new AbortController().signal);
-      if (result.data.ref !== entity.ref || result.meta.source !== source || !Array.isArray(result.data.relationships.machine_permissions))
-        throw C.failure('没有取得当前人员的完整设备关联。');
+      const result = await api.detail('operator', entity.ref, new AbortController().signal);
+      if (result.meta.source !== source) throw failure('没有取得当前人员的完整设备关联。');
       setCurrent(result.data); setRows(result.data.relationships.machine_permissions.map(row => ({ ...row })));
       setPreview(null); setSelected('');
-    } catch (failure) { setError(failure); }
+    } catch (problem) { setError(problem); }
     finally { setBusy(false); }
   }
   async function inspect() {
     if (disabled || reason) return;
     resetCommand(); setBusy(true); setError(null); setPreview(null);
     try {
-      const result = await adapter.preview('entities/operator/' + entity.ref + '/machine-permissions/preview',
-        { machine_permissions: rowsFields, write_token: current.write_context.write_token }, new AbortController().signal);
-      const data = result.data;
-      if (data.operator_ref !== entity.ref || !Array.isArray(data.rows) || !data.write_context
-          || data.write_context.capabilities['operator.machine_permissions'] !== true || typeof data.preview_ref !== 'string')
-        throw C.failure('设备关联预检不完整，请重新预检。');
-      setPreview(data);
-    } catch (failure) { setError(failure); }
+      setPreview(await api.machinePermissionsPreview(entity.ref,
+        { machine_permissions: rowsFields, write_token: current.write_context.write_token }, new AbortController().signal));
+    } catch (problem) { setError(problem); }
     finally { setBusy(false); }
   }
   const changed = preview ? preview.rows.filter(row => row.result !== 'unchanged') : [];
-  const display = (key, value) => ((key === 'skill_level' ? levels : primaries).find(([item]) => item === value) || [null, value === null ? '未填写' : String(value)])[1];
+  const display = (key, value) => (key === 'skill_level' ? levels : primaries).find(([item]) => item === value)[1];
   return <div className="wb-machine-permissions-host"><Modal title={'可操作设备 · ' + current.business_code + ' · ' + current.label} icon="machine" onClose={close} guardOwner={owner} locked={command.locked || busy}
     footer={<><Button onClick={close} disabled={command.locked || busy}>{done ? '关闭' : '取消'}</Button>
       {!done && (preview ? <Button icon="check" className="btn primary" busy={disabled} onClick={() => command.submit('operator', 'machine_permissions', entity.ref,
         preview.write_context, { preview_ref: preview.preview_ref })}>确认保存设备关联</Button>
         : <Button icon="check" className="btn primary" reason={reason} busy={disabled} onClick={inspect}>预览变更</Button>)}</>}>
     <div className="modal-b scroll wb-machine-permissions">
-      <p>可操作设备决定这个人能分配到哪些设备。工种技能在人员资料中单独维护；同一人员最多设置一台主操设备。</p>
+      <p>可操作设备决定这个人能分配到哪些设备。工种技能在人员资料中单独维护；标成主操的设备会优先安排这个人，一个人可以有多台主操设备。</p>
       {!done && <form className="toolbar" onSubmit={event => { event.preventDefault(); setQuery(search.trim()); setSelected(''); }}>
         <label className="search"><span className="ic"><Icon name="search" /></span><input type="search" aria-label="搜索可关联设备" placeholder="设备编号、名称" value={search} disabled={disabled} onChange={event => setSearch(event.target.value)} /></label>
         <Button icon="search" type="submit" disabled={disabled} busy={read.loading}>搜索设备</Button>

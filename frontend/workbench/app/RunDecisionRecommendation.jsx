@@ -1,13 +1,12 @@
 import React from './shared/runtime/react.js';
-import RunCandidateControls from './RunCandidateControls.jsx';
-import WorkbenchTerms from './WorkbenchTerms.js';
+import C from './RunCandidateControls.jsx';
+import T from './WorkbenchTerms.js';
 import RunCandidateModel from './RunCandidateModel.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import RunDecisionComparison from './RunDecisionComparison.jsx';
 import RunGenerationContract from './RunGenerationContract.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
 
-const C = RunCandidateControls, T = WorkbenchTerms;
 const supports = { batch: '查看批次', operation: '查看工序', preparation: '查看准备', changeover: '查看切换' };
 const states = { comparable: '可比较', different_coverage: '比较范围不同', unavailable: '资料待确认', not_applicable: '本范围不适用' };
 const countText = value => RunCandidateModel.number(value);
@@ -44,7 +43,8 @@ function Differences({ items, onSupport }) {
   </table>{reasons.map((message, index) => <p className="rc-muted" key={message} id={'rd-recommend-reason-' + (index + 1)}>说明 {index + 1}：{message}</p>)}</div>;
 }
 function SelectionEvidence({ basis, data }) {
-  const name = reference => { const row = data.candidates.find(candidate => candidate.candidate_ref === reference); return row ? row.label || '候选名称未填写' : '资料未记录'; };
+  // 推荐与各方向代表都取自本次排产的候选，摘要列出全部候选，按编号必能找到。
+  const name = reference => data.candidates.find(candidate => candidate.candidate_ref === reference).label;
   const G = RunGenerationContract;
   return <><h4>共同优化的推荐规则与数值</h4><dl className="rd-selection-facts">
     {basis.selected_candidate_ref !== null && <><div><dt>主目标</dt><dd>{G.objectiveLabel(basis.primary_objective)}</dd></div>
@@ -56,7 +56,6 @@ function SelectionEvidence({ basis, data }) {
       })}
       <div><dt>推荐评分范围</dt><dd><C.ScoringScope value={basis.scoring_scope} /></dd></div>
       <div><dt>选择记录</dt><dd>{basis.evidence_state === 'complete' ? '已保存完整评分依据' : '已保存部分评分依据'}<WorkbenchReference label="查看保存的选择依据" entries={{
-        '生成策略版本': basis.generation_policy_version, '选择规则版本': basis.selection_policy_version,
         '选择原因': basis.reason_code, '主目标指标顺序': basis.objective_field_order[basis.primary_objective], '主目标保存评分': basis.selected_score
       }} /></dd></div></>}
     {basis.explanation.entries.map(entry => <div key={entry.key} data-selection-evidence={entry.key}>

@@ -1,22 +1,19 @@
 import React, { createPortal } from './shared/runtime/react.js';
-import ResourceControls from './ResourceControls.jsx';
-import APSBatchContract from './BatchContract.js';
+import { Button, Modal, ErrorBox, Field } from './ResourceControls.jsx';
+import B from './BatchContract.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import APSBatchAPI from './BatchAPI.js';
 import APSResourceSession from './shared/session/command-session.js';
 import WorkbenchGuards from './WorkbenchGuards.js';
-import APSResourceContract from './resource-contract.js';
 import ResourceForms from './ResourceForms.jsx';
+import { failure } from './shared/contract/kit.js';
 
-const { Button, Modal, ErrorBox, Field } = ResourceControls;
-const B = APSBatchContract;
 // 物料数量按批次详情的口径显示全部小数、去掉末尾 0。按件数比例分出的需求量和页面上相加的到料会带二进制尾差
 // （0.3 + 0.6、7 件拆出 1/3），先收到 15 位有效数字再显示，不出现 0.8999999999999999 这类数，也不会把非零小数显示成 0。
 const amount = value => WorkbenchFormat.number(Number(value.toPrecision(15)), { digits: 20, trim: true });
 const arrived = (initial, arrivals) => amount(arrivals.reduce((n, a) => n + a.quantity, initial));
 function BatchSplitPanel({ refs, day, onCommitted, disabled, onActivityChange }) {
-  const adapter = React.useMemo(() => APSBatchAPI.create(), []);
-  const command = APSResourceSession.useCommand(adapter);
+  const command = APSResourceSession.useCommand(APSBatchAPI);
   const [preview, setPreview] = React.useState(null), [error, setError] = React.useState(null), [busy, setBusy] = React.useState(false);
   const [quantity, setQuantity] = React.useState(''), seen = React.useRef(null), serial = React.useRef(0);
   const owner = WorkbenchGuards.useDirtyGuard({ dirty: false, locked: command.locked, message: '拆分正在确认，请先核对保存结果。' });
@@ -41,10 +38,11 @@ function BatchSplitPanel({ refs, day, onCommitted, disabled, onActivityChange })
     try {
       command.reset();
       const count = quantity.trim() ? Number(quantity) : null;
-      if (count !== null && (!Number.isSafeInteger(count) || count <= 0)) throw APSResourceContract.failure('请填写正整数数量，留空则按当前物料可做数量预检。');
-      const detail = await adapter.detail('batch', refs[0]), input = { as_of_date: day, quantity: count };
+      const invalid = '请填写有效的数量，留空则按当前物料可做数量预检。';
+      if (count !== null && !Number.isFinite(count)) throw failure(invalid, { fields: [{ path: 'quantity', message: invalid }] });
+      const detail = await APSBatchAPI.detail('batch', refs[0]), input = { as_of_date: day, quantity: count };
       B.detail(detail, refs[0]);
-      const response = await adapter.preview('split', refs[0], input, null, detail.meta.snapshot_ref);
+      const response = await APSBatchAPI.preview('split', refs[0], input, null, detail.meta.snapshot_ref);
       const data = B.preview(response, 'split', refs[0], input);
       if (id === serial.current) setPreview(data);
     } catch (e) { if (id === serial.current) setError(e); }
@@ -52,12 +50,13 @@ function BatchSplitPanel({ refs, day, onCommitted, disabled, onActivityChange })
   }
   return <section id="pf-material-split" className="pf-split-panel" aria-label="检查物料可做数量">
     <h3>检查物料可做数量</h3>
-    <div className="toolbar"><Field label="本次先做数量（可留空）"><input inputMode="numeric" aria-label="本次先做数量" value={quantity} disabled={disabled || busy || command.locked}
+    {/* 拆分预检的数量错误报 quantity，标在数量框上；as_of_date 取自排产开始日，这里没有输入框，留在错误框里。 */}
+    <div className="toolbar"><Field label="本次先做数量（可留空）" path="quantity" error={error}><input inputMode="numeric" aria-label="本次先做数量" value={quantity} disabled={disabled || busy || command.locked}
       onChange={e => { setQuantity(e.target.value); setPreview(null); setError(null); command.clearRejection({ includeStale: true }); }} /></Field>
       <Button busy={busy} disabled={disabled || command.locked || refs.length !== 1} onClick={inspect}>查看可做数量</Button></div>
     <p>按排产开始日期 {day} 前的到料计算；数量留空时，查看物料最多够做多少件。查看数量不会修改批次。</p>
     {refs.length !== 1 && <p>请先选择一个要拆分的待排批次。</p>}
-    <ErrorBox error={error} /><ResourceForms.Feedback command={command} />
+    <ErrorBox error={error} excludePaths={['quantity']} /><ResourceForms.Feedback command={command} />
     {preview && createPortal(<div className="plana"><Modal title="确认拆成两批" icon="box" guardOwner={owner} locked={command.locked} onClose={() => { if (!command.locked) { setPreview(null); command.clearRejection({ includeStale: true }); } }}
       footer={<><Button disabled={command.locked} onClick={() => { setPreview(null); command.clearRejection({ includeStale: true }); }}>取消</Button><Button className="btn primary" disabled={disabled || command.locked}
         onClick={() => command.submit('batch', 'split_confirm', preview.entity_ref, preview.write_context, { preview_ref: preview.preview_ref })}>确认拆批并选择子批</Button></>}>

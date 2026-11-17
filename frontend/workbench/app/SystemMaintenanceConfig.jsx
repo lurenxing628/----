@@ -3,11 +3,13 @@ import A from './SystemMaintenanceAPI.js';
 import C from './SystemMaintenanceControls.jsx';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import { Modal } from './ResourceControls.jsx';
+import { fieldErrors, fieldMessages } from './resource-contract.js';
+import { useQuery } from './shared/session/query.js';
 
 function SystemMaintenanceConfig({ revision, command, active, tab, ...preferences }) {
   const [refresh, reload] = React.useReducer(value => value + 1, 0), [draft, setDraft] = React.useState(null), [validated, setValidated] = React.useState(false);
   const [base, setBase] = React.useState(null), [replace, setReplace] = React.useState(false);
-  const request = C.useRead('config', {}, revision + ':' + refresh, active), incoming = request.data && request.data.data;
+  const request = useQuery(signal => A.read('config', {}, signal), [revision, refresh], { enabled: active }), incoming = request.result && request.result.data;
   const validation = A.normalize(draft || {}), changed = base && draft && A.fields.some(field => String(draft[field.key]) !== String(base.values[field.key]));
   const onConfigTab = tab === 'config';
   WorkbenchGuards.useDirtyGuard({
@@ -25,6 +27,10 @@ function SystemMaintenanceConfig({ revision, command, active, tab, ...preference
     const matchesDraft = incoming && draft && A.fields.every(field => String(draft[field.key]) === String(incoming.values[field.key]));
     if (incoming && (!changed || matchesDraft)) { setBase(incoming); setDraft({ ...incoming.values }); setValidated(false); }
   }, [incoming]);
+  // 保存被拒时后端把出错的那一项报在设置键名上；记下被拒时的草稿，草稿没再改就标在那一行，改了任何一项交给下次保存再判。
+  const [rejectedDraft, setRejectedDraft] = React.useState(null);
+  React.useEffect(() => { setRejectedDraft(command.error ? draft : null); }, [command.error]);
+  const rejected = rejectedDraft !== null && rejectedDraft === draft ? fieldErrors(command.error) : [];
   const ready = incoming && base === incoming;
   const reason = command.locked ? command.lockedReason : !ready ? '请先点「刷新配置」读取正式配置。' : '';
   function refreshNow() { setReplace(false); setBase(null); setDraft(null); reload(); }
@@ -39,16 +45,17 @@ function SystemMaintenanceConfig({ revision, command, active, tab, ...preference
       {draft && base && <form className="sm-config-form" noValidate onSubmit={event => { event.preventDefault(); setValidated(true);
         if (validation.valid && !reason) command.execute('config', base.write_context.write_token, validation.values);
       }}><div className="sm-config-groups">{[['backup', '备份规则'], ['logs', '操作日志规则']].map(([group, label]) => <fieldset className="sm-config-group" key={group}><legend>{label}</legend>
-        {A.fields.filter(field => field.group === group).map(field => <div className="sm-config-row sm-config-row-wide" key={field.key}>
+        {A.fields.filter(field => field.group === group).map(field => { const problem = validated && validation.errors[field.key] || fieldMessages(rejected, field.key).join(' ');
+          return <div className="sm-config-row sm-config-row-wide" key={field.key}>
           <label htmlFor={'sm-maintenance-' + field.key}>{field.label}</label><div>
-            {field.switch ? <label className="sm-draft-checkbox"><input id={'sm-maintenance-' + field.key} type="checkbox" checked={draft[field.key] === 'yes'} disabled={!!reason}
-              onChange={event => setDraft({ ...draft, [field.key]: event.target.checked ? 'yes' : 'no' })} /><span>开启</span><span className="sm-switch-state">{draft[field.key] === 'yes' ? '当前：已开启' : '当前：已关闭'}</span></label> : <div className="sm-number">
-              <input id={'sm-maintenance-' + field.key} type="number" min={1} max={field.max} step={1} value={draft[field.key]} disabled={!!reason} aria-invalid={validated && !!validation.errors[field.key]}
+            {field.switch ? <label className="sm-draft-checkbox"><input id={'sm-maintenance-' + field.key} type="checkbox" checked={draft[field.key] === 'yes'} disabled={!!reason} aria-invalid={!!problem}
+              aria-describedby={'sm-maintenance-help-' + field.key} onChange={event => setDraft({ ...draft, [field.key]: event.target.checked ? 'yes' : 'no' })} /><span>开启</span><span className="sm-switch-state">{draft[field.key] === 'yes' ? '当前：已开启' : '当前：已关闭'}</span></label> : <div className="sm-number">
+              <input id={'sm-maintenance-' + field.key} type="number" step={1} value={draft[field.key]} disabled={!!reason} aria-invalid={!!problem}
                 aria-describedby={'sm-maintenance-help-' + field.key} onChange={event => setDraft({ ...draft, [field.key]: event.target.value })} /><span>{field.unit}</span></div>}
-            <small id={'sm-maintenance-help-' + field.key} className={validated && validation.errors[field.key] ? 'sm-error' : 'sm-meta'}>{validated && validation.errors[field.key] || (field.switch ? '正式配置' : '1 至 ' + field.max + ' ' + field.unit)}</small>
+            <small id={'sm-maintenance-help-' + field.key} className={problem ? 'sm-error' : 'sm-meta'}>{problem || (field.switch ? '正式配置' : '填写整数，单位：' + field.unit)}</small>
             {base.defaulted_fields.includes(field.key) ? <small className="sm-meta">默认值，尚未保存</small> : <small className="sm-meta">已存值：{field.switch ? base.values[field.key] === 'yes' ? '已开启' : '已关闭' : base.values[field.key]}</small>}
           </div>
-        </div>)}
+        </div>; })}
       </fieldset>)}</div>
         <div className="sm-form-footer"><span className="sm-meta">{changed ? '有未保存修改' : base.defaulted_fields.length ? '含默认项，还需核对后保存' : '当前值已读取'}</span><div className="sm-actions">
           <C.Button icon="rotate-ccw" disabled={!!reason || !changed} onClick={() => setReplace(true)}>放弃草稿</C.Button><C.Button icon="save" type="submit" className="btn primary" reason={reason}>保存维护配置</C.Button>

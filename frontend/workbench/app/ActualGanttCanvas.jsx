@@ -1,10 +1,9 @@
 import React from './shared/runtime/react.js';
-import ActualGanttModel from './ActualGanttModel.js';
+import M from './ActualGanttModel.js';
 import GanttPresentation from './GanttPresentation.js';
 import PointGanttModel from './PointGanttModel.js';
 import ActualGanttWindow from './ActualGanttWindow.js';
 
-const M = ActualGanttModel;
 function palette(node) {
   const style = getComputedStyle(node), colors = {};
   for (const [kind, tone] of [['plan', 'plan'], ['plan-point', 'plan'], ['actual', 'primary'], ['point', 'primary'], ['remaining', 'primary']])

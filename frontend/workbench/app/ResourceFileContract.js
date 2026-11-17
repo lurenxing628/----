@@ -1,8 +1,9 @@
-import APSResourceContract from './resource-contract.js';
-import APSResourceMaterial from './ResourceMaterialContract.js';
+import C from './resource-contract.js';
+import M from './ResourceMaterialContract.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
+import { failure, object } from './shared/contract/kit.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
 
-const C = APSResourceContract, M = APSResourceMaterial;
 const labels = { op_type: '工种', machine: '设备', operator: '人员', supplier: '供应商' };
 const detailFields = {
   skill_details: { op_type_code: '工种编号', skill_level: '技能级别', is_primary: '是否主要', created_at: '创建时间' },
@@ -19,19 +20,19 @@ function displayValue(key, value) {
     let text = item[field];
     if (text === null) text = '未填写';
     else if (text === '') text = '空白';
-    else if (field === 'skill_level') text = text === 'normal' ? '普通' : String(text) + '（原值）';
-    else if (field === 'is_primary') text = text === 'yes' ? '主要' : text === 'no' ? '非主要' : String(text) + '（原值）';
+    else if (field === 'skill_level') text = WorkbenchTerms.skill_levels[text];
+    else if (field === 'is_primary') text = WorkbenchTerms.primary_machine[text];
     return detailFields[key][field] + '：' + text;
   }).join(' · ')).join('；');
 }
 function category(kind, request) {
   if (kind !== 'op_type') return undefined;
   const value = request.scope && request.scope.category;
-  if (!['internal', 'external'].includes(value)) throw C.failure('缺少工种类别，请关闭向导，重新打开自制或外协工种。');
+  if (!['internal', 'external'].includes(value)) throw failure('缺少工种类别，请关闭向导，重新打开自制或外协工种。');
   return value;
 }
 function create(kind) {
-  if (!C.own(labels, kind)) throw C.failure('不支持这类基础资料的文件操作。');
+  if (!C.own(labels, kind)) throw failure('不支持这类基础资料的文件操作。');
   const shared = M.create(kind, labels[kind]);
   return {
     ...shared,
@@ -45,16 +46,16 @@ function create(kind) {
       if (kind === 'op_type') {
         const invalid = mode === 'import'
           ? result.data.category !== category(kind, request) || C.own(result.data, 'scope')
-          : !C.object(result.data.scope) || result.data.scope.category !== category(kind, request);
+          : !object(result.data.scope) || result.data.scope.category !== category(kind, request);
         if (invalid)
-          throw C.failure('预检工种类别与当前自制或外协范围不一致，本批没有提交。');
+          throw failure('预检工种类别与当前自制或外协范围不一致，本批没有提交。');
       }
       return result;
     },
     exportPreview(raw, selection, request) {
-      const result = shared.exportPreview(raw, selection);
-      if (kind === 'op_type' && (!C.object(result.data.scope) || result.data.scope.category !== category(kind, request)))
-        throw C.failure('导出预检工种类别与当前范围不一致，没有开始下载。');
+      const result = shared.exportPreview(raw, selection, request);
+      if (kind === 'op_type' && (!object(result.data.scope) || result.data.scope.category !== category(kind, request)))
+        throw failure('导出预检工种类别与当前范围不一致，没有开始下载。');
       return result;
     }
   };

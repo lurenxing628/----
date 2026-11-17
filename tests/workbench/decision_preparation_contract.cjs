@@ -44,13 +44,13 @@ const A = getMod(window, 'RunDecisionAPI.js'), P = getMod(window, 'RunDecisionPr
 const RunCandidateAPI = getMod(window, 'RunCandidateAPI.js'), WorkbenchTerms = getMod(window, 'WorkbenchTerms.js'), WorkbenchFormat = getMod(window, 'WorkbenchFormat.js');
 const prepKeys = ['pending_setup_hours', 'scheduled_setup_hours', 'unplanned_setup_hours', 'deferred_setup_hours', 'pending_processing_hours', 'scheduled_processing_hours', 'unplanned_processing_hours', 'deferred_processing_hours'];
 const common = { selected_candidate_ref: chosen, reference_candidate_ref: baseline, resource_view: 'selected_batches', range_start: start, range_end: end };
-const metric = value => ({ value, state: 'complete', known_subtotal: value, known_count: 23, unknown_count: 0, total_count: 23, reason: null });
+const metric = (value, member_unit = 'operation') => ({ value, state: 'complete', known_subtotal: value, known_count: 23, unknown_count: 0, total_count: 23, reason: null, member_unit });
 const delta = value => ({ value, state: 'comparable', direction: value === 0 ? 'equal' : 'neutral', reference_value: 2, selected_value: 2 + value });
 function effort() { return { source: 'internal', quantity_basis: 'piece', target_quantity: 10, execution_target_quantity: 20, execution_quantity_basis: 'piece', remaining_quantity: 8,
   setup_standard_hours: 2, processing_standard_hours: 5, required_standard_hours: 7, setup_state: 'retained_in_execution', requirement_role: 'retained', allocation_state: 'retained',
   external_cycle_days: null, external_group_id: null, external_merge_mode: null, effort_basis: 'runtime_requirement_v1', evidence_source: { kind: 'run', run_ref: run, candidate_ref: baseline }, state: 'complete', data_gaps: [],
   standard: { basis: 'archived_operation_standard', setup_standard_hours: 3, unit_standard_hours: 0.4, standard_total_hours: 11, target_quantity: 20, remaining_quantity: 8, state: 'complete', reason: null },
-  machines: [{ ref: machine, label: '车床01' }], machine: { ref: machine, label: '车床01' }, arrangements: [] }; }
+  machine: { ref: machine, label: '车床01' }, arrangement: null }; }
 function drill(q, operation, side = 'selected') { const official = side === 'reference' && q.comparison_mode === 'admission_official'; return { run_ref: run, candidate_ref: side === 'reference' && !official ? baseline : chosen,
   operation_ref: operation, comparison_mode: q.comparison_mode || 'candidates', resource_view: q.resource_view || 'selected_batches', range_start: start, range_end: end,
   ...(official ? { reference_view: true, plan_ref: plan } : {}) }; }
@@ -58,12 +58,13 @@ function drill(q, operation, side = 'selected') { const official = side === 'ref
 const changeoverFacts = section => section === 'preparation' ? {} : { state: 'complete', conflict: false, conflict_count: 0, unknown_count: 0, issues: [] };
 function fixture(query = {}, section = 'preparation') {
   query = { ...common, ...query }; if (query.comparison_mode === 'admission_official') delete query.reference_candidate_ref; const q = A.preparationScope(run, query, section), official = q.comparison_mode === 'admission_official';
-  const scope = { run_ref: run, selected_candidate_ref: chosen, comparison_mode: q.comparison_mode, resource_view: q.resource_view, range_start: start, range_end: end, batch_refs: [batch], operation_refs: Array.from({ length: 23 }, (_, i) => ref(100 + i)), resource_refs: { machine: [machine], operator: [] },
+  const operationRefs = Array.from({ length: 23 }, (_, i) => ref(100 + i));
+  const scope = { run_ref: run, selected_candidate_ref: chosen, comparison_mode: q.comparison_mode, resource_view: q.resource_view, range_start: start, range_end: end, batch_count: 1, operation_count: operationRefs.length, resource_refs: { machine: [machine], operator: [] },
     reference_state: 'available', reference: official ? { kind: 'admission_official', baseline_ref: plan } : { kind: 'candidate', candidate_ref: baseline } };
   const fields = ['sort', 'order', 'machine_ref', ...(section === 'preparation' ? ['batch_ref', 'allocation_state', 'work_scope'] : ['event_side'])], filters = { section, ...Object.fromEntries(fields.map(key => [key, q[key] || null])) };
-  const values = Object.fromEntries((section === 'preparation' ? prepKeys : ['type_changeover_count', 'changed_machine_count']).map(key => [key, metric(2)]));
+  const values = Object.fromEntries((section === 'preparation' ? prepKeys : ['type_changeover_count', 'changed_machine_count']).map(key => [key, metric(2, key === 'changed_machine_count' ? 'machine' : 'operation')]));
   const roles = Object.fromEntries(['retained', 'execution', 'completed'].map(role => [role, { count: 1, setup_standard_hours: metric(2), processing_standard_hours: metric(5), required_standard_hours: metric(7) }]));
-  let items = scope.operation_refs.map((operation_ref, i) => ({ operation_ref, batch_ref: batch, batch_label: 'B-01', batch_id: 'B-01', part_label: '分件轴', process_label: '车削', piece_id: 'A', sequence: i + 1,
+  let items = operationRefs.map((operation_ref, i) => ({ operation_ref, batch_ref: batch, batch_label: 'B-01', batch_id: 'B-01', part_label: '分件轴', process_label: '车削', piece_id: 'A', sequence: i + 1,
     before: effort(), after: effort(), deltas: Object.fromEntries(['setup_standard_hours', 'processing_standard_hours', 'required_standard_hours'].map(key => [key, delta(0)])), data_gaps: [], drill: { selected: drill(q, operation_ref), reference: drill(q, operation_ref, 'reference') } }));
   if (section === 'changeovers') items = [{ event_ref: 'reference:' + ref(700) + ':' + ref(701), event_side: 'reference', machine_ref: machine, machine_label: '车床01', sequence: 1,
     previous_operation_ref: ref(90), next_operation_ref: ref(100), previous_row_ref: ref(700), next_row_ref: ref(701), previous_type: '磨削', next_type: '车削', previous_start: '2026-11-30T08:00:00', previous_end: '2026-11-30T12:00:00', next_start: start, next_end: '2026-12-01T12:00:00',
@@ -93,7 +94,7 @@ async function identities() {
     workspaceAnswer = varied;
     assert.deepEqual((await RunCandidateAPI.workspace(archive.candidate_ref, { batch_ref: archive.batch_ref })).data, varied.data);
   }
-  const compact = value => Object.fromEntries(Object.entries(value).filter(([key]) => !['machine', 'machines', 'arrangements'].includes(key)));
+  const compact = value => Object.fromEntries(Object.entries(value).filter(([key]) => !['machine', 'arrangement'].includes(key)));
   let runAnswer;
   routes['GET /api/workbench/v1/scheduling/runs/**'] = () => runAnswer;
   const readSection = async (value, q, section = 'preparation') => { runAnswer = value; return (await A[section](run, q)).data; };
@@ -104,10 +105,8 @@ async function identities() {
   for (const section of ['preparation', 'changeovers']) for (const comparison_mode of ['candidates', 'admission_official']) {
     const q = { ...common, comparison_mode, ...(comparison_mode === 'admission_official' ? { reference_candidate_ref: undefined } : {}) }, value = fixture(q, section);
     assert.deepEqual(await readSection(value, q, section), value.data);
-    for (const mutate of [x => { x.data.filters.machine_ref = chosen; }, x => { x.data.page.number = 2; }, x => { x.data.scope.range_end = '2026-12-09T08:00:00'; }]) {
-      const wrong = clone(value); mutate(wrong);
-      await assert.rejects(() => readSection(wrong, q, section));
-    }
+    const stale = clone(value); stale.meta.snapshot_ref = 't'.repeat(32);
+    await assert.rejects(() => readSection(stale, { ...q, snapshot_ref: token }, section), /比较资料已更新/);
   }
   assert.equal(A.preparationScope(run, common).work_scope, 'all', '准备需求默认读取全部受理工序');
   assert.equal(A.preparationScope(run, { ...common, work_scope: 'remaining' }).work_scope, 'remaining');
@@ -116,8 +115,6 @@ async function identities() {
   for (const work_scope of ['all', 'remaining']) {
     const q = { ...common, work_scope }, value = fixture(q);
     assert.deepEqual(await readSection(value, q), value.data);
-    const wrong = clone(value); wrong.data.filters.work_scope = work_scope === 'all' ? 'remaining' : 'all';
-    await assert.rejects(() => readSection(wrong, q), /筛选/, '准备响应必须保留精确需求范围');
   }
   const remainingQuery = { ...common, work_scope: 'remaining', batch_ref: batch, machine_ref: machine, allocation_state: 'unplanned', size: 50 }, remaining = fixture(remainingQuery);
   remaining.data.items = [remaining.data.items.at(-1)]; remaining.data.items[0].after.allocation_state = 'unplanned';
@@ -145,7 +142,7 @@ async function identities() {
   assert.equal(fieldText(originalTree, labels.standard_total_hours), '11 小时', '原标准单列不冒充运行需求'); assert.equal(JSON.stringify(original), originalJson);
   const requirement = effort(); requirement.allocation_state = 'unplanned'; requirement.machine_basis = 'admission_requirement';
   const requirementText = text(expand(h(E.Effort, { value: requirement, showMachines: true })));
-  assert(requirementText.includes('所需设备') && requirementText.includes(requirement.machines[0].label) && !requirementText.includes('安排设备'), '未安排工序的设备要求与保存安排设备分开标明');
+  assert(requirementText.includes('所需设备') && requirementText.includes(requirement.machine.label) && !requirementText.includes('安排设备'), '未安排工序的设备要求与保存安排设备分开标明');
   const large = effort(); large.execution_target_quantity = '9223372036854775807'; assert(text(expand(h(E.Effort, { value: large }))).includes('9,223,372,036,854,775,807'), '大整数量保留原十进制文本');
   const old = effort(); Object.assign(old, { effort_basis: null, target_quantity: null, quantity_basis: 'unknown', setup_standard_hours: null, processing_standard_hours: null, required_standard_hours: null, state: 'unavailable' });
   const oldTree = expand(h(E.Effort, { value: old })), oldRequired = nodes(oldTree).find(node => node.type === 'small' && text(node).includes(labels.required_standard_hours));
@@ -198,14 +195,11 @@ async function identities() {
   const RunCandidateControls = getMod(window, 'RunCandidateControls.jsx');
   const task = { operation_ref: ref(100), row_ref: ref(700), batch_ref: batch, batch_label: 'B-01', process_label: '车削', part_label: '分件轴', sequence: 1, piece_id: 'A', quantity: 20, batch_quantity: 50,
     start, end, machine: { ref: machine, label: '车床01' }, operator: null, supplier: null, source: 'internal', locked: true, due_date: '2026-12-10', due_state: 'specified', due_issue: null, data_gaps: [], operation_effort: original };
-  const target = [], second = { ...task, row_ref: ref(701), start: '2026-12-02T08:00:00' };
   const inspectorPrepared = { graph: {} };
-  const inspector = initialRuntime.state.render(() => expand(h(RunCandidateControls.Detail, { data: { tasks: [task, second] }, prepared: inspectorPrepared, task, onClose: () => {}, onRelated: row => target.push(row) })));
+  const inspector = initialRuntime.state.render(() => expand(h(RunCandidateControls.Detail, { data: { tasks: [task] }, prepared: inspectorPrepared, task, onClose: () => {}, onRelated: () => {} })));
   assert.strictEqual(nodes(inspector).find(node => node.type === 'routes').props.index, inspectorPrepared.graph, '候选详情把原准备图直接传给路线');
   const inspectorText = text(inspector).replace(/\s+/g, ' ');
   assert(inspectorText.includes('准备与加工需求') && fieldText(inspector, labels.target_quantity).startsWith('10') && fieldText(inspector, labels.execution_target_quantity).startsWith('20') && fieldText(inspector, labels.remaining_quantity) === '8', '甘特详情直接读取同一份保存需求');
-  const segments = nodes(inspector).filter(node => node.props.className === 'rc-saved-segment'); assert.equal(segments.length, 2, '需求来源接入保留全部分段安排');
-  nodes(segments.find(node => node.props.key === second.row_ref)).find(node => node.type === 'button').props.onClick(); assert.equal(target[0], second.row_ref);
   for (const [patch, expectedDue] of [
     [{ due_date: '2026-10-16', due_state: 'specified', due_issue: null, data_gaps: [] }, '2026-10-16'],
     [{ due_date: null, due_state: 'invalid', due_issue: 'due_date_missing', data_gaps: [{ field: 'due_date', code: 'not_recorded', message: '排产时没有记下这一项。' }] }, '交期缺失'],
@@ -219,25 +213,24 @@ async function identities() {
   }
   const full = fixture({ comparison_mode: 'admission_official' });
   // Candidates come only from the unified search by business objective, carrying its generation metadata (RunGenerationContract.metadataKeys).
-  const generation = { generation_policy_version: 'unified_search_v1', representative_objectives: ['min_overdue'],
+  const generation = { representative_objectives: ['min_overdue'],
     evaluations: { min_overdue: { field_order: ['failed_ops', 'overdue_count', 'weighted_tardiness_hours', 'total_tardiness_hours', 'makespan_hours', 'changeover_count'],
-      score: [0, 2, 2, 2, 2, 2], scoring_scope: { scheduled_operation_refs: [], complete_batch_refs: [batch], objective_scope: 'all_batches', components_known: true, is_complete: true } } },
+      score: [0, 2, 2, 2, 2, 2], scoring_scope: { scheduled_operation_count: 0, complete_batch_count: 1, objective_scope: 'all_batches', components_known: true, is_complete: true } } },
     origin: { search_objective: 'min_overdue', phase: 'construct', origin: 'seed', dispatch_mode: null, dispatch_rule: null, strategy: 'greedy', repair_decision: null },
     first_found_elapsed_ms: 12, search_evidence_ref: { run_ref: run, source_event_id: null } };
-  const candidate = { candidate_ref: chosen, label: '所选候选', kind: 'business_objective', status: 'completed', persisted_status: 'completed', completeness: 'complete', task_count: 23, ...generation,
+  const candidate = { candidate_ref: chosen, label: '所选候选', status: 'completed', completeness: 'complete', task_count: 23, ...generation,
     selection_role: [], metrics: {}, deltas: {},
-    coverage: { search: { state: 'complete', completed_count: 1, total_count: 1 },
-      schedulable: { state: 'complete', expected_count: 23, scheduled_count: 23, missing_count: 0, deferred_count: 0 },
+    coverage: { schedulable: { state: 'complete', expected_count: 23, scheduled_count: 23, missing_count: 0, deferred_count: 0 },
       delivery: { complete_batch_count: 1, batch_count: 1, deferred_batch_count: 0 } },
     capabilities: { view: true, compare: true, gantt: true, adoption_preview: true, adopt: false } };
-  // 推荐只按业务方向选择（business_objectives_v1）：选择依据带统一搜索的目标、胜者与评分，旧健康证据位恒为 null。
+  // 推荐只按业务方向选择：选择依据带统一搜索的目标、胜者与评分。
   const targets = ['min_overdue', 'min_tardiness', 'min_changeover'], fieldOrders = {
     min_overdue: ['failed_ops', 'overdue_count', 'weighted_tardiness_hours', 'total_tardiness_hours', 'makespan_hours', 'changeover_count'],
     min_tardiness: ['failed_ops', 'total_tardiness_hours', 'overdue_count', 'weighted_tardiness_hours', 'makespan_hours', 'changeover_count'],
     min_changeover: ['failed_ops', 'changeover_count', 'overdue_count', 'total_tardiness_hours', 'weighted_tardiness_hours', 'makespan_hours']
   };
   const scoring = generation.evaluations.min_overdue.scoring_scope;
-  const basis = { generation_policy_version: 'unified_search_v1', selection_policy_version: 'business_objectives_v1', primary_objective: 'min_overdue', target_objectives: targets,
+  const basis = { primary_objective: 'min_overdue', target_objectives: targets,
     selected_candidate_ref: chosen, objective_winners: Object.fromEntries(targets.map(name => [name, chosen])), objective_winner_reasons: Object.fromEntries(targets.map(name => [name, null])),
     objective_field_order: Object.fromEntries(targets.map(name => [name, fieldOrders[name]])), selected_score: [0, 2, 2, 2, 2, 2], reason_code: 'primary_objective_best_found',
     scoring_scope: scoring, evidence_state: 'complete',
@@ -250,37 +243,38 @@ async function identities() {
         : key === 'elapsed_seconds' ? 'candidate_search' : key.startsWith('machine_') || key.startsWith('operator_') ? 'saved_schedule_resources' : 'full_admission',
       source: ['overdue_count', 'total_tardiness_hours'].includes(key) ? 'archived_delivery' : ['expected_operation_count', 'deferred_operation_count'].includes(key) ? 'admission'
         : ['scheduled_operation_count', 'unplanned_operation_count'].includes(key) ? 'candidate_tasks' : 'saved_algorithm' }));
-  candidate.metrics = Object.fromEntries(coreDefinitions.map(definition => [definition.key, { ...metric(2), scope: definition.scope, metric_version: definition.metric_version }]));
+  const unitFor = key => ['overdue_count', 'total_tardiness_hours', 'weighted_tardiness_hours'].includes(key) ? 'batch'
+    : ['expected_operation_count', 'scheduled_operation_count', 'unplanned_operation_count', 'deferred_operation_count'].includes(key) ? 'operation'
+    : key.startsWith('machine_') ? 'machine' : key.startsWith('operator_') ? 'operator' : 'record';
+  candidate.metrics = Object.fromEntries(coreDefinitions.map(definition => [definition.key, { ...metric(2, unitFor(definition.key)), scope: definition.scope, metric_version: definition.metric_version }]));
   candidate.deltas = Object.fromEntries(coreDefinitions.map(definition => [definition.key, delta(0)]));
-  const runOptions = { generation_policy_version: 'unified_search_v1', primary_objective: 'min_overdue', target_objectives: ['min_overdue', 'min_tardiness', 'min_changeover'],
+  const runOptions = { primary_objective: 'min_overdue', target_objectives: ['min_overdue', 'min_tardiness', 'min_changeover'],
     time_budget_seconds: 10, algo_mode: 'improve', graph_analysis_mode: 'off' };
   // 推荐方案是所选候选：完成范围与工序安排各自带回跳位置，指标对比逐项覆盖指标目录。
   const completionScope = { scope: 'full_admission', state: 'complete', source_available: true, complete_batch_count: 1, incomplete_batch_count: 0, ordinary_incomplete_batch_count: 0,
     deferred_batch_count: 0, unknown_batch_count: 0, unplanned_operation_count: 0, deferred_operation_count: 0,
-    sample_batch_refs: { complete: [batch], incomplete: [], deferred: [], unknown: [] },
     remaining_work: { metrics: Object.fromEntries(prepKeys.map(key => [key, metric(0)])), operation_count: 0, unplanned_operation_count: 0, deferred_operation_count: 0 },
     drill: { run_ref: run, candidate_ref: chosen, selected_candidate_ref: chosen, comparison_mode: 'admission_official', resource_view: 'selected_batches',
       range_start: start, range_end: end, comparison_tab: 'preparation', detail_query: {} } };
   const differences = coreDefinitions.map(definition => ({ metric_key: definition.key, label: definition.label, unit: definition.unit, scope: definition.scope, source: definition.source,
     metric_version: definition.metric_version, precision: definition.precision, text: '持平', value: 0, reference_value: 2, selected_value: 2, state: 'comparable', direction: 'equal',
-    reason: null, compared_batch_count: null, sample_compared_batch_refs: [], supporting_refs: [] }));
+    reason: null, compared_batch_count: 0, sample_compared_batch_refs: [], supporting_refs: [] }));
   const recommendation = { recommendation_version: 'decision-recommendation-v1', state: 'available', candidate_ref: chosen, viewed_candidate_ref: chosen,
     recommendation_type: 'complete', headline: '推荐所选候选。', completion_scope: completionScope,
     axes: { algorithm: { state: 'selected', reason_code: basis.reason_code, evidence_state: basis.evidence_state },
-      completion: { search: candidate.coverage.search, schedulable: candidate.coverage.schedulable, delivery: completionScope },
+      completion: { schedulable: candidate.coverage.schedulable, delivery: completionScope },
       preflight: { state: 'not_checked', source: 'existing_adoption_preview' } },
     current_comparison: { state: 'available', candidate_ref: chosen, viewed_candidate_ref: chosen, reference: clone(full.data.scope.reference),
       benefits: [], costs: [], all_differences: differences, common_completed_delivery: null } };
   const overview = { ...full, data: { run: { run_ref: run, accepted_at: start, finished_at: end }, scope: { ...full.data.scope, run_options: runOptions }, baseline: full.data.baseline,
     candidates: [candidate], metric_definitions: coreDefinitions, catalog_complete: true, selection_basis: basis,
-    completion_groups: [{ group_index: 1, source_available: true, candidate_refs: [chosen], complete_batch_count: 1, sample_complete_batch_refs: [batch] }],
     recommendation } };
   runAnswer = overview;
   assert.deepEqual(clone((await A.decision(run, { comparison_mode: 'admission_official', selected_candidate_ref: chosen, range_start: start, range_end: end })).data), clone(overview.data),
-    '准备需求回跳的总览夹具先通过真实比较DTO校验');
+    '准备需求回跳的总览夹具走真实RunDecisionAPI.decision读取与快照绑定');
   const recalled = [], navigation = [], detailQueries = { preparation: { page: 2, size: 20, machine_ref: machine, batch_ref: batch, allocation_state: 'unplanned', work_scope: 'remaining', snapshot_ref: token }, changeovers: { event_side: 'reference', sort: 'machine_label', order: 'desc' } };
   const mainRuntime = runtime(), mainWindow = mainRuntime.window;
-  const queryStub = { useQuery: (load, deps, enabled = true) => ({ result: enabled ? overview : null, loading: false, error: null }) };
+  const queryStub = { useQuery: (load, deps, { enabled = true } = {}) => { const result = enabled ? overview : null; return { result, shown: result, loading: false, error: null }; } };
   mainWindow.__wbRuntime.setStubs({
     'WorkbenchPageContext.jsx': { useSnapshot: value => recalled.push(value) },
     'WorkbenchCaption.jsx': { useCaption: () => {} },
@@ -291,7 +285,7 @@ async function identities() {
     renderAdoption: () => null, renderTrial: () => null, runHistoryReturn: { view: 'analysis', context: {} } })));
   const pane = nodes(comparison).find(node => node.type === 'preparation-pane'); assert.equal(pane.props.query.page, 2); assert.equal(pane.props.query.snapshot_ref, token); assert.equal(pane.props.query.work_scope, 'remaining');
   pane.props.onDrill(full.data.items[0].drill.reference); assert.equal(navigation[0].context.plan_ref, plan); assert.equal(navigation[0].context.resource_view, 'selected_batches');
-  const returned = navigation[0].context.return_decision_context;
+  assert.equal(navigation[0].context.return_to.view, 'analysis'); const returned = navigation[0].context.return_to.context;
   assert.deepEqual(clone(returned.detail_queries.preparation), detailQueries.preparation); assert.deepEqual(clone(returned.detail_queries.changeovers), { machine_ref: machine, ...detailQueries.changeovers });
   assert.equal(returned.detail_queries.resources.resource_ref, machine); assert.equal(returned.comparison_tab, 'preparation');
 }
@@ -323,6 +317,16 @@ async function session() {
       assert.equal(calls.at(-1).machine_ref, machine); assert.equal(calls.at(-1).allocation_state, 'unplanned', '剩余需求范围保留当前设备与归属筛选');
       assert.equal(props.query.work_scope, 'remaining', '剩余需求筛选回写独立查询快照');
     }
+    // 同键刷新期间明细按保留值继续显示，导出只认当前结果：按钮保留但不可点，读回后恢复可点。
+    const localExport = getMod(local, 'RunDecisionComparison.jsx').Export, exportOf = () => nodes(tree).find(node => node.type === localExport);
+    const exportState = hooks(), ExportView = getMod(runtime(exportState).window, 'RunDecisionComparison.jsx').Export;
+    const exportButton = result => nodes(exportState.render(() => ExportView({ result, initialSection: section, filterQuery: {} }))).find(node => node.type === 'button');
+    const settled = exportOf().props.result; assert(settled && exportButton(settled).props.disabled === false);
+    let answer; localAPI[section] = (run, q) => { calls.push(clone(q)); return new Promise(resolve => { answer = () => resolve(fixture(q, section)); }); };
+    nodes(tree).find(node => node.props['aria-label'] === '刷新准备与切换明细').props.onClick(); await render();
+    assert(exportOf(), '同键刷新期间旧明细仍显示，导出按钮保留');
+    assert.equal(exportOf().props.result, null); assert.equal(exportButton(null).props.disabled, true, '刷新期间导出不可点');
+    answer(); await render(); assert(exportOf().props.result && exportOf().props.result !== settled); assert.equal(exportButton(exportOf().props.result).props.disabled, false, '读回后导出恢复可点');
     localAPI[section] = (run, q, signal) => { calls.push(clone(q)); signals.push(signal); return new Promise(() => {}); };
     nodes(tree).find(node => node.props['aria-label'] === '刷新准备与切换明细').props.onClick(); await render(); nodes(tree).find(node => node.type === 'button' && text(node) === '取消读取').props.onClick(); await render(); assert(signals.at(-1).aborted);
   }

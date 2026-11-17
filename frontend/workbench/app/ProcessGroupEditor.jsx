@@ -1,10 +1,11 @@
 import React, { createPortal } from './shared/runtime/react.js';
-import C from './resource-contract.js';
 import P from './ProcessContract.js';
+import APSProcessAPI from './ProcessAPI.js';
 import E from './ProcessStageEditor.jsx';
-import { Button, Modal } from './ResourceControls.jsx';
+import { Button, FieldCell, Modal } from './ResourceControls.jsx';
 import { Feedback } from './ResourceForms.jsx';
 import { ProcessSourcePicker } from './ProcessSourceEditor.jsx';
+import { failure } from './shared/contract/kit.js';
 
 const build = () => ({ groups: [], discard_group_refs: [] });
 function reconcile(draft, _before, after) {
@@ -18,15 +19,19 @@ function reconcile(draft, _before, after) {
   });
   return { groups, discard_group_refs: draft.discard_group_refs.filter(ref => groupRefs.has(ref)) };
 }
+// 提交的 groups 与草稿同序：第 i 段的整段周期报 groups.<i>.total_days（后端预检与提交同一口径）。
+const totalPath = index => 'groups.' + index + '.total_days';
 function input(draft) {
-  return { groups: draft.groups.map(row => {
-    if (!row.operation_refs.length || !row.supplier_ref || !Number.isFinite(Number(row.total_days)) || Number(row.total_days) <= 0)
-      throw C.failure('每段请选择连续外协工序、供应商，并填写大于 0 的整段周期。');
+  const message = '每段请选择连续外协工序、供应商，并填写整段周期。';
+  return { groups: draft.groups.map((row, index) => {
+    if (!row.operation_refs.length || !row.supplier_ref) throw failure(message);
+    // 整段周期提交前只确认能解析成有限数；取值范围由后端校验。
+    if (String(row.total_days).trim() === '' || !Number.isFinite(Number(row.total_days))) throw failure(message, { fields: [{ path: totalPath(index), message }] });
     return { ref: row.ref, operation_refs: row.operation_refs, supplier_ref: row.supplier_ref, total_days: Number(row.total_days) };
   }), discard_group_refs: draft.discard_group_refs };
 }
-function ProcessGroupEditor({ adapter, result, command, disabled, onDirty, onClose }) {
-  const model = E.useDraft({ result, adapter, stage: 'groups', build, reconcile, saved: 0, onDirty });
+function ProcessGroupEditor({ result, command, disabled, onDirty, onClose }) {
+  const model = E.useDraft({ result, stage: 'groups', build, reconcile, saved: 0, onDirty });
   const entity = model.base.data, draft = model.draft;
   const operations = React.useMemo(() => E.active(entity), [entity]);
   const externalOperations = React.useMemo(() => operations.filter(op => op.source === 'external'), [operations]);
@@ -34,6 +39,8 @@ function ProcessGroupEditor({ adapter, result, command, disabled, onDirty, onClo
   const [editing, setEditing] = React.useState(null), [picker, setPicker] = React.useState(null), [discard, setDiscard] = React.useState(false);
   const [preview, setPreview] = React.useState(null), [checking, setChecking] = React.useState(false), serial = React.useRef(0), request = React.useRef(null), reviewRoot = React.useRef(null);
   const blocked = disabled || command.locked || command.phase === 'done', current = draft.groups.find(row => row.key === editing);
+  // 本页预检的错误优先；否则是上次确认保存被拒的错误。
+  const shownError = model.error || command.error;
   const validPreview = preview && preview.draft === draft && preview.base === model.base && !model.review ? preview : null;
   const reason = model.review ? '请先核对最新资料。' : entity.workflow.route.state !== 'confirmed' ? '请先确认路线。'
     : (model.base.meta.source !== 'production' ? '请先读取可保存的工艺资料。' : '') || (!model.dirty ? '请先新增、修改或解除外协段。' : '');
@@ -53,7 +60,8 @@ function ProcessGroupEditor({ adapter, result, command, disabled, onDirty, onClo
     const frame = requestAnimationFrame(() => { if (reviewRoot.current) { reviewRoot.current.focus(); reviewRoot.current.scrollIntoView({ block: 'nearest' }); } });
     return () => cancelAnimationFrame(frame);
   }, [validPreview]);
-  function edit(next) { if (request.current) request.current.abort(); setChecking(false); setPreview(null); model.edit(next); }
+  // 改了草稿：旧预检作废，被拒的提交和它的标红一起清掉（段序号随草稿变，不能留着指错段）。
+  function edit(next) { if (request.current) request.current.abort(); setChecking(false); setPreview(null); model.edit(next); command.clearRejection(); }
   function patch(values) { edit(old => ({ ...old, groups: old.groups.map(row => row.key === editing ? { ...row, ...values } : row) })); }
   function members(row) {
     return membersByKey.get(row.key);
@@ -79,7 +87,7 @@ function ProcessGroupEditor({ adapter, result, command, disabled, onDirty, onClo
     if (blocked || checking || reason) return;
     const controller = new AbortController(); request.current = controller; setChecking(true); model.setError(null);
     try {
-      const body = input(draft), raw = await adapter.stagePreview(entity.ref, 'groups_confirm', body, model.base.meta.snapshot_ref, controller.signal);
+      const body = input(draft), raw = await APSProcessAPI.stagePreview(entity.ref, 'groups_confirm', body, model.base.meta.snapshot_ref, controller.signal);
       const response = P.stagePreview(raw, entity.ref, 'groups_confirm');
       if (!controller.signal.aborted) setPreview({ response, body, draft, base: model.base });
     } catch (error) { if (!controller.signal.aborted) model.setError(error); }
@@ -104,17 +112,21 @@ function ProcessGroupEditor({ adapter, result, command, disabled, onDirty, onClo
           <Button disabled={blocked || checking} onClick={() => start(row)}>{editedRefs.has(row.ref) ? '继续编辑' : '修改范围 / 供应商'}</Button>
           <Button disabled={blocked || checking} onClick={() => detach(row)}>{removedRefs.has(row.ref) ? '撤销解除' : '解除此段'}</Button>{removedRefs.has(row.ref) && <span role="status">保存时解除</span>}</td></tr>)}
           {!entity.external_groups.length && <tr><td colSpan={4}>尚无外协段，可选择工序新增。</td></tr>}</tbody></table></div>
-      {!!draft.groups.length && <section><h3>本次新增 / 修改</h3>{draft.groups.map((row, index) => <div className="toolbar" key={row.key}><span>{row.ref ? '修改' : '新增'}外协段 · 工序 {members(row).map(op => op.sequence).join('、') || '待选择'} · {row.supplier_label || '待选供应商'} · {row.total_days || '待填'} 天</span>
-        <Button disabled={blocked || checking} aria-label={'编辑本次第 ' + (index + 1) + ' 段'} onClick={() => setEditing(row.key)}>编辑</Button><Button disabled={blocked || checking} onClick={() => remove(row)}>撤销本次编辑</Button></div>)}</section>}
+      {!!draft.groups.length && <section><h3>本次新增 / 修改</h3>{draft.groups.map((row, index) => { const summary = <span>{row.ref ? '修改' : '新增'}外协段 · 工序 {members(row).map(op => op.sequence).join('、') || '待选择'} · {row.supplier_label || '待选供应商'} · {row.total_days || '待填'} 天</span>;
+        // 正在编辑的段由“整段周期”输入框认领周期错误，其余段在这一行认领。
+        return <div className="toolbar" key={row.key}>{row.key === editing ? summary : <FieldCell path={totalPath(index)} error={shownError}>{summary}</FieldCell>}
+        <Button disabled={blocked || checking} aria-label={'编辑本次第 ' + (index + 1) + ' 段'} onClick={() => setEditing(row.key)}>编辑</Button><Button disabled={blocked || checking} onClick={() => remove(row)}>撤销本次编辑</Button></div>; })}</section>}
       {current && <section><h3>{current.ref ? '修改外协段' : '新外协段'}</h3><E.Search paging={paging} disabled={blocked || checking} />
         <div className="wb-table-frame"><table className="tbl wb-table wb-table--editable" aria-label="选择外协段工序"><thead><tr><th scope="col">加入此段</th><th scope="col">工序</th><th scope="col">归属 / 供应商</th></tr></thead>
           <tbody>{paging.rows.map(row => { const elsewhere = elsewhereSet.has(row.ref);
             const occupied = row.external_group_ref && row.external_group_ref !== current.ref && !editedRefs.has(row.external_group_ref) && !removedRefs.has(row.external_group_ref);
-            return <tr key={row.ref}><td><label><input type="checkbox" aria-label={'外协段包含工序 ' + row.sequence} checked={current.operation_refs.includes(row.ref)} disabled={blocked || checking || row.source !== 'external' || elsewhere || !!occupied}
-              onChange={event => patch({ operation_refs: event.target.checked ? current.operation_refs.concat(row.ref) : current.operation_refs.filter(ref => ref !== row.ref) })} />{row.source !== 'external' ? '自制工序' : elsewhere ? '已选入另一段' : occupied ? '先编辑或解除原段' : '选择'}</label></td><td>{row.sequence} · {row.label}</td><td>{P.sourceLabel(row.source)} · {row.source === 'internal' ? '不适用供应商' : row.supplier_label || '未选供应商'}</td></tr>; })}</tbody></table></div><E.Pager paging={paging} disabled={blocked || checking} />
+            // 成员不连续、与别段重叠报在 external_group_ref（勾选框），供应商不合适报在 supplier_ref（归属 / 供应商）。
+            return <tr key={row.ref}><td><label><FieldCell path={'operations.' + row.ref + '.external_group_ref'} error={shownError}><input type="checkbox" aria-label={'外协段包含工序 ' + row.sequence} checked={current.operation_refs.includes(row.ref)} disabled={blocked || checking || row.source !== 'external' || elsewhere || !!occupied}
+              onChange={event => patch({ operation_refs: event.target.checked ? current.operation_refs.concat(row.ref) : current.operation_refs.filter(ref => ref !== row.ref) })} /></FieldCell>{row.source !== 'external' ? '自制工序' : elsewhere ? '已选入另一段' : occupied ? '先编辑或解除原段' : '选择'}</label></td><td>{row.sequence} · {row.label}</td>
+              <td><FieldCell path={'operations.' + row.ref + '.supplier_ref'} error={shownError}><span>{P.sourceLabel(row.source)} · {row.source === 'internal' ? '不适用供应商' : row.supplier_label || '未选供应商'}</span></FieldCell></td></tr>; })}</tbody></table></div><E.Pager paging={paging} disabled={blocked || checking} />
         <div className="toolbar"><span>供应商：{current.supplier_label || '未选择'}</span><Button icon="search" disabled={blocked || checking || !currentMembers.length} onClick={() => { setPicker({ kind: 'supplier', source: 'external', sequence: currentMembers[0].sequence,
           group: { start_sequence: currentMembers[0].sequence, end_sequence: currentMembers[currentMembers.length - 1].sequence }, members: currentMembers }); }}>选择整段供应商</Button>
-          <label>整段周期（天）<input className="wt-in" type="number" step="any" min="0" aria-label="整段外协周期" value={current.total_days} disabled={blocked || checking} onChange={event => patch({ total_days: event.target.value })} /></label></div>
+          <label>整段周期（天）<FieldCell path={totalPath(draft.groups.indexOf(current))} error={shownError}><input className="wt-in" type="number" step="any" min="0" aria-label="整段外协周期" value={current.total_days} disabled={blocked || checking} onChange={event => patch({ total_days: event.target.value })} /></FieldCell></label></div>
       </section>}
       {losesSelections && <p role="status">最新资料中有外协段或工序已失效。接受后会移除失效段的编辑、解除选择和失效工序选择，保留仍有效的段草稿。</p>}
       <Feedback command={command} /><E.Feedback model={model} disabled={blocked || checking} />
@@ -122,7 +134,7 @@ function ProcessGroupEditor({ adapter, result, command, disabled, onDirty, onClo
         {validPreview.response.data.changes.map((row, index) => <tr key={index}><td>{{ create: '新增段', update: '修改段', discard: '解除段' }[row.action]}</td><td>{label(row.before)}</td><td>{label(row.after)}</td></tr>)}
         {!validPreview.response.data.changes.length && <tr><td colSpan={3}>与已保存内容一致，无需改变现有段。</td></tr>}</tbody></table></div></section>}
       {discard && model.dirty && <section className="match-note is-block" role="alert"><p>本次外协段修改尚未保存。</p><Button disabled={blocked} onClick={() => setDiscard(false)}>继续编辑</Button><Button className="btn danger" disabled={blocked} onClick={onClose}>放弃段修改并返回</Button></section>}
-    </div></Modal>{picker && <ProcessSourcePicker adapter={adapter} target={picker} disabled={blocked || checking} onClose={() => setPicker(null)} onSelect={row => {
+    </div></Modal>{picker && <ProcessSourcePicker target={picker} disabled={blocked || checking} onClose={() => setPicker(null)} onSelect={row => {
       patch({ supplier_ref: row.ref, supplier_label: row.label, ...(!current.ref && !current.total_days && row.fields.default_days > 0 ? { total_days: String(row.fields.default_days) } : {}) }); setPicker(null);
     }} />}</div>, document.body);
 }

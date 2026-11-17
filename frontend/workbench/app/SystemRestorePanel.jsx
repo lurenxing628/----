@@ -49,7 +49,7 @@ function SystemRestorePanel({ command, theme, onSetTheme }) {
     <main className="sm-restore-content"><h1>{description.title}</h1><p className="sm-meta">维护状态</p>
       <section aria-label="维护结果"><h2 className={op && op.state === 'succeeded' && !description.uncertain ? 'sm-tone-success' : 'sm-tone-warning'}>{description.state}</h2>
         <p className="sm-notice">{description.guidance}</p>
-        {problem && <p className="sm-notice sm-tone-danger" role="alert">{problem.message}</p>}{waiting && <p role="status">正在查询维护状态…</p>}
+        <C.ErrorBox error={problem} />{waiting && <p role="status">正在查询维护状态…</p>}
         {notice && <p role="status">{notice}</p>}
         {op && <p>{op.message}</p>}{result && result.kind === 'not_recorded' && <p role="status">{result.message} 请查询结果，勿重复提交。</p>}
         <dl className="sm-restore-facts">{fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>

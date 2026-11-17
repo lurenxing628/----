@@ -1,24 +1,26 @@
 import React from './shared/runtime/react.js';
-import C from './resource-contract.js';
 import A from './ProcessActionContract.js';
 import F from './ProcessFileContract.js';
 import S from './shared/session/command-session.js';
+import APSProcessAPI from './ProcessAPI.js';
 import { useQuery } from './shared/session/query.js';
 import M from './ResourceMaterialContract.js';
 import { Button, Modal, ErrorBox, Issues, Icon } from './ResourceControls.jsx';
+import { errorText } from './WorkbenchReferences.jsx';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import { ProcessFilePreview, ProcessFileReceipt } from './ProcessFilePreview.jsx';
 import { Feedback } from './ResourceForms.jsx';
+import { failure, ref48 } from './shared/contract/kit.js';
 
-function ProcessFileActions({ adapter, kind, mode, request, onClose, onCommitted, disabled = false }) {
+function ProcessFileActions({ kind, mode, request, onClose, onCommitted, disabled = false }) {
   const [original] = React.useState(() => ({ ...request, scope: A.scope(request.scope) }));
   const [file, setFile] = React.useState(null), [format, setFormat] = React.useState('xlsx'), [selection, setSelection] = React.useState(original.target_ref ? 'explicit' : '');
   const [job, setJob] = React.useState(null), [error, setError] = React.useState(null), [discard, setDiscard] = React.useState(false);
   const [groups, setGroups] = React.useState([]), [now, setNow] = React.useState(Date.now());
   const [download, setDownload] = React.useState({ busy: false }), abort = React.useRef(null), alive = React.useRef(true), notified = React.useRef(null);
-  const command = S.useCommand(adapter), importing = mode === 'import', recovery = original.recovery === true;
+  const command = S.useCommand(APSProcessAPI), importing = mode === 'import', recovery = original.recovery === true;
   const label = kind === 'route' ? '工艺路线' : '工时定额';
   const { saved, receiptError } = React.useMemo(() => {
     if (command.phase !== 'done') return { saved: null, receiptError: null };
@@ -31,13 +33,13 @@ function ProcessFileActions({ adapter, kind, mode, request, onClose, onCommitted
     let body;
     if (importing) {
       await M.validateFile(job.file, job.format);
-      if (job.file.size > 16 * 1024 * 1024) throw C.failure('文件超过 16 MB，请缩小文件后再预检。');
+      if (job.file.size > 16 * 1024 * 1024) throw failure('文件超过 16 MB，请缩小文件后再预检。');
       body = new FormData(); body.append('file', job.file); body.append('format', job.format); body.append('mode', 'upsert');
-      if (original.target_ref) { if (!A.ref(original.target_ref)) throw C.failure('当前零件已无法核对，请返回列表重新选择。'); body.append('target_ref', original.target_ref); }
+      if (original.target_ref) { if (!ref48(original.target_ref)) throw failure('当前零件已无法核对，请返回列表重新选择。'); body.append('target_ref', original.target_ref); }
     } else body = F.exportBody(original, job.selection, job.format);
-    const result = await adapter.filePreview(kind, mode, body, signal);
+    const result = await APSProcessAPI.filePreview(kind, mode, body, signal);
     return importing ? F.preview(result, kind, job.format, original) : F.exportPreview(result, kind, body);
-  }, [adapter, job, kind, mode], !!job);
+  }, [job, kind, mode], { enabled: !!job });
   const result = query.result, data = result && result.data, busy = !!job && query.loading;
   const controlsDisabled = disabled || locked || done || busy;
   React.useEffect(() => () => { alive.current = false; if (abort.current) abort.current.abort(); }, []);
@@ -65,20 +67,20 @@ function ProcessFileActions({ adapter, kind, mode, request, onClose, onCommitted
   function chooseFile(files) {
     if (controlsDisabled) return;
     invalidate(); setFile(null);
-    if (!files || files.length !== 1) { setError(C.failure('一次只能选择一个 CSV 或 XLSX 文件。')); return; }
+    if (!files || files.length !== 1) { setError(failure('一次只能选择一个 CSV 或 XLSX 文件。')); return; }
     setFile(files[0]);
   }
   function preflight() {
     if (controlsDisabled || recovery || !command.reset()) return;
     invalidate();
-    if (importing && !file) { setError(C.failure('请先选择文件。')); return; }
-    if (!importing && !selection) { setError(C.failure('请先选择导出范围。')); return; }
+    if (importing && !file) { setError(failure('请先选择文件。')); return; }
+    if (!importing && !selection) { setError(failure('请先选择导出范围。')); return; }
     setJob({ file, format, selection }); setNow(Date.now());
   }
   let reason = importing ? A.blocked(result, original.source, F.operation(kind)) : '';
   if (data && now >= Date.parse(data.expires_at)) reason = '预检已过期，请重新预检。';
   let confirmInput = null;
-  if (data && importing && !reason) { try { confirmInput = F.confirmInput(data, groups, data.zero_review_required); } catch (failure) { reason = C.message(failure); } }
+  if (data && importing && !reason) { try { confirmInput = F.confirmInput(data, groups, data.zero_review_required); } catch (failure) { reason = errorText(failure); } }
   if (command.phase === 'rejected') reason = '本次未导入，请重新预检后再确认。';
   function confirm() {
     if (!importing || controlsDisabled || recovery || !data || reason) return;
@@ -86,10 +88,10 @@ function ProcessFileActions({ adapter, kind, mode, request, onClose, onCommitted
   }
   async function downloadFile(template) {
     if (controlsDisabled || !template && (!data || reason)) return;
-    if (!template && data.format !== format) { setError(C.failure('当前导出格式已变化，请重新预检。')); return; }
+    if (!template && data.format !== format) { setError(failure('当前导出格式已变化，请重新预检。')); return; }
     const controller = new AbortController(); abort.current = controller; setDownload({ busy: true }); setError(null);
     try {
-      const response = await adapter.fileDownload(kind, template, template ? { format } : { export_ref: data.export_ref }, controller.signal);
+      const response = await APSProcessAPI.fileDownload(kind, template, template ? { format } : { export_ref: data.export_ref }, controller.signal);
       if (!controller.signal.aborted && alive.current) {
         const name = M.saveDownload(response, format);
         if (alive.current) setDownload({ busy: false, name });

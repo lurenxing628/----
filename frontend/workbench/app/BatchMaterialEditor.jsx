@@ -1,16 +1,17 @@
 import React from './shared/runtime/react.js';
 import B from './BatchContract.js';
-import C from './resource-contract.js';
+import APSBatchAPI from './BatchAPI.js';
 import { useQuery } from './shared/session/query.js';
-import { Button, Modal, ErrorBox, Field, Pager } from './ResourceControls.jsx';
+import { Button, Modal, ErrorBox, Field, FieldCell, Pager } from './ResourceControls.jsx';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import { Feedback } from './ResourceForms.jsx';
 import WorkbenchTerms from './WorkbenchTerms.js';
+import { failure } from './shared/contract/kit.js';
 
 const toRows = entity => entity.materials.requirements.map(row => ({ ...row,
   required_quantity: row.required_quantity == null ? '' : String(row.required_quantity),
   available_quantity: row.available_quantity == null ? '' : String(row.available_quantity) }));
-function BatchMaterialEditor({ adapter, entity: initial, command, onCommitted, onClose }) {
+function BatchMaterialEditor({ entity: initial, command, onCommitted, onClose }) {
   const [entity, setEntity] = React.useState(initial), [rows, setRows] = React.useState(() => toRows(initial));
   const [removed, setRemoved] = React.useState([]), [error, setError] = React.useState(null), [review, setReview] = React.useState(null);
   const [scope, setScope] = React.useState({ query: '', page: 1 }), [selected, setSelected] = React.useState('');
@@ -19,8 +20,10 @@ function BatchMaterialEditor({ adapter, entity: initial, command, onCommitted, o
   const rowsJson = React.useMemo(() => JSON.stringify(rows), [rows]);
   const operationOptions = React.useMemo(() => entity.operations.filter(op => !op.piece_id).map(op => <option key={op.ref} value={op.ref}>{op.sequence} · {op.label}</option>), [entity.operations]);
   const seen = React.useRef(null), changed = rowsJson !== baseRows || removed.length > 0;
+  // 本地检查的错误优先；否则是上次保存被拒的错误。改动任何一格都会把两者一起清掉，标红不会指错行。
+  const shownError = error || command.error;
   const owner = WorkbenchGuards.useDirtyGuard({ dirty: !done && changed, locked: command.locked, message: '物料需求有尚未保存的修改。' });
-  const choices = useQuery(signal => adapter.materialChoices(scope, signal), [adapter, scope]);
+  const choices = useQuery(signal => APSBatchAPI.materialChoices(scope, signal), [scope]);
   const data = choices.result && choices.result.data;
   React.useEffect(() => {
     if (!done || seen.current === command.result.receipt_ref) return;
@@ -41,16 +44,20 @@ function BatchMaterialEditor({ adapter, entity: initial, command, onCommitted, o
   function patch(index, change) { clearError(); setRows(old => old.map((row, i) => i === index ? { ...row, ...change } : row)); }
   async function save(event) {
     event.preventDefault(); if (locked || review) return;
+    // 本地错误与后端 422 同一套路径：提交的第 i 行就是表里第 i 行，第 j 次到料是 rows.<i>.arrivals.<j>。
+    const reject = (path, message) => { throw failure(message, { fields: [{ path, message }] }); };
     try {
-      const input = rows.map(row => {
-        const values = [row.required_quantity, row.available_quantity].map(value => {
-          if (!String(value).trim() || !Number.isFinite(Number(value))) throw C.failure('请填写有效的需求量和到料量，未到料请填 0。');
-          return Number(value);
+      const input = rows.map((row, index) => {
+        const at = key => 'rows.' + index + '.' + key;
+        const values = ['required_quantity', 'available_quantity'].map(key => {
+          if (!String(row[key]).trim() || !Number.isFinite(Number(row[key]))) reject(at(key), '请填写有效的需求量和到料量，未到料请填 0。');
+          return Number(row[key]);
         });
-        if (values[0] <= 0 || values[1] < 0) throw C.failure('需求量必须大于 0，到料量不能小于 0。');
-        const arrivals = row.arrivals.map(item => {
+        // 数量的取值范围由后端校验；这里只确认每次到料都填了日期和能解析的数量。
+        const arrivals = row.arrivals.map((item, n) => {
           const quantity = Number(item.quantity);
-          if (!item.arrival_date || !Number.isFinite(quantity) || quantity <= 0) throw C.failure('请填写每次到料日期和大于 0 的数量。');
+          if (!item.arrival_date) reject(at('arrivals.' + n + '.arrival_date'), '请填写每次到料日期和数量。');
+          if (!String(item.quantity).trim() || !Number.isFinite(quantity)) reject(at('arrivals.' + n + '.quantity'), '请填写每次到料日期和数量。');
           return { arrival_date: item.arrival_date, quantity };
         });
         return { row_key: row.row_key, material_ref: row.material_ref, required_quantity: values[0], available_quantity: values[1], operation_ref: row.operation_ref, arrivals };
@@ -59,7 +66,7 @@ function BatchMaterialEditor({ adapter, entity: initial, command, onCommitted, o
     } catch (e) { setError(e); }
   }
   async function reload() {
-    try { setReview(B.detail(await adapter.detail('batch', entity.ref), entity.ref).data); setError(null); }
+    try { setReview(B.detail(await APSBatchAPI.detail('batch', entity.ref), entity.ref).data); setError(null); }
     catch (e) { setError(e); }
   }
   function accept() {
@@ -76,21 +83,22 @@ function BatchMaterialEditor({ adapter, entity: initial, command, onCommitted, o
       {data && <Pager page={data.page} sizes={[20]} unit="条物料" label="物料选择" disabled={locked}
         onPage={page => setScope({ ...scope, page, snapshot_ref: choices.result.meta.snapshot_ref })} />}
       <div className="wb-table-frame"><table className="tbl wb-table" aria-label="维护批次物料需求"><thead><tr><th>物料</th><th>需求量</th><th>已有到料量</th><th>单位</th><th>操作</th></tr></thead><tbody>
-        {rows.map((row, index) => <React.Fragment key={row.row_key || row.material_ref + index}><tr><td>{row.business_code} · {row.label}</td>
-          {['required_quantity', 'available_quantity'].map((key, column) => <td key={key}><input aria-label={row.business_code + (column ? '到料量' : '需求量')} inputMode="decimal" value={row[key]} disabled={locked}
-            onChange={e => patch(index, { [key]: e.target.value })} /></td>)}
+        {rows.map((row, index) => { const at = key => 'rows.' + index + '.' + key;
+          return <React.Fragment key={row.row_key || row.material_ref + index}><tr><td>{row.business_code} · {row.label}</td>
+          {['required_quantity', 'available_quantity'].map((key, column) => <td key={key}><FieldCell path={at(key)} error={shownError}><input aria-label={row.business_code + (column ? '到料量' : '需求量')} inputMode="decimal" value={row[key]} disabled={locked}
+            onChange={e => patch(index, { [key]: e.target.value })} /></FieldCell></td>)}
           <td>{row.unit || '未填写'}</td><td><Button disabled={locked} onClick={() => { clearError(); setRows(rows.filter((_, i) => i !== index)); if (row.row_key) setRemoved(removed.concat(row.row_key)); }}>移除需求</Button></td></tr><tr><td colSpan="5"><div className="fgrid">
           <Field label={row.business_code + '使用工序'}><select aria-label={row.business_code + '使用工序'} value={row.operation_ref || ''} disabled={locked}
             onChange={e => patch(index, { operation_ref: e.target.value || null })}><option value="">开工前用料</option>
             {operationOptions}</select></Field>
-          <div><strong>分次到料（按填写日期可用）</strong>{row.arrivals.map((item, n) => <div className="toolbar" key={n}>
-            <input type="date" aria-label={row.business_code + '第' + (n + 1) + '次到料日期'} value={item.arrival_date} disabled={locked}
-              onChange={e => patch(index, { arrivals: row.arrivals.map((a, j) => j === n ? { ...a, arrival_date: e.target.value } : a) })} />
-            <input inputMode="decimal" aria-label={row.business_code + '第' + (n + 1) + '次到料数量'} value={item.quantity} disabled={locked}
-              onChange={e => patch(index, { arrivals: row.arrivals.map((a, j) => j === n ? { ...a, quantity: e.target.value } : a) })} />
+          <div><FieldCell path={at('arrivals')} error={shownError}><strong>分次到料（按填写日期可用）</strong></FieldCell>{row.arrivals.map((item, n) => <div className="toolbar" key={n}>
+            <FieldCell path={at('arrivals.' + n + '.arrival_date')} error={shownError}><input type="date" aria-label={row.business_code + '第' + (n + 1) + '次到料日期'} value={item.arrival_date} disabled={locked}
+              onChange={e => patch(index, { arrivals: row.arrivals.map((a, j) => j === n ? { ...a, arrival_date: e.target.value } : a) })} /></FieldCell>
+            <FieldCell path={at('arrivals.' + n + '.quantity')} error={shownError}><input inputMode="decimal" aria-label={row.business_code + '第' + (n + 1) + '次到料数量'} value={item.quantity} disabled={locked}
+              onChange={e => patch(index, { arrivals: row.arrivals.map((a, j) => j === n ? { ...a, quantity: e.target.value } : a) })} /></FieldCell>
             <Button disabled={locked} onClick={() => patch(index, { arrivals: row.arrivals.filter((_, j) => j !== n) })}>移除到料</Button></div>)}
             <Button disabled={locked || row.arrivals.length >= 200} onClick={() => patch(index, { arrivals: row.arrivals.concat({ arrival_date: '', quantity: '' }) })}>新增一次到料</Button></div>
-        </div></td></tr></React.Fragment>)}
+        </div></td></tr></React.Fragment>; })}
       </tbody></table></div>
       {!rows.length && <p>当前没有物料需求。保存后保持未齐套；没有用料要求的批次可在基础信息中明确确认齐套。</p>}
       {removed.length > 0 && <p role="status">本次将移除 {removed.length} 条已有需求，请核对后保存。</p>}

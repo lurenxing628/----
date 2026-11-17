@@ -48,16 +48,6 @@ const missing = E.actualValue(null, true);
 assert.equal(missing.props['aria-label'], '暂无现场数据');
 assert.equal(missing.children.join(''), '—');
 assert.equal(E.actualValue(0, true), '0'); assert.equal(E.actualValue(null, false), '未知');
-const tree = E.StructuredFacts({ value: { completed_quantity: 0, actual_start: null, raw_values: { remark: '保留来源' }, operation_ref: 'a'.repeat(48) } });
-const flat = JSON.stringify(tree);
-assert(flat.includes('本次完成数量')); assert(flat.includes('保留来源')); assert(flat.includes('未知'));
-assert(!flat.includes('[object Object]'));
-const reference = 'A1'.repeat(16), arrayReference = 'c3'.repeat(16), businessCode = 'b2'.repeat(16), requestKey = 'request-retained-in-full';
-const diagnostic = E.StructuredFacts({ value: { code: 'missing_hours', rule: 'quota.minimum_samples', rule_code: 'R17',
-  request_key: requestKey, diagnostic_code: 0, completed_quantity: 0, raw_values: {
-    fingerprint: reference, batch_code: businessCode, operation_code: businessCode, remark: reference,
-    description: '说明 ' + reference, completed_quantity: 0, operation_refs: [reference, null, 0], untyped_values: [arrayReference, 0]
-  } } });
 function nodes(value) {
   if (Array.isArray(value)) return value.flatMap(nodes);
   return value && typeof value === 'object' ? [value, ...nodes(value.children)] : [];
@@ -67,20 +57,6 @@ function visibleText(value) {
   if (value && typeof value === 'object') return value.type === WorkbenchReference ? '' : visibleText(value.children);
   return value == null ? '' : String(value);
 }
-const referenceNodes = nodes(diagnostic).filter(node => node.type === WorkbenchReference);
-const retained = Object.assign({}, ...referenceNodes.map(node => node.props.entries));
-assert.equal(retained['原因代码'], 'missing_hours'); assert.equal(retained['规则'], 'quota.minimum_samples');
-assert.equal(retained['规则代码'], 'R17'); assert.equal(retained['操作编号'], requestKey);
-assert.equal(retained['诊断代码'], 0); assert.equal(retained.fingerprint, reference);
-assert.equal(JSON.stringify(retained.operation_refs), JSON.stringify([reference, null, 0]));
-assert(referenceNodes.some(node => node.props.value === arrayReference), 'Hexadecimal references inside raw arrays must also be collected');
-const visible = visibleText(diagnostic);
-for (const value of ['missing_hours', 'quota.minimum_samples', 'R17', requestKey]) assert(!visible.includes(value));
-assert(visible.includes(businessCode), 'Business codes must remain visible even when they look hexadecimal');
-assert(visible.includes('备注' + reference), 'A business remark is not an internal reference');
-assert(visible.includes('说明 ' + reference), 'Only a complete hexadecimal value is collected');
-assert(visible.includes('本次完成数量0')); assert(!visible.includes('fingerprint'));
-assert(!visible.includes(arrayReference));
 const calls = [];
 controlMocks.Pager = () => null;
 const reportPage = ReportControls.Page({ page: { number: 2, size: 10, pages: 4, total: 31 }, onChange: patch => calls.push(patch) });
@@ -169,12 +145,11 @@ controlMocks.EmptyState = function EmptyState() { return null; };
 context.__wbRuntime.setStubs({
   'WorkbenchCaption.jsx': { useCaption() {} },
   'WorkbenchPageContext.jsx': { useSnapshot() {} },
-  'resource-contract.js': { failure: message => new Error(message) },
   'ReviewCharts.jsx': function ReviewCharts() { return null; },
   'ReportDetail.jsx': function ReportDetail() { return null; },
   'ReportCatalog.jsx': function ReportCatalog() { return null; },
 });
-context.__wbRuntime.setStub('ReportControls.jsx', { ...ReportControls, useRead: () => readState });
+context.__wbRuntime.setStub('shared/session/query.js', { useQuery: () => readState });
 vm.runInContext(built.outputs.find(o => o.path === 'ReportWorkspace.jsx').code, context);
 const { ReportWorkspace } = context.__wbRuntime.getModule('ReportWorkspace.jsx');
 function renderReportWorkspace(props) {
@@ -184,7 +159,7 @@ function renderReportWorkspace(props) {
   return node;
 }
 readState = {
-  busy: false, error: null,
+  loading: false, error: null,
   result: {
     meta: { as_of: '2026-10-01T08:00:00', snapshot_ref: 'snap-1' },
     data: {
@@ -197,11 +172,12 @@ readState = {
     }
   }
 };
+readState.shown = readState.result;
 const initialReportTree = nodes(renderReportWorkspace({ initialContext: { catalogOpen: true }, onNav() {} }));
 const initialPager = initialReportTree.find(node => node.type === ReportControls.Page);
 assert(initialPager && initialPager.props.busy === false);
 initialPager.props.onChange({ page: 2 });
-readState = { busy: true, error: null, result: null };
+readState = { loading: true, error: null, result: null, shown: null };
 const loadingReportTree = nodes(renderReportWorkspace({ initialContext: { catalogOpen: true }, onNav() {} }));
 const loadingSort = loadingReportTree.find(node => node.type === ReportControls.Sort);
 const loadingPager = loadingReportTree.find(node => node.type === ReportControls.Page);

@@ -1,27 +1,27 @@
 import React from './shared/runtime/react.js';
-import TrialContract from './TrialContract.js';
+import C from './TrialContract.js';
 import TrialControls from './TrialControls.jsx';
+import { object, ref48, failure } from './shared/contract/kit.js';
 
-const C = TrialContract, PREFIX = 'aps_workbench_trial_view_v1:', EVENT = 'aps-workbench-trial-view-changed';
+const PREFIX = 'aps_workbench_trial_view_v1:', EVENT = 'aps-workbench-trial-view-changed';
 const fields = ['mode', 'baseline', 'only_changed', 'query', 'result_tab'];
 const tabs = ['delivery', 'capacity', 'preparation', 'history', 'adoptions', 'issues', 'tasks', 'unplanned'];
-const exact = (value, keys) => C.object(value) && Object.keys(value).length === keys.length && keys.every(key => Object.prototype.hasOwnProperty.call(value, key));
-function problem(code, message) { const error = new Error(message); error.code = code; return error; }
+const exact = (value, keys) => object(value) && Object.keys(value).length === keys.length && keys.every(key => Object.prototype.hasOwnProperty.call(value, key));
 function identity(data) {
-  C.check(C.object(data) && C.ref(data.draft_ref), '试调查看偏好缺少原草稿编号。');
+  C.check(object(data) && ref48(data.draft_ref), '试调查看偏好缺少原草稿编号。');
   const kind = data.scenario_ref === undefined ? 'draft' : 'scenario', ref = kind === 'draft' ? data.draft_ref : data.scenario_ref;
-  C.check(C.ref(ref), '试调查看偏好的试调方案编号无效。');
+  C.check(ref48(ref), '试调查看偏好的试调方案编号无效。');
   return { kind, ref };
 }
 function key(target) {
-  C.check(exact(target, ['kind', 'ref']) && ['draft', 'scenario'].includes(target.kind) && C.ref(target.ref), '试调查看偏好的记录类型无效。');
+  C.check(exact(target, ['kind', 'ref']) && ['draft', 'scenario'].includes(target.kind) && ref48(target.ref), '试调查看偏好的记录类型无效。');
   return PREFIX + target.kind + ':' + target.ref;
 }
 function preferences(value) {
   if (!exact(value, fields) || !['machine', 'operator', 'batch'].includes(value.mode)
       || typeof value.baseline !== 'boolean' || typeof value.only_changed !== 'boolean'
       || typeof value.query !== 'string' || value.query.length > 200 || !tabs.includes(value.result_tab)) {
-    throw problem('invalid_preferences', '试调查看偏好的项或格式无效，原记录没有被覆盖。');
+    throw failure('试调查看偏好的项或格式无效，原记录没有被覆盖。', { code: 'invalid_preferences' });
   }
   return value;
 }
@@ -34,34 +34,33 @@ function storage(value) { return value === undefined ? window.localStorage : val
 function read(target, store) {
   const name = key(target); let raw;
   try { raw = storage(store).getItem(name); }
-  catch (_) { throw problem('read_unavailable', '本机试调查看偏好读取失败。'); }
+  catch (_) { throw failure('本机试调查看偏好读取失败。', { code: 'read_unavailable' }); }
   if (raw === null) return null;
+  const corrupt = () => failure('本机试调查看偏好损坏，原记录未覆盖。', { code: 'corrupt_preferences' });
+  if (typeof raw !== 'string' || raw.length > 2048) throw corrupt();
   let value;
-  try {
-    if (typeof raw !== 'string' || raw.length > 2048) throw new Error('invalid size');
-    value = JSON.parse(raw);
-  } catch (_) { throw problem('corrupt_preferences', '本机试调查看偏好损坏，原记录未覆盖。'); }
+  try { value = JSON.parse(raw); } catch (_) { throw corrupt(); }
   if (!exact(value, ['schema_version', 'kind', 'ref', 'preferences']) || value.schema_version !== 1
       || value.kind !== target.kind || value.ref !== target.ref) {
-    throw problem('invalid_identity', '本机试调查看偏好的版本或所属记录不一致，没有恢复其他记录。');
+    throw failure('本机试调查看偏好的版本或所属记录不一致，没有恢复其他记录。', { code: 'invalid_identity' });
   }
   return preferences(value.preferences);
 }
 function write(target, initial, patch, store) {
   const name = key(target);
-  if (!C.object(patch) || !Object.keys(patch).every(field => fields.includes(field))) {
-    throw problem('invalid_preferences', '试调查看偏好含未知的项，没有保存业务内容。');
+  if (!object(patch) || !Object.keys(patch).every(field => fields.includes(field))) {
+    throw failure('试调查看偏好含未知的项，没有保存业务内容。', { code: 'invalid_preferences' });
   }
   const value = preferences({ ...(read(target, store) || initial), ...patch });
   try { storage(store).setItem(name, JSON.stringify({ schema_version: 1, kind: target.kind, ref: target.ref, preferences: value })); }
-  catch (_) { throw problem('write_unavailable', '本次查看偏好尚未保存，本页选择已保留。'); }
+  catch (_) { throw failure('本次查看偏好尚未保存，本页选择已保留。', { code: 'write_unavailable' }); }
   return value;
 }
 function clear(target, store) {
   const name = key(target);
   try {
     storage(store).removeItem(name);
-  } catch (_) { throw problem('clear_unavailable', '查看偏好清除失败，请重试。'); }
+  } catch (_) { throw failure('查看偏好清除失败，请重试。', { code: 'clear_unavailable' }); }
 }
 function useView(data) {
   const target = identity(data), name = key(target), initial = defaults(data), signature = JSON.stringify(initial);

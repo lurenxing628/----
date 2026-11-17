@@ -1,9 +1,8 @@
 import React from './shared/runtime/react.js';
-import PlanGanttModel from './PlanGanttModel.js';
-import GanttPresentation from './GanttPresentation.js';
+import M from './PlanGanttModel.js';
+import V from './GanttPresentation.js';
 import PointGanttModel from './PointGanttModel.js';
 
-const M = PlanGanttModel, V = GanttPresentation;
 function DenseRow({ row, items, model, width, viewport, left, printing, printNumbers, selectedRef, selectedBefore, active, risks, onSelect, onHover }) {
   const ref = React.useRef(null), scale = width / (model.end - model.start);
   const G = PointGanttModel;

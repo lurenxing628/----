@@ -2,6 +2,8 @@
 // No browser: 全局日历、批量维护、个人日历与默认工作时间的零工时提醒与时段错误唯一归属契约。
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('../scripts/workbench/compile.cjs');
+const { routeFetch, browser, json, envelope, failure } = require('./workbench/route_fetch.cjs');
+const { createTreeHost, walk: nodes } = require('./_support/hook_host.cjs');
 const root = path.resolve(__dirname, '..'), app = path.join(root, 'frontend/workbench/app');
 
 const jsSources = [
@@ -38,6 +40,9 @@ const context = vm.createContext({
 context.window = context;
 context.self = context;
 context.location = { origin: 'http://localhost', href: 'http://localhost/workbench' };
+// 只替换网络应答：请求照样走真实的 resource-api、transport 与校验。
+const routes = {};
+browser(context, routeFetch(routes), { origin: 'http://localhost' });
 context.addEventListener = () => {};
 context.removeEventListener = () => {};
 context.dispatchEvent = () => {};
@@ -52,51 +57,18 @@ context.__wbStubs = {
 
 vm.runInContext(fs.readFileSync(path.join(root, 'static/workbench/vendor/react-18.3.1.production.min.js'), 'utf8'), context);
 const realReact = context.React;
-const providerType = realReact.createContext(null).Provider.$$typeof;
 
-let frames = new Map(), callCounts = new Map(), contextValues = new Map(), idCounter = 0;
-let activePath = [];
-function resetHooks() {
-  frames = new Map();
-  resetRenderPass();
-}
-function resetRenderPass() {
-  callCounts = new Map();
-  contextValues = new Map();
-  idCounter = 0;
-  activePath = [];
-}
-function currentFrameKey() {
-  return activePath.join('/');
-}
-context.React = Object.assign({}, realReact, {
-  useState(initial) {
-    const key = currentFrameKey();
-    let frame = frames.get(key);
-    if (!frame) frames.set(key, frame = { slots: [], cursor: 0 });
-    const at = frame.cursor++;
-    if (!(at in frame.slots)) frame.slots[at] = typeof initial === 'function' ? initial() : initial;
-    return [frame.slots[at], next => { frame.slots[at] = typeof next === 'function' ? next(frame.slots[at]) : next; }];
-  },
-  useRef(initial) {
-    return context.React.useState(() => ({ current: initial }))[0];
-  },
-  useMemo: fn => fn(),
-  useCallback: fn => fn,
-  useId: () => 'cal-' + (++idCounter),
-  useContext: ctx => contextValues.has(ctx) ? contextValues.get(ctx) : ctx._currentValue,
-  useEffect() {},
-  useLayoutEffect() {}
-});
+// 组件状态与 effect 走共享 hook 宿主（tests/_support/hook_host.cjs）：mount 一棵树，render(props) 重渲染，settle() 提交 effect 并等读取应答。
+const treeHost = createTreeHost(realReact, { refNode: () => ({ querySelectorAll: () => [], querySelector: () => null, contains: () => false, focus() {} }) });
+context.React = Object.assign({}, realReact, treeHost.hooks);
+const mount = treeHost.mount, render = (Component, props) => mount(Component, props).tree;
 
 const compiledMap = new Map(output.outputs.map(row => [row.path, row.code]));
 for (const name of jsSources) {
   vm.runInContext(compiledMap.get(name), context, { filename: name });
 }
 
-let queryResult = { result: null, loading: false, error: null, reload() {} };
 context.__wbRuntime.setStubs({
-  'shared/session/query.js': { useQuery: () => queryResult },
   'WorkbenchGuards.js': {
     useDirtyGuard: () => 'guard-owner',
     confirmLeave: async () => true
@@ -118,46 +90,9 @@ const w = {
   ResourceForms: getMod('ResourceForms.jsx'),
   CalendarDefaultsDialog: getMod('CalendarDefaultsDialog.jsx'),
   APSResourceContract: getMod('resource-contract.js'),
+  kit: getMod('shared/contract/kit.js'),
 };
 
-function expand(element) {
-  if (element === null || element === undefined || typeof element === 'boolean') return null;
-  if (typeof element === 'string' || typeof element === 'number') return element;
-  if (Array.isArray(element)) return element.map(expand);
-  assert(realReact.isValidElement(element), 'Expected valid React element');
-  if (element.type === realReact.Fragment) return expand(element.props.children);
-  if (element.type && element.type.$$typeof === providerType) {
-    const ctx = element.type._context, had = contextValues.has(ctx), prev = contextValues.get(ctx);
-    contextValues.set(ctx, element.props.value);
-    try { return expand(element.props.children); }
-    finally { if (had) contextValues.set(ctx, prev); else contextValues.delete(ctx); }
-  }
-  if (typeof element.type === 'function') {
-    const baseName = element.type.name || 'Anon';
-    const seen = (callCounts.get(baseName) || 0) + 1;
-    callCounts.set(baseName, seen);
-    const token = baseName + '#' + seen;
-    activePath.push(token);
-    const frame = frames.get(currentFrameKey());
-    if (frame) frame.cursor = 0;
-    try { return expand(element.type(element.props)); }
-    finally { activePath.pop(); }
-  }
-  if (element.ref && typeof element.ref === 'object') {
-    element.ref.current = { querySelectorAll: () => [], contains: () => false, focus() {} };
-  }
-  return { type: element.type, props: element.props, children: expand(element.props.children) };
-}
-function render(Component, props) {
-  resetRenderPass();
-  return expand(realReact.createElement(Component, props));
-}
-function nodes(tree) {
-  if (tree === null || tree === undefined) return [];
-  if (Array.isArray(tree)) return tree.flatMap(nodes);
-  if (typeof tree !== 'object') return [];
-  return [tree, ...nodes(tree.children)];
-}
 function visible(node) {
   if (node === null || node === undefined || typeof node === 'boolean') return '';
   if (Array.isArray(node)) return node.map(visible).join('');
@@ -186,7 +121,7 @@ assert.equal(w.APSWorkPeriods.defaults, undefined, '前端不维护静态默认�
 // 全局日历：工作日时段全部移除时提醒；有时段或休息日不提醒。
 const baseDayDraft = { type: 'work', eff: '100', allowNormal: 'yes', allowUrgent: 'yes', note: '',
   periods: [{ start: '08:00', end: '16:00', day_offset: 0 }] };
-const renderFields = (value, error = null) => { resetHooks(); return render(w.CalendarFields.Fields, { value, error, onChange() {} }); };
+const renderFields = (value, error = null) => render(w.CalendarFields.Fields, { value, error, onChange() {} });
 assert.equal(notes(renderFields({ ...baseDayDraft, periods: [] })).length, 1, '工作日时段全部移除时提醒');
 assert.equal(notes(renderFields(baseDayDraft)).length, 0, '有工作时段不提醒');
 assert.equal(notes(renderFields({ ...baseDayDraft, periods: [{ start: '08:00', end: '12:00', day_offset: 0 }] })).length, 0, '单段工作时段不提醒');
@@ -321,7 +256,7 @@ const firstDayOffsetMessage = '首段须从当天开始。';
 const incompleteMessage = '请补齐每段开始和结束时刻。';
 const emptyDefaultMessage = '至少填写一个工作时段。';
 const restToWorkMessage = '10-01 原来是假期或休息日，改成工作日时请填写工作时段。';
-const serverPeriodsRejection = (fieldPath, message = restToWorkMessage) => w.APSWorkbenchTransport.failure({
+const periodsRejection = (fieldPath, message = restToWorkMessage) => ({
   ok: false,
   committed: false,
   error: {
@@ -331,7 +266,8 @@ const serverPeriodsRejection = (fieldPath, message = restToWorkMessage) => w.APS
     retryable: false,
     request_ref: '1'.repeat(32)
   }
-}, 422);
+});
+const serverPeriodsRejection = (fieldPath, message) => w.APSWorkbenchTransport.envelopeFailure(periodsRejection(fieldPath, message), 422);
 const makeCommand = (overrides = {}) => ({
   locked: false, phase: 'idle', stale: false, error: null, result: null,
   reset: () => true, clearRejection: () => false, async submit() {},
@@ -342,7 +278,6 @@ const clickButton = (tree, label) => findButton(tree, label).props.onClick({ cur
 const periodSelects = tree => nodes(tree).filter(node => node.type === 'select');
 
 // 未传 path 的 WorkPeriodFields（如班次档轮换表）不认领表单错误，保持实时灰字提示不变。
-resetHooks();
 const unpathedTree = render(w.WorkPeriodFields, {
   value: overlapPeriods,
   disabled: false,
@@ -354,11 +289,9 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
 
 (async () => {
   // 1. CalendarDayDialog：客户端重叠报错只出现 1 次且带 role="alert"；服务端 422 空时段报错完整可见无空红框。
-  resetHooks();
   let dayCmd = makeCommand();
-  const renderDay = () => render(w.CalendarDayDialog, {
-    adapter: { query() {} }, day: restDay, source: 'production', command: dayCmd, onClose() {}, refreshState: {}, onRefresh() {}
-  });
+  const dayProps = () => ({ day: restDay, source: 'production', command: dayCmd, onClose() {}, refreshState: {}, onRefresh() {} });
+  const dayPage = mount(w.CalendarDayDialog, dayProps()), renderDay = () => dayPage.render(dayProps());
   let tree = renderDay();
   clickButton(tree, '工作日');
   tree = renderDay();
@@ -431,14 +364,14 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
   assert.equal(periodSelects(tree)[0].props.disabled, true, '切回当天后首段开始日期下拉重新锁定');
   assert.equal(periodSelects(tree)[0].props['aria-invalid'], undefined);
 
-  // 节假日转工作日且时段全部移除（periods=[]），提交后后端返回 422 input.fields.periods。
+  // 节假日转工作日且时段全部移除（periods=[]），提交后后端返回 422 fields.periods。
   while (findButton(tree, '移除第 1 段')) {
     findButton(tree, '移除第 1 段').props.onClick({ currentTarget: {} });
     tree = renderDay();
   }
   assert.equal(notes(tree).length, 1, '空时段工作日显示零工时提醒');
   dayCmd = makeCommand({
-    async submit() { dayCmd = { ...dayCmd, phase: 'rejected', error: serverPeriodsRejection('input.fields.periods') }; }
+    async submit() { dayCmd = { ...dayCmd, phase: 'rejected', error: serverPeriodsRejection('fields.periods') }; }
   });
   tree = renderDay();
   await nodes(tree).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} });
@@ -446,20 +379,14 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
   assert.equal(fieldAlerts(tree).length, 1, '后端 422 fields.periods 由 WorkPeriodFields 渲染 role="alert"');
   assert.equal(visible(fieldAlerts(tree)[0]), restToWorkMessage);
   assert.equal(countVisible(tree, restToWorkMessage), 1, 'CalendarDayDialog 后端 422 空时段报错完整可见且只出现 1 次');
+  dayPage.unmount();
 
   // 2. CalendarRangeDialog：客户端漏填报错与服务端预检/命令 422 fields.periods 报错唯一呈现。
-  resetHooks();
-  let previewError = null, rangeCmd = makeCommand();
-  const renderRange = () => render(w.CalendarRangeDialog, {
-    adapter: { async preview() { throw previewError; } },
-    month: { year: 2026, month: 10 },
-    defaultPeriods: factoryDefault,
-    source: 'production',
-    command: rangeCmd,
-    onClose() {},
-    refreshState: {},
-    onRefresh() {}
-  });
+  let previewRejection = null, rangeCmd = makeCommand();
+  routes['POST /api/workbench/v1/calendar/range/preview'] = () => json(previewRejection, 422);
+  const rangeProps = () => ({ month: { year: 2026, month: 10 }, defaultPeriods: factoryDefault, source: 'production', command: rangeCmd,
+    onClose() {}, refreshState: {}, onRefresh() {} });
+  const rangePage = mount(w.CalendarRangeDialog, rangeProps()), renderRange = () => rangePage.render(rangeProps());
   tree = renderRange();
   findButton(tree, '新增工作时段').props.onClick({ currentTarget: {} });
   tree = renderRange();
@@ -470,12 +397,12 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
   assert.equal(countVisible(tree, incompleteMessage), 1, 'CalendarRangeDialog 客户端漏填时段错误只出现 1 次');
   assert(timeInputs(tree).every(input => input.props['aria-invalid'] === true));
 
-  // 清空全部时段提交预检，后端返回 422 input.fields.periods。
+  // 清空全部时段提交预检，后端返回 422 fields.periods。
   while (findButton(tree, '移除第 1 段')) {
     findButton(tree, '移除第 1 段').props.onClick({ currentTarget: {} });
     tree = renderRange();
   }
-  previewError = serverPeriodsRejection('input.fields.periods');
+  previewRejection = periodsRejection('fields.periods');
   await nodes(tree).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} });
   tree = renderRange();
   assert.equal(fieldAlerts(tree).length, 1);
@@ -490,32 +417,24 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
   tree = renderRange();
   assert.equal(fieldAlerts(tree).length, 1);
   assert.equal(countVisible(tree, restToWorkMessage), 1, 'CalendarRangeDialog command.error 不重复渲染');
+  rangePage.unmount();
 
   // 3. OperatorCalendarPanel：零工时提醒、客户端时段错误、服务端 422 空时段报错及休息态防吞错。
-  resetHooks();
-  queryResult = {
-    result: {
-      data: { year: 2026, month: 10, operator_ref: ref, days: [blank], cells: [blank, null, null, null, null, null, null],
-        stats: { configured: 0, work_days: 0 }, write_context: opWriteContext, previous_month: null, next_month: null },
-      warnings: []
-    },
-    loading: false,
-    error: null,
-    reload() {}
+  // 个人日历按当前月份读取：网络层按请求的年月回一个月历，第 5 天没单独设置、带两段默认时段。
+  let panelDate = null;
+  routes['GET /api/workbench/v1/entities/operator/' + ref + '/calendar/month'] = call => {
+    const year = Number(call.query.year), month = Number(call.query.month);
+    panelDate = year + '-' + String(month).padStart(2, '0') + '-05';
+    const day = { ...blank, date: panelDate };
+    return envelope({ year, month, operator_ref: ref, days: [day], cells: [day, null, null, null, null, null, null],
+      stats: { configured: 0, work_days: 0 }, write_context: opWriteContext, previous_month: null, next_month: null });
   };
   let opCmd = makeCommand();
-  const renderPanel = () => render(w.OperatorCalendarPanel, {
-    adapter: { query() {}, preview() {} },
-    entity: { ref, business_code: 'OP-1' },
-    source: 'production',
-    command: opCmd,
-    onClose() {},
-    refreshState: {},
-    onRefresh() {},
-    Feedback: w.ResourceForms.Feedback
-  });
-  tree = renderPanel();
-  await nodes(tree).find(node => node.props && node.props['data-operator-calendar-date'] === date).props.onClick();
+  const panelProps = () => ({ entity: { ref, business_code: 'OP-1' }, source: 'production', command: opCmd, onClose() {}, refreshState: {}, onRefresh() {},
+    Feedback: w.ResourceForms.Feedback });
+  const panelPage = mount(w.OperatorCalendarPanel, panelProps()), renderPanel = () => panelPage.render(panelProps());
+  tree = await panelPage.settle();
+  await nodes(tree).find(node => node.props && node.props['data-operator-calendar-date'] === panelDate).props.onClick();
   tree = renderPanel();
   assert.equal(timeInputs(tree).length, 4, '没单独设置的一天默认带两段工作时段');
   assert.equal(notes(tree).length, 0, '有工作时段不提醒');
@@ -538,7 +457,7 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
   }
   assert.equal(notes(tree).length, 1, '上班但工作时段全部移除时提醒');
   assert.equal(findButton(tree, '保存这一天').props.disabled, false, '提醒不拦保存');
-  opCmd = makeCommand({ phase: 'rejected', error: serverPeriodsRejection('input.fields.periods') });
+  opCmd = makeCommand({ phase: 'rejected', error: serverPeriodsRejection('fields.periods') });
   tree = renderPanel();
   assert.equal(fieldAlerts(tree).length, 1);
   assert.equal(visible(fieldAlerts(tree)[0]), restToWorkMessage);
@@ -558,31 +477,17 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
   tree = renderPanel();
   assert.equal(fieldAlerts(tree).length, 0, '休息态卸载了 WorkPeriodFields');
   assert.equal(countVisible(tree, restToWorkMessage), 1, '休息态下未挂载的 fields.periods 由底部 Feedback 兜底展示，绝不吞错');
+  panelPage.unmount();
 
   // 4. CalendarDefaultsDialog：本地空时段/重叠报错与后端 422 periods 报错唯一呈现，读取错误独立保留。
-  resetHooks();
-  const defaultsPayload = {
-    data: { periods: factoryDefault, hours: 8, write_context: calendarWriteContext },
-    meta: { source: 'production' }
-  };
-  queryResult = { result: defaultsPayload, loading: false, error: null, reload() {} };
+  // 默认工作时间由网络层回信封；弹窗读取后在 effect 里用读到的时段初始化表单。
+  let defaultsAnswer = () => envelope({ periods: factoryDefault, hours: 8, write_context: calendarWriteContext });
+  routes['GET /api/workbench/v1/calendar/defaults'] = () => defaultsAnswer();
   let defaultsCmd = makeCommand();
-  const renderDefaults = () => render(w.CalendarDefaultsDialog, {
-    adapter: { query: async () => defaultsPayload },
-    command: defaultsCmd,
-    onClose() {},
-    refreshState: {},
-    onRefresh() {}
-  });
-  tree = renderDefaults();
-  // 模拟 useEffect 将读取到的默认时段初始化进表单草稿：此处通过真实 hooks 重跑前注入或直接读取：
-  // CalendarDefaultsDialog 在 useEffect 中由 request.result 初始化 base 与 periods，我们启用一次轻量 effect 同步。
-  {
-    const prevEffect = context.React.useEffect;
-    context.React.useEffect = fn => { fn(); };
-    try { tree = renderDefaults(); tree = renderDefaults(); }
-    finally { context.React.useEffect = prevEffect; }
-  }
+  const defaultsProps = () => ({ command: defaultsCmd, onClose() {}, refreshState: {}, onRefresh() {} });
+  const defaultsPage = mount(w.CalendarDefaultsDialog, defaultsProps()), renderDefaults = () => defaultsPage.render(defaultsProps());
+  assert.equal(timeInputs(defaultsPage.tree).length, 0, '读到默认时段之前不显示时段表单');
+  tree = await defaultsPage.settle();
   assert.equal(timeInputs(tree).length, 2, '默认工作时间弹窗加载初始时段');
 
   // 删空全部时段点保存：本地校验报「至少填写一个工作时段。」，只出现 1 次且带 role="alert"。
@@ -625,12 +530,15 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
   assert.equal(visible(fieldAlerts(tree)[0]), serverDefaultMsg);
   assert.equal(countVisible(tree, serverDefaultMsg), 1, 'CalendarDefaultsDialog 后端 422 periods 报错只出现 1 次');
 
-  // 同时存在读取错误 request.error 时，读取错误不被 periods excludePaths 吞掉。
+  // 被拒后点「采用最新设置，重新填写」重新读取，这次读取失败：读取错误独立完整显示，被拒的 periods 报错也不被吞掉。
   const readFailMsg = '默认工作时间读取不完整，请刷新后重试。';
-  queryResult = { result: defaultsPayload, loading: false, error: w.APSResourceContract.failure(readFailMsg), reload() {} };
-  tree = renderDefaults();
+  defaultsAnswer = () => json(failure('calendar_defaults_unavailable', readFailMsg, { retryable: true }), 503);
+  clickButton(tree, '采用最新设置，重新填写');
+  tree = await defaultsPage.settle();
+  assert.equal(timeInputs(tree).length, 0, '重新读取时先清掉旧时段');
   assert.equal(countVisible(tree, readFailMsg), 1, 'CalendarDefaultsDialog 读取错误独立完整显示');
   assert.equal(countVisible(tree, serverDefaultMsg), 1);
+  defaultsPage.unmount();
 
   // 5. 校验已构建的正式静态包 static/workbench/app/main.js 同样具备相同的单点归属契约。
   const { spawnSync } = require('node:child_process');
@@ -644,11 +552,10 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
         const APSWorkbenchTransport = h.module('shared/network/transport.js');
         const CalendarDayDialog = h.module('CalendarDayDialog.jsx').CalendarDayDialog;
         const WorkPeriodFields = h.module('WorkPeriodFields.jsx').WorkPeriodFields;
-        const APSResourceContract = h.module('resource-contract.js');
         const msg = ${JSON.stringify(restToWorkMessage)};
-        const rejectedErr = APSWorkbenchTransport.failure({
+        const rejectedErr = APSWorkbenchTransport.envelopeFailure({
           ok: false, committed: false,
-          error: { code: 'invalid_input', message: msg, fields: [{ path: 'input.fields.periods', message: msg }], retryable: false, request_ref: '1'.repeat(32) }
+          error: { code: 'invalid_input', message: msg, fields: [{ path: 'fields.periods', message: msg }], retryable: false, request_ref: '1'.repeat(32) }
         }, 422);
         const cmd = { phase: 'rejected', locked: false, stale: false, error: rejectedErr, result: null, reset: () => true, clearRejection: () => false, submit() {} };
         const dayDto = {
@@ -659,7 +566,7 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
           fields: { type: 'work', hours: 0, eff: 100, allowNormal: 'yes', allowUrgent: 'yes', note: null, periods: [] },
           effective: { is_working: false, window_start: '2026-10-01T00:00:00', window_end: '2026-10-01T00:00:00', periods: [] }
         };
-        const tree = h.render(CalendarDayDialog, { adapter: {}, day: dayDto, source: 'production', command: cmd, onClose() {}, refreshState: {}, onRefresh() {} });
+        const tree = h.render(CalendarDayDialog, { day: dayDto, source: 'production', command: cmd, onClose() {}, refreshState: {}, onRefresh() {} });
         const alerts = h.walk(tree).filter(n => n.props && n.props.role === 'alert' && /\\bwb-field-error\\b/.test(n.props.className || ''));
         assert.strictEqual(alerts.length, 1);
         assert.strictEqual(h.text(alerts[0]), msg);
@@ -676,7 +583,7 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
         assert.strictEqual(periods.length, 1);
         assert.strictEqual(periods[0].day_offset, 1);
         const offsetMsg = ${JSON.stringify(firstDayOffsetMessage)};
-        const offsetErr = APSResourceContract.failure(offsetMsg, [{ path: 'fields.periods', message: offsetMsg }]);
+        const offsetErr = h.module('shared/contract/kit.js').failure(offsetMsg, { fields: [{ path: 'fields.periods', message: offsetMsg }] });
         pfTree = h.render(WorkPeriodFields, { value: periods, path: 'fields.periods', disabled: false, onChange: next => { periods = next; } });
         assert(h.text(pfTree).includes(offsetMsg));
         assert.strictEqual(selectsOf(pfTree)[0].props.disabled, false);

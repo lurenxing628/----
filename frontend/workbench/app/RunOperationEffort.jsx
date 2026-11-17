@@ -1,10 +1,9 @@
 import React from './shared/runtime/react.js';
-import WorkbenchTerms from './WorkbenchTerms.js';
-import WorkbenchFormat from './WorkbenchFormat.js';
+import T from './WorkbenchTerms.js';
+import F from './WorkbenchFormat.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
 import RunCandidateControls from './RunCandidateControls.jsx';
 
-const T = WorkbenchTerms, F = WorkbenchFormat;
 const amount = (value, suffix = '') => value == null ? '未记录' : (typeof value === 'string' ? F.integerText(value) : F.number(value, { digits: 3, trim: true })) + suffix;
 function hours(value, state) {
   if (value !== null) return amount(value, ' 小时');
@@ -43,8 +42,8 @@ function Effort({ value, absent = false, showStandard = true, showMachines = fal
   return <div className="rd-operation-effort"><strong>{T.preparation_allocations[value.allocation_state]}{missing && '，' + missingText + '。'}</strong>
     {!external && (missing ? known.length > 0 && <span>{known.map(key => T.operation_effort_labels[key] + ' ' + hours(value[key], value.state)).join(' · ')}</span> : <><span>准备 {hours(value.setup_standard_hours, value.state)} · 加工 {hours(value.processing_standard_hours, value.state)}</span>
       <small>{T.operation_effort_labels.required_standard_hours} {hours(value.required_standard_hours, value.state)}</small><small>{T.setup_states[value.setup_state]}</small></>)}
-    {showMachines && <small>{value.machine_basis === 'admission_requirement' ? '所需设备' : value.machine_basis === 'saved_arrangement' ? '安排设备' : '设备'} {value.machines.length ? value.machines.map(row => row.label || T.name_missing).join(' / ') : '未记录'}</small>}
-    {value.source === 'external' && <><span>{T.operation_effort_labels.external_cycle_days} {amount(value.external_cycle_days)}</span><small>外协组 {value.external_group_id || '未记录'} · {{ merged: '合并外协', separate: '分别外协' }[value.external_merge_mode] || value.external_merge_mode || '合并规则未记录'}</small></>}
+    {showMachines && <small>{value.machine_basis === 'admission_requirement' ? '所需设备' : value.machine_basis === 'saved_arrangement' ? '安排设备' : '设备'} {value.machine ? value.machine.label || T.name_missing : '未记录'}</small>}
+    {value.source === 'external' && <><span>{T.operation_effort_labels.external_cycle_days} {amount(value.external_cycle_days)}</span><small>外协组 {value.external_group_id || '未记录'} · {T.merge_modes[value.external_merge_mode] || '合并规则未记录'}</small></>}
     <Source value={value} showHours={missing || external} />{showStandard && <Standard value={value.standard} />}<C.Reasons rows={value.data_gaps} />
   </div>;
 }

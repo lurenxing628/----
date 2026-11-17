@@ -1,11 +1,10 @@
 import React from './shared/runtime/react.js';
-import ResourceControls, { Pager } from './ResourceControls.jsx';
+import { Pager, Button, ErrorBox } from './ResourceControls.jsx';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import PreflightContract from './PreflightContract.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
 
-const { Button, ErrorBox } = ResourceControls;
 function Segment({ label, value, choices, onChange, disabled }) {
   const id = React.useId();
   return <div className="pf-segment" role="radiogroup" aria-label={label}>{choices.map(([key, text, unavailable]) => <label key={String(key)} className={value === key ? 'selected' : ''}>
@@ -70,7 +69,7 @@ function Rules({ value, effective, onChange, disabled, onInspectMaterials, split
       <Button icon={splitExpanded ? 'chevron-up' : 'search'} disabled={disabled || !value.ready_check} aria-expanded={!!splitExpanded} aria-controls={splitExpanded ? 'pf-material-split' : undefined}
         onClick={onInspectMaterials}>{splitExpanded ? '收起数量检查' : '检查物料可做数量'}</Button></div>
     {materialPanel}
-    <div className="pf-rule"><strong>缺资源工序</strong><Segment label="缺资源工序" value={value.missing_resource_policy} choices={[["auto_assign", '自动分配'], ['exclude', '暂不排']]} disabled={disabled} onChange={missing_resource_policy => onChange({ missing_resource_policy })} /></div>
+    <div className="pf-rule"><strong>缺资源工序</strong><Segment label="缺资源工序" value={value.missing_resource_policy} choices={Object.entries(WorkbenchTerms.missing_resource_policies)} disabled={disabled} onChange={missing_resource_policy => onChange({ missing_resource_policy })} /></div>
     <HoldWindow value={value} effective={effective} onChange={onChange} disabled={disabled} />
     <div className="pf-rule"><span className="pf-fixed">已开工工序：保留记录（不可修改）</span></div>
     <div className="pf-rule pf-note">规则仅用于本次排产。</div>

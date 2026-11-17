@@ -1,11 +1,12 @@
 import React from './shared/runtime/react.js';
-import CalibrationAdoptionAPI from './CalibrationAdoptionAPI.js';
-import CalibrationAPI from './CalibrationAPI.js';
-import APSWorkbenchTransport from './shared/network/transport.js';
-import { pendingStore, exclusive } from './shared/session/pending-store.js';
+import A from './CalibrationAdoptionAPI.js';
+import C from './CalibrationAPI.js';
+import T from './shared/network/transport.js';
+import { pendingStore, exclusive, adoptionStorageFailure } from './shared/session/pending-store.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
+import { failure } from './shared/contract/kit.js';
 
-const A = CalibrationAdoptionAPI, C = CalibrationAPI, T = APSWorkbenchTransport, KEY = 'aps_calibration_adoption_pending_v1', EVENT = KEY + '_changed';
+const KEY = 'aps_calibration_adoption_pending_v1', EVENT = KEY + '_changed';
 
 // 磁盘记录的唯一校验点：绑定按建议行规则、填写内容按采用表单规则、已采用的回执按回执与采用基线各核一次。
 function validCommittedReceipt(r, value) {
@@ -47,18 +48,13 @@ function begin(preview, previous) {
   }, previous);
 }
 
-function storageMessage(e, current = e && e.saved) {
-  if (current && current.phase === 'committed') return '已收到采用结果，但本机没能保存这次操作记录。';
-  if (current && current.phase === 'rejected') return '本次采用未通过，但本机没能保存这次操作记录。';
-  return e.message;
-}
-
+// storageError 保存错误对象（没有错误时为 null），由显示层（WorkbenchError / errorText）判定上屏文案。
 function useSession({ detail, stale }) {
-  const [initial] = React.useState(() => { try { return { saved: read(), error: '' }; } catch (e) { return { saved: e.saved || null, error: storageMessage(e) }; } });
+  const [initial] = React.useState(() => { try { return { saved: read(), error: null }; } catch (e) { return { saved: e.saved || null, error: adoptionStorageFailure(e) }; } });
   const [saved, setSaved] = React.useState(initial.saved), [storageError, setStorageError] = React.useState(initial.error);
   const [draft, setDraft] = React.useState(initial.saved ? { reason: initial.saved.input.reason, declared_operator: initial.saved.input.declared_operator } : { reason: '', declared_operator: '' });
   const [open, setOpen] = React.useState(false), [preview, setPreview] = React.useState(null), [consent, setConsent] = React.useState(false);
-  const [busy, setBusy] = React.useState(false), [error, setError] = React.useState(''), [notice, setNotice] = React.useState('');
+  const [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null), [notice, setNotice] = React.useState('');
   const [revision, refresh] = React.useReducer(v => v + 1, 0);
   const mounted = React.useRef(false), lock = React.useRef(false), request = React.useRef(null), active = React.useRef(saved), source = React.useRef(null);
   active.current = saved; source.current = { detail, stale, preview, consent, draft, storageError };
@@ -72,24 +68,24 @@ function useSession({ detail, stale }) {
         const switched = !active.current || !value || value.request_key !== active.current.request_key;
         const nextDraft = value ? { reason: value.input.reason, declared_operator: value.input.declared_operator } : { reason: '', declared_operator: '' };
         active.current = value;
-        source.current = { ...source.current, preview: null, consent: false, draft: nextDraft, storageError: '' };
+        source.current = { ...source.current, preview: null, consent: false, draft: nextDraft, storageError: null };
         if (!mounted.current) return;
         setSaved(value); setPreview(null); setConsent(false);
         setDraft(nextDraft);
-        if (switched || value.phase === 'committed') { setError(''); setNotice(''); }
+        if (switched || value.phase === 'committed') { setError(null); setNotice(''); }
       } else {
-        source.current = { ...source.current, storageError: '' };
+        source.current = { ...source.current, storageError: null };
       }
-      if (mounted.current) setStorageError('');
+      if (mounted.current) setStorageError(null);
     } catch (e) {
       const changed = e.saved !== undefined && !A.equal(e.saved, active.current);
       const nextDraft = changed ? (e.saved ? { reason: e.saved.input.reason, declared_operator: e.saved.input.declared_operator } : { reason: '', declared_operator: '' }) : source.current.draft;
       if (changed) active.current = e.saved;
-      const msg = storageMessage(e, e.saved !== undefined ? e.saved : active.current);
-      source.current = { ...source.current, ...(changed ? { preview: null, consent: false, draft: nextDraft } : {}), storageError: msg };
+      const problem = adoptionStorageFailure(e, e.saved !== undefined ? e.saved : active.current);
+      source.current = { ...source.current, ...(changed ? { preview: null, consent: false, draft: nextDraft } : {}), storageError: problem };
       if (!mounted.current) return;
       if (changed) { setSaved(e.saved); setDraft(nextDraft); }
-      setStorageError(msg);
+      setStorageError(problem);
     }
   }
   React.useEffect(() => subscribe(sync), []);
@@ -100,8 +96,8 @@ function useSession({ detail, stale }) {
     try { save(committed, original); active.current = committed; if (!mounted.current) return; }
     catch (e) {
       if (!mounted.current) return;
-      if (!A.equal(active.current, committed)) { sync(); setStorageError(e.message); return; }
-      setStorageError(storageMessage(e, active.current));
+      if (!A.equal(active.current, committed)) { sync(); setStorageError(e); return; }
+      setStorageError(adoptionStorageFailure(e, active.current));
     }
   }
   React.useEffect(() => {
@@ -111,27 +107,30 @@ function useSession({ detail, stale }) {
       if (disposed || !A.equal(active.current, saved)) return;
       if (value) await exclusive(KEY, { wait: true }, () => accept(value, saved));
       else setNotice('上次采用结果尚未确认，请稍后再次查询。');
-    }).catch(e => { if (!disposed && A.equal(active.current, saved)) setError('上次操作的结果还没确认。' + e.message); }).finally(() => { if (!disposed) setBusy(false); });
+    }).catch(e => {
+      // 查询失败的原因留在错误对象里，“还没确认”这句由提示说明。
+      if (!disposed && A.equal(active.current, saved)) { setError(e); setNotice('上次操作的结果还没确认。'); }
+    }).finally(() => { if (!disposed) setBusy(false); });
     return () => { disposed = true; controller.abort(); if (!lock.current) setBusy(false); };
   }, [saved, revision, storageError]);
-  function change(value) { source.current = { ...source.current, draft: value, preview: null, consent: false }; setDraft(value); setPreview(null); setConsent(false); setError(''); }
+  function change(value) { source.current = { ...source.current, draft: value, preview: null, consent: false }; setDraft(value); setPreview(null); setConsent(false); setError(null); }
   async function inspect() {
     if (lock.current || stale || storageError || !detail || saved && saved.phase !== 'rejected') return;
-    if (saved && saved.baseline.template_operation_ref !== detail.suggestion.template_operation_ref) { setError('上次操作属于另一个模板。请先点「放弃上次采用记录」处理完上次操作。'); return; }
-    let values; try { values = A.input(draft); } catch (e) { setError(e.message); return; }
-    lock.current = true; setBusy(true); setPreview(null); setConsent(false); setError(''); setNotice('');
+    if (saved && saved.baseline.template_operation_ref !== detail.suggestion.template_operation_ref) { setError(failure('上次操作属于另一个模板。请先点「放弃上次采用记录」处理完上次操作。')); return; }
+    let values; try { values = A.input(draft); } catch (e) { setError(e); return; }
+    lock.current = true; setBusy(true); setPreview(null); setConsent(false); setError(null); setNotice('');
     const controller = new AbortController(); request.current = controller;
     try {
       const value = await A.preview(detail.suggestion, values, controller.signal);
       if (mounted.current && !controller.signal.aborted && !source.current.stale && A.equal(detail, source.current.detail) && A.equal(draft, source.current.draft)) setPreview(value);
-    } catch (e) { if (mounted.current && !controller.signal.aborted) setError(e.message); }
+    } catch (e) { if (mounted.current && !controller.signal.aborted) setError(e); }
     finally { lock.current = false; if (mounted.current) setBusy(false); }
   }
   async function submit() {
     if (lock.current || stale || storageError || !preview || !preview.validation.can_adopt || !consent || !detail || saved && saved.phase !== 'rejected'
       || !A.equal(A.binding(detail.suggestion), A.binding(preview.suggestion))) return;
     const initialActive = active.current;
-    lock.current = true; setBusy(true); setError(''); setNotice('');
+    lock.current = true; setBusy(true); setError(null); setNotice('');
     try {
       // 采用记录、提交和结果写回在跨页互斥里串行，持锁跨过采用命令。
       const { acquired } = await exclusive(KEY, {}, async () => {
@@ -141,7 +140,7 @@ function useSession({ detail, stale }) {
           || active.current && (active.current.phase !== 'rejected' || active.current.baseline.template_operation_ref !== latest.detail.suggestion.template_operation_ref)
           || !A.equal(A.binding(latest.detail.suggestion), A.binding(preview.suggestion))) return;
         let original;
-        try { original = begin(preview, active.current); } catch (e) { setStorageError(e.message); return; }
+        try { original = begin(preview, active.current); } catch (e) { setStorageError(e); return; }
         active.current = original; source.current = { ...source.current, preview: null, consent: false }; setSaved(original); setPreview(null); setConsent(false);
         try { accept(await A.adopt(original, preview.write_context.write_token), original); }
         catch (e) {
@@ -151,15 +150,16 @@ function useSession({ detail, stale }) {
             try { save(rejected, original); active.current = rejected; if (!mounted.current) return; }
             catch (storageErr) {
               if (!mounted.current) return;
-              if (!A.equal(active.current, rejected)) { sync(); setStorageError(storageErr.message); return; }
-              setStorageError(storageMessage(storageErr, active.current));
+              if (!A.equal(active.current, rejected)) { sync(); setStorageError(storageErr); return; }
+              setStorageError(adoptionStorageFailure(storageErr, active.current));
             }
-            if (mounted.current && A.equal(active.current, rejected)) setError(e.message + ' 本次没有采用；请点「刷新所选模板」后重新预检。');
-          } else if (mounted.current) setError(WorkbenchTerms.outcomes.pending('采用'));
+            // 拒绝的原因（含字段路径）留在错误对象里，由错误框和表单标红显示；下一步怎么做由提示说明。
+            if (mounted.current && A.equal(active.current, rejected)) { setError(e); setNotice('本次没有采用；请点「刷新所选模板」后重新预检。'); }
+          } else if (mounted.current) setError(failure(WorkbenchTerms.outcomes.pending('采用'), { committed: 'unknown' }));
         }
       });
-      if (!acquired && mounted.current) setError('另一个页面正在采用，请先在那边查询结果。');
-    } catch (e) { if (mounted.current) setError(e.message); }
+      if (!acquired && mounted.current) setError(failure('另一个页面正在采用，请先在那边查询结果。'));
+    } catch (e) { if (mounted.current) setError(e); }
     finally { lock.current = false; if (mounted.current) { setBusy(false); refresh(); } }
   }
   async function finish() {
@@ -167,16 +167,16 @@ function useSession({ detail, stale }) {
       A.check(saved && saved.phase !== 'pending', '结果还不确定，不能丢弃这次操作。');
       await exclusive(KEY, { wait: true }, () => save(null, saved));
       source.current = { ...source.current, preview: null, consent: false }; setOpen(false); setPreview(null); setConsent(false);
-      setError(''); setNotice(''); setDraft({ reason: '', declared_operator: '' });
+      setError(null); setNotice(''); setDraft({ reason: '', declared_operator: '' });
     }
-    catch (e) { setStorageError(e.message); }
+    catch (e) { setStorageError(e); }
   }
   return {
     saved, draft, open, preview, consent, busy, error, notice, storageError, setOpen,
     setConsent: value => { source.current = { ...source.current, consent: value }; setConsent(value); },
     change, inspect, submit, finish, lookup: refresh,
     // 「刷新上次操作记录」在跨页互斥里把本页没写进去的记录写回再读。
-    sync: () => exclusive(KEY, { wait: true }, () => sync(undefined, flush)).catch(e => setStorageError(e.message)),
+    sync: () => exclusive(KEY, { wait: true }, () => sync(undefined, flush)).catch(setStorageError),
     close: () => { if (request.current) request.current.abort(); source.current = { ...source.current, preview: null, consent: false }; setOpen(false); setPreview(null); setConsent(false); }
   };
 }

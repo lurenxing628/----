@@ -1,6 +1,7 @@
 import React from './shared/runtime/react.js';
 import CalibrationAdoptionControls from './CalibrationAdoptionControls.jsx';
 import CalibrationAdoptionState from './CalibrationAdoptionState.js';
+import { errorText } from './WorkbenchReferences.jsx';
 
 function CalibrationAdoptionAction({ detail, stale, onRefresh }) {
   const U = CalibrationAdoptionControls, s = CalibrationAdoptionState.useSession({ detail, stale });
@@ -9,7 +10,7 @@ function CalibrationAdoptionAction({ detail, stale, onRefresh }) {
     <U.Button icon={s.saved ? 'refresh-cw' : 'check'} aria-label={label} reasonDisplay="tooltip" reason={!s.saved && (!detail || stale) ? '请先读取有效的所选模板和完工记录。' : ''}
       onClick={() => s.setOpen(true)} aria-expanded={s.open}>{label}</U.Button>
     {s.saved && !s.open && <span className="cad-inline">{s.saved.phase === 'committed' ? '上次采用结果已找回。' : '上次操作已保留，请先查询结果。'}</span>}
-    {s.storageError && !s.open && <span className="cad-inline" role="alert">{s.storageError}<U.Button icon="refresh-cw" onClick={s.sync}>刷新上次操作记录</U.Button></span>}
+    {s.storageError && !s.open && <span className="cad-inline" role="alert">{errorText(s.storageError)}<U.Button icon="refresh-cw" onClick={s.sync}>刷新上次操作记录</U.Button></span>}
     {s.open && <U.Dialog session={s} detail={detail} stale={stale} onRefresh={onRefresh} />}
   </div>;
 }

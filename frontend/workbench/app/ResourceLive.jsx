@@ -2,8 +2,6 @@ import React from './shared/runtime/react.js';
 import APSCalendarFile from './CalendarFileContract.js';
 import APSRelationFile from './RelationFileContract.js';
 import APSResourceAPI from './resource-api.js';
-import C from './resource-contract.js';
-import APSProcessAPI from './ProcessAPI.js';
 import ResourceWorkspace from './ResourceWorkspace.jsx';
 import { ErrorBox, Button } from './ResourceControls.jsx';
 import ProcessWorkspace from './ProcessWorkspace.jsx';
@@ -13,6 +11,7 @@ import CalendarFileActions from './CalendarFileActions.jsx';
 import RelationFileActions from './RelationFileActions.jsx';
 import ResourceMaterialActions from './ResourceMaterialActions.jsx';
 import ResourceFileActions from './ResourceFileActions.jsx';
+import { failure } from './shared/contract/kit.js';
 
 const fileKinds = ['material', 'op_type', 'machine', 'operator', 'supplier'];
 // 附属资料按它挂靠的那类基础资料开入口：在人员页维护可操作设备和个人日历。
@@ -20,32 +19,37 @@ const attachedTo = { operator: ['operator_machine', 'operator_calendar'] };
 const hostOf = Object.fromEntries(Object.keys(attachedTo)
   .flatMap(kind => attachedTo[kind].map(family => [family, kind])));
 // 只有导入导出、没有批量删除的文件家族，以及各自恢复后应该回到哪一页。
-const importOnlyBase = { operator_machine: 'relation-files', operator_calendar: 'calendar-files', work_calendar: 'calendar-files' };
-const importOnlyKinds = Object.keys(importOnlyBase);
 const importOnlyNode = { ...hostOf, work_calendar: 'calendar' };
+const importOnlyKinds = Object.keys(importOnlyNode);
 // 走日历文件对话框的家族：它们的导出范围是日期区间，不是列表的三档筛选。
 const calendarFileKinds = ['work_calendar', 'operator_calendar'];
 function familyLabel(family) {
   return calendarFileKinds.includes(family) ? APSCalendarFile.labels[family] : APSRelationFile.labels[family];
 }
-function importOnlyAdapter(kind) {
-  const adapter = APSResourceAPI.create(kind + '_files');
-  adapter.command = (commandKind, action, ref, body) => {
-    if (commandKind !== kind + '_import' || action !== 'confirm' || !body || !body.input || body.input.preview_ref !== ref)
-      throw C.failure('确认操作与当前预检结果不一致。');
-    return adapter.execute(importOnlyBase[kind] + '/' + kind + '/confirm', body);
+// 宿主给资源页的入口：按钮说要打开哪种维护向导，宿主挂出对应的对话框；回执与关闭再经 committed / close 交回发起方。
+function hostEntries(open) {
+  const openAttached = (mode, kind, request) => {
+    // 一类基础资料可以挂多种附属资料，所以要打开哪一种由按钮自己说，主机不替它猜。
+    if (!(attachedTo[kind] || []).includes(request && request.family))
+      throw failure('这类基础资料没有这种可以用文件维护的附属资料。');
+    return open(mode, request.family, request);
   };
-  return adapter;
-}
-function fileAdapter(kind) {
-  const adapter = APSResourceAPI.create(kind + '_files');
-  adapter.command = (commandKind, action, ref, body) => {
-    if (![kind + '_import', kind + '_bulk'].includes(commandKind) || action !== 'confirm'
-        || !body || !body.input || body.input.preview_ref !== ref)
-      throw C.failure('确认操作与当前预检结果不一致。');
-    return adapter.execute(commandKind === kind + '_import' ? 'imports/' + kind + '/confirm' : 'entities/' + kind + '/bulk-confirm', body);
+  return {
+    supports: (name, kind) => name === 'openCatalog' ? ['machine_group', 'shift_profile'].includes(kind)
+      : ['openRelationImport', 'openRelationExport'].includes(name) ? !!(attachedTo[kind] || []).length
+        : ['openImport', 'openExport', 'openBulk'].includes(name) && fileKinds.includes(kind),
+    attachedFiles: kind => (attachedTo[kind] || []).map(family => ({ family, label: familyLabel(family) })),
+    openImport: (kind, request) => open('import', kind, request),
+    openExport: (kind, request) => open('export', kind, request),
+    openBulk: (kind, request) => open('bulk', kind, request),
+    openCatalog: (kind, request) => open('catalog', kind, request),
+    openRelationImport: (kind, request) => openAttached('import', kind, request),
+    openRelationExport: (kind, request) => openAttached('export', kind, request),
+    openCalendarFile(mode, request) {
+      if (!['import', 'export'].includes(mode)) throw failure('日历文件只支持导入和导出。');
+      return open(mode, 'work_calendar', request);
+    }
   };
-  return adapter;
 }
 function nodeFor(item, intent) {
   const kind = item.kind || (intent && intent.kind);
@@ -53,14 +57,16 @@ function nodeFor(item, intent) {
     : item.type === 'file_only' ? importOnlyNode[kind] : kind === 'op_type'
       ? intent && intent.category === 'external' ? 'op_ext' : 'op_int' : fileKinds.includes(kind) ? kind : 'material';
 }
-function recovery(adapters) {
-  const items = [{ type: 'base', adapter: adapters.base }, ...fileKinds.map(kind => ({ type: 'file', kind, adapter: adapters.files[kind] })),
-    ...importOnlyKinds.map(kind => ({ type: 'file_only', kind, adapter: adapters.imports[kind] })),
-    { type: 'catalog', adapter: adapters.catalog }, { type: 'calendar', adapter: adapters.calendar }, { type: 'process', adapter: adapters.process }];
+// 恢复时按这个顺序查各命名空间留下的待确认记录，查到的第一条就是要接着处理的。
+const recoveryItems = [{ type: 'base', namespace: 'resources' },
+  ...fileKinds.map(kind => ({ type: 'file', kind, namespace: kind + '_files' })),
+  ...importOnlyKinds.map(kind => ({ type: 'file_only', kind, namespace: kind + '_files' })),
+  { type: 'catalog', namespace: 'catalog' }, { type: 'calendar', namespace: 'calendar' }, { type: 'process', namespace: 'process' }];
+function recovery() {
   let pending = null;
-  for (const item of items) {
+  for (const item of recoveryItems) {
     let intent;
-    try { intent = item.adapter.readPending(); }
+    try { intent = APSResourceAPI.forNamespace(item.namespace).readPending(); }
     catch (error) { error.node = nodeFor(item, null); throw error; }
     if (intent) { pending = { ...item, intent }; break; }
   }
@@ -74,40 +80,10 @@ function recovery(adapters) {
 }
 function ResourceLive({ onNavigate, initialContext }) {
   const [auxiliary, setAuxiliary] = React.useState(null), [revision, setRevision] = React.useState(0);
-  const adapters = React.useMemo(() => {
-    const base = APSResourceAPI.create(), calendar = APSResourceAPI.create('calendar');
-    const files = Object.fromEntries(fileKinds.map(kind => [kind, fileAdapter(kind)])), catalog = APSResourceAPI.create('catalog');
-    const imports = Object.fromEntries(importOnlyKinds.map(kind => [kind, importOnlyAdapter(kind)]));
-    calendar.command = (kind, action, ref, body) => {
-      if (kind !== 'calendar' || !['upsert', 'delete', 'confirm', 'defaults'].includes(action)) throw C.failure('工作日历操作不正确。');
-      return calendar.execute('calendar/' + (action === 'confirm' ? 'range/confirm' : action), body);
-    };
-    const open = (type, kind, request) => { setHostError(null); setAuxiliary({ type, kind, request }); return { state: 'opened' }; };
-    base.supports = (name, kind) => name === 'openCatalog' ? ['machine_group', 'shift_profile'].includes(kind)
-      : ['openRelationImport', 'openRelationExport'].includes(name) ? !!(attachedTo[kind] || []).length
-        : ['openImport', 'openExport', 'openBulk'].includes(name) && fileKinds.includes(kind);
-    base.openImport = (kind, request) => open('import', kind, request);
-    base.openExport = (kind, request) => open('export', kind, request);
-    base.openBulk = (kind, request) => open('bulk', kind, request);
-    base.openCatalog = (kind, request) => open('catalog', kind, request);
-    const openAttached = (mode, kind, request) => {
-      // 一类基础资料可以挂多种附属资料，所以要打开哪一种由按钮自己说，主机不替它猜。
-      if (!(attachedTo[kind] || []).includes(request && request.family))
-        throw C.failure('这类基础资料没有这种可以用文件维护的附属资料。');
-      return open(mode, request.family, request);
-    };
-    base.openRelationImport = (kind, request) => openAttached('import', kind, request);
-    base.openRelationExport = (kind, request) => openAttached('export', kind, request);
-    base.attachedFiles = kind => (attachedTo[kind] || []).map(family => ({ family, label: familyLabel(family) }));
-    base.openCalendarFile = (mode, request) => {
-      if (!['import', 'export'].includes(mode)) throw C.failure('日历文件只支持导入和导出。');
-      return open(mode, 'work_calendar', request);
-    };
-    return { base, calendar, files, imports, catalog, process: APSProcessAPI.create(base) };
-  }, []);
+  const host = React.useMemo(() => hostEntries((type, kind, request) => { setHostError(null); setAuxiliary({ type, kind, request }); return { state: 'opened' }; }), []);
   const [boot] = React.useState(() => {
     const target = ResourceWorkspace.navigation(initialContext);
-    try { return { target, recovery: recovery(adapters) }; }
+    try { return { target, recovery: recovery() }; }
     catch (error) { return { target, error }; }
   });
   const [hostError, setHostError] = React.useState(() => boot.error || null);
@@ -117,21 +93,21 @@ function ResourceLive({ onNavigate, initialContext }) {
   function retryRecovery() {
     if (auxiliary) return null;
     try {
-      const pending = recovery(adapters);
+      const pending = recovery();
       setHostError(null);
       if (pending) { setInitialNode(pending.node); if (pending.auxiliary) setAuxiliary(pending.auxiliary); }
       return pending;
     } catch (error) { if (error.node) setInitialNode(error.node); setHostError(error); return null; }
   }
-  React.useEffect(() => { retryRecovery(); }, [adapters, auxiliary, navigationReady, revision]);
+  React.useEffect(() => { retryRecovery(); }, [auxiliary, navigationReady, revision]);
   function continueNavigation() {
     try {
-      const pending = recovery(adapters);
+      const pending = recovery();
       if (pending) {
         setInitialNode(pending.node); if (!auxiliary && pending.auxiliary) setAuxiliary(pending.auxiliary);
-        throw C.failure('上次操作的结果还没确认，请先处理并关闭。');
+        throw failure('上次操作的结果还没确认，请先处理并关闭。');
       }
-      if (auxiliary || !navigationReady) throw C.failure('请先关闭上次结果或处理未保存的草稿，再继续跳转。');
+      if (auxiliary || !navigationReady) throw failure('请先关闭上次结果或处理未保存的草稿，再继续跳转。');
       setHostError(null); setDeferred(false); setInitialNode(boot.target.node); setNavigationKey(value => value + 1);
     } catch (error) { if (error.node) setInitialNode(error.node); setHostError(error); }
   }
@@ -149,17 +125,17 @@ function ResourceLive({ onNavigate, initialContext }) {
     <ErrorBox error={hostError || boot.target.error} />
     {deferred ? <div role="status" className="match-note is-block wb-resource-live-note"><p>上次操作还没处理完，暂时没有跳转到指定记录。刚才的提交没有被覆盖。</p>
       <Button icon="arrow-right" onClick={continueNavigation}>继续跳转</Button></div> : hostError ? <div role="status" className="match-note is-block wb-resource-live-note"><Button icon="refresh-cw" onClick={retryRecovery}>刷新上次操作记录</Button></div> : null}
-    <ResourceWorkspace key={initialNode + ':' + navigationKey} adapter={adapters.base} onNavigate={onNavigate} initialNode={initialNode} externalRevision={revision}
+    <ResourceWorkspace key={initialNode + ':' + navigationKey} host={host} onNavigate={onNavigate} initialNode={initialNode} externalRevision={revision}
       rememberEnabled={!auxiliary && !deferred && !hostError && !boot.target.error}
       initialContext={deferred || hostError ? undefined : boot.target.context} onNavigationReady={setNavigationReady}
-      renderPart={({ onRefresh, initialContext, rememberEnabled }) => <ProcessWorkspace adapter={adapters.process} onCommitted={onRefresh} initialContext={initialContext} rememberEnabled={rememberEnabled} onNavigationReady={setNavigationReady} />}
-      renderCalendar={({ onCommitted, externalRevision, initialContext, rememberEnabled, summaryState }) => <ResourceCalendar adapter={adapters.calendar} onCommitted={onCommitted} externalRevision={externalRevision} initialContext={initialContext} rememberEnabled={rememberEnabled} summaryState={summaryState} onNavigationReady={setNavigationReady}
-        onOpenFile={(mode, context) => adapters.base.openCalendarFile(mode, { refs: [], scope: {}, ...context })} />} />
-    {auxiliary && (auxiliary.type === 'catalog' ? <ResourceCatalog kind={auxiliary.kind} adapter={adapters.catalog} onClose={close} onCommitted={committed} /> :
-      calendarFileKinds.includes(auxiliary.kind) ? <CalendarFileActions kind={auxiliary.kind} month={auxiliary.request.month} mode={auxiliary.type} request={auxiliary.request} adapter={adapters.imports[auxiliary.kind]} onClose={close} onCommitted={committed} /> :
-        importOnlyKinds.includes(auxiliary.kind) ? <RelationFileActions kind={auxiliary.kind} mode={auxiliary.type} request={auxiliary.request} adapter={adapters.imports[auxiliary.kind]} onClose={close} onCommitted={committed} /> :
-        auxiliary.kind === 'material' ? <ResourceMaterialActions mode={auxiliary.type} request={auxiliary.request} adapter={adapters.files.material} onClose={close} onCommitted={committed} /> :
-          <ResourceFileActions kind={auxiliary.kind} mode={auxiliary.type} request={auxiliary.request} adapter={adapters.files[auxiliary.kind]} onClose={close} onCommitted={committed} />)}
+      renderPart={({ onRefresh, initialContext, rememberEnabled }) => <ProcessWorkspace onCommitted={onRefresh} initialContext={initialContext} rememberEnabled={rememberEnabled} onNavigationReady={setNavigationReady} />}
+      renderCalendar={({ onCommitted, externalRevision, initialContext, rememberEnabled, summaryState }) => <ResourceCalendar onCommitted={onCommitted} externalRevision={externalRevision} initialContext={initialContext} rememberEnabled={rememberEnabled} summaryState={summaryState} onNavigationReady={setNavigationReady}
+        onOpenFile={(mode, context) => host.openCalendarFile(mode, { refs: [], scope: {}, ...context })} />} />
+    {auxiliary && (auxiliary.type === 'catalog' ? <ResourceCatalog kind={auxiliary.kind} onClose={close} onCommitted={committed} /> :
+      calendarFileKinds.includes(auxiliary.kind) ? <CalendarFileActions kind={auxiliary.kind} month={auxiliary.request.month} mode={auxiliary.type} request={auxiliary.request} onClose={close} onCommitted={committed} /> :
+        importOnlyKinds.includes(auxiliary.kind) ? <RelationFileActions kind={auxiliary.kind} mode={auxiliary.type} request={auxiliary.request} onClose={close} onCommitted={committed} /> :
+        auxiliary.kind === 'material' ? <ResourceMaterialActions mode={auxiliary.type} request={auxiliary.request} onClose={close} onCommitted={committed} /> :
+          <ResourceFileActions kind={auxiliary.kind} mode={auxiliary.type} request={auxiliary.request} onClose={close} onCommitted={committed} />)}
   </>;
 }
 

@@ -507,20 +507,8 @@
     },
     {
       "path": "core/services/workbench/outsourcing/service.py",
-      "term": "接入",
-      "text": "真实外协登记结构尚未完整接入",
-      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
-    },
-    {
-      "path": "core/services/workbench/outsourcing/service.py",
       "term": "对象",
       "text": "未改读其他对象",
-      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
-    },
-    {
-      "path": "core/services/workbench/outsourcing/service.py",
-      "term": "事实",
-      "text": "外协登记缺少确认事实",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
@@ -574,7 +562,7 @@
     {
       "path": "core/services/workbench/calibration/facts.py",
       "term": "样本",
-      "text": "待核对执行工序超过10000道，请缩小零件范围；未截断样本。",
+      "text": "道，请缩小零件范围；未截断样本。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {

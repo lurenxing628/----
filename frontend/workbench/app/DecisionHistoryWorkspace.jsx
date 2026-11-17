@@ -1,7 +1,7 @@
 import React from './shared/runtime/react.js';
-import DecisionHistoryAPI from './DecisionHistoryAPI.js';
-import ResourceControls, { EmptyState, Pager } from './ResourceControls.jsx';
-import WorkbenchFormat from './WorkbenchFormat.js';
+import A from './DecisionHistoryAPI.js';
+import C, { EmptyState, Pager } from './ResourceControls.jsx';
+import F from './WorkbenchFormat.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import WorkbenchDatePickerModel from './WorkbenchDatePickerModel.js';
 import APSWorkbenchTransport from './shared/network/transport.js';
@@ -9,12 +9,12 @@ import { useQuery } from './shared/session/query.js';
 import WorkbenchPageContext from './WorkbenchPageContext.jsx';
 import DecisionHistoryChart from './DecisionHistoryChart.jsx';
 import DecisionHistoryDetails from './DecisionHistoryDetails.jsx';
+import { WorkbenchError } from './WorkbenchReferences.jsx';
 
-const A = DecisionHistoryAPI, C = ResourceControls, F = WorkbenchFormat;
-const stateLabels = { all: '全部状态', ...WorkbenchTerms.run_statuses, committed: '已提交采用' };
 const clearEventFilters = { date_from: null, date_to: null, state: 'all', page: 1 };
 function ErrorBox({ error }) {
-  return error ? <div className="dh-notice dh-error" role="alert">{error.code === 'snapshot_stale' && <strong>历史资料已更新。 </strong>}{error.message || '历史资料读取失败，请重新查询。'}</div> : null;
+  if (!error) return null;
+  return <>{error.code === 'snapshot_stale' && <strong>历史资料已更新。</strong>}<WorkbenchError error={error} fallback="历史资料读取失败，请重新查询。" /></>;
 }
 function Filters({ query, busy, onApply }) {
   const fields = value => ({ date_from: value.date_from, date_to: value.date_to, state: value.state, order: value.order });
@@ -30,7 +30,7 @@ function Filters({ query, busy, onApply }) {
     <label>来源<select aria-label="历史时间线" value={query.timeline} aria-disabled={busy || undefined} onChange={event => { if (busy) return; onApply(A.scope({ ...query, timeline: event.target.value, selected_entry_ref: null, page: 1, condition_page: 1, snapshot_ref: null })); }}><option value="run">历次排产</option><option value="official">已采用方案</option></select></label>
     <label>起日<input type="date" aria-label="历史发生起日" value={draft.date_from === null ? '' : draft.date_from} disabled={busy} onChange={event => set({ date_from: event.target.value })} /></label>
     <label>止日<input type="date" aria-label="历史发生止日" value={draft.date_to === null ? '' : draft.date_to} disabled={busy} onChange={event => set({ date_to: event.target.value })} /></label>
-    <label>状态<select aria-label="历史条目状态" value={draft.state} disabled={busy} onChange={event => set({ state: event.target.value })}>{A.states.map(state => <option key={state} value={state}>{stateLabels[state]}</option>)}</select></label>
+    <label>状态<select aria-label="历史条目状态" value={draft.state} disabled={busy} onChange={event => set({ state: event.target.value })}>{A.states.map(state => <option key={state} value={state}>{A.stateLabel(state)}</option>)}</select></label>
     <div className="dh-actions"><C.Button type="submit" icon="search" busy={busy}>查询</C.Button><C.Button icon="x" aria-label="清除历史日期与状态筛选" disabled={busy} onClick={() => onApply(A.scope({ ...query, ...clearEventFilters, snapshot_ref: null }))} /><details className="dh-more-filter"><summary>{query.order === 'asc' ? '更多 · 从旧到新' : '更多'}</summary><label>顺序<select aria-label="历史时间顺序" value={draft.order} disabled={busy} onChange={event => set({ order: event.target.value })}><option value="desc">从新到旧</option><option value="asc">从旧到新</option></select></label></details></div>
   </div><ErrorBox error={error} /></form>;
 }
@@ -66,7 +66,7 @@ function Table({ data, metricKey, selectedEntryRef, onSelect, onReference, busy 
     <thead><tr><th scope="col" className="wb-col-key">发生时间 / 条目</th><th scope="col">来源与状态</th><th scope="col">业务范围</th>{definitions.map(definition => <th key={definition.key} scope="col" className="dh-number" data-metric-key={definition.key} data-active-metric={definition.key === metricKey || undefined}>{definition.label}</th>)}<th scope="col" className="wb-col-actions">对照</th></tr></thead>
     <tbody>{data.entries.map((entry, index) => <tr key={entry.entry_ref} data-history-entry={entry.entry_ref} data-selected={entry.entry_ref === selectedEntryRef || undefined}>
       <td className="wb-col-key"><C.Button className="btn link dh-row-choice" data-dh-row-choice={entry.entry_ref} aria-pressed={entry.entry_ref === selectedEntryRef} disabled={busy} tabIndex={entry.entry_ref === selectedEntryRef || index === 0 && !data.entries.some(row => row.entry_ref === selectedEntryRef) ? 0 : -1} onKeyDown={event => move(event, index)} onClick={() => onSelect(entry, true)}>{entry.occurred_at ? F.dateTime(entry.occurred_at) : '时间未记录'}<small>{entry.label}</small></C.Button></td>
-      <td>{A.sourceLabel(entry)}<small>{stateLabels[entry.state] || entry.state}</small></td>
+      <td>{A.sourceLabel(entry)}<small>{A.stateLabel(entry.state)}</small></td>
       <td>{F.number(entry.scope.batch_count, { digits: 0 })} 批 / {F.number(entry.scope.operation_count, { digits: 0 })} 道{marked.includes(entry.entry_ref) && <small className="dh-range-change">统计范围有变化</small>}</td>
       {definitions.map(definition => { const metric = entry.metrics[definition.key]; return <td key={definition.key} className="dh-number" data-metric-key={definition.key} data-metric-value={metric.value === null ? '' : metric.value} data-value-state={metric.state} title={metric.reason ? metric.reason.message : undefined}>
         {A.metricText(metric, definition)}{metric.value === null && metric.known_count > 0 && metric.known_subtotal !== null && <small>已知小计 {A.numberText(metric.known_subtotal, metric.unit, definition.precision)}</small>}{metric.unknown_count > 0 && <small>{metric.unknown_count} 项待确认</small>}</td>; })}
@@ -95,12 +95,12 @@ function Export({ result, query, busy: reading }) {
 }
 function Session({ start, pageContext, navigation, onNavigate, renderTopics }) {
   const [query, setQuery] = React.useState(start.query), [metricKey, setMetricKey] = React.useState(start.metric_key), [revision, refresh] = React.useReducer(value => value + 1, 0), [paused, setPaused] = React.useState(false), [conditionsOpen, setConditionsOpen] = React.useState(false), [missingOpen, setMissingOpen] = React.useState(false);
-  const workspace = React.useRef(null), pendingFocus = React.useRef(null), readingHeight = React.useRef(null), lastDefs = React.useRef([]), lastData = React.useRef(null);
+  const workspace = React.useRef(null), pendingFocus = React.useRef(null), readingHeight = React.useRef(null), lastDefs = React.useRef([]);
   const serialized = JSON.stringify(query), scopeKey = JSON.stringify({ ...query, snapshot_ref: null });
-  const read = useQuery(signal => A.read(query, signal), [serialized, revision, paused], !paused), result = read.result, data = result && result.data;
-  if (data) { lastDefs.current = data.metric_definitions; lastData.current = { scopeKey, data }; }
-  else if (!read.loading || (lastData.current && lastData.current.scopeKey !== scopeKey)) lastData.current = null;
-  const displayData = data || (read.loading && lastData.current && lastData.current.scopeKey === scopeKey ? lastData.current.data : null);
+  const read = useQuery(signal => A.read(query, signal), [serialized, revision, paused], { enabled: !paused, keep: scopeKey }), result = read.result, data = result && result.data;
+  // 指标定义比展示保留活得久：出错、取消读取、换范围后指标选择器仍按上一次读到的定义显示。
+  if (data) lastDefs.current = data.metric_definitions;
+  const displayData = read.shown && read.shown.data;
   const remembered = { query: { ...query, ...(result ? { snapshot_ref: result.meta.snapshot_ref } : {}) }, selected_entry_ref: query.selected_entry_ref, ...(query.reference_run_ref ? { reference_entry_ref: 'run:' + query.reference_run_ref } : {}), metric_key: metricKey, detail_queries: { ...start.detail_queries, conditions: { page: query.condition_page, size: query.condition_size } } };
   const historyContext = { ...pageContext, source: 'run_history', history_topic: 'decision_history', decision_history_context: remembered };
   WorkbenchPageContext.useSnapshot(historyContext);
@@ -126,7 +126,7 @@ function Session({ start, pageContext, navigation, onNavigate, renderTopics }) {
   function select(entry, source, reveal = false) { pendingFocus.current = { source, entryRef: entry.entry_ref, reveal, ...(source === 'chart' ? { scrolls: workspace.current ? Array.from(workspace.current.querySelectorAll('.dh-chart-series[data-metric-unit]'), series => ({ unit: series.getAttribute('data-metric-unit'), left: series.querySelector('.dh-chart-scroll').scrollLeft })) : [] } : {}) }; change({ selected_entry_ref: entry.entry_ref, condition_page: 1 }, false, !reveal); }
   function reference(entry) { pendingFocus.current = { source: 'detail', reveal: true }; change({ reference_run_ref: entry.identity.run_ref, selected_entry_ref: query.selected_entry_ref === 'run:' + entry.identity.run_ref ? null : query.selected_entry_ref, comparison: 'same_conditions', condition_page: 1 }); }
   function endComparison() { setConditionsOpen(false); pendingFocus.current = { source: 'detail', reveal: false }; change({ reference_run_ref: null, comparison: 'observed' }); }
-  function open(target) { if (target.enabled) onNavigate(target.view, { ...target.context, return_decision_history_context: remembered }); }
+  function open(target) { if (target.enabled) onNavigate(target.view, { ...target.context, return_to: { view: 'analysis', context: historyContext } }); }
   return <div ref={workspace} className="plana run-history-workspace decision-history-workspace" data-decision-history-workspace aria-busy={read.loading} style={read.loading && readingHeight.current !== null ? { minHeight: readingHeight.current } : undefined}><h2 className="wb-page-title">排产记录</h2><header className="dh-heading scheduling-page-tools">{navigation}<div className="dh-actions">
     {result && <Export key={result.meta.snapshot_ref} result={result} query={query} busy={read.loading} />}<C.Button icon="refresh-cw" busy={read.loading} aria-label="刷新历史走势" onClick={reload} />{read.loading && <C.Button onClick={() => { readingHeight.current = null; setPaused(true); }}>取消读取</C.Button>}</div></header>
     {renderTopics(historyContext)}<div id="dh-history-content" role="tabpanel" aria-labelledby="dh-topic-decision_history">

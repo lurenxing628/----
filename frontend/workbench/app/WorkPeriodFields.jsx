@@ -3,16 +3,12 @@ import C from './resource-contract.js';
 import { validate, hours, duration } from './WorkPeriods.js';
 import ResourceControls from './ResourceControls.jsx';
 
-const fieldPath = path => path.replace(/^input\./, '');
-
+// path 是这组时段在请求里的位置（日历 fields.periods / periods，班次档 fields.pattern.<i>.periods），时段错误整组认领。
 function WorkPeriodFields({ value, onChange, disabled, label = '工作时段', path, error }) {
   const { Button, Field } = ResourceControls;
   const errorId = React.useId() + '-error';
   const change = (index, key, next) => onChange(value.map((row, i) => i === index ? { ...row, [key]: next } : row));
-  const target = path === undefined ? null : fieldPath(path);
-  const messages = target === null ? [] : Array.from(new Set(
-    C.fieldErrors(error).filter(row => fieldPath(row.path) === target).map(row => row.message)
-  ));
+  const messages = C.fieldMessages(C.fieldErrors(error), path);
   const invalid = messages.length > 0, liveError = validate(value);
   const hint = liveError ? (messages.includes(liveError) ? null : liveError)
     : '实际工作 ' + duration(hours(value)) + '；时段之间不排产。';

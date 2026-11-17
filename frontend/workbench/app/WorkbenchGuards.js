@@ -62,10 +62,10 @@ function useDirtyGuard({ owner, dirty, message, locked = false }) {
   return scope;
 }
 
+// 提示框由 WorkbenchGuardHost 承接：它与所有页面同挂在工作台根上，挂载即订阅，先于任何离开操作。
 function confirmLeave(options = {}) {
   if (!hasDirty(options)) return Promise.resolve(true);
   if (pending) return Promise.resolve(false);
-  if (!listeners.size) return Promise.reject(new Error('页面还没准备好，这次没有离开。请刷新后重试。'));
   return new Promise(resolve => { pending = { id: ++nextPrompt, options, resolve }; notify(); });
 }
 

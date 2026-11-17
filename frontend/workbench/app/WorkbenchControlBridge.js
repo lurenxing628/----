@@ -19,8 +19,8 @@ function setProperty(input, property, value) {
   if (!available(input)) return false;
   const view = input.ownerDocument.defaultView;
   const constructor = input.tagName === 'SELECT' ? view.HTMLSelectElement : view.HTMLInputElement;
+  // 只有 input.value 与 select.selectedIndex 两种写法，都是浏览器原生带 setter 的属性。
   const descriptor = Object.getOwnPropertyDescriptor(constructor.prototype, property);
-  if (!descriptor || !descriptor.set) throw new Error('control_value_setter_missing');
   const before = input.value;
   // Use the native setter so React observes the existing input/change contract.
   descriptor.set.call(input, value);

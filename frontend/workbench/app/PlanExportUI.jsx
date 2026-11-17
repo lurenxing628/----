@@ -1,13 +1,11 @@
 import React from './shared/runtime/react.js';
-import ResourceControls from './ResourceControls.jsx';
-import PlanGanttModel from './PlanGanttModel.js';
+import { Button, Modal, ErrorBox } from './ResourceControls.jsx';
+import M from './PlanGanttModel.js';
 import APSPlanAPI from './PlanAPI.js';
 import APSWorkbenchTransport from './shared/network/transport.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import { PlanSegmentUI } from './PlanGantt.jsx';
 
-const { Button, Modal, ErrorBox } = ResourceControls;
-const M = PlanGanttModel;
 function PlanExportUI({ result, query, matched, disabled }) {
   const [format, setFormat] = React.useState(null), [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null), [notice, setNotice] = React.useState('');
   const active = React.useRef(null);

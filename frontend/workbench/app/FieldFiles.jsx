@@ -1,11 +1,11 @@
 import React from './shared/runtime/react.js';
-import FieldContract from './FieldContract.js';
-import FieldControls from './FieldControls.jsx';
-import APSResourceContract from './resource-contract.js';
+import C from './FieldContract.js';
+import FieldAPI from './FieldAPI.js';
+import { Button, Modal, ErrorBox, Feedback, Conflicts } from './FieldControls.jsx';
 import APSWorkbenchTransport from './shared/network/transport.js';
+import { failure } from './shared/contract/kit.js';
 
-const C = FieldContract, { Button, Modal, ErrorBox, Feedback, Conflicts } = FieldControls;
-function FieldFiles({ adapter, scope, snapshot, command, onClose, onDone }) {
+function FieldFiles({ scope, snapshot, command, onClose, onDone }) {
   const [file, setFile] = React.useState(null), [preview, setPreview] = React.useState(null), [error, setError] = React.useState(null), [busy, setBusy] = React.useState(false);
   const input = React.useRef(null), active = React.useRef(true), controller = React.useRef(null);
   React.useEffect(() => () => { active.current = false; if (controller.current) controller.current.abort(); }, []);
@@ -15,13 +15,13 @@ function FieldFiles({ adapter, scope, snapshot, command, onClose, onDone }) {
     setError(null); setBusy(true); controller.current = new AbortController();
     try {
       if (action === 'preview') {
-        if (!file || !/\.xlsx$/i.test(file.name) || file.size > 8 * 1024 * 1024) throw APSResourceContract.failure('请选择不超过 8 MB 的 XLSX 文件。');
-        const value = (await adapter.previewFile(file, scope, snapshot, controller.current.signal)).data;
+        if (!file || !/\.xlsx$/i.test(file.name) || file.size > 8 * 1024 * 1024) throw failure('请选择不超过 8 MB 的 XLSX 文件。');
+        const value = (await FieldAPI.previewFile(file, scope, snapshot, controller.current.signal)).data;
         if (active.current) setPreview(value);
       } else {
         // 类型、魔数和带 .xlsx 后缀的文件名都由 transport 校验，这里按后端文件名存盘。
-        const download = action === 'errors' ? await adapter.downloadErrors(preview.preview_ref, controller.current.signal)
-          : await adapter.download(action, scope, snapshot, controller.current.signal);
+        const download = action === 'errors' ? await FieldAPI.downloadErrors(preview.preview_ref, controller.current.signal)
+          : await FieldAPI.download(action, scope, snapshot, controller.current.signal);
         APSWorkbenchTransport.saveBlob(download.filename, download.blob);
       }
     } catch (error) { if (active.current) setError(error); }

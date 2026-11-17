@@ -1,5 +1,6 @@
 import React from './shared/runtime/react.js';
-import { Button, ErrorBox, useRead, Page } from './ReportControls.jsx';
+import { Button, ErrorBox, Page } from './ReportControls.jsx';
+import { useQuery } from './shared/session/query.js';
 import ReportAPI from './ReportAPI.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import { Table } from './ReportTable.jsx';
@@ -12,7 +13,7 @@ function Catalog({ scope, snapshot }) {
   const lastColumns = React.useRef([]), lastSort = React.useRef({ field: '', direction: 'asc' });
   const base = kind === 'official-review' ? { ...ReportAPI.scope(scope), snapshot_ref: snapshot, topic: 'delivery' } : { source: 'production', plan_ref: scope.plan_ref, ...filter };
   const input = { ...base, ...table };
-  const request = useRead(signal => ReportAPI.catalog(kind, input, signal), kind + JSON.stringify(input));
+  const request = useQuery(signal => ReportAPI.catalog(kind, input, signal), [kind, JSON.stringify(input)]);
   const response = request.result;
   if (response) { lastColumns.current = response.data.columns; lastSort.current = response.data.page.sort[0]; }
   const columns = response ? response.data.columns : lastColumns.current;
@@ -30,13 +31,13 @@ function Catalog({ scope, snapshot }) {
       <Button icon="search" aria-label="读取报表范围" onClick={() => { setFilter(draft); setTable(old => ({ ...old, page: 1, snapshot_ref: undefined })); }} /></>}
     {kind !== 'official-review' && <><label>搜索<input type="search" aria-label="搜索报表" value={draft.query || ''} onChange={event => setDraft(old => ({ ...old, query: event.target.value }))} onKeyDown={event => { if (event.key === 'Enter') { setFilter(draft); setTable(old => ({ ...old, page: 1, snapshot_ref: undefined })); } }} /></label>
       <Button icon="search" aria-label="搜索报表结果" onClick={() => { setFilter(draft); setTable(old => ({ ...old, page: 1, snapshot_ref: undefined })); }} />
-      <label>排序<select aria-label="报表排序列" value={table.sort || lastSort.current.field} disabled={request.busy || !response} onChange={event => setTable(old => ({ ...old, page: 1, sort: event.target.value, snapshot_ref: response ? response.meta.snapshot_ref : old.snapshot_ref }))}>{columns.map(column => <option key={column.key} value={column.key}>{column.label}</option>)}</select></label>
-      <label>顺序<select aria-label="报表排序方向" value={table.direction || lastSort.current.direction || 'asc'} disabled={request.busy || !response} onChange={event => setTable(old => ({ ...old, page: 1, direction: event.target.value, snapshot_ref: response ? response.meta.snapshot_ref : old.snapshot_ref }))}><option value="asc">升序</option><option value="desc">降序</option></select></label></>}
-    <Button transfer="export" busy={downloading} disabled={!response || request.busy} reason={response && !response.data.page.total ? '当前范围没有可导出的结果。' : ''} onClick={download}>导出 XLSX</Button></div></div>
-    <ErrorBox error={request.error || error} />{notice && <p role="status">{notice}</p>}{request.busy && <p role="status">正在读取报表…</p>}
+      <label>排序<select aria-label="报表排序列" value={table.sort || lastSort.current.field} disabled={request.loading || !response} onChange={event => setTable(old => ({ ...old, page: 1, sort: event.target.value, snapshot_ref: response ? response.meta.snapshot_ref : old.snapshot_ref }))}>{columns.map(column => <option key={column.key} value={column.key}>{column.label}</option>)}</select></label>
+      <label>顺序<select aria-label="报表排序方向" value={table.direction || lastSort.current.direction || 'asc'} disabled={request.loading || !response} onChange={event => setTable(old => ({ ...old, page: 1, direction: event.target.value, snapshot_ref: response ? response.meta.snapshot_ref : old.snapshot_ref }))}><option value="asc">升序</option><option value="desc">降序</option></select></label></>}
+    <Button transfer="export" busy={downloading} disabled={!response || request.loading} reason={response && !response.data.page.total ? '当前范围没有可导出的结果。' : ''} onClick={download}>导出 XLSX</Button></div></div>
+    <ErrorBox error={request.error || error} />{notice && <p role="status">{notice}</p>}{request.loading && <p role="status">正在读取报表…</p>}
     {response && <><p>{response.data.data_gaps.join(' ')}{response.data.scope.window_date_from ? ' 统计范围：' + response.data.scope.window_date_from + ' 至 ' + response.data.scope.window_date_to : ''}</p>
       <Table data={kind === 'official-review' ? { ...response.data, topic: 'delivery' } : response.data} empty={empty} /></>}
-    <Page page={response ? response.data.page : { number: table.page, size: table.size }} onChange={patch => setTable(old => ({ ...old, ...patch, snapshot_ref: response ? response.meta.snapshot_ref : old.snapshot_ref }))} busy={request.busy || !response} />
+    <Page page={response ? response.data.page : { number: table.page, size: table.size }} onChange={patch => setTable(old => ({ ...old, ...patch, snapshot_ref: response ? response.meta.snapshot_ref : old.snapshot_ref }))} busy={request.loading || !response} />
   </section>;
 }
 

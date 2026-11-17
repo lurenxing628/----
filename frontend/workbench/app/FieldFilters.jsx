@@ -1,9 +1,8 @@
 import React from './shared/runtime/react.js';
-import FieldControls from './FieldControls.jsx';
+import { Button } from './FieldControls.jsx';
 import FieldContract from './FieldContract.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 
-const { Button } = FieldControls;
 function FieldFilters({ scope, onChange, disabled, summary }) {
   const [draft, setDraft] = React.useState(scope);
   const counts = summary && summary.state_counts;

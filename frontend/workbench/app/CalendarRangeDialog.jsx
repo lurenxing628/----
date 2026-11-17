@@ -1,12 +1,14 @@
 import React from './shared/runtime/react.js';
 import C from './resource-contract.js';
 import K from './CalendarContract.js';
+import APSResourceAPI from './resource-api.js';
 import { Button, ErrorBox, Issues, Modal, Field, focusFirstInvalid, Pager, EmptyState } from './ResourceControls.jsx';
 import { Fields, Segment, Policy, RefreshResult, fieldPaths } from './CalendarFields.jsx';
 import { Feedback } from './ResourceForms.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
+import { failure, monthRange, isDate } from './shared/contract/kit.js';
 
 function RangePreview({ result, page, setPage, onBack, disabled }) {
   const data = result.data, size = 10, pages = Math.max(1, Math.ceil(data.days.length / size));
@@ -24,8 +26,8 @@ function RangePreview({ result, page, setPage, onBack, disabled }) {
         <td><Policy value={row.before} /></td><td><Policy value={row.after} /></td></tr>)}</tbody></table></div>
   </>;
 }
-function CalendarRangeDialog({ adapter, month, defaultPeriods, source, command, onClose, refreshState, onRefresh }) {
-  const monthPrefix = K.monthKey(month.year, month.month), fullMonth = { start_date: monthPrefix + '-01', end_date: monthPrefix + '-' + K.monthDays(month.year, month.month) };
+function CalendarRangeDialog({ month, defaultPeriods, source, command, onClose, refreshState, onRefresh }) {
+  const fullMonth = monthRange(month);
   const [range, setRange] = React.useState({ ...fullMonth, scope: 'all', operation: 'upsert' });
   const [value, setValue] = React.useState(() => K.draft(defaultPeriods));
   const [replaceNote, setReplaceNote] = React.useState(false);
@@ -43,14 +45,14 @@ function CalendarRangeDialog({ adapter, month, defaultPeriods, source, command, 
   async function preview(event) {
     event.preventDefault(); if (disabled) return;
     try {
-      if (source !== 'production') throw C.failure('当前不是生产数据，不能执行日历维护。');
-      if (!K.isDate(range.start_date) || !K.isDate(range.end_date) || range.start_date > range.end_date) throw C.failure('请选择正确的开始和结束日期。',
-        [{ path: !K.isDate(range.start_date) ? 'start_date' : 'end_date', message: '日期须有效，且结束日期不能早于开始日期。' }]);
+      if (source !== 'production') throw failure('当前不是生产数据，不能执行日历维护。');
+      if (!isDate(range.start_date) || !isDate(range.end_date) || range.start_date > range.end_date) throw failure('请选择正确的开始和结束日期。',
+        { fields: [{ path: !isDate(range.start_date) ? 'start_date' : 'end_date', message: '日期须有效，且结束日期不能早于开始日期。' }] });
       const fields = range.operation === 'delete' ? {} : K.input(value);
       if (!replaceNote) delete fields.note;
       if (!command.reset()) return;
       setError(null); setResult(null); setLoading(true); controller.current = new AbortController();
-      const next = K.preview(await adapter.preview(K.path + '/range/preview', { input: { ...range, fields } }, controller.current.signal));
+      const next = K.preview(await APSResourceAPI.forNamespace('calendar').preview(K.path + '/range/preview', { input: { ...range, fields } }, controller.current.signal));
       if (mounted.current) { setResult(next); setPage(1); }
     } catch (failure) { if (mounted.current) setError(failure); }
     finally { if (mounted.current) setLoading(false); }

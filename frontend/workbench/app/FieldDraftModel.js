@@ -1,13 +1,13 @@
-import FieldContract from './FieldContract.js';
+import C from './FieldContract.js';
+import { localSecond } from './shared/contract/kit.js';
 
-const C = FieldContract;
 function localNow(now) {
   const pad = value => String(value).padStart(2, '0');
   return now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + 'T' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
 }
 function previous(task) {
   return task.execution.reports.filter(record => record.recorded_against_task_ref === task.task_ref
-    && C.validTime(record.actual_end) && (record.actual_start === null || C.validTime(record.actual_start) && record.actual_start <= record.actual_end))
+    && localSecond(record.actual_end) && (record.actual_start === null || localSecond(record.actual_start) && record.actual_start <= record.actual_end))
     .sort((a, b) => b.actual_end.localeCompare(a.actual_end) || b.report_no.localeCompare(a.report_no))[0] || null;
 }
 function initialize({ task, record, action, retained, now = new Date() }) {

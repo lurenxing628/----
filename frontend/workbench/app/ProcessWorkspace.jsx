@@ -3,10 +3,11 @@ import C from './resource-contract.js';
 import P from './ProcessContract.js';
 import A from './ProcessActionContract.js';
 import S from './shared/session/command-session.js';
+import APSProcessAPI from './ProcessAPI.js';
 import { useQuery } from './shared/session/query.js';
 import { Button, Icon, ErrorBox, Issues, EmptyState } from './ResourceControls.jsx';
 import FileButtons from './ProcessControls.jsx';
-import APSProcessReadView from './ProcessReadView.js';
+import APSProcessReadView, { scopeKeys as readScopeKeys } from './ProcessReadView.js';
 import ResourceTableHeader from './ResourceTableHeader.jsx';
 import { navigation as workspaceNavigation } from './ResourceWorkspace.jsx';
 import WorkbenchGuards from './WorkbenchGuards.js';
@@ -16,11 +17,8 @@ import { Pager as ResourceTablePager } from './ResourceTables.jsx';
 import ProcessFileActions from './ProcessFileActions.jsx';
 import ProcessCollectionActions from './ProcessCollectionActions.jsx';
 import ProcessDetail from './ProcessDetail.jsx';
+import { failure } from './shared/contract/kit.js';
 
-const readScopeKeys = APSProcessReadView.scopeKeys;
-async function readList(adapter, scope, signal) {
-  return P.list(await adapter.list('part', scope, signal), scope);
-}
 function Pipeline({ entity }) {
   const w = entity.workflow;
   return <div className="pipe" aria-label="工艺三阶段">
@@ -34,7 +32,7 @@ function TableEmpty({ loading, error, filtered, onClear, onRetry }) {
   if (filtered) return <EmptyState kind="filtered" title="当前筛选没有匹配的零件" action={<Button icon="x" onClick={onClear}>清除筛选</Button>} />;
   return <EmptyState kind="empty" title="暂无零件工艺" />;
 }
-function ProcessTable({ entities, selected, setSelected, onOpen, onDelete, disabled, loading, error, scope, adapter, onSort, onFilter, matchingCount, onClear, onRetry }) {
+function ProcessTable({ entities, selected, setSelected, onOpen, onDelete, disabled, loading, error, scope, onSort, onFilter, matchingCount, onClear, onRetry }) {
   const allRef = React.useRef(null), visible = entities.map(row => row.ref);
   const table = React.useRef(null), [widths, setWidths] = React.useState(null);
   const selectedSet = new Set(selected), all = !!visible.length && visible.every(ref => selectedSet.has(ref));
@@ -52,7 +50,7 @@ function ProcessTable({ entities, selected, setSelected, onOpen, onDelete, disab
     <thead><tr><th scope="col" data-column="__selection" style={{ width: widths ? widths.__selection : 44 }}><input ref={allRef} type="checkbox" aria-label="全选当前页" checked={all} disabled={disabled || loading || !visible.length}
       onChange={event => setSelected(event.target.checked ? Array.from(new Set(selected.concat(visible))) : selected.filter(ref => !visible.includes(ref)))} /></th>
       {P.columns.map(column => { const sorted = ordering.find(row => row.field === column.key); return <th scope="col" key={column.key} data-column={column.key} style={{ width: width(column) }} aria-sort={sorted ? sorted.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
-        <ResourceTableHeader column={column} kind="part" scope={scope} adapter={adapter} sort={sorted && sorted.field} direction={sorted && sorted.direction} sortActive={!!sorted}
+        <ResourceTableHeader column={column} kind="part" scope={scope} sort={sorted && sorted.field} direction={sorted && sorted.direction} sortActive={!!sorted}
           onSort={onSort} onFilter={rule => onFilter(column.key, rule)} filter={scope.column_filters[column.key]} matchingCount={matchingCount}
           width={width(column)} onResize={value => resize(column.key, value)} disabled={disabled} scopeTransform={A.facetScope} pageSize={50} />
       </th>; })}<th scope="col" className="wb-col-actions" data-column="__actions" style={{ width: widths ? widths.__actions : 190 }}>下一步 / 操作</th></tr></thead>
@@ -66,44 +64,39 @@ function ProcessTable({ entities, selected, setSelected, onOpen, onDelete, disab
       filtered={!!(scope.query || scope.stage || Object.keys(scope.column_filters).length)} /></td></tr>}</tbody>
   </table></div>;
 }
-function ProcessWorkspace({ adapter, onCommitted, disabled = false, initialContext, onNavigationReady, rememberEnabled = true }) {
-  const command = S.useCommand(adapter);
+function ProcessWorkspace({ onCommitted, disabled = false, initialContext, onNavigationReady, rememberEnabled = true }) {
+  const command = S.useCommand(APSProcessAPI);
   const [target] = React.useState(() => {
     if (initialContext == null) return { context: null };
     const parsed = workspaceNavigation(initialContext);
-    return parsed.context && parsed.context.kind !== 'part' ? { error: C.failure('工艺导航必须指向原零件记录。') } : parsed;
+    return parsed.context && parsed.context.kind !== 'part' ? { error: failure('工艺导航必须指向原零件记录。') } : parsed;
   });
   const [deferred, setDeferred] = React.useState(() => !!target.context && command.phase !== 'idle');
   const [navigationError, setNavigationError] = React.useState(target.error === undefined ? null : target.error);
   const restored = target.context && target.context.read_view;
   const restoredRef = restored ? restored.entity_ref : target.context && target.context.entity_ref;
-  const navigationDialog = () => restoredRef ? ({ ref: restoredRef, adapter, navigation: target.context }) : null;
+  const navigationDialog = () => restoredRef ? ({ ref: restoredRef, navigation: target.context }) : null;
   const [recoveryError, setRecoveryError] = React.useState(null);
   const [scope, setScope] = React.useState(() => restored ? restored.scope : { query: '', page: 1, size: 20, sort: [], column_filters: {} });
   const [search, setSearch] = React.useState(() => restored ? restored.scope.query : '');
   const [selected, setSelected] = React.useState(() => restored ? restored.selected_refs : []), [dialog, setDialog] = React.useState(() => !deferred && target.context ? navigationDialog() : null);
-  const previousAdapter = React.useRef(adapter);
   WorkbenchGuards.useDirtyGuard({ dirty: false, locked: !dialog && command.locked, message: '上次操作的结果还没查到，请先留在本页。' });
-  React.useEffect(() => {
-    if (previousAdapter.current === adapter) return;
-    previousAdapter.current = adapter; setSelected([]); setDialog(null); setScope(current => ({ ...current, page: 1, snapshot_ref: undefined }));
-  }, [adapter]);
   React.useEffect(() => { onNavigationReady(!dialog && command.phase === 'idle' && !recoveryError); }, [dialog, command.phase, recoveryError, onNavigationReady]);
   React.useEffect(() => {
     try {
-      const intent = adapter.readPending();
+      const intent = APSProcessAPI.readPending();
       const restored = A.restored(intent);
-      if (restored) setDialog({ ...restored, adapter });
+      if (restored) setDialog(restored);
       setRecoveryError(null);
     } catch (error) { setRecoveryError(error); }
-  }, [adapter]);
+  }, []);
   React.useEffect(() => {
     const restored = A.restored(command.intent);
     if (restored && ['sending', 'pending', 'checking', 'done'].includes(command.phase))
-      setDialog(current => current && current.adapter === adapter && (current.ref && restored.fileKind
-        || current.mode === restored.mode && current.ref === restored.ref && current.fileKind === restored.fileKind) ? current : { ...restored, adapter });
-  }, [adapter, command.intent, command.phase]);
-  const list = useQuery(signal => readList(adapter, scope, signal), [adapter, scope]);
+      setDialog(current => current && (current.ref && restored.fileKind
+        || current.mode === restored.mode && current.ref === restored.ref && current.fileKind === restored.fileKind) ? current : restored);
+  }, [command.intent, command.phase]);
+  const list = useQuery(async signal => P.list(await APSProcessAPI.list('part', scope, signal), scope), [scope]);
   const data = list.result && list.result.data, counts = data && data.metrics.counts;
   const savedScope = Object.fromEntries(readScopeKeys.filter(key => scope[key] !== undefined).map(key => [key, scope[key]]));
   WorkbenchPageContext.useSnapshot({ source: 'production', kind: 'part', read_view: { scope: savedScope, selected_refs: selected,
@@ -125,20 +118,19 @@ function ProcessWorkspace({ adapter, onCommitted, disabled = false, initialConte
   function committed(receipt) {
     if (C.receipt(receipt) !== 'terminal') return;
     setScope(current => ({ ...current, page: 1, snapshot_ref: undefined }));
-    if (Number.isSafeInteger(receipt.data.deleted_count) && Array.isArray(receipt.data.rows)) {
-      const removed = new Set(receipt.data.rows.map(row => row.entity_ref)); setSelected(current => current.filter(ref => !removed.has(ref)));
-    }
+    const removed = new Set(C.removedRefs(receipt));
+    if (removed.size) setSelected(current => current.filter(ref => !removed.has(ref)));
     onCommitted(receipt);
   }
   function action(mode, refs = selected, fileKind) {
     if (!data || blocked || list.loading) return;
     setDialog({ mode, fileKind, refs, scope: A.scope(scope), snapshot_ref: list.result.meta.snapshot_ref, page_size: data.page.size,
-      source: list.result.meta.source, create_context: data.create_context, adapter });
+      source: list.result.meta.source, create_context: data.create_context });
   }
   const activeStage = scope.stage === undefined ? '' : scope.stage;
   const blocked = disabled || !!dialog || command.locked || !!recoveryError;
   function continueNavigation() {
-    if (blocked || command.phase !== 'idle') { setNavigationError(C.failure('请先处理完上次操作并关闭工艺详情，再继续。')); return; }
+    if (blocked || command.phase !== 'idle') { setNavigationError(failure('请先处理完上次操作并关闭工艺详情，再继续。')); return; }
     setDeferred(false); setNavigationError(null); setDialog(navigationDialog());
   }
   return <div className="process-workspace wb-fill-viewport" data-process-workspace>
@@ -164,20 +156,19 @@ function ProcessWorkspace({ adapter, onCommitted, disabled = false, initialConte
     </div></div>
     <ErrorBox error={recoveryError} />{!dialog && command.locked && <Feedback command={command} />}
     {list.result && <Issues issues={list.result.warnings} />}
-    <ProcessTable entities={data ? data.entities : []} selected={selected} setSelected={setSelected} onOpen={ref => setDialog({ ref, adapter })} onDelete={refs => action('bulk', refs)}
-      disabled={blocked} loading={list.loading} error={list.error} scope={scope} adapter={adapter} onSort={sortBy} onFilter={columnFilter} matchingCount={data && data.page.total}
+    <ProcessTable entities={data ? data.entities : []} selected={selected} setSelected={setSelected} onOpen={ref => setDialog({ ref })} onDelete={refs => action('bulk', refs)}
+      disabled={blocked} loading={list.loading} error={list.error} scope={scope} onSort={sortBy} onFilter={columnFilter} matchingCount={data && data.page.total}
       onClear={clearFilters} onRetry={() => filter({})} />
     <ResourceTablePager page={data ? data.page : { number: scope.page, size: scope.size }} disabled={blocked || list.loading || !data} onSize={size => filter({ size })}
       onPage={page => setScope(current => ({ ...current, page, snapshot_ref: list.result.meta.snapshot_ref }))} />
-    {dialog && dialog.adapter === adapter && (dialog.fileKind ? <ProcessFileActions adapter={adapter} kind={dialog.fileKind} mode={dialog.mode} request={dialog} disabled={disabled} onCommitted={committed} onClose={() => setDialog(null)} /> :
-      dialog.mode ? <ProcessCollectionActions adapter={adapter} request={dialog} disabled={disabled} onCommitted={committed} onClose={() => setDialog(null)} onOpen={ref => setDialog({ ref, adapter })} /> :
-      <ProcessDetail key={dialog.ref} adapter={adapter} partRef={dialog.ref} disabled={disabled} onCommitted={committed} onClose={() => setDialog(null)}
+    {dialog && (dialog.fileKind ? <ProcessFileActions kind={dialog.fileKind} mode={dialog.mode} request={dialog} disabled={disabled} onCommitted={committed} onClose={() => setDialog(null)} /> :
+      dialog.mode ? <ProcessCollectionActions request={dialog} disabled={disabled} onCommitted={committed} onClose={() => setDialog(null)} onOpen={ref => setDialog({ ref })} /> :
+      <ProcessDetail key={dialog.ref} partRef={dialog.ref} disabled={disabled} onCommitted={committed} onClose={() => setDialog(null)}
         navigationReadOnly={!!dialog.navigation} initialStage={dialog.navigation && dialog.navigation.stage}
         templateOperationRef={dialog.navigation && dialog.navigation.template_operation_ref} templateExternalGroupRef={dialog.navigation && dialog.navigation.template_external_group_ref} />)}
   </div>;
 }
 ProcessWorkspace.readView = APSProcessReadView.read;
-ProcessWorkspace.readList = readList;
 
-export { ProcessWorkspace, readList };
+export { ProcessWorkspace };
 export default ProcessWorkspace;

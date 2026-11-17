@@ -3,7 +3,11 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
 const { routeFetch, envelope, failure, json, file, browser, loadTransport } = require('./route_fetch.cjs');
+const { createHookHost } = require('../_support/hook_host.cjs');
+const { memoryStorage } = require('../_support/memory_storage.cjs');
 const source = name => fs.readFileSync(path.join(app, name), 'utf8');
+// 受控导航声明只有后端 navigation_metadata.NAVIGATION_RULES 一份；Python 包装（test_ui_refinement_node_contracts.py）现取后经环境变量传进来。
+const navigationRules = JSON.parse(process.env.WORKBENCH_NAVIGATION_RULES);
 const unavailableGraph = () => ({ state: 'unavailable', reason: 'No captured process order', scope: 'full_plan', nodes: [], critical_task_refs: [], critical_edges: [] });
 function load(ctx, name, code = source(name)) {
   if (ctx.__wbRuntime) {
@@ -22,21 +26,36 @@ function stub(ctx, stubs) {
   if (ctx.__wbRuntime) ctx.__wbRuntime.setStubs(stubs);
   else ctx.__wbStubs = Object.assign(ctx.__wbStubs || {}, stubs);
 }
+// 组件实例挂在共享 hook 宿主上（tests/_support/hook_host.cjs）。契约自己调用组件函数、展开它返回的浅元素：
+// render(fn, identity) 里的 hook 属于 identity 那个实例，同一个宿主里可以并存多个实例；pass(fn) 是一轮渲染，
+// 这一轮没再渲染到的实例卸载并执行 cleanup。instance(identity) 是挂载中的实例，卸载后为 undefined。
 function hooks() {
-  let cursor = 0; const slots = [], effects = [];
-  const same = (a, b) => a && b && a.length === b.length && a.every((v, i) => v === b[i]);
-  const useMemo = (fn, deps) => { const i = cursor++; if (!slots[i] || !same(slots[i].deps, deps)) slots[i] = { deps, value: fn() }; return slots[i].value; };
-  const useEffect = (fn, deps) => { const i = cursor++, old = slots[i]; if (!old || !same(old.deps, deps)) { slots[i] = { deps, cleanup: old && old.cleanup }; effects.push(() => { if (slots[i].cleanup) slots[i].cleanup(); slots[i].cleanup = fn(); }); } };
+  const host = createHookHost(), mounted = host.scope();
   return { React: { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), Fragment: 'fragment',
     createContext: value => ({ Provider: 'context-provider', _currentValue: value }),
-    useContext: context => context._currentValue,
-    useRef(value) { const i = cursor++; if (!slots[i]) slots[i] = { current: value }; return slots[i]; },
-    useState(value) { const i = cursor++; if (!slots[i]) slots[i] = { value: typeof value === 'function' ? value() : value }; return [slots[i].value, v => { slots[i].value = typeof v === 'function' ? v(slots[i].value) : v; }]; },
-    useReducer(reducer, value) { const [state, setState] = this.useState(value); return [state, action => setState(current => reducer(current, action))]; },
-    useId() { return 'runtime-contract-' + cursor++; },
-    useMemo, useCallback: (fn, deps) => useMemo(() => fn, deps), useEffect, useLayoutEffect: useEffect },
-    render(fn) { cursor = 0; return fn(); }, flush() { while (effects.length) effects.shift()(); },
-    unmount() { effects.length = 0; slots.forEach(slot => { if (slot.cleanup) { const cleanup = slot.cleanup; slot.cleanup = null; cleanup(); } }); }, slots };
+    useContext: context => context._currentValue, ...host.hooks },
+    render: (fn, identity = 'root') => mounted.render(identity, fn), pass: mounted.pass, instance: mounted.instance,
+    flush: mounted.flush, unmount: mounted.unmount, scope: mounted };
+}
+// 计划页两层：外层 WorkspacePage 持有目录状态与分析页签，内层会话以 plan_ref 为 key。两层是同一个宿主里的两个实例，
+// 内层实例身份带 key：key 一变，这一轮渲染挂上新会话，旧会话卸载并执行 effect cleanup（等同 React 按 key 重挂载）。
+function planPage(ctx, Workspace) {
+  const page = hooks(), mounted = page.scope; let session = null;
+  return {
+    render(props) {
+      ctx.React = page.React;
+      const element = Workspace.PlanWorkspace(props);
+      return page.pass(() => {
+        const workspace = mounted.enter('workspace'); session = mounted.run(workspace, () => element.type(element.props));
+        const inner = mounted.enter('session#' + session.props.key), tree = mounted.run(inner, () => session.type(session.props));
+        // Like React, the child's effects commit before its parent's.
+        mounted.commit(inner); mounted.commit(workspace);
+        return tree;
+      });
+    },
+    flush: page.flush, unmount: page.unmount,
+    get session() { return session.props; }, get inner() { return page.instance('session#' + session.props.key); }
+  };
 }
 const turns = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
 // Contexts that write or read through APSWorkbenchTransport load it the way the bundle does: WorkbenchTerms, then transport,
@@ -44,12 +63,20 @@ const turns = async () => { for (let i = 0; i < 5; i++) await Promise.resolve();
 function withTransport(context, routes = {}) {
   load(context, 'WorkbenchTerms.js'); const fetch = routeFetch(routes); browser(context, fetch); loadTransport(context); return fetch;
 }
+// 本机待确认记录走真实 pendingStore：资源 API 读全局 sessionStorage，命令会话读 window.sessionStorage，两处给同一份内存存储。
+function sessionStore(context, entries = []) {
+  const storage = memoryStorage(entries);
+  context.sessionStorage = storage; context.window.sessionStorage = storage;
+  return storage;
+}
+// fetch 级桩的应答要经 Response.json() 解析，过几轮 macrotask 才落到组件状态。
+const answered = async () => { for (let i = 0; i < 3; i++) await new Promise(resolve => setImmediate(resolve)); };
 async function main() {
   // Ordinary GET hooks keep cancellation and identity boundaries in the existing owner.
-  const queryHooks = hooks(), queryContext = vm.createContext({ window: {}, __wbStubs: { 'resource-contract.js': {} }, React: queryHooks.React, AbortController, DOMException });
-  load(queryContext, 'shared/session/query.js'); const TrialSession = load(queryContext, 'TrialSession.js');
+  const queryHooks = hooks(), queryContext = vm.createContext({ window: {}, React: queryHooks.React, AbortController, DOMException });
+  const Query = load(queryContext, 'shared/session/query.js');
   let first, second, oldSignal;
-  const read = (id, load, enabled = true) => queryHooks.render(() => TrialSession.useRead(load, [id], enabled));
+  const read = (id, load, enabled = true) => queryHooks.render(() => Query.useQuery(load, [id], { enabled }));
   read('old', signal => { oldSignal = signal; return new Promise(resolve => { first = resolve; }); }); queryHooks.flush(); await turns();
   assert.equal(read('new', () => new Promise(resolve => { second = resolve; })).result, null); queryHooks.flush(); await turns();
   assert.equal(oldSignal.aborted, true); first('stale'); await turns();
@@ -68,7 +95,7 @@ async function main() {
   queryHooks.unmount(); await turns();
   assert.deepEqual(outcomes, ['AbortError', 'AbortError', 'AbortError']);
   await Promise.all([inFlight, replaced, queued]);
-  assert.equal(waitingSignal.aborted, true); assert.equal(queuedLoads, 0); assert.equal(queryHooks.slots[2].current, null);
+  assert.equal(waitingSignal.aborted, true); assert.equal(queuedLoads, 0);
 
   // Errors can retry after reopening; a hidden new snapshot waits until shown.
   const retryHooks = hooks(), retryContext = vm.createContext({ window: {}, __wbStubs: { 'resource-contract.js': {} }, React: retryHooks.React, AbortController, DOMException });
@@ -76,7 +103,7 @@ async function main() {
   let retryLoads = 0;
   const retryRead = (id, enabled = true) => retryHooks.render(() => RetrySession.useQuery(() => {
     retryLoads++; return retryLoads === 1 ? Promise.reject(new Error('read failed')) : Promise.resolve('snapshot-' + id);
-  }, [id], enabled));
+  }, [id], { enabled }));
   retryRead('one'); retryHooks.flush(); await turns(); assert.equal(retryRead('one').error.message, 'read failed');
   retryRead('one', false); retryHooks.flush(); retryRead('one'); retryHooks.flush(); await turns();
   assert.equal(retryRead('one').result, 'snapshot-one'); assert.equal(retryLoads, 2);
@@ -87,12 +114,55 @@ async function main() {
   // Combined workspaces can issue a new parent object with the same snapshot token.
   const ownerHooks = hooks(), ownerContext = vm.createContext({ window: {}, __wbStubs: { 'resource-contract.js': {} }, React: ownerHooks.React, AbortController, DOMException });
   const OwnerSession = load(ownerContext, 'shared/session/query.js'); let owner = { meta: { snapshot_ref: 'same-token' } }, ownerLoads = 0;
-  const ownerRead = (enabled = true) => ownerHooks.render(() => OwnerSession.useQuery(() => { ownerLoads++; return Promise.resolve(owner); }, [owner], enabled));
+  const ownerRead = (enabled = true) => ownerHooks.render(() => OwnerSession.useQuery(() => { ownerLoads++; return Promise.resolve(owner); }, [owner], { enabled }));
   ownerRead(); ownerHooks.flush(); await turns(); assert.strictEqual(ownerRead().result, owner);
   ownerRead(false); ownerHooks.flush(); ownerRead(); ownerHooks.flush(); await turns(); assert.equal(ownerLoads, 1);
   owner = { meta: { snapshot_ref: 'same-token' } }; assert.equal(ownerRead(false).result, null); ownerHooks.flush(); await turns(); assert.equal(ownerLoads, 1);
   ownerRead(); ownerHooks.flush(); await turns(); assert.strictEqual(ownerRead().result, owner); assert.equal(ownerLoads, 2);
   ownerHooks.unmount();
+
+  // 展示保留：同一个 keep 的新一轮读取进行中 shown 给上一次结果、result 仍是 null；换 keep、读取出错、停用之后都不再保留；没传 keep 时 shown 就是 result。
+  const keepHooks = hooks(), KeepSession = load(vm.createContext({ window: {}, React: keepHooks.React, AbortController, DOMException }), 'shared/session/query.js'), answers = [];
+  const keepRead = (id, keep, enabled = true) => keepHooks.render(() => KeepSession.useQuery(() => new Promise((resolve, reject) => answers.push({ resolve, reject })), [id], { enabled, keep }));
+  const answer = async (outcome, value) => { answers.shift()[outcome](value); await turns(); };
+  keepRead('a1', 'A'); keepHooks.flush(); await turns(); await answer('resolve', 'first'); assert.equal(keepRead('a1', 'A').shown, 'first');
+  let kept = keepRead('a2', 'A'); assert.equal(kept.result, null); assert.equal(kept.shown, 'first', '同键重读期间 shown 是上一次结果，result 仍是 null');
+  keepHooks.flush(); await turns(); kept = keepRead('a2', 'A'); assert.equal(kept.loading, true); assert.equal(kept.result, null); assert.equal(kept.shown, 'first');
+  await answer('resolve', 'second'); assert.equal(keepRead('a2', 'A').shown, 'second');
+  assert.equal(keepRead('b1', 'B').shown, null, '换键后 shown 立即清空'); keepHooks.flush(); await turns(); await answer('resolve', 'third');
+  assert.equal(keepRead('b1', 'B').shown, 'third'); assert.equal(keepRead('b2', 'B').shown, 'third'); keepHooks.flush(); await turns(); await answer('reject', new Error('read failed'));
+  kept = keepRead('b2', 'B'); assert.equal(kept.error.message, 'read failed'); assert.equal(kept.shown, null);
+  assert.equal(keepRead('b3', 'B').shown, null, '出错之后同键重读不再闪回出错前的结果'); keepHooks.flush(); await turns(); await answer('resolve', 'fourth');
+  assert.equal(keepRead('b3', 'B').shown, 'fourth'); assert.equal(keepRead('b4', 'B', false).shown, null, '停用之后不再保留'); keepHooks.flush(); await turns();
+  assert.equal(keepRead('b4', 'B').shown, null); keepHooks.flush(); await turns(); await answer('resolve', 'fifth'); assert.equal(keepRead('b4', 'B').shown, 'fifth');
+  keepRead('c1'); keepHooks.flush(); await turns(); await answer('resolve', 'sixth'); assert.equal(keepRead('c1').shown, 'sixth');
+  assert.equal(keepRead('c2').shown, null, '没传 keep 时重读期间 shown 就是 result'); keepHooks.flush(); await turns(); await answer('resolve', 'seventh');
+  assert.equal(answers.length, 0); keepHooks.unmount();
+
+  // 外协登记列表：换筛选读取期间继续显示上一次列表并标忙（保留键固定），读回后换成新筛选的列表。
+  const outsourcingHooks = hooks(), outsourcingReads = [];
+  const outsourcingContext = vm.createContext({ window: {}, React: outsourcingHooks.React, AbortController, DOMException, __wbStubs: {
+    'OutsourcingContract.js': { read: (kind, q) => new Promise(resolve => outsourcingReads.push({ kind, q, resolve })), states: {} },
+    'OutsourcingControls.jsx': { value: String, when: String, Pager: 'pager', Editor: 'editor', Target: 'target', Facts: 'facts' },
+    'ResourceControls.jsx': { Button: 'button', ErrorBox: 'error', Issues: 'issues', EmptyState: 'empty' },
+    'WorkbenchTerms.js': { data_as_of: String }, 'WorkbenchReferences.jsx': { WorkbenchReference: 'reference' } } });
+  load(outsourcingContext, 'shared/session/query.js');
+  stub(outsourcingContext, { 'OutsourcingSession.js': { useCommand: () => ({ busy: false, saved: null, storageError: null }) } });
+  const OutsourcingView = load(outsourcingContext, 'OutsourcingWorkspace.jsx');
+  const outsourcingNodes = node => !node || typeof node !== 'object' || !node.props ? [] : [node, ...[].concat(node.props.children).flat(Infinity).flatMap(outsourcingNodes)];
+  const receiptRefs = tree => outsourcingNodes(tree).filter(node => node.props['data-outsourcing-ref']).map(node => node.props['data-outsourcing-ref']);
+  const receipts = refs => ({ meta: { snapshot_ref: 'receipts', as_of: '2026-10-12T08:00:00' }, data: { page: { number: 1, size: 10, total: refs.length, pages: 1 },
+    items: refs.map(ref => ({ outsourcing_ref: ref, target: { kind: 'single', batch: { business_code: 'B1', label: '批次' }, operations: [{ business_code: 'OP1' }], supplier: { label: '供应商' } },
+      overdue: false, awaiting_return: true, confirmedState: 'awaiting_confirmation', sent: null, planned: null, returned: null })) } });
+  const renderReceipts = () => { const tree = outsourcingHooks.render(() => OutsourcingView.Content({ onUpdated() {} })); outsourcingHooks.flush(); return tree; };
+  renderReceipts(); await turns(); outsourcingReads.shift().resolve(receipts(['r-all'])); await turns();
+  let receiptTree = renderReceipts(); assert.deepEqual(receiptRefs(receiptTree), ['r-all']);
+  outsourcingNodes(receiptTree).find(node => node.type === 'select' && node.props['aria-label'] === '外协登记筛选').props.onChange({ target: { value: 'awaiting' } });
+  receiptTree = renderReceipts(); await turns(); assert.equal(outsourcingReads.at(-1).q.status, 'awaiting');
+  assert.deepEqual(receiptRefs(receiptTree), ['r-all'], '换筛选读取期间继续显示上一次的列表');
+  assert.equal(outsourcingNodes(receiptTree).find(node => node.props['data-sticky-head']).props['aria-busy'], true, '读取期间列表标忙');
+  outsourcingReads.shift().resolve(receipts(['r-awaiting'])); await turns();
+  receiptTree = renderReceipts(); assert.deepEqual(receiptRefs(receiptTree), ['r-awaiting'], '读回后换成新筛选的列表'); outsourcingHooks.unmount();
 
   // R18 retains the private baseline result while its display toggle masks it.
   const baselineHooks = hooks(), baselineStubs = { 'resource-contract.js': {}, 'RunCandidateModel.js': {}, 'RunBaselineModel.js': {}, 'RunCandidateControls.jsx': { Button: 'button' } };
@@ -109,12 +179,17 @@ async function main() {
 
   // Scrolling no longer registers controls or recomputes native step values/labels.
   const numberHooks = hooks(), listeners = {}, frames = new Map(); let frameId = 0, scans = 0, values = 0, positions = 0, observer;
-  const document = { body: {}, querySelectorAll() { scans++; return []; }, addEventListener(name, fn) { listeners[name] = fn; }, removeEventListener() {} };
+  // The page holds one number input; the scan hands its Stepper the registry every mounted Stepper registers into.
+  const numberInput = { parentElement: {}, closest: () => null };
+  const document = { body: {}, querySelectorAll() { scans++; return [numberInput]; }, addEventListener(name, fn) { listeners[name] = fn; }, removeEventListener() {} };
   const numberContext = vm.createContext({ window: { addEventListener(name, fn) { listeners['window:' + name] = fn; }, removeEventListener() {} }, document,
     React: numberHooks.React, MutationObserver: class { constructor(fn) { observer = fn; } observe() {} disconnect() {} },
     requestAnimationFrame(fn) { const id = ++frameId; frames.set(id, fn); return id; }, cancelAnimationFrame(id) { frames.delete(id); } });
   const WorkbenchNumberControls = load(numberContext, 'WorkbenchNumberControls.jsx'); numberHooks.render(() => WorkbenchNumberControls()); numberHooks.flush();
-  const refreshers = numberHooks.slots[1].current, inputs = Array.from({ length: 100 }, () => ({}));
+  const stepper = [].concat(numberHooks.render(() => WorkbenchNumberControls()).props.children).flat(Infinity)[0];
+  assert.strictEqual(stepper.props.input, numberInput);
+  // Stand in for 100 mounted Steppers: each registers its refresh/position entry the way Stepper's layout effect does.
+  const refreshers = stepper.props.refreshers, inputs = Array.from({ length: 100 }, () => ({}));
   inputs.forEach(input => refreshers.set(input, { refresh() { values++; }, position() { positions++; }, scrollDependent: false }));
   const flushFrames = () => { while (frames.size) { const [id, fn] = frames.entries().next().value; frames.delete(id); fn(); } };
   listeners.scroll({ target: { contains: () => false } }); flushFrames(); assert.equal(scans, 1); assert.equal(values, 0); assert.equal(positions, 0);
@@ -142,12 +217,12 @@ async function main() {
     go(delta) { index += delta; setLocation(entries[index].href); window.dispatchEvent({ type: 'popstate' }); } };
   const appDocument = { querySelector: () => null, addEventListener(name, fn) { documentEvents.set(name, fn); }, removeEventListener() {} };
   const appContext = vm.createContext({ window, __wbStubs: appStubs, document: appDocument, history, location, React: appHooks.React, Event,
-    boot: { view: 'reports', titles: { reports: '报表', field: '现场', trial: '试调', gantt: '计划' }, entry_url: '/workbench', trial_url: '/trial' }, root: { setAttribute() {} },
+    boot: { view: 'reports', titles: { reports: '报表', field: '现场', trial: '试调', gantt: '计划' }, entry_url: '/workbench', trial_url: '/trial', navigation_rules: navigationRules }, root: { setAttribute() {} },
     WorkbenchShell: 'shell', SystemLive: 'system', URL, performance: { now: () => 0 },
     setTimeout(fn) { const id = ++timerId; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); },
     requestAnimationFrame(fn) { const id = ++animationId; animation.set(id, fn); return id; }, cancelAnimationFrame(id) { animation.delete(id); } });
   const WorkbenchNavigation = load(appContext, 'WorkbenchNavigation.js');
-  const helpBoot = { entry_url: '/workbench', trial_url: '/trial', help_url: '/help', titles: { analysis: '分析', reports: '报表' } };
+  const helpBoot = { entry_url: '/workbench', trial_url: '/trial', help_url: '/help', titles: { analysis: '分析', reports: '报表' }, navigation_rules: navigationRules };
   const historyHelp = { view: 'analysis', context: { source: 'run_history', history_topic: 'decision_history' } };
   const decisionHelp = new URL(WorkbenchNavigation.helpUrl(helpBoot, historyHelp), location.origin);
   assert.equal(decisionHelp.searchParams.get('page'), 'analysis');
@@ -156,6 +231,24 @@ async function main() {
   assert.equal(new URL(WorkbenchNavigation.helpUrl(helpBoot,
     { ...historyHelp, context: { source: 'run_history', history_topic: 'run_catalog' } }), location.origin).searchParams.get('page'), 'run');
   assert.equal(new URL(WorkbenchNavigation.helpUrl(helpBoot, { view: 'reports', context: {} }), location.origin).searchParams.get('page'), 'reports');
+  // 可恢复状态的唯一准入：读后端下发的受控导航声明；返回上下文只有 return_to，旧返回键与旧形状一律按定位无效报错。
+  const ruleBoot = { navigation_rules: navigationRules }, invalidRestore = /: 定位信息无效，请从侧栏重新打开。$/;
+  const catalogPage = { source: 'run_history', history_topic: 'run_catalog', history_query: { page: 2 } };
+  const comparisonPage = { run_ref: 'a'.repeat(48), candidate_ref: 'b'.repeat(48), comparison_tab: 'resources', return_to: { view: 'analysis', context: catalogPage } };
+  WorkbenchNavigation.admit(ruleBoot, 'gantt', { run_ref: 'a'.repeat(48), candidate_ref: 'b'.repeat(48), return_to: { view: 'analysis', context: comparisonPage } });
+  WorkbenchNavigation.admit(ruleBoot, 'batches', { focus: 'gaps', batchIds: ['B1'], return_to: { view: 'run' } });
+  WorkbenchNavigation.admit(ruleBoot, 'review', { return_to: { view: 'calib', context: { scope: {}, table: {}, selected: null } } });
+  assert.equal(WorkbenchNavigation.variant(ruleBoot, 'analysis', comparisonPage), 'candidate'); assert.equal(WorkbenchNavigation.variant(ruleBoot, 'analysis', catalogPage), 'history');
+  assert.equal(WorkbenchNavigation.variant(ruleBoot, 'gantt', {}), 'plan'); assert.equal(WorkbenchNavigation.variant(ruleBoot, 'run', {}), 'preflight');
+  for (const [view, context] of [['gantt', { plan_ref: 'd'.repeat(48), return_decision_context: comparisonPage }], ['analysis', { ...comparisonPage, return_recommendation_context: comparisonPage }],
+    ['analysis', { run_ref: 'a'.repeat(48), return_history_context: { page: 2 } }], ['trial', { scenario_ref: 'c'.repeat(48), return_decision_history_context: { query: {} } }],
+    ['review', { returnTo: { view: 'calib', context: {} } }], ['batches', { read_view: { scope: {}, source_context: { return_to: { view: 'run' } } }, focus: 'gaps' }],
+    ['gantt', { plan_ref: 'd'.repeat(48), return_to: { view: 'analysis', context: { ...comparisonPage, return_decision_history_context: {} } } }],
+    ['gantt', { plan_ref: 'd'.repeat(48), return_to: { view: 'missing' } }], ['gantt', { plan_ref: 'd'.repeat(48), return_to: { view: 'run', context: [] } }],
+    ['gantt', { plan_ref: 'd'.repeat(48), selected_task_side: 'before' }], ['gantt', { plan_ref: 'd'.repeat(48), selected_batch_ref: 'e'.repeat(48), selected_task_ref: 'f'.repeat(48) }],
+    ['process', { source: 'production', kind: 'part', read_view: {}, entity_ref: 'c'.repeat(48) }], ['dashboard', { source: 'production' }],
+    ['run', { scope: { source: 'production', batch_refs: [] }, unknown: true }], ['run', { scope: { source: 'production', batch_refs: [] }, entity_ref: 'c'.repeat(48) }]])
+    assert.throws(() => WorkbenchNavigation.admit(ruleBoot, view, context), invalidRestore, view + ' ' + Object.keys(context).join(','));
   const mainSource = source('shell/main.jsx'), importsEnd = mainSource.indexOf('const root ='), start = mainSource.indexOf('  function App() {'), end = mainSource.indexOf('  function mountWorkbench() {');
   const TestApp = load(appContext, 'shell/main.jsx', mainSource.slice(0, importsEnd) + 'function href(view) { return WorkbenchNavigation.href(boot, view); }\n' + mainSource.slice(start, end) + '\nexport default App;');
   const find = (node, type, matches = () => true) => { if (!node || !node.props) return null; if (node.type === type && matches(node.props)) return node.props; for (const child of node.props.children.flat(Infinity)) { const result = find(child, type, matches); if (result) return result; } return null; };
@@ -170,9 +263,9 @@ async function main() {
   timers.values().next().value(); timers.clear(); assert.equal(writes, 1); assert.equal(history.state.workbench.context.selected, 59);
   publish({ selected: 60 }); await find(appNode, 'shell').navigate('field', {});
   assert.equal(history.state.workbenchPages.reports.context.selected, 60); assert.equal(timers.size, 0);
-  appNode = renderApp(); find(appNode, 'remember').remember({ selected: 'field-latest' }); history.go(-1);
-  assert.equal(history.state.workbench.context.selected, 60); history.go(1); assert.equal(history.state.workbench.context.selected, 'field-latest');
-  renderApp(); window.dispatchEvent({ type: 'pagehide' }); assert.equal(history.state.workbench.context.selected, 'field-latest');
+  appNode = renderApp(); find(appNode, 'remember').remember({ task_ref: 'field-latest' }); history.go(-1);
+  assert.equal(history.state.workbench.context.selected, 60); history.go(1); assert.equal(history.state.workbench.context.task_ref, 'field-latest');
+  renderApp(); window.dispatchEvent({ type: 'pagehide' }); assert.equal(history.state.workbench.context.task_ref, 'field-latest');
 
   const trialContractStub = { ref: value => /^[a-f0-9]{48}$/.test(value), check: (value, message) => assert(value, message) };
   stub(appContext, {
@@ -202,7 +295,7 @@ async function main() {
       'WorkbenchFormat.js': { instant: String, dateTime: String }, 'WorkbenchReferences.jsx': { default: 'reference', WorkbenchReference: 'reference' },
       'WorkbenchPageContext.jsx': { useNavigate: () => () => {} } };
     const tahContext = vm.createContext({ window: {}, __wbStubs: tahStubs, React: tahHooks.React, history: tahHistory, location: { href: 'http://localhost/trial' }, AbortController, DOMException });
-    load(tahContext, 'shared/session/query.js'); load(tahContext, 'TrialSession.js'); load(tahContext, 'TrialAdoptionHistoryState.js'); const TrialAdoptionHistory = load(tahContext, 'TrialAdoptionHistory.jsx');
+    load(tahContext, 'shared/session/query.js'); load(tahContext, 'TrialAdoptionHistoryState.js'); const TrialAdoptionHistory = load(tahContext, 'TrialAdoptionHistory.jsx');
     const settleTah = async () => { let tree; for (let i = 0; i < 4; i++) { tree = tahHooks.render(() => { const el = TrialAdoptionHistory({ data: { scenario_ref: scenario } }); return el.type(el.props); }); tahHooks.flush(); await turns(); } return tree; };
     let tahTree = await settleTah();
     assert.equal(tahReads.length, 1);
@@ -236,17 +329,20 @@ async function main() {
     page: { number: 1, pages: 1, size: 10, total: section === 'issues' ? 1 : 0 } });
   // Fetch-level answers: the real MasterOverviewAPI, transport and contract validate every response.
   const masterTokens = { list: 'M'.repeat(32), located: 'L'.repeat(32) };
+  // masterHold 设为一个 Promise 时，清单读取等它结算：结算为 true 回失败信封，否则回正常清单。
+  let masterHold = null;
   const masterAnswer = call => {
     const scope = JSON.parse(call.query.scope); masterRequests.push(call.url);
     if (call.path.includes('/entities/')) return envelope(masterDetail(scope, call.path.split('/').at(-1), call.query.section, '当前到料'), { snapshot_ref: call.query.snapshot_ref });
     const located = call.path.includes('/locate/'), ref = located ? call.path.split('/').at(-1) : masterRefs[0];
     const currentScope = located ? MasterContract.scope({ view: 'entities', domain: 'material', sort: 'business_code', direction: 'asc' }) : scope;
-    return envelope({ scope: currentScope, rows: masterRefs.map(value => located ? masterEntity(value) : masterIssue(value, '捕获到料')),
+    const answer = envelope({ scope: currentScope, rows: masterRefs.map(value => located ? masterEntity(value) : masterIssue(value, '捕获到料')),
       page: { number: 1, pages: 1, size: 20, total: 2 }, selected_detail: masterDetail(currentScope, ref, 'issues', '捕获到料'),
       ...(located ? { selected: { domain: 'material', entity_ref: ref } } : {}),
       overview: { complete: true, basis: '基础资料', gaps: [], stats: { entities: 2, issues: 2, affected: 2, relations: 0, known_relation_pairs: 0 },
         domains: MasterContract.domains.map(([id]) => ({ id, loaded: true,
           count: id === 'material' ? 2 : 0, attention: id === 'material' ? 2 : 0, unknown: 0 })) } }, { snapshot_ref: located ? masterTokens.located : masterTokens.list });
+    return masterHold ? masterHold.then(fail => fail ? json(failure('snapshot_stale', '资料读取失败，请刷新后重试。'), 409) : answer) : answer;
   };
   browser(masterContext, routeFetch({ 'GET /api/workbench/v1/master-overview': masterAnswer, 'GET /api/workbench/v1/master-overview/entities/*/*': masterAnswer,
     'GET /api/workbench/v1/master-overview/locate/*/*': masterAnswer })); loadTransport(masterContext);
@@ -281,100 +377,188 @@ async function main() {
   await settleMaster();
   assert.equal(find(masterTree, 'master-detail').selected, null);
   assert.equal(find(masterTree, 'master-detail').result, null);
+  // 原地刷新沿用同一个 keep：读取期间清单、选中项和详情继续显示上一次结果，导出只读当前结果、不可点；
+  // 读取出错后旧清单、详情和统计一起撤下，重试期间也不闪回。
+  const masterStats = () => find(masterTree, MasterOverviewWorkspace.Statistics), masterExport = () => find(masterTree, 'button', props => props.transfer === 'export');
+  const masterStatus = () => find(masterTree, 'span', props => props.role === 'status').children.join('');
+  find(masterTree, 'master-table').onSelect(find(masterTree, 'master-table').data.rows[1], null); await settleMaster();
+  const keptRows = find(masterTree, 'master-table').data.rows, keptDetailReads = masterDetailReads();
+  let settleList; masterHold = new Promise(resolve => { settleList = resolve; });
+  masterListeners.focus(); masterTree = masterHooks.render(() => MasterOverviewWorkspace({ initialContext: {} }));
+  find(masterTree, 'button', props => Array.isArray(props.children) && props.children.includes('刷新本页')).onClick(); await settleMaster();
+  assert.equal(find(masterTree, 'master-table').loading, true);
+  assert.strictEqual(find(masterTree, 'master-table').data.rows, keptRows, '原地刷新期间清单继续显示上一次结果');
+  assert.equal(find(masterTree, 'master-detail').result.data.rows[0].title, '当前到料', '原地刷新期间选中项和详情继续显示');
+  assert.equal(masterExport().disabled, true, '刷新期间还没有当前结果，导出不可点');
+  assert.equal(masterStats().overview.stats.entities, 2, '刷新期间统计继续显示上一次结果');
+  masterHold = null; settleList(true); await settleMaster();
+  assert.equal(find(masterTree, 'master-table').data.rows.length, 0, '原地刷新出错后撤下旧清单');
+  assert.equal(find(masterTree, 'master-table').error.message, '资料读取失败，请刷新后重试。');
+  assert.equal(find(masterTree, 'master-detail').selected, null, '出错后详情一起收起');
+  assert.equal(masterStats().overview, null, '出错后统计撤下'); assert.equal(masterStatus(), ' · 读取失败'); assert.equal(masterExport().disabled, true);
+  masterHold = new Promise(resolve => { settleList = resolve; });
+  find(masterTree, 'master-table').onRetry(); await settleMaster();
+  assert.equal(find(masterTree, 'master-table').loading, true);
+  assert.equal(find(masterTree, 'master-table').data.rows.length, 0, '重试期间不闪回出错前的清单');
+  assert.equal(masterStats().overview, null, '重试期间不闪回出错前的统计'); assert.equal(masterStatus(), ' · 正在读取资料');
+  masterHold = null; settleList(false); await settleMaster();
+  assert.equal(find(masterTree, 'master-table').data.rows.length, 2); assert.equal(masterExport().disabled, false);
+  assert.equal(masterDetailReads(), keptDetailReads, '刷新、出错和重试都没有多读详情：重读后的默认行用随清单读回的待维护项');
   masterHooks.unmount();
 
   // The current issue batch owns the comparison scope across analysis changes and page restoration.
+  // Fetch-level answers: the real RunCandidateAPI, DashboardCandidateComparisonAPI, transport and useQuery handle every read;
+  // each comparison request waits until the test answers it.
   let dashboardHooks = hooks(); const dashboardRequests = [], dashboardStates = [];
   const dashboardRun = '1'.repeat(48), dashboardCandidate = '2'.repeat(48), batchOne = '3'.repeat(48), batchTwo = '4'.repeat(48);
   const dashboardChoice = { run_ref: dashboardRun, candidate_ref: dashboardCandidate,
     range_start: '2026-10-13T00:00:00', range_end: '2026-10-31T00:00:00' };
-  const dashboardApi = {
-    catalog: async () => ({ data: { candidates: [{ candidate_ref: dashboardCandidate, label: '原算法', status: 'completed', task_count: 2 }],
-      candidate_count: 1, page: { has_more: false } }, meta: { snapshot_ref: 'dashboard-directory' } }),
-    workspace: (candidateRef, scope, signal) => new Promise(resolve => dashboardRequests.push({ kind: 'workspace', candidateRef, scope, signal, resolve }))
-  };
-  const dashboardStubs = { 'RunCandidateAPI.js': { ...dashboardApi, time: value => typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(value) },
-    'DashboardCandidatePanels.jsx': { Metrics: 'dashboard-metrics', Batches: 'dashboard-batches', Summary: 'dashboard-summary' },
+  const dashboardStubs = { 'DashboardCandidatePanels.jsx': { Metrics: 'dashboard-metrics', Batches: 'dashboard-batches', Summary: 'dashboard-summary' },
     'ResourceControls.jsx': { Button: 'button', ErrorBox: 'error', Issues: 'issues' }, 'WorkbenchReferences.jsx': { default: 'reference', WorkbenchReference: 'reference' },
     'WorkbenchFormat.js': { dateTime: String, compactRange: (start, end) => start + ' / ' + end, compactDateTime: String },
     'WorkbenchTerms.js': { candidate_statuses: { completed: '计算完成' }, hold_window: () => '未设置', material_strategy: () => '全部齐套' } };
   const dashboardContext = vm.createContext({ window: {}, __wbStubs: dashboardStubs, React: dashboardHooks.React, AbortController });
-  loadTransport(dashboardContext); load(dashboardContext, 'DashboardContract.js'); load(dashboardContext, 'DashboardAnalysisAPI.js');
-  const DashboardCandidateComparisonAPI = load(dashboardContext, 'DashboardCandidateComparisonAPI.js');
-  // Component-ownership check: the comparison read itself is covered by its own contract, so only its answer timing is held here.
-  DashboardCandidateComparisonAPI.read = (scope, signal) => new Promise(resolve =>
-    dashboardRequests.push({ kind: 'comparison', candidateRef: scope.candidate_ref, scope, signal, resolve }));
+  const dashboardFetch = routeFetch({
+    'GET /api/workbench/v1/scheduling/runs/*/candidates': envelope({ run_ref: dashboardRun, run_state: 'completed',
+      candidates: [{ candidate_ref: dashboardCandidate, label: '原算法', status: 'completed', task_count: 2 }],
+      candidate_count: 1, page: { number: 1, size: 50, total: 1, has_more: false } }, { snapshot_ref: 'c'.repeat(32) }),
+    'GET /api/workbench/v1/dashboard/candidates/*/comparison': call => new Promise(resolve =>
+      dashboardRequests.push({ candidateRef: call.path.split('/').at(-2), query: call.query, signal: call.signal, resolve })) });
+  browser(dashboardContext, dashboardFetch); loadTransport(dashboardContext);
   const DashboardCandidates = load(dashboardContext, 'DashboardCandidates.jsx');
   let dashboardProps = { catalog: { runs: [{ run_ref: dashboardRun, candidate_count: 1, accepted_at: dashboardChoice.range_start }] },
     initialContext: { run_ref: dashboardRun, candidate_ref: dashboardCandidate, batch_ref: batchTwo }, issueBatchRef: batchOne, selectedBatch: batchOne,
     onSelectBatch() {}, onState: state => dashboardStates.push(JSON.parse(JSON.stringify(state))) };
   const renderDashboard = () => { const tree = dashboardHooks.render(() => DashboardCandidates(dashboardProps)); dashboardHooks.flush(); return tree; };
+  // 先渲染提交 effect（发出读取），再等网络应答和 hook 落定，最后渲染落定后的界面。
+  const settleDashboard = async () => { renderDashboard(); for (let i = 0; i < 4; i++) await turns(); return renderDashboard(); };
   const completeDashboard = async request => {
-    const data = { candidate: { candidate_ref: request.candidateRef, run_ref: dashboardRun, label: '原算法' }, batch_ref: request.scope.batch_ref || null,
-      generation: { run_ref: dashboardRun, input: { start_date: '2026-10-13', end_date: '2026-10-30', ready_check: true, missing_resource_policy: 'exclude', hold_window: null } } };
-    if (request.kind === 'comparison') {
-      const batchRefs = request.scope.batch_ref ? [request.scope.batch_ref] : [batchOne, batchTwo];
-      Object.assign(data, { baseline: { available: false }, batch_refs: batchRefs,
-        time_scope: { range_start: dashboardChoice.range_start, range_end: dashboardChoice.range_end },
-        batches: batchRefs.map(batch_ref => ({ batch_ref, batch_id: batch_ref === batchOne ? 'DC-01' : 'DC-02' })) });
-    }
-    request.resolve({ data }); await turns(); await turns();
-    return renderDashboard();
+    const batchRefs = request.query.batch_ref ? [request.query.batch_ref] : [batchOne, batchTwo];
+    request.resolve(envelope({ candidate: { candidate_ref: request.candidateRef, run_ref: dashboardRun, label: '原算法' }, batch_ref: request.query.batch_ref || null,
+      generation: { run_ref: dashboardRun, input: { start_date: '2026-10-13', end_date: '2026-10-30', ready_check: true, missing_resource_policy: 'exclude', hold_window: null } },
+      baseline: { available: false }, batch_refs: batchRefs, time_scope: { range_start: dashboardChoice.range_start, range_end: dashboardChoice.range_end },
+      batches: batchRefs.map(batch_ref => ({ batch_ref, batch_id: batch_ref === batchOne ? 'DC-01' : 'DC-02' })) }));
+    return settleDashboard();
   };
+  const backFilled = { range_start: dashboardChoice.range_start, range_end: dashboardChoice.range_end };
   const assertDashboardBatch = (tree, request, batchRef) => {
-    assert.equal(request.scope.batch_ref, batchRef);
+    assert.equal(request.query.batch_ref, batchRef);
     assert.equal(find(tree, 'reference', props => props.entries && '原问题批次编号' in props.entries).entries['原问题批次编号'], batchRef);
     assert.deepEqual(Array.from(find(tree, 'dashboard-batches').data.batches, row => row.batch_ref), [batchRef]);
     assert.deepEqual(dashboardStates.at(-1).context, { ...dashboardChoice, batch_ref: batchRef });
   };
-  let dashboardTree = renderDashboard();
+  let dashboardTree = await settleDashboard();
   const initialDashboardRequest = dashboardRequests[0];
-  assert.equal(initialDashboardRequest.kind, 'comparison', 'Missing range resolves directly from comparison without reading workspace');
-  assert.deepEqual({ ...initialDashboardRequest.scope }, { run_ref: dashboardRun, candidate_ref: dashboardCandidate, batch_ref: batchOne }, 'Initial comparison request carries the current issue batch');
+  assert.equal(initialDashboardRequest.candidateRef, dashboardCandidate);
+  assert.deepEqual({ ...initialDashboardRequest.query }, { batch_ref: batchOne }, 'Missing range asks the comparison itself; the request carries the current issue batch');
   dashboardTree = await completeDashboard(initialDashboardRequest);
-  assert.deepEqual(dashboardRequests.map(request => request.kind), ['comparison']);
+  assert.equal(dashboardRequests.length, 1, 'Back-filling the range read back keeps the same read and does not read again');
   assertDashboardBatch(dashboardTree, initialDashboardRequest, batchOne); const savedDashboard = dashboardStates.at(-1);
-  find(dashboardTree, 'button', props => props['aria-label'] === '刷新候选方案比较').onClick(); renderDashboard();
+  find(dashboardTree, 'button', props => props['aria-label'] === '刷新候选方案比较').onClick(); await settleDashboard();
   const oldDashboardRequest = dashboardRequests.at(-1);
+  assert.deepEqual({ ...oldDashboardRequest.query }, { ...backFilled, batch_ref: batchOne }, 'Refresh reads the back-filled range');
   dashboardProps = { ...dashboardProps, issueBatchRef: batchTwo, selectedBatch: batchTwo }; dashboardTree = renderDashboard();
   assert.equal(find(dashboardTree, 'dashboard-batches'), null, 'Changing the issue hides the previous batch result immediately');
-  assert.equal(oldDashboardRequest.signal.aborted, true);
-  const currentDashboardRequest = dashboardRequests.at(-1); dashboardTree = await completeDashboard(currentDashboardRequest);
+  assert.equal(oldDashboardRequest.signal.aborted, true, 'Changing the issue aborts the read for the previous batch');
+  await settleDashboard(); const currentDashboardRequest = dashboardRequests.at(-1); dashboardTree = await completeDashboard(currentDashboardRequest);
   assertDashboardBatch(dashboardTree, currentDashboardRequest, batchTwo);
   assert.equal(dashboardStates.at(-1).caption.name, '原算法');
   dashboardTree = await completeDashboard(oldDashboardRequest); assertDashboardBatch(dashboardTree, currentDashboardRequest, batchTwo);
   dashboardHooks.unmount(); dashboardHooks = hooks(); dashboardContext.React = dashboardHooks.React;
-  dashboardProps = { ...dashboardProps, initialContext: savedDashboard.context }; renderDashboard();
+  dashboardProps = { ...dashboardProps, initialContext: savedDashboard.context }; await settleDashboard();
   const restoredDashboardRequest = dashboardRequests.at(-1); dashboardTree = await completeDashboard(restoredDashboardRequest);
   assertDashboardBatch(dashboardTree, restoredDashboardRequest, batchTwo);
-  dashboardProps = { ...dashboardProps, issueBatchRef: null, selectedBatch: batchOne }; renderDashboard();
+  dashboardProps = { ...dashboardProps, issueBatchRef: null, selectedBatch: batchOne }; await settleDashboard();
   const wholeDashboardRequest = dashboardRequests.at(-1); dashboardTree = await completeDashboard(wholeDashboardRequest);
   assert.equal(dashboardRequests.length, 5, 'Each read issues one complete comparison request');
-  assert.equal(dashboardRequests.filter(request => request.kind === 'workspace').length, 0, 'Missing range never reads the full candidate workspace');
-  assert.equal(Object.prototype.hasOwnProperty.call(wholeDashboardRequest.scope, 'batch_ref'), false);
+  assert.equal(dashboardFetch.calls.filter(call => call.path.endsWith('/workspace')).length, 0, 'Missing range never reads the full candidate workspace');
+  assert.deepEqual({ ...wholeDashboardRequest.query }, backFilled);
   assert.equal(find(dashboardTree, 'reference', props => props.entries && '原问题批次编号' in props.entries), null);
   assert.deepEqual(Array.from(find(dashboardTree, 'dashboard-batches').data.batches, row => row.batch_id), ['DC-01', 'DC-02']);
   assert.equal(find(dashboardTree, 'dashboard-batches').selected, batchOne, 'General catalog highlighting keeps its parent selection without narrowing the request');
-  assert.deepEqual(dashboardStates.at(-1).context, dashboardChoice); dashboardHooks.unmount();
+  assert.deepEqual(dashboardStates.at(-1).context, dashboardChoice);
+  // 读取失败后撤下比较结果；重试期间不把出错前的结果闪回来，读回后才显示。
+  find(dashboardTree, 'button', props => props['aria-label'] === '刷新候选方案比较').onClick(); dashboardTree = await settleDashboard();
+  assert.equal(find(dashboardTree, 'dashboard-batches'), null, 'Refreshing hides the previous comparison while it reads');
+  dashboardRequests.at(-1).resolve(json(failure('invalid_input', '比较范围已失效，请重新选择候选方案。'), 422)); dashboardTree = await settleDashboard();
+  assert.equal(find(dashboardTree, 'error', props => props.error).error.message, '比较范围已失效，请重新选择候选方案。');
+  assert.equal(find(dashboardTree, 'dashboard-batches'), null, 'A failed read keeps the earlier comparison off screen');
+  find(dashboardTree, 'button', props => props['aria-label'] === '刷新候选方案比较').onClick(); dashboardTree = await settleDashboard();
+  assert.equal(find(dashboardTree, 'dashboard-batches'), null, 'Retrying does not flash the comparison read before the failure');
+  assert.equal(find(dashboardTree, 'error', props => props.error), null, 'Retrying clears the previous failure');
+  assert.equal(dashboardRequests.length, 7);
+  dashboardTree = await completeDashboard(dashboardRequests.at(-1));
+  assert.deepEqual(Array.from(find(dashboardTree, 'dashboard-batches').data.batches, row => row.batch_id), ['DC-01', 'DC-02']);
+  dashboardHooks.unmount();
+
+  // 系统管理概况读取走真实 useQuery，只替换网络应答：重新检查时中止旧读取，期间继续显示上一次结果、导出不可点；
+  // 出错后撤下旧结果，重试期间不闪回；暂停读取期间不拿上一次结果顶替，恢复后重读。
+  const liveHooks = hooks(), liveCalls = [];
+  const liveStubs = { 'shared/ui/Button.jsx': { ControlButton: 'control-button' }, 'shared/ui/Metric.jsx': { MetricStrip: 'metric-strip', Metric: 'metric' },
+    'shared/ui/icons.jsx': { SMIcon: 'icon' }, 'shell/SystemManagementScreen.jsx': { SMStatus: 'sm-status', SMUnavailable: 'sm-unavailable', SMExport: 'sm-export' },
+    'shared/runtime/environment.js': { inspectEnvironment: () => ({ checks: [], checkedAt: '2026-10-26T08:00:00Z' }) }, 'shared/runtime/theme.js': { set() {} },
+    'SystemMaintenanceAPI.js': { pageContext: () => ({ tab: 'overview', page_size: 20, records: {} }) }, 'SystemMaintenanceWorkspace.jsx': 'maintenance',
+    'WorkbenchDensity.js': { get: () => ({ density: 'comfortable' }), subscribe: () => () => {}, set() {} }, 'WorkbenchPageContext.jsx': { useSnapshot() {} },
+    'WorkbenchGuards.js': { confirmLeave: async () => true }, 'WorkbenchFormat.js': { dateTime: String, instant: String },
+    'WorkbenchReferences.jsx': { WorkbenchError: 'workbench-error' } };
+  const liveContext = vm.createContext({ window: {}, __wbStubs: liveStubs, React: liveHooks.React, AbortController });
+  withTransport(liveContext, { 'GET /api/workbench/v1/system/overview': call => new Promise(resolve => liveCalls.push({ signal: call.signal, resolve })) });
+  const SystemLive = load(liveContext, 'SystemLive.jsx').SystemLive;
+  const liveProps = { boot: { overview_url: '/api/workbench/v1/system/overview', instance_label: '本机实例' }, theme: 'light', initialContext: {} };
+  const renderLive = () => { const tree = liveHooks.render(() => SystemLive(liveProps)); liveHooks.flush(); return tree; };
+  const settleLive = async () => { renderLive(); for (let i = 0; i < 4; i++) await turns(); return renderLive(); };
+  const livePayload = asOf => envelope({ database: { state: 'available' }, backups: { state: 'available', count: 0, message: '' },
+    logs: { state: 'available', operation_record_count: 0, message: '' }, config: { state: 'available', values: null, message: '' }, maintenance: { jobs: [] } }, { as_of: asOf });
+  const liveSource = tree => find(tree, 'span', props => props.className === 'sm-source-note').children.join('');
+  const liveReading = tree => find(tree, 'metric', props => props.label === '本机数据读取').value;
+  const liveExport = tree => find(tree, 'sm-export').disabled;
+  const liveButton = (tree, label) => find(tree, 'control-button', props => props['aria-label'] === label || props.children.flat(Infinity).includes(label));
+  let liveTree = renderLive();
+  assert.equal(liveCalls.length, 0, '维护状态没确认前不读'); assert.equal(liveReading(liveTree), '读取已暂停');
+  find(liveTree, 'maintenance').onReadSuspendedChange(false, ''); liveTree = await settleLive();
+  assert.equal(liveCalls.length, 1); assert.equal(liveReading(liveTree), '读取中');
+  liveCalls[0].resolve(livePayload('2026-10-26T08:00:00')); liveTree = await settleLive();
+  assert(liveSource(liveTree).includes('2026-10-26T08:00:00')); assert.equal(liveExport(liveTree), false);
+  liveButton(liveTree, '重新检查').onClick(); liveTree = await settleLive();
+  assert.equal(liveCalls.length, 2); assert(liveSource(liveTree).includes('2026-10-26T08:00:00'), '重新检查期间继续显示上一次结果');
+  assert.equal(liveExport(liveTree), true, '重新检查期间还没有当前结果，导出不可点');
+  liveButton(liveTree, '重新检查').onClick(); liveTree = renderLive();
+  assert.equal(liveCalls[1].signal.aborted, true, '再次重新检查中止上一轮读取');
+  liveTree = await settleLive(); liveCalls[1].resolve(livePayload('2026-10-26T09:00:00'));
+  liveCalls[2].resolve(json(failure('storage_failure', '本机状态接口未连接，请重试。'), 503)); liveTree = await settleLive();
+  assert.equal(find(liveTree, 'workbench-error').error.message, '本机状态接口未连接，请重试。');
+  assert(!liveSource(liveTree).includes('2026-10-26T'), '出错后撤下上一次结果，晚到的上一轮应答也不上屏'); assert.equal(liveReading(liveTree), '读取失败');
+  liveButton(liveTree, '重试').onClick(); liveTree = await settleLive();
+  assert.equal(liveCalls.length, 4); assert(liveSource(liveTree).endsWith('尚未完成读取'), '重试期间不闪回出错前的结果');
+  liveCalls[3].resolve(livePayload('2026-10-26T10:00:00')); liveTree = await settleLive();
+  assert(liveSource(liveTree).includes('2026-10-26T10:00:00'));
+  find(liveTree, 'maintenance').onReadSuspendedChange(true, '正在确认恢复结果。'); liveTree = await settleLive();
+  assert(liveSource(liveTree).endsWith('尚未完成读取'), '暂停读取期间不拿上一次结果顶替'); assert.equal(liveExport(liveTree), true);
+  assert.equal(liveReading(liveTree), '读取已暂停'); assert.equal(liveCalls.length, 4);
+  find(liveTree, 'maintenance').onReadSuspendedChange(false, ''); liveTree = await settleLive();
+  assert.equal(liveCalls.length, 5, '恢复后重读'); assert(liveSource(liveTree).endsWith('尚未完成读取'));
+  liveHooks.unmount(); assert.equal(liveCalls[4].signal.aborted, true);
 
   // A narrower plan scope starts on its first analysis page; stale remembered pages still show available rows.
   const planHooks = hooks(), timeScope = { range_start: '2026-10-12T08:00:00', range_end: '2026-10-14T18:00:00' };
   const planData = { plan: { plan_ref: planA, display_name: '正式计划', kind: 'official', version: 1, is_current_official: true },
     scope: { range_start: null }, time_scope: timeScope, plan_span: { start: timeScope.range_start, end: timeScope.range_end, end_inclusive: true },
     task_count: 0, tasks: [], resources: [], provenance: {}, gantt_graph: unavailableGraph(), projections: { calendar: { resources: [] }, occupancy: { resources: [] }, baseline: { state: 'unavailable' }, delivery_risks: { state: 'available', issues: [], items: [] } } };
-  const planRead = { result: { data: planData, warnings: [], meta: { snapshot_ref: 'plan-snapshot' } }, loading: false, error: null, reload() {} };
-  const planStubs = { 'resource-contract.js': { failure: text => new Error(text) }, 'PlanContract.js': { workspaceScope: (_, value) => value },
+  const planResult = { data: planData, warnings: [], meta: { snapshot_ref: 'plan-snapshot' } };
+  const planRead = { result: planResult, shown: planResult, loading: false, error: null, reload() {} };
+  const planStubs = { 'PlanContract.js': { workspaceScope: (_, value) => value },
     'shared/session/query.js': { useQuery: () => planRead },
     'ResourceControls.jsx': { Button: 'button', ErrorBox: 'error', Issues: 'issues' },
-    'PlanCatalogUI.jsx': { Catalog: 'catalog' },
+    'PlanCatalogUI.jsx': { Catalog: 'catalog', useCatalog: () => ({}) },
     'WorkbenchFormat.js': { compactRange: () => '时间范围', dateTime: String }, 'WorkbenchDatePickerModel.js': { factoryTime: value => value },
     'WorkbenchTerms.js': { current_official: '当前正式计划', plan_version: String }, 'FieldContract.js': { quantityReasons: {} },
     'PlanDetailsUI.jsx': { TaskDetail: 'task-detail', ProjectionTables: 'projection-tables', Conflicts: 'conflicts' },
     'WorkbenchPageContext.jsx': { useSnapshot() {} }, 'WorkbenchCaption.jsx': { useCaption() {} }, 'WorkbenchControls.jsx': { Pager: 'pager', EmptyState: 'empty' } };
   const planContext = vm.createContext({ window: {}, __wbStubs: planStubs, React: planHooks.React });
   load(planContext, 'GanttGraph.js'); const PlanGanttModel = load(planContext, 'PlanGanttModel.js'); Object.assign(PlanGanttModel, { names: () => new Map(), timeLabel: String, number: String });
-  const PlanWorkspace = load(planContext, 'PlanWorkspace.jsx');
-  const renderPlan = () => planHooks.render(() => PlanWorkspace.PlanWorkspaceSession({ initialContext: { plan_ref: planA, projection_page: 3 }, renderTrial: () => null }));
+  load(planContext, 'shared/session/result-slice.js'); const PlanWorkspace = load(planContext, 'PlanWorkspace.jsx');
+  const planScopePage = planPage(planContext, PlanWorkspace), planScopeProps = { initialContext: { plan_ref: planA, projection_page: 3 }, renderTrial: () => null };
+  const renderPlan = () => planScopePage.render(planScopeProps);
   let planTree = renderPlan(); assert.equal(find(planTree, 'projection-tables').page, 3);
   find(find(planTree, 'catalog').actions, 'button').onClick(); planTree = renderPlan();
   find(planTree, 'form').onSubmit({ preventDefault() {} }); planTree = renderPlan();
@@ -394,15 +578,16 @@ async function main() {
 
   {
   // A route outside the loaded tasks uses the complete graph to perform one bounded read.
-  const routeHooks = hooks(), requests = [], ref = number => number.toString(16).padStart(48, '0');
+  const requests = [], ref = number => number.toString(16).padStart(48, '0');
+  let routeCatalog = null;
   const tasks = [
     { task_ref: ref(1), operation_ref: ref(11), start: '2026-10-12T08:00:00', end: '2026-10-12T09:00:00' },
     { task_ref: ref(2), operation_ref: ref(12), start: '2026-10-15T23:00:00.123456', end: '2026-10-16T00:00:00.654321' },
     { task_ref: ref(3), operation_ref: ref(13), start: '2026-12-31T23:59:59.999999', end: '2026-12-31T23:59:59.999999', event_kind: 'point', duration_seconds: 0, occupies_resources: false }
   ].map(task => ({ ...task, batch_id: 'ROUTE', piece_id: null, sequence: 1, process_label: '路线工序', machine_ref: null, operator_ref: null }));
   const graph = { state: 'available', reason: null, scope: 'full_plan', nodes: tasks.map(task => ({ ...task, predecessor_operation_refs: [] })), critical_task_refs: [], critical_edges: [] };
-  const routeStubs = { 'resource-contract.js': { failure: text => new Error(text) }, 'PlanContract.js': { workspaceScope: (_, scope) => scope },
-    'ResourceControls.jsx': { Button: 'button', ErrorBox: 'error', Issues: 'issues' }, 'PlanCatalogUI.jsx': { Catalog: 'catalog' },
+  const routeStubs = { 'PlanContract.js': { workspaceScope: (_, scope) => scope },
+    'ResourceControls.jsx': { Button: 'button', ErrorBox: 'error', Issues: 'issues' }, 'PlanCatalogUI.jsx': { Catalog: 'catalog', useCatalog: options => { routeCatalog = options; return {}; } },
     'PlanDetailsUI.jsx': { TaskDetail: 'task-detail', ProjectionTables: 'projection-tables', Conflicts: 'conflicts' },
     'PlanGantt.jsx': { default: 'plan-gantt', PlanGantt: 'plan-gantt', PlanGanttSource: 'plan-source' }, 'PlanExportUI.jsx': 'plan-export',
     'WorkbenchTerms.js': { current_official: '当前正式计划', plan_version: String }, 'FieldContract.js': { quantityReasons: {} }, 'WorkbenchPageContext.jsx': { useSnapshot() {} }, 'WorkbenchCaption.jsx': { useCaption() {} }, 'WorkbenchControls.jsx': { EmptyState: 'empty' } };
@@ -416,8 +601,8 @@ async function main() {
     }
   }
   const routeWindow = {};
-  const routeContext = vm.createContext({ window: routeWindow, __wbStubs: routeStubs, React: routeHooks.React, AbortController, DOMException, Date: RouteCountingDate });
-  for (const name of ['shared/session/query.js', 'WorkbenchFormat.js', 'WorkbenchDatePickerModel.js', 'PointContract.js', 'GanttGraph.js', 'PlanContract.js', 'PlanGanttModel.js']) load(routeContext, name);
+  const routeContext = vm.createContext({ window: routeWindow, __wbStubs: routeStubs, React: null, AbortController, DOMException, Date: RouteCountingDate });
+  for (const name of ['shared/session/query.js', 'shared/session/result-slice.js', 'WorkbenchFormat.js', 'WorkbenchDatePickerModel.js', 'PointContract.js', 'GanttGraph.js', 'PlanContract.js', 'PlanGanttModel.js']) load(routeContext, name);
   const RouteGraph = mod(routeContext, 'GanttGraph.js'), RoutePlanGanttModel = mod(routeContext, 'PlanGanttModel.js');
   const createRouteGraph = RouteGraph.create; let routeGraphBuilds = 0, groupPreparedCalls = 0, groupBaselineCalls = 0;
   RouteGraph.create = graph => { routeGraphBuilds++; return createRouteGraph(graph); };
@@ -425,7 +610,7 @@ async function main() {
   RoutePlanGanttModel.groupPrepared = (...args) => { groupPreparedCalls++; return origGroupPrepared(...args); };
   RoutePlanGanttModel.groupBaseline = (...args) => { groupBaselineCalls++; return origGroupBaseline(...args); };
   const RoutePlanWorkspace = load(routeContext, 'PlanWorkspace.jsx');
-  // Workspace-ownership check: the plan read's own validation is covered by plan_transport_probe; here only its answers are counted.
+  // Workspace-ownership check: the plan read's own validation runs in plan_transport_probe, fed real backend DTOs by plan_transport_support.run_probe; here only its answers are counted.
   const routePlanApi = { async workspace(_plan, scope) {
     requests.push(JSON.parse(JSON.stringify(scope)));
     const task = tasks.find(task => task.start === scope.range_start) || tasks[0];
@@ -436,7 +621,8 @@ async function main() {
   } };
   stub(routeContext, { 'PlanAPI.js': routePlanApi });
   const routeProps = { view: 'gantt', renderTrial: () => null, initialContext: { plan_ref: planA, selected_task_ref: tasks[0].task_ref, range_start: tasks[0].start, range_end: tasks[0].end } };
-  const settleRoute = async () => { let tree; for (let index = 0; index < 4; index++) { tree = routeHooks.render(() => RoutePlanWorkspace.PlanWorkspaceSession(routeProps)); routeHooks.flush(); await turns(); } return tree; };
+  const routePage = planPage(routeContext, RoutePlanWorkspace);
+  const settleRoute = async () => { let tree; for (let index = 0; index < 4; index++) { tree = routePage.render(routeProps); routePage.flush(); await turns(); } return tree; };
   let routeTree = await settleRoute(); assert.equal(requests.length, 1); assert.equal(routeGraphBuilds, 1);
   assert.strictEqual(find(routeTree, 'plan-gantt').prepared, find(routeTree, 'task-detail').prepared, 'Drawing and details receive the original preparation object');
   assert.strictEqual(find(routeTree, 'plan-gantt').graph, find(routeTree, 'task-detail').graph, 'Drawing and details receive the independent graph index');
@@ -467,15 +653,23 @@ async function main() {
   assert.equal(find(routeTree, 'task-detail').prepared.baselineLoaded, true);
   await settleRoute();
   assert.equal(baselineCalls, 1, 'Subsequent renders reuse the loaded baseline items for the same workspace result');
-  find(routeTree, 'plan-gantt').onRequestBaseline(); routeTree = await settleRoute();
+  find(routeTree, 'plan-gantt').baselineSlice.request(); routeTree = await settleRoute();
   assert.equal(baselineCalls, 1);
-  find(routeTree, 'catalog').onSelect({ plan_ref: planB, display_name: '计划 B' }); routeTree = await settleRoute();
+  const planASession = routePage.inner;
+  assert.equal(find(routeTree, 'plan-gantt').prepared.baselineLoaded, true); assert(find(routeTree, 'plan-gantt').selected);
+  routeCatalog.onSelect({ plan_ref: planB, display_name: '计划 B' }); routeTree = await settleRoute();
+  assert.notStrictEqual(routePage.inner, planASession, 'Choosing another plan rebuilds the session by plan identity');
+  assert.equal(JSON.stringify(routePage.session.initialContext), JSON.stringify({ plan_ref: planB }), 'The new session is seeded without the old plan range and focus');
+  assert.deepEqual(requests.at(-1), {}, 'The chosen plan is read in full');
   assert.equal(find(routeTree, 'plan-gantt').data.plan.plan_ref, planB);
+  assert.equal(find(routeTree, 'plan-gantt').selected, null, 'The old selection does not survive the plan switch');
+  assert.equal(find(routeTree, 'plan-gantt').prepared.baselineLoaded, false, 'The old baseline slice does not survive the plan switch');
+  assert.equal(find(routeTree, 'task-detail'), null);
   assert.equal(baselineCalls, 1, 'Switching to Plan B without details open or Gantt baseline active does not fetch Plan B baseline');
   failBaseline = true;
-  find(routeTree, 'plan-gantt').onRequestBaseline(); routeTree = await settleRoute();
+  find(routeTree, 'plan-gantt').baselineSlice.request(); routeTree = await settleRoute();
   assert.equal(baselineCalls, 2);
-  assert.equal(find(routeTree, 'plan-gantt').baselineError.message, '原安排读取失败');
+  assert.equal(find(routeTree, 'plan-gantt').baselineSlice.error.message, '原安排读取失败');
   assert.equal(find(routeTree, 'plan-gantt').prepared.baselineLoaded, false);
   const ganttHooks = hooks();
   Object.assign(routeStubs['ResourceControls.jsx'], { Icon: 'icon', TimelineZoom: 'plan-zoom', timelineZoomKey: () => null });
@@ -506,7 +700,6 @@ async function main() {
   assert.equal(find(ganttTree, 'error').error.message, '原安排读取失败');
   const groupsBeforeBaselineRetry = groupPreparedCalls, baselineGroupsBeforeRetry = groupBaselineCalls;
   failBaseline = false;
-  routeContext.React = routeHooks.React;
   find(ganttTree, 'button', props => Array.isArray(props.children) && props.children.includes('重试加载原安排')).onClick();
   routeTree = await settleRoute();
   assert.equal(baselineCalls, 3, 'Retry button on PlanGantt triggers baseline reload');
@@ -524,12 +717,19 @@ async function main() {
   assert.equal(groupBaselineCalls - baselineGroupsBeforeToggle, 0, 'Toggling loaded baseline show -> hide -> show reuses cached baseline lanes with 0 groupBaseline calls');
   assert.equal(groupPreparedCalls - groupsBeforeBaselineToggle, 0, 'Toggling loaded baseline show -> hide -> show does not re-run groupPrepared');
   ganttHooks.unmount();
+  // 刷新在会话内按原范围重读，不重建会话；新结果的原安排对照要重新读，旧结果的对照不带过来。
+  routeTree = await settleRoute(); assert.equal(find(routeTree, RoutePlanGantt).prepared.baselineLoaded, true);
+  const planBSession = routePage.inner, rangeBeforeRefresh = requests.at(-1), readsBeforeRefresh = requests.length;
+  find(find(routeTree, 'catalog').actions, 'button', props => props['aria-label'] === '刷新所选计划').onClick(); routeTree = await settleRoute();
+  assert.strictEqual(routePage.inner, planBSession, 'Refreshing rereads inside the same session');
+  assert.equal(requests.length, readsBeforeRefresh + 1); assert.deepEqual(requests.at(-1), rangeBeforeRefresh, 'Refreshing keeps the read range');
+  assert.equal(find(routeTree, RoutePlanGantt).prepared.baselineLoaded, false, 'The new result does not reuse the old baseline slice');
+  assert.equal(baselineCalls, 3);
   for (const nonGanttView of ['analysis', 'delay']) {
-    const restoreHooks = hooks();
-    routeContext.React = restoreHooks.React;
+    const restorePage = planPage(routeContext, RoutePlanWorkspace);
     failBaseline = true;
     const restoreProps = { view: nonGanttView, renderTrial: () => null, initialContext: { plan_ref: planA, selected_task_ref: tasks[0].task_ref, selected_task_side: 'before' } };
-    const settleRestore = async () => { let tree; for (let index = 0; index < 4; index++) { tree = restoreHooks.render(() => RoutePlanWorkspace.PlanWorkspaceSession(restoreProps)); restoreHooks.flush(); await turns(); } return tree; };
+    const settleRestore = async () => { let tree; for (let index = 0; index < 4; index++) { tree = restorePage.render(restoreProps); restorePage.flush(); await turns(); } return tree; };
     let restoreTree = await settleRestore();
     assert.equal(find(restoreTree, 'task-detail'), null);
     assert.equal(lastSnapshot.selected_task_ref, tasks[0].task_ref);
@@ -544,7 +744,7 @@ async function main() {
     restoreTree = await settleRestore();
     assert.equal(find(restoreTree, 'task-detail').selected.task.task_ref, tasks[0].task_ref);
     assert.equal(find(restoreTree, 'task-detail').selected.before, true);
-    restoreHooks.unmount();
+    restorePage.unmount();
   }
   planData.projections.baseline = { state: 'unavailable' };
   const RealPlanGantt = RoutePlanGantt;
@@ -577,15 +777,13 @@ async function main() {
         calendar: { state: 'available', windows_complete: false, resources: [], issues: [] },
         occupancy: { state: 'available', segments_complete: false, resources: [{ resource_ref: ref(200), kind: 'machine', label: 'M1', has_overlap: true, conflict_segments: [overlapSegment], segments: [overlapSegment] }], issues: [] } } } };
   };
-  const onDemandHooks = hooks(), onDemandGanttHooks = hooks();
-  routeContext.React = onDemandHooks.React;
+  const onDemandPage = planPage(routeContext, RoutePlanWorkspace), onDemandGanttHooks = hooks();
   const onDemandGanttProps = { view: 'gantt', renderTrial: () => null, initialContext: { plan_ref: planA } };
   const settleOnDemand = async (props = onDemandGanttProps) => {
     let tree;
     for (let index = 0; index < 4; index++) {
-      routeContext.React = onDemandHooks.React;
-      tree = onDemandHooks.render(() => RoutePlanWorkspace.PlanWorkspaceSession(props));
-      onDemandHooks.flush();
+      tree = onDemandPage.render(props);
+      onDemandPage.flush();
       await turns();
     }
     return tree;
@@ -599,7 +797,6 @@ async function main() {
     const ganttNode = onDemandGanttHooks.render(() => RealPlanGantt(props));
     find(ganttNode, 'div', props => props.className === 'plan-board').ref.current = { scrollLeft: 0, scrollTop: 0, clientWidth: 1000, clientHeight: 440 };
     onDemandGanttHooks.flush();
-    routeContext.React = onDemandHooks.React;
     return ganttNode;
   };
   renderOnDemandGantt(onDemandTree);
@@ -622,12 +819,11 @@ async function main() {
   assert.equal(capacityCalls, 1, 'Switching to calendar tab loads capacity windows once');
   assert.equal(routeDateParses, parsesBeforeCapacity, 'Loading capacity on demand reuses task and overlap-segment timestamps with 0 extra Date.parse calls');
   assert.equal(find(onDemandTree, 'projection-tables').data.projections.calendar.windows_complete, true);
-  onDemandHooks.unmount();
-  const delayHooks = hooks();
-  routeContext.React = delayHooks.React;
+  onDemandPage.unmount();
+  const delayPage = planPage(routeContext, RoutePlanWorkspace);
   const settleDelay = async (props = { view: 'delay', renderTrial: () => null, initialContext: { plan_ref: planA } }) => {
     let tree;
-    for (let index = 0; index < 4; index++) { tree = delayHooks.render(() => RoutePlanWorkspace.PlanWorkspaceSession(props)); delayHooks.flush(); await turns(); }
+    for (let index = 0; index < 4; index++) { tree = delayPage.render(props); delayPage.flush(); await turns(); }
     return tree;
   };
   let delayTree = await settleDelay();
@@ -636,15 +832,130 @@ async function main() {
   delayTree = await settleDelay();
   assert.equal(capacityCalls, 2, 'Switching to calendar tab in delay view loads capacity windows once');
   assert.equal(find(delayTree, 'projection-tables').data.projections.calendar.windows_complete, true);
-  delayHooks.unmount();
-  routeHooks.unmount();
+  delayPage.unmount();
+  routePage.unmount();
+  }
+
+  {
+  // useResultSlice：分片依附结果对象身份。同一计划重读期间展示旧分片、不显示旧错误；结果换身份时取消在途读取，晚到的响应不写入。
+  const sliceHooks = hooks(), sliceContext = vm.createContext({ window: {}, React: sliceHooks.React, AbortController, DOMException });
+  const Slice = load(sliceContext, 'shared/session/result-slice.js');
+  const loads = [], loadSlice = signal => new Promise((resolve, reject) => loads.push({ signal, resolve, reject }));
+  const one = { id: 'one' }, two = { id: 'two' }, three = { id: 'three' };
+  let sliceRead = { result: one, shown: one };
+  const sliceState = () => sliceHooks.render(() => Slice.useResultSlice(sliceRead, { when: () => true, load: loadSlice }));
+  const settleSlice = async () => { sliceState(); sliceHooks.flush(); await turns(); return sliceState(); };
+  let slice = await settleSlice();
+  assert.equal(loads.length, 1); assert.equal(slice.loading, true); assert.equal(slice.value, null);
+  loads[0].resolve('one-slice'); slice = await settleSlice();
+  assert.equal(slice.value, 'one-slice'); assert.equal(slice.loading, false); assert.equal(loads.length, 1);
+  sliceRead = { result: null, shown: one }; slice = await settleSlice();
+  assert.equal(slice.value, 'one-slice', 'A same-plan reread keeps showing the slice of the shown result');
+  assert.equal(slice.loading, false); assert.equal(loads.length, 1, 'No slice read starts without a current result');
+  sliceRead = { result: two, shown: two }; slice = await settleSlice();
+  assert.equal(slice.value, null, 'A new result object invalidates the old slice'); assert.equal(slice.loading, true); assert.equal(loads.length, 2);
+  loads[1].reject(new Error('分片读取失败')); slice = await settleSlice();
+  assert.equal(slice.error.message, '分片读取失败'); assert.equal(loads.length, 2, 'A failed slice waits for request() before reading again');
+  sliceRead = { result: null, shown: two }; slice = await settleSlice();
+  assert.equal(slice.error, null, 'A reread does not show the error of the previous result'); assert.equal(slice.loading, false);
+  sliceRead = { result: three, shown: three }; slice = await settleSlice(); assert.equal(loads.length, 3);
+  const late = loads[2];
+  sliceRead = { result: one, shown: one }; slice = await settleSlice();
+  assert.equal(late.signal.aborted, true, 'Changing the result identity cancels the in-flight slice read'); assert.equal(loads.length, 4);
+  late.resolve('three-slice'); slice = await settleSlice();
+  assert.equal(slice.value, null, 'A late response for the old result is not written'); assert.equal(slice.loading, true);
+  loads[3].resolve('one-again'); slice = await settleSlice(); assert.equal(slice.value, 'one-again');
+  sliceRead = { result: two, shown: two }; slice = await settleSlice(); assert.equal(loads.length, 5);
+  sliceHooks.unmount(); assert.equal(loads[4].signal.aborted, true, 'Unmounting cancels the in-flight slice read');
+
+  // 要 request() 才读的分片：请求前不读；重复请求不另起读取；出错后 request() 重试；读取被别处取消（AbortError）不记为错误。
+  const askHooks = hooks(), askContext = vm.createContext({ window: {}, React: askHooks.React, AbortController, DOMException });
+  const AskSlice = load(askContext, 'shared/session/result-slice.js'), asked = [], askRead = { result: one, shown: one };
+  const askState = () => askHooks.render(() => AskSlice.useResultSlice(askRead, { when: requested => requested,
+    load: signal => new Promise((resolve, reject) => asked.push({ signal, resolve, reject })) }));
+  const settleAsk = async () => { askState(); askHooks.flush(); await turns(); return askState(); };
+  let ask = await settleAsk(); assert.equal(asked.length, 0, 'A slice that needs request() does not read before it');
+  ask.request(); ask = await settleAsk(); assert.equal(asked.length, 1); assert.equal(ask.loading, true);
+  ask.request(); ask = await settleAsk(); assert.equal(asked.length, 1, 'Repeating request() while reading does not start another read');
+  asked[0].reject(new Error('原安排读取失败')); ask = await settleAsk(); assert.equal(ask.error.message, '原安排读取失败');
+  ask.request(); ask = await settleAsk(); assert.equal(ask.error, null); assert.equal(asked.length, 2, 'request() retries after an error');
+  asked[1].reject(new DOMException('筛选条件已更新，前一次读取已取消。', 'AbortError')); ask = await settleAsk();
+  assert.equal(ask.error, null, 'AbortError is not recorded as a slice error'); askHooks.unmount();
+  }
+
+  {
+  // 换计划按计划身份重建会话；目录状态留在外层：从目录第 2 页选计划后，目录页码和下拉显示不变，也不重复读目录。
+  const ref = number => number.toString(16).padStart(48, '0'), catalogReads = [], workspaceReads = [];
+  const catalogPlan = number => ({ plan_ref: ref(number), display_name: '计划 ' + number, version: number, kind: 'official', is_current_official: number === 1,
+    completeness: 'complete', capabilities: { view: true, export: true }, blocked_reasons: [] });
+  const catalogStubs = { 'PlanContract.js': { workspaceScope: (_, scope) => scope },
+    'ResourceControls.jsx': { Button: 'button', ErrorBox: 'error', Issues: 'issues' },
+    'PlanDetailsUI.jsx': { TaskDetail: 'task-detail', ProjectionTables: 'projection-tables', Conflicts: 'conflicts', Facts: 'facts' },
+    'PlanGantt.jsx': { default: 'plan-gantt', PlanGantt: 'plan-gantt', PlanGanttSource: 'plan-source' }, 'PlanExportUI.jsx': 'plan-export',
+    'WorkbenchReferences.jsx': { default: 'reference', WorkbenchReference: 'reference' },
+    'WorkbenchTerms.js': { current_official: '当前正式计划', historical_official: '历史正式计划', plan_version: String },
+    'WorkbenchPageContext.jsx': { useSnapshot() {} }, 'WorkbenchCaption.jsx': { useCaption() {} },
+    'WorkbenchControls.jsx': { EmptyState: 'empty', Pager: 'pager' }, 'PlanSelectionModel.js': { defaultPlan: plans => plans[0] },
+    'PlanAPI.js': {
+      async catalog(scope) {
+        catalogReads.push(JSON.parse(JSON.stringify(scope)));
+        return { warnings: [], meta: { snapshot_ref: 'catalog-snapshot' }, data: scope.cursor ? { plans: [catalogPlan(3), catalogPlan(4)], page: { has_more: false, next_cursor: null } }
+          : { plans: [catalogPlan(1), catalogPlan(2)], page: { has_more: true, next_cursor: 'page-2' } } };
+      },
+      async workspace(planRef, scope) {
+        workspaceReads.push({ planRef, scope: JSON.parse(JSON.stringify(scope)) });
+        return { warnings: [], meta: { snapshot_ref: 'plan-' + planRef.slice(-2), as_of: '2026-10-12T12:00:00' }, data: { ...planData,
+          plan: { ...planData.plan, plan_ref: planRef }, gantt_graph: unavailableGraph(), tasks: [], task_count: 0,
+          projections: { calendar: { state: 'unavailable', resources: [], issues: [] }, occupancy: { state: 'available', resources: [], issues: [] },
+            baseline: { state: 'unavailable' }, delivery_risks: { state: 'available', issues: [], items: [] } } } };
+      } } };
+  const catalogContext = vm.createContext({ window: {}, document: { activeElement: null }, __wbStubs: catalogStubs, React: null, AbortController, DOMException });
+  for (const name of ['shared/session/query.js', 'shared/session/result-slice.js', 'WorkbenchFormat.js', 'WorkbenchDatePickerModel.js', 'PointContract.js', 'GanttGraph.js', 'PlanGanttModel.js', 'PlanCatalogUI.jsx']) load(catalogContext, name);
+  const CatalogWorkspace = load(catalogContext, 'PlanWorkspace.jsx'), catalogPage = planPage(catalogContext, CatalogWorkspace);
+  const catalogProps = { view: 'analysis', renderTrial: () => null, initialContext: {} };
+  const settleCatalog = async () => { let tree; for (let index = 0; index < 4; index++) { tree = catalogPage.render(catalogProps); catalogPage.flush(); await turns(); } return tree; };
+  // Catalog 只按外层状态渲染、不含 hook，直接按会话树里的元素属性展开。
+  const CatalogUI = mod(catalogContext, 'PlanCatalogUI.jsx'), catalogView = tree => CatalogUI.Catalog(find(tree, CatalogUI.Catalog));
+  const picker = tree => find(catalogView(tree), 'select', props => props['aria-label'] === '切换所选计划');
+  const pickerOptions = tree => picker(tree).children.flat(Infinity).filter(Boolean).map(node => [].concat(node.props.children).join(''));
+  const catalogButton = (tree, label) => find(catalogView(tree), 'button', props => props['aria-label'] === label);
+  let catalogTree = await settleCatalog();
+  assert.equal(catalogReads.length, 1); assert.deepEqual(workspaceReads, [{ planRef: ref(1), scope: {} }], 'An empty entry auto-selects the default plan once');
+  assert.equal(JSON.stringify(catalogPage.session.initialContext), JSON.stringify({ plan_ref: ref(1) }));
+  find(catalogTree, 'projection-tables').onPage(2); find(catalogTree, 'projection-tables').onTab('load'); catalogTree = await settleCatalog();
+  assert.equal(find(catalogTree, 'projection-tables').page, 2);
+  catalogButton(catalogTree, '展开计划列表').onClick(); catalogTree = await settleCatalog();
+  find(catalogView(catalogTree), 'pager').onNext(); catalogTree = await settleCatalog();
+  assert.equal(catalogReads.length, 2); assert.equal(find(catalogView(catalogTree), 'pager').page, 2);
+  const firstSession = catalogPage.inner;
+  find(catalogView(catalogTree), 'input', props => props['aria-label'] === '选择 计划 3').onChange(); catalogTree = await settleCatalog();
+  assert.notStrictEqual(catalogPage.inner, firstSession, 'Choosing a plan rebuilds the session');
+  assert.equal(JSON.stringify(catalogPage.session.initialContext), JSON.stringify({ plan_ref: ref(3) }));
+  assert.deepEqual(workspaceReads.at(-1), { planRef: ref(3), scope: {} });
+  assert.equal(catalogReads.length, 2, 'Choosing a plan does not read the catalog again');
+  assert.equal(picker(catalogTree).value, ref(3));
+  assert.deepEqual(pickerOptions(catalogTree), ['请选择计划', '计划 3', '计划 4'], 'The picker keeps listing the catalog page the plan was chosen from');
+  assert.equal(find(catalogTree, 'projection-tables').page, 0, 'The analysis page belongs to the old plan');
+  assert.equal(find(catalogTree, 'projection-tables').tab, 'load', 'The analysis tab is kept across plans');
+  catalogButton(catalogTree, '展开计划列表').onClick(); catalogTree = await settleCatalog();
+  assert.equal(find(catalogView(catalogTree), 'pager').page, 2, 'The catalog stays on the page the plan was chosen from'); assert.equal(catalogReads.length, 2);
+  // 从下拉框换计划：会话重建后焦点交还新挂载的下拉框。
+  const focused = [], pickerSession = catalogPage.inner;
+  find(catalogTree, CatalogUI.Catalog).catalog.section.current = { querySelector: selector => ({ focus() { focused.push(selector); } }) };
+  catalogContext.document.activeElement = { closest: selector => selector === '.plan-catalog-picker' ? {} : null };
+  picker(catalogTree).onChange({ target: { value: ref(4) } }); catalogTree = await settleCatalog();
+  assert.notStrictEqual(catalogPage.inner, pickerSession); assert.equal(picker(catalogTree).value, ref(4));
+  assert.deepEqual(focused, ['[aria-label="切换所选计划"]'], 'Choosing from the picker hands focus back to the remounted picker');
+  assert.equal(catalogReads.length, 2);
+  catalogPage.unmount();
   }
 
   {
   const fileHooks = hooks(), command = { phase: 'idle', locked: false, clearRejection: () => false }, preview = { can_confirm: true, preview_ref: 'preview', write_context: {}, rows: [], summary: { total: 3, changed: 3 } };
   const fileStubs = { 'FieldContract.js': { blocked: () => '' }, 'FieldControls.jsx': { Button: 'button', Modal: 'modal', ErrorBox: 'error', Feedback: 'feedback' } };
-  const fileContext = vm.createContext({ window: {}, __wbStubs: fileStubs, React: fileHooks.React, AbortController }); const FieldFiles = load(fileContext, 'FieldFiles.jsx');
-  const fileProps = { adapter: { previewFile: async () => ({ data: preview }) }, command, scope: {}, snapshot: 'snapshot' };
+  const fileContext = vm.createContext({ window: {}, __wbStubs: fileStubs, React: fileHooks.React, AbortController });
+  browser(fileContext, routeFetch({ 'POST /api/workbench/v1/execution/files/preview': () => envelope(preview) })); const FieldFiles = load(fileContext, 'FieldFiles.jsx');
+  const fileProps = { command, scope: {}, snapshot: 'snapshot' };
   const renderFile = () => fileHooks.render(() => FieldFiles(fileProps));
   let fileTree = renderFile(); find(fileTree, 'input').onChange({ target: { files: [{ name: '报工.xlsx', size: 10 }] } }); fileTree = renderFile();
   await find(find(fileTree, 'modal').footer, 'button', props => props.children.includes('开始预检')).onClick(); fileTree = renderFile();
@@ -666,10 +977,10 @@ async function main() {
   let mayLeave = true, guardCalls = 0, trialCommands = { blocked: false, clearError() {} };
   const trialWindow = { addEventListener() {}, removeEventListener() {} };
   const trialStubs = { 'TrialAPI.js': {}, 'TrialContract.js': {},
-    'TrialControls.jsx': { Button: 'button', ErrorBox: 'error', Modal: 'modal', Issues: 'issues', statusLabel: String, sourceLabel: () => '原安排' },
-    'TrialSession.js': { useRead: () => ({ result: { data: trialData, meta: {} }, busy: false, error: null }), useCommands: () => trialCommands },
+    'TrialControls.jsx': { Button: 'button', ErrorBox: 'error', Modal: 'modal', Issues: 'issues', sourceLabel: () => '原安排' },
+    'TrialSession.js': { useCommands: () => trialCommands }, 'shared/session/query.js': { useQuery: () => ({ result: { data: trialData, meta: {} }, loading: false, error: null }) },
     'WorkbenchGuards.js': { useDirtyGuard() {}, confirmLeave: async () => { guardCalls++; return mayLeave; } }, 'WorkbenchReferences.jsx': { default: 'reference', WorkbenchReference: 'reference' },
-    'WorkbenchCaption.jsx': { useCaption() {} }, 'WorkbenchFormat.js': { dateTime: String, compactRange: () => '时间范围' }, 'WorkbenchTerms.js': { delivery_coverage: () => '', actions: { query_result: '查询结果' } },
+    'WorkbenchCaption.jsx': { useCaption() {} }, 'WorkbenchFormat.js': { dateTime: String, compactRange: () => '时间范围' }, 'WorkbenchTerms.js': { delivery_coverage: () => '', actions: { query_result: '查询结果' }, trial_draft_status: String, trial_constraint_status: String },
     'TrialCatalog.jsx': { Directory: 'trial-directory', Create: 'trial-create' }, 'TrialGantt.jsx': 'trial-gantt', 'TrialDetails.jsx': 'trial-details', 'TrialResults.jsx': { Summary: 'trial-summary', Results: 'trial-results' } };
   const trialContext = vm.createContext({ window: trialWindow, __wbStubs: trialStubs, React: trialHooks.React, document: { documentElement: {} } });
   const TrialWorkspace = load(trialContext, 'TrialWorkspace.jsx');
@@ -704,7 +1015,7 @@ async function main() {
   await find(trialTree, 'button', props => props.children.includes('新增试调')).onClick(); trialTree = renderTrial();
   assert(find(trialTree, 'trial-create')); assert.equal(pendingNotice(trialTree), null, 'The create dialog owns the pending submission'); assert.equal(commandErrorBox(trialTree), null);
   const catalogHooks = hooks();
-  const TrialCatalog = load(vm.createContext({ window: {}, __wbStubs: { ...trialStubs, 'TrialSession.js': { useRead: () => ({ result: null, busy: false, error: null }) } }, React: catalogHooks.React }), 'TrialCatalog.jsx');
+  const TrialCatalog = load(vm.createContext({ window: {}, __wbStubs: { ...trialStubs, 'shared/session/query.js': { useQuery: () => ({ result: null, loading: false, error: null }) } }, React: catalogHooks.React }), 'TrialCatalog.jsx');
   const catalogModal = commands => catalogHooks.render(() => TrialCatalog.Create({ initialBase: { plan_ref: 'plan' }, commands, onClose() {} }));
   let createModal = catalogModal(trialCommands); assert.equal(createModal.props.locked, true);
   assert.strictEqual(find(createModal.props.footer, 'button', props => props.children.includes('查询结果')).onClick, trialCommands.lookup);
@@ -715,10 +1026,8 @@ async function main() {
   {
   // A server-confirmed outcome stays final when the local key cannot be cleared: the real shared store registers the clearance
   // (read() raises it with saved: null), and lookup/restore only flush it under the cross-page lock without asking the server.
-  const sessionHooks = hooks(), receipts = [], disk = new Map();
-  let removeFailure = null, lookups = 0, outcome = null;
-  const localStorage = { getItem: key => disk.has(key) ? disk.get(key) : null, setItem: (key, value) => { disk.set(key, String(value)); },
-    removeItem: key => { if (removeFailure) throw removeFailure; disk.delete(key); } };
+  const sessionHooks = hooks(), receipts = [], localStorage = memoryStorage();
+  let lookups = 0, outcome = null;
   const sessionListeners = new Map();
   class SessionCustomEvent { constructor(type, init) { this.type = type; this.detail = init && init.detail; } }
   const sessionWindow = {
@@ -737,8 +1046,8 @@ async function main() {
   const SessionTrial = load(sessionContext, 'TrialSession.js');
   const useSession = () => sessionHooks.render(() => SessionTrial.useCommands(receipt => receipts.push(receipt)));
   let session = useSession(); sessionHooks.flush(); await turns();
-  const receipt = { data: { draft_ref: 'draft' } }, rejected = mod(sessionContext, 'shared/network/transport.js').failure({ ok: false, committed: false, error: { code: 'stale_write', message: '来源已变化', fields: [], retryable: false, request_ref: '1'.repeat(32) } }, 409);
-  removeFailure = new Error('本机操作记录没清掉'); outcome = async () => receipt;
+  const receipt = { data: { draft_ref: 'draft' } }, rejected = mod(sessionContext, 'shared/network/transport.js').envelopeFailure({ ok: false, committed: false, error: { code: 'stale_write', message: '来源已变化', fields: [], retryable: false, request_ref: '1'.repeat(32) } }, 409);
+  localStorage.failRemove = new Error('本机操作记录没清掉'); outcome = async () => receipt;
   assert.equal(await useSession().execute({ action: 'save' }, 'token'), true); session = useSession();
   assert.deepEqual(receipts, [receipt], 'A failed local clear must not withhold the confirmed receipt');
   assert.match(stored(), /^trial-[a-f0-9]{48}$/); assert.equal(session.key, stored());
@@ -746,55 +1055,58 @@ async function main() {
   assert.throws(() => trialApi.pending(), error => error.message === removeMessage && error.saved === null, 'The registered clearance is reported, not the stale disk key');
   await session.lookup(); session = useSession();
   assert.equal(session.key, stored()); assert.equal(session.error.message, removeMessage); assert.equal(lookups, 0, 'A confirmed receipt only retries its local cleanup');
-  removeFailure = null; await session.lookup(); session = useSession();
+  localStorage.failRemove = null; await session.lookup(); session = useSession();
   assert.deepEqual([stored(), session.key, session.error, session.note, lookups], [null, null, null, '', 0]); assert.deepEqual(receipts, [receipt], 'Cleanup does not replay the receipt');
-  removeFailure = new Error('本机操作记录没清掉'); outcome = async () => { throw rejected; };
+  localStorage.failRemove = new Error('本机操作记录没清掉'); outcome = async () => { throw rejected; };
   assert.equal(await session.execute({ action: 'save' }, 'token'), false); session = useSession();
   assert.equal(session.key, stored()); assert.equal(session.error.message, removeMessage);
   assert.equal(session.note, '这次没有写入，但本机操作记录还没清掉。请点「查询结果」重试清理。');
-  removeFailure = null; await session.lookup(); session = useSession();
+  localStorage.failRemove = null; await session.lookup(); session = useSession();
   assert.deepEqual([stored(), session.key, session.error, session.note, lookups], [null, null, null, '', 0], 'A rejected command must not wait on not_observed');
-  removeFailure = new Error('本机操作记录没清掉'); await session.execute({ action: 'save' }, 'token'); removeFailure = null;
+  localStorage.failRemove = new Error('本机操作记录没清掉'); await session.execute({ action: 'save' }, 'token'); localStorage.failRemove = null;
   await session.restore(); session = useSession(); assert.deepEqual([stored(), session.key, session.error], [null, null, null], 'Restore shares the same cleanup retry');
   localStorage.setItem(trialApi.PENDING_KEY, 'trial-' + 'c'.repeat(48)); await session.restore(); await session.lookup(); session = useSession();
   assert.deepEqual([session.key, session.note, lookups], [stored(), '上次提交待确认', 1], 'An unconfirmed key still asks the server');
   sessionHooks.unmount();
   }
 
-  // Related-resource editing keeps the current list on its displayed clamped page.
+  // Related-resource editing keeps the current list on its displayed clamped page. The list reads go through the real
+  // resource-api listPage, transport and envelope checks; only the network answer is stubbed.
   const resourceHooks = hooks(), resourceRequests = [], resourceDetails = [], resourceSnapshots = [];
-  const machineRef = '1'.repeat(48), operatorRef = '2'.repeat(48);
+  const machineRef = '1'.repeat(48), operatorRef = '2'.repeat(48), resourceSnapshot = kind => (kind === 'machine' ? 'm' : 'o').repeat(32);
+  const resourceRoutes = { 'GET /api/workbench/v1/entities/*': call => {
+    const kind = call.path.split('/').at(-1), page = Number(call.query.page), size = Number(call.query.size);
+    resourceRequests.push({ kind, page, snapshot_ref: call.query.snapshot_ref || null });
+    return envelope({ entities: [], page: { number: page, size, total: kind === 'machine' ? 21 : 1 } },
+      { snapshot_ref: call.query.snapshot_ref || resourceSnapshot(kind) });
+  }, 'GET /api/workbench/v1/entities/*/*': call => {
+    const [kind, ref] = call.path.split('/').slice(-2); resourceDetails.push({ kind, ref });
+    return envelope({ ref, fields: {}, write_context: { write_token: 'resource-token' } });
+  }, 'POST /api/workbench/v1/entities/operator/*/update': call => {
+    assert.equal(call.path.split('/').at(-2), operatorRef);
+    return { ok: true, result: 'committed', receipt_ref: 'related-save', replayed: false, warnings: [], data: { entity_ref: operatorRef } };
+  } };
   const resourceForms = () => null; resourceForms.Detail = 'resource-detail'; resourceForms.Feedback = 'resource-feedback';
   const resourceTables = () => null; resourceTables.Pager = 'resource-pager';
   const resourceContract = { nodes: { machine: { kind: 'machine', label: '设备', chain: 'internal' }, operator: { kind: 'operator', label: '人员', chain: 'internal' } },
     statuses: { machine: [], operator: [] }, object: value => value !== null && typeof value === 'object' && !Array.isArray(value),
-    own: (value, key) => Object.prototype.hasOwnProperty.call(value, key), query: value => value, failure: message => new Error(message),
-    message: error => error.message, blocked: () => '', receipt: value => value && value.ok ? 'terminal' : 'pending',
+    own: (value, key) => Object.prototype.hasOwnProperty.call(value, key), query: value => value,
+    blocked: () => '', receipt: value => value && value.ok ? 'terminal' : 'pending',
     stale: error => !!error && ['stale_write', 'snapshot_stale'].includes(error.code), resultRef: (value, fallback) => value.data.entity_ref || fallback };
-  const resourceAdapter = {
-    pendingKey: 'aps_workbench_resource_pending_v1',
-    readPending() { return null; }, savePending() {}, clearPending() {},
-    async list(kind, scope) {
-      resourceRequests.push({ kind, ...scope });
-      return { data: { entities: [], page: { number: scope.page, size: scope.size, total: kind === 'machine' ? 21 : 1 } },
-        meta: { source: 'production', snapshot_ref: scope.snapshot_ref || 'snapshot-' + kind }, warnings: [] };
-    },
-    async detail(kind, ref) { resourceDetails.push({ kind, ref }); return { data: { ref, fields: {}, write_context: { write_token: 'resource-token' } }, meta: { source: 'production' } }; },
-    async command(kind, action, ref) { assert.equal(kind, 'operator'); assert.equal(action, 'update'); assert.equal(ref, operatorRef); return { ok: true, receipt_ref: 'related-save', data: { entity_ref: ref } }; }
-  };
   const resourceWindow = { addEventListener() {}, removeEventListener() {} };
   const resourceStubs = { 'resource-contract.js': resourceContract, 'ResourceControls.jsx': { Button: 'button', Icon: 'icon', ErrorBox: 'error', Issues: 'issues', Modal: 'modal' },
     'ResourceForms.jsx': resourceForms, 'ResourceTables.jsx': resourceTables, 'ResourceRail.jsx': 'resource-rail', 'ResourceMetrics.jsx': 'resource-metrics',
     'ResourceTableFilterModel.js': { rules: filters => filters }, 'WorkbenchPageContext.jsx': { useSnapshot: (...args) => resourceSnapshots.push(args) } };
   const resourceContext = vm.createContext({ window: resourceWindow, __wbStubs: resourceStubs, React: resourceHooks.React, AbortController, DOMException });
-  withTransport(resourceContext); load(resourceContext, 'shared/session/command-session.js'); const ResourceAPI = load(resourceContext, 'resource-api.js'); ResourceAPI.useCounts = () => ({ summary: { reload() {} } });
+  withTransport(resourceContext, resourceRoutes); sessionStore(resourceContext); load(resourceContext, 'shared/session/command-session.js'); const ResourceAPI = load(resourceContext, 'resource-api.js'); ResourceAPI.useCounts = () => ({ summary: { reload() {} } });
   const ResourceWorkspace = load(resourceContext, 'ResourceWorkspace.jsx');
   const resourceContextInput = { source: 'production', kind: 'machine', read_view: { scope: { query: '', status: '', page: 3, size: 20, sort: 'business_code', direction: 'asc' },
     selected_refs: [], sort_active: false, detail: null } };
-  const resourceRender = () => resourceHooks.render(() => ResourceWorkspace({ adapter: resourceAdapter, initialContext: resourceContextInput, onNavigationReady() {} }));
-  const settleResource = async () => { let tree; for (let n = 0; n < 4; n++) { tree = resourceRender(); resourceHooks.flush(); await turns(); } return tree; };
+  const resourceRender = () => resourceHooks.render(() => ResourceWorkspace({ host: {}, initialContext: resourceContextInput, onNavigationReady() {} }));
+  const settleResource = async () => { let tree; for (let n = 0; n < 4; n++) { tree = resourceRender(); resourceHooks.flush(); await new Promise(resolve => setImmediate(resolve)); } return tree; };
   let resourceTree = await settleResource();
-  assert.deepEqual(resourceRequests.map(value => [value.kind, value.page, value.snapshot_ref || null]), [['machine', 3, null], ['machine', 2, 'snapshot-machine']]);
+  assert.deepEqual(resourceRequests.map(value => [value.kind, value.page, value.snapshot_ref]), [['machine', 3, null], ['machine', 2, resourceSnapshot('machine')]],
+    'Page 3 of 21 rows is past the last page: listPage rereads page 2 pinned to the first snapshot');
   assert.equal(resourceSnapshots.at(-1)[0].read_view.scope.page, 2);
   find(resourceTree, resourceTables).onOpen(machineRef); resourceTree = await settleResource();
   find(resourceTree, 'resource-detail').onRelated('operator', operatorRef); resourceTree = await settleResource();
@@ -803,7 +1115,7 @@ async function main() {
   const resourceEditor = find(resourceTree, resourceForms); assert.equal(resourceEditor.kind, 'operator');
   await resourceEditor.command.submit('operator', 'update', operatorRef, { write_token: 'resource-token' }, { label: '保存后的人员' });
   resourceTree = await settleResource();
-  assert.deepEqual(resourceRequests.slice(2).map(value => [value.kind, value.page, value.snapshot_ref || null]), [['operator', 1, null], ['machine', 2, null]],
+  assert.deepEqual(resourceRequests.slice(2).map(value => [value.kind, value.page, value.snapshot_ref]), [['operator', 1, null], ['machine', 2, null]],
     'Saving a related operator reads its own category and refreshes the current machine list at the displayed page');
   assert.deepEqual(resourceDetails, [{ kind: 'machine', ref: machineRef }, { kind: 'operator', ref: operatorRef }, { kind: 'operator', ref: operatorRef }]);
   assert.equal(find(resourceTree, resourceForms).refreshState.done, true);
@@ -824,7 +1136,9 @@ async function main() {
       'ResourceTables.jsx': tables
     };
     const context = vm.createContext({ window: localWindow, __wbStubs: localStubs, React: workspaceHooks.React, AbortController, DOMException });
-    withTransport(context);
+    // 列表、详情和写入都走真实 resource-api、transport 与本机待确认记录，只替换网络应答。
+    const listRoutes = {};
+    withTransport(context, listRoutes);
     load(context, 'resource-contract.js');
     load(context, 'shared/session/command-session.js'); const OpResourceAPI = load(context, 'resource-api.js'); OpResourceAPI.useCounts = () => ({ summary: { reload() {} } });
     const OpForms = load(context, 'ResourceForms.jsx').ResourceForms;
@@ -834,29 +1148,32 @@ async function main() {
     const makeEntity = (kind, fields = {}) => ({ ref: kind === 'supplier' ? supplierRef : ref, business_code: kind === 'supplier' ? 'SUPPLIER' : 'F01-BOTH',
       label: kind === 'supplier' ? '供应商' : '两用工种', status: kind === 'supplier' ? 'active' : null, fields, relationships: {}, issues: [], write_context: writeContext });
     let entity = existing ? makeEntity('op_type', { category: 'both', default_merge_mode: 'separate', remark: '原备注' }) : null;
-    const envelope = data => ({ ok: true, schema_version: 1, data, warnings: [], meta: { source: 'production', time_basis: 'factory_local',
-      snapshot_ref: 'op-snapshot-' + requests.length, request_ref: 'op-request', as_of: '2026-10-18T08:00:00' } });
-    const api = {
-      pendingKey: 'aps_workbench_resource_pending_v1_' + initialNode,
-      async list(kind, scope) {
-        requests.push({ kind, ...JSON.parse(JSON.stringify(scope)) });
-        if (kind === 'op_type') assert(['internal', 'external'].includes(scope.category), 'List readback must use a real list category');
-        const entities = kind === 'supplier' ? [makeEntity('supplier')] : entity && [scope.category, 'both'].includes(entity.fields.category) ? [entity] : [];
-        return envelope({ entities, create_context: writeContext, page: { number: scope.page, size: scope.size, total: entities.length, pages: 1, sort: [] } });
-      },
-      async detail(kind, selectedRef) { details.push({ kind, ref: selectedRef }); assert.equal(selectedRef, kind === 'supplier' ? supplierRef : ref); return envelope(kind === 'supplier' ? makeEntity('supplier') : entity); },
-      readPending() { return null; }, savePending(intent) { saved.push({ category: intent.category, input: JSON.parse(JSON.stringify(intent.input)) }); }, clearPending() {},
-      async command(kind, action, selectedRef, body) {
-        assert.equal(kind, 'op_type'); writes.push({ action, input: JSON.parse(JSON.stringify(body.input)) });
-        if (action === 'create') entity = { ...makeEntity(kind), ...body.input, fields: body.input.fields };
-        else if (action === 'update') entity = { ...entity, ...body.input, fields: { ...entity.fields, ...body.input.fields } };
-        else { assert.equal(action, 'delete'); entity = null; }
-        return { ok: true, result: 'committed', receipt_ref: 'op-receipt-' + writes.length, data: { entity_ref: ref }, warnings: [] };
-      }
+    const snapshot = () => String(requests.length).padStart(32, '0');
+    listRoutes['GET /api/workbench/v1/entities/*'] = call => {
+      const kind = call.path.split('/').at(-1), scope = call.query;
+      requests.push({ kind, ...scope });
+      if (kind === 'op_type') assert(['internal', 'external'].includes(scope.category), 'List readback must use a real list category');
+      const entities = kind === 'supplier' ? [makeEntity('supplier')] : entity && [scope.category, 'both'].includes(entity.fields.category) ? [entity] : [];
+      return envelope({ entities, create_context: writeContext, page: { number: Number(scope.page), size: Number(scope.size), total: entities.length, pages: 1, sort: [] } },
+        { snapshot_ref: snapshot() });
     };
+    listRoutes['GET /api/workbench/v1/entities/*/*'] = call => {
+      const [kind, selectedRef] = call.path.split('/').slice(-2); details.push({ kind, ref: selectedRef });
+      assert.equal(selectedRef, kind === 'supplier' ? supplierRef : ref);
+      return envelope(kind === 'supplier' ? makeEntity('supplier') : entity, { snapshot_ref: snapshot() });
+    };
+    listRoutes['POST /api/workbench/v1/entities/op_type/**'] = call => {
+      const action = call.path.split('/').at(-1), body = call.body; writes.push({ action, input: body.input });
+      if (action === 'create') entity = { ...makeEntity('op_type'), ...body.input, fields: body.input.fields };
+      else if (action === 'update') entity = { ...entity, ...body.input, fields: { ...entity.fields, ...body.input.fields } };
+      else { assert.equal(action, 'delete'); entity = null; }
+      return { ok: true, result: 'committed', receipt_ref: 'op-receipt-' + writes.length, data: { entity_ref: ref }, warnings: [] };
+    };
+    const storage = sessionStore(context);
+    storage.onAccess = (method, key, phase) => { if (method === 'setItem' && phase === 'after') saved.push({ category: JSON.parse(storage.data.get(key)).category }); };
     let tree, formHooks;
-    const render = () => workspaceHooks.render(() => OpWorkspace({ adapter: api, initialNode, onNavigationReady() {} }));
-    async function settle() { for (let n = 0; n < 6; n++) { tree = render(); workspaceHooks.flush(); await turns(); } return tree; }
+    const render = () => workspaceHooks.render(() => OpWorkspace({ host: {}, initialNode, onNavigationReady() {} }));
+    async function settle() { for (let n = 0; n < 6; n++) { tree = render(); workspaceHooks.flush(); await new Promise(resolve => setImmediate(resolve)); } return tree; }
     const editor = () => find(tree, OpForms);
     function form() { context.React = formHooks.React; const result = formHooks.render(() => OpForms(editor())); formHooks.flush(); context.React = workspaceHooks.React; return result; }
     function change(name, value) { find(form(), name === 'category' ? 'select' : 'input', props => props.name === name).onChange({ target: { value } }); }
@@ -876,7 +1193,7 @@ async function main() {
   for (const [node, category] of [['op_int', 'internal'], ['op_ext', 'external']]) {
     const both = await opTypeWorkspace(node);
     await both.create(); both.change('business_code', 'F01-BOTH'); both.change('label', '两用工种'); both.change('category', 'both'); await both.submit();
-    assert.equal(both.saved.at(-1).category, category); assert.equal(both.saved.at(-1).input.fields.category, 'both');
+    assert.equal(both.saved.at(-1).category, category); assert.equal(both.writes.at(-1).input.fields.category, 'both');
     assert.equal(both.editor().refreshState.detail.data.fields.category, 'both'); await both.close();
     await both.edit(); assert.equal(both.editor().category, category, 'Entering edit preserves the source list for a both entity');
     await both.editor().onReloadContext(); await both.settle(); assert.equal(both.editor().category, category, 'Context reload preserves the source list');
@@ -909,57 +1226,55 @@ async function main() {
     const CommandSession = load(commandContext, 'shared/session/command-session.js');
     const CommandResourceWorkspace = load(commandContext, 'ResourceWorkspace.jsx');
     CommandResourceAPI.useCounts = () => ({ summary: { reload() {} } });
-    // The resource adapter throws the transport's unified error; every valid committed:false failure envelope (except request_key_conflict) releases the intent.
-    const T = mod(commandContext, 'shared/network/transport.js'), refusal = (code, message, status) => T.failure({ ok: false, committed: false, error: { code, message, fields: [], retryable: status >= 500, request_ref: '1'.repeat(32) } }, status);
-    const rejection = refusal('validation_failed', '编号重复。', 422), cleared = [], lookups = [];
-    let clearFailure = new Error('上次操作记录没清掉');
-    const commandAdapter = { pendingKey: 'aps_workbench_resource_pending_v1_command', readPending() { return null; }, savePending() {}, clearPending() { cleared.push(clearFailure ? 'failed' : 'cleared'); if (clearFailure) throw clearFailure; },
-      async lookup(key) { lookups.push(key); return { state: 'not_observed', receipt: null, may_be_in_flight: true, resolution: 'unresolved' }; },
-      async command() { throw rejection; } };
-    const useRejected = () => commandHooks.render(() => CommandSession.useCommand(commandAdapter));
+    // 真实资源 API 经 transport 把 committed:false 的失败信封变成统一错误；除 request_key_conflict 外都释放待确认记录。
+    // 会话槽按存储对象隔离：每段换一份新的 sessionStorage，就是一次新打开的页面。
+    const refusal = (code, message, status) => () => json(failure(code, message, { retryable: status >= 500 }), status);
+    const rejection = refusal('validation_failed', '编号重复。', 422), cleared = [], lookups = [], resources = CommandResourceAPI.forNamespace('resources');
+    const clearMessage = '结果已确认，但上次操作记录没清掉；重新打开页面后可以再点「查询结果」。';
+    const commandStorage = sessionStore(commandContext);
+    commandStorage.failRemove = new Error('上次操作记录没清掉');
+    commandStorage.onAccess = (method, _key, phase) => { if (method === 'removeItem' && phase === 'before') cleared.push(commandStorage.failRemove ? 'failed' : 'cleared'); };
+    commandRoutes['POST /api/workbench/v1/entities/machine/create'] = rejection;
+    commandRoutes['GET /api/workbench/v1/commands/*'] = call => { lookups.push(call.path.split('/').at(-1)); return { state: 'not_observed', receipt: null, may_be_in_flight: true, resolution: 'unresolved' }; };
+    const useRejected = () => commandHooks.render(() => CommandSession.useCommand(resources));
     useRejected(); commandHooks.flush();
     await useRejected().submit('machine', 'create', null, { write_token: 'token' }, { label: '设备' });
     const kept = useRejected();
     assert.equal(kept.phase, 'rejected', 'A failed cleanup after a definite rejection keeps the rejected state');
     assert.equal(kept.intent.action, 'create', 'The saved intent stays so reset() can retry the cleanup');
-    assert.strictEqual(kept.error, clearFailure); assert.deepEqual(lookups, [], 'A rejection has no receipt to look up');
+    assert.equal(kept.error.message, clearMessage); assert.deepEqual(lookups, [], 'A rejection has no receipt to look up');
     assert.equal(kept.reset(), false); assert.equal(useRejected().phase, 'rejected'); assert.deepEqual(cleared, ['failed', 'failed']);
     commandHooks.unmount();
 
     // A remounted workspace shows the orphan rejection; closing it retries the cleanup.
     const workspaceHooks = hooks(); commandContext.React = workspaceHooks.React;
-    const renderWorkspace = () => { const tree = workspaceHooks.render(() => CommandResourceWorkspace({ adapter: commandAdapter, initialNode: 'machine', onNavigationReady() {} })); workspaceHooks.flush(); return tree; };
+    const renderWorkspace = () => { const tree = workspaceHooks.render(() => CommandResourceWorkspace({ host: {}, initialNode: 'machine', onNavigationReady() {} })); workspaceHooks.flush(); return tree; };
     const orphan = find(renderWorkspace(), 'modal', props => props.title === '上次操作结果');
     assert(orphan && !orphan.locked, 'A rejected command without its dialog still offers a closable previous result');
-    clearFailure = null; orphan.onClose(); await turns();
+    commandStorage.failRemove = null; orphan.onClose(); await turns();
     assert.equal(find(renderWorkspace(), 'modal', props => props.title === '上次操作结果'), null); assert.deepEqual(cleared, ['failed', 'failed', 'cleared']);
     workspaceHooks.unmount();
 
     // A successful cleanup drops the saved intent, so reset() has nothing left to clear.
     const clearedHooks = hooks(); commandContext.React = clearedHooks.React;
-    const useCleared = () => clearedHooks.render(() => CommandSession.useCommand(commandAdapter));
+    const useCleared = () => clearedHooks.render(() => CommandSession.useCommand(resources));
     useCleared(); clearedHooks.flush();
     await useCleared().submit('machine', 'create', null, { write_token: 'token' }, { label: '设备' });
     const dropped = useCleared();
     assert.equal(dropped.phase, 'rejected'); assert.strictEqual(dropped.intent, null, 'A cleared rejection no longer carries the saved intent');
-    assert.strictEqual(dropped.error, rejection); assert.deepEqual(cleared, ['failed', 'failed', 'cleared', 'cleared']);
+    assert.equal(dropped.error.code, 'validation_failed'); assert.equal(dropped.error.message, '编号重复。'); assert.deepEqual(cleared, ['failed', 'failed', 'cleared', 'cleared']);
     assert.equal(dropped.reset(), true); assert.deepEqual(cleared, ['failed', 'failed', 'cleared', 'cleared']); assert.deepEqual(lookups, []);
     clearedHooks.unmount();
 
     // A fetch-level HTTP 500 with committed:false is a definite rejection in the shared resource session:
     // no automatic receipt lookup runs, the pending key is cleared, and reset() returns the session to idle.
     let fetchLookups = 0;
-    const sessionStore = new Map();
-    commandContext.sessionStorage = commandWindow.sessionStorage = {
-      getItem: key => sessionStore.has(key) ? sessionStore.get(key) : null,
-      setItem: (key, value) => sessionStore.set(key, value),
-      removeItem: key => sessionStore.delete(key)
-    };
+    const false500Storage = sessionStore(commandContext);
     commandRoutes['POST /api/workbench/v1/entities/machine/create'] = () => json(failure('storage_failure', '更正记录缺失，本次没有提交。', { retryable: true }), 500);
     commandRoutes['GET /api/workbench/v1/commands/*'] = () => { fetchLookups++; return { state: 'not_observed', receipt: null, may_be_in_flight: true, resolution: 'unresolved' }; };
-    const false500Hooks = hooks(), realAdapter = CommandResourceAPI.create('resources');
+    const false500Hooks = hooks();
     commandContext.React = false500Hooks.React;
-    const useFalse500 = () => false500Hooks.render(() => CommandSession.useCommand(realAdapter));
+    const useFalse500 = () => false500Hooks.render(() => CommandSession.useCommand(resources));
     useFalse500(); false500Hooks.flush();
     await useFalse500().submit('machine', 'create', null, { write_token: 'token' }, { label: '设备' });
     const rejected500 = useFalse500();
@@ -969,7 +1284,7 @@ async function main() {
     assert.equal(rejected500.error.code, 'storage_failure');
     assert.equal(rejected500.error.status, 500);
     assert.equal(fetchLookups, 0, 'A definite HTTP 500 non-commit never queries a receipt');
-    assert.equal(sessionStore.size, 0, 'The pending key is cleared on definite HTTP 500 rejection');
+    assert.equal(false500Storage.data.size, 0, 'The pending key is cleared on definite HTTP 500 rejection');
     assert.equal(rejected500.reset(), true);
     assert.equal(useFalse500().phase, 'idle');
     false500Hooks.unmount();
@@ -977,8 +1292,9 @@ async function main() {
     // Editing input clears an ordinary rejection; a stale one waits for refreshed data unless a fresh preview replaces the write basis.
     const staleRejection = refusal('stale_write', '本页数据已过期。', 409);
     for (const [response, stale] of [[rejection, false], [staleRejection, true]]) {
-      const editHooks = hooks(), editAdapter = { ...commandAdapter, pendingKey: 'aps_workbench_resource_pending_v1_edit_' + stale, async command() { throw response; } }; commandContext.React = editHooks.React;
-      const useEdited = () => editHooks.render(() => CommandSession.useCommand(editAdapter));
+      const editHooks = hooks(); commandContext.React = editHooks.React;
+      sessionStore(commandContext); commandRoutes['POST /api/workbench/v1/entities/machine/create'] = response;
+      const useEdited = () => editHooks.render(() => CommandSession.useCommand(resources));
       useEdited(); editHooks.flush();
       assert.equal(useEdited().clearRejection(), false, 'An idle command has no rejection to clear');
       await useEdited().submit('machine', 'create', null, { write_token: 'token' }, { label: '设备' });
@@ -992,32 +1308,33 @@ async function main() {
     stub(commandContext, { 'WorkbenchGuards.js': { useDirtyGuard: () => 'guard', confirmLeave: async () => true } });
     const MachineDowntimePanel = load(commandContext, 'MachineDowntimePanel.jsx');
     let downtimePendingReads = 0;
-    const downtimeAdapter = { ...commandAdapter, pendingKey: 'aps_workbench_resource_pending_v1_downtime', readPending() { downtimePendingReads++; return { request_key: 'resource-' + 'a'.repeat(48), kind: 'machine', action: 'downtime_create', ref: '1'.repeat(48) }; }, downtimes: async () => ({ data: { rows: [], reasons: {}, write_context: { write_token: 't', capabilities: {}, blocked_reasons: [] } } }) };
-    const downtimeTree = downtimeHooks.render(() => MachineDowntimePanel({ adapter: downtimeAdapter, entity: { ref: '1'.repeat(48), business_code: 'M-01' }, source: 'production', onClose() {} }));
+    const downtimeStorage = sessionStore(commandContext, [[resources.pendingKey, JSON.stringify({ kind: 'machine', action: 'downtime_create', request_key: 'resource-' + 'a'.repeat(48), ref: '1'.repeat(48) })]]);
+    downtimeStorage.onAccess = (method, _key, phase) => { if (method === 'getItem' && phase === 'before') downtimePendingReads++; };
+    commandRoutes['GET /api/workbench/v1/entities/machine/*/downtimes'] = () => envelope({ entity_ref: '1'.repeat(48), rows: [], reasons: {}, write_context: { write_token: 't', capabilities: {}, blocked_reasons: [] } });
+    const downtimeTree = downtimeHooks.render(() => MachineDowntimePanel({ entity: { ref: '1'.repeat(48), business_code: 'M-01' }, source: 'production', onClose() {} }));
     downtimeHooks.flush();
     assert.equal(downtimePendingReads, 1);
-    assert.equal(find(downtimeTree, 'modal').locked, true, 'MachineDowntimePanel shares the resource adapter command session so a pending downtime command stays locked');
+    assert.equal(find(downtimeTree, 'modal').locked, true, 'MachineDowntimePanel shares the resources namespace command session so a pending downtime command stays locked');
     downtimeHooks.unmount();
 
     const shiftHooks = hooks(); commandContext.React = shiftHooks.React;
     Object.assign(commandStubs['ResourceControls.jsx'], { focusFirstInvalid() {}, EmptyState: 'empty', Pager: 'pager' });
     stub(commandContext, {
       'ResourceCatalogModel.js': { names: { shift_profile: '班次' }, memberCount: () => 0, draft: () => ({}), isDirty: () => false, input: () => ({}) },
-      'ResourceCatalogEditor.jsx': Object.assign(() => null, { Facts: 'editor-facts', fieldPaths: [] })
+      'ResourceCatalogEditor.jsx': Object.assign(() => null, { Facts: 'editor-facts', fieldPaths: () => [] })
     });
     const shiftRef = '2'.repeat(48); let defaultReads = 0, detailReads = 0;
     const shiftEntity = { ref: shiftRef, business_code: 'S-01', label: '早班', status: 'active', fields: { cycle_days: 1 }, relationships: { operator_count: 0, operators: [] }, issues: [], write_context: { write_token: 'w'.repeat(32), capabilities: { 'shift_profile.update': true, 'shift_profile.delete': true }, blocked_reasons: [] } };
     const shiftEnvelope = data => ({ ok: true, schema_version: 1, data, warnings: [], meta: { source: 'production', time_basis: 'factory_local', request_ref: '1'.repeat(32), snapshot_ref: 'S'.repeat(32), as_of: '2026-10-12T08:00:00' } });
-    const shiftAdapter = {
-      pendingKey: 'aps_workbench_resource_pending_v1_catalog',
-      readPending() { return null; }, savePending() {}, clearPending() {},
-      async list() { return shiftEnvelope({ entities: [shiftEntity], create_context: { write_token: 'w'.repeat(32), capabilities: { 'shift_profile.create': true }, blocked_reasons: [] }, page: { number: 1, size: 20, total: 1, pages: 1, sort: [] } }); },
-      async detail() { detailReads++; return shiftEnvelope(shiftEntity); },
-      async query(path) { assert.equal(path, '/api/workbench/v1/calendar/defaults'); defaultReads++; return shiftEnvelope({ periods: [{ start: '08:00', end: '12:00', day_offset: 0 }] }); }
-    };
+    sessionStore(commandContext);
+    Object.assign(commandRoutes, {
+      'GET /api/workbench/v1/entities/shift_profile': () => shiftEnvelope({ entities: [shiftEntity], create_context: { write_token: 'w'.repeat(32), capabilities: { 'shift_profile.create': true }, blocked_reasons: [] }, page: { number: 1, size: 20, total: 1, pages: 1, sort: [] } }),
+      'GET /api/workbench/v1/entities/shift_profile/*': () => { detailReads++; return shiftEnvelope(shiftEntity); },
+      'GET /api/workbench/v1/calendar/defaults': () => { defaultReads++; return shiftEnvelope({ periods: [{ start: '08:00', end: '12:00', day_offset: 0 }] }); }
+    });
     const ResourceCatalog = load(commandContext, 'ResourceCatalog.jsx');
     const WorkbenchTerms = mod(commandContext, 'WorkbenchTerms.js');
-    const settleShift = async () => { let tree; for (let i = 0; i < 4; i++) { tree = shiftHooks.render(() => ResourceCatalog({ kind: 'shift_profile', adapter: shiftAdapter, onClose() {} })); shiftHooks.flush(); await turns(); } return tree; };
+    const settleShift = async () => { let tree; for (let i = 0; i < 4; i++) { tree = shiftHooks.render(() => ResourceCatalog({ kind: 'shift_profile', onClose() {} })); shiftHooks.flush(); await answered(); } return tree; };
     let shiftTree = await settleShift();
     find(shiftTree, 'div', props => props.className === 'modal-b form scroll').children.find(c => c && c.props && typeof c.props.onOpen === 'function').props.onOpen('update', shiftRef);
     shiftTree = await settleShift();
@@ -1042,7 +1359,7 @@ async function main() {
   class CountingDate extends Date { static parse(value) { timeReads++; return Date.parse(value); } }
   const preparedContext = vm.createContext({ window: {}, __wbStubs: { 'WorkbenchFormat.js': {}, 'FieldContract.js': { quantityReasons: {}, states: {} } }, Date: CountingDate });
   for (const name of ['PointContract.js', 'PointGanttModel.js', 'GanttGraph.js', 'PlanGanttModel.js', 'ActualGanttModel.js']) load(preparedContext, name);
-  const PM = mod(preparedContext, 'PlanGanttModel.js'), AM = mod(preparedContext, 'ActualGanttModel.js'), PG = mod(preparedContext, 'GanttGraph.js'), stamp = hour => '2026-10-12T' + String(hour).padStart(2, '0') + ':00:00';
+  const PM = mod(preparedContext, 'PlanGanttModel.js'), AM = mod(preparedContext, 'ActualGanttModel.js'), AH = mod(preparedContext, 'shared/hours.js'), PG = mod(preparedContext, 'GanttGraph.js'), stamp = hour => '2026-10-12T' + String(hour).padStart(2, '0') + ':00:00';
   const createGraph = PG.create; let graphBuilds = 0;
   PG.create = value => { graphBuilds++; return createGraph(value); };
   const task = (id, start, end) => ({ task_ref: id, operation_ref: 'op-' + id, batch_id: id, process_label: id, sequence: 1, piece_id: null,
@@ -1068,19 +1385,22 @@ async function main() {
   assert.strictEqual(narrowPlan.locations.get('second').item, widePlan.locations.get('second').item);
   assert.equal(graphBuilds, 0); assert.strictEqual(selectedPlan.taskIndex, planFacts.taskIndex);
   const execution = reports => ({ execution_state: 'complete', reports, data_gaps: [], remaining_quantity: 0, remaining_plan: null });
+  // Reports as ActualGanttContract admits them: the exact hours text is already an exact amount.
   const report = (id, start, end, hours) => ({ report_ref: id, report_no: id, actual_start: stamp(start), actual_end: stamp(end),
-    actual_machine_ref: 'machine', actual_operator_ref: null, effective_processing_hours: hours });
+    actual_machine_ref: 'machine', actual_operator_ref: null, effective_processing_hours: hours === null ? null : Number(hours),
+    effective_processing_hours_exact: hours === null ? null : AH.parseHours(hours) });
   const actualData = { resources, gantt_graph: unavailableGraph(), axis_span: { start: stamp(8), end: stamp(12) }, availability: { state: 'available' }, items: [
-    { task: firstTask, deviation: { finish_late: true }, execution: execution([report('known', 8, 10, 2), report('unknown', 9, 11, null)]) },
-    { task: secondTask, deviation: { finish_late: false }, execution: execution([report('other', 10, 11, 1)]) }
+    { task: firstTask, deviation: { finish_late: true }, execution: execution([report('known', 8, 10, '2'), report('unknown', 9, 11, null)]) },
+    { task: secondTask, deviation: { finish_late: false }, execution: execution([report('other', 10, 11, '1')]) }
   ] };
   const actualFacts = AM.prepare(actualData, stamp(12)), actualTimes = timeReads, actualGroup = AM.groupPrepared(actualFacts, 'machine');
   const fullView = { query: '', late: 'all', onlySelected: false, selected: null, collapsed: {} };
   const allSelected = AM.selectPrepared(actualGroup, fullView), firstSelected = AM.selectPrepared(actualGroup, { ...fullView, query: 'first' });
   assert.equal(graphBuilds, 0); assert.strictEqual(firstSelected.taskIndex, actualFacts.taskIndex);
   const allActual = AM.layoutPrepared(allSelected, {}), firstActual = AM.layoutPrepared(firstSelected, {});
-  assert.deepEqual([allActual.groups[0].reportCount, allActual.groups[0].knownHours, allActual.groups[0].unknownHours], [3, 3, 1]);
-  assert.deepEqual([firstActual.groups[0].reportCount, firstActual.groups[0].knownHours, firstActual.groups[0].unknownHours], [2, 2, 1]);
+  const groupHours = group => [group.reportCount, AH.exactHoursText(group.hours.known), group.hours.unknown];
+  assert.deepEqual(groupHours(allActual.groups[0]), [3, '3', 1]);
+  assert.deepEqual(groupHours(firstActual.groups[0]), [2, '2', 1], 'A local query sums only the shown members of the group');
   const firstRow = firstActual.rows.find(row => row.kind === 'actual');
   assert.strictEqual(firstRow.marks, allActual.rows.find(row => row.key === firstRow.key).marks, 'Visible layouts share prepared marks');
   const collapsedActual = AM.layoutPrepared(allSelected, { machine: true });
@@ -1098,7 +1418,7 @@ async function main() {
   const candidateTasks = [firstTask, secondTask].map(value => ({ ...value, row_ref: value.task_ref, batch_ref: value.batch_id,
     batch_label: value.batch_id, machine: { ref: 'machine', label: '设备' }, operator: null, data_gaps: [] }));
   const candidateFacts = CM.prepare({ tasks: candidateTasks, unplanned_operations: [], gantt_graph: { ...unavailableGraph(), scope: 'full_candidate' }, task_span: { start: stamp(8), end: stamp(12) } });
-  const baselineFacts = BM.prepare({ comparisons: [{ ...candidateTasks[0], baseline_segments: [{ ...candidateTasks[0], row_ref: 'baseline-first', interval_comparable: true, start: stamp(7), end: stamp(9) }] }] });
+  const baselineFacts = BM.prepare({ comparisons: [{ ...candidateTasks[0], baseline_segment: { ...candidateTasks[0], row_ref: 'baseline-first', start: stamp(7), end: stamp(9) } }] });
   const candidateTimes = timeReads, candidateGroups = CM.groupPrepared(candidateFacts, 'machine'), baselineGroups = BM.groupPrepared(baselineFacts, 'machine');
   const selectedCandidate = CM.selectPrepared(candidateGroups, 'first', null, null), withBaseline = BM.selectPrepared(selectedCandidate, baselineGroups, 'first', null, true);
   assert.equal(graphBuilds, 0); assert.strictEqual(selectedCandidate.taskIndex, candidateFacts.taskIndex);
@@ -1141,42 +1461,228 @@ async function main() {
   assert.equal(paints.at(-1), 'new-print-row'); assert.equal(paintFrames.size, 0); printMountHooks.unmount();
 
   // The handler hint reads on mount, then consumes the actual local write result.
-  const hintHooks = hooks(); let hintReads = 0, savedHandler = '甲', failHandlerWrite = false;
-  const hintWindow = { localStorage: { getItem() { hintReads++; return savedHandler; }, setItem(_, value) { if (failHandlerWrite) throw Error('disk'); savedHandler = value; } }, addEventListener() {}, removeEventListener() {} };
+  const hintHooks = hooks(), hintStorage = memoryStorage([['aps_workbench_handler_v1', '甲']]); let hintReads = 0;
+  hintStorage.onAccess = (method, _key, phase) => { if (method === 'getItem' && phase === 'before') hintReads++; };
+  const hintWindow = { localStorage: hintStorage, addEventListener() {}, removeEventListener() {} };
   const hintContext = vm.createContext({ window: hintWindow, React: hintHooks.React });
   const hintMemory = load(hintContext, 'WorkbenchHandlerMemory.js'), renderHint = value => hintHooks.render(() => hintMemory.useHint(value));
   assert(renderHint('甲').includes('预填')); hintHooks.flush(); assert.equal(renderHint('乙'), ''); assert.equal(hintReads, 1);
   assert.equal(hintMemory.write('乙').saved, true); assert(renderHint('乙').includes('预填')); assert.equal(hintReads, 1);
-  failHandlerWrite = true; assert.equal(hintMemory.write('丙').saved, false); assert(renderHint('丙').includes('无法写入')); assert.equal(hintReads, 1); hintHooks.unmount();
+  hintStorage.failSet = new Error('disk'); assert.equal(hintMemory.write('丙').saved, false); assert(renderHint('丙').includes('无法写入')); assert.equal(hintReads, 1); hintHooks.unmount();
 
+  }
+
+  {
+    // 工序搜索按工序号、名称、工种共同过滤；工序号 0 是合法值（public_sequence 不保证为正），搜“0”必须能找到它（S05-12）。
+    const stageHooks = hooks();
+    const stageContext = vm.createContext({ window: {}, React: stageHooks.React, AbortController, __wbStubs: {
+      'ResourceControls.jsx': { Button: 'button', ErrorBox: 'error', Issues: 'issues', Search: 'search' },
+      'ResourceTables.jsx': { Pager: 'pager' }, 'WorkbenchReferences.jsx': { WorkbenchReference: 'reference' } } });
+    const Stage = load(stageContext, 'ProcessStageEditor.jsx');
+    const stageRows = [{ ref: 'r0', sequence: 0, label: '下料', op_type_label: '锯切' }, { ref: 'r5', sequence: 5, label: '车削', op_type_label: '车床' },
+      { ref: 'r10', sequence: 10, label: '铣削', op_type_label: null }];
+    const renderStage = () => stageHooks.render(() => Stage.usePage(stageRows));
+    let paging = renderStage(); stageHooks.flush();
+    assert.deepEqual(paging.rows.map(row => row.ref), ['r0', 'r5', 'r10']);
+    paging.setQuery('0'); paging = renderStage(); stageHooks.flush();
+    assert.deepEqual(paging.rows.map(row => row.ref), ['r0', 'r10'], '搜“0”命中工序号 0 与 10，工序号为 0 的行不漏掉');
+    paging.setQuery('锯'); paging = renderStage();
+    assert.deepEqual(paging.rows.map(row => row.ref), ['r0']);
+  }
+
+  {
+    // 路线草稿与最新资料在同一道工序上冲突：没逐项选完就继续，拦下并提示中文原因；选完才合并。
+    const RouteDraft = load(vm.createContext({ window: {} }), 'ProcessRouteDraft.js');
+    const merged = RouteDraft.merge([{ seq: '10', op_type_name: '车削' }], [{ seq: '10', op_type_name: '铣削' }], [{ seq: '10', op_type_name: '磨削' }]);
+    assert.deepEqual(Array.from(merged.conflicts, row => row.seq), ['10']);
+    assert.throws(() => RouteDraft.resolve(merged, {}), error => error.message === '请逐项选择冲突工序要保留的内容。');
+    assert.deepEqual(Array.from(RouteDraft.resolve(merged, { 10: 'latest' }), row => row.op_type_name), ['磨削']);
+
+    // 录入窗口把这条 kit 错误原样交给错误框，不再二次包装；界面显示的就是它的中文原文。
+    const entryHooks = hooks(), entryContext = vm.createContext({ window: {}, React: entryHooks.React, AbortController, DOMException, __wbStubs: {
+      'resource-contract.js': {}, 'ProcessContract.js': { previewBody: (mode, routeRaw) => ({ mode, route_raw: routeRaw }), preview: raw => raw },
+      'shared/session/query.js': { useQuery: () => ({ result: null, error: null, loading: false }) },
+      'ProcessStageEditor.jsx': { usePage: rows => ({ rows, page: { number: 1, size: 50 }, setNumber() {} }), Pager: 'pager', Review: 'review', Groups: 'groups' },
+      'ResourceControls.jsx': { Button: 'button', Modal: 'modal', ErrorBox: 'error', Issues: 'issues' },
+      'ResourceForms.jsx': { Feedback: 'feedback' }, 'WorkbenchTerms.js': { refresh_latest: '刷新最新资料' } } });
+    browser(entryContext, routeFetch({ 'POST /api/workbench/v1/process/*/route-preview': () => envelope({ operations: [{ sequence: 10, op_type_name: '铣削' }], diagnostics: [] }) }));
+    const References = load(entryContext, 'WorkbenchReferences.jsx'), RouteEntry = load(entryContext, 'ProcessRouteEntry.jsx');
+    const part = (label, snapshot) => ({ data: { ref: '7'.repeat(48), business_code: 'P-1', fields: { route_raw: '10: ' + label },
+      operations: [{ sequence: 10, label, status: 'active' }] }, meta: { snapshot_ref: snapshot } });
+    let entryProps = { result: part('车削', 'snapshot-1'), command: { locked: false, phase: 'idle', error: null }, onClose() {}, onDirty() {}, onRefresh() {} };
+    const renderEntry = () => entryHooks.render(() => RouteEntry(entryProps));
+    let entryTree = renderEntry(); entryHooks.flush();
+    find(entryTree, 'textarea').onChange({ target: { value: '10: 铣削' } }); renderEntry(); entryHooks.flush();
+    entryProps = { ...entryProps, result: part('磨削', 'snapshot-2') }; renderEntry(); entryHooks.flush(); entryTree = renderEntry();
+    find(entryTree, 'review').onAccept(); await answered(); renderEntry(); entryHooks.flush(); entryTree = renderEntry();
+    assert(find(entryTree, 'input', props => props.name === 'route-conflict-10'), '本地与最新资料都改了工序 10，要求逐项选择');
+    find(entryTree, 'review').onAccept(); entryTree = renderEntry();
+    const conflictError = find(entryTree, 'error', props => props.error).error;
+    assert(mod(entryContext, 'shared/contract/kit.js').isFailure(conflictError));
+    const box = References.WorkbenchError({ error: conflictError });
+    assert.deepEqual(box.props.children.flat(Infinity).filter(node => node && node.type === 'div').map(node => node.props.children.join('')),
+      ['请逐项选择冲突工序要保留的内容。']);
+    entryHooks.unmount();
+  }
+
+  {
+    // 各领域错误框都经 WorkbenchError：kit 错误显示原文，程序内部错误（TypeError 等）只显示本领域的中文兜底句，原文进折叠区。
+    const internal = new TypeError("Cannot read properties of undefined (reading 'data')");
+    const visibleText = element => {
+      if (!element || typeof element !== 'object') return element ? [String(element)] : [];
+      if (typeof element.type === 'function') return visibleText(element.type(element.props));
+      if (element.props.className === 'wb-ref') return [];
+      return element.props.children.flat(Infinity).flatMap(visibleText);
+    };
+    const fresh = (React, stubs) => vm.createContext({ window: {}, React, AbortController, DOMException, __wbStubs: stubs });
+    const displayHooks = hooks();
+    const candidateContext = fresh(displayHooks.React, { 'ResourceControls.jsx': { default: { Button: 'button' }, Pager: 'pager' }, 'RunCandidateModel.js': {},
+      'RunGenerationContract.js': {}, 'WorkbenchFormat.js': {}, 'WorkbenchTerms.js': {}, 'RunOperationEffort.jsx': 'effort', 'GanttRouteList.jsx': 'route-list' });
+    const CandidateControls = load(candidateContext, 'RunCandidateControls.jsx'), candidateKit = mod(candidateContext, 'shared/contract/kit.js');
+    assert.deepEqual(visibleText(CandidateControls.ErrorBox({ error: internal })), ['候选方案读取失败，请刷新后重试。']);
+    assert.deepEqual(visibleText(CandidateControls.ErrorBox({ error: candidateKit.failure('候选方案已经不在本次排产里。') })), ['候选方案已经不在本次排产里。']);
+    assert.equal(CandidateControls.ErrorBox({ error: null }).type(CandidateControls.ErrorBox({ error: null }).props), null);
+    const historyContext = fresh(displayHooks.React, { 'ResourceControls.jsx': { default: { Button: 'button' }, Pager: 'pager' }, 'RunHistoryAPI.js': {},
+      'WorkbenchTerms.js': {}, 'WorkbenchFormat.js': {}, 'RunGenerationContract.js': {} });
+    const HistoryControls = load(historyContext, 'RunHistoryControls.jsx'), historyKit = mod(historyContext, 'shared/contract/kit.js');
+    assert.deepEqual(visibleText(HistoryControls.ErrorBox({ error: internal })), ['排产记录读取失败，请重新查询。']);
+    assert.deepEqual(visibleText(HistoryControls.ErrorBox({ error: historyKit.failure('数据已更新，请刷新后重试。', { code: 'snapshot_stale' }) })),
+      ['数据已更新。', '数据已更新，请刷新后重试。']);
+    assert.equal(HistoryControls.ErrorBox({ error: null }), null);
+    const decisionContext = fresh(displayHooks.React, { 'DecisionHistoryAPI.js': {}, 'ResourceControls.jsx': { default: {}, EmptyState: 'empty', Pager: 'pager' },
+      'WorkbenchFormat.js': {}, 'WorkbenchTerms.js': { run_statuses: {} }, 'WorkbenchDatePickerModel.js': {}, 'shared/network/transport.js': {},
+      'shared/session/query.js': { useQuery() {} }, 'WorkbenchPageContext.jsx': {}, 'DecisionHistoryChart.jsx': 'chart', 'DecisionHistoryDetails.jsx': 'details' });
+    const DecisionViews = load(decisionContext, 'DecisionHistoryWorkspace.jsx').DecisionHistoryViews, decisionKit = mod(decisionContext, 'shared/contract/kit.js');
+    assert.deepEqual(visibleText(DecisionViews.ErrorBox({ error: internal })), ['历史资料读取失败，请重新查询。']);
+    assert.deepEqual(visibleText(DecisionViews.ErrorBox({ error: decisionKit.failure('历史资料已更新，请刷新后重试。', { code: 'snapshot_stale' }) })),
+      ['历史资料已更新。', '历史资料已更新，请刷新后重试。']);
+    // 恢复维护全屏页把状态查询错误交给系统维护的 ErrorBox（经 WorkbenchError），不再自己上屏 message。
+    const restoreContext = vm.createContext({ window: {}, document: { body: {} }, React: displayHooks.React, ReactDOM: { createPortal: tree => tree }, AbortController, DOMException, __wbStubs: {
+      'SystemMaintenanceControls.jsx': { Button: 'button', ErrorBox: 'error' }, 'SystemMaintenanceAPI.js': {}, 'WorkbenchReferences.jsx': { WorkbenchReference: 'reference' },
+      'SystemRestoreStatus.js': { describe: () => ({ title: '系统维护', state: '维护停止', guidance: '请查询结果。', origin: '维护记录', uncertain: true }), hostLabels: { restart_required: '需要重启' } },
+      'WorkbenchFormat.js': {}, 'WorkbenchTerms.js': { actions: { query_result: '查询结果' }, download_started: name => name } } });
+    const RestorePanel = load(restoreContext, 'SystemRestorePanel.jsx');
+    const restoreTree = displayHooks.render(() => RestorePanel({ command: { host: { state: 'restart_required', request_key: null }, intent: null, hostError: internal, storageError: null,
+      error: null, result: null, busy: false, hostBusy: false, selection: null, lookup() {}, inspectHost() {} }, theme: 'light', onSetTheme() {} }));
+    assert.strictEqual(find(restoreTree, 'error').error, internal);
+    assert(!JSON.stringify(restoreTree).includes(internal.message), 'The restore screen never puts the raw message on screen itself');
+    const baselineContext = fresh(displayHooks.React, { 'RunCandidateModel.js': {}, 'RunBaselineModel.js': {}, 'RunCandidateControls.jsx': { Button: 'button' },
+      'WorkbenchControls.jsx': {}, 'shared/session/query.js': { useQuery() {} }, 'RunBaselineAPI.js': {}, 'WorkbenchFormat.js': {} });
+    const BaselineControls = load(baselineContext, 'RunBaselineControls.jsx');
+    const baselinePanel = displayHooks.render(() => BaselineControls.Panel({ state: { enabled: true, busy: false, error: internal, result: null, retry() {} }, rows: [] }));
+    assert.deepEqual(visibleText(baselinePanel).filter(text => text !== '刷新原安排'), ['排产时的原安排读取失败，请点「刷新原安排」重试。']);
+
+    // 保存已确认、随后刷新失败：原错误对象原样交给错误框，“已保存”这层意思由调用侧固定的中文说明给出，不把原文拼进新错误。
+    const detailHooks = hooks(), detailCommand = { phase: 'idle', intent: { kind: 'process_import', request_key: 'process-' + '1'.repeat(48) }, locked: false, result: null, error: null, reset: () => true };
+    // 网络应答是合法的零件详情，程序内部错误出在之后的契约解析里。
+    const detailContext = fresh(detailHooks.React, { 'ProcessContract.js': { detail: () => { throw internal; } }, 'shared/session/command-session.js': { useCommand: () => detailCommand },
+      'shared/session/query.js': { useQuery: () => ({ result: null, error: null, loading: false, reload() {} }) }, 'ProcessStageEditor.jsx': { location: () => ({}) },
+      'ResourceControls.jsx': { Button: 'button', Modal: 'modal', ErrorBox: 'error', Issues: 'issues' }, 'WorkbenchReferences.jsx': { WorkbenchReference: 'reference' },
+      'ProcessControls.jsx': 'file-buttons', 'ProcessActionContract.js': { restored: () => ({ fileKind: 'route' }) }, 'WorkbenchTerms.js': { outcomes: { pending: action => action } },
+      'WorkbenchGuards.js': { useDirtyGuard() {} }, 'ResourceForms.jsx': { Feedback: 'feedback' }, 'ProcessSourceEditor.jsx': 'source-editor', 'ProcessHoursEditor.jsx': 'hours-editor',
+      'ProcessRouteEntry.jsx': 'route-entry', 'ProcessFileActions.jsx': 'file-actions' });
+    browser(detailContext, routeFetch({ 'GET /api/workbench/v1/entities/part/*': call => envelope({ ref: call.path.split('/').at(-1) }) }));
+    const ProcessDetail = load(detailContext, 'ProcessDetail.jsx');
+    const detailProps = { partRef: '7'.repeat(48), onClose() {}, onCommitted() {} };
+    const renderDetail = () => detailHooks.render(() => { const session = ProcessDetail(detailProps); return session.type(session.props); });
+    renderDetail(); detailHooks.flush(); let detailTree = renderDetail();
+    find(detailTree, 'file-actions').onCommitted({ receipt_ref: 'r'.repeat(32) }); await answered(); detailTree = renderDetail();
+    assert.strictEqual(find(detailTree, 'error', props => props.error).error, internal);
+    assert(find(detailTree, 'p', props => props.role === 'alert' && props.children.join('').startsWith('文件已保存，但刷新零件详情失败。')));
+    detailHooks.unmount();
+
+    const materialHooks = hooks(), committedError = new TypeError('Failed to fetch');
+    const materialCommand = { phase: 'done', intent: { kind: 'material_import', request_key: 'material-' + '2'.repeat(48), category: null }, locked: false, error: null,
+      result: { data: { summary: {} } }, reset: () => true };
+    const materialContext = fresh(materialHooks.React, { 'shared/session/command-session.js': { useCommand: () => materialCommand },
+      'shared/session/query.js': { useQuery: () => ({ result: null, error: null, loading: false }) }, 'ResourceMaterialContract.js': {},
+      'ResourceControls.jsx': { Button: 'button', Modal: 'modal', Icon: 'icon', ErrorBox: 'error', Issues: 'issues' }, 'ResourceForms.jsx': { Feedback: 'feedback' },
+      'ResourceMaterialPreview.jsx': 'preview', 'WorkbenchGuards.js': { useDirtyGuard: () => 'guard' }, 'WorkbenchFormat.js': {}, 'WorkbenchTerms.js': {},
+      'WorkbenchReferences.jsx': { WorkbenchReference: 'reference' } });
+    const MaterialActions = load(materialContext, 'ResourceMaterialActions.jsx');
+    const materialProps = { mode: 'import', request: { scope: {}, refs: [] }, onClose() {}, onCommitted: async () => { throw committedError; } };
+    const renderMaterial = () => materialHooks.render(() => { const flow = MaterialActions(materialProps); return flow.type(flow.props); });
+    renderMaterial(); materialHooks.flush(); await turns(); const materialTree = renderMaterial();
+    assert.strictEqual(find(materialTree, 'error', props => props.error).error, committedError);
+    assert(find(materialTree, 'p', props => props.role === 'alert' && props.children.join('') === '已保存，但列表刷新失败。'));
+    materialHooks.unmount();
   }
 
   {
   // Column typing stays local until Enter or the existing search button submits it.
   const filterHooks = hooks(), facetRequests = [], filterModel = { rule: () => ({ mode: 'exclude', values: [] }), signature: JSON.stringify,
     toolbarScope: () => ({}), facets: value => value, selection: value => value, groupState: () => ({ all: false, mixed: false }) };
-  const facetResponse = () => ({ meta: { snapshot_ref: 'facet' }, warnings: [], data: { options: [], page: { number: 1, pages: 1, total: 0 } } });
-  const filterAdapter = { async facets(_, query) { facetRequests.push(query); return facetResponse(); }, async facetSelection() { return { warnings: [], data: { keys: [] } }; } };
-  const filterStubs = { 'ResourceTableFilterModel.js': filterModel, 'resource-contract.js': { failure: message => Error(message) }, 'ResourceControls.jsx': { Button: 'button', ErrorBox: 'error' } };
+  // 设备列的列值走真实资源 API 与 transport，只替换网络应答。
+  const facetPath = 'POST /api/workbench/v1/entities/machine/facets', keysPath = 'POST /api/workbench/v1/entities/machine/facet-selection';
+  const filterRoutes = { [facetPath]: call => { facetRequests.push(call.body); return envelope({ options: [], page: { number: 1, pages: 1, total: 0 } }, { snapshot_ref: 'f'.repeat(32) }); },
+    [keysPath]: () => envelope({ keys: [] }) };
+  const filterStubs = { 'ResourceTableFilterModel.js': filterModel, 'ResourceControls.jsx': { Button: 'button', ErrorBox: 'error' } };
   const filterContext = vm.createContext({ window: {}, __wbStubs: filterStubs, React: { ...filterHooks.React, useLayoutEffect() {} }, ReactDOM: { createPortal: tree => tree }, document: { body: {} }, AbortController });
-  const ResourceTableFilter = load(filterContext, 'ResourceTableFilter.jsx');
-  const filterProps = { column: { key: 'label', title: '名称' }, kind: 'machine', scope: {}, adapter: filterAdapter, owner: { closest: () => null }, onFilter() {}, onClose() {} };
+  browser(filterContext, routeFetch(filterRoutes)); const ResourceTableFilter = load(filterContext, 'ResourceTableFilter.jsx');
+  const filterProps = { column: { key: 'label', title: '名称' }, kind: 'machine', scope: {}, owner: { closest: () => null }, onFilter() {}, onClose() {} };
   const renderFilter = () => filterHooks.render(() => ResourceTableFilter(filterProps));
-  let filterTree = renderFilter(); filterHooks.flush(); await turns(); filterTree = renderFilter();
+  let filterTree = renderFilter(); filterHooks.flush(); await answered(); filterTree = renderFilter();
   assert.equal(facetRequests.length, 1);
   find(filterTree, 'input', props => props['aria-label'] === '搜索名称列值').onChange({ target: { value: '待提交' } });
-  filterTree = renderFilter(); filterHooks.flush(); await turns(); assert.equal(facetRequests.length, 1);
+  filterTree = renderFilter(); filterHooks.flush(); await answered(); assert.equal(facetRequests.length, 1);
   for (const composition of [{ isComposing: true }, { keyCode: 229 }, { nativeEvent: { isComposing: true } }, { nativeEvent: { keyCode: 229 } }]) {
     find(filterTree, 'input', props => props['aria-label'] === '搜索名称列值').onKeyDown({ key: 'Enter', ...composition,
       preventDefault() { assert.fail('IME confirmation keeps its default input behavior'); }, stopPropagation() { assert.fail('IME confirmation is not intercepted as search submission'); } });
-    filterTree = renderFilter(); filterHooks.flush(); await turns(); assert.equal(facetRequests.length, 1, 'IME confirmation does not submit the unconfirmed query');
+    filterTree = renderFilter(); filterHooks.flush(); await answered(); assert.equal(facetRequests.length, 1, 'IME confirmation does not submit the unconfirmed query');
   }
   find(filterTree, 'input', props => props['aria-label'] === '搜索名称列值').onKeyDown({ key: 'Enter', preventDefault() {}, stopPropagation() {} });
-  filterTree = renderFilter(); filterHooks.flush(); await turns(); filterTree = renderFilter();
+  filterTree = renderFilter(); filterHooks.flush(); await answered(); filterTree = renderFilter();
   assert.equal(facetRequests.length, 2); assert.equal(facetRequests.at(-1).query, '待提交');
   find(filterTree, 'input', props => props['aria-label'] === '搜索名称列值').onChange({ target: { value: '按钮提交' } }); filterTree = renderFilter();
-  find(filterTree, 'button', props => props['aria-label'] === '搜索列值').onClick(); renderFilter(); filterHooks.flush(); await turns();
+  find(filterTree, 'button', props => props['aria-label'] === '搜索列值').onClick(); renderFilter(); filterHooks.flush(); await answered();
   assert.equal(facetRequests.length, 3); assert.equal(facetRequests.at(-1).query, '按钮提交'); filterHooks.unmount();
+
+  // 列值和全部匹配值都走真实 useQuery，只替换数据来源的应答：换查询时中止旧读取、丢弃晚到的应答；读取出错后重试期间不闪回旧列值；
+  // 同一份全部匹配值在勾选让它暂时用不上、再用上时沿用已读结果，不重读。
+  const heldHooks = hooks(), heldFacets = [], heldKeys = [];
+  const held = (list, call) => new Promise(done => list.push({ query: call.body, signal: call.signal, resolve: value => done(json(value)),
+    reject: message => done(json(failure('read_failed', message), 500)) }));
+  const heldRoutes = { [facetPath]: call => held(heldFacets, call), [keysPath]: call => held(heldKeys, call) };
+  const heldModel = { ...filterModel, rule: value => value || { mode: 'exclude', values: [] } };
+  const heldContext = vm.createContext({ window: {}, __wbStubs: { ...filterStubs, 'ResourceTableFilterModel.js': heldModel },
+    React: { ...heldHooks.React, useLayoutEffect() {} }, ReactDOM: { createPortal: tree => tree }, document: { body: {} }, AbortController });
+  browser(heldContext, routeFetch(heldRoutes)); const HeldFilter = load(heldContext, 'ResourceTableFilter.jsx');
+  let heldProps = { ...filterProps, filter: null };
+  const renderHeld = () => { const tree = heldHooks.render(() => HeldFilter(heldProps)); heldHooks.flush(); return tree; };
+  // 列值应答落地后的那一轮渲染才发出全部匹配值读取，再等一轮它的请求才到网络桩。
+  const settleHeld = async () => { for (let i = 0; i < 2; i++) { renderHeld(); await answered(); } return renderHeld(); };
+  const facetPage = (key, snapshot) => envelope({ options: [{ key, label: key, count: 1 }], page: { number: 1, pages: 1, total: 1 } }, { snapshot_ref: snapshot.padEnd(32, '0') });
+  const heldOption = (tree, key) => find(tree, 'label', props => props['data-facet-key'] === key);
+  const heldSearch = async text => {
+    const tree = renderHeld(); find(tree, 'input', props => props['aria-label'] === '搜索名称列值').onChange({ target: { value: text } });
+    find(renderHeld(), 'button', props => props['aria-label'] === '搜索列值').onClick(); return settleHeld();
+  };
+  let heldTree = await settleHeld(); assert.equal(heldFacets.length, 1);
+  heldTree = await heldSearch('新'); assert.equal(heldFacets.length, 2);
+  assert.equal(heldFacets[0].signal.aborted, true, '换查询中止上一轮列值读取');
+  heldFacets[0].resolve(facetPage('旧值', 'facet-old')); heldTree = await settleHeld();
+  assert.equal(heldOption(heldTree, '旧值'), null, '晚到的上一轮列值不上屏');
+  assert(find(heldTree, 'p', props => props.role === 'status' && props.children.includes('正在读取列值…')));
+  heldFacets[1].resolve(facetPage('新值', 'facet-new')); heldTree = await settleHeld();
+  assert(heldOption(heldTree, '新值')); assert.equal(heldKeys.length, 1, '有搜索词时读全部匹配值');
+  heldTree = await heldSearch('出错'); heldFacets[2].reject('列值读取失败'); heldTree = await settleHeld();
+  assert.equal(heldOption(heldTree, '新值'), null); assert.equal(find(heldTree, 'error', props => props.error).error.message, '列值读取失败');
+  find(heldTree, 'button', props => props.children.flat(Infinity).includes('回到第 1 页重新查询')).onClick(); heldTree = await settleHeld();
+  assert.equal(heldFacets.length, 4); assert.equal(heldOption(heldTree, '新值'), null, '重试期间不闪回出错前的列值');
+  assert.equal(find(heldTree, 'error', props => props.error), null);
+  heldHooks.unmount(); assert.equal(heldFacets[3].signal.aborted, true);
+  const keyHooks = hooks(); heldFacets.length = 0; heldKeys.length = 0;
+  heldContext.React = { ...keyHooks.React, useLayoutEffect() {} };
+  const renderKeys = () => { const tree = keyHooks.render(() => HeldFilter(heldProps)); keyHooks.flush(); return tree; };
+  const settleKeys = async () => { for (let i = 0; i < 2; i++) { renderKeys(); await answered(); } return renderKeys(); };
+  const picked = { mode: 'include', values: ['甲'] };
+  heldProps = { ...heldProps, filter: picked }; await settleKeys(); heldFacets[0].resolve(facetPage('甲', 'facet-keys')); await settleKeys();
+  assert.equal(heldKeys.length, 1, '勾了值才读全部匹配值'); heldKeys[0].resolve(envelope({ keys: ['甲'] })); await settleKeys();
+  heldProps = { ...heldProps, filter: null }; await settleKeys();
+  heldProps = { ...heldProps, filter: picked }; let keyTree = await settleKeys();
+  assert.equal(heldKeys.length, 1, '同一份全部匹配值暂时用不上再用上，沿用已读结果不重读');
+  assert.equal(find(keyTree, 'span', props => props.role === 'status' && props.children.includes('正在读取全部匹配值…')), null);
+  keyHooks.unmount();
 
   // Choice search typing reuses original relation labels, selection sets and option catalog indices until submitted.
   const choiceHooks = hooks(); let choiceOriginalReads = 0, choiceEntityMaps = 0, choiceRequests = 0;
@@ -1193,21 +1699,20 @@ async function main() {
     }
   };
   const choiceStubs = {
-    'resource-contract.js': { object: value => value !== null && typeof value === 'object' && !Array.isArray(value), fieldErrors: () => [], message: () => '' },
+    'resource-contract.js': { object: value => value !== null && typeof value === 'object' && !Array.isArray(value), fieldErrors: () => [] },
     'shared/ui/icons.jsx': { iconNodes: { search: [['circle', { cx: 11, cy: 11, r: 8 }]] } },
     'shared/ui/Button.jsx': { TransferIcon: 'transfer-icon' },
     'WorkbenchReferences.jsx': { WorkbenchError: 'workbench-error' }, 'WorkbenchFormat.js': { number: String }
   };
   const choiceContext = vm.createContext({ window: {}, __wbStubs: choiceStubs, React: choiceHooks.React, AbortController, DOMException, queueMicrotask });
+  // 选项读取走真实资源 API 与 transport；应答体沿用 choiceEntities 这个数组本身，才能数出输入时有没有从应答重建选项。
+  browser(choiceContext, routeFetch({ 'GET /api/workbench/v1/entities/op_type': () => {
+    choiceRequests++;
+    const response = json({}); response.json = async () => envelope({ entities: choiceEntities, page: { number: 1, pages: 1, total: 2, size: 50 } }, { snapshot_ref: 'c'.repeat(32) });
+    return response;
+  } }));
   load(choiceContext, 'shared/session/query.js'); const ChoiceResourceControls = load(choiceContext, 'ResourceControls.jsx');
-  const choiceAdapter = {
-    async choices() {
-      choiceRequests++;
-      return { meta: { snapshot_ref: 'choice-snapshot' }, data: { entities: choiceEntities, page: { number: 1, pages: 1, total: 2, size: 50 } } };
-    }
-  };
   const choiceProps = {
-    adapter: choiceAdapter,
     field: { key: 'skill_refs', label: '可做工种', kind: 'op_type', category: 'internal', multiple: true },
     value: [choiceRefA, choiceMissingRef],
     original: choiceOriginal,
@@ -1217,7 +1722,7 @@ async function main() {
   for (let i = 0; i < 4; i++) {
     choiceTree = choiceHooks.render(() => ChoiceResourceControls.Choice(choiceProps));
     choiceHooks.flush();
-    await turns();
+    await answered();
   }
   assert.equal(choiceRequests, 1);
   const originalReadsBeforeTyping = choiceOriginalReads, entityMapsBeforeTyping = choiceEntityMaps;
@@ -1234,15 +1739,18 @@ async function main() {
   // New operation types read the saved entity only; the create context was already loaded.
   const createHooks = hooks(); let savedDetails = 0, savedLists = 0, committed = 0;
   const createCommand = { phase: 'done', locked: false, reset: () => true, intent: { kind: 'op_type', action: 'create' }, result: { result: 'committed', receipt_ref: 'created' } };
-  const createStubs = { 'resource-contract.js': { resultRef: () => 'new-type', failure: message => Error(message) },
+  const newTypeRef = '5'.repeat(48);
+  const createStubs = { 'resource-contract.js': { resultRef: () => newTypeRef },
     'shared/session/command-session.js': { useCommand: () => createCommand },
     'shared/session/query.js': { useQuery: () => ({ result: { data: { create_context: {} }, meta: {} } }) },
     'ResourceControls.jsx': { Button: 'button', Modal: 'modal', ErrorBox: 'error' }, 'ResourceForms.jsx': 'resource-form' };
   const createContext = vm.createContext({ window: {}, __wbStubs: createStubs, React: createHooks.React, AbortController });
+  browser(createContext, routeFetch({ 'GET /api/workbench/v1/entities/op_type/*': call => { savedDetails++; return envelope({ ref: call.path.split('/').at(-1) }); },
+    'GET /api/workbench/v1/entities/op_type': () => { savedLists++; return envelope({ entities: [], page: { number: 1, size: 20, total: 0 } }); } }));
   const ProcessOpTypeCreate = load(createContext, 'ProcessOpTypeCreate.jsx');
-  const createProps = { adapter: { async detail() { savedDetails++; return { data: { ref: 'new-type' } }; }, async list() { savedLists++; } }, onClose() {}, onCommitted() { committed++; } };
+  const createProps = { onClose() {}, onCommitted() { committed++; } };
   const renderCreate = () => createHooks.render(() => ProcessOpTypeCreate(createProps));
-  renderCreate(); createHooks.flush(); renderCreate(); createHooks.flush(); await turns();
+  renderCreate(); createHooks.flush(); renderCreate(); createHooks.flush(); await answered();
   const created = renderCreate(); assert.equal(created.props.refreshState.done, true); assert.deepEqual([savedDetails, savedLists, committed], [1, 0, 1]); createHooks.unmount();
   }
 
@@ -1260,9 +1768,11 @@ async function main() {
     'WorkbenchGuards.js': { useDirtyGuard: () => 'bulk-guard' }, 'WorkbenchPageContext.jsx': { useSnapshot() {} }, 'WorkbenchControls.jsx': { Pager: 'pager' },
     'ResourceForms.jsx': { Feedback: 'feedback' }, 'BatchForms.jsx': { BaseEditor: 'base-editor', Preview: 'preview' }, 'BatchDetail.jsx': 'batch-detail', 'BatchTable.jsx': 'batch-table',
     'BatchOperationEditor.jsx': 'operation-editor', 'BatchMaterialEditor.jsx': 'material-editor', 'BatchFiles.jsx': 'batch-files' };
-  const BatchWorkspace = load(vm.createContext({ window: {}, __wbStubs: batchStubs, React: batchHooks.React, AbortController }), 'BatchWorkspace.jsx');
-  const batchAdapter = {};
-  const renderBatch = () => { const tree = batchHooks.render(() => BatchWorkspace({ adapter: batchAdapter, initialContext: {}, onNav: null })); batchHooks.flush(); return tree; };
+  let previews = 0;
+  const batchContext = vm.createContext({ window: {}, __wbStubs: batchStubs, React: batchHooks.React, AbortController });
+  browser(batchContext, routeFetch({ 'POST /api/workbench/v1/entities/batch/bulk-preview': () => { previews++; return envelope({ operation: 'batch.bulk_confirm' }); } }));
+  const BatchWorkspace = load(batchContext, 'BatchWorkspace.jsx');
+  const renderBatch = () => { const tree = batchHooks.render(() => BatchWorkspace({ initialContext: {}, onNav: null })); batchHooks.flush(); return tree; };
   const commandDialogs = tree => ['base-editor', 'material-editor', 'operation-editor', 'batch-files'].filter(type => find(tree, type));
   let batchTree = renderBatch();
   find(batchTree, 'button', props => props.children.includes('新增批次')).onClick(); batchTree = renderBatch();
@@ -1287,15 +1797,13 @@ async function main() {
   // RF10-02: The preview entry (delete, copy, sync, bulk edit), export and bulk edit also reset the previous command first. A failed reset
   // sends no preview and opens nothing; after a successful reset the dialogs receive the idle command, so the old receipt is never replayed
   // into the preview and the old done state no longer locks the export.
-  let previews = 0;
   batchStubs['BatchContract.js'].preview = result => result.data;
-  batchAdapter.preview = async () => { previews++; return { data: { operation: 'batch.bulk_confirm' } }; };
   const oldReceipt = () => Object.assign(batchCommand, { phase: 'done', intent: { kind: 'batch', action: 'update' }, error: undefined,
     result: { result: 'committed', receipt_ref: 'old', data: {} } });
   oldReceipt();
   batchCommand.reset = () => { resets++; if (resetOk) Object.assign(batchCommand, { phase: 'idle', intent: null, result: undefined }); return resetOk; };
   resets = 0; resetOk = false; batchTree = renderBatch();
-  find(batchTree, 'batch-detail').onDelete({ ref: 'batch-ref' }); await turns(); batchTree = renderBatch();
+  find(batchTree, 'batch-detail').onDelete({ ref: 'batch-ref' }); await answered(); batchTree = renderBatch();
   assert.equal(resets, 1, 'Deleting from the detail resets the previous command before previewing');
   assert.equal(previews, 0, 'A failed reset sends no preview');
   assert.equal(find(batchTree, 'preview'), null, 'A failed reset opens no preview dialog');
@@ -1307,7 +1815,7 @@ async function main() {
   assert.equal(find(batchTree, 'batch-files'), null, 'A failed reset opens no export dialog');
   assert.equal(find(batchTree, 'modal', props => props.title === '批量修改批次'), null, 'A failed reset opens no bulk edit dialog');
   resetOk = true;
-  find(batchTree, 'batch-table').onDelete({ ref: 'batch-ref' }); await turns(); batchTree = renderBatch();
+  find(batchTree, 'batch-table').onDelete({ ref: 'batch-ref' }); await answered(); batchTree = renderBatch();
   const previewDialog = find(batchTree, 'preview');
   assert.equal(previews, 1, 'A successful reset sends the preview');
   assert(previewDialog && previewDialog.command.phase === 'idle' && previewDialog.command.result === undefined,
@@ -1328,7 +1836,7 @@ async function main() {
   let actualGraphBuilds = 0;
   const actualFailure = Object.assign(Error('现场实际甘特数据超过读取容量，请缩小范围。'), { code: 'query_too_large', status: 413 });
   const actualWindow = {};
-  const actualStubs = { 'resource-contract.js': { failure: message => Error(message) }, 'FieldContract.js': { quantityReasons: {}, states: { partial: '部分报工' }, date: String, quantity: value => String(value), batchLimit: 5000 },
+  const actualStubs = { 'FieldContract.js': { quantityReasons: {}, states: { partial: '部分报工' }, date: String, quantity: value => String(value) },
     'ResourceControls.jsx': { Button: 'button', ErrorBox: 'error', Modal: 'modal' }, 'ActualGanttAPI.js': {},
     'WorkbenchTerms.js': { current_official: '当前正式计划', data_as_of: String, plan_version: String }, 'WorkbenchPageContext.jsx': { useSnapshot() {} }, 'WorkbenchCaption.jsx': { useCaption() {} },
     'WorkbenchControls.jsx': { EmptyState: 'empty' }, 'GanttPresentation.js': { axis: () => ({ ticks: [] }) }, 'GanttPresentationUI.jsx': { Axis: 'axis' },
@@ -1336,7 +1844,7 @@ async function main() {
     'GanttGraphLayer.jsx': { Controls: 'graph-controls', Lines: 'graph-lines' }, 'ActualGanttRows.jsx': 'actual-rows' };
   const actualContext = vm.createContext({ window: actualWindow, __wbStubs: actualStubs, React: actualHooks.React, AbortController, cancelAnimationFrame() {} });
   for (const name of ['WorkbenchFormat.js', 'PointContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'ActualGanttModel.js', 'ActualGanttWindow.js', 'ActualGanttContract.js', 'ActualGanttControls.jsx']) load(actualContext, name);
-  const ActualModel = mod(actualContext, 'ActualGanttModel.js'), ActualControls = mod(actualContext, 'ActualGanttControls.jsx');
+  const ActualModel = mod(actualContext, 'ActualGanttModel.js'), ActualControls = mod(actualContext, 'ActualGanttControls.jsx'), ActualHours = mod(actualContext, 'shared/hours.js');
   {
     let gapArrayGets = 0, gapElementReads = 0;
     const rawGaps = ['缺开工时间', '缺完成数量', '缺有效工时'].map(text => ({ get message() { gapElementReads++; return text; } }));
@@ -1386,8 +1894,18 @@ async function main() {
       },
     });
     const validPayload = makeWorkspacePayload({});
-    assert.strictEqual(ActualContract.workspace(validPayload, contractQuery), validPayload,
+    assert.equal(JSON.stringify(ActualContract.workspace(validPayload, contractQuery)), JSON.stringify(validPayload),
       'Unordered batch_ids preserving whitespace and fullwidth commas must pass ActualGanttContract.workspace');
+    // The contract admits each report's exact hours text once into a new result; the response itself is not rewritten.
+    const unavailableItem = { task: {}, execution: null };
+    const hoursPayload = text => ({ ...validPayload, data: { ...validPayload.data, items: [
+      { task: {}, execution: { reports: [{ report_ref: 'r'.repeat(48), effective_processing_hours_exact: text }] } }, unavailableItem] } });
+    const sent = hoursPayload('0.5'), admitted = ActualContract.workspace(sent, contractQuery);
+    assert.deepEqual([admitted.data.items[0].execution.reports[0].effective_processing_hours_exact.coefficient, admitted.data.items[0].execution.reports[0].effective_processing_hours_exact.scale], [BigInt(5), 1]);
+    assert.equal(sent.data.items[0].execution.reports[0].effective_processing_hours_exact, '0.5');
+    assert.strictEqual(admitted.data.items[1], unavailableItem, 'Items without an execution ledger pass unchanged');
+    assert.strictEqual(ActualContract.workspace(hoursPayload(null), contractQuery).data.items[0].execution.reports[0].effective_processing_hours_exact, null);
+    for (const text of ['1.50', '1e-7']) assert.throws(() => ActualContract.workspace(hoursPayload(text), contractQuery), /读到的报工工时格式不对/);
     for (const mismatch of [
       { kind: 'plan_gantt' },
       { source: 'demo' },
@@ -1491,7 +2009,7 @@ async function main() {
   const navigationItem = { task: navigationTask, deviation: { complete: false, finish_late: false, unclosed: false, forecast_late: false },
     execution: { execution_state: 'partial', known_completed_quantity: 0, remaining_quantity: 10, confirmed_finish: null, data_gaps: [],
       reports: [{ report_ref: 'e'.repeat(48), report_no: 'RG-SEARCH-42', actual_start: navigationTask.start, actual_end: navigationTask.end,
-        actual_machine_ref: reportedMachine, actual_operator_ref: reportedOperator, effective_processing_hours: 1 }],
+        actual_machine_ref: reportedMachine, actual_operator_ref: reportedOperator, effective_processing_hours: 1, effective_processing_hours_exact: ActualHours.parseHours('1') }],
       remaining_plan: { start: '2026-10-12T12:00:00', end: '2026-10-12T14:00:00', machine_ref: otherResource, operator_ref: null } } };
   actualStubs['ActualGanttAPI.js'].load = async input => ({ meta: { as_of: '2026-10-12T12:00:00', snapshot_ref: 'navigation-snapshot' }, data: {
       scope: input, plan: { plan_ref: actualPlan, display_name: '正式计划', kind: 'official', is_current_official: true, version: 1 },
@@ -1529,18 +2047,8 @@ async function main() {
     assert.equal(fieldTarget.operation_ref, navigationTask.operation_ref, query + ' preserves the operation locator');
     assert.equal(fieldTarget.scope.query, query);
   }
-  // Actual reads up to 10000 batches but field accepts FieldContract.batchLimit; a larger range stays here with a notice instead of navigating.
-  const manyBatches = Array.from({ length: 5001 }, (_, index) => 'B' + index), eventsBeforeLimit = navigationEvents.length;
-  const navigationNoticeText = () => { const notice = find(navigationTree, 'p', props => props.className === 'fg-note' && props.role === 'status'); return notice && notice.children.join(''); };
-  find(navigationTree, ActualControls.Range).onApply({ plan_ref: actualPlan, batch_ids: manyBatches,
-    plan_finish_date_from: '2026-10-12', plan_finish_date_to: '2026-10-13' }); navigationTree = await renderNavigation();
-  find(navigationTree, 'button', props => props.children.includes('现场记录')).onClick(); navigationTree = await renderNavigation();
-  assert.equal(navigationEvents.length, eventsBeforeLimit, 'A range over the field batch limit does not navigate to field');
-  assert.equal(navigationNoticeText(), '现场记录最多按 5000 个批次查看，当前范围有 5001 个批次。请先缩小批次范围，再打开现场记录。');
-  assert.equal(find(navigationTree, ActualControls.Range).scope.batch_ids.length, 5001, 'The actual range keeps every batch');
   find(navigationTree, ActualControls.Range).onApply({ plan_ref: actualPlan, batch_ids: ['NONE'],
     plan_finish_date_from: '2026-10-13', plan_finish_date_to: '2026-10-14' }); navigationTree = await renderNavigation();
-  assert.equal(navigationNoticeText(), null, 'Applying a new range clears the field limit notice');
   fieldTarget = goField(); assert.equal(Object.prototype.hasOwnProperty.call(fieldTarget, 'task_ref'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(fieldTarget, 'operation_ref'), false);
   assert.equal(fieldTarget.return_to.context.task_ref, selectedRef); assert.equal(fieldTarget.scope.plan_finish_date_from, '2026-10-13');
@@ -1575,9 +2083,9 @@ async function main() {
   assert.deepEqual([toPlan.context.plan_ref, toPlan.context.range_start, toPlan.context.range_end, toPlan.context.selected_task_ref], [actualPlan, micro.range_start, micro.range_end, selectedRef]);
   assert.equal(toPlan.context.return_to.view, 'fieldgantt');
 
-  const formalReads = [], formalSnapshots = [], formalLinks = [];
+  const formalReads = [], formalSnapshots = [], formalLinks = []; let formalCatalog = null;
   const formalStubs = { 'RunJobAPI.js': {}, 'RunJobControls.jsx': { Button: 'button' },
-    'ResourceControls.jsx': { Button: 'button', ErrorBox: 'error', Issues: 'issues' }, 'PlanCatalogUI.jsx': { Catalog: 'catalog' },
+    'ResourceControls.jsx': { Button: 'button', ErrorBox: 'error', Issues: 'issues' }, 'PlanCatalogUI.jsx': { Catalog: 'catalog', useCatalog: options => { formalCatalog = options; return {}; } },
     'PlanDetailsUI.jsx': { TaskDetail: 'task-detail', ProjectionTables: 'projection-tables', Conflicts: 'conflicts', Facts: 'facts' },
     'PlanGantt.jsx': { default: 'plan-gantt', PlanGantt: 'plan-gantt', PlanGanttSource: 'plan-source' }, 'PlanExportUI.jsx': 'plan-export',
     'WorkbenchReferences.jsx': { default: 'reference', WorkbenchReference: 'reference' },
@@ -1585,7 +2093,7 @@ async function main() {
     'WorkbenchPageContext.jsx': { useSnapshot: (value, ready) => { if (ready) formalSnapshots.push(value); } }, 'WorkbenchCaption.jsx': { useCaption() {} }, 'WorkbenchControls.jsx': { EmptyState: 'empty' } };
   const formalContext = vm.createContext({ window: {}, __wbStubs: formalStubs, React: null, AbortController, DOMException });
   loadTransport(formalContext);
-  for (const name of ['resource-contract.js', 'shared/session/query.js', 'WorkbenchFormat.js', 'WorkbenchDatePickerModel.js', 'PointContract.js', 'GanttGraph.js',
+  for (const name of ['resource-contract.js', 'shared/session/query.js', 'shared/session/result-slice.js', 'WorkbenchFormat.js', 'WorkbenchDatePickerModel.js', 'PointContract.js', 'GanttGraph.js',
     'PlanContract.js', 'PlanGanttModel.js', 'PlanNavigation.js', 'RunHistoryAPI.js', 'DecisionHistoryAPI.js', 'SchedulingWorkspace.jsx']) load(formalContext, name);
   const FormalScheduling = mod(formalContext, 'SchedulingWorkspace.jsx'), FormalPlanContract = mod(formalContext, 'PlanContract.js');
   const FormalPlanWorkspace = load(formalContext, 'PlanWorkspace.jsx');
@@ -1599,7 +2107,7 @@ async function main() {
     plan_span: { start: '2026-10-12T00:00:00', end: '2026-10-13T00:00:00', end_inclusive: true }, task_count: tasks.length, tasks_complete: true, tasks,
     resources: [], provenance: {}, gantt_graph: unavailableGraph(), projections: { calendar: { resources: [] }, occupancy: { resources: [] },
       baseline: { state: 'unavailable' }, delivery_risks: { state: 'available', issues: [], items } } });
-  // Workspace-ownership check: the response validation is covered by plan_transport_probe; the read scope goes through the real workspaceScope.
+  // Workspace-ownership check: the response validation runs in plan_transport_probe, fed real backend DTOs by plan_transport_support.run_probe; the read scope goes through the real workspaceScope.
   stub(formalContext, { 'PlanAPI.js': { async workspace(planRef, scope) {
     formalReads.push(JSON.parse(JSON.stringify(FormalPlanContract.workspaceScope(planRef, scope))));
     return { warnings: [], meta: { snapshot_ref: 'formal-' + formalReads.length, as_of: '2026-10-12T12:00:00' }, data: { ...formalPlan,
@@ -1607,15 +2115,16 @@ async function main() {
       time_scope: scope.range_start ? { range_start: scope.range_start, range_end: scope.range_end } : { range_start: '2026-10-12T00:00:00', range_end: '2026-10-13T00:00:00' } } };
   } } });
   const openFormal = async initialContext => {
-    const formalHooks = hooks(); let center, work, session = null;
+    const formalHooks = hooks(), formalPage = planPage(formalContext, FormalPlanWorkspace); let center, work, session = null;
+    WorkbenchNavigation.admit(ruleBoot, 'gantt', initialContext);
     for (let index = 0; index < 4; index++) {
       formalContext.React = formalHooks.React;
-      center = FormalScheduling.PlanCenterWorkspace({ view: 'gantt', initialContext, onNavigate: (target, context) => formalLinks.push({ target, context }) });
+      center = FormalScheduling.PlanCenterWorkspace({ view: 'gantt', variant: WorkbenchNavigation.variant(ruleBoot, 'gantt', initialContext), initialContext, onNavigate: (target, context) => formalLinks.push({ target, context }) });
       work = find(center, FormalPlanWorkspace.PlanWorkspace);
-      if (work) { session = formalHooks.render(() => FormalPlanWorkspace.PlanWorkspaceSession(work)); formalHooks.flush(); }
+      if (work) { session = formalPage.render(work); formalPage.flush(); }
       await turns();
     }
-    formalHooks.unmount();
+    if (work) formalPage.unmount();
     return { center, work, session };
   };
   const formalButton = (work, label) => find(work.navigation, 'button', props => props.children.includes(label));
@@ -1683,15 +2192,22 @@ async function main() {
   // DashboardWorkspace.openTarget(n, current) opens a source no longer evaluated with only { return_to } because the server returns context: {}.
   const overviewReturn = { view: 'dashboard', context: { scope: { category: 'delivery', status: 'all', query: '', sort: 'subject', direction: 'asc', size: 20 }, tab: 'items', item_ref: formalRef(0xd1), history_page: 1 } };
   const readsBeforeOverview = formalReads.length, overview = await openFormal({ return_to: overviewReturn });
-  assert.equal(find(overview.session, 'catalog').autoSelect, false, 'The overview entry does not auto-select the current official plan');
+  assert.equal(formalCatalog.autoSelect, false, 'The overview entry does not auto-select the current official plan');
   assert.equal(formalReads.length, readsBeforeOverview);
   formalButton(overview.work, '返回').onClick(); assert.equal(formalLinks.at(-1).target, 'dashboard'); assert.strictEqual(formalLinks.at(-1).context, overviewReturn.context);
 
-  // The pre-fix actual gantt shape (task_ref + nested scope) may still sit in browser history: it is refused loudly, not half-read.
+  // The pre-fix actual gantt shape (task_ref + nested scope) may still sit in browser history: the navigation admission refuses it loudly, not half-read.
   const readsBeforeLegacy = formalReads.length;
-  const legacy = await openFormal({ plan_ref: actualPlan, task_ref: selectedRef, operation_ref: navigationTask.operation_ref, scope: { ...micro, batch_ids: [], query: '' }, return_to: toPlan.context.return_to });
-  assert.equal(legacy.work, null); assert.equal(formalReads.length, readsBeforeLegacy);
-  assert.equal(find(legacy.center, 'p', props => props.role === 'alert').children.join(''), '打开计划的定位信息无效，没有改选其他计划或工序。请从来源页面重新打开。');
+  await assert.rejects(openFormal({ plan_ref: actualPlan, task_ref: selectedRef, operation_ref: navigationTask.operation_ref, scope: { ...micro, batch_ids: [], query: '' }, return_to: toPlan.context.return_to }), invalidRestore);
+  assert.equal(formalReads.length, readsBeforeLegacy);
+  // Admitted keys with an invalid value still stop at the formal plan's value check, inside the plan page.
+  const badValue = await openFormal({ plan_ref: actualPlan, selected_task_ref: 'invalid' });
+  assert.equal(badValue.work, null); assert.equal(formalReads.length, readsBeforeLegacy);
+  // 定位错误经 WorkbenchError 显示：它是 kit 错误，界面显示的就是这句中文原文。
+  const { WorkbenchError: FormalErrorBox } = mod(formalContext, 'WorkbenchReferences.jsx'), formalError = find(badValue.center, FormalErrorBox);
+  assert(mod(formalContext, 'shared/contract/kit.js').isFailure(formalError.error));
+  assert.deepEqual(FormalErrorBox(formalError).props.children.flat(Infinity).filter(node => node && node.type === 'div').map(node => node.props.children.join('')),
+    ['打开计划的定位信息无效，没有改选其他计划或工序。请从来源页面重新打开。']);
   }
 
   // Hovering on ActualGanttWorkspace with 1,000 reports and details open reuses report options with 0 report_no reads.
@@ -1705,6 +2221,7 @@ async function main() {
       actual_end: '2026-10-12T08:05:00',
       completed_quantity: 1,
       effective_processing_hours: 0.1,
+      effective_processing_hours_exact: ActualHours.parseHours('0.1'),
       actual_machine_ref: actualResource,
       actual_operator_ref: plannedOperator,
       recorded_at: '2026-10-12T08:05:00',
@@ -1780,15 +2297,16 @@ async function main() {
   }
 
   // R19's actual parent retains overview facts while print/fit unmount the child.
-  const overviewParentHooks = hooks(), overviewThemes = [], overviewResizes = [], fills = [], pointXs = [], planWidths = [], overviewSteps = [];
-  let overviewHooks = null, cssWidth = 200.2, cssHeight = 16, binBuilds = 0, overviewTimeReads = 0, printChange, primary = 'light', printing = false;
+  // The plan Gantt and its Overview child are two instances on one host; a pass that no longer renders Overview unmounts it.
+  const overviewPage = hooks(), overviewThemes = [], overviewResizes = [], fills = [], pointXs = [], planWidths = [], overviewSteps = [];
+  let cssWidth = 200.2, cssHeight = 16, binBuilds = 0, overviewTimeReads = 0, printChange, primary = 'light', printing = false;
   const overviewCtx = { clearRect() {}, setTransform() {}, fillRect(...args) { fills.push({ args, color: this.fillStyle }); }, strokeRect() {} };
   const canvas = { get clientWidth() { return Math.round(cssWidth); }, get clientHeight() { return Math.round(cssHeight); }, getBoundingClientRect: () => ({ width: cssWidth, height: cssHeight }), getContext: () => overviewCtx };
   const overviewWindow = { addEventListener() {}, removeEventListener() {}, devicePixelRatio: 1,
     matchMedia: () => ({ matches: false, addEventListener(_, fn) { printChange = fn; }, removeEventListener() {} }) };
   const overviewPalette = () => ({ primary: { edge: primary }, plan: {}, gold: 'gold' });
   const overviewStubs = { 'FieldContract.js': { quantityReasons: {} }, 'PointContract.js': { isPoint: task => task.event_kind === 'point' }, 'PointGanttModel.js': { paint: (_, x) => pointXs.push(x) } };
-  const overviewContext = vm.createContext({ window: overviewWindow, __wbStubs: overviewStubs, React: overviewParentHooks.React, document: { documentElement: {} },
+  const overviewContext = vm.createContext({ window: overviewWindow, __wbStubs: overviewStubs, React: overviewPage.React, document: { documentElement: {} },
     Float64Array: class extends Float64Array { constructor(length) { binBuilds++; super(length); } },
     MutationObserver: class { constructor(fn) { this.draw = fn; overviewThemes.push(this); } observe() {} disconnect() {} },
     ResizeObserver: class { constructor(fn) { this.draw = fn; overviewResizes.push(this); } observe() {} disconnect() {} },
@@ -1814,23 +2332,23 @@ async function main() {
   const OverviewGraph = mod(overviewContext, 'GanttGraph.js');
   let overviewParentData = { tasks: overviewTasks, task_count: overviewTasks.length, gantt_graph: {}, projections: { baseline: { state: 'absent' }, delivery_risks: { items: [] } } };
   let overviewProps, overviewMounts = 0;
-  const planRender = () => {
-    overviewContext.React = overviewParentHooks.React;
-    const tree = overviewParentHooks.render(() => {
-      const prepared = overviewParentHooks.React.useMemo(() => OverviewPlanModel.prepareTasks(overviewParentData), [overviewParentData]);
-      const graph = overviewParentHooks.React.useMemo(() => OverviewGraph.create(overviewParentData.gantt_graph), [overviewParentData]);
-      return OverviewPlanGantt({ data: overviewParentData, prepared, graph, asOf: planAsOf, selected: null, onSelect() {}, query: '', onQuery() {} });
-    });
-    find(tree, 'div', props => props.className === 'plan-board').ref.current = planBoard; overviewParentHooks.flush();
+  const idleSlice = { value: null, loading: false, error: null, request() {} };
+  const overviewMounted = () => overviewPage.instance('overview') !== undefined;
+  const planRender = () => overviewPage.pass(() => {
+    const tree = overviewPage.render(() => {
+      const prepared = overviewPage.React.useMemo(() => OverviewPlanModel.prepareTasks(overviewParentData), [overviewParentData]);
+      const graph = overviewPage.React.useMemo(() => OverviewGraph.create(overviewParentData.gantt_graph), [overviewParentData]);
+      return OverviewPlanGantt({ data: overviewParentData, prepared, graph, asOf: planAsOf, selected: null, onSelect() {}, query: '', onQuery() {}, baselineSlice: idleSlice, graphSlice: idleSlice });
+    }, 'plan');
+    find(tree, 'div', props => props.className === 'plan-board').ref.current = planBoard; overviewPage.flush();
     overviewProps = find(tree, OverviewCanvas.Overview);
     if (overviewProps) {
-      if (!overviewHooks) { overviewHooks = hooks(); overviewMounts++; }
-      overviewContext.React = overviewHooks.React;
-      const child = overviewHooks.render(() => OverviewCanvas.Overview(overviewProps));
-      find(child, 'canvas').ref.current = canvas; overviewHooks.flush();
-    } else if (overviewHooks) { overviewHooks.unmount(); overviewHooks = null; }
+      if (!overviewMounted()) overviewMounts++;
+      const child = overviewPage.render(() => OverviewCanvas.Overview(overviewProps), 'overview');
+      find(child, 'canvas').ref.current = canvas; overviewPage.flush();
+    }
     return tree;
-  };
+  });
   let overviewParentTree = planRender(); assert.equal(overviewProps, null); assert.equal(overviewTimeReads, 0); assert.equal(binBuilds, 0);
   find(overviewParentTree, 'plan-zoom').onZoom(2); overviewParentTree = planRender(); const parentOverviewCache = overviewProps.cache;
   assert.equal(binBuilds, 1); assert.equal(overviewTimeReads, 0); assert.equal(pointXs.at(-1), canvas.clientWidth);
@@ -1840,12 +2358,12 @@ async function main() {
   assert.equal(overviewProps.left, planBoard.scrollLeft);
   overviewWindow.devicePixelRatio = 2; printChange(); find(overviewParentTree, 'plan-zoom').onZoom(4); overviewParentTree = planRender();
   assert.equal(binBuilds, 1); assert.equal(overviewTimeReads, 0); assert.equal(fills.at(-1).color, 'dark');
-  printing = true; overviewParentTree = planRender(); assert.equal(overviewProps, null); assert.equal(overviewHooks, null); assert.equal(planWidths.at(-1), 640);
+  printing = true; overviewParentTree = planRender(); assert.equal(overviewProps, null); assert(!overviewMounted()); assert.equal(planWidths.at(-1), 640);
   printing = false; overviewParentTree = planRender(); assert.strictEqual(overviewProps.cache, parentOverviewCache);
   assert.equal(overviewMounts, 2); assert.deepEqual({ date_reads: overviewTimeReads, histogram_builds: binBuilds }, { date_reads: 0, histogram_builds: 1 },
     'A freshly mounted Overview after print reuses the parent-owned date facts and histogram');
   overviewSteps.push({ phase: 'after_print_remount', date_reads: overviewTimeReads, histogram_builds: binBuilds });
-  find(overviewParentTree, 'plan-zoom').onFit(); overviewParentTree = planRender(); assert.equal(overviewHooks, null);
+  find(overviewParentTree, 'plan-zoom').onFit(); overviewParentTree = planRender(); assert(!overviewMounted());
   find(overviewParentTree, 'plan-zoom').onZoom(2); overviewParentTree = planRender(); assert.strictEqual(overviewProps.cache, parentOverviewCache);
   assert.equal(overviewMounts, 3); assert.equal(overviewTimeReads, 0); assert.equal(binBuilds, 1);
   overviewSteps.push({ phase: 'after_fit_remount', date_reads: overviewTimeReads, histogram_builds: binBuilds });
@@ -1857,7 +2375,7 @@ async function main() {
   overviewSteps.push({ phase: 'hidden_new_tasks', date_reads: overviewTimeReads, histogram_builds: binBuilds });
   printing = false; planRender(); assert.equal(overviewMounts, 4); assert.equal(overviewTimeReads, 0); assert.equal(binBuilds, 3);
   overviewSteps.push({ phase: 'display_new_tasks', date_reads: overviewTimeReads, histogram_builds: binBuilds });
-  overviewHooks.unmount(); overviewHooks = null; overviewParentHooks.unmount();
+  overviewPage.unmount();
 
   // Conflict membership is prepared only for the displayed page, in original task order.
   const conflictHooks = hooks(); let conflictSegmentReads = 0, conflictMemberChecks = 0;
@@ -1941,8 +2459,7 @@ async function main() {
       number: query.locate_batch_ref ? Math.floor(40 / query.size) + 1 : query.page, size: query.size, total: 60, pages: Math.ceil(60 / query.size) } } };
   } };
   const sectionContext = vm.createContext({ window: {}, __wbStubs: sectionStubs, React: sectionHooks.React, AbortController, DOMException });
-  const SectionSession = load(sectionContext, 'shared/session/query.js');
-  stub(sectionContext, { 'DashboardSession.js': { useRead: (...args) => SectionSession.useQuery(...args) } });
+  load(sectionContext, 'shared/session/query.js');
   const DashboardAnalysisPanels = load(sectionContext, 'DashboardAnalysisPanels.jsx');
   let sectionBatch = null;
   const renderSection = () => sectionHooks.render(() => DashboardAnalysisPanels.Section({ section: 'timeline', planRef: 'plan',
@@ -1995,8 +2512,8 @@ async function main() {
   locateBoard.clientWidth = 1100; onLocateResize(); renderLocate(); locateHooks.flush(); assert.equal(locateBoard.scrollTop, 777, '缩放和尺寸变化保留用户垂直滚动');
   locateHooks.unmount();
 
-  // An unrestricted trial keeps its scope, resource names and row preparation on hover/scroll.
-  const trialGanttHooks = hooks(); let trialFilters = 0, trialNames = 0, trialBatchSets = 0, trialBatchChecks = 0;
+  // An unrestricted trial keeps its scope, resource names, row preparation and parsed times on hover/scroll.
+  const trialGanttHooks = hooks(); let trialFilters = 0, trialNames = 0, trialBatchSets = 0, trialBatchChecks = 0; const trialLineWidths = [];
   class TrialBatchSet extends Set { constructor(values) { super(values); trialBatchSets++; } has(value) { trialBatchChecks++; return super.has(value); } }
   const trialTasks = [8, 9].map((hour, index) => ({ task_ref: 'task-' + index, batch_ref: 'batch', batch_id: 'B1', sequence: index + 1, process_label: '加工',
     start: '2026-10-12T0' + hour + ':00:00', end: '2026-10-12T' + String(hour + 1).padStart(2, '0') + ':00:00', machine_ref: 'machine', operator_ref: null, issues: [], quantity: 1, batch_quantity: 1, piece_id: null }));
@@ -2009,14 +2526,15 @@ async function main() {
   const trialValues = { mode: 'machine', baseline: false, only_changed: false, query: '' }, trialPreferencePatches = [];
   const trialGanttStubs = { 'TrialControls.jsx': { Button: 'button', Tabs: 'tabs', Pager: 'pager', timeLabel: String, number: String },
     'ResourceControls.jsx': { TimelineZoom: 'zoom' }, 'TrialViewState.js': { useView: () => ({ value: trialValues, change(patch) { trialPreferencePatches.push(patch); Object.assign(trialValues, patch); return true; } }), Notice: 'notice' },
-    'GanttPresentationUI.jsx': { useExpanded: () => ({ expanded: false }), Axis: 'axis' }, 'GanttPresentation.js': { axis: () => ({ ticks: [] }), taskLines: () => ({ primary: '加工', secondary: '' }) },
+    'GanttPresentationUI.jsx': { useExpanded: () => ({ expanded: false }), Axis: 'axis' }, 'GanttPresentation.js': { axis: () => ({ ticks: [] }),
+      taskLines: (fields, mode, width) => { trialLineWidths.push(width); return { primary: '加工', secondary: '' }; } },
     'PointContract.js': { isPoint: task => task.event_kind === 'point' }, 'PointGantt.jsx': { Marker: 'point' }, 'FieldContract.js': { quantityReasons: {} } };
-  const trialGanttContext = vm.createContext({ window: {}, __wbStubs: trialGanttStubs, trialRowSorts: 0, React: trialGanttHooks.React, Set: TrialBatchSet, innerWidth: 1280, innerHeight: 800,
+  const trialGanttContext = vm.createContext({ window: {}, __wbStubs: trialGanttStubs, trialRowSorts: 0, trialParses: 0, React: trialGanttHooks.React, Set: TrialBatchSet, innerWidth: 1280, innerHeight: 800,
     ResizeObserver: class { observe() {} disconnect() {} } });
   load(trialGanttContext, 'PlanGanttModel.js'); const TrialGantt = load(trialGanttContext, 'TrialGantt.jsx');
   vm.runInContext(`const rowSort = Array.prototype.sort; Array.prototype.sort = function (compare) {
     if (this[0] && this[0].t) trialRowSorts++; return rowSort.call(this, compare);
-  };`, trialGanttContext);
+  }; const parseDate = Date.parse; Date.parse = function (text) { trialParses++; return parseDate.call(this, text); };`, trialGanttContext);
   let trialSelected = 'point';
   trialBatchSets = 0; trialBatchChecks = 0;
   const trialGanttRender = () => trialGanttHooks.render(() => TrialGantt({ data: trialGanttData, selected: trialSelected, onSelect() {}, detailsOpen: false, onToggleDetails() {} }));
@@ -2027,10 +2545,14 @@ async function main() {
   trialGanttHooks.flush(); trialGanttTree = trialGanttRender();
   find(trialGanttTree, 'input', props => props.type === 'checkbox' && props.checked).onChange({ target: { checked: false } }); trialGanttTree = trialGanttRender();
   const preparedTrialFilters = trialFilters, preparedTrialRows = trialGanttContext.trialRowSorts;
-  find(trialGanttTree, 'point').onHover({ clientX: 200, clientY: 200 }); trialGanttTree = trialGanttRender();
-  assert(find(trialGanttTree, 'div', props => props.role === 'tooltip'));
+  assert.equal(trialGanttContext.trialParses, 12, 'Each current and original start/end is parsed once for the task list');
+  trialLineWidths.length = 0; find(trialGanttTree, 'point').onHover({ clientX: 200, clientY: 200 }); trialGanttTree = trialGanttRender();
+  assert(find(trialGanttTree, 'div', props => props.role === 'tooltip')); const hoverWidths = trialLineWidths.splice(0); assert.equal(hoverWidths.length, 2);
+  find(trialGanttTree, 'div', props => props.className === 'tt-ticks').ref.current.clientWidth = 2000;
   find(trialGanttTree, 'div', props => props.className === 'tt-board').onScroll(); trialGanttTree = trialGanttRender();
   assert.equal(trialFilters, preparedTrialFilters); assert.equal(trialGanttContext.trialRowSorts, preparedTrialRows); assert.equal(trialNames, 1);
+  assert.equal(trialGanttContext.trialParses, 12, 'Hover and scroll reuse the parsed times');
+  assert.deepEqual(trialLineWidths, hoverWidths.map(width => width * 2), 'Bar label density follows the newly measured chart width');
   const trialLimitLabel = find(trialGanttTree, 'label', props => props.children.includes('原显示范围'));
   trialLimitLabel.children.find(child => child && child.type === 'input').props.onChange({ target: { checked: true } }); trialGanttTree = trialGanttRender();
   assert.equal(trialBatchSets, 2); const scopedTrialChecks = trialBatchChecks;
@@ -2076,12 +2598,15 @@ async function main() {
     'ActualGanttModel.js': { ...ActualGanttModel.default, deadlines(item) { deadlineVisits++; return ActualGanttModel.deadlines(item); },
       wire() { assert.fail('Deadlines no longer convert an unused date'); }, tickStep: () => 1, tickLabel: String } };
   const toolbarContext = vm.createContext({ window: {}, __wbStubs: toolbarStubs, React: toolbarHooks.React }); const ToolbarActualControls = load(toolbarContext, 'ActualGanttControls.jsx');
-  const toolbarProps = { data: toolbarData, model: { groups: [], items: toolbarData.items, shownRefs: new Set(toolbarData.items.map(item => item.task.task_ref)) }, view: { mode: 'machine', query: '', late: 'all', collapsed: {}, selected: null }, width: 640, zoom: 1 };
+  const toolbarProps = { data: toolbarData, model: { groups: [], items: toolbarData.items, shownRefs: new Set(toolbarData.items.map(item => item.task.task_ref)) }, view: { mode: 'machine', query: '', late: 'all', collapsed: {}, selected: null }, width: 640, zoom: 1, exportReady: true };
   const toolbar = toolbarHooks.render(() => ToolbarActualControls.Toolbar(toolbarProps));
   toolbarHooks.render(() => ToolbarActualControls.Toolbar({ ...toolbarProps, width: 1000 })); assert.equal(deadlineVisits, 3);
   assert.deepEqual(find(toolbar, 'select').children.flat().map(option => option.props.children.join('')), ['全部工序 (3)', '已晚完成 (1)', '到期未确认完成 (2)', '剩余安排预计晚完成 (1)']);
+  assert.equal(find(toolbar, 'button', props => props.transfer === 'export').disabled, false);
+  const refreshingToolbar = toolbarHooks.render(() => ToolbarActualControls.Toolbar({ ...toolbarProps, exportReady: false }));
+  assert.equal(find(refreshingToolbar, 'button', props => props.transfer === 'export').disabled, true, '当前结果还没读回时导出不可点');
   // A first historical supplement preserves the selected original scope's
-  const fieldContext = vm.createContext({ window: {}, __wbStubs: { 'resource-contract.js': { failure: message => new Error(message) },
+  const fieldContext = vm.createContext({ window: {}, __wbStubs: {
     'WorkbenchTerms.js': { execution_states: {}, report_actions: {} }, 'WorkbenchFormat.js': {} } });
   load(fieldContext, 'WorkbenchFormat.js'); const contract = load(fieldContext, 'FieldContract.js'), field = load(fieldContext, 'FieldDraftModel.js');
   const currentTask = { task_ref: 'current-task', operation_ref: 'current-operation', plan_ref: 'current-plan',
@@ -2095,12 +2620,17 @@ async function main() {
   assert.equal(initialized.draft.actual_machine_ref, '');
   assert.equal(initialized.draft.actual_operator_ref, '');
   assert.equal(contract.input(initialized.draft, null, 'create').actual_end, '2030-01-01T08:00:00');
+  // 有效工时提交前只确认能解析成有限数（D6-6）；取值范围归后端，422 带字段路径标红。解析不了的才在本地标红。
+  const enteredHours = hours => contract.input({ ...initialized.draft, actual_start: '', actual_end: '', effective_processing_hours: hours }, null, 'create');
+  assert.equal(enteredHours('9007199254740992').effective_processing_hours, 9007199254740992);
+  assert.equal(enteredHours('-1').effective_processing_hours, -1);
+  for (const hours of ['abc', '1e309']) assert.throws(() => enteredHours(hours), /请核对标红的项/);
   const fieldHooks = hooks(); fieldContext.React = fieldHooks.React;
   stub(fieldContext, { 'FieldControls.jsx': { Button: 'button', ErrorBox: 'error', Feedback: 'feedback' }, 'ResourceControls.jsx': { Field: 'field', Choice: 'choice' } });
   const FieldEditorFields = load(fieldContext, 'FieldEditorFields.jsx'); load(fieldContext, 'FieldEditor.jsx');
-  const renderFieldInputs = (overrides = {}) => FieldEditorFields({
-    task: currentTask, record: null, action: 'create', adapter: {}, draft: initialized.draft, suggestions: {}, disabled: false, first: {}, change() {}, ...overrides
-  });
+  const renderFieldInputs = (overrides = {}) => fieldHooks.render(() => FieldEditorFields({
+    task: currentTask, record: null, action: 'create', draft: initialized.draft, suggestions: {}, disabled: false, first: {}, change() {}, ...overrides
+  }));
   const fieldInput = (tree, label) => find(tree, 'input', props => props['aria-label'] === label);
   const regularRecord = { completed_quantity: 0, actual_start: initialized.draft.actual_start, actual_end: initialized.draft.actual_end,
     effective_processing_hours: 1, actual_machine_ref: 'original-machine', actual_operator_ref: 'original-operator', remark: '原备注' };
@@ -2119,11 +2649,10 @@ async function main() {
     'resource-api.js': { create: () => ({}) } };
   const fieldWorkspaceContext = vm.createContext({ window: {}, __wbStubs: fieldWorkspaceStubs, React: fieldWorkspaceHooks.React, AbortController, DOMException });
   // FieldAPI binds its execution namespace at load; this workspace check replaces only its readView answer.
-  load(fieldWorkspaceContext, 'shared/session/command-session.js'); const FieldAPI = load(fieldWorkspaceContext, 'FieldAPI.js');
+  load(fieldWorkspaceContext, 'shared/session/command-session.js'); load(fieldWorkspaceContext, 'FieldAPI.js');
   stub(fieldWorkspaceContext, {
     'shared/session/command-session.js': { useCommand: () => fileCommand },
     'FieldAPI.js': {
-      ...FieldAPI,
       readView: async input => {
         fieldWorkspaceReads.push({ ...input });
         const { page, size, task_ref, operation_ref, snapshot_ref, ...scope } = input;
@@ -2167,26 +2696,31 @@ async function main() {
   // Every download runs through APSWorkbenchTransport.download: attachment, CSV magic bytes and a backend filename with its .csv suffix.
   const downloadDeadlines = [], downloadTimers = new Map(); let downloadTimerId = 0;
   const actualCsvName = '现场实际甘特-2026-10-26T101500.csv', csvBytes = [0xef, 0xbb, 0xbf, 0x61];
-  const downloadContext = vm.createContext({ window: {}, __wbStubs: { 'ActualGanttContract.js': { scope: value => value, transport: value => value } },
+  const downloadContext = vm.createContext({ window: {}, __wbStubs: { 'ActualGanttContract.js': { scope: value => value } },
     setTimeout(fn, delay) { downloadDeadlines.push(delay); const id = ++downloadTimerId; downloadTimers.set(id, fn); return id; },
     clearTimeout(id) { downloadTimers.delete(id); } });
   const downloadFetch = withTransport(downloadContext, call => file(Uint8Array.from(csvBytes), 'text/csv',
     { 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(call.path.endsWith('/actual-gantt/export') ? actualCsvName : 'export.csv') }));
   load(downloadContext, 'resource-contract.js'); const DownloadResourceAPI = load(downloadContext, 'resource-api.js'); const DownloadActualAPI = load(downloadContext, 'ActualGanttAPI.js');
-  const resourceDownloads = DownloadResourceAPI.create(), exportController = new AbortController();
+  const resourceDownloads = DownloadResourceAPI.forNamespace('resources'), exportController = new AbortController();
   await resourceDownloads.download('plans/plan/export', {}, exportController.signal);
   await resourceDownloads.download('execution/files/export', {}, exportController.signal, { timeout: 35000 });
   const actualExport = await DownloadActualAPI.export({ format: 'csv' }, exportController.signal);
   assert.equal(actualExport.filename, actualCsvName, 'The saved name is the backend Content-Disposition name');
   assert.deepEqual([...new Uint8Array(await actualExport.blob.arrayBuffer())], csvBytes);
   assert.deepEqual(downloadDeadlines, [20000, 35000, 60000]); assert.equal(downloadTimers.size, 0);
-  assert.equal(downloadFetch.calls.at(-1).url.href, 'http://127.0.0.1:8080/api/workbench/v1/actual-gantt/export?format=csv');
+  // The actual export scope travels in a POST body like its read, never in the query string.
+  const actualCall = downloadFetch.calls.at(-1);
+  assert.equal(actualCall.method, 'POST'); assert.equal(actualCall.url.href, 'http://127.0.0.1:8080/api/workbench/v1/actual-gantt/export');
+  assert.deepEqual(actualCall.body, { format: 'csv' }); assert.equal(actualCall.headers.Accept, 'text/csv,application/json');
   assert.equal(downloadFetch.calls.some(call => call.signal.aborted), false);
 
   // Collapsible Gantt route groups construct node cards on demand per open group and reset across piece/batch switches.
   {
-    const routeListRootHooks = hooks(), groupHooks = new Map(), detailReads = new Map(), selectedRefs = [];
-    let activeHooks = routeListRootHooks, dateFormats = 0;
+    // The route list and each group card it renders are separate instances on one host, identified by component and key;
+    // a group no longer rendered in a pass unmounts with its open state.
+    const routeListPage = hooks(), detailReads = new Map(), selectedRefs = [];
+    let dateFormats = 0;
     const ref = number => number.toString(16).padStart(48, '0');
     const detailKeys = new Set(['process_label', 'start', 'end']);
     const makeNode = (id, batch_id, piece_id, sequence, predIds = []) => {
@@ -2213,36 +2747,22 @@ async function main() {
       makeNode(7, 'B2', 'P2', 20, [6]),
       makeNode(8, 'B2', 'P3', 20, [6])
     ];
-    const routeListReact = new Proxy(routeListRootHooks.React, {
-      get(_target, prop) { return activeHooks.React[prop]; }
-    });
     const routeListStubs = {
       'ResourceControls.jsx': { Button: 'button' },
       'WorkbenchFormat.js': { dateTime: value => { dateFormats++; return String(value); } }
     };
-    const routeListContext = vm.createContext({ window: {}, __wbStubs: routeListStubs, React: routeListReact, Date, Map, Set, Number });
+    const routeListContext = vm.createContext({ window: {}, __wbStubs: routeListStubs, React: routeListPage.React, Date, Map, Set, Number });
     const RouteListGraph = load(routeListContext, 'GanttGraph.js'); const GanttRouteList = load(routeListContext, 'GanttRouteList.jsx');
     const graphIndex = RouteListGraph.create({
       state: 'available', reason: null, scope: 'full_plan', nodes, critical_task_refs: [], critical_edges: []
     });
     const loadedRefs = new Set(nodes.map(node => node.task_ref));
-    const expandRouteTree = (node, seenKeys) => {
+    const expandRouteTree = node => {
       if (!node || typeof node !== 'object') return node;
-      if (Array.isArray(node)) return node.map(child => expandRouteTree(child, seenKeys));
-      if (typeof node.type === 'function') {
-        const hookKey = node.type.name + ':' + node.props.key;
-        seenKeys.add(hookKey);
-        if (!groupHooks.has(hookKey)) groupHooks.set(hookKey, hooks());
-        const prevHooks = activeHooks;
-        activeHooks = groupHooks.get(hookKey);
-        try {
-          return expandRouteTree(activeHooks.render(() => node.type(node.props)), seenKeys);
-        } finally {
-          activeHooks = prevHooks;
-        }
-      }
+      if (Array.isArray(node)) return node.map(expandRouteTree);
+      if (typeof node.type === 'function') return expandRouteTree(routeListPage.render(() => node.type(node.props), node.type.name + ':' + node.props.key));
       if (!node.props || !node.props.children) return node;
-      return { ...node, props: { ...node.props, children: expandRouteTree(node.props.children, seenKeys) } };
+      return { ...node, props: { ...node.props, children: expandRouteTree(node.props.children) } };
     };
     const collectNodes = (node, match, out = []) => {
       if (!node || typeof node !== 'object') return out;
@@ -2251,16 +2771,9 @@ async function main() {
       if (node.props && node.props.children) collectNodes(node.props.children, match, out);
       return out;
     };
-    const renderRouteList = (targetRef, collapsible = true) => {
-      const seenKeys = new Set();
-      activeHooks = routeListRootHooks;
-      const raw = routeListRootHooks.render(() => GanttRouteList({
-        index: graphIndex, targetRef, loadedRefs, onSelect: taskRef => selectedRefs.push(taskRef), collapsible
-      }));
-      const expanded = expandRouteTree(raw, seenKeys);
-      for (const key of Array.from(groupHooks.keys())) if (!seenKeys.has(key)) groupHooks.delete(key);
-      return expanded;
-    };
+    const renderRouteList = (targetRef, collapsible = true) => routeListPage.pass(() => expandRouteTree(routeListPage.render(() => GanttRouteList({
+      index: graphIndex, targetRef, loadedRefs, onSelect: taskRef => selectedRefs.push(taskRef), collapsible
+    }))));
     const renderedTaskRefs = tree => collectNodes(tree, node => node.type === 'li' && node.props && node.props['data-gantt-route-node'])
       .map(node => node.props['data-gantt-route-node']);
     const groupDetail = (tree, label) => collectNodes(tree, node => node.type === 'details' && node.props && node.props.className === 'gantt-route-group')

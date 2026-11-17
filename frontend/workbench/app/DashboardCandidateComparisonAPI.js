@@ -1,37 +1,19 @@
-import DashboardContract from './DashboardContract.js';
-import RunCandidateAPI from './RunCandidateAPI.js';
-
-const C = DashboardContract, A = RunCandidateAPI;
+import C from './DashboardContract.js';
+import { localTime, object, ref48 } from './shared/contract/kit.js';
 
 function context(value) {
-  C.check(C.object(value) && Object.keys(value).every(key => ['run_ref', 'candidate_ref', 'range_start', 'range_end', 'batch_ref'].includes(key)), '候选方案比较条件无效，本页内容没有变化。请重新选择排产记录和候选方案。');
-  for (const key of ['run_ref', 'candidate_ref', 'batch_ref']) if (value[key] !== undefined) C.check(C.ref(value[key]));
+  C.check(object(value) && Object.keys(value).every(key => ['run_ref', 'candidate_ref', 'range_start', 'range_end', 'batch_ref'].includes(key)), '候选方案比较条件无效，本页内容没有变化。请重新选择排产记录和候选方案。');
+  for (const key of ['run_ref', 'candidate_ref', 'batch_ref']) if (value[key] !== undefined) C.check(ref48(value[key]));
   C.check(!value.candidate_ref || value.run_ref);
-  if (value.range_start !== undefined || value.range_end !== undefined) C.check(A.time(value.range_start) && A.time(value.range_end) && value.range_start < value.range_end);
+  if (value.range_start !== undefined || value.range_end !== undefined) C.check(localTime(value.range_start) && localTime(value.range_end) && value.range_start < value.range_end);
   return { ...value };
 }
 
 function rangeFor(input) {
   const start = input && input.start_date + 'T00:00:00', raw = input && input.end_date + 'T00:00:00';
-  C.check(A.time(start) && A.time(raw), '这次排产没有有效的提交时间范围，无法比较。请重新选择排产记录。');
+  C.check(localTime(start) && localTime(raw), '这次排产没有有效的提交时间范围，无法比较。请重新选择排产记录。');
   const end = new Date(Date.parse(raw + 'Z') + 86400000).toISOString().slice(0, 19);
-  C.check(A.time(end) && start < end); return { range_start: start, range_end: end };
-}
-
-function validate(payload, scope) {
-  const d = payload && payload.data;
-  C.check(C.object(d) && C.object(d.candidate) && C.object(d.generation) && C.object(d.baseline) && C.object(d.time_scope));
-  A.summary(d.candidate, scope.run_ref);
-  C.check(d.candidate.candidate_ref === scope.candidate_ref, '返回的候选与所选方案不一致，请重新选择。');
-  const g = d.generation, input = g.input;
-  C.check(g.run_ref === d.candidate.run_ref && (!scope.run_ref || g.run_ref === scope.run_ref)
-    && C.object(input) && Array.isArray(input.batch_refs));
-  const expected = scope.batch_ref ? [scope.batch_ref] : input.batch_refs.slice().sort();
-  const bounds = scope.range_start && scope.range_end ? { range_start: scope.range_start, range_end: scope.range_end } : rangeFor(input);
-  C.check(d.time_scope.range_start === bounds.range_start && d.time_scope.range_end === bounds.range_end
-    && d.batch_ref === (scope.batch_ref || null) && C.equal(d.batch_refs, expected)
-    && (d.baseline.available ? C.ref(d.baseline.baseline_ref) : d.baseline.baseline_ref === null));
-  return d;
+  C.check(localTime(end) && start < end); return { range_start: start, range_end: end };
 }
 
 async function read(value, signal) {
@@ -41,11 +23,13 @@ async function read(value, signal) {
     ...(scope.range_start && scope.range_end ? { range_start: scope.range_start, range_end: scope.range_end } : {}),
     ...(scope.batch_ref ? { batch_ref: scope.batch_ref } : {})
   };
-  const payload = await C.read('/api/workbench/v1/dashboard/candidates/' + scope.candidate_ref + '/comparison', query, signal);
-  validate(payload, scope); return payload;
+  const comparison = await C.read('/api/workbench/v1/dashboard/candidates/' + scope.candidate_ref + '/comparison', query, signal);
+  // 请求只带候选编号，候选属于哪次排产由后端按候选查出；比较条件里的排产记录来自页面选择或恢复的浏览位置，这里核对两者是同一次排产。
+  C.check(comparison.data.candidate.run_ref === scope.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
+  return comparison;
 }
 
-const DashboardCandidateComparisonAPI = { read, validate, context, rangeFor };
+const DashboardCandidateComparisonAPI = { read, context, rangeFor };
 
-export { DashboardCandidateComparisonAPI, read, validate, context, rangeFor };
+export { DashboardCandidateComparisonAPI, read, context, rangeFor };
 export default DashboardCandidateComparisonAPI;

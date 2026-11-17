@@ -1,3 +1,5 @@
+import { failure } from './shared/contract/kit.js';
+
 function serialize(rows) {
   if (rows.length === 1 && !rows[0].seq.trim() && !rows[0].op_type_name.trim()) return '';
   return rows.map(row => {
@@ -23,7 +25,7 @@ function merge(before, local, latest) {
   return { rows: rows.sort(order), conflicts: conflicts.sort(order) };
 }
 function resolve(merged, choices) {
-  if (merged.conflicts.some(row => !['local', 'latest'].includes(choices[row.seq]))) throw new Error('请逐项选择冲突工序要保留的内容。');
+  if (merged.conflicts.some(row => !['local', 'latest'].includes(choices[row.seq]))) throw failure('请逐项选择冲突工序要保留的内容。');
   return merged.rows.concat(merged.conflicts.map(row => row[choices[row.seq]]).filter(Boolean)).sort(order);
 }
 const ProcessRouteDraft = { serialize, fromEntity, merge, resolve };

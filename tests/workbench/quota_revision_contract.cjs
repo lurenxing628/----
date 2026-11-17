@@ -10,7 +10,7 @@ const window = {};
 const context = vm.createContext({
   window, React, setTimeout, clearTimeout, AbortController,
   __wbStubs: {
-    'ResourceControls.jsx': { Button: 'button', Modal: 'modal' },
+    'ResourceControls.jsx': { Button: 'button', Modal: 'modal', ErrorBox: 'error-box', Field: 'field' },
     'CalibrationControls.jsx': { text: String, amount: String, unitHours: value => value + ' 小时' },
     'WorkbenchFormat.js': { dateTime: String },
     'WorkbenchTerms.js': terms,
@@ -18,7 +18,6 @@ const context = vm.createContext({
     'resource-contract.js': {
       object: value => value !== null && typeof value === 'object' && !Array.isArray(value),
       own: (value, key) => Object.hasOwn(value, key),
-      failure: message => new Error(message),
       receipt: () => 'terminal',
     },
     'ProcessActions.js': { ref: value => /^[a-f0-9]{48}$/.test(value), token: value => typeof value === 'string' && !!value },
@@ -68,7 +67,8 @@ function text(node) { if (node == null || typeof node === 'boolean') return ''; 
   const closed = { view: true, export: true, adopt: false, lock: false };
   const backendRow = (old, suggested) => {
     const percent = (suggested - old) / old * 100;
-    return { ...suggestion, old_unit_hours: old, suggested_unit_hours: suggested, status: 'suggested', deviation_percent: percent,
+    const { sample_refs: _sr, sample_revisions: _srev, exclusion_reasons: _er, template_snapshot: _ts, ...listRow } = suggestion;
+    return { ...listRow, old_unit_hours: old, suggested_unit_hours: suggested, status: 'suggested', deviation_percent: percent,
       absolute_deviation_percent: Math.abs(percent), deviation_basis: 'relative', over_20_percent: Math.abs(percent) > 20, generated_at: generated,
       capabilities: closed, blocked_reasons: blockers, write_context: { write_token: null, expires_at: null, capabilities: [], blocked_reasons: blockers },
       snapshot_ref: listMeta.snapshot_ref, as_of: listMeta.as_of };
@@ -82,8 +82,9 @@ function text(node) { if (node == null || typeof node === 'boolean') return ''; 
   const readList = row => { routes['GET /api/workbench/v1/calibration'] = () => listView(row); return calibrationApi.readView({}); };
   assert.equal((await readList(backendRow(3, 6))).data.items[0].deviation_percent, 100);
   assert.equal((await readList(backendRow(12, 6))).data.items[0].deviation_percent, -50, 'A suggestion below the old quota keeps its negative deviation');
-  assert.equal(calibrationApi.validBinding(backendRow(-3, 6)), false, 'A negative old quota is rejected by validBinding');
-  assert.equal(calibrationApi.validBinding(backendRow(3, -6)), false, 'A negative suggested quota is rejected by validBinding');
+  assert.equal(calibrationApi.validBinding(suggestion), true);
+  assert.equal(calibrationApi.validBinding({ ...suggestion, old_unit_hours: -3 }), false, 'A negative old quota is rejected by validBinding');
+  assert.equal(calibrationApi.validBinding({ ...suggestion, suggested_unit_hours: -6 }), false, 'A negative suggested quota is rejected by validBinding');
   const session = { preview, draft: input, consent: true, busy: false };
   const dialog = text(adoptionControls.Dialog({ session, detail: { suggestion, samples }, stale: false }));
   assert(dialog.includes('以后可以继续人工修改、导入或采用新建议'));

@@ -2,6 +2,7 @@ import React from './shared/runtime/react.js';
 import P from './ProcessContract.js';
 import A from './ProcessActionContract.js';
 import S from './shared/session/command-session.js';
+import APSProcessAPI from './ProcessAPI.js';
 import { useQuery } from './shared/session/query.js';
 import { Button, Modal, ErrorBox, Issues } from './ResourceControls.jsx';
 import WorkbenchGuards from './WorkbenchGuards.js';
@@ -9,19 +10,19 @@ import WorkbenchTerms from './WorkbenchTerms.js';
 import ProcessActionPreview from './ProcessActionPreview.jsx';
 import { Feedback } from './ResourceForms.jsx';
 
-function ProcessCollectionActions({ adapter, request, onClose, onCommitted, onOpen, disabled = false }) {
+function ProcessCollectionActions({ request, onClose, onCommitted, onOpen, disabled = false }) {
   const [original] = React.useState(() => ({ ...request, scope: A.scope(request.scope) }));
   const [draft, setDraft] = React.useState({ business_code: '', label: '', route_raw: '', remark: '' });
   const [error, setError] = React.useState(null), [discard, setDiscard] = React.useState(false), [job, setJob] = React.useState(null);
   const [ack, setAck] = React.useState(false), [now, setNow] = React.useState(Date.now()), [opening, setOpening] = React.useState(false);
   const [context, setContext] = React.useState(original), [review, setReview] = React.useState(null), [reading, setReading] = React.useState(false);
-  const command = S.useCommand(adapter), notified = React.useRef(null), controller = React.useRef(null), formId = React.useId();
+  const command = S.useCommand(APSProcessAPI), notified = React.useRef(null), controller = React.useRef(null), formId = React.useId();
   const create = original.mode === 'create', recovery = original.recovery === true;
   let saved = null, receiptError = null;
   if (command.phase === 'done') { try { saved = A.receipt(command.result, command.intent, !create && !recovery ? original.refs : undefined); } catch (failure) { receiptError = failure; } }
   const visible = receiptError ? { ...command, phase: 'pending', locked: true, error: receiptError } : command;
   const done = !!saved, dirty = !done && Object.values(draft).some(value => value !== ''), locked = visible.locked || opening || reading;
-  const preview = useQuery(async signal => A.deletePreview(await adapter.bulkPreview(job.body, signal), original), [adapter, job], !!job);
+  const preview = useQuery(async signal => A.deletePreview(await APSProcessAPI.bulkPreview(job.body, signal), original), [job], { enabled: !!job });
   const result = preview.result, data = result && result.data;
   React.useEffect(() => () => { if (controller.current) controller.current.abort(); }, []);
   WorkbenchGuards.useDirtyGuard({ dirty, locked: visible.locked,
@@ -52,7 +53,7 @@ function ProcessCollectionActions({ adapter, request, onClose, onCommitted, onOp
     const abort = new AbortController(); controller.current = abort; setReading(true); setError(null);
     try {
       const scope = { ...original.scope, page: 1, size: original.page_size || 20 };
-      const value = P.list(await adapter.list('part', scope, abort.signal), scope);
+      const value = P.list(await APSProcessAPI.list('part', scope, abort.signal), scope);
       if (!abort.signal.aborted) setReview({ ...context, create_context: value.data.create_context, source: value.meta.source });
     } catch (failure) { if (!abort.signal.aborted) setError(failure); }
     finally { if (controller.current === abort) { controller.current = null; if (!abort.signal.aborted) setReading(false); } }
@@ -61,7 +62,7 @@ function ProcessCollectionActions({ adapter, request, onClose, onCommitted, onOp
     if (!saved || locked || controller.current) return;
     const abort = new AbortController(); controller.current = abort; setOpening(true); setError(null);
     try {
-      P.detail(await adapter.detail('part', saved.entity_ref, abort.signal), saved.entity_ref);
+      P.detail(await APSProcessAPI.detail('part', saved.entity_ref, abort.signal), saved.entity_ref);
       if (!abort.signal.aborted && command.reset()) onOpen(saved.entity_ref);
     } catch (failure) { if (!abort.signal.aborted) setError(failure); }
     finally { if (controller.current === abort) { controller.current = null; if (!abort.signal.aborted) setOpening(false); } }

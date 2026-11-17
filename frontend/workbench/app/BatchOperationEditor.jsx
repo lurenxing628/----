@@ -1,14 +1,15 @@
 import React from './shared/runtime/react.js';
 import B from './BatchContract.js';
-import C from './resource-contract.js';
+import APSBatchAPI from './BatchAPI.js';
 import { useQuery } from './shared/session/query.js';
 import { Button, Modal, ErrorBox, focusFirstInvalid } from './ResourceControls.jsx';
 import { Field } from './BatchControls.jsx';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import { Feedback } from './ResourceForms.jsx';
+import { failure } from './shared/contract/kit.js';
 
-function BatchOperationEditor({ adapter, entity, operation, source, command, onCommitted, onClose }) {
+function BatchOperationEditor({ entity, operation, source, command, onCommitted, onClose }) {
   const internal = operation.source === 'internal', merged = operation.external_group && operation.external_group.merge_mode === 'merged';
   const keys = internal ? ['machine_ref', 'operator_ref', 'setup_hours', 'unit_hours'] : ['supplier_ref'].concat(merged ? [] : ['external_days']);
   const original = Object.fromEntries(keys.map(key => [key, operation[key] == null ? '' : String(operation[key])]));
@@ -19,7 +20,7 @@ function BatchOperationEditor({ adapter, entity, operation, source, command, onC
     message: '批次工序补充资料尚未保存，离开会丢失本次填写。' });
   React.useEffect(() => { if (currentError) focusFirstInvalid(formElement.current); }, [currentError]);
   async function close() { if (!command.locked && await WorkbenchGuards.confirmLeave({ owner: guardOwner })) onClose(); }
-  const choices = useQuery(signal => adapter.operationChoices(entity.ref, operation.ref, signal), [adapter, entity.ref, operation.ref]);
+  const choices = useQuery(signal => APSBatchAPI.operationChoices(entity.ref, operation.ref, signal), [entity.ref, operation.ref]);
   const catalogs = choices.result && choices.result.data;
   const names = { machine_ref: '设备', operator_ref: '人员', supplier_ref: '供应商', setup_hours: '换型工时（小时）', unit_hours: '单件工时（小时）', external_days: '外协周期（天）' };
   // 资源下拉读的是 choices 里的列表键；这里显式写出对应关系，避免用字符串拼接拼出键名。
@@ -65,13 +66,14 @@ function BatchOperationEditor({ adapter, entity, operation, source, command, onC
         if (draft[key] === original[key]) continue;
         let value = draft[key] === '' ? null : draft[key];
         if (!key.endsWith('_ref') && value !== null) {
-          if (!/^\d+(?:\.\d+)?$/.test(value) || !Number.isFinite(Number(value)) || Number(value) > Number.MAX_SAFE_INTEGER || key === 'external_days' && Number(value) <= 0)
-            throw C.failure('请核对标红的项。', [{ path: 'fields.' + key, message: names[key] + '必须为有效数字。' }]);
+          // 提交前只确认能解析成有限数；工时与外协周期的取值范围由后端校验，422 带字段路径。
+          if (!value.trim() || !Number.isFinite(Number(value)))
+            throw failure('请核对标红的项。', { fields: [{ path: 'fields.' + key, message: names[key] + '必须为有效数字。' }] });
           value = Number(value);
         }
         fields[key] = value;
       }
-      if (!Object.keys(fields).length) throw C.failure('没有需要保存的变更。');
+      if (!Object.keys(fields).length) throw failure('没有需要保存的变更。');
       setError(null); await command.submit('batch', 'operation_update', entity.ref, entity.write_context, { operation_ref: operation.ref, fields });
     } catch (error) { setError(error); }
   }

@@ -1,26 +1,16 @@
 import React from './shared/runtime/react.js';
 import C from './resource-contract.js';
 import { useQuery } from './shared/session/query.js';
+import APSResourceAPI from './resource-api.js';
 import { Button, Icon, Issues, Status, EmptyState, Pager } from './ResourceControls.jsx';
+import { object } from './shared/contract/kit.js';
 
-const kinds = { machines: 'machine', operators: 'operator', suppliers: 'supplier' };
 const names = { machines: '关联设备', operators: '关联人员', suppliers: '关联供应商' };
-const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
 const count = value => Number.isSafeInteger(value) && value >= 0;
-function query(result, parent, scope) {
-  const meta = result.meta, data = result.data, page = data.page;
-  if (!C.object(data.basis)
-      || !ref(parent) || data.parent_ref !== parent || data.parent_kind !== 'op_type' || data.relation !== scope.relation
-      || !C.own(kinds, scope.relation) || !Array.isArray(data.entities)
-      || !C.object(page) || page.number !== scope.page || page.size !== scope.size
-      || scope.snapshot_ref && meta.snapshot_ref !== scope.snapshot_ref)
-    throw C.failure('读到的关联记录或翻页位置不对，请回到第 1 页重新查询。');
-  return result;
-}
-function Association({ adapter, entity, relation, onOpen }) {
+function Association({ entity, relation, onOpen }) {
   const [scope, setScope] = React.useState({ relation, query: '', page: 1, size: 5 });
   const [search, setSearch] = React.useState('');
-  const read = useQuery(async signal => query(await adapter.relations(entity.ref, scope, signal), entity.ref, scope), [adapter, entity.ref, scope]);
+  const read = useQuery(signal => APSResourceAPI.forNamespace('resources').relations(entity.ref, scope, signal), [entity.ref, scope]);
   const data = read.result && read.result.data, title = names[relation];
   function refresh() { setScope(current => ({ ...current, page: 1, snapshot_ref: undefined })); }
   function next(page) { setScope(current => ({ ...current, page, snapshot_ref: read.result.meta.snapshot_ref })); }
@@ -48,12 +38,12 @@ function Association({ adapter, entity, relation, onOpen }) {
       <Issues issues={read.result.warnings} /></>}
   </section>;
 }
-function ResourceDetailRelations({ adapter, entity, onOpen }) {
+function ResourceDetailRelations({ entity, onOpen }) {
   const relations = entity.fields.category === 'both' ? ['machines', 'operators', 'suppliers'] : entity.fields.category === 'internal' ? ['machines', 'operators'] : ['suppliers'];
-  const available = C.object(entity.availability);
+  const available = object(entity.availability);
   return <div className="wb-resource-relations">
     {['internal', 'both'].includes(entity.fields.category) && <p className="muted">当前可用数量：设备 {available ? entity.availability.machines : '未知'} 台 · 人员 {available ? entity.availability.operators : '未知'} 人。关联列表包含停用及资格待核对的记录。</p>}
-    {relations.map(relation => <Association key={relation} adapter={adapter} entity={entity} relation={relation} onOpen={onOpen} />)}
+    {relations.map(relation => <Association key={relation} entity={entity} relation={relation} onOpen={onOpen} />)}
   </div>;
 }
 

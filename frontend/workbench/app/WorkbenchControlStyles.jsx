@@ -1,9 +1,9 @@
 import React from './shared/runtime/react.js';
 import { iconNodes } from './shared/ui/icons.jsx';
 
+// name 只取下面 ICONS 里的固定图标名。
 function iconURL(name, color) {
   const nodes = iconNodes[name];
-  if (!nodes) throw new Error('control_icon_missing: ' + name);
   const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
   Object.entries({ viewBox: '0 0 24 24', fill: 'none', stroke: color, 'stroke-width': '1.75', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
     .forEach(([key, value]) => svg.setAttribute(key, value));
@@ -23,9 +23,9 @@ const ICONS = Object.freeze({
   '--wb-control-disclosure-icon': 'chevron-right'
 });
 
+// 浅色与深色主题都在随包样式里定义 --ui-info-muted（colors.css、dark.css）。
 function themedIcons() {
   const color = getComputedStyle(document.documentElement).getPropertyValue('--ui-info-muted').trim();
-  if (!color || !CSS.supports('color', color)) throw new Error('control_theme_color_unavailable');
   return Object.entries(ICONS).map(([name, icon]) => [name, iconURL(icon, color)]);
 }
 

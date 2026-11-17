@@ -3,18 +3,17 @@ import P from './ProcessContract.js';
 import M from './ResourceTableFilterModel.js';
 import APSResourceMaterial from './ResourceMaterialContract.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
+import { failure, object, ref48, token32 } from './shared/contract/kit.js';
 
-const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
-const token = value => typeof value === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value);
 const fields = { business_code: '图号', label: '零件名称', route_raw: '原始路线', route_parsed: '路线解析标记', remark: '备注', operation_count: '工序数量', external_group_count: '外协组数量' };
 function filters(value) {
   if (value === undefined) return {};
-  if (!C.object(value) || Object.keys(value).some(key => !P.columns.some(column => column.key === key) || !C.object(value[key]))) throw C.failure('工艺列筛选不完整，未改为全量范围。');
+  if (!object(value) || Object.keys(value).some(key => !P.columns.some(column => column.key === key) || !object(value[key]))) throw failure('工艺列筛选不完整，未改为全量范围。');
   return M.rules(value);
 }
 function scope(value = {}) {
-  if (!C.object(value) || value.query !== undefined && typeof value.query !== 'string'
-      || value.stage !== undefined && value.stage !== null && value.stage !== '' && !['route', 'source', 'hours', 'ready'].includes(value.stage)) throw C.failure('工艺列表范围不完整。');
+  if (!object(value) || value.query !== undefined && typeof value.query !== 'string'
+      || value.stage !== undefined && value.stage !== null && value.stage !== '' && !['route', 'source', 'hours', 'ready'].includes(value.stage)) throw failure('工艺列表范围不完整。');
   const result = { query: value.query || '', sort: P.ordering(value), column_filters: filters(value.column_filters) };
   if (value.stage) result.stage = value.stage;
   return result;
@@ -24,13 +23,13 @@ function facetScope(value, column) {
   return result;
 }
 function selection(refs, allowEmpty = false) {
-  if (!Array.isArray(refs) || !allowEmpty && !refs.length || !refs.every(ref) || new Set(refs).size !== refs.length)
-    throw C.failure('请重新选择零件；不能用图号代替原零件记录。');
+  if (!Array.isArray(refs) || !allowEmpty && !refs.length || !refs.every(ref48) || new Set(refs).size !== refs.length)
+    throw failure('请重新选择零件；不能用图号代替原零件记录。');
   return refs;
 }
 function listContext(request) {
-  if (!request || !token(request.snapshot_ref) || !Number.isSafeInteger(request.page_size) || request.page_size < 1 || request.page_size > 200)
-    throw C.failure('请先刷新零件列表，再操作。');
+  if (!request || !token32(request.snapshot_ref) || !Number.isSafeInteger(request.page_size) || request.page_size < 1 || request.page_size > 200)
+    throw failure('请先刷新零件列表，再操作。');
   return { scope: scope(request.scope), snapshot_ref: request.snapshot_ref, page_size: request.page_size };
 }
 function deleteBody(request) { return { ...listContext(request), refs: selection(request.refs) }; }
@@ -41,20 +40,20 @@ function createInput(draft) {
     if (!value[key]) errors.push({ path: key, message: key === 'business_code' ? '请填写图号。' : '请填写零件名称。' });
   });
   ['route_raw', 'remark'].forEach(key => { if (typeof draft[key] !== 'string') errors.push({ path: key, message: '请填写文字或留空。' }); else if (draft[key] !== '') value[key] = draft[key]; });
-  if (errors.length) throw C.failure('请核对新增零件的内容。', errors);
+  if (errors.length) throw failure('请核对新增零件的内容。', { fields: errors });
   return value;
 }
 function createReason(context, source) {
   if (source !== 'production') return '尚未读取可保存的零件资料。';
-  if (!C.object(context) || !token(context.write_token) || !C.object(context.capabilities) || context.capabilities['process.create'] !== true)
+  if (!object(context) || !token32(context.write_token) || !object(context.capabilities) || context.capabilities['process.create'] !== true)
     return '现在不能新增零件，请刷新列表后重试。';
   return '';
 }
 function deletePreview(raw, request) {
   const expected = selection(request.refs), result = APSResourceMaterial.create('part', '零件').preview(raw, 'bulk', expected);
   const d = result.data;
-  if (!C.object(d.scope) || M.signature(scope(d.scope)) !== M.signature(scope(request.scope)))
-    throw C.failure('删除预检与原筛选范围或业务列不一致，请重新预检。');
+  if (!object(d.scope) || M.signature(scope(d.scope)) !== M.signature(scope(request.scope)))
+    throw failure('删除预检与原筛选范围或业务列不一致，请重新预检。');
   return result;
 }
 function blocked(result, source, capability) {
@@ -68,35 +67,35 @@ function blocked(result, source, capability) {
   if (Date.now() >= Date.parse(data.expires_at)) return '预检已过期，请重新预检。';
   return '';
 }
+// 回执在命令发出之后核对：对不上时结果未知，本机待确认记录不能清。
+const UNKNOWN = { committed: 'unknown' };
 function receipt(result, intent, expectedRefs) {
-  if (!intent || C.receipt(result) !== 'terminal' || result.result !== 'committed') throw C.failure(WorkbenchTerms.outcomes.pending('操作'));
+  if (!intent || C.receipt(result) !== 'terminal' || result.result !== 'committed') throw failure(WorkbenchTerms.outcomes.pending('操作'), UNKNOWN);
   const data = result.data;
   if (intent.kind === 'process' && intent.action === 'create' && intent.ref === null) {
-    if (!ref(data.entity_ref) || typeof data.business_code !== 'string' || !data.business_code)
-      throw C.failure('新增结果不完整，没有自动打开这条零件。请点「查询结果」核对，不要重复提交。');
-    if (intent.input && data.business_code !== intent.input.business_code) throw C.failure('新增结果的图号和录入的不一致。请点「查询结果」核对，不要重复提交。');
-  } else if (intent.kind === 'process_bulk' && intent.action === 'confirm' && (intent.ref === undefined || token(intent.ref))) {
-    if (!Array.isArray(data.rows) || expectedRefs && (data.rows.length !== expectedRefs.length || data.rows.some((row, index) => !C.object(row) || row.entity_ref !== expectedRefs[index])))
-      throw C.failure('删除结果没有逐条对上，不算部分成功。请点「查询结果」核对，不要重复提交。');
-  } else throw C.failure('保存结果和当前操作不一致。请点「查询结果」核对，不要重复提交。');
+    if (!ref48(data.entity_ref) || typeof data.business_code !== 'string' || !data.business_code)
+      throw failure('新增结果不完整，没有自动打开这条零件。请点「查询结果」核对，不要重复提交。', UNKNOWN);
+    if (intent.input && data.business_code !== intent.input.business_code) throw failure('新增结果的图号和录入的不一致。请点「查询结果」核对，不要重复提交。', UNKNOWN);
+  } else if (intent.kind === 'process_bulk' && intent.action === 'confirm' && (intent.ref === undefined || token32(intent.ref))) {
+    if (!Array.isArray(data.rows) || expectedRefs && (data.rows.length !== expectedRefs.length || data.rows.some((row, index) => !object(row) || row.entity_ref !== expectedRefs[index])))
+      throw failure('删除结果没有逐条对上，不算部分成功。请点「查询结果」核对，不要重复提交。', UNKNOWN);
+  } else throw failure('保存结果和当前操作不一致。请点「查询结果」核对，不要重复提交。', UNKNOWN);
   return data;
 }
 function restored(intent) {
   if (!intent) return null;
   if (intent.kind === 'process' && intent.action === 'create' && intent.ref === null) return { mode: 'create', recovery: true };
-  if (intent.kind === 'process_bulk' && intent.action === 'confirm' && (intent.ref === undefined || token(intent.ref))) return { mode: 'bulk', recovery: true };
-  if (['process_route_import', 'process_hours_import'].includes(intent.kind) && intent.action === 'confirm' && (intent.ref === undefined || token(intent.ref)))
+  if (intent.kind === 'process_bulk' && intent.action === 'confirm' && (intent.ref === undefined || token32(intent.ref))) return { mode: 'bulk', recovery: true };
+  if (['process_route_import', 'process_hours_import'].includes(intent.kind) && intent.action === 'confirm' && (intent.ref === undefined || token32(intent.ref)))
     return { mode: 'import', fileKind: intent.kind === 'process_route_import' ? 'route' : 'hours', recovery: true };
-  if (intent.kind === 'process' && ref(intent.ref) && ['route_confirm', 'source_confirm', 'hours_confirm', 'groups_confirm'].includes(intent.action)) return { ref: intent.ref };
+  if (intent.kind === 'process' && ref48(intent.ref) && ['route_confirm', 'source_confirm', 'hours_confirm', 'groups_confirm'].includes(intent.action)) return { ref: intent.ref };
   return null;
 }
-const APSProcessActions = { fields, ref, token, scope, facetScope, filters, selection, listContext, deleteBody, createInput, createReason, deletePreview, blocked, receipt, restored };
+const APSProcessActions = { fields, scope, facetScope, filters, selection, listContext, deleteBody, createInput, createReason, deletePreview, blocked, receipt, restored };
 
 export {
   APSProcessActions,
   fields,
-  ref,
-  token,
   scope,
   facetScope,
   filters,

@@ -1,7 +1,8 @@
-import TrialContract from './TrialContract.js';
+import C from './TrialContract.js';
 import TrialAdoptionHistoryAPI from './TrialAdoptionHistoryAPI.js';
+import { ref48 } from './shared/contract/kit.js';
 
-const KEY = 'trialAdoptionHistory', C = TrialContract;
+const KEY = 'trialAdoptionHistory';
 const defaults = () => ({ tab: 'delivery', status: 'all', page: 1, size: 20 });
 function restore(scenarioRef) {
   const saved = history.state && history.state[KEY];
@@ -13,14 +14,14 @@ function restore(scenarioRef) {
   return saved;
 }
 function remember(scenarioRef, patch) {
-  if (!C.ref(scenarioRef)) return;
+  if (!ref48(scenarioRef)) return;
   let base;
   try { base = restore(scenarioRef); } catch (_) { base = defaults(); }
   const saved = { ...base, ...patch, scenario_ref: scenarioRef };
   history.replaceState({ ...history.state, [KEY]: saved }, '', location.href);
 }
 function openPlan(scenarioRef, planRef, navigate) {
-  C.check(C.ref(scenarioRef) && C.ref(planRef));
+  C.check(ref48(scenarioRef) && ref48(planRef));
   const entry = history.state && history.state.workbench;
   C.check(entry && entry.view === 'trial' && entry.context && entry.context.scenario_ref === scenarioRef,
     '无法打开正式计划，请刷新后重试。');

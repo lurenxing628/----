@@ -187,14 +187,11 @@ function SMIcon({ name }) {
   );
 }
 
+// kind 只由按钮写死的 import / export / template 给出。
 const transferIcons = { import: 'file-input', export: 'file-output', template: 'file-down' };
-function iconName(kind) {
-  if (!transferIcons[kind]) throw new Error('Unknown workbench transfer kind: ' + kind);
-  return transferIcons[kind];
-}
 
 function TransferIcon({ kind }) {
-  const name = iconName(kind), nodes = iconNodes[name];
+  const name = transferIcons[kind], nodes = iconNodes[name];
   return (
     <svg className="lucide wb-transfer-icon" data-wb-icon={name} viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden={true}>
       {nodes.map(([tag, attributes], index) => React.createElement(tag, { ...attributes, key: index }))}

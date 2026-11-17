@@ -1,31 +1,31 @@
 import React from './shared/runtime/react.js';
 import B from './BatchContract.js';
-import C from './resource-contract.js';
+import APSBatchAPI from './BatchAPI.js';
 import { useQuery } from './shared/session/query.js';
 import { Button, Modal, ErrorBox, EmptyState } from './ResourceControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 
-function ColumnFilter({ adapter, scope, field, onApply, onClose }) {
+// “齐套显示”列（单元格与列筛选值）显示的是有效齐套，其余列按字段原值显示。
+const cellLabel = (key, value) => key === 'ready_status' ? B.readyLabel(value) : B.label(key, value);
+function ColumnFilter({ scope, field, onApply, onClose }) {
   const [selected, setSelected] = React.useState(null), [search, setSearch] = React.useState('');
   const read = useQuery(async signal => {
-    const result = await adapter.facets(scope, field, signal), data = result.data;
-    if (data.field !== field || !Array.isArray(data.values) || result.meta.snapshot_ref !== scope.snapshot_ref) throw C.failure('列筛选与列表范围不一致。');
-    return result;
-  }, [adapter, scope, field]);
+    return B.facets(await APSBatchAPI.facets(scope, field, signal), scope);
+  }, [scope, field]);
   const all = read.result && read.result.data.values, chosen = selected || scope.column_filters[field] || all || [];
   const chosenSet = React.useMemo(() => new Set(chosen), [chosen]);
   return <Modal title={'筛选' + B.columns.find(row => row[0] === field)[1]} icon="filter" onClose={onClose} footer={<>
     <Button onClick={() => onApply(undefined)}>清除本列</Button><Button onClick={onClose}>取消</Button><Button icon="check" disabled={!all} onClick={() => onApply(chosen)}>完成</Button></>}>
     <div className="modal-b"><input type="search" aria-label="搜索列值" value={search} onChange={event => setSearch(event.target.value)} /><ErrorBox error={read.error} />
       {all && <><Button onClick={() => setSelected(all)}>全选列值</Button><Button onClick={() => setSelected([])}>全部不选</Button><div className="batch-value-list">
-        {all.filter(value => B.label(field, value).toLowerCase().includes(search.toLowerCase())).map((value, index) => <label key={index}><input type="checkbox" checked={chosenSet.has(value)} onChange={event => setSelected(event.target.checked ? chosen.concat([value]) : chosen.filter(item => item !== value))} />{B.label(field, value)}</label>)}
+        {all.filter(value => cellLabel(field, value).toLowerCase().includes(search.toLowerCase())).map((value, index) => <label key={index}><input type="checkbox" checked={chosenSet.has(value)} onChange={event => setSelected(event.target.checked ? chosen.concat([value]) : chosen.filter(item => item !== value))} />{cellLabel(field, value)}</label>)}
       </div></>}
     </div>
   </Modal>;
 }
-function OperationOverview({ adapter, row }) {
+function OperationOverview({ row }) {
   const [expanded, setExpanded] = React.useState(false);
-  const read = useQuery(async signal => B.detail(await adapter.detail('batch', row.ref, signal), row.ref), [adapter, row], expanded && row.relationships.operation_count > 0);
+  const read = useQuery(async signal => B.detail(await APSBatchAPI.detail('batch', row.ref, signal), row.ref), [row], { enabled: expanded && row.relationships.operation_count > 0 });
   return <details onToggle={event => setExpanded(event.currentTarget.open)} aria-busy={expanded && read.loading}>
     <summary>工序概况{row.relationships.gap_count ? ' · 待补 ' + row.relationships.gap_count : ''}</summary>
     {expanded && (row.relationships.operation_count === 0 ? '尚未生成工序' : <>
@@ -35,7 +35,7 @@ function OperationOverview({ adapter, row }) {
     </>)}
   </details>;
 }
-function BatchTable({ adapter, rows, scope, selected, setSelected, onOpen, onDelete, onSort, onFilter, onClear, onRetry, error, loading, disabled }) {
+function BatchTable({ rows, scope, selected, setSelected, onOpen, onDelete, onSort, onFilter, onClear, onRetry, error, loading, disabled }) {
   const selectedSet = React.useMemo(() => new Set(selected), [selected]);
   const visibleSet = React.useMemo(() => new Set(rows.map(row => row.ref)), [rows]);
   const checkbox = React.useRef(null), all = rows.length > 0 && rows.every(row => selectedSet.has(row.ref));
@@ -60,10 +60,10 @@ function BatchTable({ adapter, rows, scope, selected, setSelected, onOpen, onDel
     <tbody>{rows.map(row => <tr key={row.ref}><td><input type="checkbox" aria-label={'选择 ' + row.business_code} checked={selectedSet.has(row.ref)} disabled={disabled} onChange={event => setSelected(event.target.checked ? selected.concat(row.ref) : selected.filter(ref => ref !== row.ref))} /></td>
       <td className="wb-col-key"><Button className="linkbtn" onClick={() => onOpen(row.ref)} disabled={disabled}>{row.business_code}</Button></td><td><strong>{row.relationships.part_no}</strong><div className="muted">{row.label}</div></td>
       <td>{WorkbenchFormat.number(row.fields.quantity, { digits: 0 })}</td><td>{WorkbenchFormat.date(row.fields.due_date)}</td><td><div className="batch-progress"><progress aria-label={row.business_code + '已完成工序'} value={row.relationships.completed_count} max={row.relationships.operation_count || 1} /><span>{row.relationships.completed_count} / {row.relationships.operation_count}</span></div>
-        <OperationOverview adapter={adapter} row={row} /></td>
+        <OperationOverview row={row} /></td>
       {['priority', 'ready_status', 'status'].map(key => {
-        const val = key === 'status' ? row.status : key === 'ready_status' ? B.readyStatus(row) : row.fields[key];
-        return <td key={key}><span className={'pill ' + (key === 'ready_status' ? val === 'yes' ? 'ok' : 'warn' : key === 'priority' ? val === 'normal' ? 'off' : 'warn' : val === 'completed' ? 'ok' : val === 'processing' ? 'warn' : 'off')}>{B.label(key, val)}</span></td>;
+        const val = key === 'status' ? row.status : key === 'ready_status' ? row.display_ready_status : row.fields[key];
+        return <td key={key}><span className={'pill ' + (key === 'ready_status' ? val === 'yes' ? 'ok' : 'warn' : key === 'priority' ? val === 'normal' ? 'off' : 'warn' : val === 'completed' ? 'ok' : val === 'processing' ? 'warn' : 'off')}>{cellLabel(key, val)}</span></td>;
       })}
       <td className="wb-col-actions"><div className="batch-head"><Button icon="square-pen" onClick={() => onOpen(row.ref)} disabled={disabled}>查看/编辑</Button><Button icon="trash-2" className="btn danger" aria-label={'删除批次 ' + row.business_code} onClick={() => onDelete(row)} disabled={disabled} reasonDisplay="tooltip" reason={B.reason(row.write_context, 'delete', 'production')}>删除</Button></div></td>
     </tr>)}{!rows.length && <tr><td colSpan={10}><EmptyState kind={loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty'} error={error}

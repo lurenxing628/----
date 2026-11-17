@@ -1,6 +1,6 @@
 import React from './shared/runtime/react.js';
-import TrialControls from './TrialControls.jsx';
-import WorkbenchTerms from './WorkbenchTerms.js';
+import U from './TrialControls.jsx';
+import T from './WorkbenchTerms.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import RunOperationEffort from './RunOperationEffort.jsx';
 import TrialAdoptionHistoryState from './TrialAdoptionHistoryState.js';
@@ -8,8 +8,8 @@ import TrialViewState from './TrialViewState.js';
 import TrialGantt from './TrialGantt.jsx';
 import TrialAdoptionHistory from './TrialAdoptionHistory.jsx';
 import { WorkbenchReference } from './WorkbenchReferences.jsx';
+import { failure } from './shared/contract/kit.js';
 
-const U = TrialControls, T = WorkbenchTerms;
 function DeliveryValue({ summary, metric }) {
   const value = summary[metric], subtotal = metric === 'overdue_count' ? summary.known_overdue_count : summary.known_tardiness_hours;
   return <>{summary.state === 'not_applicable' ? '不适用' : U.number(value)}{value === null && summary.state !== 'not_applicable' && <small>已知小计 {U.number(subtotal)} · 未知 {summary.unknown_due_count} 批</small>}</>;
@@ -100,7 +100,7 @@ function Results({ data, onSelect }) {
       const saved = history.state && history.state.trialAdoptionHistory;
       if (!data.scenario_ref || !saved || saved.scenario_ref !== data.scenario_ref) return { tab: null, error: null };
       return { tab: H.restore(data.scenario_ref).tab, error: null };
-    } catch (_) { return { tab: null, error: new Error('试调页签记录无法恢复，请刷新或清除本页页签记录。') }; }
+    } catch (_) { return { tab: null, error: failure('试调页签记录无法恢复，请刷新或清除本页页签记录。') }; }
   }
   const [entry, setEntry] = React.useState(readEntry), c = data.comparison;
   const name = React.useMemo(() => TrialGantt.resourceNames(data), [data.resources]);
@@ -114,14 +114,14 @@ function Results({ data, onSelect }) {
         const next = { ...current }; delete next.trialAdoptionHistory; history.replaceState(next, '', location.href);
       }
       setEntry({ tab: null, error: null });
-    } catch (_) { setEntry({ ...entry, error: new Error('本页试调页签记录清除失败，请重试。') }); }
+    } catch (_) { setEntry({ ...entry, error: failure('本页试调页签记录清除失败，请重试。') }); }
   }
   function selectTab(next) {
     if (preferences.change({ result_tab: next })) setLocal(null);
     else setLocal({ ...values, result_tab: next });
     if (!data.scenario_ref) return;
     try { H.remember(data.scenario_ref, { tab: next }); setEntry({ tab: next, error: null }); }
-    catch (_) { setEntry({ tab: next, error: new Error('本页试调页签记录保存失败，返回后可能无法恢复。') }); }
+    catch (_) { setEntry({ tab: next, error: failure('本页试调页签记录保存失败，返回后可能无法恢复。') }); }
   }
   const viewNotice = { ...preferences, reset: () => { preferences.reset(); setLocal(null); if (data.scenario_ref || entry.tab || entry.error) clearEntry(); } };
   const historyRows = React.useMemo(() => data.change_history.slice().reverse(), [data.change_history]);
@@ -147,14 +147,14 @@ function Results({ data, onSelect }) {
           ['占用比例', r => U.percent(r.window_metrics.utilization_ratio)], ['班内重叠（小时）', r => U.number(r.window_metrics.overlap_hours)], ['详情', r => <Calendar resource={r} />]]} /></>}
       {tab === 'history' && <><U.Table label="调整记录" rows={historyRows} columns={[
         ['记录时间', r => U.timeLabel(r.recorded_at)], ['记录人', r => r.local_operator], ['调整前', r => arrangement(r.before)], ['调整后', r => arrangement(r.after)],
-        ['当时约束', r => U.statusLabel(r.validation.constraints_status)], ['记录依据', r => <details><summary>编号</summary><div className="tt-ref">{r.change_ref}</div><div className="tt-ref">{r.task_ref}</div></details>]]} /></>}
-      {tab === 'issues' && <><p>约束检查：{U.statusLabel(data.validation.constraints_status)}</p><U.Issues rows={data.validation.issues} onSelect={onSelect} /></>}
+        ['当时约束', r => T.trial_constraint_status(r.validation.constraints_status)], ['记录依据', r => <details><summary>编号</summary><div className="tt-ref">{r.change_ref}</div><div className="tt-ref">{r.task_ref}</div></details>]]} /></>}
+      {tab === 'issues' && <><p>约束检查：{T.trial_constraint_status(data.validation.constraints_status)}</p><U.Issues rows={data.validation.issues} onSelect={onSelect} /></>}
       {tab === 'tasks' && <U.Table label="全部工序安排" rows={data.tasks} size={50} columns={[
         ['批次 / 工序', t => <U.Button data-wb-print-value icon="arrow-right" onClick={() => onSelect(t.task_ref)}>{t.batch_id + ' · ' + t.process_label + ' ' + t.sequence}</U.Button>],
-        ['分件', t => t.piece_id || WorkbenchTerms.shared_operation], ['目标量', t => U.number(t.quantity)], ['设备 / 人员', t => <>{name(t.machine_ref)}<br />{name(t.operator_ref)}</>],
+        ['分件', t => t.piece_id || T.shared_operation], ['目标量', t => U.number(t.quantity)], ['设备 / 人员', t => <>{name(t.machine_ref)}<br />{name(t.operator_ref)}</>],
         ['预计开工', t => U.timeLabel(t.start)], ['预计完工', t => U.timeLabel(t.end)], ['变更', t => t.changed ? '已调整' : '未变']]} />}
       {tab === 'unplanned' && <U.Table label="未安排工序" rows={data.unplanned_operations} columns={[
-        ['工序顺序', r => r.sequence], ['分件', r => r.piece_id || WorkbenchTerms.shared_operation], ['原因', r => r.reason.message], ['编号', r => <WorkbenchReference value={r.operation_ref} label="工序编号" />]]} />}
+        ['工序顺序', r => r.sequence], ['分件', r => r.piece_id || T.shared_operation], ['原因', r => r.reason.message], ['编号', r => <WorkbenchReference value={r.operation_ref} label="工序编号" />]]} />}
     </div></section>;
 }
 const TrialResults = { Summary, Results, Preparation };

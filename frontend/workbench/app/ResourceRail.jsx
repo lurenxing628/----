@@ -2,6 +2,8 @@ import React from './shared/runtime/react.js';
 import C from './resource-contract.js';
 import { Button, Icon, MetricValue } from './ResourceControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
+import { errorText } from './WorkbenchReferences.jsx';
 
 // 班表配置项只在非 known 时查这张表（known 各自格式化），后端只产出这两种（calendar_summary.py 的 _holiday_efficiency）。
 const labels = { not_configured: '未填写', unavailable: '暂无数据' };
@@ -10,8 +12,10 @@ const number = value => Number.isFinite(value) && value >= 0;
 const amount = value => WorkbenchFormat.number(value, { digits: 1 });
 const integer = value => WorkbenchFormat.number(value, { digits: 0 });
 const hoursOrNone = value => value == null ? '暂无数据' : WorkbenchFormat.hours(value);
-const countLabels = { active: '启用', inactive: '停用', maintain: '停机', leave: '请假', pending_review: '待复核' };
+const countLabels = { ...WorkbenchTerms.resource_statuses, leave: '请假', pending_review: '待复核' };
 const chipOrder = ['process', 'material', 'op_int', 'machine', 'operator', 'op_ext', 'supplier'];
+// 汇总读取失败时，非 kit 错误（TypeError 等）显示这句。
+const READ_FALLBACK = '产能链读取失败，请刷新后重试。';
 // 首次展开；手动选择在同一页会话内跨节点保留，不因窗口尺寸改变而重置。
 const COLLAPSED_CHOICE_KEY = 'aps_resource_rail_collapsed';
 function readCollapsedChoice() {
@@ -91,7 +95,7 @@ function CalendarSummary({ value, error, loading, node, disabled, onNode }) {
   </button>;
 }
 function ResourceRail({ node, counts, onNode, onNavigate, disabled }) {
-  const summary = counts.summary || {}, value = summary.data || {}, readiness = value.readiness;
+  const summary = counts.summary, value = summary.data || {}, readiness = value.readiness;
   const items = readiness && readiness.items || {};
   const process = processText(items.process, counts.process && counts.process.total, summary.loading);
   const [choice, setChoice] = React.useState(readCollapsedChoice);
@@ -103,9 +107,10 @@ function ResourceRail({ node, counts, onNode, onNavigate, disabled }) {
     catch (_) { error = '无法保存产能链显示设置，当前显示已切换；重新打开时可能恢复原设置。'; }
     setChoice({ collapsed: next, error });
   }
+  const readError = summary.error && errorText(summary.error, READ_FALLBACK);
   const countText = key => { const item = counts[key]; return item && number(item.total) ? integer(item.total) + ' ' + C.nodes[key].unit : summary.loading ? '未读取' : '暂无数据'; };
   const notices = [...new Set([
-    summary.error && C.message(summary.error), value.readiness_error, value.calendar_error,
+    readError,
     ...chipOrder.flatMap(key => (items[key] && items[key].issues || []).map(issue => C.nodes[key].label + '：' + issue.message)),
     ...(value.calendar ? [
       ...value.calendar.stats.issues.map(issue => '工作日历：' + issue.message),
@@ -114,10 +119,10 @@ function ResourceRail({ node, counts, onNode, onNavigate, disabled }) {
     ] : [])
   ].filter(Boolean))];
   const tile = (key, tone) => {
-    const item = items[key], text = countText(key), count = counts[key];
+    const item = items[key], text = countText(key);
     const lines = itemLines(item, key), issues = item && item.issues || [];
     return <button type="button" className={'hb-tile ' + tone + (node === key ? ' on' : '')} key={key} disabled={disabled}
-      data-rail-node={key} title={[C.nodes[key].label, ...lines, ...issues.map(issue => issue.message), count && count.error].filter(Boolean).join('；')}
+      data-rail-node={key} title={[C.nodes[key].label, ...lines, ...issues.map(issue => issue.message), readError].filter(Boolean).join('；')}
       aria-pressed={node === key} onClick={() => onNode(key)}>
       <span className={'hb-tico ' + tone}><Icon name={C.nodes[key].icon} /></span><span className="hb-tbody">
         <span className="rail-tile-title"><span className="hb-tname">{C.nodes[key].label}</span><span className="hb-tmeta"><MetricValue pending={summary.loading}>{text}</MetricValue></span></span>
@@ -148,7 +153,7 @@ function ResourceRail({ node, counts, onNode, onNavigate, disabled }) {
       <div className="hb-block hero hb-ops"><div className="hb-bhead"><span className="hb-bdot fk" /><span className="hb-bname">加工资源</span></div>
         <div className="hb-bbody">{lane('自制链', 'int', ['op_int', 'machine', 'operator'])}{lane('外协链', 'ext', ['op_ext', 'supplier'])}</div></div>
       <div className="hb-flowarr" aria-hidden="true"><Icon name="arrow-right" /></div>
-      <CalendarSummary value={value.calendar} loading={summary.loading} error={summary.error ? C.message(summary.error) : value.calendar_error} node={node} disabled={disabled} onNode={onNode} />
+      <CalendarSummary value={value.calendar} loading={summary.loading} error={readError} node={node} disabled={disabled} onNode={onNode} />
     </div></div>
     <div className="rail-foot"><div className="hb-r-top">
       {(process.lines.length > 0 || value.calendar) && <details className="rail-details"><summary>确认记录与日历规则</summary><div className="rail-detail-content">

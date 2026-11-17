@@ -1,5 +1,5 @@
 import React from './shared/runtime/react.js';
-import ResourceControls from './ResourceControls.jsx';
+import { Button, Modal } from './ResourceControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import { WorkbenchError } from './WorkbenchReferences.jsx';
@@ -7,17 +7,12 @@ import WorkbenchControls from './WorkbenchControls.jsx';
 import TrialExport from './TrialExport.js';
 import APSWorkbenchTransport from './shared/network/transport.js';
 
-const { Button, Modal } = ResourceControls;
 const timeLabel = v => v ? WorkbenchFormat.compactDateTime(v) : '未记录';
 const number = v => v === null || v === undefined ? '暂无数据' : typeof v === 'number' ? WorkbenchFormat.number(v, { digits: Number.isInteger(v) ? 0 : 2 }) : String(v);
 const percent = v => v === null || v === undefined ? '暂无数据' : WorkbenchFormat.percent(v, 2);
 const hours = v => v === null || v === undefined ? '暂无数据' : WorkbenchFormat.hours(v, { digits: 2, trim: true });
 const sourceLabel = identity => (identity.display_name || '上次排产的候选方案') + (identity.plan_ref && identity.version ? ' · v' + identity.version : '');
-const statusLabel = v => ({ editing: '可继续试调', saved: '已保存', discarded: '已放弃', valid: '通过', warning: '有提示', blocked: '有冲突，不能采用', active: '启用', inactive: '停用' }[v] || v);
-// 排产记录和候选方案的状态叫法从词表取，和值班台、执行排产、排产记录页一致。
-const runStatusLabel = v => WorkbenchTerms.run_statuses[v] || v;
-const candidateStatusLabel = v => WorkbenchTerms.candidate_statuses[v] || v;
-function ErrorBox({ error }) { return error ? <WorkbenchError error={error} fields={Array.isArray(error.fields) ? error.fields : []} /> : null; }
+function ErrorBox({ error }) { return error ? <WorkbenchError error={error} fields={error.fields} /> : null; }
 function Pager({ page, onPage, busy, label = '记录' }) {
   const pages = page.pages === undefined ? (Number.isFinite(page.total) && page.size ? Math.max(1, Math.ceil(page.total / page.size)) : undefined) : Math.max(page.pages, 1);
   return <WorkbenchControls.Pager page={{ ...page, pages }} label={label} unit="项" onPage={onPage} busy={busy}
@@ -46,8 +41,10 @@ function Issues({ rows, onSelect }) {
     ['关联', r => r.task_ref && onSelect ? <Button icon="arrow-right" aria-label="定位问题工序" onClick={() => onSelect(r.task_ref)}>工序</Button> : '整体']]} />;
 }
 // 一个「导出」按钮打开弹窗，弹窗里列出全部可下载格式；和计划、候选、现场实际甘特的导出走法一致。
+// data 只收当前读取结果：刷新挂起或失败时是 null，导出按钮和已打开弹窗里的下载按钮都不可点，读到新结果后导出新内容。
 function Download({ data }) {
   const [error, setError] = React.useState(null), [open, setOpen] = React.useState(false), [notice, setNotice] = React.useState('');
+  const waiting = data ? '' : '试调内容还没有重新读到，读到后才能导出。';
   function save(section) {
     try {
       const output = TrialExport[section](data);
@@ -55,16 +52,16 @@ function Download({ data }) {
       setError(null); setNotice(WorkbenchTerms.download_started(output.filename)); setOpen(false);
     } catch (e) { setError(e); }
   }
-  return <><span className="tt-tools"><Button transfer="export" onClick={() => { setError(null); setNotice(''); setOpen(true); }}>导出</Button>
+  return <><span className="tt-tools"><Button transfer="export" reason={waiting} reasonDisplay="tooltip" onClick={() => { setError(null); setNotice(''); setOpen(true); }}>导出</Button>
     {notice && <span role="status" className="tt-muted">{notice}</span>}</span>
     {open && <Modal title="导出试调方案" icon="download" onClose={() => setOpen(false)} footer={<><Button onClick={() => setOpen(false)}>取消</Button>
-      <Button transfer="export" onClick={() => save('csv')}>下载 CSV（方案对比）</Button><Button transfer="export" onClick={() => save('preparation')}>下载 CSV（准备需求）</Button>
-      <Button transfer="export" onClick={() => save('changeovers')}>下载 CSV（工种切换）</Button><Button transfer="export" className="btn primary" onClick={() => save('raw')}>下载 JSON（原始数据）</Button></>}>
+      <Button transfer="export" disabled={!data} onClick={() => save('csv')}>下载 CSV（方案对比）</Button><Button transfer="export" disabled={!data} onClick={() => save('preparation')}>下载 CSV（准备需求）</Button>
+      <Button transfer="export" disabled={!data} onClick={() => save('changeovers')}>下载 CSV（工种切换）</Button><Button transfer="export" className="btn primary" disabled={!data} onClick={() => save('raw')}>下载 JSON（原始数据）</Button></>}>
       <div className="modal-b trial-modal-body"><p>导出当前读取的完整试调方案。空白表示该项没有值；提前量为负数表示延后。</p>
         <p>方案对比 CSV：逐批次的交付对比。普通文字保留原样，空值留空。</p>
         <p>准备需求 CSV：逐工序原需求与执行目标、准备和加工标准工时。工种切换 CSV：完整汇总与前后工序事件。</p>
-        <p>原始数据 JSON：包含任务、资源、班表、报工和调整记录。</p><ErrorBox error={error} /></div></Modal>}</>;
+        <p>原始数据 JSON：包含任务、资源、班表、报工和调整记录。</p>{waiting && <p role="status" className="tt-muted">{waiting}</p>}<ErrorBox error={error} /></div></Modal>}</>;
 }
-const TrialControls = { Button, Modal, ErrorBox, Pager, Tabs, Table, Issues, Download, timeLabel, number, percent, hours, statusLabel, runStatusLabel, candidateStatusLabel, sourceLabel };
-export { TrialControls, Button, Modal, ErrorBox, Pager, Tabs, Table, Issues, Download, timeLabel, number, percent, hours, statusLabel, runStatusLabel, candidateStatusLabel, sourceLabel };
+const TrialControls = { Button, Modal, ErrorBox, Pager, Tabs, Table, Issues, Download, timeLabel, number, percent, hours, sourceLabel };
+export { TrialControls, Button, Modal, ErrorBox, Pager, Tabs, Table, Issues, Download, timeLabel, number, percent, hours, sourceLabel };
 export default TrialControls;

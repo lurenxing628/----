@@ -2,7 +2,9 @@ import React from './shared/runtime/react.js';
 import C from './resource-contract.js';
 import { Button, Status, Relation, EmptyState, Pager as SharedPager } from './ResourceControls.jsx';
 import WorkbenchFormat from './WorkbenchFormat.js';
+import WorkbenchTerms from './WorkbenchTerms.js';
 import ResourceTableHeader from './ResourceTableHeader.jsx';
+import { object } from './shared/contract/kit.js';
 
 const cell = (entity, key) => entity.fields[key] == null ? <span className="muted">未知</span> : typeof entity.fields[key] === 'number'
   ? WorkbenchFormat.number(entity.fields[key], { digits: 20, trim: true }) : String(entity.fields[key]);
@@ -12,7 +14,7 @@ const columns = {
     { key: 'stock_qty', title: '库存', width: 135, numeric: true, render: entity => <>{cell(entity, 'stock_qty')}{entity.fields.stock_qty != null && entity.fields.unit ? ' ' + entity.fields.unit : ''}</> }
   ],
   machine: [
-    { key: 'op_type_ref', title: '绑定工种', render: entity => <Relation entity={entity} field="op_type_ref" /> },
+    { key: 'op_type_ref', title: '绑定工种', render: entity => <Relation entity={entity} field="op_type_refs" /> },
     { key: 'group_ref', title: '设备组', width: 130, render: entity => <Relation entity={entity} field="group_ref" /> }
   ],
   operator: [
@@ -25,7 +27,7 @@ const columns = {
   ]
 };
 function available(entity, key) {
-  if (!C.object(entity.availability)) {
+  if (!object(entity.availability)) {
     const issue = entity.issues.find(item => item.code === 'resource_availability_unavailable');
     return <span className="muted" title={issue ? issue.message : '可用数量尚未读取。'}>{issue ? '暂无数据' : '未读取'}</span>;
   }
@@ -42,12 +44,12 @@ function opColumns(category) {
     { key: 'remark', title: '备注', render: entity => cell(entity, 'remark') }
   ];
   return [
-    { key: 'category', title: '归属', width: 90, render: entity => entity.fields.category === 'internal' ? '自制' : entity.fields.category === 'external' ? '外协' : entity.fields.category === 'both' ? '自制和外协都可' : '待归类' },
+    { key: 'category', title: '归属', width: 90, render: entity => WorkbenchTerms.op_type_categories[entity.fields.category] || '待归类' },
     { key: 'remark', title: '备注', render: entity => cell(entity, 'remark') }
   ];
 }
 function ResourceTables({ kind, category, entities, source, selected = [], onSelect, onOpen, onDelete, disabled = false, headerDisabled = disabled,
-  loading = false, error, onRetry, onClear, adapter, scope, matchingCount, sort = 'business_code', direction = 'asc', sortActive = true, onSort, onColumnFilter }) {
+  loading = false, error, onRetry, onClear, scope, matchingCount, sort = 'business_code', direction = 'asc', sortActive = true, onSort, onColumnFilter }) {
   const selectedSet = React.useMemo(() => new Set(selected), [selected]);
   const selectAll = React.useRef(null), all = entities.length > 0 && entities.every(item => selectedSet.has(item.ref));
   const table = React.useRef(null), [widths, setWidths] = React.useState(null);
@@ -83,7 +85,7 @@ function ResourceTables({ kind, category, entities, source, selected = [], onSel
       }
     }} /></th>
       {cols.map(col => <th key={col.key} scope="col" data-column={col.key} className={col.key === 'business_code' ? 'wb-col-key' : col.numeric ? 'r' : ''} style={{ width: widths ? widths[col.key] : col.width }} aria-sort={sortActive && sort === col.key ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
-        <ResourceTableHeader column={col} kind={kind} scope={scope} adapter={adapter} matchingCount={matchingCount}
+        <ResourceTableHeader column={col} kind={kind} scope={scope} matchingCount={matchingCount}
           sort={sort} direction={direction} sortActive={sortActive} onSort={onSort} filter={scope.column_filters && scope.column_filters[col.key] || null} onFilter={rule => onColumnFilter(col.key, rule)}
           width={widths ? widths[col.key] : col.width} onResize={width => resize(col.key, width)} disabled={headerDisabled} />
       </th>)}

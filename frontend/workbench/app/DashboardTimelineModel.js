@@ -1,15 +1,13 @@
-import PlanGanttModel from './PlanGanttModel.js';
+import G, { instant, wire, visibleRows, visibleItems } from './PlanGanttModel.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
-
-const G = PlanGanttModel;
 
 function prepare(data) {
   const stopRows = new Map(data.downtimes.map(row => [row.downtime_ref, row]));
   data.overlaps.forEach(row => row.source.downtimes.forEach(stop => {
-    if (!stopRows.has(stop.downtime_ref)) stopRows.set(stop.downtime_ref, { ...stop, machine_ref: row.source.machine_ref, valid: true, recorded_at: null });
+    if (!stopRows.has(stop.downtime_ref)) stopRows.set(stop.downtime_ref, { ...stop, machine_ref: row.source.machine_ref, recorded_at: null });
   }));
-  const stops = Array.from(stopRows.values()).filter(row => row.valid).map(row => ({ ...row, startAt: G.instant(row.start), endAt: G.instant(row.end) }));
+  const stops = Array.from(stopRows.values()).map(row => ({ ...row, startAt: G.instant(row.start), endAt: G.instant(row.end) }));
   const affected = new Set(stops.map(row => row.machine_ref)), windows = new Map();
   for (const row of stops) { if (!windows.has(row.machine_ref)) windows.set(row.machine_ref, []); windows.get(row.machine_ref).push(row); }
   const tasks = data.tasks.filter(row => row.source === 'internal' && row.machine_ref);
@@ -44,10 +42,6 @@ function title(task, risk) {
   ].filter(Boolean).join('\n');
 }
 
-const instant = G.instant;
-const wire = G.wire;
-const visibleRows = G.visibleRows;
-const visibleItems = G.visibleItems;
 const number = (value, options) => WorkbenchFormat.number(value, options);
 const timeLabel = value => WorkbenchFormat.compactDateTime(value);
 

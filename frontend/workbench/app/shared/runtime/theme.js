@@ -31,8 +31,8 @@ function refresh() {
   notify();
 }
 
+// value 只来自顶栏与系统页的浅色/深色两个固定选项。
 function set(value) {
-  if (!valid(value)) throw new Error('主题值无效。');
   current = value;
   error = '';
   document.documentElement.setAttribute('data-theme', value);

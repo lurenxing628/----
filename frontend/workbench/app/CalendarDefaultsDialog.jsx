@@ -2,19 +2,16 @@ import React from './shared/runtime/react.js';
 import C from './resource-contract.js';
 import P from './WorkPeriods.js';
 import { useQuery } from './shared/session/query.js';
+import APSResourceAPI from './resource-api.js';
 import { Button, ErrorBox, Modal, focusFirstInvalid } from './ResourceControls.jsx';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkPeriodFields from './WorkPeriodFields.jsx';
 import { Feedback } from './ResourceForms.jsx';
 import { RefreshResult } from './CalendarFields.jsx';
+import { failure } from './shared/contract/kit.js';
 
-function CalendarDefaultsDialog({ adapter, command, onClose, refreshState, onRefresh }) {
-  const request = useQuery(async signal => {
-    const result = await adapter.query('/api/workbench/v1/calendar/defaults', {}, signal), data = result.data;
-    if (!Array.isArray(data.periods) || !data.write_context)
-      throw C.failure('默认工作时间读取不完整，请刷新后重试。');
-    return result;
-  }, [adapter]);
+function CalendarDefaultsDialog({ command, onClose, refreshState, onRefresh }) {
+  const request = useQuery(signal => APSResourceAPI.forNamespace('calendar').calendarDefaults(signal), []);
   const [base, setBase] = React.useState(null), [periods, setPeriods] = React.useState(null), [error, setError] = React.useState(null);
   const formRef = React.useRef(null), formId = React.useId(), done = command.phase === 'done', disabled = command.locked || done || request.loading;
   React.useEffect(() => { if (!base && request.result) { setBase(request.result); setPeriods(P.clone(request.result.data.periods)); } }, [request.result, base]);
@@ -28,7 +25,7 @@ function CalendarDefaultsDialog({ adapter, command, onClose, refreshState, onRef
     event.preventDefault();
     if (disabled || reason) return;
     const issue = P.validate(periods) || (!periods.length ? '至少填写一个工作时段。' : '');
-    if (issue) { setError(C.failure(issue, [{ path: 'periods', message: issue }])); return; }
+    if (issue) { setError(failure(issue, { fields: [{ path: 'periods', message: issue }] })); return; }
     setError(null);
     await command.submit('calendar', 'defaults', 'calendar-defaults', base.data.write_context, { periods: P.clone(periods) });
   }

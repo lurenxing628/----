@@ -5,8 +5,12 @@ import WorkbenchTerms from './WorkbenchTerms.js';
 import WorkbenchGuards from './WorkbenchGuards.js';
 import WorkbenchFormat from './WorkbenchFormat.js';
 import ResourceDetailRelations from './ResourceDetailRelations.jsx';
+import { failure } from './shared/contract/kit.js';
 
 const icons = { material: 'box', op_type: 'wrench', machine: 'machine', operator: 'users', supplier: 'truck' };
+// 工种归属与默认周期规则的选项取自全站词表，和列表、详情的显示同一套叫法。
+const opCategories = Object.entries(WorkbenchTerms.op_type_categories);
+const mergeModes = Object.entries(WorkbenchTerms.merge_modes);
 function Feedback({ command, action, excludePaths = [] }) {
   if (!command) return null;
   const phase = command.phase, intent = command.intent || {}, operation = action || intent.action;
@@ -57,7 +61,8 @@ function StockFacts({ entity }) {
     <div className="field full"><label>当前库存</label><span className="wb-resource-stock"><strong>{entity.fields.stock_qty == null ? '未知' : String(entity.fields.stock_qty)}</strong>
       <span>{entity.fields.unit || '单位未填写'}</span></span></div></>;
 }
-function ResourceForms({ adapter, kind, category, action = 'create', entity: initialEntity, acceptedEntity, writeContext, source, command,
+// openCatalog：宿主打开设备组、班次维护的入口；只有带维护入口的关系字段（设备组、班次）会用到。
+function ResourceForms({ openCatalog, kind, category, action = 'create', entity: initialEntity, acceptedEntity, writeContext, source, command,
   onClose, onReloadContext, refreshState = {}, onRefresh, contextError, contextReview, contextBusy, stockOnly = false }) {
   const [entity, setEntity] = React.useState(initialEntity);
   const [draft, setDraft] = React.useState(() => C.draft(kind, initialEntity, category));
@@ -67,7 +72,7 @@ function ResourceForms({ adapter, kind, category, action = 'create', entity: ini
   const [deleteChecked, setDeleteChecked] = React.useState(false);
   React.useLayoutEffect(() => {
     if (!acceptedEntity || acceptedEntity === entity) return;
-    if (!entity || acceptedEntity.ref !== entity.ref) { setError(C.failure('最新资料和正在编辑的记录不一致，已填写的内容没有被替换。')); return; }
+    if (!entity || acceptedEntity.ref !== entity.ref) { setError(failure('最新资料和正在编辑的记录不一致，已填写的内容没有被替换。')); return; }
     baseline.current = JSON.stringify(C.draft(kind, acceptedEntity, category));
     setDraft(value => C.rebaseDraft(kind, value, entity, acceptedEntity, category)); setEntity(acceptedEntity);
   }, [acceptedEntity, kind, category]);
@@ -102,7 +107,7 @@ function ResourceForms({ adapter, kind, category, action = 'create', entity: ini
     event.preventDefault(); if (disabled || reason || confirmReason) return;
     try {
       const invalidNumbers = Array.from(event.currentTarget.elements).filter(element => element.type === 'number' && element.validity.badInput);
-      if (invalidNumbers.length) throw C.failure('请核对标红的数字。', invalidNumbers.map(element => ({ path: 'fields.' + element.name, message: '请输入有效数字。' })));
+      if (invalidNumbers.length) throw failure('请核对标红的数字。', { fields: invalidNumbers.map(element => ({ path: 'fields.' + element.name, message: '请输入有效数字。' })) });
       const inputDraft = adjustingStock ? C.draft(kind, entity, category) : draft;
       if (adjustingStock) inputDraft.fields.stock_qty = draft.fields.stock_qty;
       const input = action === 'delete' ? {} : C.input(kind, inputDraft, entity, category);
@@ -115,15 +120,15 @@ function ResourceForms({ adapter, kind, category, action = 'create', entity: ini
     const refreshParent = () => { reload(); if (onReloadContext) onReloadContext(); };
     const completed = result => {
       setCatalogBusy(false);
-      if (C.receipt(result) === 'terminal') { refreshParent(); if (result.result === 'partial') setError(C.failure(field.label + '只完成了一部分，请点「维护' + field.label + '」核对逐项结果。')); }
-      else setError(C.failure(field.label + '的维护结果还没确认，没有当成保存成功。'));
+      if (C.receipt(result) === 'terminal') { refreshParent(); if (result.result === 'partial') setError(failure(field.label + '只完成了一部分，请点「维护' + field.label + '」核对逐项结果。')); }
+      else setError(failure(field.label + '的维护结果还没确认，没有当成保存成功。', { committed: 'unknown' }));
     };
     try {
-      const result = await adapter.openCatalog(field.kind, { refs: [], scope: { source }, onCommitted: completed, onClosed: () => setCatalogBusy(false) }, new AbortController().signal);
+      const result = await openCatalog(field.kind, { refs: [], scope: { source }, onCommitted: completed, onClosed: () => setCatalogBusy(false) }, new AbortController().signal);
       if (result && result.state === 'opened') { opened = true; return; }
       if (result && result.state === 'cancelled') return;
       if (C.receipt(result) === 'terminal' && result.result !== 'partial') { refreshParent(); return; }
-      throw C.failure(field.label + '维护没有返回明确结果，没有当成保存成功。');
+      throw failure(field.label + '维护没有返回明确结果，没有当成保存成功。');
     } catch (failure) { setError(failure); }
     finally { if (!opened) setCatalogBusy(false); }
   }
@@ -149,11 +154,10 @@ function ResourceForms({ adapter, kind, category, action = 'create', entity: ini
         {kind === 'material' && <>{text('spec', '规格')}{text('unit', '单位')}{text('stock_qty', '库存数量', { number: true })}</>}
         {kind === 'op_type' && <>
           {<Field label="适用归属" path="fields.category" error={currentError} required><select name="category" value={opCategory} disabled={disabled} onChange={event => change('fields', 'category', event.target.value)}>
-            <option value="" disabled>请选择归属</option><option value="internal">自制</option><option value="external">外协</option><option value="both">自制和外协都可</option>
-            {opCategory && !['internal', 'external', 'both'].includes(opCategory) && <option value={opCategory}>原归属未识别（保持原值）</option>}</select></Field>}
+            <option value="" disabled>请选择归属</option>{opCategories.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>}
           {['external', 'both'].includes(opCategory) && <Field label="默认周期规则" path="fields.default_merge_mode" error={currentError} hint="用于新增外协段的默认选择；已有外协段的周期规则保持不变。"><select name="default_merge_mode" value={draft.fields.default_merge_mode} disabled={disabled} onChange={event => change('fields', 'default_merge_mode', event.target.value)}>
-            <option value="">未填写</option><option value="separate">分别设置</option><option value="merged">合并设置</option></select></Field>}</>}
-        {C.relations[kind].map(field => <Choice key={field.key} adapter={adapter} field={field} value={draft.relationships[field.key]} original={entity}
+            <option value="">未填写</option>{mergeModes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>}</>}
+        {C.relations[kind].map(field => <Choice key={field.key} field={field} value={draft.relationships[field.key]} original={entity}
           disabled={disabled} error={currentError} onChange={value => change('relationships', field.key, value)} onCatalog={catalog} catalogBusy={catalogBusy} />)}
         {kind === 'supplier' && text('default_days', '默认周期（天）', { number: true, required: true })}
         {C.statuses[kind] && stateField()}
@@ -174,7 +178,7 @@ function ResourceForms({ adapter, kind, category, action = 'create', entity: ini
         {refreshState.error && <Button icon="refresh-cw" onClick={onRefresh}>刷新保存结果</Button>}</>}
     </form></Modal>;
 }
-function Detail({ adapter, kind, result, onClose, onEdit, onDelete, onAdjustStock, onMachinePermissions, onOperatorCalendar, onDowntimes, onRelated, onBack, busy, error, onRetry }) {
+function Detail({ kind, result, onClose, onEdit, onDelete, onAdjustStock, onMachinePermissions, onOperatorCalendar, onDowntimes, onRelated, onBack, busy, error, onRetry }) {
   const entity = result && result.data;
   return <Modal title={C.resourceName(kind, entity && entity.fields.category) + '详情'} icon={icons[kind]} onClose={onClose} footer={<>{onBack && <Button icon="chevron-left" onClick={onBack}>返回上一条详情</Button>}<Button onClick={onClose}>关闭</Button>
     {entity && <><Button icon="trash-2" className="btn danger" reason={C.blocked(entity.write_context, kind, 'delete', result.meta.source)} onClick={onDelete}>删除</Button>
@@ -190,7 +194,7 @@ function Detail({ adapter, kind, result, onClose, onEdit, onDelete, onAdjustStoc
         {kind === 'operator' && <Button icon="machine" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source)} onClick={onMachinePermissions}>编辑可操作设备</Button>}
         {kind === 'operator' && <Button icon="calendar-days" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source)} onClick={onOperatorCalendar}>编辑{WorkbenchTerms.personal_calendar}</Button>}
         {kind === 'machine' && <Button icon="wrench" disabled={busy} onClick={onDowntimes}>维护停机计划</Button>}
-        {kind === 'op_type' && ['internal', 'external', 'both'].includes(entity.fields.category) && <ResourceDetailRelations key={entity.ref + ':' + result.meta.snapshot_ref} adapter={adapter} entity={entity} onOpen={onRelated} />}
+        {kind === 'op_type' && ['internal', 'external', 'both'].includes(entity.fields.category) && <ResourceDetailRelations key={entity.ref + ':' + result.meta.snapshot_ref} entity={entity} onOpen={onRelated} />}
         <Issues issues={result.warnings} /><p className="wb-resource-read-time">{WorkbenchTerms.data_as_of(WorkbenchFormat.dateTime(result.meta.as_of))}</p></>}</div></Modal>;
 }
 ResourceForms.Detail = Detail;

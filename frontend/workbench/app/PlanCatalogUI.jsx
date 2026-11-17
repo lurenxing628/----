@@ -1,24 +1,25 @@
 import React from './shared/runtime/react.js';
-import ResourceControls from './ResourceControls.jsx';
+import { Button, ErrorBox, Issues } from './ResourceControls.jsx';
 import { useQuery } from './shared/session/query.js';
 import WorkbenchTerms from './WorkbenchTerms.js';
 import APSPlanAPI from './PlanAPI.js';
 import PlanSelectionModel from './PlanSelectionModel.js';
 import WorkbenchControls from './WorkbenchControls.jsx';
 
-const { Button, ErrorBox, Issues } = ResourceControls;
 function Identity({ plan }) {
   const unavailable = !plan.capabilities.view;
   const T = WorkbenchTerms;
   const text = plan.is_current_official ? T.current_official : T.historical_official;
   return <span className={'plan-state ' + (unavailable ? 'unavailable' : plan.is_current_official ? 'official' : '')}>{text}{unavailable ? ' · 不可查看' : ''}</span>;
 }
-function Catalog({ selectedRef, onSelect, autoSelect, actions, navigation }) {
+// 目录状态由计划页外层持有：换计划时计划会话按计划身份整份重建（目录跟着重新挂载），目录的分页、折叠、读取和自动选择留在这里，
+// 不随之重来。Catalog 只按这份状态渲染。
+function useCatalog({ selectedRef, autoSelect, onSelect }) {
   const [pages, setPages] = React.useState([{}]), [index, setIndex] = React.useState(0);
   const [paused, setPaused] = React.useState(false), [collapsed, setCollapsed] = React.useState(!!selectedRef);
-  const attempted = React.useRef(false), section = React.useRef(null), restoreFocus = React.useRef(false);
+  const attempted = React.useRef(false), section = React.useRef(null), restoreFocus = React.useRef(null);
   const scope = React.useMemo(() => ({ collection: 'history', size: 20, ...pages[index] }), [pages, index]);
-  const read = useQuery(signal => APSPlanAPI.catalog(scope, signal), [scope], !paused);
+  const read = useQuery(signal => APSPlanAPI.catalog(scope, signal), [scope], { enabled: !paused });
   const result = read.result, data = result && result.data;
   React.useEffect(() => {
     if (attempted.current || !data || read.loading || read.error || index !== 0) return;
@@ -27,12 +28,15 @@ function Catalog({ selectedRef, onSelect, autoSelect, actions, navigation }) {
     if (plan) { setCollapsed(true); onSelect(plan); }
   }, [data, read.loading, read.error, autoSelect, selectedRef, index]);
   React.useLayoutEffect(() => {
-    if (collapsed && restoreFocus.current && section.current) {
-      restoreFocus.current = false; section.current.querySelector('[aria-label="展开计划列表"]').focus();
-    }
-  }, [collapsed]);
+    const target = restoreFocus.current;
+    if (target === null) return;
+    restoreFocus.current = null; section.current.querySelector(target).focus();
+  }, [selectedRef]);
   function choose(plan) {
-    restoreFocus.current = !!(document.activeElement && document.activeElement.closest('.plan-catalog-scroll'));
+    // 新挂载的目录接回焦点：从列表选中时列表收起，焦点交给展开按钮；从计划下拉框选中时交还下拉框。
+    const active = document.activeElement;
+    restoreFocus.current = !active ? null : active.closest('.plan-catalog-scroll') ? '[aria-label="展开计划列表"]'
+      : active.closest('.plan-catalog-picker') ? '[aria-label="切换所选计划"]' : null;
     attempted.current = true; setCollapsed(true); onSelect(plan);
   }
   function refresh() { setPages([{}]); setIndex(0); setPaused(false); read.reload(); }
@@ -40,15 +44,20 @@ function Catalog({ selectedRef, onSelect, autoSelect, actions, navigation }) {
     const page = { cursor: data.page.next_cursor, snapshot_ref: result.meta.snapshot_ref };
     setPages(current => current.slice(0, index + 1).map(item => ({ ...item, snapshot_ref: result.meta.snapshot_ref })).concat(page)); setIndex(index + 1);
   }
-  return <section ref={section} className="plan-catalog" aria-label="排产方案列表" data-collapsed={collapsed}>
+  return { read, index, setIndex, paused, setPaused, collapsed, setCollapsed, section, choose, refresh, next };
+}
+function Catalog({ catalog, selectedRef, actions, navigation }) {
+  const { read, index, paused, collapsed, choose, refresh } = catalog;
+  const result = read.result, data = result && result.data;
+  return <section ref={catalog.section} className="plan-catalog" aria-label="排产方案列表" data-collapsed={collapsed}>
     <div className="plan-toolbar plan-catalog-toolbar">{navigation}<label className="plan-catalog-picker">计划 <select aria-label="切换所选计划" value={selectedRef || ''} disabled={read.loading || !!read.error} onChange={event => {
       const plan = data && data.plans.find(item => item.plan_ref === event.target.value && item.capabilities.view);
       if (plan) choose(plan);
     }}><option value="" disabled>请选择计划</option>{selectedRef && (!data || !data.plans.some(plan => plan.plan_ref === selectedRef)) && <option value={selectedRef}>已选计划（在其他页）</option>}
       {data && data.plans.filter(plan => plan.plan_ref).map(plan => <option key={plan.plan_ref} value={plan.plan_ref} disabled={!plan.capabilities.view}>{plan.display_name}{plan.is_current_official ? ' · 当前正式' : ''}</option>)}</select></label>
       <div className="plan-catalog-actions">{actions}{!collapsed && <Button className="btn plan-icon" icon="refresh-cw" aria-label="刷新计划列表" busy={read.loading} onClick={() => refresh()} />}
-        {read.loading && <Button icon="x" className="btn plan-icon" aria-label="取消列表读取" onClick={() => setPaused(true)} />}
-        <Button icon="chevron-down" className={'btn plan-icon' + (collapsed ? '' : ' plan-up')} aria-label={collapsed ? '展开计划列表' : '收起计划列表'} aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)} /></div>
+        {read.loading && <Button icon="x" className="btn plan-icon" aria-label="取消列表读取" onClick={() => catalog.setPaused(true)} />}
+        <Button icon="chevron-down" className={'btn plan-icon' + (collapsed ? '' : ' plan-up')} aria-label={collapsed ? '展开计划列表' : '收起计划列表'} aria-expanded={!collapsed} onClick={() => catalog.setCollapsed(!collapsed)} /></div>
     </div>
     <ErrorBox error={read.error} />
     {(read.error || paused) && <div className="plan-pager"><span>{paused ? '计划列表读取已取消。' : '计划列表没有读成功，已选的计划没有变。'}</span><Button icon="refresh-cw" onClick={() => refresh()}>刷新列表</Button></div>}
@@ -66,9 +75,9 @@ function Catalog({ selectedRef, onSelect, autoSelect, actions, navigation }) {
     {data && !collapsed && <div className="plan-pager">
       {selectedRef && !data.plans.some(plan => plan.plan_ref === selectedRef) && <span className="plan-muted">已选计划不在本段，选择保持不变</span>}
       <WorkbenchControls.Pager mode="cursor" page={index + 1} label="计划列表" busy={read.loading} hasPrevious={index > 0} hasNext={data.page.has_more}
-        onPrevious={() => setIndex(index - 1)} onNext={next} /></div>}
+        onPrevious={() => catalog.setIndex(index - 1)} onNext={catalog.next} /></div>}
   </section>;
 }
-const PlanCatalogUI = { Catalog };
-export { PlanCatalogUI, Catalog };
+const PlanCatalogUI = { Catalog, useCatalog };
+export { PlanCatalogUI, Catalog, useCatalog };
 export default PlanCatalogUI;
