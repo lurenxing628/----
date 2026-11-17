@@ -8,12 +8,12 @@ from .base_repo import BaseRepository
 
 
 class MachineRepository(BaseRepository):
-    """设备仓库（Machines）。"""
+    """设备仓库（Machines）；设备能做的工种由 MachineOpTypes 单独存。"""
 
     def create(self, machine: Machine) -> None:
         self.execute(
-            "INSERT INTO Machines (machine_id, name, op_type_id, category, status, remark, team_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (machine.machine_id, machine.name, machine.op_type_id, machine.category, machine.status, machine.remark, machine.team_id),
+            "INSERT INTO Machines (machine_id, name, category, status, remark, team_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (machine.machine_id, machine.name, machine.category, machine.status, machine.remark, machine.team_id),
         )
 
     def update(self, machine_id: str, updates: Dict[str, Any]) -> None:
@@ -22,7 +22,7 @@ class MachineRepository(BaseRepository):
 
         说明：
         - 只更新 updates 中出现的字段
-        - 允许把 op_type_id/remark 显式清空为 NULL（updates['op_type_id']=None）
+        - 允许把 remark 显式清空为 NULL（updates['remark']=None）
         """
         set_parts = [f"{k} = ?" for k in updates] + ["updated_at = CURRENT_TIMESTAMP"]
         params = [*updates.values(), machine_id]

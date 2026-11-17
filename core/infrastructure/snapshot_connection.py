@@ -7,16 +7,15 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Iterator
 
-from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
+from core.infrastructure.sqlite_udf import DETECT_TYPES, configure_connection
 
 
 @contextmanager
-def open_readonly_immutable(path: str, *, detect_types: int = 0, row_factory=None) -> Iterator[sqlite3.Connection]:
+def open_readonly_immutable(path: str) -> Iterator[sqlite3.Connection]:
+    """只读、不可变方式打开调用方独占的库副本；打开后的配置与产品读写连接一致。"""
     uri = Path(path).absolute().as_uri() + "?mode=ro&immutable=1"
-    with closing(sqlite3.connect(uri, uri=True, detect_types=detect_types)) as conn:
-        conn.row_factory = row_factory
-        conn.execute("PRAGMA foreign_keys=ON")
-        register_schedule_time_sql_functions(conn)
+    with closing(sqlite3.connect(uri, uri=True, detect_types=DETECT_TYPES)) as conn:
+        configure_connection(conn)
         yield conn
 
 

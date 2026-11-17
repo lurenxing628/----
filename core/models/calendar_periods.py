@@ -7,10 +7,11 @@
 import json
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, NoReturn
+from typing import Any, Dict, List
 
 from core.errors import ValidationError
-from core.shared.strict_json import load_strict_json
+from core.models.content import StoredJsonCorrupt, read_stored_json
+from core.shared.key_sets import keys_conform
 
 MAX_WORK_PERIODS = 8
 DEFAULT_WORK_PERIODS = [{"start": "08:30", "end": "11:50", "day_offset": 0},
@@ -46,7 +47,7 @@ def normalize_periods(value: Any) -> List[Dict[str, Any]]:
 
 
 def _period_bounds(item, *, first):
-    if not isinstance(item, dict) or set(item) - {"start", "end", "day_offset"}:
+    if not keys_conform(item, (), ("start", "end", "day_offset")):
         raise ValidationError("工作时段字段不正确。", field="periods")
     offset = item.get("day_offset", 0)
     if type(offset) is not int or offset not in (0, 1) or (first and offset != 0):
@@ -78,21 +79,15 @@ def reject_rest_day_periods(periods: List[Dict[str, Any]]) -> None:
 
 
 def decode_periods(raw: Any) -> List[Dict[str, Any]]:
-    return normalize_periods(load_stored_periods(raw))
+    """已保存的工作时段：读不出来或内容不合规则都是存储损坏（500），不按用户填错（422）报。
 
-
-def _corrupt_periods() -> NoReturn:
-    raise ValidationError("已保存的工作时段损坏，请重新维护该日历或班次。", field="periods") from None
-
-
-def load_stored_periods(raw: Any) -> Any:
-    """Strictly decode stored periods text; the caller normalizes the list once."""
-    if type(raw) is not str:
-        _corrupt_periods()
-    value = load_strict_json(raw, on_malformed=_corrupt_periods)
-    if value is None:
-        raise ValidationError("已保存的工作时段不能为空值。", field="periods")
-    return value
+    写侧只存 ``normalize_periods`` 的结果（``encode_periods``），外部输入直接调 ``normalize_periods``。
+    """
+    periods = read_stored_json(raw, list)
+    try:
+        return normalize_periods(periods)
+    except ValidationError as exc:
+        raise StoredJsonCorrupt() from exc
 
 
 def encode_periods(periods: List[Dict[str, Any]]) -> str:

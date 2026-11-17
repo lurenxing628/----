@@ -1,14 +1,11 @@
-"""Exact identity lookups and append-only copy evidence in the caller transaction; no rulings here."""
+"""Exact identity lookups and append-only copy origins in the caller transaction; no rulings here."""
 
-import secrets
+import json
 
-from core.models.workbench_template_lineage import (
-    COPY_COLUMNS,
-    EVIDENCE_VERSION,
-)
+from core.models.workbench_template_lineage import COPY_COLUMNS
+from core.shared.refs import new_ref
 
 from .base_repo import BaseRepository
-from .workbench_execution_repo import chunks
 
 INSTANCE_SELECT = """SELECT o.*, r.ref AS operation_ref, br.ref AS batch_ref, pr.ref AS part_ref, b.quantity"""
 INSTANCE_FROM = """ FROM BatchOperations o JOIN Batches b ON b.batch_id=o.batch_id
@@ -18,73 +15,45 @@ INSTANCE_FROM = """ FROM BatchOperations o JOIN Batches b ON b.batch_id=o.batch_
 
 
 class WorkbenchTemplateLineageRepository(BaseRepository):
-    def current_templates(self, refs):
-        result = {}
-        for chunk in chunks(refs):
-            marks = ",".join("?" for _ in chunk)
-            rows = self.fetchall("""SELECT o.*, r.ref AS template_operation_ref, r.revision AS template_revision,
-                p.ref AS part_ref FROM WorkbenchEntityRefs r LEFT JOIN PartOperations o
-                ON o.id=CAST(r.entity_key AS INTEGER) AND CAST(o.id AS TEXT)=r.entity_key
-                LEFT JOIN WorkbenchEntityRefs p ON p.kind='part' AND p.active=1 AND p.entity_key=o.part_no
-                WHERE r.kind='template_operation' AND r.active=1 AND r.ref IN (""" + marks + ")", chunk)
-            result.update((row["template_operation_ref"], row) for row in rows)
-        return result
-
-    def current_instances(self, refs):
-        result = {}
-        for chunk in chunks(refs):
-            marks = ",".join("?" for _ in chunk)
-            rows = self.fetchall("""SELECT o.*, r.ref AS operation_ref, br.ref AS batch_ref, pr.ref AS part_ref, b.quantity
-                FROM WorkbenchPlanSourceRefs r JOIN BatchOperations o
-                ON o.id=CAST(r.source_key AS INTEGER) AND CAST(o.id AS TEXT)=r.source_key
-                JOIN Batches b ON b.batch_id=o.batch_id
-                LEFT JOIN WorkbenchEntityRefs br ON br.kind='batch' AND br.active=1 AND br.entity_key=b.batch_id
-                LEFT JOIN WorkbenchEntityRefs pr ON pr.kind='part' AND pr.active=1 AND pr.entity_key=b.part_no
-                WHERE r.kind='operation' AND r.active=1 AND r.ref IN (""" + marks + ")", chunk)
-            result.update((row["operation_ref"], row) for row in rows)
-        return result
-
     def insert_instance(self, payload):
-        cursor = self.execute("INSERT INTO BatchOperations (" + ",".join(COPY_COLUMNS) + ") VALUES (" +
-                              ",".join("?" for _ in COPY_COLUMNS) + ")", tuple(payload[key] for key in COPY_COLUMNS))
-        return self.fetchone(INSTANCE_SELECT + ", e.event_id AS birth_event_id" + INSTANCE_FROM +
-            " LEFT JOIN WorkbenchTemplateLineageEvents e ON e.operation_ref=r.ref AND e.event_type='created' WHERE o.id=?",
-            (cursor.lastrowid,))
+        cursor = self.execute(
+            "INSERT INTO BatchOperations ("
+            + ",".join(COPY_COLUMNS)
+            + ") VALUES ("
+            + ",".join("?" for _ in COPY_COLUMNS)
+            + ")",
+            tuple(payload[key] for key in COPY_COLUMNS),
+        )
+        return self.fetchone(INSTANCE_SELECT + INSTANCE_FROM + " WHERE o.id=?", (cursor.lastrowid,))
 
     def origin_rows(self, refs):
-        for chunk in chunks(refs):
-            marks = ",".join("?" for _ in chunk)
-            yield from self.iter_rows(
-                "SELECT * FROM WorkbenchTemplateLineageOrigins WHERE operation_ref IN (" + marks + ")", chunk)
+        if not refs:
+            return []
+        return self.fetchall(
+            """SELECT o.lineage_ref, o.operation_ref, o.template_operation_ref,
+                      o.template_revision, o.source_eligible, o.instance_modified,
+                      r.active AS operation_active
+               FROM WorkbenchTemplateLineageOrigins o
+               JOIN WorkbenchPlanSourceRefs r ON r.ref = o.operation_ref
+               WHERE o.operation_ref IN (SELECT value FROM json_each(?))""",
+            (json.dumps(list(refs)),),
+        )
 
-    def event_chunks(self, refs, limit):
-        """Stream body rows, with one global budget across all ref chunks."""
-        total = 0
-
-        def counted(rows):
-            nonlocal total
-            for row in rows:
-                total += 1
-                yield row
-
-        for chunk in chunks(refs):
-            marks = ",".join("?" for _ in chunk)
-            rows = self.iter_rows(
-                "SELECT * FROM WorkbenchTemplateLineageEvents WHERE operation_ref IN (" + marks +
-                ") ORDER BY event_id LIMIT ?", chunk + [limit - total + 1])
-            yield counted(rows)
-            if total > limit:
-                break
-
-    def append_origin(self, instance, template, template_snapshot, instance_snapshot, *, birth_event_id, source, source_event_id,
-                      source_eligible):
-        row = dict(lineage_ref=secrets.token_hex(24), operation_ref=instance["operation_ref"],
-                   template_operation_ref=template["template_operation_ref"], template_revision=template["template_revision"],
-                   source_operation_ref=source["operation_ref"] if source else None,
-                   source_lineage_ref=source["lineage_ref"] if source else None, source_event_id=source_event_id,
-                   source_eligible=int(source_eligible), birth_event_id=birth_event_id,
-                   evidence_version=EVIDENCE_VERSION, template_snapshot=template_snapshot,
-                   instance_snapshot=instance_snapshot)
-        self.conn.execute("INSERT INTO WorkbenchTemplateLineageOrigins (" + ",".join(row) + ") VALUES (" +
-                          ",".join("?" for _ in row) + ")", tuple(row.values()))
+    def append_origin(self, operation_ref, template_operation_ref, template_revision, *, source_eligible):
+        row = {
+            "lineage_ref": new_ref(),
+            "operation_ref": operation_ref,
+            "template_operation_ref": template_operation_ref,
+            "template_revision": template_revision,
+            "source_eligible": int(bool(source_eligible)),
+            "instance_modified": 0,
+        }
+        self.conn.execute(
+            "INSERT INTO WorkbenchTemplateLineageOrigins ("
+            + ",".join(row)
+            + ") VALUES ("
+            + ",".join("?" for _ in row)
+            + ")",
+            tuple(row.values()),
+        )
         return row

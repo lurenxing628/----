@@ -1,7 +1,6 @@
 """Whole-admission descriptive metrics; unknown evidence is never counted as zero."""
 
 from .workbench_run_baseline import baseline_reason
-from .workbench_run_candidate import reject
 
 
 def metric(value, known, unknown, total, reason=None):
@@ -30,7 +29,7 @@ def operation_change(row):
     if row["status"] == "newly_scheduled":
         return True, False, []
     if row["status"] == "unscheduled":
-        return bool(row["baseline_segments"]), False, []
+        return row["baseline_segment"] is not None, False, []
     if not row["comparison_available"]:
         reasons = [r for r in row["reasons"] if r["code"] != "execution_affected"]
         return None, None, reasons or [baseline_reason("no_comparable_operations")]
@@ -39,7 +38,7 @@ def operation_change(row):
     reasons = []
     if machine is None or delta["operator_changed"] is None:
         reasons.append(baseline_reason("resource_identity_unavailable"))
-    baseline = row["baseline_segments"][0]
+    baseline = row["baseline_segment"]
     if baseline["source"] is None:
         reasons.append(_stored_reason(baseline, "source", "historical_source_unavailable"))
     supplier_relevant = "external" in (candidate["source"], baseline["source"])
@@ -59,19 +58,12 @@ def _stored_reason(side, field, default):
     return {"code": saved["code"], "message": saved["message"]} if saved else baseline_reason(default)
 
 
-def _admission_operation_rows(baseline, batch_refs):
-    rows = [row for row in baseline["comparisons"] if row["selected_at_admission"]]
-    refs = [row["operation_ref"] for row in rows]
-    if (len(set(refs)) != len(refs) or not baseline["rows_complete"]
-            or baseline["operation_count"] != baseline["full_operation_count"]
-            or any(row["batch_ref"] not in batch_refs for row in rows)):
-        reject("candidate_analysis_incomplete", "整份候选工序身份不完整，未从可见安排估算调整数量。", 500)
-    return rows, refs
-
-
-def operation_metrics(baseline, batch_refs):
-    rows, refs = _admission_operation_rows(baseline, batch_refs)
-    changed, machines, unknown, machine_unknown, issues = [], [], [], [], []
+def operation_metrics(comparisons):
+    """Count the admitted operations among one candidate's comparison rows (one row per permanent operation ref)."""
+    rows = [row for row in comparisons if row["selected_at_admission"]]
+    changed, unknown, issues = [], [], []
+    machines = 0
+    machine_unknown = 0
     for row in rows:
         change, machine, reasons = operation_change(row)
         ref = row["operation_ref"]
@@ -80,18 +72,18 @@ def operation_metrics(baseline, batch_refs):
         elif change:
             changed.append(ref)
         if machine is None:
-            machine_unknown.append(ref)
+            machine_unknown += 1
         elif machine:
-            machines.append(ref)
+            machines += 1
         if reasons:
             issues.append({"operation_ref": ref, "reasons": reasons})
     reason = {"code": "operation_comparison_incomplete", "message": "部分工序的初始安排或资源编号缺失，调整数量暂无法完整统计。"}
     metrics = {
         "changed_operation_count": metric(None if unknown else len(changed), len(changed), len(unknown), len(rows), reason),
-        "machine_change_count": metric(None if machine_unknown else len(machines), len(machines), len(machine_unknown), len(rows), reason),
+        "machine_change_count": metric(None if machine_unknown else machines, machines, machine_unknown, len(rows), reason),
     }
-    return metrics, {"operation_refs": refs, "changed_operation_refs": changed, "machine_changed_operation_refs": machines,
-                     "unknown_operation_refs": unknown, "machine_unknown_operation_refs": machine_unknown, "issues": issues}
+    return metrics, {"operation_count": len(rows), "changed_operation_refs": changed,
+                     "unknown_operation_refs": unknown, "issues": issues}
 
 
 def delivery_deltas(before, after):

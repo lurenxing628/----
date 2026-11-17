@@ -6,6 +6,8 @@ import re
 from functools import lru_cache
 from typing import Dict, List, Tuple
 
+from core.models.enums import flag_check
+
 from .schema_structure import SchemaStructure
 
 RESOURCE_TABLES: Dict[str, Tuple[str, Tuple[str, ...]]] = {
@@ -23,13 +25,13 @@ RESOURCE_TABLES: Dict[str, Tuple[str, Tuple[str, ...]]] = {
 _ALTERNATE_KEYS = {"op_type": "name", "resource_team": "name"}
 
 _TABLES = {
-    "WorkbenchEntityRefs": """CREATE TABLE IF NOT EXISTS WorkbenchEntityRefs (
+    "WorkbenchEntityRefs": f"""CREATE TABLE IF NOT EXISTS WorkbenchEntityRefs (
         ref TEXT PRIMARY KEY NOT NULL CHECK(length(ref) = 48 AND ref NOT GLOB '*[^0-9a-f]*'),
         kind TEXT NOT NULL,
         entity_key TEXT NOT NULL,
         alternate_key TEXT,
         revision INTEGER NOT NULL DEFAULT 1 CHECK(typeof(revision) = 'integer' AND revision > 0),
-        active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+        active INTEGER NOT NULL DEFAULT 1 {flag_check('active')},
         created_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     )""",
     "WorkbenchCommandReceipts": """CREATE TABLE IF NOT EXISTS WorkbenchCommandReceipts (
@@ -70,7 +72,8 @@ def _alternate_key_sql(kind: str, prefix: str) -> str:
 
 
 def identity_triggers(kind: str, table: str, columns: Tuple[str, ...], alternate_column: str = "", *,
-                      alternate_columns: Tuple[str, ...] = ()) -> Dict[str, str]:
+                      alternate_columns: Tuple[str, ...] = (),
+                      update_columns: Tuple[str, ...] = ()) -> Dict[str, str]:
     if alternate_column and alternate_columns:
         raise ValueError("身份备用键不能同时指定单列和复合列。")
     new, old = entity_key_sql(columns, "NEW"), entity_key_sql(columns, "OLD")
@@ -80,6 +83,7 @@ def identity_triggers(kind: str, table: str, columns: Tuple[str, ...], alternate
     if alternate_column or alternate_columns or kind in _ALTERNATE_KEYS:
         predicates.append(f"alternate_key = {alternate}")
     where = f"kind = '{kind}' AND active = 1"
+    update_clause = " OF " + ", ".join(f'"{column}"' for column in update_columns) if update_columns else ""
 
     def retire(extra: str) -> str:
         # Separate indexed lookups avoid scanning the whole kind for each OR match.
@@ -94,7 +98,7 @@ def identity_triggers(kind: str, table: str, columns: Tuple[str, ...], alternate
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), '{kind}', {new}, {alternate});
         END""",
-        stem + "_update": f"""CREATE TRIGGER IF NOT EXISTS {stem}_update AFTER UPDATE ON "{table}" BEGIN
+        stem + "_update": f"""CREATE TRIGGER IF NOT EXISTS {stem}_update AFTER UPDATE{update_clause} ON "{table}" BEGIN
 {retire(' AND entity_key != ' + old)}
             UPDATE WorkbenchEntityRefs SET entity_key = {new}, alternate_key = {alternate}, revision = revision + 1
                 WHERE kind = '{kind}' AND entity_key = {old} AND active = 1;
@@ -106,11 +110,19 @@ def identity_triggers(kind: str, table: str, columns: Tuple[str, ...], alternate
     }
 
 
+_PART_IDENTITY_UPDATE_COLUMNS: Tuple[str, ...] = (
+    "part_no", "part_name", "route_raw", "route_parsed", "remark", "created_at", "updated_at",
+)
+
+
 def metadata_objects() -> Dict[str, str]:
     objects = dict(_TABLES)
     objects.update(_INDEXES)
     for kind, (table, columns) in RESOURCE_TABLES.items():
-        objects.update(identity_triggers(kind, table, columns))
+        objects.update(identity_triggers(
+            kind, table, columns,
+            update_columns=_PART_IDENTITY_UPDATE_COLUMNS if kind == "part" else (),
+        ))
     return objects
 
 

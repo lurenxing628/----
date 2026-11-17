@@ -8,9 +8,8 @@ from datetime import datetime
 from typing import NoReturn, Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.refs import is_ref
 
-MAX_PLAN_TASKS = 10000
-MAX_PLAN_RESPONSE_BYTES = 8 * 1024 * 1024
 PLAN_READ_TTL_SECONDS = 900
 
 
@@ -19,7 +18,7 @@ def invalid_scope(message) -> NoReturn:
 
 
 def plan_reference(value):
-    if type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None:
+    if not is_ref(value):
         raise WorkbenchCommandRejected("entity_not_found", "所选计划已失效，请回到计划列表重新选择。", 404)
     return value
 

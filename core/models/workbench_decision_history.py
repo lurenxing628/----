@@ -5,8 +5,12 @@ from datetime import date
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import local_time
+from core.shared.key_sets import keys_conform
+from core.shared.refs import is_ref
 
 HISTORY_VERSION = "decision-history-v1"
+# 导出条目时按本次筛选出的条数设的上限；页面只读 SQL 一页，不受历史目录总量限制。
+MAX_HISTORY_EXPORT_ROWS = 100000
 DEFAULT_METRIC_KEYS = ("overdue_count", "total_tardiness_hours", "makespan_hours", "elapsed_seconds")
 HISTORY_STATES = ("all", "queued", "running", "complete", "partial", "failed", "interrupted", "committed")
 QUERY_FIELDS = ("timeline", "date_from", "date_to", "metric_keys", "comparison", "reference_run_ref",
@@ -75,7 +79,7 @@ def _metric_keys(value):
 def normalize_history_query(values=None):
     """Accept API strings or retained UI values, returning one typed query."""
     values = {} if values is None else values
-    if type(values) is not dict or set(values) - set(QUERY_FIELDS):
+    if not keys_conform(values, (), QUERY_FIELDS):
         reject_history("历史筛选含不支持的字段，请重新选择。")
     timeline, comparison = values.get("timeline", "run"), values.get("comparison", "observed")
     state, sort, order = values.get("state", "all"), values.get("sort", "occurred_at"), values.get("order", "desc")
@@ -83,7 +87,7 @@ def normalize_history_query(values=None):
             or state not in HISTORY_STATES or sort != "occurred_at" or order not in ("asc", "desc")):
         reject_history("历史时间线、比较方式、状态或排序条件无效。")
     reference = values.get("reference_run_ref")
-    if reference is not None and (type(reference) is not str or re.fullmatch(r"[0-9a-f]{48}", reference) is None):
+    if reference is not None and not is_ref(reference):
         reject_history("基准运行编号无效，请从运行记录重新选择。")
     selected = values.get("selected_entry_ref")
     if selected is not None:

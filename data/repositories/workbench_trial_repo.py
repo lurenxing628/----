@@ -1,16 +1,11 @@
 """Trial-only reads/writes. The command service owns the outer transaction, receipt and every ruling."""
 
-import secrets
-
-from core.models.workbench_trial import MAX_TRIAL_TASKS
+from core.models.workbench_load_limits import MAX_WINDOW_OPERATIONS
 from core.models.workbench_trial_codec import dump, load_object
 from core.models.workbench_trial_scenario_archive import EncodedScenario
+from core.shared.refs import new_ref
 
 HISTORY_REFERENCE_FORMAT = "trial-change-history-ref-v1"
-
-
-def new_ref():
-    return secrets.token_hex(24)
 
 
 def history_reference(draft_ref, revision):
@@ -30,7 +25,7 @@ class WorkbenchTrialRepository:
     def draft_rows(self, draft_ref):
         """All WorkbenchTrialRows of one draft in stored ordinal order (JSON columns undecoded)."""
         return [dict(raw) for raw in self.conn.execute(
-            "SELECT * FROM WorkbenchTrialRows WHERE draft_ref=? ORDER BY ordinal LIMIT ?", (draft_ref, MAX_TRIAL_TASKS + 1))]
+            "SELECT * FROM WorkbenchTrialRows WHERE draft_ref=? ORDER BY ordinal LIMIT ?", (draft_ref, MAX_WINDOW_OPERATIONS + 1))]
 
     def create(self, admission, rows, checked, request_key, actor, now):
         self._transaction()
@@ -83,14 +78,14 @@ class WorkbenchTrialRepository:
             (status, checked_json, now, head["draft_ref"], head["revision"]))
         return cur.rowcount == 1
 
-    def save(self, head, snapshot, encoded: EncodedScenario, request_key, actor, now):
-        """Persist ordered metadata and permanent task bodies under the full document size limit."""
+    def save(self, head, snapshot, encoded: EncodedScenario, resources_json: str, request_key, actor, now):
+        """Persist compact scenario metadata, save-time resources and permanent task bodies."""
         self._transaction()
         ref = snapshot["scenario_ref"]
         self.conn.execute("""INSERT INTO WorkbenchTrialScenarios
-            (scenario_ref,draft_ref,name,revision,snapshot_json,saved_at,local_operator,request_key)
-            VALUES (?,?,?,?,?,?,?,?)""", (ref, head["draft_ref"], snapshot["name"], head["revision"],
-            encoded.header, now, actor, request_key))
+            (scenario_ref,draft_ref,name,revision,snapshot_json,resources_json,saved_at,local_operator,request_key)
+            VALUES (?,?,?,?,?,?,?,?,?)""", (ref, head["draft_ref"], snapshot["name"], head["revision"],
+            encoded.header, resources_json, now, actor, request_key))
         self.conn.executemany("""INSERT INTO WorkbenchTrialScenarioRows
             (row_ref,task_ref,scenario_ref,source_row_ref,payload_json) VALUES (?,?,?,?,?)""",
             [(row["row_ref"], row["task_ref"], ref, row["source_row_ref"], text)
@@ -103,7 +98,10 @@ class WorkbenchTrialRepository:
         return None if row is None else dict(row)
 
     def iter_scenario_rows(self, ref):
-        cursor = self.conn.execute("SELECT row_ref,payload_json FROM WorkbenchTrialScenarioRows WHERE scenario_ref=?", (ref,))
+        """Each permanent task row of one scenario: its identity columns and its stored payload text."""
+        cursor = self.conn.execute(
+            "SELECT row_ref,task_ref,source_row_ref,payload_json FROM WorkbenchTrialScenarioRows WHERE scenario_ref=?",
+            (ref,))
         return (dict(row) for row in cursor)
 
     def changes(self, draft_ref, *, through_revision):

@@ -1,38 +1,42 @@
+"""日志底座：只依赖标准库，启动期还没有应用、数据库或 Flask 时也能导入。
+
+数据库操作日志在 `core/infrastructure/operation_logging.py`；启动期文件落盘在
+`web/bootstrap/launcher_observability.py`。两者都复用这里的格式化与 stderr 写入。
+"""
+
 from __future__ import annotations
 
 import logging
 import logging.handlers
 import os
 import sys
-from typing import Any, Callable, Dict, Optional, Tuple
-
-from core.infrastructure.transaction import in_transaction_context
-from core.shared.strict_json import canonical_json
+from typing import Any, Optional, Tuple
 
 
-def _invoke_safely(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> bool:
-    try:
-        fn(*args, **kwargs)
-        return True
-    except Exception:
-        return False
-
-
-def _format_log_message(message: Any, *args: Any) -> str:
-    text = str(message)
+def format_log_message(message: str, *args: Any) -> str:
+    """按 logging 的 % 规则展开参数；参数与格式不符时保留原文和参数，不丢这条日志。"""
     if not args:
-        return text
+        return message
     try:
-        return text % args
-    except Exception:
-        return f"{text} | args={args!r}"
+        return message % args
+    except (TypeError, ValueError, OverflowError):
+        return f"{message} | args={args!r}"
 
 
-def safe_log(logger: Optional[Any], level: str, message: Any, *args: Any) -> None:
-    method = getattr(logger, level, None) if logger is not None else None
-    if callable(method) and _invoke_safely(method, message, *args):
+def write_stderr(text: str) -> None:
+    """没有日志器可写时的最后通道；管道断开或流已关闭时放弃这一行。"""
+    try:
+        print(text, file=sys.stderr)
+    except (OSError, ValueError):
         return
-    _invoke_safely(print, _format_log_message(message, *args), file=sys.stderr)
+
+
+def safe_log(logger: Optional[logging.Logger], level: str, message: str, *args: Any) -> None:
+    """有日志器就按级别写进日志器，没有时写 stderr。"""
+    if logger is None:
+        write_stderr(format_log_message(message, *args))
+        return
+    getattr(logger, level)(message, *args)
 
 
 class AppLogger:
@@ -88,7 +92,10 @@ class AppLogger:
     def _reset_handlers(self) -> None:
         for handler in list(self.logger.handlers):
             self.logger.removeHandler(handler)
-            _invoke_safely(handler.close)
+            try:
+                handler.close()
+            except OSError as exc:
+                write_stderr(f"关闭旧日志处理器失败，已继续重新配置：{exc}")
 
     def _add_console_handler(self):
         handler = logging.StreamHandler()
@@ -132,82 +139,3 @@ class AppLogger:
         )
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
-
-
-class OperationLogger:
-    """操作日志记录器（写入数据库 OperationLogs 表）。"""
-
-    def __init__(self, db_connection: Any, logger: Optional[logging.Logger] = None):
-        self.conn = db_connection
-        self.logger = logger or logging.getLogger(__name__)
-
-    def log(
-        self,
-        level: str,
-        module: str,
-        action: str,
-        target_type: Optional[str] = None,
-        target_id: Optional[str] = None,
-        operator: Optional[str] = None,
-        detail: Optional[Dict[str, Any]] = None,
-        error_code: Optional[str] = None,
-        error_message: Optional[str] = None,
-        raise_on_fail: bool = False,
-    ) -> bool:
-        auto_commit = False
-        try:
-            # 注意：不要在外层事务（TransactionManager）中隐式 commit()，否则会破坏原子性。
-            # 这里通过 transaction 上下文标记来判断是否应自动提交。
-            # 另外：若调用方已处于 sqlite 事务中（conn.in_transaction=True），也不能“顺手 commit”，避免误提交调用方未提交写入。
-            pre_in_tx = bool(self.conn.in_transaction)
-            auto_commit = (not pre_in_tx) and (not in_transaction_context(self.conn))
-            self.conn.execute(
-                """
-                INSERT INTO OperationLogs
-                (log_level, module, action, target_type, target_id,
-                 operator, detail, error_code, error_message)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    level,
-                    module,
-                    action,
-                    target_type,
-                    target_id,
-                    operator,
-                    canonical_json(detail) if detail else None,
-                    error_code,
-                    error_message,
-                ),
-            )
-            if auto_commit:
-                self.conn.commit()
-            return True
-        except Exception as e:
-            # 若我们决定自动提交，则异常路径也要尽量结束事务，避免悬挂
-            if auto_commit:
-                _invoke_safely(self.conn.rollback)
-            # 记录失败时写文件日志，避免影响主流程
-            _invoke_safely(self.logger.error, f"写入操作日志失败：{e}")
-            if raise_on_fail:
-                raise
-            return False
-
-    def info(self, module: str, action: str, **kwargs) -> bool:
-        ok = self.log("INFO", module, action, **kwargs)
-        if ok:
-            _invoke_safely(self.logger.info, f"[{module}] 操作：{action}（{kwargs.get('target_type') or ''} {kwargs.get('target_id') or ''}）")
-        return ok
-
-    def error(self, module: str, action: str, error_code: str, error_message: str, **kwargs) -> bool:
-        ok = self.log(
-            "ERROR",
-            module,
-            action,
-            error_code=error_code,
-            error_message=error_message,
-            **kwargs,
-        )
-        if ok:
-            _invoke_safely(self.logger.error, f"[{module}] 失败：{action}（[{error_code}] {error_message}）")
-        return ok

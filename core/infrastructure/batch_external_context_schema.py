@@ -1,8 +1,18 @@
 """Frozen external scheduling context belongs to the batch operation, not its template."""
 
 from core.infrastructure.workbench_metadata_schema import canonical_sql
+from core.models.enums import (
+    BATCH_EXTERNAL_CONTEXT_ORIGIN_VALUES,
+    MERGE_MODE_VALUES,
+    SourceType,
+    enum_check,
+    nullable_enum_check,
+    nullable_external_days_check,
+)
 
 from .schema_structure import SchemaStructure
+
+_EXTERNAL = SourceType.EXTERNAL.value
 
 _COLUMNS = (
     "operation_id", "part_no", "sequence", "template_operation_id", "template_status",
@@ -23,38 +33,35 @@ def capture_select(operation_sql, origin):
             AND tr.entity_key=CAST(t.id AS TEXT) AND tr.active=1
         LEFT JOIN WorkbenchEntityRefs r ON r.kind='template_external_group'
             AND r.entity_key=g.group_id AND r.active=1
-        WHERE lower(trim(o.source))='external'"""
+        WHERE o.source='""" + _EXTERNAL + "'"
 
 
 def objects():
-    capture = "INSERT INTO BatchExternalContexts " + capture_select(
+    capture = "INSERT INTO BatchExternalContexts(" + ",".join(_COLUMNS) + ") " + capture_select(
         "(SELECT * FROM BatchOperations WHERE id=NEW.id)", "creation") + ";"
     return {
-        "BatchExternalContexts": """CREATE TABLE BatchExternalContexts (
+        "BatchExternalContexts": f"""CREATE TABLE BatchExternalContexts (
             operation_id INTEGER PRIMARY KEY,
             part_no TEXT NOT NULL, sequence INTEGER NOT NULL,
             template_operation_id INTEGER, template_status TEXT,
             group_id TEXT, group_part_no TEXT, start_sequence INTEGER, end_sequence INTEGER,
-            merge_mode TEXT, total_days REAL, supplier_id TEXT, group_ref TEXT,
+            merge_mode TEXT {nullable_enum_check('merge_mode', MERGE_MODE_VALUES)},
+            total_days REAL {nullable_external_days_check('total_days')}, supplier_id TEXT, group_ref TEXT,
             template_operation_ref TEXT,
-            origin TEXT NOT NULL CHECK(origin IN ('creation','template_copy','instance_copy')),
+            origin TEXT NOT NULL {enum_check('origin', BATCH_EXTERNAL_CONTEXT_ORIGIN_VALUES)},
             captured_at TEXT NOT NULL,
             FOREIGN KEY(operation_id) REFERENCES BatchOperations(id) ON DELETE CASCADE)""",
         "batch_external_context_created": """CREATE TRIGGER batch_external_context_created
-            AFTER INSERT ON BatchOperations WHEN lower(trim(NEW.source))='external' BEGIN """ + capture + " END",
+            AFTER INSERT ON BatchOperations WHEN NEW.source='""" + _EXTERNAL + "' BEGIN " + capture + " END",
         "batch_external_context_source_changed": """CREATE TRIGGER batch_external_context_source_changed
-            AFTER UPDATE OF source ON BatchOperations WHEN lower(trim(NEW.source))='external'
-                AND lower(trim(OLD.source)) IS NOT lower(trim(NEW.source))
+            AFTER UPDATE OF source ON BatchOperations WHEN NEW.source='""" + _EXTERNAL + """'
+                AND OLD.source IS NOT NEW.source
             BEGIN DELETE FROM BatchExternalContexts WHERE operation_id=NEW.id; """ + capture + " END",
     }
 
 
 def contract_issues(structure: SchemaStructure):
     actual = structure.sql
-    issues = [("missing_batch_external_context:" if name not in actual else "invalid_batch_external_context:") + name
-              for name, sql in objects().items()
-              if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]
-    if "BatchExternalContexts" in actual and "invalid_batch_external_context:BatchExternalContexts" not in issues:
-        if tuple(col["name"] for col in structure.table_info("BatchExternalContexts")) != _COLUMNS:
-            issues.append("invalid_batch_external_context:BatchExternalContexts")
-    return issues
+    return [("missing_batch_external_context:" if name not in actual else "invalid_batch_external_context:") + name
+            for name, sql in objects().items()
+            if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]

@@ -1,4 +1,4 @@
-"""Additional machine work types; the primary capability remains valid."""
+"""设备能做的工种只存在这张表；一台设备一行一个工种，已登记设备可以一个工种都没有。"""
 
 from .schema_structure import SchemaStructure
 from .workbench_metadata_schema import canonical_sql

@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from ._helpers import RowLike, parse_optional_int
+from ._helpers import RowLike
 
 
 @dataclass
 class SystemJobState:
-    id: Optional[int]
+    id: int
     job_key: str
     last_run_time: Optional[str] = None
     last_run_detail: Optional[str] = None
@@ -17,7 +17,7 @@ class SystemJobState:
     @classmethod
     def from_row(cls, row: RowLike) -> SystemJobState:
         return cls(
-            id=parse_optional_int(row["id"], field="id"),
+            id=row["id"],
             job_key=str(row["job_key"]),
             last_run_time=row["last_run_time"],
             last_run_detail=row["last_run_detail"],

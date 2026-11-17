@@ -11,6 +11,9 @@ class WorkbenchEntityIdentity:
     revision: int
     active: bool
 
+    @classmethod
+    def from_row(cls, row) -> "WorkbenchEntityIdentity":
+        """The one WorkbenchEntityRefs row (ref, kind, entity_key, revision, active) -> identity mapping.
 
-def is_entity_ref(value) -> bool:
-    return type(value) is str and len(value) == 48 and all(c in "0123456789abcdef" for c in value)
+        The table's CHECKs pin revision to a positive integer and active to 0/1, so only active is converted."""
+        return cls(row["ref"], row["kind"], row["entity_key"], row["revision"], bool(row["active"]))

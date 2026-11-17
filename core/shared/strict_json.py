@@ -1,12 +1,13 @@
-"""Strict JSON documents: one reader for request bodies, query or form arguments and stored text.
+"""Strict JSON documents: the one decoder for external input (request bodies, query or form arguments,
+files on disk). Stored JSON columns are read only through ``core.models.content.read_stored_json``,
+which runs this decoder with its single storage rejection.
 
 Duplicate object keys, ``NaN``/``Infinity`` literals and numbers that overflow to infinity are
 rejected before any caller sees a value; bytes are decoded as UTF-8 only. Every rejection belongs
-to the caller: storage readers raise their own corrupt/inconsistent errors and routes raise their
-own ``WorkbenchCommandRejected`` texts. Hooks escape the decoder through a private exception that is
-not a ``ValueError``, so a caller's rejection is never mistaken for, or absorbed by, a syntax error.
-``canonical_json`` is the one writer: sorted keys, compact separators, non-ASCII kept, non-finite
-numbers refused.
+to the caller: routes and file readers raise their own texts. Hooks escape the decoder through a
+private exception that is not a ``ValueError``, so a caller's rejection is never mistaken for, or
+absorbed by, a syntax error. ``canonical_json`` is the one writer: sorted keys, compact separators,
+non-ASCII kept, non-finite numbers refused.
 """
 
 from __future__ import annotations

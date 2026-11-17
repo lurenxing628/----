@@ -26,18 +26,3 @@ class WorkbenchResourceMetricsRepository(BaseRepository):
         for name in names:
             result[name] = self.fetchall(f"SELECT * FROM {sources[name][0]} ORDER BY {sources[name][1]}")
         return result
-
-    def op_type_dependencies(self, codes):
-        if not codes:
-            return {}
-        tables = {"machine_capabilities": "MachineOpTypes", "machines": "Machines",
-                  "supplier_capabilities": "WorkbenchSupplierOpTypes", "skills": "OperatorSkill",
-                  "part_operations": "PartOperations", "batch_operations": "BatchOperations"}
-        result = {code: dict.fromkeys(tables, 0) for code in codes}
-        marks = ",".join("?" for _ in codes)
-        for name, table in tables.items():
-            rows = self.fetchall(f"SELECT op_type_id,COUNT(*) AS amount FROM {table} "
-                                 f"WHERE op_type_id IN ({marks}) GROUP BY op_type_id", codes)
-            for row in rows:
-                result[row["op_type_id"]][name] = row["amount"]
-        return result

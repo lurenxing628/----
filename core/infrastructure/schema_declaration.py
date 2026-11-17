@@ -1,8 +1,8 @@
 """schema.sql 的定位与“声明结构”解析。
 
 schema.sql 是生成物（python -m tools.generate_schema_sql --write），手写源是 DDL 模块；
-运行期需要“声明了哪些表、每张表有哪些列”时，把文本装进一个隔离的 :memory: 库再用 PRAGMA 读，
-不再用正则猜 CREATE TABLE。解析结果按文本内容缓存，同一份 schema 只解析一次。
+运行期需要“声明了哪些表、每张表有哪些列、哪些列组不许重复”时，把文本装进一个隔离的 :memory: 库再用
+PRAGMA 读，不再用正则猜 CREATE TABLE / CREATE UNIQUE INDEX。schema.sql 随程序发布、运行中不变，同一路径进程内只读一次。
 """
 
 from __future__ import annotations
@@ -10,10 +10,9 @@ from __future__ import annotations
 import os
 import sqlite3
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, NamedTuple, Optional, Tuple
 
-_DECLARED_CACHE: Dict[str, Dict[str, List[str]]] = {}
-_TEXT_CACHE: Dict[str, Tuple[Tuple[int, int], str]] = {}
+_TEXT_CACHE: Dict[str, str] = {}
 
 
 def resolve_schema_path(schema_path: Optional[str]) -> str:
@@ -35,20 +34,31 @@ def resolve_schema_path(schema_path: Optional[str]) -> str:
 
 
 def load_schema_sql(schema_path: Optional[str] = None) -> str:
-    """读取 schema.sql 文本；按 (mtime_ns, size) 缓存，文件一变就重读。"""
+    """读取 schema.sql 文本；同一路径进程内只读一次。"""
     path = resolve_schema_path(schema_path)
-    stat = os.stat(path)
-    stamp = (int(stat.st_mtime_ns), int(stat.st_size))
-    cached = _TEXT_CACHE.get(path)
-    if cached is not None and cached[0] == stamp:
-        return cached[1]
-    with open(path, encoding="utf-8") as handle:
-        text = handle.read()
-    _TEXT_CACHE[path] = (stamp, text)
-    return text
+    if path not in _TEXT_CACHE:
+        with open(path, encoding="utf-8") as handle:
+            _TEXT_CACHE[path] = handle.read()
+    return _TEXT_CACHE[path]
 
 
-def _parse(schema_sql: str) -> Dict[str, List[str]]:
+class DeclaredTable(NamedTuple):
+    """一张表的声明：列名（声明顺序），以及主键与无条件唯一约束各自的列组。"""
+
+    columns: Tuple[str, ...]
+    unique_keys: Tuple[Tuple[str, ...], ...]
+
+
+def _quoted(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def declared_tables(schema_sql: str) -> Dict[str, DeclaredTable]:
+    """schema 文本声明的每张表（含 SchemaVersion）；调用方按需缓存结果。
+
+    ``unique_keys`` 是 PRIMARY KEY（含 INTEGER PRIMARY KEY）、列级与表级 UNIQUE、``CREATE UNIQUE INDEX`` 的列组，
+    同一列组只记一次。带 WHERE 的部分唯一索引只约束满足条件的行，不在其中，由读这些行的地方自己核对。
+    """
     conn = sqlite3.connect(":memory:")
     try:
         conn.executescript(schema_sql)
@@ -57,21 +67,14 @@ def _parse(schema_sql: str) -> Dict[str, List[str]]:
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY rowid"
             )
         ]
-        columns = {
-            name: [str(row[1]) for row in conn.execute('PRAGMA table_info("' + name.replace('"', '""') + '")')]
-            for name in names
-        }
+        tables = {}
+        for name in names:
+            info = conn.execute("PRAGMA table_info(" + _quoted(name) + ")").fetchall()
+            keys = [tuple(str(row[1]) for row in sorted((row for row in info if row[5]), key=lambda row: row[5]))]
+            for _seq, index, unique, _origin, partial in conn.execute("PRAGMA index_list(" + _quoted(name) + ")"):
+                if unique and not partial:
+                    keys.append(tuple(row[2] for row in conn.execute("PRAGMA index_info(" + _quoted(index) + ")")))
+            tables[name] = DeclaredTable(tuple(str(row[1]) for row in info), tuple(dict.fromkeys(key for key in keys if key)))
     finally:
         conn.close()
-    return columns
-
-
-def declared_columns(schema_sql: str) -> Dict[str, List[str]]:
-    """schema 文本声明的 {表名: [列名...]}（含 SchemaVersion）。"""
-    cached = _DECLARED_CACHE.get(schema_sql)
-    if cached is None:
-        cached = _parse(schema_sql)
-        if len(_DECLARED_CACHE) >= 8:
-            _DECLARED_CACHE.clear()
-        _DECLARED_CACHE[schema_sql] = cached
-    return cached
+    return tables

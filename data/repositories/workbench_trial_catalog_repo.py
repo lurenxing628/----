@@ -1,10 +1,11 @@
 """Stream bounded headers, not large admission/scenario JSON or live plan rows. Limits are decided by the caller."""
 
-_BASE_JOINS = """LEFT JOIN WorkbenchPlanSourceRefs p ON d.base_kind='plan_ref' AND p.ref=d.base_ref
+_BASE_JOINS = """LEFT JOIN ScheduleHistory h ON d.base_kind='plan_ref' AND h.plan_ref=d.base_ref
     LEFT JOIN WorkbenchRunCandidates c ON d.base_kind='candidate_ref' AND c.candidate_ref=d.base_ref
     LEFT JOIN WorkbenchRunJobs r ON r.run_ref=c.run_ref"""
-_BASE_COLUMNS = """d.draft_ref,d.base_kind,d.base_ref,d.row_count,p.version AS base_version,
-    p.kind AS base_plan_kind,c.sequence AS candidate_sequence,r.accepted_at AS candidate_accepted_at"""
+_BASE_COLUMNS = """d.draft_ref,d.base_kind,d.base_ref,d.row_count,h.version AS base_version,
+    CASE WHEN h.version IS NOT NULL THEN 'official' END AS base_plan_kind,
+    c.sequence AS candidate_sequence,r.accepted_at AS candidate_accepted_at"""
 
 
 class WorkbenchTrialCatalogRepository:

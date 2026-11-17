@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
+
+from core.shared.local_datetime import datetime_to_us
+
 from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
-from .schedule_time_sql import time_dt
-from .workbench_execution_repo import stored_report_values
 
 
 class WorkbenchReportFactsRepository(BaseRepository):
@@ -13,18 +15,21 @@ class WorkbenchReportFactsRepository(BaseRepository):
         where, params = ["s.version = ?"], [version]
         if date_from is not None:
             # 和报表投影一致：按工厂当地的计划完工日（含起止日期），不是工序时间重叠。
-            where.append("SUBSTR(" + time_dt("s", "end_time") + ", 1, 10) BETWEEN ? AND ?")
-            params.extend([date_from, date_to])
+            start_d = date.fromisoformat(date_from)
+            end_d = date.fromisoformat(date_to)
+            start_us = datetime_to_us(datetime(start_d.year, start_d.month, start_d.day))
+            end_incl_us = datetime_to_us(datetime(end_d.year, end_d.month, end_d.day, 23, 59, 59, 999999))
+            where.append("s.end_us >= ? AND s.end_us <= ?")
+            params.extend([start_us, end_incl_us])
         if batch_id is not None:
-            where.append("bo.batch_id = ?")
+            where.append("s.batch_id = ?")
             params.append(batch_id)
         return self.fetchall(build_schedule_detail_sql(where_clauses=where) + " LIMIT ?", params + [limit])
 
     def plan_resource_keys(self, version):
         return self.fetchall(
-            """SELECT DISTINCT bo.batch_id, s.machine_id, m.name AS machine_name, s.operator_id, o.name AS operator_name
+            """SELECT DISTINCT s.batch_id, s.machine_id, m.name AS machine_name, s.operator_id, o.name AS operator_name
             FROM Schedule s
-            LEFT JOIN BatchOperations bo ON bo.id = s.op_id
             LEFT JOIN Machines AS m ON m.machine_id = s.machine_id
             LEFT JOIN Operators AS o ON o.operator_id = s.operator_id
             WHERE s.version = ?""",
@@ -33,20 +38,20 @@ class WorkbenchReportFactsRepository(BaseRepository):
 
     def actual_resource_refs(self, plan_ref):
         """Only resource identities used by the plan's operations; no ledger projections."""
-        operations = """WITH operations AS (
-            SELECT r.operation_ref FROM WorkbenchTaskRefs t
-            JOIN WorkbenchPlanSourceRefs r ON r.ref=t.row_ref AND r.active=1
-            WHERE t.plan_ref=?
-        ) """
+        rows = self.fetchall(
+            """SELECT DISTINCT p.actual_machine_ref, p.actual_operator_ref
+            FROM ScheduleHistory h
+            JOIN Schedule s ON s.version = h.version
+            JOIN WorkbenchProductionReports p ON p.operation_ref = s.operation_ref
+            WHERE h.plan_ref = ?
+              AND p.voided = 0
+              AND (p.actual_machine_ref IS NOT NULL OR p.actual_operator_ref IS NOT NULL)""",
+            (plan_ref,),
+        )
         refs = set()
-        reports = self.iter_rows(operations + """SELECT v.values_json FROM operations o
-            JOIN WorkbenchProductionReports p ON p.operation_ref=o.operation_ref
-            JOIN WorkbenchProductionReportRevisions v ON v.report_ref=p.report_ref
-            WHERE NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportRevisions later
-                WHERE later.report_ref=v.report_ref AND later.sequence>v.sequence)
-            AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportVoids void
-                WHERE void.report_ref=p.report_ref)""", (plan_ref,))
-        for row in reports:
-            values = stored_report_values(row["values_json"])
-            refs.update(values[field] for field in ("actual_machine_ref", "actual_operator_ref") if values.get(field))
+        for row in rows:
+            if row["actual_machine_ref"] is not None:
+                refs.add(row["actual_machine_ref"])
+            if row["actual_operator_ref"] is not None:
+                refs.add(row["actual_operator_ref"])
         return refs

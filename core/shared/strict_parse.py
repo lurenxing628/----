@@ -1,21 +1,58 @@
+"""Strict admission of stored and submitted values, and the one wire encoding of integers.
+
+Admission decides what a value means (identity, count, instant, cycle, finite number) and never coerces;
+``wire_int`` is the only place that turns an integer beyond the JavaScript safe range into text, and
+``wire_sequence`` applies it to stored operation sequences that their readers diagnose instead of admit.
+"""
+
 from __future__ import annotations
 
 import math
 import re
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from core.errors import ValidationError
+from core.shared.local_datetime import datetime_to_us
 
 ILLEGAL_XML_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 _INT64_MAX = (1 << 63) - 1
 JS_SAFE_INT_MAX = (1 << 53) - 1
 PORT_MAX = 65535
 WIN32_DWORD_MAX = 0xFFFFFFFF
+TIME_US_MIN = datetime_to_us(datetime.min)
+TIME_US_MAX = datetime_to_us(datetime.max)
+# 外协周期（自然日）的上限：100 年。外协周期、合并周期、供应商默认周期写入时都按它拒收，
+# 表上的 CHECK（enums.external_days_check）与日历的同量级上限也都取这一个数。
+EXTERNAL_DAYS_MAX = 36500
+EXTERNAL_DAYS_RANGE_TEXT = "必须大于 0 天且不超过 " + str(EXTERNAL_DAYS_MAX) + " 天（100 年）"
+
+
+def wire_int(value: int) -> Union[int, str]:
+    """An admitted integer in a public DTO: itself within ±JS_SAFE_INT_MAX, its decimal text beyond, so a browser
+    never rounds it. It neither admits nor defaults; callers pass the int their own boundary already accepted."""
+    return value if -JS_SAFE_INT_MAX <= value <= JS_SAFE_INT_MAX else str(value)
+
+
+def wire_sequence(value: Any) -> Union[int, str]:
+    """A stored operation sequence (PartOperations / BatchOperations / ExternalGroups / BatchExternalContexts, INTEGER
+    columns without a typeof CHECK) as shown: wire_int for an int; text or real the column kept stays visible as its
+    text, beside the reader's own invalid-sequence issue, so the page still opens and template sync can replace it."""
+    return wire_int(value) if type(value) is int else str(value)
 
 
 def is_blank_input(value: Any) -> bool:
     return value is None or (isinstance(value, str) and value.strip() == "")
+
+
+# A stored integer is admitted by what it means, never by one catch-all rule:
+#   identity, version, sequence -> is_exact_positive_int                 1..2**63-1
+#   one entry's count/quantity  -> is_stored_number(value, integer=True)  0..2**53-1
+#   instant in microseconds     -> is_stored_time_us                      signed, TIME_US_MIN..TIME_US_MAX
+# An external cycle in natural days -> is_external_days                    (0, EXTERNAL_DAYS_MAX], int or float
+# Table columns typed by enums.time_us_check / count_check / external_days_check hold these same ranges; their
+# readers do not re-check.
 
 
 def is_exact_positive_int(value: Any) -> bool:
@@ -23,13 +60,14 @@ def is_exact_positive_int(value: Any) -> bool:
     return type(value) is int and 0 < value <= _INT64_MAX
 
 
+def is_stored_time_us(value: Any) -> bool:
+    """A stored factory-local instant (``local_datetime.datetime_to_us``): an exact int (no bool, text or float)
+    that a datetime can hold. Negative, zero and beyond 2**53-1 are ordinary instants."""
+    return type(value) is int and TIME_US_MIN <= value <= TIME_US_MAX
+
+
 # Shared numeric rules. Callers keep their own exception type, message and error code; these only decide
 # what counts as an integer or a finite number (a bool is neither).
-
-
-def is_int(value: Any) -> bool:
-    """An int that is not a bool."""
-    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def is_number(value: Any) -> bool:
@@ -78,11 +116,18 @@ def is_stored_number(value: Any, *, positive: bool = False, integer: bool = Fals
     """A stored count/hours/efficiency that can be used as is: an exact finite number (an exact int with
     integer=True) in 0..2**53-1, or 1..2**53-1 / (0, 2**53-1] with positive=True.
 
-    Run admission, preflight, dashboards and calendar reads judge stored numbers with this one rule.
+    Write admission and read judgement of stored numbers both use this one rule. It bounds one entry: sums and
+    derived amounts (quantity × unit hours + setup) only have to be finite and non-negative.
     """
     if not (type(value) is int if integer else is_exact_finite_number(value)):
         return False
     return (0 < value if positive else 0 <= value) and value <= JS_SAFE_INT_MAX
+
+
+def is_external_days(value: Any) -> bool:
+    """An external cycle in natural days (operation cycle, merged-group cycle, supplier default): an exact int
+    or float (no bool, text or subclass), finite, in (0, EXTERNAL_DAYS_MAX]. Every write admits with this one rule."""
+    return is_exact_finite_number(value) and 0 < value <= EXTERNAL_DAYS_MAX
 
 
 def parse_bounded_positive_int(value: Any, *, max_value: int, allow_str: bool = True) -> Optional[int]:
@@ -124,36 +169,6 @@ def decimal_integral_span(number: Decimal, *, scale10: int = 0) -> Optional[int]
     if nz_exp < 0:
         return None
     return len(nz_digits) + nz_exp
-
-
-def integer_value(value: Any) -> Optional[int]:
-    """A stored integer: an int (not bool) as is, an integral float, or UTF-8 bytes / text / other value whose
-    literal is an integer ('1', ' 1 ', '1.0', '1e3'); None for anything else, blank included."""
-    if is_int(value):
-        return int(value)
-    if isinstance(value, float):
-        return int(value) if value.is_integer() else None
-    if isinstance(value, (bytes, bytearray)):
-        try:
-            value = value.decode("utf-8")
-        except UnicodeDecodeError:
-            return None
-    text = str(value).strip()
-    if len(text) <= 4300:
-        try:
-            return int(text)
-        except ValueError:
-            pass
-    try:
-        number = Decimal(text)
-    except InvalidOperation:
-        return None
-    if not number.is_finite():
-        return None
-    span = decimal_integral_span(number)
-    if span is None or span > 4300:
-        return None
-    return 0 if number.is_zero() else int(number)
 
 
 def _raise_blank_required(field: str) -> None:

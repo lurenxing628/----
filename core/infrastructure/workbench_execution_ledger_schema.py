@@ -1,6 +1,16 @@
 """Execution ledger DDL and structural contract checks."""
 
 from core.infrastructure.workbench_metadata_schema import canonical_sql
+from core.models.enums import (
+    REPORT_REVISION_ACTION_VALUES,
+    REPORT_SOURCE_VALUES,
+    count_check,
+    enum_check,
+    flag_check,
+    integer_sum_check,
+    nullable_count_check,
+    positive_count_check,
+)
 
 from .schema_structure import SchemaStructure
 
@@ -17,17 +27,30 @@ def execution_ledger_objects():
         "WorkbenchProductionReports": f"""CREATE TABLE WorkbenchProductionReports (
             report_ref {_REF.format('report_ref')} PRIMARY KEY,
             report_no TEXT NOT NULL UNIQUE CHECK(length(report_no) BETWEEN 1 AND 64),
-            operation_ref TEXT NOT NULL, recorded_against_task_ref TEXT NOT NULL,
-            recorded_against_plan_ref TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('manual', 'excel')),
+            operation_ref TEXT NOT NULL,
+            recorded_against_task_ref {_REF.format('recorded_against_task_ref')},
+            recorded_against_plan_ref TEXT NOT NULL,
+            source TEXT NOT NULL {enum_check('source', REPORT_SOURCE_VALUES)},
             recorded_at TEXT NOT NULL,
+            current_revision_ref TEXT,
+            revision_count INTEGER NOT NULL DEFAULT 1 {positive_count_check('revision_count')},
+            voided INTEGER NOT NULL DEFAULT 0 {flag_check('voided')},
+            actual_start TEXT,
+            actual_end TEXT,
+            completed_quantity INTEGER {nullable_count_check('completed_quantity')},
+            effective_processing_hours TEXT,
+            actual_machine_ref TEXT,
+            actual_operator_ref TEXT,
+            remark TEXT NOT NULL DEFAULT '',
+            current_local_operator TEXT NOT NULL DEFAULT '',
+            current_declared_operator TEXT NOT NULL DEFAULT '',
             FOREIGN KEY(operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref),
-            FOREIGN KEY(recorded_against_task_ref) REFERENCES WorkbenchTaskRefs(ref),
-            FOREIGN KEY(recorded_against_plan_ref) REFERENCES WorkbenchPlanSourceRefs(ref)
+            FOREIGN KEY(recorded_against_plan_ref) REFERENCES ScheduleHistory(plan_ref)
         )""",
         "WorkbenchProductionReportRevisions": f"""CREATE TABLE WorkbenchProductionReportRevisions (
             revision_ref {_REF.format('revision_ref')} PRIMARY KEY,
-            report_ref TEXT NOT NULL, sequence INTEGER NOT NULL CHECK(sequence > 0),
-            previous_revision_ref TEXT, action TEXT NOT NULL CHECK(action IN ('create', 'supplement', 'correct')),
+            report_ref TEXT NOT NULL, sequence INTEGER NOT NULL {positive_count_check('sequence')},
+            previous_revision_ref TEXT, action TEXT NOT NULL {enum_check('action', REPORT_REVISION_ACTION_VALUES)},
             values_json TEXT NOT NULL, reason TEXT NOT NULL,
             local_operator TEXT NOT NULL CHECK(length(trim(local_operator)) > 0),
             declared_operator TEXT NOT NULL, recorded_at TEXT NOT NULL,
@@ -37,20 +60,43 @@ def execution_ledger_objects():
             FOREIGN KEY(previous_revision_ref) REFERENCES WorkbenchProductionReportRevisions(revision_ref),
             FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
         )""",
+        "OperationExecutionStates": f"""CREATE TABLE OperationExecutionStates (
+            operation_ref {_REF.format('operation_ref')} PRIMARY KEY,
+            active_report_count INTEGER NOT NULL {count_check('active_report_count')},
+            known_completed_quantity INTEGER NOT NULL {integer_sum_check('known_completed_quantity')},
+            unknown_quantity_count INTEGER NOT NULL {count_check('unknown_quantity_count')},
+            internal_complete_flag INTEGER NOT NULL {flag_check('internal_complete_flag')},
+            external_complete_flag INTEGER NOT NULL {flag_check('external_complete_flag')},
+            any_actual_end INTEGER NOT NULL {flag_check('any_actual_end')},
+            first_actual_start TEXT,
+            max_actual_end TEXT,
+            known_effective_hours_text TEXT,
+            unknown_hour_count INTEGER NOT NULL {count_check('unknown_hour_count')},
+            FOREIGN KEY(operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref)
+        )""",
         "idx_wb_execution_reports_operation": "CREATE INDEX idx_wb_execution_reports_operation ON WorkbenchProductionReports(operation_ref, recorded_at, report_ref)",
         "idx_wb_execution_reports_task": "CREATE INDEX idx_wb_execution_reports_task ON WorkbenchProductionReports(recorded_against_task_ref)",
+        "idx_wb_exec_reports_active_op": "CREATE INDEX idx_wb_exec_reports_active_op ON WorkbenchProductionReports(operation_ref, recorded_at, report_no) WHERE voided = 0",
+        "idx_wb_exec_reports_active_machine": "CREATE INDEX idx_wb_exec_reports_active_machine ON WorkbenchProductionReports(actual_machine_ref, operation_ref) WHERE voided = 0 AND actual_machine_ref IS NOT NULL",
+        "idx_wb_exec_reports_active_operator": "CREATE INDEX idx_wb_exec_reports_active_operator ON WorkbenchProductionReports(actual_operator_ref, operation_ref) WHERE voided = 0 AND actual_operator_ref IS NOT NULL",
         "idx_wb_execution_revisions_request": "CREATE INDEX idx_wb_execution_revisions_request ON WorkbenchProductionReportRevisions(request_key)",
-        "idx_wb_execution_task_operation": "CREATE INDEX idx_wb_execution_task_operation ON WorkbenchPlanSourceRefs(operation_ref, kind, version)",
-        "idx_wb_execution_source_row_history": "CREATE INDEX idx_wb_execution_source_row_history ON WorkbenchPlanSourceRefs(kind, source_key, version, operation_id)",
         "idx_wb_execution_resource_history": "CREATE INDEX idx_wb_execution_resource_history ON WorkbenchEntityRefs(kind, entity_key)",
+        "wb_execution_reports_identity_immutable": """CREATE TRIGGER wb_execution_reports_identity_immutable BEFORE UPDATE ON WorkbenchProductionReports
+            WHEN NEW.report_ref IS NOT OLD.report_ref
+              OR NEW.report_no IS NOT OLD.report_no
+              OR NEW.operation_ref IS NOT OLD.operation_ref
+              OR NEW.recorded_against_task_ref IS NOT OLD.recorded_against_task_ref
+              OR NEW.recorded_against_plan_ref IS NOT OLD.recorded_against_plan_ref
+              OR NEW.source IS NOT OLD.source
+              OR NEW.recorded_at IS NOT OLD.recorded_at
+            BEGIN SELECT RAISE(ABORT, 'execution report identity is immutable'); END""",
+        "wb_execution_reports_no_delete": "CREATE TRIGGER wb_execution_reports_no_delete BEFORE DELETE ON WorkbenchProductionReports BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END",
+        "wb_execution_reports_clock": "CREATE TRIGGER wb_execution_reports_clock AFTER INSERT ON WorkbenchProductionReports BEGIN UPDATE WorkbenchExecutionLedgerClock SET revision = revision + 1 WHERE singleton = 1; END",
     }
-    for table, stem in (("WorkbenchProductionReports", "reports"),
-                        ("WorkbenchProductionReportRevisions", "revisions")):
-        for event in ("update", "delete"):
-            name = "wb_execution_" + stem + "_no_" + event
-            objects[name] = f"CREATE TRIGGER {name} BEFORE {event.upper()} ON {table} BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END"
-        name = "wb_execution_" + stem + "_clock"
-        objects[name] = f"CREATE TRIGGER {name} AFTER INSERT ON {table} BEGIN UPDATE WorkbenchExecutionLedgerClock SET revision = revision + 1 WHERE singleton = 1; END"
+    for event in ("update", "delete"):
+        name = "wb_execution_revisions_no_" + event
+        objects[name] = f"CREATE TRIGGER {name} BEFORE {event.upper()} ON WorkbenchProductionReportRevisions BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END"
+    objects["wb_execution_revisions_clock"] = "CREATE TRIGGER wb_execution_revisions_clock AFTER INSERT ON WorkbenchProductionReportRevisions BEGIN UPDATE WorkbenchExecutionLedgerClock SET revision = revision + 1 WHERE singleton = 1; END"
     return objects
 
 
@@ -74,6 +120,7 @@ def execution_ledger_contract_issues(conn, *, structure: SchemaStructure):
 _INITIALIZATION_EMPTY_CHECKS = (
     "NOT EXISTS (SELECT 1 FROM WorkbenchProductionReports LIMIT 1)",
     "NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportRevisions LIMIT 1)",
+    "NOT EXISTS (SELECT 1 FROM OperationExecutionStates LIMIT 1)",
     "NOT EXISTS (SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1)",
 )
 

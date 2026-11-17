@@ -27,5 +27,5 @@ class TrialAdoptionEvidence:
     outcome: Any
     # The source run's recorded start/end dates (and hold window when set); the new plan repeats them.
     run_window: Dict[str, Any]
-    # Persistent audit stores source references; complete content stays in the original archives.
-    proof: Dict[str, Any]
+    provenance: Dict[str, Any]
+    task_snapshots: Dict[int, Dict[str, Any]]

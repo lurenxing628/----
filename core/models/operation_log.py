@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from ._helpers import RowLike, parse_optional_int
+from ._helpers import RowLike
 
 
 @dataclass
 class OperationLog:
-    id: Optional[int]
+    id: int
     log_time: Optional[str] = None
     log_level: str = "INFO"
     module: str = ""
@@ -26,7 +26,7 @@ class OperationLog:
         if not log_level:
             raise ValueError("OperationLogs.log_level cannot be empty")
         return cls(
-            id=parse_optional_int(row["id"], field="id"),
+            id=row["id"],
             log_time=row["log_time"],
             log_level=log_level,
             module=str(row["module"]),

@@ -1,28 +1,20 @@
 """Run identity and strict durable artifact serialization, separate from plan identity."""
 
-import base64
 import math
-import re
-import secrets
-from dataclasses import fields, is_dataclass
 from datetime import date, datetime
 from enum import Enum
 from typing import Any, NoReturn
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_system import is_maintenance_job_ref
+from core.shared.refs import is_ref, new_ref
 from core.shared.strict_json import load_strict_json
 
-TERMINAL_STATES = frozenset(("complete", "partial", "failed", "interrupted"))
-PROCESS_EXECUTOR_REF = secrets.token_hex(24)
-PROJECTION_VERSION = "decision-read-v1"
-
-
-def new_run_ref():
-    return secrets.token_hex(24)
+PROCESS_EXECUTOR_REF = new_ref()
 
 
 def validate_run_ref(value):
-    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{48}", value) is None:
+    if not is_ref(value):
         raise WorkbenchCommandRejected("invalid_input", "这次排产的编号无效，请回到排产记录重新选择。", 400)
     return value
 
@@ -42,8 +34,7 @@ def valid_data_context_ref(value):
     return (type(data) is dict and set(data) == {"database_scope", "successful_restores"}
             and type(data["database_scope"]) is str and bool(data["database_scope"])
             and type(data["successful_restores"]) is list
-            and all(type(ref) is str and re.fullmatch(r"[0-9a-f]{32}", ref)
-                    for ref in data["successful_restores"])
+            and all(is_maintenance_job_ref(ref) for ref in data["successful_restores"])
             and data["successful_restores"] == sorted(set(data["successful_restores"])))
 
 
@@ -56,8 +47,6 @@ def _durable_mapping(value):
 
 
 def _durable_container(value):
-    if is_dataclass(value):
-        return {item.name: durable_value(getattr(value, item.name)) for item in fields(value)}
     if isinstance(value, dict):
         return _durable_mapping(value)
     if isinstance(value, (list, tuple)):
@@ -68,7 +57,11 @@ def _durable_container(value):
 
 
 def durable_value(value: Any) -> Any:
-    """Retain every supported artifact field; unsupported objects fail, never stringify."""
+    """Retain every supported artifact value; unsupported objects fail, never stringify.
+
+    A dataclass is unsupported: its owner serializes it first (a key table such as facts/candidate_artifact,
+    or its ``to_dict``).
+    """
     if value is None or type(value) in (bool, int, str):
         return value
     if isinstance(value, Enum):
@@ -79,6 +72,4 @@ def durable_value(value: Any) -> Any:
         return value
     if isinstance(value, (datetime, date)):
         return value.isoformat()
-    if isinstance(value, bytes):
-        return {"sqlite_blob_base64": base64.b64encode(value).decode("ascii")}
     return _durable_container(value)

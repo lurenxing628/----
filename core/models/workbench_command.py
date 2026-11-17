@@ -4,21 +4,26 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 
 class WorkbenchCommandRejected(ValueError):
-    def __init__(self, code: str, message: str, status: int = 409, *, operation_refs: Optional[List[str]] = None,
+    def __init__(self, code: str, message: str, status: int = 409, *, fields: Sequence[str] = (),
                  conflicts: Optional[List[Dict[str, Any]]] = None, row_number: Optional[int] = None):
         super().__init__(message)
         self.code = code
         self.status = status
         self.committed = False
-        # Operations a field-level rejection points at; empty for whole-command rejections.
-        self.operation_refs: List[str] = [] if operation_refs is None else operation_refs
+        # Input paths the rejection points at (dotted, rooted at the request's input); empty for whole-command
+        # rejections. Each becomes one {path, message} row of the envelope, carrying this rejection's message.
+        self.fields: Sequence[str] = fields
         # Public business conflicts remain available through every API rejection boundary.
         self.conflicts: List[Dict[str, Any]] = [] if conflicts is None else conflicts
         self.row_number = row_number
+
+
+# A command or preview body whose keys are not the entry's declared set.
+SHAPE_REJECTED = "提交内容缺少必填项或含有多余项，这次操作没有执行。请刷新页面后重试。"
 
 
 class WorkbenchCommandUncertain(RuntimeError):

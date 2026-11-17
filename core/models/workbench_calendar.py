@@ -11,10 +11,11 @@ from typing import Any, Dict, List, Optional
 from core.errors import ValidationError
 from core.models.calendar_periods import apply_rest_day_rules, normalize_periods
 from core.models.workbench_resource_input import resource_object
+from core.shared.strict_parse import EXTERNAL_DAYS_MAX
 
-# Reuse CalendarEngine.MAX_CALENDAR_DAYS' domain magnitude, counting inclusive dates.
+# Same century magnitude as an external cycle (strict_parse.EXTERNAL_DAYS_MAX), counting inclusive dates.
 # The prototype has no day-count cap; this is an adapter admission bound, not a UI limit.
-MAX_CALENDAR_RANGE_DAYS = 36500
+MAX_CALENDAR_RANGE_DAYS = EXTERNAL_DAYS_MAX
 CALENDAR_PREVIEW_TTL_SECONDS = 900
 TIME = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]\Z")
 _FIELDS = frozenset(("type", "periods", "eff", "allowNormal", "allowUrgent", "note"))

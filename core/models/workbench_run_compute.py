@@ -7,6 +7,8 @@
 from dataclasses import dataclass
 from typing import Any, Collection, Dict, List, Protocol
 
+from core.models.workbench_run_receipt import PersistedReceipt
+
 
 class _FrozenSeeds(Protocol):
     @property
@@ -35,14 +37,17 @@ class CandidateRunComputation:
 
 @dataclass(frozen=True)
 class PreparedRunResult:
-    """The computation's identities, serializable result and immutable read models."""
+    """The computation's identities, serializable result and immutable read models.
+
+    ``result`` is the receipt as stored; ``result_body`` is that same receipt before encoding, for readers in
+    the completion transaction.
+    """
 
     candidates: List[Dict[str, Any]]
     result: Dict[str, Any]
+    result_body: PersistedReceipt
     read_models: Dict[str, Any]
     status_header: Dict[str, Any]
-    # Only the source revisions and schema recorded at capture, for the persist-time recheck; not the archive.
-    recorded_source: Dict[str, Any]
 
 
 class CandidateRunInputError(ValueError):

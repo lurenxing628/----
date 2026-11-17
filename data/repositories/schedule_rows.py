@@ -3,34 +3,27 @@ from __future__ import annotations
 from typing import Optional, TypedDict
 
 
-class ScheduleTimeSpanRow(TypedDict, total=False):
+class ScheduleTimeSpanRow(TypedDict):
     version: int
     start_time: str
     end_time: str
     end_includes_point: bool
 
 
-class ScheduleDetailRow(TypedDict, total=False):
-    schedule_id: int
+class ScheduleDetailRow(TypedDict):
+    task_ref: str
     op_id: int
+    operation_ref: str
     start_time: str
     end_time: str
-    lock_status: str
-    version: int
+    start_us: int
+    end_us: int
+    is_point_event: int
     op_code: str
     batch_id: str
-    piece_id: Optional[str]
-    seq: int
     op_type_name: str
     source: str
-    op_status: str
     machine_id: Optional[str]
     operator_id: Optional[str]
-    supplier_id: Optional[str]
-    part_no: Optional[str]
-    part_name: Optional[str]
-    due_date: Optional[str]
-    priority: Optional[str]
     machine_name: Optional[str]
     operator_name: Optional[str]
-    supplier_name: Optional[str]

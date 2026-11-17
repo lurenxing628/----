@@ -4,6 +4,20 @@ from __future__ import annotations
 
 from typing import Dict, List
 
+from core.models.enums import (
+    MACHINE_GROUP_STATUS_VALUES,
+    MERGE_MODE_VALUES,
+    OPERATOR_INACTIVE_REASON_VALUES,
+    SHIFT_CYCLE_DAYS_MAX,
+    SHIFT_DAY_OFFSET_MAX,
+    SHIFT_PROFILE_STATUS_VALUES,
+    SUPPLIER_INACTIVE_REASON_VALUES,
+    enum_check,
+    flag_check,
+    integer_range_check,
+    nullable_enum_check,
+)
+
 from .schema_structure import SchemaStructure
 from .workbench_metadata_schema import canonical_sql, identity_triggers
 
@@ -14,46 +28,46 @@ RESOURCE_ENTITY_TABLES = {
 
 
 _TABLES = {
-    "WorkbenchMachineGroups": """CREATE TABLE IF NOT EXISTS WorkbenchMachineGroups (
+    "WorkbenchMachineGroups": f"""CREATE TABLE IF NOT EXISTS WorkbenchMachineGroups (
         group_id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL UNIQUE,
-        status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
+        status TEXT NOT NULL DEFAULT 'active' {enum_check('status', MACHINE_GROUP_STATUS_VALUES)},
         remark TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )""",
     "WorkbenchMachineGroupMembers": """CREATE TABLE IF NOT EXISTS WorkbenchMachineGroupMembers (
         machine_id TEXT PRIMARY KEY NOT NULL REFERENCES Machines(machine_id) ON DELETE CASCADE,
         group_id TEXT NOT NULL REFERENCES WorkbenchMachineGroups(group_id)
     )""",
-    "WorkbenchShiftProfiles": """CREATE TABLE IF NOT EXISTS WorkbenchShiftProfiles (
+    "WorkbenchShiftProfiles": f"""CREATE TABLE IF NOT EXISTS WorkbenchShiftProfiles (
         profile_id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL UNIQUE,
-        anchor_date TEXT NOT NULL, cycle_days INTEGER NOT NULL CHECK(typeof(cycle_days) = 'integer' AND cycle_days BETWEEN 1 AND 366),
-        status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
+        anchor_date TEXT NOT NULL, cycle_days INTEGER NOT NULL {integer_range_check('cycle_days', 1, SHIFT_CYCLE_DAYS_MAX)},
+        status TEXT NOT NULL DEFAULT 'active' {enum_check('status', SHIFT_PROFILE_STATUS_VALUES)},
         remark TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )""",
-    "WorkbenchShiftPatternDays": """CREATE TABLE IF NOT EXISTS WorkbenchShiftPatternDays (
+    "WorkbenchShiftPatternDays": f"""CREATE TABLE IF NOT EXISTS WorkbenchShiftPatternDays (
         profile_id TEXT NOT NULL REFERENCES WorkbenchShiftProfiles(profile_id) ON DELETE CASCADE,
-        day_offset INTEGER NOT NULL CHECK(typeof(day_offset) = 'integer' AND day_offset BETWEEN 0 AND 365),
-        is_rest INTEGER NOT NULL CHECK(is_rest IN (0, 1)),
+        day_offset INTEGER NOT NULL {integer_range_check('day_offset', 0, SHIFT_DAY_OFFSET_MAX)},
+        is_rest INTEGER NOT NULL {flag_check('is_rest')},
         periods_json TEXT NOT NULL,
         PRIMARY KEY(profile_id, day_offset)
     )""",
-    "WorkbenchOperatorProfiles": """CREATE TABLE IF NOT EXISTS WorkbenchOperatorProfiles (
+    "WorkbenchOperatorProfiles": f"""CREATE TABLE IF NOT EXISTS WorkbenchOperatorProfiles (
         operator_id TEXT PRIMARY KEY NOT NULL REFERENCES Operators(operator_id) ON DELETE CASCADE,
         shift_profile_id TEXT REFERENCES WorkbenchShiftProfiles(profile_id),
-        skills_declared INTEGER NOT NULL DEFAULT 0 CHECK(skills_declared IN (0, 1)),
-        inactive_reason TEXT CHECK(inactive_reason IS NULL OR inactive_reason IN ('leave', 'disabled'))
+        skills_declared INTEGER NOT NULL DEFAULT 0 {flag_check('skills_declared')},
+        inactive_reason TEXT {nullable_enum_check('inactive_reason', OPERATOR_INACTIVE_REASON_VALUES)}
     )""",
     "WorkbenchSupplierOpTypes": """CREATE TABLE IF NOT EXISTS WorkbenchSupplierOpTypes (
         supplier_id TEXT NOT NULL REFERENCES Suppliers(supplier_id) ON DELETE CASCADE,
         op_type_id TEXT NOT NULL REFERENCES OpTypes(op_type_id),
         PRIMARY KEY(supplier_id, op_type_id)
     )""",
-    "WorkbenchSupplierProfiles": """CREATE TABLE IF NOT EXISTS WorkbenchSupplierProfiles (
+    "WorkbenchSupplierProfiles": f"""CREATE TABLE IF NOT EXISTS WorkbenchSupplierProfiles (
         supplier_id TEXT PRIMARY KEY NOT NULL REFERENCES Suppliers(supplier_id) ON DELETE CASCADE,
-        inactive_reason TEXT CHECK(inactive_reason IS NULL OR inactive_reason IN ('pending_review', 'disabled'))
+        inactive_reason TEXT {nullable_enum_check('inactive_reason', SUPPLIER_INACTIVE_REASON_VALUES)}
     )""",
-    "WorkbenchOpTypePolicies": """CREATE TABLE IF NOT EXISTS WorkbenchOpTypePolicies (
+    "WorkbenchOpTypePolicies": f"""CREATE TABLE IF NOT EXISTS WorkbenchOpTypePolicies (
         op_type_id TEXT PRIMARY KEY NOT NULL REFERENCES OpTypes(op_type_id) ON DELETE CASCADE,
-        default_merge_mode TEXT NOT NULL CHECK(default_merge_mode IN ('separate', 'merged'))
+        default_merge_mode TEXT NOT NULL {enum_check('default_merge_mode', MERGE_MODE_VALUES)}
     )""",
 }
 _INDEXES = {

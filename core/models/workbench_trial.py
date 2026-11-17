@@ -1,13 +1,16 @@
 """Trial commands and public validation, independent of legacy plan roles."""
 
-import re
 from typing import NoReturn
 
-from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_command import SHAPE_REJECTED, WorkbenchCommandRejected
+from core.models.workbench_load_limits import MAX_WINDOW_BATCHES, too_many_batches
 from core.models.workbench_plan_scope import local_time
+from core.shared.key_sets import keys_conform
+from core.shared.refs import is_ref
 
-MAX_TRIAL_TASKS = 10000
-MAX_TRIAL_BYTES = 64 * 1024 * 1024
+# 试调草稿单份存档和已保存场景合计的字节上限。满载实测（20000 道工序、50000 条报工）：草稿 admission_json
+# 123,534,806 B（约 117.8 MiB），场景合计 95,632,568 B；按 1.25 倍余量取不小于它的 2 的幂，定为 256 MiB。
+MAX_TRIAL_BYTES = 256 * 1024 * 1024
 CREATE = "trial.create"
 CHANGE = "trial.change"
 SAVE = "trial.save"
@@ -20,14 +23,14 @@ def reject(code, message, status=409) -> NoReturn:
 
 
 def reference(value):
-    if type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None:
+    if not is_ref(value):
         reject("invalid_input", "这条记录已失效，请刷新后重新选择。", 400)
     return value
 
 
 def fields(value, required, optional=()):
-    if type(value) is not dict or not set(required) <= set(value) or set(value) - set(required) - set(optional):
-        reject("invalid_input", "提交内容缺少必填项或含有多余项，这次操作没有执行。请刷新页面后重试。", 400)
+    if not keys_conform(value, required, optional):
+        reject("invalid_input", SHAPE_REJECTED, 400)
 
 
 def create_input(value):
@@ -47,8 +50,10 @@ def _scope(scope):
         if local_time(scope["range_start"]) >= local_time(scope["range_end"]):
             reject("invalid_input", "显示范围开始必须早于结束。", 400)
     if "batch_refs" in scope:
-        if type(scope["batch_refs"]) is not list or len(scope["batch_refs"]) > MAX_TRIAL_TASKS:
+        if type(scope["batch_refs"]) is not list:
             reject("invalid_input", "请从批次列表里勾选批次。", 400)
+        if len(scope["batch_refs"]) > MAX_WINDOW_BATCHES:
+            reject("invalid_input", too_many_batches(MAX_WINDOW_BATCHES), 400)
         scope = dict(scope, batch_refs=sorted(set(reference(ref) for ref in scope["batch_refs"])))
     if "resource_type" in scope and scope["resource_type"] not in ("machine", "operator", "batch"):
         reject("invalid_input", "资源视图类型无效。", 400)

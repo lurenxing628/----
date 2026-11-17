@@ -1,38 +1,38 @@
 """SQL filtering before pagination; no implicit entity or relationship creation."""
 
-from core.models.workbench_resource_status import SPECIAL_INACTIVE_REASONS
+import json
+from typing import Dict, Optional, Sequence
+
+from core.models.workbench_resource_status import PUBLIC_STATUS_VALUES, public_status_sql
+from core.models.workbench_resource_table_query import SqlOrder
 
 from .base_repo import BaseRepository
-from .workbench_resource_dependencies import DEPENDENCIES, report_revision_rows
+from .sql_ranks import order_by
 from .workbench_resource_state_repo import RESOURCE_KEYS
 
 _TABLES = {**RESOURCE_KEYS, "supplier": ("Suppliers", "supplier_id")}
 
 
 def _public_status(kind):
-    """Project the shared status vocabulary inside a SQL filtering scope."""
-    if kind == "op_type":
-        return "NULL"
-    if kind in SPECIAL_INACTIVE_REASONS:
-        special = SPECIAL_INACTIVE_REASONS[kind]
-        return f"CASE WHEN source.status='inactive' AND profile.inactive_reason='{special}' THEN '{special}' ELSE source.status END"
-    return "source.status"
+    """The shared public-status rule over this scope's ``source`` and ``profile`` aliases."""
+    return public_status_sql(kind, "source.status", "profile.inactive_reason")
 
 
 class WorkbenchResourceQueryRepository(BaseRepository):
-    def _order(self, query, key):
-        sort = {"business_code": "source." + key, "label": "source.name",
-                "status": _public_status(query.kind), "default_days": "source.default_days"}.get(query.sort)
-        if sort is None:
-            return "source." + key
-        return sort + " " + query.direction.upper() + (", source." + key + " ASC" if query.sort != "business_code" else "")
+    """``order`` 参数都来自表格列定义（``facts.table_columns.sql_order``）：只有能在 SQL 里排的列才会到这里。"""
 
-    def toolbar_keys(self, query):
+    @staticmethod
+    def _order(query, order: SqlOrder, key):
+        return order_by(order, query.direction, alias="source", status=_public_status(query.kind), code="source." + key)
+
+    def toolbar_keys(self, query, order: Optional[SqlOrder] = None):
+        """工具栏范围内的编号；给了 ``order`` 按它排（导出等要顺序的读取），否则按编号（建格子索引、计数用）。"""
         key, source, where, params = self._scope(query)
+        by = "source." + key if order is None else self._order(query, order, key)
         return [row["business_code"] for row in self.fetchall(
-            "SELECT source." + key + " AS business_code" + source + where + " ORDER BY " + self._order(query, key), params)]
+            "SELECT source." + key + " AS business_code" + source + where + " ORDER BY " + by, params)]
 
-    def _scope(self, query):
+    def _scope(self, query, keys: Optional[Sequence[str]] = None):
         table, key = _TABLES[query.kind]
         source = f" FROM {table} AS source"
         if query.kind in ("operator", "supplier"):
@@ -48,35 +48,46 @@ class WorkbenchResourceQueryRepository(BaseRepository):
         if query.category is not None:
             conditions.append("(source.category=? OR source.category='both')" if query.kind == "op_type" else "source.category=?")
             params.append(query.category)
+        if keys is not None:
+            conditions.append(f"source.{key} IN (SELECT value FROM json_each(?))")
+            params.append(json.dumps(keys))
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
         return key, source, where, params
 
-    def page(self, query):
-        key, source, where, params = self._scope(query)
-        total = self.fetchvalue("SELECT COUNT(*)" + source + where, params)
-        join = " LEFT JOIN WorkbenchEntityRefs AS refs ON refs.kind=? AND refs.active=1 AND refs.entity_key=source." + key
-        order = self._order(query, key)
-        rows = self.fetchall("SELECT source." + key + " AS business_code, refs.ref, refs.revision" + source + join + where
-                             + " ORDER BY " + order + " LIMIT ? OFFSET ?", [query.kind] + params + [query.size, (query.number - 1) * query.size])
-        return rows, total
+    def status_counts(self, query, keys: Optional[Sequence[str]] = None) -> Dict[str, int]:
+        """工具栏范围（列筛选时再限到命中的 ``keys``）按对外状态计数：每种状态都有键，total 是各状态之和；
+        设备另数实际绑定的设备组，人员另数技能登记条数。工种不走这里，它的能力计数在内存里算。"""
+        key, source, where, params = self._scope(query, keys)
+        counts: Dict[str, int] = dict.fromkeys(PUBLIC_STATUS_VALUES[query.kind], 0)
+        status_rows = self.fetchall(
+            f"SELECT {_public_status(query.kind)} AS status_key, COUNT(*) AS cnt{source}{where} GROUP BY status_key",
+            params,
+        )
+        for row in status_rows:
+            counts[row["status_key"]] = row["cnt"]
+        counts["total"] = sum(row["cnt"] for row in status_rows)
+        if query.kind == "machine":
+            counts["groups"] = self.fetchvalue(
+                f"SELECT COUNT(DISTINCT gm.group_id) FROM WorkbenchMachineGroupMembers AS gm "
+                f"WHERE gm.machine_id IN (SELECT source.{key}{source}{where})",
+                params,
+            )
+        elif query.kind == "operator":
+            counts["skills"] = self.fetchvalue(
+                f"SELECT COUNT(*) FROM OperatorSkill AS sk "
+                f"WHERE sk.operator_id IN (SELECT source.{key}{source}{where})",
+                params,
+            )
+        return counts
 
-    def scope_state(self, kind, *, identities, report_revisions):
-        counts = {}
-        for table, key in DEPENDENCIES.get(kind, ()):
-            if table == "WorkbenchProductionReportRevisions":
-                rows_by_code = report_revision_rows(self.conn, kind, key, identities=identities)
-                report_revisions[(kind, key)] = rows_by_code
-                counts[table + "." + key] = [
-                    {"resource_key": code, "amount": len(rows)}
-                    for code, rows in sorted(rows_by_code.items())
-                    if rows
-                ]
-            else:
-                counts[table + "." + key] = self.fetchall(
-                    f"SELECT {key} AS resource_key,COUNT(*) AS amount FROM {table} "
-                    f"WHERE {key} IS NOT NULL GROUP BY {key} ORDER BY {key}"
-                )
-        return {"dependencies": counts}
+    def page_rows(self, query, order: SqlOrder):
+        key, source, where, params = self._scope(query)
+        join = " LEFT JOIN WorkbenchEntityRefs AS refs ON refs.kind=? AND refs.active=1 AND refs.entity_key=source." + key
+        return self.fetchall(
+            "SELECT source." + key + " AS business_code, refs.ref, refs.revision" + source + join + where
+            + " ORDER BY " + self._order(query, order, key) + " LIMIT ? OFFSET ?",
+            [query.kind] + params + [query.size, (query.number - 1) * query.size],
+        )
 
     def create_relations(self, kind):
         """Only choice facts that can affect this kind's new record.

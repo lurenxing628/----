@@ -16,8 +16,8 @@ def _assignments(values: Dict[str, Any]) -> str:
 
 class WorkbenchProcessHoursRepository(BaseRepository):
     def update_operation_hours(self, op_id: int, values: Dict[str, Any], *, ref: str, revision: int) -> int:
-        """按 id 改工序工时列；仅当该工序的有效系统编号修订仍是 revision 时生效。"""
-        assignments = _assignments(values)
+        """按 id 改工序工时列并清空工时确认位；仅当该工序的有效系统编号修订仍是 revision 时生效。"""
+        assignments = _assignments(values) + ",hours_confirmed_at=NULL"
         cursor = self.execute(
             "UPDATE PartOperations SET " + assignments + " WHERE id=? AND EXISTS "
             "(SELECT 1 FROM WorkbenchEntityRefs WHERE ref=? AND revision=? AND active=1 "

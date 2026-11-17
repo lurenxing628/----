@@ -3,8 +3,9 @@
 from core.errors import ValidationError
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_identity import is_entity_ref
 from core.models.workbench_resource_query import ResourcePageRequest
+from core.shared.key_sets import keys_conform
+from core.shared.refs import is_ref
 
 ACTION_KINDS = ("op_type", "machine", "operator", "supplier")
 
@@ -18,7 +19,7 @@ def action_kind(kind):
 def resource_scope_request(kind, scope, *, size=20):
     """An external list scope (no page number) as the kind's validated request; size is the viewed page size."""
     allowed = {"query", "status", "category", "sort", "direction", "column_filters"}
-    if type(scope) is not dict or set(scope) - allowed:
+    if not keys_conform(scope, (), allowed):
         raise ValidationError("范围只能包含搜索、状态、归属、排序和列筛选，不接受页码。", field="scope")
     return ResourcePageRequest(kind=kind, size=size, **scope)
 
@@ -31,7 +32,7 @@ def wire_resource_scope(request):
 def resource_refs(refs, *, allow_empty=False):
     if type(refs) is not list or (not refs and not allow_empty):
         raise ValidationError("请先选择要操作的设备或人员。", field="refs")
-    if any(not is_entity_ref(ref) for ref in refs):
+    if any(not is_ref(ref) for ref in refs):
         raise ValidationError("所选设备或人员已失效，请刷新后重新选择。", field="refs")
     if len(set(refs)) != len(refs):
         raise ValidationError("选择里有重复，请重新选择。", field="refs")
@@ -45,8 +46,8 @@ def check_category(kind, raw, category):
 
 def action_row(number, action=None):
     return {"row": number, "business_code": None, "entity_ref": None, "action": action,
-            "result": "rejected", "before": None, "after": None, "changes": {}, "errors": [],
-            "requires_confirmation": False, "reference_count": 0, "expected": None, "input": None}
+            "result": "rejected", "before": None, "after": None, "changes": {}, "errors": [], "notes": [],
+            "requires_confirmation": False, "reference_count": 0, "reference_fields": [], "expected": None, "input": None}
 
 
 def reject_action_row(row, message, *, field="input", code="invalid_input"):

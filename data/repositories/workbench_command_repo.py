@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, NoReturn, Optional
+from typing import Any, Dict, NoReturn, Optional, Type, Union
 
 from core.infrastructure.sqlite_udf import remember_receipt_outcome
-from core.models.content import content_text, unpacked
+from core.models.content import content_text, read_stored_json, unpacked
 from core.models.workbench_command import WorkbenchCommandOutcome
-from core.shared.strict_json import canonical_json, load_strict_json
+from core.shared.strict_json import canonical_json
 
 from .base_repo import BaseRepository
 from .workbench_trial_repo import HISTORY_REFERENCE_FORMAT, WorkbenchTrialRepository, history_reference
@@ -15,14 +15,6 @@ from .workbench_trial_repo import HISTORY_REFERENCE_FORMAT, WorkbenchTrialReposi
 
 def _corrupt_receipt() -> NoReturn:
     raise ValueError("已保存的命令回执结构不完整。")
-
-
-def _nonfinite_receipt() -> NoReturn:
-    raise ValueError("已保存的命令回执包含非有限数字。")
-
-
-def _corrupt_input() -> NoReturn:
-    raise ValueError("已保存的命令原提交内容缺失或无法读取。")
 
 
 class WorkbenchCommandRepository(BaseRepository):
@@ -60,13 +52,13 @@ class WorkbenchCommandRepository(BaseRepository):
                     WorkbenchTrialRepository(self.conn).public_history(value["draft_ref"], through_revision=value["through_revision"]))
         return payload
 
-    def input_content(self, row) -> str:
-        """The receipt's saved original intent; every receipt stores it, so NULL is a damaged archive."""
-        return content_text(unpacked(load_strict_json(row["input_json"], on_malformed=_corrupt_input)))
+    def input_content(self, row, shape: Union[Type[dict], Type[list]]) -> str:
+        """The receipt's saved original intent, read with the command's input shape (an object, or the row list
+        of a production report); every receipt stores it, so NULL is a damaged archive."""
+        return content_text(unpacked(read_stored_json(row["input_json"], shape)))
 
     def public_result(self, row: Dict[str, Any], *, replayed: bool) -> Dict[str, Any]:
-        data = load_strict_json(row["outcome_json"], on_malformed=_corrupt_receipt, on_nonfinite=_nonfinite_receipt,
-                                expected=dict)
+        data = read_stored_json(row["outcome_json"], dict)
         if set(data) != {"result", "data", "warnings"}:
             _corrupt_receipt()
         outcome = self._public_payload(WorkbenchCommandOutcome(**data).payload(normalize=False), row["action"])

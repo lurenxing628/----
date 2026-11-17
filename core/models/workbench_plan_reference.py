@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -16,16 +15,3 @@ class WorkbenchPlanReferenceError(ValueError):
     def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code = code
-
-
-@dataclass(frozen=True)
-class WorkbenchPlanReferenceIssue:
-    code: str
-    message: str
-
-
-@dataclass(frozen=True)
-class WorkbenchPlanCatalogReference:
-    plan_ref: Optional[str]
-    binding_valid: bool
-    issues: Tuple[WorkbenchPlanReferenceIssue, ...] = ()

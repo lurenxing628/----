@@ -1,53 +1,39 @@
-"""Immutable template lineage origins and lossless instance transitions."""
+"""Immutable template lineage origins and O(1) one-way instance modification flags."""
 
 from core.infrastructure.workbench_metadata_schema import canonical_sql
-from core.models.workbench_template_lineage import OPERATION_COLUMNS, SEMANTIC_COLUMNS, STATE_COLUMNS
+from core.models.enums import flag_check
 
 from .schema_structure import SchemaStructure
 
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
-_STAMP = "strftime('%Y-%m-%dT%H:%M:%fZ','now')"
-
-
-def _state_values(prefix, *, batch="b"):
-    values = [prefix + "." + key for key in OPERATION_COLUMNS]
-    values += ["(SELECT ref FROM WorkbenchEntityRefs WHERE kind='batch' AND active=1 AND entity_key=" + batch + ".batch_id)",
-               "(SELECT ref FROM WorkbenchEntityRefs WHERE kind='part' AND active=1 AND entity_key=" + batch + ".part_no)",
-               batch + ".quantity"]
-    return ",".join(values)
-
-
-def _event_sql(ref, event, changed, prefix, sources, condition="1"):
-    return ("INSERT INTO WorkbenchTemplateLineageEvents(operation_ref,event_type,affects_calibration," +
-            ",".join(STATE_COLUMNS) + ") SELECT " + ref + ",'" + event + "'," + changed + "," +
-            _state_values(prefix) + " FROM " + sources + " WHERE " + condition + ";")
+_MODIFIED_OPERATION_COLUMNS = (
+    "piece_id", "seq", "op_type_id", "op_type_name", "source",
+    "supplier_id", "setup_hours", "unit_hours", "ext_days", "batch_id",
+)
 
 
 def _source_triggers():
-    current_ref = "(SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND active=1 AND source_key=CAST(OLD.id AS TEXT))"
-    different = " OR ".join("OLD." + key + " IS NOT NEW." + key for key in OPERATION_COLUMNS)
-    changed = " OR ".join("OLD." + key + " IS NOT NEW." + key for key in SEMANTIC_COLUMNS + ("batch_id",))
-    body = _event_sql(current_ref, "updated", "(" + changed + ")", "NEW", "Batches b",
-                      "b.batch_id=NEW.batch_id AND " + current_ref + " IS NOT NULL")
-    born = _event_sql("NEW.ref", "created", "0", "o", "BatchOperations o JOIN Batches b ON b.batch_id=o.batch_id",
-                      "CAST(o.id AS TEXT)=NEW.source_key")
-    # Reference retirement also covers INSERT OR REPLACE with recursive_triggers OFF.
-    retired = ("INSERT INTO WorkbenchTemplateLineageEvents(operation_ref,event_type,affects_calibration," +
-               ",".join(STATE_COLUMNS) + ") SELECT OLD.ref,'retired',1," + ",".join(STATE_COLUMNS) +
-               " FROM WorkbenchTemplateLineageEvents WHERE operation_ref=OLD.ref ORDER BY event_id DESC LIMIT 1;")
-    batch = _event_sql("r.ref", "batch_changed", "1", "o",
-                       "BatchOperations o JOIN WorkbenchPlanSourceRefs r ON r.kind='operation' AND r.active=1 "
-                       "AND r.source_key=CAST(o.id AS TEXT) JOIN Batches b ON b.batch_id=o.batch_id",
-                       "o.batch_id=NEW.batch_id")
+    current_ref = (
+        "(SELECT ref FROM WorkbenchPlanSourceRefs"
+        " WHERE kind='operation' AND active=1 AND source_key=CAST(OLD.id AS TEXT))"
+    )
+    changed = " OR ".join(f"OLD.{key} IS NOT NEW.{key}" for key in _MODIFIED_OPERATION_COLUMNS)
     return {
-        "wb_lineage_operation_born": "CREATE TRIGGER wb_lineage_operation_born AFTER INSERT ON WorkbenchPlanSourceRefs "
-            "WHEN NEW.kind='operation' AND NEW.active=1 BEGIN " + born + " END",
-        "wb_lineage_operation_update": "CREATE TRIGGER wb_lineage_operation_update BEFORE UPDATE ON BatchOperations "
-            "WHEN " + different + " BEGIN " + body + " END",
-        "wb_lineage_operation_retire": "CREATE TRIGGER wb_lineage_operation_retire AFTER UPDATE ON WorkbenchPlanSourceRefs "
-            "WHEN OLD.kind='operation' AND OLD.active=1 AND NEW.active=0 BEGIN " + retired + " END",
-        "wb_lineage_batch_change": "CREATE TRIGGER wb_lineage_batch_change AFTER UPDATE ON Batches "
-            "WHEN OLD.part_no IS NOT NEW.part_no OR OLD.quantity IS NOT NEW.quantity BEGIN " + batch + " END",
+        "wb_lineage_operation_update": (
+            f"CREATE TRIGGER wb_lineage_operation_update BEFORE UPDATE ON BatchOperations "
+            f"WHEN {changed} BEGIN "
+            f"UPDATE WorkbenchTemplateLineageOrigins SET instance_modified=1 "
+            f"WHERE operation_ref={current_ref} AND instance_modified=0; END"
+        ),
+        "wb_lineage_batch_change": (
+            "CREATE TRIGGER wb_lineage_batch_change AFTER UPDATE ON Batches "
+            "WHEN OLD.part_no IS NOT NEW.part_no OR OLD.quantity IS NOT NEW.quantity BEGIN "
+            "UPDATE WorkbenchTemplateLineageOrigins SET instance_modified=1 "
+            "WHERE instance_modified=0 AND operation_ref IN ("
+            "SELECT r.ref FROM BatchOperations o JOIN WorkbenchPlanSourceRefs r "
+            "ON r.kind='operation' AND r.active=1 AND r.source_key=CAST(o.id AS TEXT) "
+            "WHERE o.batch_id=NEW.batch_id); END"
+        ),
     }
 
 
@@ -55,51 +41,44 @@ def template_lineage_objects():
     objects = {
         "WorkbenchTemplateLineageOrigins": """CREATE TABLE WorkbenchTemplateLineageOrigins (
             lineage_ref """ + _REF.format("lineage_ref") + """ PRIMARY KEY,
-            operation_ref TEXT NOT NULL UNIQUE, template_operation_ref TEXT NOT NULL,
+            operation_ref TEXT NOT NULL UNIQUE,
+            template_operation_ref TEXT NOT NULL,
             template_revision INTEGER NOT NULL CHECK(typeof(template_revision)='integer' AND template_revision>0),
-            source_operation_ref TEXT, source_lineage_ref TEXT, source_event_id INTEGER,
-            source_eligible INTEGER NOT NULL CHECK(source_eligible IN (0,1)), birth_event_id INTEGER NOT NULL UNIQUE,
-            evidence_version TEXT NOT NULL CHECK(evidence_version='template-copy-v1'),
-            template_snapshot TEXT NOT NULL,
-            instance_snapshot TEXT NOT NULL,
-            recorded_at_utc TEXT NOT NULL DEFAULT (""" + _STAMP + """),
+            source_eligible INTEGER NOT NULL """ + flag_check("source_eligible") + """,
+            instance_modified INTEGER NOT NULL DEFAULT 0 """ + flag_check("instance_modified") + """,
             FOREIGN KEY(operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref),
-            FOREIGN KEY(template_operation_ref) REFERENCES WorkbenchEntityRefs(ref),
-            FOREIGN KEY(source_operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref),
-            FOREIGN KEY(source_lineage_ref) REFERENCES WorkbenchTemplateLineageOrigins(lineage_ref),
-            FOREIGN KEY(birth_event_id) REFERENCES WorkbenchTemplateLineageEvents(event_id),
-            CHECK((source_operation_ref IS NULL)=(source_lineage_ref IS NULL)),
-            CHECK((source_operation_ref IS NULL)=(source_event_id IS NULL)),
-            CHECK(source_operation_ref IS NOT NULL OR source_eligible=1)
+            FOREIGN KEY(template_operation_ref) REFERENCES WorkbenchEntityRefs(ref)
         )""",
-        "WorkbenchTemplateLineageEvents": """CREATE TABLE WorkbenchTemplateLineageEvents (
-            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            operation_ref TEXT NOT NULL,
-            event_type TEXT NOT NULL CHECK(event_type IN ('created','updated','retired','batch_changed','withdrawn')),
-            affects_calibration INTEGER NOT NULL CHECK(affects_calibration IN (0,1)),
-            reason TEXT, recorded_at_utc TEXT NOT NULL DEFAULT (""" + _STAMP + "),\n" +
-            ",".join(STATE_COLUMNS) + ", FOREIGN KEY(operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref))",
-        "idx_wb_lineage_events_operation": "CREATE INDEX idx_wb_lineage_events_operation ON WorkbenchTemplateLineageEvents(operation_ref,event_id)",
-        "idx_wb_lineage_birth": "CREATE UNIQUE INDEX idx_wb_lineage_birth ON WorkbenchTemplateLineageEvents(operation_ref) WHERE event_type='created'",
-        "idx_wb_lineage_template_revision": "CREATE INDEX idx_wb_lineage_template_revision ON WorkbenchTemplateLineageOrigins(template_operation_ref,template_revision)",
+        "idx_wb_lineage_template_revision": (
+            "CREATE INDEX idx_wb_lineage_template_revision "
+            "ON WorkbenchTemplateLineageOrigins(template_operation_ref,template_revision)"
+        ),
     }
     objects.update(_source_triggers())
-    for table, stem in (("WorkbenchTemplateLineageOrigins", "origin"), ("WorkbenchTemplateLineageEvents", "event")):
-        for event in ("update", "delete"):
-            name = "wb_lineage_" + stem + "_no_" + event
-            objects[name] = ("CREATE TRIGGER " + name + " BEFORE " + event.upper() + " ON " + table +
-                             " BEGIN SELECT RAISE(ABORT,'template lineage is append-only'); END")
+    objects["wb_lineage_origin_no_update"] = (
+        "CREATE TRIGGER wb_lineage_origin_no_update BEFORE UPDATE ON WorkbenchTemplateLineageOrigins "
+        "WHEN NEW.lineage_ref IS NOT OLD.lineage_ref "
+        "OR NEW.operation_ref IS NOT OLD.operation_ref "
+        "OR NEW.template_operation_ref IS NOT OLD.template_operation_ref "
+        "OR NEW.template_revision IS NOT OLD.template_revision "
+        "OR NEW.source_eligible IS NOT OLD.source_eligible "
+        "OR OLD.instance_modified != 0 OR NEW.instance_modified != 1 "
+        "BEGIN SELECT RAISE(ABORT,'template lineage is append-only'); END"
+    )
+    objects["wb_lineage_origin_no_delete"] = (
+        "CREATE TRIGGER wb_lineage_origin_no_delete BEFORE DELETE ON WorkbenchTemplateLineageOrigins "
+        "BEGIN SELECT RAISE(ABORT,'template lineage is append-only'); END"
+    )
     objects["wb_lineage_origin_birth"] = """CREATE TRIGGER wb_lineage_origin_birth BEFORE INSERT ON WorkbenchTemplateLineageOrigins BEGIN
-        SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM WorkbenchTemplateLineageEvents e
-            JOIN WorkbenchPlanSourceRefs r ON r.ref=e.operation_ref AND r.kind='operation' AND r.active=1
-            WHERE e.event_id=NEW.birth_event_id AND e.operation_ref=NEW.operation_ref AND e.event_type='created')
-            THEN RAISE(ABORT,'template lineage requires a new instance birth') END;
-        SELECT CASE WHEN EXISTS (SELECT 1 FROM WorkbenchTemplateLineageOrigins WHERE operation_ref=NEW.operation_ref OR lineage_ref=NEW.lineage_ref)
-            THEN RAISE(ABORT,'template lineage cannot be rebound') END;
+        SELECT CASE WHEN NEW.instance_modified != 0 OR NOT EXISTS (
+            SELECT 1 FROM WorkbenchPlanSourceRefs r
+            WHERE r.ref=NEW.operation_ref AND r.kind='operation' AND r.active=1
+        ) THEN RAISE(ABORT,'template lineage requires a new instance birth') END;
+        SELECT CASE WHEN EXISTS (
+            SELECT 1 FROM WorkbenchTemplateLineageOrigins
+            WHERE operation_ref=NEW.operation_ref OR lineage_ref=NEW.lineage_ref
+        ) THEN RAISE(ABORT,'template lineage cannot be rebound') END;
     END"""
-    objects["wb_lineage_event_no_replace"] = """CREATE TRIGGER wb_lineage_event_no_replace BEFORE INSERT ON WorkbenchTemplateLineageEvents
-        WHEN EXISTS (SELECT 1 FROM WorkbenchTemplateLineageEvents WHERE event_id=NEW.event_id)
-        BEGIN SELECT RAISE(ABORT,'template lineage events cannot be replaced'); END"""
     return objects
 
 

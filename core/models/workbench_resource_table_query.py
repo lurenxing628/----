@@ -1,5 +1,8 @@
 """Shared column contracts for the six resource-table views, not catalogs."""
 
+from dataclasses import dataclass
+from typing import Literal
+
 from core.models.workbench_command import WorkbenchCommandRejected
 
 TABLE_KINDS = ("material", "op_type", "machine", "operator", "supplier")
@@ -13,11 +16,28 @@ _COLUMNS = {
 }
 
 
+@dataclass(frozen=True)
+class SqlOrder:
+    """分页 SQL 按这条存储字段排序：文本经 ``aps_text_sort_key``（与文本格同一归一化），数字按原值，状态按业务序号。
+
+    只说明排序能力。整格筛选按格子 key 判定（数字格的 key 带单位，“7 公斤”和“7 件”同序不同值），
+    不在 SQL 里做；列定义见 ``core.services.workbench.facts.table_columns``。
+    """
+
+    field: str
+    kind: Literal["text", "number", "status"]
+
+
 def table_columns(kind, category=None):
     if kind == "op_type":
         extra = {"internal": ("available_machines", "available_operators"), "external": ("default_merge_mode",)}
         return _BASE + (extra.get(category, ()) if category is not None else ()) + ("remark",)
     return _COLUMNS.get(kind, ())
+
+
+def table_sorts(kind, category=None):
+    """能排序的列：本视图的全部表格列，外加编号、名称和状态（工种没有状态列，按状态排时全部平手、按编号）。"""
+    return tuple(dict.fromkeys(_BASE + ("status",) + table_columns(kind, category)))
 
 
 def normalize_table_column_filters(value, allowed, *, invalid_column_message="列筛选的列或归属不正确，请重新选择。"):
@@ -38,11 +58,6 @@ def normalize_table_column_filters(value, allowed, *, invalid_column_message="�
 
 def normalize_column_filters(value, kind, category=None):
     return normalize_table_column_filters(value, table_columns(kind, category))
-
-
-def table_query_required(query):
-    legacy = ("business_code", "label", "stock_qty", "status") if query.kind == "material" else ("business_code", "label", "status", "default_days")
-    return bool(query.column_filters) or query.sort not in legacy
 
 
 def toolbar_scope(query):

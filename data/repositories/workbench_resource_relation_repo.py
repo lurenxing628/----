@@ -1,21 +1,24 @@
 """Capture ordered relation rows and their facts for one read snapshot."""
 
+import json
+
 from .base_repo import BaseRepository
 
 _MACHINES = """
     SELECT m.machine_id AS business_code,m.name,m.status,m.remark,m.category,
            r.ref,r.revision
-    FROM Machines AS m
+    FROM MachineOpTypes AS c
+    JOIN Machines AS m ON m.machine_id=c.machine_id
     LEFT JOIN WorkbenchEntityRefs AS r
       ON r.kind='machine' AND r.entity_key=m.machine_id AND r.active=1
-    WHERE (m.op_type_id=:op_type OR EXISTS (SELECT 1 FROM MachineOpTypes c WHERE c.machine_id=m.machine_id AND c.op_type_id=:op_type))
+    WHERE c.op_type_id=:op_type
 """
 _OPERATORS = """
     WITH selected AS (
         SELECT operator_id FROM OperatorSkill WHERE op_type_id=:op_type
         UNION
-        SELECT a.operator_id FROM OperatorMachine AS a
-        JOIN Machines AS m ON m.machine_id=a.machine_id WHERE (m.op_type_id=:op_type OR EXISTS (SELECT 1 FROM MachineOpTypes c WHERE c.machine_id=m.machine_id AND c.op_type_id=:op_type))
+        SELECT a.operator_id FROM MachineOpTypes AS c
+        JOIN OperatorMachine AS a ON a.machine_id=c.machine_id WHERE c.op_type_id=:op_type
     )
     SELECT selected.operator_id AS business_code,o.name,o.status,o.remark,
            p.skills_declared,p.inactive_reason,p.operator_id AS profile_operator_id,
@@ -42,24 +45,23 @@ _QUERIES = {"machines": _MACHINES, "operators": _OPERATORS, "suppliers": _SUPPLI
 _OPERATOR_FACTS = {
     "machine_capabilities": """SELECT DISTINCT a.machine_id,c.op_type_id,t.category FROM OperatorMachine a
         JOIN MachineOpTypes c ON c.machine_id=a.machine_id LEFT JOIN OpTypes t ON t.op_type_id=c.op_type_id
-        WHERE a.operator_id IN ({marks}) ORDER BY a.machine_id,c.op_type_id""",
+        WHERE a.operator_id IN (SELECT value FROM json_each(?)) ORDER BY a.machine_id,c.op_type_id""",
     "skills": """SELECT s.*,t.category FROM OperatorSkill AS s
         LEFT JOIN OpTypes AS t ON t.op_type_id=s.op_type_id
-        WHERE s.operator_id IN ({marks}) ORDER BY s.operator_id,s.op_type_id,s.id""",
-    "authorizations": """SELECT a.*,m.name AS machine_name,m.op_type_id,m.status AS machine_status,
-        t.category AS work_type_category,r.ref AS machine_ref,r.revision AS machine_revision
+        WHERE s.operator_id IN (SELECT value FROM json_each(?)) ORDER BY s.operator_id,s.op_type_id,s.id""",
+    "authorizations": """SELECT a.*,m.name AS machine_name,m.status AS machine_status,
+        r.ref AS machine_ref,r.revision AS machine_revision
         FROM OperatorMachine AS a
         LEFT JOIN Machines AS m ON m.machine_id=a.machine_id
-        LEFT JOIN OpTypes AS t ON t.op_type_id=m.op_type_id
         LEFT JOIN WorkbenchEntityRefs AS r
           ON r.kind='machine' AND r.entity_key=a.machine_id AND r.active=1
-        WHERE a.operator_id IN ({marks}) ORDER BY a.operator_id,a.machine_id,a.id""",
+        WHERE a.operator_id IN (SELECT value FROM json_each(?)) ORDER BY a.operator_id,a.machine_id,a.id""",
 }
 _SUPPLIER_FACTS = {
     "capabilities": """SELECT c.supplier_id,c.op_type_id,t.category
         FROM WorkbenchSupplierOpTypes AS c
         LEFT JOIN OpTypes AS t ON t.op_type_id=c.op_type_id
-        WHERE c.supplier_id IN ({marks}) ORDER BY c.supplier_id,c.op_type_id""",
+        WHERE c.supplier_id IN (SELECT value FROM json_each(?)) ORDER BY c.supplier_id,c.op_type_id""",
 }
 
 
@@ -72,11 +74,7 @@ class WorkbenchResourceRelationRepository(BaseRepository):
 
     def facts(self, relation, codes):
         queries = _OPERATOR_FACTS if relation == "operators" else _SUPPLIER_FACTS if relation == "suppliers" else {}
-        result = {key: [] for key in queries}
-        # Stay below the SQLite variable limit shipped with Python 3.8 on Win7.
-        for start in range(0, len(codes), 400):
-            chunk = codes[start:start + 400]
-            marks = ",".join("?" for _ in chunk)
-            for key, sql in queries.items():
-                result[key].extend(self.fetchall(sql.format(marks=marks), chunk))
-        return result
+        if not codes:
+            return {key: [] for key in queries}
+        encoded = (json.dumps(list(codes)),)
+        return {key: self.fetchall(sql, encoded) for key, sql in queries.items()}

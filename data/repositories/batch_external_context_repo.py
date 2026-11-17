@@ -1,5 +1,7 @@
 """Read and copy the exact external context captured for one operation."""
 
+import json
+
 from .base_repo import BaseRepository
 
 COPY_COLUMNS = ("operation_id", "part_no", "sequence", "template_operation_id", "template_status", "group_id",
@@ -9,15 +11,10 @@ COPY_COLUMNS = ("operation_id", "part_no", "sequence", "template_operation_id", 
 
 class BatchExternalContextRepository(BaseRepository):
     def for_operations(self, operation_ids):
-        ids = sorted(set(operation_ids))
-        if not ids:
-            return []
-        rows = []
-        for start in range(0, len(ids), 400):
-            group = ids[start:start + 400]
-            rows.extend(self.fetchall("SELECT * FROM BatchExternalContexts WHERE operation_id IN ("
-                                      + ",".join("?" for _ in group) + ") ORDER BY operation_id", group))
-        return rows
+        return self.fetchall(
+            "SELECT * FROM BatchExternalContexts WHERE operation_id IN (SELECT value FROM json_each(?)) ORDER BY operation_id",
+            (json.dumps(list(operation_ids)),),
+        )
 
     def mark_template_copy(self, operation_id):
         return self.execute("UPDATE BatchExternalContexts SET origin='template_copy' WHERE operation_id=?", (operation_id,)).rowcount

@@ -101,8 +101,6 @@ def _structured_failure_message(detail: Dict[str, Any]) -> str:
             f"工序 {op_code}：它的后道工序已报工，但该前道工序排产失败，"
             "报工顺序和工艺顺序不一致，本次没有继续安排该批次，请核对报工数据。"
         )
-    if code == "missing_batch":
-        return f"工序 {op_code} 找不到所属批次，本次无法排产。"
     raise ValueError(f"Unknown structured failure code: {code!r}")
 
 

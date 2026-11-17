@@ -2,9 +2,10 @@
 
 import re
 from datetime import datetime
-from typing import Dict, Optional, TypedDict, overload
+from typing import Dict, FrozenSet, Optional, TypedDict, overload
 
-from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_command import SHAPE_REJECTED, WorkbenchCommandRejected, validate_request_key
+from core.shared.key_sets import keys_conform
 
 CONFIG_FIELDS = (
     "auto_backup_enabled", "auto_backup_interval_minutes", "auto_backup_cleanup_enabled",
@@ -64,14 +65,33 @@ class SystemQuery(TypedDict):
     page_size: int
 
 
-def object_fields(value, required, optional=()):
-    if type(value) is not dict or not set(required) <= set(value) or set(value) - set(required) - set(optional):
-        raise WorkbenchCommandRejected("invalid_input", "提交内容不完整或含有不支持的项，这次操作没有执行。请刷新页面后重试。", 400)
+QUERY_FIELDS: FrozenSet[str] = frozenset(("query", "type", "status", "level", "file", "start", "end", "page", "page_size", "snapshot_ref"))
+
+
+_MAINTENANCE_JOB_REF = re.compile(r"[a-f0-9]{32}")
+
+
+def is_maintenance_job_ref(value: object) -> bool:
+    """系统维护作业编号（维护日志按它命名记录文件）：32 位小写十六进制。只判形式，各入口自报自己的错误。"""
+    return type(value) is str and _MAINTENANCE_JOB_REF.fullmatch(value) is not None
+
+
+def validate_maintenance_reference(kind, reference):
+    """维护记录查询编号：按操作编号（request）或作业编号（job，``is_maintenance_job_ref``）核对。"""
+    if kind == "request":
+        validate_request_key(reference)
+    elif not is_maintenance_job_ref(reference):
+        raise WorkbenchCommandRejected("invalid_input", "这个维护记录编号无效，请重新打开维护页。", 400)
+
+
+def system_object(value, required, optional=()):
+    if not keys_conform(value, required, optional):
+        raise WorkbenchCommandRejected("invalid_input", SHAPE_REJECTED, 400)
     return value
 
 
 def config_input(value):
-    object_fields(value, CONFIG_FIELDS)
+    system_object(value, CONFIG_FIELDS)
     result = {}
     for key in CONFIG_FIELDS:
         raw = value[key]
@@ -81,7 +101,8 @@ def config_input(value):
             maximum = 365 if key.endswith("_days") else 1440
             valid = type(raw) is int and 1 <= raw <= maximum
         if not valid:
-            raise WorkbenchCommandRejected("invalid_input", "维护设置里有一项填写不对，这次保存没有生效。请检查开关和天数、分钟数后重新保存。", 422)
+            raise WorkbenchCommandRejected("invalid_input", "维护设置里有一项填写不对，这次保存没有生效。请检查开关和天数、分钟数后重新保存。", 422,
+                                           fields=(key,))
         result[key] = raw
     return result
 
@@ -99,11 +120,11 @@ def _query_dates(result):
         raise WorkbenchCommandRejected("invalid_input", "开始日期不能晚于结束日期。", 422)
 
 
-def _query_pagination(value):
+def _query_pagination(value: Dict[str, str]):
     result = {}
     for key, default in (("page", 1), ("page_size", 10)):
         raw = value.get(key, str(default))
-        if not isinstance(raw, str) or not re.fullmatch(r"[1-9]\d{0,6}", raw):
+        if not re.fullmatch(r"[1-9]\d{0,6}", raw):
             raise WorkbenchCommandRejected("invalid_input", "翻页位置已失效，请回到第 1 页重新查询。", 400)
         result[key] = int(raw)
     if result["page_size"] not in (10, 25, 50):
@@ -111,13 +132,12 @@ def _query_pagination(value):
     return result
 
 
-def query_input(value, kind) -> SystemQuery:
-    allowed = {"query", "type", "status", "level", "file", "start", "end", "page", "page_size", "snapshot_ref"}
-    object_fields(value, (), allowed)
+def query_input(value: Dict[str, str], kind) -> SystemQuery:
+    """Typed filters from URL arguments the route has already limited to ``QUERY_FIELDS``, one value each."""
     result: Dict[str, str] = {}
-    for key in allowed - {"page", "page_size", "snapshot_ref"}:
+    for key in QUERY_FIELDS - {"page", "page_size", "snapshot_ref"}:
         item = value.get(key, "")
-        if not isinstance(item, str) or len(item) > 200:
+        if len(item) > 200:
             raise WorkbenchCommandRejected("invalid_input", "筛选条件最多 200 个字。", 400)
         result[key] = item
     _query_dates(result)

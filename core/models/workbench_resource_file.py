@@ -1,7 +1,16 @@
 """Versioned file columns. Read-only columns are reference data, never written."""
 
 
+from core.models.enums import (
+    MERGE_MODE_LABELS,
+    MERGE_MODE_VALUES,
+    OP_TYPE_CATEGORY_LABELS,
+    OP_TYPE_CATEGORY_VALUES,
+    RESOURCE_ACTIVE_LABELS,
+    RESOURCE_STATUS_LABELS,
+)
 from core.models.workbench_resource_action import action_kind
+from core.models.workbench_resource_status import PUBLIC_STATUS_VALUES
 from core.models.workbench_table_descriptor import (
     DEFAULT_IMPORT_BYTE_LIMIT,
     UPSERT_ONLY,
@@ -47,21 +56,18 @@ RELATIONS = {
 
 REQUIRED = {kind: ("business_code",) for kind in WRITABLE}
 ENUM_CODES = {
-    "op_type": {"category": ("internal", "external", "both"), "default_merge_mode": ("separate", "merged")},
-    "machine": {"status": ("active", "maintain", "inactive")},
-    "operator": {"status": ("active", "leave", "inactive")},
-    "supplier": {"status": ("active", "pending_review", "inactive")},
+    "op_type": {"category": OP_TYPE_CATEGORY_VALUES, "default_merge_mode": MERGE_MODE_VALUES},
+    "machine": {"status": PUBLIC_STATUS_VALUES["machine"]},
+    "operator": {"status": PUBLIC_STATUS_VALUES["operator"]},
+    "supplier": {"status": PUBLIC_STATUS_VALUES["supplier"]},
 }
-ENUM_LABELS = {
-    "category": {"internal": "自制", "external": "外协", "both": "自制和外协都可"},
-    "default_merge_mode": {"separate": "分别设置", "merged": "合并设置"},
-    "status": {"active": "可用", "maintain": "停机", "leave": "请假", "pending_review": "待复核", "inactive": "停用"},
-}
+#: 文件里的状态一律写通用叫法（“可用”），页面上的叫法见 PAGE_STATUS_LABELS。
+ENUM_LABELS = {"category": OP_TYPE_CATEGORY_LABELS, "default_merge_mode": MERGE_MODE_LABELS, "status": RESOURCE_STATUS_LABELS}
 ENUMS = {kind: {field: tuple(ENUM_LABELS[field][code] for code in codes)
                for field, codes in fields.items()} for kind, fields in ENUM_CODES.items()}
 #: 页面上人员显示「在岗」、供应商显示「启用」，和文件里的「可用」是同一个状态，导入两种叫法都认。
 #: 导出和下拉仍写「可用」：模板的填写说明和说明书里的列说明都由这份表描述生成，改叫法要连说明书一起改。
-PAGE_STATUS_LABELS = {"operator": {"在岗": "active"}, "supplier": {"启用": "active"}}
+PAGE_STATUS_LABELS = {kind: {RESOURCE_ACTIVE_LABELS[kind]: "active"} for kind in ("operator", "supplier")}
 
 
 def status_words(kind):
@@ -85,7 +91,7 @@ _VALUE_HINTS = {
     "shift_profile_code": "班次编号；要清除请填 \\N（大写）",
     # 新增供应商时域层强制要大于 0 的默认周期（core/models/workbench_supplier.py 的 create 校验），
     # 但这一列对已有供应商留空表示保持原样，所以列本身不是必填，必填只发生在新增那一行。
-    "default_days": "默认周期天数，填大于 0 的数字；新增供应商必须填，已有的留空保持原样",
+    "default_days": "默认周期天数，填大于 0、不超过 36500（100 年）的数字；新增供应商必须填，已有的留空保持原样",
     "op_type_codes": "多个工种编号用顿号分开，例如 OT1、OT2；留空保持，填清除表示移除全部承接工种",
 }
 #: 只读列的说明。备注和设备类别在工种表里可填、在别的表里只读，所以两份提示不能共用一句话，
@@ -112,7 +118,7 @@ _ERROR_HINTS = {
     "group_code": "这个设备组编号在系统里找不到",
     "skill_codes": "列表里有空项、重复编号、引号不配对，或者工种编号找不到",
     "shift_profile_code": "这个班次编号在系统里找不到",
-    "default_days": "新增供应商时留空、不大于 0、不是数字、或者带了单位和千分位逗号",
+    "default_days": "新增供应商时留空、不大于 0、超过 36500、不是数字、或者带了单位和千分位逗号",
     "op_type_codes": "列表有空项或重复编号、引号不配对，或者工种编号找不到",
 }
 #: 四类资源的规则大同小异，但不能共用一份：工种表没有状态列也没有多值列，

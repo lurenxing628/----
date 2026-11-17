@@ -1,7 +1,7 @@
 """Admission-baseline read scope and descriptive comparison DTOs, not plan scores."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, Optional, cast
 
 from core.models.workbench_run_candidate import RunCandidateReadScope
 
@@ -18,8 +18,6 @@ def baseline_reason(code):
         "no_baseline_operation": "此工序在初始计划中未安排。",
         "candidate_operation_unscheduled": "此候选方案未安排该工序。",
         "outside_selected_batches": "这道工序只在排产时的正式计划里，不在这次选择的范围内。",
-        "baseline_multiple_segments": "此工序在初始计划中有多段安排，请逐段查看。",
-        "baseline_interval_unavailable": "初始计划的起止时间无效，或等时安排缺少零工时采用依据，无法比较。",
         "execution_affected": "排产时此工序已开工或数量不明。",
         "effective_hours_not_recorded": "初始计划未记录有效加工工时。",
         "historical_supplier_not_recorded": "初始计划未记录供应商安排。",
@@ -44,24 +42,16 @@ def _resource_change(before, after, kind):
     return previous[1] != current[1] if previous[0] and current[0] else None
 
 
-def _comparison_state(candidate, segments, selected):
+def _comparison_state(candidate, baseline, selected):
     reasons = []
     if candidate is None:
         status = "unscheduled" if selected else "baseline_only"
         reasons.append(baseline_reason("candidate_operation_unscheduled" if selected else "outside_selected_batches"))
-    elif not segments:
+    elif baseline is None:
         status = "newly_scheduled"
         reasons.append(baseline_reason("no_baseline_operation"))
-    elif len(segments) != 1:
-        status = "not_comparable"
-    elif not segments[0]["interval_comparable"]:
-        status = "not_comparable"
     else:
         status = "matched"
-    if len(segments) > 1:
-        reasons.append(baseline_reason("baseline_multiple_segments"))
-    if any(not row["interval_comparable"] for row in segments):
-        reasons.append(baseline_reason("baseline_interval_unavailable"))
     return status, reasons
 
 
@@ -73,28 +63,29 @@ def _execution_affected(execution):
 
 @dataclass(frozen=True)
 class RunBaselineComparison:
+    """One operation's candidate and baseline arrangement; each side holds at most one row per operation."""
+
     operation_ref: str
     row_ref: Optional[str]
     labels: Dict[str, Any]
     candidate: Optional[Dict[str, Any]]
-    baseline_segments: List[Dict[str, Any]]
+    baseline_segment: Optional[Dict[str, Any]]
     selected: bool
     candidate_status: Optional[str]
     candidate_interval: Any
-    baseline_intervals: List[Any]
+    baseline_interval: Any
 
     def to_dict(self):
-        candidate, segments = self.candidate, self.baseline_segments
-        status, reasons = _comparison_state(candidate, segments, self.selected)
+        candidate, baseline = self.candidate, self.baseline_segment
+        status, reasons = _comparison_state(candidate, baseline, self.selected)
         affected = _execution_affected(self.labels["execution_at_generation"])
         if affected:
             reasons.append(baseline_reason("execution_affected"))
         delta: Dict[str, Any] = dict(start_hours=None, end_hours=None, elapsed_hours=None, machine_changed=None,
                                     operator_changed=None, supplier_changed=None, effective_processing_hours=None)
         if status == "matched":
-            candidate = cast(Dict[str, Any], candidate)
-            baseline = segments[0]
-            base_span = self.baseline_intervals[0]
+            candidate, baseline = cast(Dict[str, Any], candidate), cast(Dict[str, Any], baseline)
+            base_span = self.baseline_interval
             cand_span = self.candidate_interval
             start_hours = (cand_span[0] - base_span[0]).total_seconds() / 3600
             end_hours = (cand_span[1] - base_span[1]).total_seconds() / 3600
@@ -109,7 +100,7 @@ class RunBaselineComparison:
             if candidate["source"] == "external" and delta["supplier_changed"] is None:
                 reasons.append(baseline_reason("historical_supplier_not_recorded"))
         return {**self.labels, "operation_ref": self.operation_ref, "row_ref": self.row_ref,
-                "candidate": candidate, "baseline_segments": segments,
+                "candidate": candidate, "baseline_segment": baseline,
                 "selected_at_admission": self.selected, "candidate_operation_status": self.candidate_status,
                 "status": status, "comparison_available": status == "matched", "delta": delta,
                 "execution_affected": affected, "improvement_assessment": None, "reasons": reasons}

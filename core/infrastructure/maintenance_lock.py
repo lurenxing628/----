@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
@@ -19,7 +20,6 @@ from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Dict, Iterator, Optional
 
-from core.infrastructure.migration_common import fallback_log
 from core.infrastructure.safe_files import (
     create_fixed_file_exclusive,
     read_fixed_bytes,
@@ -164,23 +164,21 @@ def _should_auto_heal_lock(state: dict) -> bool:
     return not _pid_exists(pid)
 
 
-def _log_stale_lock_kept_alive(state: dict, logger) -> None:
+def _log_stale_lock_kept_alive(state: dict, logger: logging.Logger) -> None:
     """B04(c)：超龄锁因 pid 判定存活而不自愈时留痕（Windows 无法核对进程身份，PID 可能被复用）。"""
     age_value = state["age_seconds"]
     if age_value < _MAINT_LOCK_STALE_SECONDS:
         return
-    fallback_log(
-        logger,
-        "warning",
+    logger.warning(
         "维护锁已超过陈旧阈值，但锁内 pid 判定为存活，继续按维护中处理："
         f"path={state['path']} pid={state['pid']} age_s={int(age_value)} "
         f"age_source={state['age_source']} raw={state['raw']!r}；"
         "判定依据仅为 PID 存活（无法核对进程身份，PID 可能已被其它进程复用）。"
-        "若确认维护进程已不存在，可手动删除该锁文件后重试。",
+        "若确认维护进程已不存在，可手动删除该锁文件后重试。"
     )
 
 
-def is_maintenance_window_active(db_path: str, *, logger=None) -> bool:
+def is_maintenance_window_active(db_path: str, *, logger: logging.Logger) -> bool:
     if current_thread_holds_maintenance_window(db_path):
         return True
     try:
@@ -199,23 +197,21 @@ def is_maintenance_window_active(db_path: str, *, logger=None) -> bool:
                 lock_path = current["path"]
                 try:
                     remove_fixed_file(lock_path)
-                    fallback_log(
-                        logger,
-                        "warning",
+                    logger.warning(
                         f"检测到陈旧维护锁，已自动清理：{lock_path}（pid={current['pid']} "
                         f"age_s={int(current['age_seconds'])} age_source={current['age_source']} "
-                        f"raw={current['raw']!r}）",
+                        f"raw={current['raw']!r}）"
                     )
                     return False
                 except Exception as e:
-                    fallback_log(logger, "warning", f"陈旧维护锁自动清理失败：{e}（path={lock_path}）")
+                    logger.warning(f"陈旧维护锁自动清理失败：{e}（path={lock_path}）")
             finally:
                 _MAINT_MUTEX.release()
         else:
             _log_stale_lock_kept_alive(state, logger)
         return True
     except Exception as exc:
-        fallback_log(logger, "warning", f"维护锁状态检测失败，已按不可确认处理并阻止继续：{exc}")
+        logger.warning(f"维护锁状态检测失败，已按不可确认处理并阻止继续：{exc}")
         raise MaintenanceWindowError("lock_state_unavailable", "系统维护锁状态检测失败，请稍后重试。") from exc
 
 
@@ -244,20 +240,20 @@ def _write_maintenance_lock_metadata(lock_fd: int, payload: str) -> None:
         written_total += written
 
 
-def _cleanup_failed_maintenance_lock(lock_fd: Optional[int], lock_path: str, *, logger=None) -> None:
+def _cleanup_failed_maintenance_lock(lock_fd: Optional[int], lock_path: str, *, logger: logging.Logger) -> None:
     if lock_fd is not None:
         try:
             os.close(lock_fd)
         except Exception as e:
-            fallback_log(logger, "warning", f"维护锁创建失败后的句柄关闭失败：{e}")
+            logger.warning(f"维护锁创建失败后的句柄关闭失败：{e}")
     try:
         remove_fixed_file(lock_path)
     except Exception as e:
-        fallback_log(logger, "warning", f"维护锁创建失败后的锁文件清理失败：{e}")
+        logger.warning(f"维护锁创建失败后的锁文件清理失败：{e}")
 
 
 @contextmanager
-def maintenance_window(db_path: str, *, logger=None, action: str = "maintenance") -> Iterator[None]:
+def maintenance_window(db_path: str, *, logger: logging.Logger, action: str = "maintenance") -> Iterator[None]:
     db_abs = os.path.abspath(db_path)
     state = _current_maintenance_state()
     if state is not None:
@@ -301,9 +297,9 @@ def maintenance_window(db_path: str, *, logger=None, action: str = "maintenance"
                 try:
                     os.close(lock_fd)
                 except Exception as e:
-                    fallback_log(logger, "warning", f"维护锁文件句柄关闭失败：{e}")
+                    logger.warning(f"维护锁文件句柄关闭失败：{e}")
             try:
                 remove_fixed_file(lock_path)
             except Exception as e:
-                fallback_log(logger, "warning", f"维护锁文件删除失败：{e}")
+                logger.warning(f"维护锁文件删除失败：{e}")
         _MAINT_MUTEX.release()

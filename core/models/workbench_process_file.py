@@ -6,6 +6,7 @@ are parsed, never resolved here. Row diagnostics do not authorize partial apply.
 """
 
 from core.errors import ValidationError
+from core.models.enums import SOURCE_TYPE_LABELS, SOURCE_TYPE_VALUES
 from core.models.workbench_resource_file import IMPORT_ROW_LIMIT
 from core.models.workbench_table_descriptor import (
     DEFAULT_IMPORT_BYTE_LIMIT,
@@ -28,8 +29,9 @@ LABELS = {
 REQUIRED = {"route": ("business_code",), "hours": ("business_code", "sequence")}
 INTEGER_FIELDS = frozenset(("sequence", "group_start", "group_end"))
 NUMBER_FIELDS = frozenset(("setup_hours", "unit_hours", "external_days", "group_total_days"))
-SOURCE_VALUES = {"自制": "internal", "外协": "external", "internal": "internal", "external": "external"}
-SOURCE_LABELS = {"internal": "自制", "external": "外协"}
+SOURCE_LABELS = SOURCE_TYPE_LABELS
+#: 导入入口认中文叫法，也认存储代号本身。
+SOURCE_VALUES = {**{label: code for code, label in SOURCE_LABELS.items()}, **{code: code for code in SOURCE_TYPE_VALUES}}
 TEMPLATE_VERSION = 1
 INT64_MAX = 9223372036854775807
 XLSX_EXACT_INTEGER_MAX = 2 ** 53
@@ -62,10 +64,10 @@ _VALUE_HINTS = {
     "source": "自制 / 外协，只用来核对原记录",
     "setup_hours": "换型时间，单位小时，填非负数字；留空保持原样，不支持清除已填工时",
     "unit_hours": "单件工时，单位小时，填非负数字；留空保持原样，不支持清除已填工时",
-    "external_days": "外协周期天数，填正数；留空保持原样；合并组优先使用合并周期",
+    "external_days": "外协周期天数，填大于 0、不超过 36500（100 年）的数；留空保持原样；合并组优先使用合并周期",
     "group_start": "外协组的起始工序号，只用来核对原记录",
     "group_end": "外协组的结束工序号，只用来核对原记录",
-    "group_total_days": "每个合并外协组只在第一道工序填一次正数天数，其余成员留空；不新增组或改范围",
+    "group_total_days": "每个合并外协组只在第一道工序填一次天数（大于 0、不超过 36500），其余成员留空；不新增组或改范围",
 }
 _ERROR_HINTS = {
     "business_code": "留空、有首尾空格、或这个图号在系统里找不到",
@@ -77,10 +79,10 @@ _ERROR_HINTS = {
     "source": "填了自制和外协以外的词，或者和原记录对不上",
     "setup_hours": "不是数字，或者填了 TRUE、FALSE",
     "unit_hours": "不是数字，或者填了 TRUE、FALSE",
-    "external_days": "不是数字，或者这道工序不是外协",
+    "external_days": "不是数字、不大于 0、超过 36500，或者这道工序不是外协",
     "group_start": "和原记录里的外协组起序对不上",
     "group_end": "和原记录里的外协组止序对不上",
-    "group_total_days": "不是数字，或者这几道工序不在同一个外协组里",
+    "group_total_days": "不是数字、不大于 0、超过 36500，或者这几道工序不在同一个外协组里",
 }
 _GENERAL_RULES = {
     "route": (

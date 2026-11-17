@@ -179,8 +179,8 @@ def _transaction_scope(conn, begin_sql: str = "BEGIN"):
                 _mark_poisoned(conn, rollback_exc)
                 logger.error(f"事务回滚失败，事务状态不可信：原始异常={e}; 回滚异常={rollback_exc}")
                 raise RuntimeError("事务回滚失败，连接状态不可信") from rollback_exc
-            if isinstance(e, Exception):
-                logger.error(f"事务已回滚：{e}")
+            # 回滚成功只把原异常交还调用方；它由真正处理它的边界记一次（接口 5xx、后台作业、启动失败），
+            # 业务拒绝（4xx）不当错误记录。
             raise
         else:
             _block_commit_if_poisoned(conn, depth, owns_tx, sp_name)

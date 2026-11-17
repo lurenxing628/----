@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from core.errors import ValidationError
 from core.models.workbench_action_values import AtomicActionPreview
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_identity import is_entity_ref
 from core.models.workbench_process_route import MAX_ROUTE_TEXT_BYTES
 from core.models.workbench_resource_input import resource_object, resource_text
+from core.shared.refs import is_ref
 
 
 def normalize_process_part_create(input):
@@ -38,7 +38,7 @@ def _check_text(value, label, field):
 def process_part_refs(refs, *, allow_empty=False):
     if type(refs) is not list or (not refs and not allow_empty):
         raise ValidationError("请选择有效的零件记录，选择列表不能为空或重复。", field="refs")
-    if any(not is_entity_ref(ref) for ref in refs) or len(set(refs)) != len(refs):
+    if any(not is_ref(ref) for ref in refs) or len(set(refs)) != len(refs):
         raise ValidationError("请选择有效的零件记录，选择列表不能为空或重复。", field="refs")
     return refs
 

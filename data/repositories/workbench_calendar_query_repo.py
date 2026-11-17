@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List
 
 from .base_repo import BaseRepository
@@ -44,15 +45,15 @@ class WorkbenchCalendarQueryRepository(BaseRepository):
         )
 
     def operator_calendar_rows_many(self, operator_ids, start_date, end_date):
-        codes = list(dict.fromkeys(operator_ids))
-        result = {code: [] for code in codes}
-        for offset in range(0, len(codes), 400):
-            chunk = codes[offset:offset + 400]
-            marks = ",".join("?" for _ in chunk)
-            for row in self.fetchall("SELECT * FROM OperatorCalendar WHERE operator_id IN (" + marks + ") "
-                                     "AND date >= ? AND date <= ? ORDER BY operator_id,date",
-                                     chunk + [start_date, end_date]):
-                result[row["operator_id"]].append(row)
+        result = {code: [] for code in operator_ids}
+        if not result:
+            return result
+        for row in self.fetchall(
+            "SELECT * FROM OperatorCalendar WHERE operator_id IN (SELECT value FROM json_each(?)) "
+            "AND date >= ? AND date <= ? ORDER BY operator_id,date",
+            (json.dumps(list(result)), start_date, end_date),
+        ):
+            result[row["operator_id"]].append(row)
         return result
 
     def operator_identity_rows_many(self, operator_ids, start_date, end_date):
@@ -61,24 +62,25 @@ class WorkbenchCalendarQueryRepository(BaseRepository):
 
         codes = list(dict.fromkeys(operator_ids))
         result = {code: [] for code in codes}
+        if not codes:
+            return result
         prefixes = {entity_key(code, "")[:-1]: code for code in codes}
-        for offset in range(0, len(codes), 400):
-            chunk = codes[offset:offset + 400]
-            ranges = " OR ".join("(entity_key >= ? AND entity_key <= ?)" for _ in chunk)
-            params = [value for code in chunk for value in (entity_key(code, start_date), entity_key(code, end_date))]
-            for row in self.fetchall("SELECT ref,kind,entity_key,revision,active FROM WorkbenchEntityRefs "
-                                     "WHERE kind='operator_calendar' AND (" + ranges + ") ORDER BY entity_key,ref", params):
-                result[prefixes[row["entity_key"].split(":", 1)[0]]].append(row)
+        ranges = [[entity_key(code, start_date), entity_key(code, end_date)] for code in codes]
+        for row in self.fetchall(
+            "SELECT ref, kind, entity_key, revision, active FROM json_each(?) AS r "
+            "JOIN WorkbenchEntityRefs ON kind='operator_calendar' "
+            "AND entity_key >= json_extract(r.value, '$[0]') "
+            "AND entity_key <= json_extract(r.value, '$[1]') "
+            "ORDER BY entity_key, ref",
+            (json.dumps(ranges),),
+        ):
+            result[prefixes[row["entity_key"].split(":", 1)[0]]].append(row)
         return result
 
     def created_refs(self, kind: str, keys) -> Dict[str, str]:
-        result = {}
-        keys = list(keys)
-        for offset in range(0, len(keys), 500):
-            chunk = keys[offset:offset + 500]
-            marks = ",".join("?" for _ in chunk)
-            for row in self.fetchall(
-                    "SELECT entity_key, ref FROM WorkbenchEntityRefs WHERE kind = ? AND active = 1 "
-                    "AND entity_key IN (" + marks + ")", [kind] + chunk):
-                result[row["entity_key"]] = row["ref"]
-        return result
+        rows = self.fetchall(
+            "SELECT entity_key, ref FROM WorkbenchEntityRefs WHERE kind = ? AND active = 1 "
+            "AND entity_key IN (SELECT value FROM json_each(?)) ORDER BY entity_key, ref",
+            (kind, json.dumps(list(keys))),
+        )
+        return {row["entity_key"]: row["ref"] for row in rows}

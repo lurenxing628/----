@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Union
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_query import PROCESS_STAGES, PROCESS_TABLE_COLUMNS
 from core.models.workbench_resource_table_query import normalize_table_column_filters
+from core.shared.key_sets import keys_conform
 
 MAX_PROCESS_SORT_KEYS = len(PROCESS_TABLE_COLUMNS)
 _SCOPE_FIELDS = {"query", "stage", "sort", "direction", "column_filters"}
@@ -30,7 +31,7 @@ def normalize_process_sort(value, direction="asc"):
         raise WorkbenchCommandRejected("invalid_input", "工艺排序必须是列名或最多四项的排序列表。", 400)
     result, seen = [], set()
     for item in value:
-        if type(item) is not dict or set(item) != {"field", "direction"}:
+        if not keys_conform(item, ("field", "direction")):
             raise WorkbenchCommandRejected("invalid_input", "排序项必须包含field和direction。", 400)
         column = item["field"]
         if column not in PROCESS_TABLE_COLUMNS or item["direction"] not in ("asc", "desc") or column in seen:
@@ -80,7 +81,7 @@ class ProcessTablePageRequest:
 
 def process_table_request(value):
     """Parse a list scope; transport owns snapshot_ref and duplicate-key decoding."""
-    if type(value) is not dict or set(value) - (_SCOPE_FIELDS | {"page", "size"}):
+    if not keys_conform(value, (), _SCOPE_FIELDS | {"page", "size"}):
         raise WorkbenchCommandRejected("invalid_input", "工艺列表的查询条件含有不支持的项，请刷新页面后重试。", 400)
     fields = dict(value)
     if "page" in fields:
@@ -90,7 +91,7 @@ def process_table_request(value):
 
 def process_scope_request(value, *, size=20):
     """An action/export scope (no page number) as the viewed list's request; size is that list's page size."""
-    if type(value) is not dict or set(value) - _SCOPE_FIELDS:
+    if not keys_conform(value, (), _SCOPE_FIELDS):
         raise WorkbenchCommandRejected("invalid_input", "工艺动作范围只接受搜索、阶段、排序和列筛选，不接受分页。", 400)
     return ProcessTablePageRequest(**value, size=size)
 

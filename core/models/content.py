@@ -1,16 +1,21 @@
-"""Lossless canonical SQLite content for comparisons and saved documents."""
+"""Lossless canonical SQLite content for comparisons and saved documents.
+
+``read_stored_json`` is the one reader of stored JSON columns.
+"""
 
 import base64
 import json
-import math
 import re
 from datetime import date, datetime
+from typing import Any, Dict, List, NoReturn, Type, Union, overload
 
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.shared.stored_dates import stored_day
+from core.shared.strict_json import load_strict_json
 
 _JSON_SCALARS = frozenset((str, int, bool, type(None)))
-_RESERVED_KEYS = frozenset((frozenset(("$sqlite_blob",)), frozenset(("$sqlite_real",)),
-                            frozenset(("$sqlite_dict",)), frozenset(("storage_type", "iso"))))
+_RESERVED_KEYS = frozenset((frozenset(("$sqlite_blob",)), frozenset(("$sqlite_dict",)),
+                            frozenset(("storage_type", "iso"))))
 _CANONICAL_ISO_DATETIME_RE = re.compile(
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]{6})?"
     r"(?:[+-](?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9](?:\.[0-9]{6})?)?)?\Z"
@@ -47,10 +52,6 @@ def packed(value, *, json_input=False):
         if json_input:
             raise TypeError("JSON input does not support binary values")
         return {"$sqlite_blob": base64.b64encode(value).decode("ascii")}
-    if type(value) is float and not math.isfinite(value):
-        if json_input:
-            raise ValueError("JSON input does not support non-finite numbers")
-        return {"$sqlite_real": value.hex()}
     return value
 
 
@@ -72,8 +73,6 @@ def unpacked(value):
             return datetime.fromisoformat(iso)
         if set(value) == {"$sqlite_blob"}:
             return base64.b64decode(value["$sqlite_blob"], validate=True)
-        if set(value) == {"$sqlite_real"}:
-            return float.fromhex(value["$sqlite_real"])
         return {key: unpacked(item) for key, item in value.items()}
     if type(value) is list:
         return [unpacked(item) for item in value]
@@ -88,3 +87,37 @@ def content_text(value, *, json_input=False):
 def same(left, right):
     """Compare values without merging boolean, integer and REAL representations."""
     return content_text(left) == content_text(right)
+
+
+class StoredJsonCorrupt(WorkbenchCommandRejected):
+    """A stored JSON column that ``read_stored_json`` cannot admit.
+
+    Its own type lets the few domain boundaries that present this as an actionable hint catch exactly this
+    failure; every other reader lets it surface as a storage failure.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("storage_failure", "保存的记录已损坏，读不出来。请联系维护人员核对数据，并告知下方编号。", 500)
+
+
+def _corrupt() -> NoReturn:
+    raise StoredJsonCorrupt()
+
+
+@overload
+def read_stored_json(raw: object, expected: Type[dict]) -> Dict[str, Any]:
+    ...
+
+
+@overload
+def read_stored_json(raw: object, expected: Type[list]) -> List[Any]:
+    ...
+
+
+def read_stored_json(raw: object, expected: Union[Type[dict], Type[list]]) -> Union[Dict[str, Any], List[Any]]:
+    """Decode one stored JSON column: text only (a BLOB is corrupt), strict JSON (no duplicate keys or
+    non-finite numbers) and a top-level value of exactly ``expected``. A nullable column keeps its ``None``
+    at the caller."""
+    if type(raw) is not str:
+        _corrupt()
+    return load_strict_json(raw, on_malformed=_corrupt, expected=expected)

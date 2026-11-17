@@ -1,10 +1,10 @@
 """Strict, page-independent read scope for the master-data overview."""
 
-import re
 from dataclasses import dataclass, field
 from typing import NoReturn
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.key_sets import keys_conform
 from core.shared.strict_json import load_strict_json
 
 DOMAINS = (("part", "零件"), ("route", "工艺路线"), ("opType", "工种"),
@@ -25,10 +25,6 @@ def _validate_search_text(value, message):
         invalid(message)
 
 
-def public_ref(value):
-    return type(value) is str and re.fullmatch(r"[0-9a-f]{48}", value) is not None
-
-
 def _malformed_scope():
     invalid("资料总览的查询条件格式不对，请刷新页面后重试。")
 
@@ -41,7 +37,7 @@ def read_scope(text):
     """Duplicate keys and non-finite numbers read as a malformed scope; 65536 counts UTF-8 bytes."""
     value = load_strict_json(text, on_malformed=_malformed_scope, limit=(65536, _oversized_scope))
     allowed = {"view", "domain", "status", "query", "sort", "direction", "size", "column_filters"}
-    if type(value) is not dict or set(value) - allowed:
+    if not keys_conform(value, (), allowed):
         invalid("资料总览的查询条件含有不支持的项，请刷新页面后重试。")
     return MasterOverviewScope(**value)
 
@@ -67,7 +63,7 @@ class MasterOverviewScope:
         _validate_search_text(self.query, "搜索内容最多 1000 字。")
         if type(self.size) is not int or self.size not in (20, 50, 100):
             invalid("每页只能选 20、50 或 100 条。")
-        if type(self.column_filters) is not dict or set(self.column_filters) - set(COLUMNS[self.view]):
+        if not keys_conform(self.column_filters, (), COLUMNS[self.view]):
             invalid("资料列表的筛选列不正确，请重新选择筛选条件。")
         for value in self.column_filters.values():
             _validate_search_text(value, "列筛选内容最多 1000 字。")

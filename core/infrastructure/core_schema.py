@@ -4,67 +4,100 @@ from __future__ import annotations
 
 from typing import Dict
 
+from core.models.enums import (
+    ADOPTION_SOURCE_KIND_VALUES,
+    BATCH_OPERATION_STATUS_VALUES,
+    BATCH_PRIORITY_VALUES,
+    BATCH_STATUS_VALUES,
+    CALENDAR_DAY_TYPE_STORED_VALUES,
+    DOWNTIME_SCOPE_TYPE_VALUES,
+    LOCK_STATUS_VALUES,
+    MACHINE_DOWNTIME_REASON_VALUES,
+    MACHINE_DOWNTIME_STATUS_VALUES,
+    MACHINE_STATUS_VALUES,
+    MATERIAL_STATUS_VALUES,
+    MERGE_MODE_VALUES,
+    OP_TYPE_CATEGORY_VALUES,
+    OPERATOR_STATUS_VALUES,
+    PART_OPERATION_STATUS_VALUES,
+    READY_STATUS_VALUES,
+    SCHEDULE_QUANTITY_BASIS_VALUES,
+    SKILL_LEVEL_VALUES,
+    SOURCE_TYPE_VALUES,
+    SUPPLIER_STATUS_VALUES,
+    WORKFLOW_ORIGIN_VALUES,
+    YESNO_VALUES,
+    count_check,
+    enum_check,
+    external_days_check,
+    flag_check,
+    nullable_enum_check,
+    nullable_external_days_check,
+    positive_count_check,
+    time_us_check,
+)
+
 _CORE_OBJECTS: Dict[str, str] = {
-    'Operators': """CREATE TABLE Operators (
+    'Operators': f"""CREATE TABLE Operators (
     operator_id     TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
-    status          TEXT DEFAULT 'active',
+    status          TEXT NOT NULL DEFAULT 'active' {enum_check('status', OPERATOR_STATUS_VALUES)},
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 , team_id TEXT)""",
-    'OpTypes': """CREATE TABLE OpTypes (
+    'OpTypes': f"""CREATE TABLE OpTypes (
     op_type_id      TEXT PRIMARY KEY,
     name            TEXT NOT NULL UNIQUE,
-    category        TEXT DEFAULT 'internal',
+    category        TEXT NOT NULL DEFAULT 'internal' {enum_check('category', OP_TYPE_CATEGORY_VALUES)},
     default_hours   REAL,
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 )""",
-    'Machines': """CREATE TABLE Machines (
+    'Machines': f"""CREATE TABLE Machines (
     machine_id      TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
-    op_type_id      TEXT,
-    category        TEXT,                       -- 设备类别（用于“按类别停机/筛选”等）
-    status          TEXT DEFAULT 'active',
+    category        TEXT,                       -- 设备类别（用于“按类别停机/筛选”等）；能做的工种只存在 MachineOpTypes
+    status          TEXT NOT NULL DEFAULT 'active' {enum_check('status', MACHINE_STATUS_VALUES)},
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP, team_id TEXT,
-    FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id)
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP, team_id TEXT
 )""",
-    'MachineDowntimes': """CREATE TABLE MachineDowntimes (
+    'MachineDowntimes': f"""CREATE TABLE MachineDowntimes (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     machine_id      TEXT NOT NULL,
-    scope_type      TEXT DEFAULT 'machine',      -- machine/category/all（V1.1 预留；当前实现会展开为“按设备逐条写入”）
+    scope_type      TEXT NOT NULL DEFAULT 'machine' {enum_check('scope_type', DOWNTIME_SCOPE_TYPE_VALUES)},  -- 当前实现会展开为“按设备逐条写入”
     scope_value     TEXT,                        -- scope 的取值：machine_id / category / '*'（可空）
-    start_time      DATETIME NOT NULL,
+    start_time      DATETIME NOT NULL,           -- 展示文本；起止的唯一事实是 start_us/end_us
     end_time        DATETIME NOT NULL,
-    reason_code     TEXT,                       -- 预留：maintenance/breakdown/power/tooling/other
-    reason_detail   TEXT,                       -- 预留：原因备注
-    status          TEXT DEFAULT 'active',       -- active/cancelled
+    start_us        INTEGER NOT NULL {time_us_check('start_us')},
+    end_us          INTEGER NOT NULL {time_us_check('end_us')},
+    reason_code     TEXT NOT NULL {enum_check('reason_code', MACHINE_DOWNTIME_REASON_VALUES)},
+    reason_detail   TEXT,                       -- 原因备注
+    status          TEXT NOT NULL DEFAULT 'active' {enum_check('status', MACHINE_DOWNTIME_STATUS_VALUES)},
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CHECK (start_us < end_us),
     FOREIGN KEY (machine_id) REFERENCES Machines(machine_id) ON DELETE CASCADE
 )""",
-    'idx_machine_downtimes_machine': 'CREATE INDEX idx_machine_downtimes_machine ON MachineDowntimes(machine_id)',
-    'idx_machine_downtimes_time': 'CREATE INDEX idx_machine_downtimes_time ON MachineDowntimes(start_time, end_time)',
-    'OperatorMachine': """CREATE TABLE OperatorMachine (
+    'idx_machine_downtimes_machine_time': 'CREATE INDEX idx_machine_downtimes_machine_time ON MachineDowntimes(machine_id, start_us, end_us)',
+    'OperatorMachine': f"""CREATE TABLE OperatorMachine (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     operator_id     TEXT NOT NULL,
     machine_id      TEXT NOT NULL,
-    skill_level     TEXT DEFAULT 'normal',
-    is_primary      TEXT DEFAULT 'no',
+    skill_level     TEXT NOT NULL DEFAULT 'normal' {enum_check('skill_level', SKILL_LEVEL_VALUES)},
+    is_primary      TEXT NOT NULL DEFAULT 'no' {enum_check('is_primary', YESNO_VALUES)},
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE,
     FOREIGN KEY (machine_id) REFERENCES Machines(machine_id) ON DELETE CASCADE,
     UNIQUE (operator_id, machine_id)
 )""",
-    'OperatorSkill': """CREATE TABLE OperatorSkill (
+    'OperatorSkill': f"""CREATE TABLE OperatorSkill (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     operator_id     TEXT NOT NULL,
     op_type_id      TEXT NOT NULL,
-    skill_level     TEXT DEFAULT 'normal',
-    is_primary      TEXT DEFAULT 'no',
+    skill_level     TEXT NOT NULL DEFAULT 'normal' {enum_check('skill_level', SKILL_LEVEL_VALUES)},
+    is_primary      TEXT NOT NULL DEFAULT 'no' {enum_check('is_primary', YESNO_VALUES)},
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE,
     FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id) ON DELETE CASCADE,
@@ -72,49 +105,59 @@ _CORE_OBJECTS: Dict[str, str] = {
 )""",
     'idx_operators_status': 'CREATE INDEX idx_operators_status ON Operators(status)',
     'idx_operator_machine_machine': 'CREATE INDEX idx_operator_machine_machine ON OperatorMachine(machine_id)',
-    'Suppliers': """CREATE TABLE Suppliers (
+    'Suppliers': f"""CREATE TABLE Suppliers (
     supplier_id     TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
-    default_days    REAL DEFAULT 1,
-    status          TEXT DEFAULT 'active',
+    default_days    REAL NOT NULL DEFAULT 1 {external_days_check('default_days')},
+    status          TEXT NOT NULL DEFAULT 'active' {enum_check('status', SUPPLIER_STATUS_VALUES)},
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 )""",
-    'Parts': """CREATE TABLE Parts (
-    part_no         TEXT PRIMARY KEY,
-    part_name       TEXT NOT NULL,
-    route_raw       TEXT,
-    route_parsed    TEXT DEFAULT 'no',
-    remark          TEXT,
-    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+    'Parts': f"""CREATE TABLE Parts (
+    part_no             TEXT PRIMARY KEY,
+    part_name           TEXT NOT NULL,
+    route_raw           TEXT,
+    route_parsed        TEXT NOT NULL DEFAULT 'no' {enum_check('route_parsed', YESNO_VALUES)},
+    remark              TEXT,
+    workflow_origin     TEXT NOT NULL DEFAULT 'legacy' {enum_check('workflow_origin', WORKFLOW_ORIGIN_VALUES)},
+    route_confirmed_at  TEXT CHECK (route_confirmed_at IS NULL OR (typeof(route_confirmed_at) = 'text' AND length(route_confirmed_at) > 0)),
+    source_confirmed_at TEXT CHECK (source_confirmed_at IS NULL OR (typeof(source_confirmed_at) = 'text' AND length(source_confirmed_at) > 0)),
+    hours_confirmed_at  TEXT CHECK (hours_confirmed_at IS NULL OR (typeof(hours_confirmed_at) = 'text' AND length(hours_confirmed_at) > 0)),
+    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CHECK (workflow_origin = 'managed' OR (route_confirmed_at IS NULL AND source_confirmed_at IS NULL AND hours_confirmed_at IS NULL)),
+    CHECK (source_confirmed_at IS NULL OR route_confirmed_at IS NOT NULL),
+    CHECK (hours_confirmed_at IS NULL OR source_confirmed_at IS NOT NULL)
 )""",
-    'PartOperations': """CREATE TABLE PartOperations (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    part_no         TEXT NOT NULL,
-    seq             INTEGER NOT NULL,
-    op_type_id      TEXT,
-    op_type_name    TEXT NOT NULL,
-    source          TEXT DEFAULT 'internal',
-    supplier_id     TEXT,
-    ext_days        REAL,
-    ext_group_id    TEXT,
-    setup_hours     REAL DEFAULT 0,
-    unit_hours      REAL DEFAULT 0,
-    status          TEXT DEFAULT 'active',
-    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    'PartOperations': f"""CREATE TABLE PartOperations (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    part_no             TEXT NOT NULL,
+    seq                 INTEGER NOT NULL,
+    op_type_id          TEXT,
+    op_type_name        TEXT NOT NULL,
+    source              TEXT DEFAULT 'internal' {nullable_enum_check('source', SOURCE_TYPE_VALUES)},  -- 空表示归属还没确认（如工种尚未登记）
+    supplier_id         TEXT,
+    ext_days            REAL {nullable_external_days_check('ext_days')},
+    ext_group_id        TEXT,
+    setup_hours         REAL DEFAULT 0,
+    unit_hours          REAL DEFAULT 0,
+    status              TEXT NOT NULL DEFAULT 'active' {enum_check('status', PART_OPERATION_STATUS_VALUES)},
+    source_confirmed_at TEXT CHECK (source_confirmed_at IS NULL OR (typeof(source_confirmed_at) = 'text' AND length(source_confirmed_at) > 0)),
+    hours_confirmed_at  TEXT CHECK (hours_confirmed_at IS NULL OR (typeof(hours_confirmed_at) = 'text' AND length(hours_confirmed_at) > 0)),
+    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CHECK (hours_confirmed_at IS NULL OR source_confirmed_at IS NOT NULL),
     FOREIGN KEY (part_no) REFERENCES Parts(part_no) ON DELETE CASCADE,
     FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id),
     FOREIGN KEY (supplier_id) REFERENCES Suppliers(supplier_id),
     UNIQUE (part_no, seq)
 )""",
-    'ExternalGroups': """CREATE TABLE ExternalGroups (
+    'ExternalGroups': f"""CREATE TABLE ExternalGroups (
     group_id        TEXT PRIMARY KEY,
     part_no         TEXT NOT NULL,
     start_seq       INTEGER NOT NULL,
     end_seq         INTEGER NOT NULL,
-    merge_mode      TEXT DEFAULT 'separate',
-    total_days      REAL,
+    merge_mode      TEXT NOT NULL DEFAULT 'separate' {enum_check('merge_mode', MERGE_MODE_VALUES)},
+    total_days      REAL {nullable_external_days_check('total_days')},
     supplier_id     TEXT,
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -124,39 +167,39 @@ _CORE_OBJECTS: Dict[str, str] = {
     'idx_part_operations_part': 'CREATE INDEX idx_part_operations_part ON PartOperations(part_no)',
     'idx_part_operations_source': 'CREATE INDEX idx_part_operations_source ON PartOperations(source)',
     'idx_external_groups_part': 'CREATE INDEX idx_external_groups_part ON ExternalGroups(part_no)',
+    'idx_external_groups_supplier': 'CREATE INDEX idx_external_groups_supplier ON ExternalGroups(supplier_id)',
     'idx_machines_status': 'CREATE INDEX idx_machines_status ON Machines(status)',
-    'idx_machines_op_type': 'CREATE INDEX idx_machines_op_type ON Machines(op_type_id)',
-    'Batches': """CREATE TABLE Batches (
+    'Batches': f"""CREATE TABLE Batches (
     batch_id        TEXT PRIMARY KEY,
     part_no         TEXT NOT NULL,
     part_name       TEXT,
-    quantity        INTEGER NOT NULL,
+    quantity        INTEGER NOT NULL {positive_count_check('quantity')},
     due_date        DATE,
-    priority        TEXT DEFAULT 'normal',
-    ready_status    TEXT DEFAULT 'yes',
+    priority        TEXT NOT NULL DEFAULT 'normal' {enum_check('priority', BATCH_PRIORITY_VALUES)},
+    ready_status    TEXT NOT NULL DEFAULT 'yes' {enum_check('ready_status', READY_STATUS_VALUES)},
     ready_date      DATE,                       -- 齐套日期（可选）：最早可开工日期（YYYY-MM-DD）
-    status          TEXT DEFAULT 'pending',
+    status          TEXT NOT NULL DEFAULT 'pending' {enum_check('status', BATCH_STATUS_VALUES)},
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (part_no) REFERENCES Parts(part_no)
 )""",
-    'BatchOperations': """CREATE TABLE BatchOperations (
+    'BatchOperations': f"""CREATE TABLE BatchOperations (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    op_code         TEXT NOT NULL UNIQUE,
+    op_code         TEXT NOT NULL UNIQUE CHECK(length(trim(op_code)) > 0),
     batch_id        TEXT NOT NULL,
     piece_id        TEXT,
     seq             INTEGER NOT NULL,
     op_type_id      TEXT,
     op_type_name    TEXT NOT NULL,
-    source          TEXT DEFAULT 'internal',
+    source          TEXT NOT NULL DEFAULT 'internal' {enum_check('source', SOURCE_TYPE_VALUES)},
     machine_id      TEXT,
     operator_id     TEXT,
     supplier_id     TEXT,
     setup_hours     REAL DEFAULT 0,
     unit_hours      REAL DEFAULT 0,
-    ext_days        REAL,
-    status          TEXT DEFAULT 'pending',
+    ext_days        REAL {nullable_external_days_check('ext_days')},
+    status          TEXT NOT NULL DEFAULT 'pending' {enum_check('status', BATCH_OPERATION_STATUS_VALUES)},
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (batch_id) REFERENCES Batches(batch_id) ON DELETE CASCADE,
     FOREIGN KEY (machine_id) REFERENCES Machines(machine_id),
@@ -164,39 +207,107 @@ _CORE_OBJECTS: Dict[str, str] = {
     FOREIGN KEY (supplier_id) REFERENCES Suppliers(supplier_id),
     UNIQUE (batch_id, seq, piece_id)
 )""",
-    'Schedule': """CREATE TABLE Schedule (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    op_id           INTEGER NOT NULL,
-    machine_id      TEXT,
-    operator_id     TEXT,
-    start_time      DATETIME NOT NULL,
-    end_time        DATETIME NOT NULL,
-    lock_status     TEXT DEFAULT 'unlocked',
-    version         INTEGER DEFAULT 1,
-    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    'ScheduleHistory': f"""CREATE TABLE ScheduleHistory (
+    version                      INTEGER PRIMARY KEY,
+    plan_ref                     TEXT NOT NULL UNIQUE CHECK(length(plan_ref) = 48 AND plan_ref NOT GLOB '*[^0-9a-f]*'),
+    schedule_time                DATETIME DEFAULT CURRENT_TIMESTAMP,
+    adopted_at                   TEXT NOT NULL,
+    strategy                     TEXT NOT NULL,
+    batch_count                  INTEGER NOT NULL,
+    op_count                     INTEGER NOT NULL {count_check('op_count')},
+    result_status                TEXT NOT NULL,
+    created_by                   TEXT NOT NULL,
+    request_key                  TEXT,
+    declared_operator            TEXT,
+    application_operator         TEXT,
+    reason                       TEXT,
+    source_kind                  TEXT NOT NULL {enum_check('source_kind', ADOPTION_SOURCE_KIND_VALUES)},
+    source_ref                   TEXT NOT NULL,
+    source_label                 TEXT,
+    run_ref                      TEXT,
+    draft_ref                    TEXT,
+    accepted_at                  TEXT,
+    finished_at                  TEXT,
+    algorithm_json               TEXT,
+    baseline_version             INTEGER,
+    baseline_ref                 TEXT,
+    baseline_kind                TEXT NOT NULL,
+    baseline_captured_at         TEXT NOT NULL,
+    baseline_captured_task_count INTEGER NOT NULL,
+    material_policy_json         TEXT NOT NULL,
+    deferred_operation_ids_json  TEXT NOT NULL,
+    operation_effort_json        TEXT,
+    plan_start_time              TEXT NOT NULL,
+    plan_end_time                TEXT NOT NULL,
+    end_includes_point           INTEGER NOT NULL {flag_check('end_includes_point')},
+    gantt_node_count             INTEGER NOT NULL {count_check('gantt_node_count')},
+    gantt_graph_json             TEXT NOT NULL
+)""",
+    'Schedule': f"""CREATE TABLE Schedule (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    version            INTEGER NOT NULL,
+    task_ref           TEXT NOT NULL UNIQUE CHECK(length(task_ref) = 48 AND task_ref NOT GLOB '*[^0-9a-f]*'),
+    op_id              INTEGER NOT NULL,
+    operation_ref      TEXT NOT NULL,
+    start_time         TEXT NOT NULL,
+    end_time           TEXT NOT NULL,
+    start_us           INTEGER NOT NULL {time_us_check('start_us')},
+    end_us             INTEGER NOT NULL {time_us_check('end_us')},
+    is_point_event     INTEGER NOT NULL,
+    batch_id           TEXT NOT NULL,
+    batch_priority     TEXT NOT NULL {enum_check('batch_priority', BATCH_PRIORITY_VALUES)},
+    piece_id           TEXT,
+    seq                INTEGER NOT NULL,
+    op_type_name       TEXT NOT NULL,
+    op_type_ref        TEXT,
+    op_type_label      TEXT,
+    source             TEXT NOT NULL {enum_check('source', SOURCE_TYPE_VALUES)},
+    setup_hours        REAL,
+    unit_hours         REAL,
+    quantity           INTEGER,
+    remaining_quantity INTEGER,
+    batch_quantity     INTEGER,
+    quantity_basis     TEXT NOT NULL {enum_check('quantity_basis', SCHEDULE_QUANTITY_BASIS_VALUES)},
+    quantity_reason    TEXT,
+    machine_id         TEXT,
+    machine_ref        TEXT,
+    machine_label      TEXT,
+    operator_id        TEXT,
+    operator_ref       TEXT,
+    operator_label     TEXT,
+    supplier_id        TEXT,
+    supplier_ref       TEXT,
+    supplier_label     TEXT,
+    lock_status        TEXT NOT NULL DEFAULT 'unlocked' {enum_check('lock_status', LOCK_STATUS_VALUES)},
+    created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CHECK (start_us <= end_us),
+    CHECK (is_point_event = (start_us = end_us)),
+    CHECK ((source = 'internal' AND setup_hours IS NOT NULL AND unit_hours IS NOT NULL) OR source = 'external'),
+    FOREIGN KEY (version) REFERENCES ScheduleHistory(version),
     FOREIGN KEY (op_id) REFERENCES BatchOperations(id) ON DELETE CASCADE,
+    FOREIGN KEY (operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref),
     FOREIGN KEY (machine_id) REFERENCES Machines(machine_id),
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id)
 )""",
     'ScheduleVersionSeq': """CREATE TABLE ScheduleVersionSeq (
     version         INTEGER PRIMARY KEY AUTOINCREMENT
 )""",
-    'WorkCalendar': """CREATE TABLE WorkCalendar (
+    'WorkCalendar': f"""CREATE TABLE WorkCalendar (
     date            DATE NOT NULL PRIMARY KEY,
-    day_type        TEXT NOT NULL,              -- workday / holiday
+    day_type        TEXT NOT NULL {enum_check('day_type', CALENDAR_DAY_TYPE_STORED_VALUES)},
     efficiency      REAL NOT NULL,
-    allow_normal    TEXT NOT NULL,
-    allow_urgent    TEXT NOT NULL,
+    allow_normal    TEXT NOT NULL {enum_check('allow_normal', YESNO_VALUES)},
+    allow_urgent    TEXT NOT NULL {enum_check('allow_urgent', YESNO_VALUES)},
     remark          TEXT,
     periods_json    TEXT NOT NULL               -- 工作时段数组；[] 表示零工时，起止与工时都由它现算
 )""",
-    'OperatorCalendar': """CREATE TABLE OperatorCalendar (
+    'OperatorCalendar': f"""CREATE TABLE OperatorCalendar (
     operator_id     TEXT NOT NULL,
     date            DATE NOT NULL,
-    day_type        TEXT NOT NULL,              -- workday / holiday
+    day_type        TEXT NOT NULL {enum_check('day_type', CALENDAR_DAY_TYPE_STORED_VALUES)},
     efficiency      REAL NOT NULL,
-    allow_normal    TEXT NOT NULL,
-    allow_urgent    TEXT NOT NULL,
+    allow_normal    TEXT NOT NULL {enum_check('allow_normal', YESNO_VALUES)},
+    allow_urgent    TEXT NOT NULL {enum_check('allow_urgent', YESNO_VALUES)},
     remark          TEXT,
     periods_json    TEXT NOT NULL,              -- 工作时段数组；[] 表示零工时，起止与工时都由它现算
     PRIMARY KEY (operator_id, date),
@@ -225,6 +336,7 @@ _CORE_OBJECTS: Dict[str, str] = {
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 )""",
     'idx_system_job_state_time': 'CREATE INDEX idx_system_job_state_time ON SystemJobState(last_run_time)',
+    'idx_batches_part_no': 'CREATE INDEX idx_batches_part_no ON Batches(part_no)',
     'idx_batches_status': 'CREATE INDEX idx_batches_status ON Batches(status)',
     'idx_batches_priority': 'CREATE INDEX idx_batches_priority ON Batches(priority)',
     'idx_batches_due_date': 'CREATE INDEX idx_batches_due_date ON Batches(due_date)',
@@ -233,7 +345,6 @@ _CORE_OBJECTS: Dict[str, str] = {
     'idx_schedule_op': 'CREATE INDEX idx_schedule_op ON Schedule(op_id)',
     'idx_schedule_machine': 'CREATE INDEX idx_schedule_machine ON Schedule(machine_id)',
     'idx_schedule_operator': 'CREATE INDEX idx_schedule_operator ON Schedule(operator_id)',
-    'idx_schedule_time': 'CREATE INDEX idx_schedule_time ON Schedule(start_time, end_time)',
     'OperationLogs': """CREATE TABLE OperationLogs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     log_time        DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -247,38 +358,27 @@ _CORE_OBJECTS: Dict[str, str] = {
     error_code      TEXT,
     error_message   TEXT
 )""",
-    'ScheduleHistory': """CREATE TABLE ScheduleHistory (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    schedule_time   DATETIME DEFAULT CURRENT_TIMESTAMP,
-    version         INTEGER NOT NULL,
-    strategy        TEXT NOT NULL,
-    batch_count     INTEGER,
-    op_count        INTEGER,
-    result_status   TEXT,
-    result_summary  TEXT,
-    created_by      TEXT
-)""",
     'idx_operation_logs_time': 'CREATE INDEX idx_operation_logs_time ON OperationLogs(log_time)',
     'idx_operation_logs_level': 'CREATE INDEX idx_operation_logs_level ON OperationLogs(log_level)',
     'idx_operation_logs_module': 'CREATE INDEX idx_operation_logs_module ON OperationLogs(module)',
     'idx_schedule_history_time': 'CREATE INDEX idx_schedule_history_time ON ScheduleHistory(schedule_time)',
-    'Materials': """CREATE TABLE Materials (
+    'Materials': f"""CREATE TABLE Materials (
     material_id     TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
     spec            TEXT,
     unit            TEXT,
     stock_qty       REAL DEFAULT 0,
-    status          TEXT DEFAULT 'active',
+    status          TEXT NOT NULL DEFAULT 'active' {enum_check('status', MATERIAL_STATUS_VALUES)},
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 )""",
-    'BatchMaterials': """CREATE TABLE BatchMaterials (
+    'BatchMaterials': f"""CREATE TABLE BatchMaterials (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     batch_id        TEXT NOT NULL,
     material_id     TEXT NOT NULL,
     required_qty    REAL NOT NULL,
     available_qty   REAL DEFAULT 0,
-    ready_status    TEXT DEFAULT 'no',
+    ready_status    TEXT NOT NULL DEFAULT 'no' {enum_check('ready_status', READY_STATUS_VALUES)},
     FOREIGN KEY (batch_id) REFERENCES Batches(batch_id) ON DELETE CASCADE,
     FOREIGN KEY (material_id) REFERENCES Materials(material_id)
 )""",
@@ -293,12 +393,10 @@ _CORE_OBJECTS: Dict[str, str] = {
     'idx_operators_team_id': 'CREATE INDEX idx_operators_team_id ON Operators(team_id)',
     'idx_machines_team_id': 'CREATE INDEX idx_machines_team_id ON Machines(team_id)',
     'idx_schedule_version_op_unique': 'CREATE UNIQUE INDEX idx_schedule_version_op_unique ON Schedule(version, op_id)',
-    'idx_schedule_version_time': """CREATE INDEX idx_schedule_version_time
-ON Schedule(version, start_time, end_time)""",
-    'idx_schedule_history_version': """CREATE INDEX idx_schedule_history_version
-ON ScheduleHistory(version)""",
+    'idx_schedule_version_page': 'CREATE INDEX idx_schedule_version_page ON Schedule(version, start_us ASC, id ASC)',
+    'idx_schedule_version_span': 'CREATE INDEX idx_schedule_version_span ON Schedule(version, end_us, start_us)',
+    'idx_schedule_operation_ref_version': 'CREATE INDEX idx_schedule_operation_ref_version ON Schedule(operation_ref, version)',
     'idx_batch_operations_identity_unique': 'CREATE UNIQUE INDEX idx_batch_operations_identity_unique ON BatchOperations(id, batch_id)',
-    'idx_schedule_identity_unique': 'CREATE UNIQUE INDEX idx_schedule_identity_unique ON Schedule(id, version, op_id)',
 }
 
 

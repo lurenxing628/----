@@ -4,7 +4,8 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_resource_table_query import normalize_column_filters, table_columns
+from core.models.workbench_resource_status import PUBLIC_STATUS_VALUES
+from core.models.workbench_resource_table_query import normalize_column_filters, table_sorts
 
 RESOURCE_KINDS = ("op_type", "machine", "operator", "supplier", "machine_group", "shift_profile")
 
@@ -30,17 +31,14 @@ class ResourcePageRequest:
     def __post_init__(self):
         if type(self.query) is not str or len(self.query) > 200:
             raise WorkbenchCommandRejected("invalid_input", "资源类型或搜索条件不正确。", 400)
-        statuses = {"op_type": (None,), "machine": (None, "active", "maintain", "inactive"),
-                    "operator": (None, "active", "leave", "inactive"),
-                    "supplier": (None, "active", "pending_review", "inactive")}
-        if self.status not in statuses.get(self.kind, (None, "active", "inactive")):
+        statuses = () if self.kind == "op_type" else PUBLIC_STATUS_VALUES[self.kind]
+        if self.status is not None and self.status not in statuses:
             raise WorkbenchCommandRejected("invalid_input", "资源状态筛选不正确。", 400)
         if self.category not in ((None, "internal", "external") if self.kind == "op_type" else (None,)):
             raise WorkbenchCommandRejected("invalid_input", "当前资源不支持此归属筛选。", 400)
         if type(self.number) is not int or not 1 <= self.number <= 1000000 or type(self.size) is not int or not 1 <= self.size <= 200:
             raise WorkbenchCommandRejected("invalid_input", "页码或每页条数不正确，每页最多200条。", 400)
-        sorts = ("business_code", "label", "status") + table_columns(self.kind, self.category)
-        if self.sort not in sorts or self.direction not in ("asc", "desc"):
+        if self.sort not in table_sorts(self.kind, self.category) or self.direction not in ("asc", "desc"):
             raise WorkbenchCommandRejected("invalid_input", "资源排序条件不正确。", 400)
         object.__setattr__(self, "column_filters", normalize_column_filters(self.column_filters, self.kind, self.category))
 

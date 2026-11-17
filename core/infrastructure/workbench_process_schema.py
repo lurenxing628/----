@@ -12,8 +12,15 @@ PROCESS_ENTITY_TABLES: Dict[str, Tuple[str, Tuple[str, ...]]] = {
     "template_external_group": ("ExternalGroups", ("group_id",)),
 }
 _ALTERNATE_COLUMNS = {"template_operation": ("part_no", "seq")}
+_UPDATE_COLUMNS: Dict[str, Tuple[str, ...]] = {
+    "template_operation": (
+        "id", "part_no", "seq", "op_type_id", "op_type_name", "source", "supplier_id",
+        "ext_days", "ext_group_id", "setup_hours", "unit_hours", "status", "created_at",
+    ),
+}
 _INDEXES = {
     "idx_part_operations_ext_group": "CREATE INDEX IF NOT EXISTS idx_part_operations_ext_group ON PartOperations(ext_group_id)",
+    "idx_part_operations_part_status": "CREATE INDEX IF NOT EXISTS idx_part_operations_part_status ON PartOperations(part_no, status)",
 }
 
 
@@ -21,29 +28,17 @@ def process_objects() -> Dict[str, str]:
     objects = dict(_INDEXES)
     for kind, (table, columns) in PROCESS_ENTITY_TABLES.items():
         objects.update(identity_triggers(
-            kind, table, columns, alternate_columns=_ALTERNATE_COLUMNS.get(kind, ()),
+            kind, table, columns,
+            alternate_columns=_ALTERNATE_COLUMNS.get(kind, ()),
+            update_columns=_UPDATE_COLUMNS.get(kind, ()),
         ))
     return objects
-
-
-def _source_contract_issues(*, structure: SchemaStructure) -> List[str]:
-    issues = []
-    for kind, (table, columns) in PROCESS_ENTITY_TABLES.items():
-        info = structure.table_info(table)
-        names = {row[1] for row in info}
-        required = columns + _ALTERNATE_COLUMNS.get(kind, ())
-        issues.extend("missing_workbench_process_source: " + table + "." + column
-                      for column in required if column not in names)
-        primary = tuple(row[1] for row in sorted(info, key=lambda row: row[5]) if row[5])
-        if primary != columns:
-            issues.append("bad_workbench_process_primary_key: " + table)
-    return issues
 
 
 def workbench_process_contract_issues(structure: SchemaStructure) -> List[str]:
     """Read-only structural check; missing identities are never allocated here."""
     actual = structure.sql
-    issues = _source_contract_issues(structure=structure)
+    issues = []
     for name, sql in process_objects().items():
         if name not in actual:
             issues.append("missing_workbench_process: " + name)

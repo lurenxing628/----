@@ -2,38 +2,45 @@
 
 from __future__ import annotations
 
-import math
-import re
 from typing import Dict, Optional, Union
 
-from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.enums import SOURCE_TYPE_VALUES
+from core.models.workbench_command import SHAPE_REJECTED, WorkbenchCommandRejected
+from core.shared.key_sets import keys_conform
+from core.shared.refs import is_ref
+from core.shared.strict_parse import EXTERNAL_DAYS_RANGE_TEXT, JS_SAFE_INT_MAX, is_external_days, is_stored_number
 
 PROCESS_ACTIONS = ("route_confirm", "source_confirm", "hours_confirm", "groups_confirm")
 MAX_STAGE_ITEMS = 10000
 
 
 def process_object(value, keys):
-    if type(value) is not dict or set(value) != set(keys):
-        raise WorkbenchCommandRejected("invalid_input", "提交内容缺少必填项或含有多余项，这次操作没有执行。请刷新页面后重试。", 400)
+    if not keys_conform(value, keys):
+        raise WorkbenchCommandRejected("invalid_input", SHAPE_REJECTED, 400)
     return value
 
 
 def process_ref(value):
-    if type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None:
+    if not is_ref(value):
         raise WorkbenchCommandRejected("invalid_input", "所选记录已失效，请刷新后重新选择。", 422)
     return value
 
 
-def process_number(value, *, positive=False):
+def process_number(value, path):
+    """Template hours (setup / unit): a finite non-negative stored number."""
     if type(value) not in (int, float):
-        raise WorkbenchCommandRejected("invalid_input", "请输入有效的工时或周期，不能留空。", 422)
-    try:
-        number = float(value)
-    except OverflowError:
-        raise WorkbenchCommandRejected("invalid_input", "工时和周期超出有效数字范围。", 422) from None
-    if not math.isfinite(number) or (number <= 0 if positive else number < 0):
-        raise WorkbenchCommandRejected("invalid_input", "工时必须是有限非负数，外协周期必须是有限正数。", 422)
-    return number
+        raise WorkbenchCommandRejected("invalid_input", "请输入有效的工时，不能留空。", 422, fields=(path,))
+    if not is_stored_number(value):
+        message = "工时超出有效数字范围。" if value > JS_SAFE_INT_MAX else "工时必须是有限非负数。"
+        raise WorkbenchCommandRejected("invalid_input", message, 422, fields=(path,))
+    return float(value)
+
+
+def process_days(value, path):
+    """An operation's own external cycle or a merged group's cycle, in natural days."""
+    if not is_external_days(value):
+        raise WorkbenchCommandRejected("invalid_input", "外协周期" + EXTERNAL_DAYS_RANGE_TEXT + "。", 422, fields=(path,))
+    return float(value)
 
 
 def process_list(value):
@@ -56,7 +63,7 @@ def _source_operations(rows):
     for row in process_list(rows):
         process_object(row, {"ref", "source", "op_type_ref", "supplier_ref", "confirmed"})
         process_ref(row["ref"])
-        if type(row["source"]) is not str or row["source"] not in ("internal", "external") or row["confirmed"] is not True:
+        if type(row["source"]) is not str or row["source"] not in SOURCE_TYPE_VALUES or row["confirmed"] is not True:
             raise WorkbenchCommandRejected("invalid_input", "每道工序都需要选定归属并确认。", 422)
         process_ref(row["op_type_ref"])
         if row["source"] == "internal":
@@ -75,10 +82,14 @@ def _hours_operations(rows):
             raise WorkbenchCommandRejected("invalid_input", "工序工时的填写格式不对。", 400)
         keys = {"ref", "external_days"} if "external_days" in row else {"ref", "setup_hours", "unit_hours"}
         process_object(row, keys)
-        normalized: Dict[str, Optional[Union[str, float]]] = {"ref": process_ref(row["ref"])}
-        for key in keys - {"ref"}:
-            value = row[key]
-            normalized[key] = None if key == "external_days" and value is None else process_number(value, positive=key == "external_days")
+        ref = process_ref(row["ref"])
+        normalized: Dict[str, Optional[Union[str, float]]] = {"ref": ref}
+        for key in sorted(keys - {"ref"}):
+            value, path = row[key], "operations." + ref + "." + key
+            if key == "external_days":
+                normalized[key] = None if value is None else process_days(value, path)
+            else:
+                normalized[key] = process_number(value, path)
         result.append(normalized)
     return process_unique(result)
 
@@ -88,7 +99,9 @@ def _normalize_group_input(payload):
     discarded = process_unique(process_list(payload["discard_group_refs"]), refs_only=True)
     discarded_set = set(discarded)
     groups, existing, members = [], set(), set()
-    for row in process_list(payload["groups"]):
+    # New groups have no ref and the rows are sorted below: the submitted position is the only identity a cycle
+    # rejection can point back at.
+    for index, row in enumerate(process_list(payload["groups"])):
         process_object(row, {"ref", "operation_refs", "supplier_ref", "total_days"})
         ref = None if row["ref"] is None else process_ref(row["ref"])
         refs = process_unique(process_list(row["operation_refs"]), refs_only=True)
@@ -98,7 +111,7 @@ def _normalize_group_input(payload):
         if ref is not None:
             existing.add(ref)
         groups.append({"ref": ref, "operation_refs": refs, "supplier_ref": process_ref(row["supplier_ref"]),
-                       "total_days": process_number(row["total_days"], positive=True)})
+                       "total_days": process_days(row["total_days"], "groups." + str(index) + ".total_days")})
     if len(members) > 10000:
         raise WorkbenchCommandRejected("stage_too_large", "一次最多维护 10000 道工序，请缩小范围后重试。", 413)
     return {"groups": sorted(groups, key=lambda row: (row["ref"] or "", row["operation_refs"])),
@@ -118,12 +131,13 @@ def normalize_process_input(action, payload):
         groups = []
         for row in process_list(payload["groups"]):
             process_object(row, {"ref", "total_days"})
-            groups.append({"ref": process_ref(row["ref"]), "total_days": process_number(row["total_days"], positive=True)})
+            ref = process_ref(row["ref"])
+            groups.append({"ref": ref, "total_days": process_days(row["total_days"], "groups." + ref + ".total_days")})
         return {"operations": operations, "groups": process_unique(groups),
                 "confirm_zero_unit_hours": payload["confirm_zero_unit_hours"]}
     field = "route" if action == "route_confirm" else "operations"
-    if type(payload) is not dict or field not in payload or set(payload) - {field, "discard_group_refs"}:
-        raise WorkbenchCommandRejected("invalid_input", "提交内容缺少必填项或含有多余项，这次操作没有执行。请刷新页面后重试。", 400)
+    if not keys_conform(payload, (field,), ("discard_group_refs",)):
+        raise WorkbenchCommandRejected("invalid_input", SHAPE_REJECTED, 400)
     discarded = process_unique(process_list(payload.get("discard_group_refs", [])), refs_only=True)
     if action == "source_confirm":
         return {field: _source_operations(payload[field]), "discard_group_refs": discarded}

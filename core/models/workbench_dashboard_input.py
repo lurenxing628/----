@@ -7,6 +7,7 @@ from typing import Any, Dict
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import HANDLING_FIELDS, STATUSES
+from core.shared.key_sets import keys_conform
 
 
 def invalid(field, message):
@@ -26,7 +27,7 @@ def normalize_input(action, payload):
         raise WorkbenchCommandRejected("invalid_input", "提交内容格式不对，这次处置没有保存。请刷新页面后重试。", 400)
     allowed = {"reason"} if action == "reopen" else set(HANDLING_FIELDS) | {"target_status"}
     required = {"reason"} if action == "reopen" else {"remark", "target_status"}
-    if set(payload) - allowed or not required <= set(payload):
+    if not keys_conform(payload, required, allowed):
         raise WorkbenchCommandRejected("invalid_input", "处置内容缺少必填项或含有多余项，这次处置没有保存。请刷新页面后重试。", 400)
     result = {key: _text(key, value, required) for key, value in payload.items()}
     for key in required:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
+from core.models.enums import SortStrategy
 from core.models.objective import objective_choice_labels
 
 
@@ -24,8 +25,8 @@ _FIELD_SPECS: Tuple[RuntimeConfigFieldSpec, ...] = (
     RuntimeConfigFieldSpec(
         key="sort_strategy",
         field_type="enum",
-        default="priority_first",
-        choices=("priority_first", "due_date_first", "weighted", "fifo"),
+        default=SortStrategy.PRIORITY_FIRST.value,
+        choices=tuple(item.value for item in SortStrategy),
     ),
     RuntimeConfigFieldSpec(key="priority_weight", field_type="float", default=0.4, min_value=0.0),
     RuntimeConfigFieldSpec(key="due_weight", field_type="float", default=0.5, min_value=0.0),
@@ -36,12 +37,6 @@ _FIELD_SPECS: Tuple[RuntimeConfigFieldSpec, ...] = (
         default=0.8,
         min_value=0.0,
         min_inclusive=False,
-    ),
-    RuntimeConfigFieldSpec(
-        key="enforce_ready_default",
-        field_type="yes_no",
-        default="no",
-        choices=_YES_NO_CHOICES,
     ),
     RuntimeConfigFieldSpec(
         key="dispatch_mode",
@@ -61,13 +56,6 @@ _FIELD_SPECS: Tuple[RuntimeConfigFieldSpec, ...] = (
         default="no",
         choices=_YES_NO_CHOICES,
     ),
-    RuntimeConfigFieldSpec(
-        key="ortools_enabled",
-        field_type="yes_no",
-        default="no",
-        choices=_YES_NO_CHOICES,
-    ),
-    RuntimeConfigFieldSpec(key="ortools_time_limit_seconds", field_type="int", default=5, min_value=1),
     RuntimeConfigFieldSpec(
         key="algo_mode",
         field_type="enum",

@@ -1,5 +1,7 @@
 """Eight maintenance fields and explicit read-only batch export facts."""
 
+from core.models.enums import BATCH_PRIORITY_LABELS, BATCH_PRIORITY_VALUES, READY_STATUS_LABELS, READY_STATUS_VALUES
+
 HEADERS = ("批次号", "图号", "数量", "交期", "优先级", "维护齐套标记", "齐套日期", "备注")
 READONLY_HEADERS = ("状态", "当前有效齐套（只读）")
 FILE_HEADERS = HEADERS + READONLY_HEADERS
@@ -9,14 +11,15 @@ MAX_ROWS = 5000
 MAX_BYTES = 10 * 1024 * 1024
 MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 REQUIRED = ("business_code",)
-ENUMS = {"priority": ("普通", "急件", "特急"), "ready_status": ("齐套", "未齐套", "部分齐套")}
+ENUMS = {"priority": tuple(BATCH_PRIORITY_LABELS[value] for value in BATCH_PRIORITY_VALUES),
+         "ready_status": tuple(READY_STATUS_LABELS[value] for value in READY_STATUS_VALUES)}
 _VALUE_HINTS = {
     "business_code": "批次号，例如 B001；不填就不知道改哪一条",
     "part_no": "已存在的零件图号，例如 A1234",
     "quantity": "数量，填正整数，不要带单位",
     "due_date": "交期，填成 2026-01-25 这样的年月日，不要带时分",
-    "priority": "普通 / 急件 / 特急",
-    "ready_status": "齐套 / 未齐套 / 部分齐套；保存的维护标记，可能与按当前日期和物料计算的有效齐套不同",
+    "priority": " / ".join(ENUMS["priority"]),
+    "ready_status": " / ".join(ENUMS["ready_status"]) + "；保存的维护标记，可能与按当前日期和物料计算的有效齐套不同",
     "ready_date": "齐套日期，填成 2026-01-25 这样的年月日；没有就留空",
     "remark": "随便写",
 }
@@ -25,8 +28,8 @@ _ERROR_HINTS = {
     "part_no": "留空，或者这个图号在系统里找不到",
     "quantity": "不是正整数，或者填了「是/否」",
     "due_date": "不是真实日期、或者带了时分",
-    "priority": "填了普通、急件、特急以外的词",
-    "ready_status": "填了齐套、未齐套、部分齐套以外的词",
+    "priority": "填了" + "、".join(ENUMS["priority"]) + "以外的词",
+    "ready_status": "填了" + "、".join(ENUMS["ready_status"]) + "以外的词",
     "ready_date": "不是真实日期，或者带了时分",
     "remark": "基本不会报错",
 }

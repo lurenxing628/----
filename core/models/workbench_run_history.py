@@ -3,12 +3,10 @@
 from dataclasses import dataclass
 from typing import NoReturn, Optional
 
+from core.models.enums import RUN_STATE_VALUES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.shared.stored_dates import stored_day, stored_local_iso_datetime
 
-STATES = ("queued", "running", "complete", "partial", "failed", "interrupted")
-TERMINAL_STATES = frozenset(STATES[2:])
-MAX_DIRECTORY_ROWS = 100000
 MAX_DIRECTORY_BYTES = 128 * 1024 * 1024
 MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
 
@@ -46,7 +44,7 @@ class RunHistoryScope:
     size: int = 20
 
     def __post_init__(self):
-        if (self.state not in ("all",) + STATES or self.sort not in ("accepted_at", "started_at", "finished_at")
+        if (self.state not in ("all",) + RUN_STATE_VALUES or self.sort not in ("accepted_at", "started_at", "finished_at")
                 or self.order not in ("asc", "desc") or type(self.page) is not int or not 1 <= self.page <= 1000000
                 or type(self.size) is not int or not 1 <= self.size <= 50):
             reject("invalid_input", "运行历史筛选、排序或分页参数无效，未忽略条件。")

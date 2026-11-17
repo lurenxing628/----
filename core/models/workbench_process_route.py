@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Tuple
 
 from core.models.process_route_text import serialize_route_rows
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.key_sets import keys_conform
 
 MAX_ROUTE_OPERATIONS = 2000
 MAX_ROUTE_TEXT_BYTES = 256 * 1024
@@ -60,7 +61,7 @@ class ProcessRoutePreviewInput:
 
 
 def _object(value, keys):
-    if type(value) is not dict or set(value) != keys:
+    if not keys_conform(value, keys):
         raise WorkbenchCommandRejected("invalid_input", "预检内容缺少必填项或含有多余项，请刷新页面后重试。", 400)
 
 

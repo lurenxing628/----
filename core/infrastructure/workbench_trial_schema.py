@@ -1,6 +1,7 @@
 """Explicit trial schema and contract validation."""
 
 from core.infrastructure.workbench_metadata_schema import canonical_sql
+from core.models.enums import TRIAL_BASE_KIND_VALUES, TRIAL_DRAFT_STATUS_VALUES, TrialDraftStatus, enum_check
 
 from .schema_structure import SchemaStructure
 
@@ -12,15 +13,16 @@ _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 def workbench_trial_objects():
     objects = {
         "WorkbenchTrialDrafts": """CREATE TABLE WorkbenchTrialDrafts (
-            draft_ref {} PRIMARY KEY, base_kind TEXT NOT NULL CHECK(base_kind IN ('plan_ref','candidate_ref')),
+            draft_ref {} PRIMARY KEY, base_kind TEXT NOT NULL {base_kind},
             base_ref {}, admission_json TEXT NOT NULL,
             row_count INTEGER NOT NULL CHECK(typeof(row_count)='integer' AND row_count>0),
             revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision>=1),
-            status TEXT NOT NULL CHECK(status IN ('editing','saved','discarded')),
+            status TEXT NOT NULL {status},
             validation_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
             local_operator TEXT NOT NULL, request_key TEXT NOT NULL UNIQUE,
             FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
-        )""".format(_REF.format("draft_ref"), _REF.format("base_ref")),
+        )""".format(_REF.format("draft_ref"), _REF.format("base_ref"), base_kind=enum_check("base_kind", TRIAL_BASE_KIND_VALUES),
+                    status=enum_check("status", TRIAL_DRAFT_STATUS_VALUES)),
         "WorkbenchTrialRows": """CREATE TABLE WorkbenchTrialRows (
             row_ref {} PRIMARY KEY, task_ref {} UNIQUE, draft_ref TEXT NOT NULL,
             operation_ref TEXT NOT NULL, source_task_ref TEXT, source_row_ref TEXT NOT NULL,
@@ -41,7 +43,7 @@ def workbench_trial_objects():
         )""".format(_REF.format("change_ref")),
         "WorkbenchTrialScenarios": """CREATE TABLE WorkbenchTrialScenarios (
             scenario_ref {} PRIMARY KEY, draft_ref TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
-            revision INTEGER NOT NULL, snapshot_json TEXT NOT NULL,
+            revision INTEGER NOT NULL, snapshot_json TEXT NOT NULL, resources_json TEXT NOT NULL,
             saved_at TEXT NOT NULL, local_operator TEXT NOT NULL, request_key TEXT NOT NULL UNIQUE,
             FOREIGN KEY(draft_ref) REFERENCES WorkbenchTrialDrafts(draft_ref),
             FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
@@ -65,11 +67,11 @@ def workbench_trial_objects():
         name = "wb_" + table[9:].lower() + "_identity"
         objects[name] = "CREATE TRIGGER {} BEFORE UPDATE ON {} WHEN {} BEGIN SELECT RAISE(ABORT,'trial baseline is immutable'); END".format(
             name, table, " OR ".join(f"NEW.{key} IS NOT OLD.{key}" for key in keys))
-    objects["wb_trial_transition"] = """CREATE TRIGGER wb_trial_transition BEFORE UPDATE ON WorkbenchTrialDrafts
-        WHEN OLD.status<>'editing' OR NEW.revision<>OLD.revision+1
+    objects["wb_trial_transition"] = f"""CREATE TRIGGER wb_trial_transition BEFORE UPDATE ON WorkbenchTrialDrafts
+        WHEN OLD.status<>'{TrialDraftStatus.EDITING.value}' OR NEW.revision<>OLD.revision+1
         BEGIN SELECT RAISE(ABORT,'invalid trial transition'); END"""
-    objects["wb_trial_closed_rows"] = """CREATE TRIGGER wb_trial_closed_rows BEFORE UPDATE ON WorkbenchTrialRows
-        WHEN (SELECT status FROM WorkbenchTrialDrafts WHERE draft_ref=OLD.draft_ref)<>'editing'
+    objects["wb_trial_closed_rows"] = f"""CREATE TRIGGER wb_trial_closed_rows BEFORE UPDATE ON WorkbenchTrialRows
+        WHEN (SELECT status FROM WorkbenchTrialDrafts WHERE draft_ref=OLD.draft_ref)<>'{TrialDraftStatus.EDITING.value}'
         BEGIN SELECT RAISE(ABORT,'closed trial is immutable'); END"""
     return objects
 

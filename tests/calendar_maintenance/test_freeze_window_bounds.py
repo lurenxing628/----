@@ -4,6 +4,8 @@ from datetime import datetime
 
 import pytest
 
+from core.shared.local_datetime import datetime_to_us
+from tests.workbench.plan_catalog_support import update_schedule_rows
 from tests.workbench.run_compute_support import compute_run, unchanged
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
 
@@ -20,7 +22,7 @@ def test_freeze_window_bounds(run_case):
         ("inside", "2026-09-09 10:00:00", "2026-09-09 11:00:00"),
         ("after", "2026-09-10 08:00:00", "2026-09-10 09:00:00"),
     ):
-        case.conn.execute("UPDATE Schedule SET start_time=?,end_time=? WHERE op_id=?", (start, end, ids[batch]))
+        update_schedule_rows(case.conn, 1, where="op_id = ?", params=(ids[batch],), start_time=start, end_time=end)
     case.conn.commit()
     settings = case.settings("B1", "inside", "after", hold_window={"start": "2026-09-09T08:00", "end": "2026-09-10T08:00"})
     result = unchanged(case, lambda: compute_run(case.conn, settings, case.projections()))
@@ -28,6 +30,27 @@ def test_freeze_window_bounds(run_case):
     for outcome in result.candidate_outcomes.values():
         held = next(row for row in outcome.validated_payload.schedule_rows if row.op_id == ids["inside"])
         assert (held.start_time, held.end_time) == (datetime(2026, 9, 9, 10), datetime(2026, 9, 9, 11))
+
+
+def test_previous_schedule_reader_selects_by_stored_instants():
+    """读取器只按已保存的微秒取上一版原安排：与读取窗口重叠的、开工即完工且正落在窗口起点的保留；
+    窗口外贴边的、别的版本或别的工序不取。"""
+    from types import SimpleNamespace
+
+    from core.services.workbench.run.input_points import read_point_freeze_rows
+
+    def row(op_id, start, end, version=1):
+        return {"version": version, "op_id": op_id, "start_us": datetime_to_us(start), "end_us": datetime_to_us(end)}
+
+    at = datetime(2026, 9, 9, 8)
+    rows = [row(1, datetime(2026, 9, 9, 7), at), row(2, at, at), row(3, datetime(2026, 9, 9, 9), datetime(2026, 9, 9, 10)),
+            row(4, datetime(2026, 9, 9, 12), datetime(2026, 9, 9, 13)), row(5, at, datetime(2026, 9, 9, 9), version=2),
+            row(6, at, datetime(2026, 9, 9, 9))]
+    facts = SimpleNamespace(capture=SimpleNamespace(business_table=lambda name: rows if name == "Schedule" else []))
+    result = read_point_freeze_rows(version=1, op_ids=[1, 2, 3, 4, 5], start_time=at, end_time=datetime(2026, 9, 9, 12),
+                                    facts=facts)
+    assert [(item["op_id"], item["_parsed_times"]) for item in result] == [
+        (2, (at, at)), (3, (datetime(2026, 9, 9, 9), datetime(2026, 9, 9, 10)))]
 
 
 def test_piece_batches_hold_only_the_covered_piece_and_common_work():
@@ -68,16 +91,16 @@ def test_point_prefix_carries_its_witness_and_a_mismatched_witness_rejects_the_w
             "op_id": 1,
             "machine_id": "M1",
             "operator_id": "O1",
-            "start_time": "2026-09-09 08:00:00",
-            "end_time": "2026-09-09 10:00:00",
+            "start_us": datetime_to_us(datetime(2026, 9, 9, 8)),
+            "end_us": datetime_to_us(datetime(2026, 9, 9, 10)),
             "_parsed_times": (datetime(2026, 9, 9, 8), datetime(2026, 9, 9, 10)),
         },
         {
             "op_id": 2,
             "machine_id": "M1",
             "operator_id": "O1",
-            "start_time": "2026-09-09 10:00:00",
-            "end_time": "2026-09-09 10:00:00",
+            "start_us": datetime_to_us(datetime(2026, 9, 9, 10)),
+            "end_us": datetime_to_us(datetime(2026, 9, 9, 10)),
             "_parsed_times": (datetime(2026, 9, 9, 10), datetime(2026, 9, 9, 10)),
         },
     ]
@@ -98,7 +121,7 @@ def test_point_prefix_carries_its_witness_and_a_mismatched_witness_rejects_the_w
     interval, point = seeds
     assert "_point_evidence" not in interval
     assert point["_point_evidence"] is witness
-    assert type(coerce_seed_result_item(point, idx=1)) is PointSeedResult
+    assert type(coerce_seed_result_item(point)) is PointSeedResult
 
     bad = {"other_machine": {2: {"witness": replace(witness, machine_id="M2")}}, "missing": {}}[mismatch]
     with pytest.raises(CandidateRunInputError) as exc:

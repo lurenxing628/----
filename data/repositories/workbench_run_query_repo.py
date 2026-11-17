@@ -41,8 +41,7 @@ class WorkbenchRunHistoryQueryRepository(BaseRepository):
         values.extend((scope.size, (scope.page - 1) * scope.size))
         return self.fetchall("""SELECT j.run_ref,j.request_key,j.input_ref,j.state,j.stage,
             j.accepted_at,j.started_at,j.finished_at,j.executor_ref,
-            a.projection_version AS scope_version,a.scope_json,
-            d.projection_version AS header_version,d.header_json,
+            a.scope_json,d.header_json,
             r.receipt_ref,r.state AS receipt_state,r.recorded_at
             FROM (SELECT j.run_ref,j.request_key,j.input_ref,j.state,j.stage,
                 j.accepted_at,j.started_at,j.finished_at,j.executor_ref

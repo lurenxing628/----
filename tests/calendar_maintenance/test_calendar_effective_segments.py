@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from core.errors import BusinessError, ErrorCode
 from core.infrastructure.database import get_connection
 from core.models.calendar_periods import decode_periods
 from core.services.scheduler.calendar import engine as engine_module
@@ -15,6 +16,9 @@ from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.scheduler.calendar.period_offsets import period_offsets
 from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_capture
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
+
+# A normal-priority batch on the factory calendar (no person).
+FACTORY_NORMAL = {"priority": "normal", "operator_id": None}
 
 
 def dt(text):
@@ -40,19 +44,20 @@ def engine(today_normal='yes', previous_normal='yes', *, start='05:00', end='13:
 def test_overlap_is_counted_once_and_calendar_hours_are_not_efficiency_weighted(priority, efficiency):
     cal = engine(efficiency=efficiency)
     start = dt('06T04:00')
-    assert cal.working_hours_between(start, dt('06T06:00'), priority) == 2
+    factory = {"priority": priority, "operator_id": None}
+    assert cal.working_hours_between(start, dt('06T06:00'), **factory) == 2
     for hours in (.25, 2, 9, 15):
-        end = cal.add_effective_hours(start, hours, priority)
-        assert cal.working_hours_between(start, end, priority) == pytest.approx(hours)
-        assert cal.working_hours_between(end, start, priority) == pytest.approx(-hours)
+        end = cal.add_effective_hours(start, hours, **factory)
+        assert cal.working_hours_between(start, end, **factory) == pytest.approx(hours)
+        assert cal.working_hours_between(end, start, **factory) == pytest.approx(-hours)
 
 
 def test_current_window_priority_wins_and_tail_resumes_after_short_current_window():
     cal = engine(today_normal='no', start='05:00', end='05:30')
-    assert cal.add_effective_hours(dt('06T04:00'), 1.5, 'normal') == dt('06T06:00')
-    assert cal.adjust_to_working_time(dt('06T05:00'), 'normal') == dt('06T05:30')
-    assert cal.working_hours_between(dt('06T04:00'), dt('06T06:00'), 'normal') == 1.5
-    assert cal.working_hours_between(dt('06T04:00'), dt('06T06:00'), 'urgent') == 2
+    assert cal.add_effective_hours(dt('06T04:00'), 1.5, priority='normal', operator_id=None) == dt('06T06:00')
+    assert cal.adjust_to_working_time(dt('06T05:00'), priority='normal', operator_id=None) == dt('06T05:30')
+    assert cal.working_hours_between(dt('06T04:00'), dt('06T06:00'), priority='normal', operator_id=None) == 1.5
+    assert cal.working_hours_between(dt('06T04:00'), dt('06T06:00'), priority='urgent', operator_id=None) == 2
 
 
 def test_people_share_public_dates_and_shift_facts_then_maintenance_reloads(schema_conn, monkeypatch):
@@ -229,9 +234,9 @@ def test_add_hours_preserves_microsecond_remainders_exact_shift_fit_and_min_posi
     morning_start = datetime(2026, 10, 12, 8, 0)
     for extra_us in (1, 2, 3):
         hours = (4 * 3_600_000_000 + extra_us) / 3_600_000_000.0
-        end = cal.add_effective_hours(morning_start, hours)
+        end = cal.add_effective_hours(morning_start, hours, **FACTORY_NORMAL)
         assert end == datetime(2026, 10, 12, 13, 0, 0, extra_us)
-        assert cal.working_hours_between(morning_start, end) == hours
+        assert cal.working_hours_between(morning_start, end, **FACTORY_NORMAL) == hours
 
     low_eff_cal = CalendarEngine()
     low_eff_cal._resolve_calendar_row = lambda date_str, op_id=None: SimpleNamespace(
@@ -243,7 +248,7 @@ def test_add_hours_preserves_microsecond_remainders_exact_shift_fit_and_min_posi
         periods_json='[{"start":"08:00","end":"09:00","day_offset":0},{"start":"13:00","end":"17:00","day_offset":0}]',
     )
     eff_hours = ((1 * 3_600_000_000 + 10) * 0.3) / 3_600_000_000.0
-    assert low_eff_cal.add_effective_hours(morning_start, eff_hours) == datetime(2026, 10, 12, 13, 0, 0, 10)
+    assert low_eff_cal.add_effective_hours(morning_start, eff_hours, **FACTORY_NORMAL) == datetime(2026, 10, 12, 13, 0, 0, 10)
 
     # 2. 200 / 60.0 与 0.1 + 0.2 等二进制尾数微超整分钟的工时刚好装入早班，不误跨午休
     split_cal = CalendarEngine()
@@ -255,7 +260,7 @@ def test_add_hours_preserves_microsecond_remainders_exact_shift_fit_and_min_posi
         allow_urgent="yes",
         periods_json='[{"start":"08:30","end":"11:50","day_offset":0},{"start":"13:00","end":"17:20","day_offset":0}]',
     )
-    assert split_cal.add_effective_hours(datetime(2026, 10, 12, 8, 30), 200 / 60.0) == datetime(2026, 10, 12, 11, 50)
+    assert split_cal.add_effective_hours(datetime(2026, 10, 12, 8, 30), 200 / 60.0, **FACTORY_NORMAL) == datetime(2026, 10, 12, 11, 50)
 
     short_cal = CalendarEngine()
     short_cal._resolve_calendar_row = lambda date_str, op_id=None: SimpleNamespace(
@@ -266,7 +271,7 @@ def test_add_hours_preserves_microsecond_remainders_exact_shift_fit_and_min_posi
         allow_urgent="yes",
         periods_json='[{"start":"08:00","end":"08:18","day_offset":0},{"start":"13:00","end":"17:00","day_offset":0}]',
     )
-    assert short_cal.add_effective_hours(morning_start, 0.1 + 0.2) == datetime(2026, 10, 12, 8, 18)
+    assert short_cal.add_effective_hours(morning_start, 0.1 + 0.2, **FACTORY_NORMAL) == datetime(2026, 10, 12, 8, 18)
 
     # 3. 正剩余跨入高效率班次至少占 1 µs，不退化为零长点事件
     jump_cal = CalendarEngine()
@@ -279,7 +284,7 @@ def test_add_hours_preserves_microsecond_remainders_exact_shift_fit_and_min_posi
         periods_json='[{"start":"08:00","end":"09:00","day_offset":0}]',
     )
     near_end = datetime(2026, 10, 12, 8, 59, 59, 999900)  # 早班剩 100 µs 墙钟 = 50 µs 有效工时
-    jumped_end = jump_cal.add_effective_hours(near_end, 50.3 / 3_600_000_000.0)
+    jumped_end = jump_cal.add_effective_hours(near_end, 50.3 / 3_600_000_000.0, **FACTORY_NORMAL)
     assert jumped_end == datetime(2026, 10, 13, 8, 0, 0, 1)
 
 
@@ -296,14 +301,25 @@ def test_capacity_hours_between_accumulates_microseconds_without_piecewise_drift
     # 30 天 × 460 分钟/天 × 0.85 = 195.5 小时整，消除逐段 / 3600 累加产生的 1e-13 漂移
     oct_start = datetime(2026, 10, 1, 0, 0)
     oct_end = datetime(2026, 10, 31, 0, 0)
-    assert float(cal.capacity_fraction_between(oct_start, oct_end)) == 195.5
+    assert float(cal.capacity_fraction_between(oct_start, oct_end, **FACTORY_NORMAL)) == 195.5
 
     # 30 天 × 460 分钟/天 × 0.75 = 172.5 小时整，整段与逐日求和 0 误差
     nov_start = datetime(2026, 11, 1, 0, 0)
     nov_end = datetime(2026, 12, 1, 0, 0)
     daily_sum = sum(
-        float(cal.capacity_fraction_between(nov_start + timedelta(days=i), nov_start + timedelta(days=i + 1)))
+        float(cal.capacity_fraction_between(nov_start + timedelta(days=i), nov_start + timedelta(days=i + 1),
+                                            **FACTORY_NORMAL))
         for i in range(30)
     )
-    assert float(cal.capacity_fraction_between(nov_start, nov_end)) == 172.5
+    assert float(cal.capacity_fraction_between(nov_start, nov_end, **FACTORY_NORMAL)) == 172.5
     assert daily_sum == 172.5
+
+
+def test_calendar_days_past_the_last_representable_instant_is_a_calendar_rejection():
+    # 外协回厂时刻越过可表示日期上限时，与按工时推进同一口径报日历拒绝，不是裸溢出。
+    calendar = CalendarEngine()
+    last_day = datetime.max - timedelta(days=1)
+    assert calendar.add_calendar_days(last_day, 1) == datetime.max
+    with pytest.raises(BusinessError) as caught:
+        calendar.add_calendar_days(last_day, 1.5)
+    assert (caught.value.code, caught.value.message) == (ErrorCode.CALENDAR_ERROR, "已到可表示日期上限，没有后续可排产时间。")

@@ -2,10 +2,13 @@
 
 from dataclasses import dataclass, field, fields
 from operator import attrgetter
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, FrozenSet, List, Optional
+
+from core.models.hours import Hours
 
 _IMMUTABLE_SCALARS = frozenset((str, int, float, bool, bytes, type(None)))
-# The DTO classes below, mapped to (field names, one C-level reader for all of them).
+# The DTO classes below, mapped to (field names, one C-level reader for all of them). ``to_dict`` is the one
+# stored form of an execution snapshot: written at run admission and rebuilt for the adoption comparison.
 _DTO_FIELDS: Dict[type, Any] = {}
 
 
@@ -43,7 +46,7 @@ class ProductionReport:
     actual_start: Optional[str]
     actual_end: Optional[str]
     completed_quantity: Optional[int]
-    effective_processing_hours: Optional[float]
+    effective_processing_hours: Optional[Hours]
     actual_machine_ref: Optional[str]
     actual_operator_ref: Optional[str]
     remark: str
@@ -53,6 +56,7 @@ class ProductionReport:
     revision_ref: str
     local_operator: str = ""
     declared_operator: str = ""
+    revision_count: int = 1
 
     def to_dict(self) -> Dict[str, Any]:
         return _snapshot_value(self)
@@ -95,3 +99,5 @@ def _dto_fields(dto: type) -> Any:
 
 
 _DTO_FIELDS.update({dto: _dto_fields(dto) for dto in (ProductionReport, ExecutionProjection)})
+# The exact key set of each stored snapshot dictionary, from the same field table ``to_dict`` writes.
+SNAPSHOT_KEYS: Dict[type, FrozenSet[str]] = {dto: frozenset(names) for dto, (names, _) in _DTO_FIELDS.items()}

@@ -2,10 +2,13 @@
 
 import re
 from datetime import datetime
-from typing import Dict, NoReturn, Optional
+from typing import Dict, NoReturn, Optional, Sequence
 
+from core.models.enums import REPORT_REVISION_ACTION_VALUES, REPORT_SOURCE_VALUES, ReportSource
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.shared.strict_parse import ILLEGAL_XML_CHARS_RE, is_exact_non_negative_number
+from core.shared.key_sets import keys_conform
+from core.shared.refs import is_ref
+from core.shared.strict_parse import ILLEGAL_XML_CHARS_RE, is_stored_number
 
 REPORT_FIELDS = ("actual_start", "actual_end", "completed_quantity", "effective_processing_hours",
                  "actual_machine_ref", "actual_operator_ref", "remark")
@@ -14,7 +17,6 @@ REQUIRED_FIELDS = REPORT_FIELDS[:-1]
 MAX_OPERATIONS = 10000
 MAX_FACT_ROWS = 50000
 MAX_REPORT_BYTES = 16 * 1024 * 1024
-_REF_RE = re.compile(r"[0-9a-f]{48}")
 _FACTORY_TIME_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
 
 
@@ -22,44 +24,44 @@ def required_report_fields(source: str):
     return EXTERNAL_REQUIRED_FIELDS if source == "external" else REQUIRED_FIELDS
 
 
-def reject(message: str, code: str = "invalid_input", status: int = 422) -> NoReturn:
-    raise WorkbenchCommandRejected(code, message, status)
+def reject(message: str, code: str = "invalid_input", status: int = 422, *, fields: Sequence[str] = ()) -> NoReturn:
+    raise WorkbenchCommandRejected(code, message, status, fields=fields)
 
 
 def public_ref(value: object) -> str:
-    if not isinstance(value, str) or _REF_RE.fullmatch(value) is None:
+    if not is_ref(value):
         reject("这条记录已失效，请刷新后重新选择。", status=400)
     return value
 
 
-def factory_time(value: object, *, parsed_times: Optional[Dict[str, datetime]] = None) -> datetime:
+def factory_time(value: object, path: str, *, parsed_times: Optional[Dict[str, datetime]] = None) -> datetime:
     if parsed_times is not None and type(value) is str and value in parsed_times:
         return parsed_times[value]
     if not isinstance(value, str) or _FACTORY_TIME_RE.fullmatch(value) is None:
-        reject("实际时间格式不对，请按 2026-09-13 08:30:00 这样填写。")
+        reject("实际时间格式不对，请按 2026-09-13 08:30:00 这样填写。", fields=(path,))
     try:
         parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")
     except ValueError:
-        reject("实际时间不是有效日期。")
+        reject("实际时间不是有效日期。", fields=(path,))
     if parsed_times is not None:
         parsed_times[value] = parsed
     return parsed
 
 
 def _validate_quantity(value):
-    if type(value) is not int or not 0 <= value <= (1 << 53) - 1:
-        reject("完成数量请填 0 或正整数；不填就留空。")
+    if not is_stored_number(value, integer=True):
+        reject("完成数量请填 0 或正整数；不填就留空。", fields=("completed_quantity",))
 
 
 def _validate_hours(value):
-    if not is_exact_non_negative_number(value):
-        reject("有效加工小时请填 0 或正数；不填就留空。")
+    if not is_stored_number(value):
+        reject("有效加工小时请填 0 或正数；不填就留空。", fields=("effective_processing_hours",))
 
 
 def _validate_field(key, value, *, parsed_times: Optional[Dict[str, datetime]] = None):
     if key in ("actual_start", "actual_end"):
         if value is not None:
-            factory_time(value, parsed_times=parsed_times)
+            factory_time(value, key, parsed_times=parsed_times)
     elif key == "completed_quantity":
         if value is not None:
             _validate_quantity(value)
@@ -70,15 +72,15 @@ def _validate_field(key, value, *, parsed_times: Optional[Dict[str, datetime]] =
         if value is not None:
             public_ref(value)
     elif not isinstance(value, str) or ILLEGAL_XML_CHARS_RE.search(value) is not None or len(value) > (64 if key == "report_no" else 2000):
-        reject("报工里的文字填写不对或太长。")
+        reject("报工里的文字填写不对或太长。", fields=(key,))
 
 
 def _validate_create(result):
-    result.setdefault("source", "manual")
-    if result["source"] not in ("manual", "excel"):
-        reject("报工来源只能是手工或 Excel。")
+    result.setdefault("source", ReportSource.MANUAL.value)
+    if result["source"] not in REPORT_SOURCE_VALUES:
+        reject("报工来源只能是手工或 Excel。", fields=("source",))
     if "report_no" in result and (not result["report_no"].strip() or result["report_no"] != result["report_no"].strip()):
-        reject("报工单号不能为空或包含首尾空格。")
+        reject("报工单号不能为空或包含首尾空格。", fields=("report_no",))
     if not any(key in result and result[key] is not None for key in REQUIRED_FIELDS):
         reject("报工至少要填一项实际数据。")
 
@@ -87,17 +89,17 @@ def _validate_revision(result):
     if "original_revision_ref" not in result or result["original_revision_ref"] is None:
         reject("这条记录已失效，请刷新后重新选择。", status=400)
     if not result.get("reason", "").strip():
-        reject("补齐或更正必须填写原因，并选好要改的那条记录。")
+        reject("补齐或更正必须填写原因，并选好要改的那条记录。", fields=("reason",))
     if not any(key in result for key in REPORT_FIELDS):
         reject("没有填写要补齐或更正的内容。")
 
 
 def normalize_report_input(action, payload, *, parsed_times: Optional[Dict[str, datetime]] = None):
-    if action not in ("create", "supplement", "correct") or type(payload) is not dict:
+    if action not in REPORT_REVISION_ACTION_VALUES or type(payload) is not dict:
         reject("报工动作或输入结构无效。", status=400)
     extra = {"declared_operator"}
     extra |= {"source", "report_no"} if action == "create" else {"original_revision_ref", "reason"}
-    if set(payload) - set(REPORT_FIELDS) - extra:
+    if not keys_conform(payload, (), set(REPORT_FIELDS) | extra):
         reject("报工内容含有不支持的项，这次没有保存。请刷新页面后重试。", status=400)
     result = dict(payload)
     for key, value in result.items():
@@ -113,7 +115,7 @@ def normalize_report_input(action, payload, *, parsed_times: Optional[Dict[str, 
 def normalize_report_void_input(report_ref, payload):
     public_ref(report_ref)
     fields = {"original_revision_ref", "reason", "declared_operator"}
-    if type(payload) is not dict or set(payload) - fields:
+    if not keys_conform(payload, (), fields):
         reject("撤销报工的输入格式不正确。", status=400)
     public_ref(payload.get("original_revision_ref"))
     result = dict(payload, report_ref=report_ref)
@@ -122,7 +124,7 @@ def normalize_report_void_input(report_ref, payload):
         _validate_field(key, value)
         result[key] = value.strip()
     if not result["reason"]:
-        reject("请填写撤销原因，原报工和更正记录会保留。")
+        reject("请填写撤销原因，原报工和更正记录会保留。", fields=("reason",))
     return result
 
 
@@ -130,19 +132,20 @@ def validate_actual_values(values, now, *, parsed_times: Optional[Dict[str, date
     if not isinstance(now, datetime) or now.tzinfo is not None:
         raise ValueError("Ledger clock must return naive factory-local datetime.")
     times = {
-        key: factory_time(values[key], parsed_times=parsed_times)
+        key: factory_time(values[key], key, parsed_times=parsed_times)
         for key in ("actual_start", "actual_end")
         if values[key] is not None
     }
-    if any(value > now for value in times.values()):
-        reject("实际时间不能晚于当前时间。")
+    late = tuple(key for key, value in times.items() if value > now)
+    if late:
+        reject("实际时间不能晚于当前时间。", fields=late)
     if len(times) == 2:
         span = (times["actual_end"] - times["actual_start"]).total_seconds() / 3600
         if span < 0:
-            reject("实际结束不能早于实际开始。")
+            reject("实际结束不能早于实际开始。", fields=("actual_end",))
         hours = values["effective_processing_hours"]
         if hours is not None and hours > span:
-            reject("有效加工小时不能超过实际起止时间的时长。")
+            reject("有效加工小时不能超过实际起止时间的时长。", fields=("effective_processing_hours",))
 
 
 def closed_write_context():

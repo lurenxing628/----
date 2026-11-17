@@ -28,7 +28,6 @@ from core.infrastructure.maintenance_lock import (
     is_maintenance_window_active,
     maintenance_window,
 )
-from core.infrastructure.migration_common import fallback_log
 from core.infrastructure.safe_files import (
     UnsafeFixedFileError,
     create_fixed_file_exclusive,
@@ -79,14 +78,13 @@ class BackupManager:
     def __init__(
         self,
         db_path: str,
-        backup_dir: str = "backups",
-        keep_days: int = 7,
-        logger: Optional[logging.Logger] = None,
+        backup_dir: str,
+        *,
+        logger: logging.Logger,
     ):
         self.db_path = db_path
         self.backup_dir = backup_dir
-        self.keep_days = keep_days
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger
         os.makedirs(backup_dir, exist_ok=True)
 
     def backup(self, suffix: Optional[str] = None) -> str:
@@ -123,7 +121,7 @@ class BackupManager:
                         )
                 guard_fixed_file_open_target(backup_path)
                 os.replace(tmp_path, backup_path)
-                fallback_log(self.logger, "info", f"数据库已备份：{backup_path}")
+                self.logger.info(f"数据库已备份：{backup_path}")
                 return backup_path
         finally:
             try:
@@ -131,7 +129,7 @@ class BackupManager:
             except FileNotFoundError:
                 pass
             except Exception as exc:
-                fallback_log(self.logger, "warning", f"清理备份临时文件失败（{tmp_path}）：{exc}")
+                self.logger.warning(f"清理备份临时文件失败（{tmp_path}）：{exc}")
 
     def _copy_db_file(self, source_path: str, *, locked_warning_message: str) -> None:
         retries = 6
@@ -148,8 +146,8 @@ class BackupManager:
                         check_label=f"恢复源文件完整性检查（{os.path.basename(source_path)}）",
                         execute_failed_hint="视为不可信备份，拒绝恢复",
                     )
+                    # timeout=30 即该连接的 busy_timeout：恢复覆盖主库时最多等 30 秒让其他连接释放。
                     with closing(_connect_existing_sqlite_file(self.db_path, timeout=30)) as dest:
-                        dest.execute("PRAGMA busy_timeout = 30000")
                         source.backup(dest)
                 return
             except (UnsafeFixedFileError, BackupIntegrityError):
@@ -157,7 +155,7 @@ class BackupManager:
             except sqlite3.OperationalError as exc:
                 message = str(exc).lower()
                 if ("locked" in message or "busy" in message) and i < retries - 1:
-                    fallback_log(self.logger, "warning", f"{locked_warning_message}：{exc}")
+                    self.logger.warning(f"{locked_warning_message}：{exc}")
                     time.sleep(0.2 * (i + 1))
                     continue
                 raise
@@ -171,13 +169,13 @@ class BackupManager:
         rollback_failed_code: str,
     ) -> Optional[RestoreResult]:
         if not before_restore_path or not os.path.exists(before_restore_path):
-            fallback_log(self.logger, "error", f"{failure_subject}，但缺少恢复前快照，无法自动回滚。")
+            self.logger.error(f"{failure_subject}，但缺少恢复前快照，无法自动回滚。")
             return None
 
         try:
             self._copy_db_file(before_restore_path, locked_warning_message="自动回滚时数据库被占用，准备重试")
         except Exception:
-            fallback_log(self.logger, "error", f"{failure_subject}且自动回滚失败\n{traceback.format_exc()}")
+            self.logger.error(f"{failure_subject}且自动回滚失败\n{traceback.format_exc()}")
             return RestoreResult(
                 ok=False,
                 code=rollback_failed_code,
@@ -186,7 +184,7 @@ class BackupManager:
             )
 
         snapshot_name = os.path.basename(before_restore_path)
-        fallback_log(self.logger, "error", f"{failure_subject}，已自动回滚到恢复前备份：{before_restore_path}")
+        self.logger.error(f"{failure_subject}，已自动回滚到恢复前备份：{before_restore_path}")
         return RestoreResult(
             ok=False,
             code=rolled_back_code,
@@ -198,15 +196,15 @@ class BackupManager:
         try:
             stat_regular_file(backup_path)
         except FileNotFoundError:
-            fallback_log(self.logger, "error", f"备份文件不存在：{backup_path}")
+            self.logger.error(f"备份文件不存在：{backup_path}")
             return RestoreResult(ok=False, code="backup_missing", message=f"备份文件不存在：{backup_path}")
         except OSError as e:
-            fallback_log(self.logger, "error", f"备份文件不可读取：{backup_path}：{e}")
+            self.logger.error(f"备份文件不可读取：{backup_path}：{e}")
             return RestoreResult(ok=False, code="backup_unreadable", message=f"备份文件不可读取：{backup_path}")
         try:
             stat_regular_file(self.db_path)
         except (OSError, TypeError, ValueError) as e:
-            fallback_log(self.logger, "error", f"数据库恢复目标不可写：{self.db_path}：{e}")
+            self.logger.error(f"数据库恢复目标不可写：{self.db_path}：{e}")
             return RestoreResult(ok=False, code="db_target_unreadable", message=f"数据库恢复目标不可写：{self.db_path}")
 
         before_restore_path = None
@@ -217,7 +215,7 @@ class BackupManager:
                 except MaintenanceWindowError:
                     raise
                 except Exception:
-                    fallback_log(self.logger, "error", f"恢复前备份创建/完整性检查失败，已中止恢复（原库未改动）\n{traceback.format_exc()}")
+                    self.logger.error(f"恢复前备份创建/完整性检查失败，已中止恢复（原库未改动）\n{traceback.format_exc()}")
                     return RestoreResult(
                         ok=False,
                         code="before_restore_backup_failed",
@@ -226,7 +224,7 @@ class BackupManager:
                     )
 
                 self._copy_db_file(backup_path, locked_warning_message="数据库被占用（可能有其它连接未释放），准备重试")
-                fallback_log(self.logger, "info", f"数据库文件复制完成，等待后续结构校验：{backup_path}")
+                self.logger.info(f"数据库文件复制完成，等待后续结构校验：{backup_path}")
                 return RestoreResult(
                     ok=True,
                     code="copied_pending_verify",
@@ -234,12 +232,12 @@ class BackupManager:
                     before_restore_path=before_restore_path,
                 )
         except MaintenanceWindowError as e:
-            fallback_log(self.logger, "warning" if e.code == "busy" else "error", e.message)
+            self.logger.log(logging.WARNING if e.code == "busy" else logging.ERROR, e.message)
             return RestoreResult(ok=False, code=e.code, message=e.message)
         except BackupIntegrityError as e:
             # B05：备份文件未通过完整性检查——主库尚未被改动（校验在 source.backup(dest) 之前），
             # fail-loud 拒绝恢复并把可查原因给到用户，绝不落地损坏库。
-            fallback_log(self.logger, "error", f"备份文件完整性检查未通过，已拒绝恢复（原数据库未修改）：{backup_path}：{e}")
+            self.logger.error(f"备份文件完整性检查未通过，已拒绝恢复（原数据库未修改）：{backup_path}：{e}")
             return RestoreResult(
                 ok=False,
                 code="backup_integrity_failed",
@@ -247,7 +245,7 @@ class BackupManager:
                 before_restore_path=before_restore_path,
             )
         except Exception:
-            fallback_log(self.logger, "error", f"数据库恢复失败\n{traceback.format_exc()}")
+            self.logger.error(f"数据库恢复失败\n{traceback.format_exc()}")
             rollback_result = self._auto_rollback(
                 before_restore_path,
                 failure_subject="数据库恢复失败",

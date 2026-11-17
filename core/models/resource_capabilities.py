@@ -1,30 +1,15 @@
 """A work type can support two sources; each operation still chooses one."""
 
-from typing import Any
-
-from .enums import OpTypeCategory
-
-OP_TYPE_CATEGORIES = tuple(value.value for value in OpTypeCategory)
-
 
 def supports_source(category, source):
     return source in ("internal", "external") and category in (source, "both")
 
 
-def machine_types(machine: Any):
-    if isinstance(machine, dict):
-        primary = machine.get("op_type_id")
-        additional = machine.get("op_type_ids") or ()
-    else:
-        primary = machine.op_type_id
-        additional = machine.op_type_ids
-    return tuple(dict.fromkeys(([primary] if primary else []) + list(additional)))
-
-
 def machine_type_index(machines, capabilities):
-    result = {row["machine_id"]: set(machine_types(row)) for row in machines}
+    """设备能做的工种只存在 MachineOpTypes：每台登记的设备都有键，能力集合可以为空。"""
+    result = {row["machine_id"]: set() for row in machines}
     for row in capabilities:
-        result.setdefault(row["machine_id"], set()).add(row["op_type_id"])
+        result[row["machine_id"]].add(row["op_type_id"])
     return result
 
 

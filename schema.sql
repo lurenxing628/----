@@ -6,11 +6,11 @@ CREATE TABLE IF NOT EXISTS SchemaVersion (
     version     INTEGER NOT NULL,
     updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-INSERT OR IGNORE INTO SchemaVersion (id, version) VALUES (1, 0);
+INSERT INTO SchemaVersion (id, version) VALUES (1, 50);
 CREATE TABLE IF NOT EXISTS Operators (
     operator_id     TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
-    status          TEXT DEFAULT 'active',
+    status          TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS Operators (
 CREATE TABLE IF NOT EXISTS OpTypes (
     op_type_id      TEXT PRIMARY KEY,
     name            TEXT NOT NULL UNIQUE,
-    category        TEXT DEFAULT 'internal',
+    category        TEXT NOT NULL DEFAULT 'internal' CHECK(category IN ('internal', 'external', 'both')),
     default_hours   REAL,
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -26,36 +26,36 @@ CREATE TABLE IF NOT EXISTS OpTypes (
 CREATE TABLE IF NOT EXISTS Machines (
     machine_id      TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
-    op_type_id      TEXT,
-    category        TEXT,                       -- 设备类别（用于“按类别停机/筛选”等）
-    status          TEXT DEFAULT 'active',
+    category        TEXT,                       -- 设备类别（用于“按类别停机/筛选”等）；能做的工种只存在 MachineOpTypes
+    status          TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive', 'maintain')),
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP, team_id TEXT,
-    FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id)
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP, team_id TEXT
 );
 CREATE TABLE IF NOT EXISTS MachineDowntimes (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     machine_id      TEXT NOT NULL,
-    scope_type      TEXT DEFAULT 'machine',      -- machine/category/all（V1.1 预留；当前实现会展开为“按设备逐条写入”）
+    scope_type      TEXT NOT NULL DEFAULT 'machine' CHECK(scope_type IN ('machine', 'category', 'all')),  -- 当前实现会展开为“按设备逐条写入”
     scope_value     TEXT,                        -- scope 的取值：machine_id / category / '*'（可空）
-    start_time      DATETIME NOT NULL,
+    start_time      DATETIME NOT NULL,           -- 展示文本；起止的唯一事实是 start_us/end_us
     end_time        DATETIME NOT NULL,
-    reason_code     TEXT,                       -- 预留：maintenance/breakdown/power/tooling/other
-    reason_detail   TEXT,                       -- 预留：原因备注
-    status          TEXT DEFAULT 'active',       -- active/cancelled
+    start_us        INTEGER NOT NULL CHECK(typeof(start_us) = 'integer' AND start_us BETWEEN -62135596800000000 AND 253402300799999999),
+    end_us          INTEGER NOT NULL CHECK(typeof(end_us) = 'integer' AND end_us BETWEEN -62135596800000000 AND 253402300799999999),
+    reason_code     TEXT NOT NULL CHECK(reason_code IN ('maintenance', 'breakdown', 'power', 'tooling', 'other')),
+    reason_detail   TEXT,                       -- 原因备注
+    status          TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'cancelled')),
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CHECK (start_us < end_us),
     FOREIGN KEY (machine_id) REFERENCES Machines(machine_id) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_machine_downtimes_machine ON MachineDowntimes(machine_id);
-CREATE INDEX IF NOT EXISTS idx_machine_downtimes_time ON MachineDowntimes(start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_machine_downtimes_machine_time ON MachineDowntimes(machine_id, start_us, end_us);
 CREATE TABLE IF NOT EXISTS OperatorMachine (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     operator_id     TEXT NOT NULL,
     machine_id      TEXT NOT NULL,
-    skill_level     TEXT DEFAULT 'normal',
-    is_primary      TEXT DEFAULT 'no',
+    skill_level     TEXT NOT NULL DEFAULT 'normal' CHECK(skill_level IN ('beginner', 'normal', 'expert')),
+    is_primary      TEXT NOT NULL DEFAULT 'no' CHECK(is_primary IN ('yes', 'no')),
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE,
     FOREIGN KEY (machine_id) REFERENCES Machines(machine_id) ON DELETE CASCADE,
@@ -65,8 +65,8 @@ CREATE TABLE IF NOT EXISTS OperatorSkill (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     operator_id     TEXT NOT NULL,
     op_type_id      TEXT NOT NULL,
-    skill_level     TEXT DEFAULT 'normal',
-    is_primary      TEXT DEFAULT 'no',
+    skill_level     TEXT NOT NULL DEFAULT 'normal' CHECK(skill_level IN ('beginner', 'normal', 'expert')),
+    is_primary      TEXT NOT NULL DEFAULT 'no' CHECK(is_primary IN ('yes', 'no')),
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE,
     FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id) ON DELETE CASCADE,
@@ -77,34 +77,44 @@ CREATE INDEX IF NOT EXISTS idx_operator_machine_machine ON OperatorMachine(machi
 CREATE TABLE IF NOT EXISTS Suppliers (
     supplier_id     TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
-    default_days    REAL DEFAULT 1,
-    status          TEXT DEFAULT 'active',
+    default_days    REAL NOT NULL DEFAULT 1 CHECK(typeof(default_days) IN ('integer', 'real') AND default_days > 0 AND default_days <= 36500),
+    status          TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS Parts (
-    part_no         TEXT PRIMARY KEY,
-    part_name       TEXT NOT NULL,
-    route_raw       TEXT,
-    route_parsed    TEXT DEFAULT 'no',
-    remark          TEXT,
-    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+    part_no             TEXT PRIMARY KEY,
+    part_name           TEXT NOT NULL,
+    route_raw           TEXT,
+    route_parsed        TEXT NOT NULL DEFAULT 'no' CHECK(route_parsed IN ('yes', 'no')),
+    remark              TEXT,
+    workflow_origin     TEXT NOT NULL DEFAULT 'legacy' CHECK(workflow_origin IN ('legacy', 'managed')),
+    route_confirmed_at  TEXT CHECK (route_confirmed_at IS NULL OR (typeof(route_confirmed_at) = 'text' AND length(route_confirmed_at) > 0)),
+    source_confirmed_at TEXT CHECK (source_confirmed_at IS NULL OR (typeof(source_confirmed_at) = 'text' AND length(source_confirmed_at) > 0)),
+    hours_confirmed_at  TEXT CHECK (hours_confirmed_at IS NULL OR (typeof(hours_confirmed_at) = 'text' AND length(hours_confirmed_at) > 0)),
+    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CHECK (workflow_origin = 'managed' OR (route_confirmed_at IS NULL AND source_confirmed_at IS NULL AND hours_confirmed_at IS NULL)),
+    CHECK (source_confirmed_at IS NULL OR route_confirmed_at IS NOT NULL),
+    CHECK (hours_confirmed_at IS NULL OR source_confirmed_at IS NOT NULL)
 );
 CREATE TABLE IF NOT EXISTS PartOperations (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    part_no         TEXT NOT NULL,
-    seq             INTEGER NOT NULL,
-    op_type_id      TEXT,
-    op_type_name    TEXT NOT NULL,
-    source          TEXT DEFAULT 'internal',
-    supplier_id     TEXT,
-    ext_days        REAL,
-    ext_group_id    TEXT,
-    setup_hours     REAL DEFAULT 0,
-    unit_hours      REAL DEFAULT 0,
-    status          TEXT DEFAULT 'active',
-    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    part_no             TEXT NOT NULL,
+    seq                 INTEGER NOT NULL,
+    op_type_id          TEXT,
+    op_type_name        TEXT NOT NULL,
+    source              TEXT DEFAULT 'internal' CHECK(source IS NULL OR source IN ('internal', 'external')),  -- 空表示归属还没确认（如工种尚未登记）
+    supplier_id         TEXT,
+    ext_days            REAL CHECK(ext_days IS NULL OR (typeof(ext_days) IN ('integer', 'real') AND ext_days > 0 AND ext_days <= 36500)),
+    ext_group_id        TEXT,
+    setup_hours         REAL DEFAULT 0,
+    unit_hours          REAL DEFAULT 0,
+    status              TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'deleted')),
+    source_confirmed_at TEXT CHECK (source_confirmed_at IS NULL OR (typeof(source_confirmed_at) = 'text' AND length(source_confirmed_at) > 0)),
+    hours_confirmed_at  TEXT CHECK (hours_confirmed_at IS NULL OR (typeof(hours_confirmed_at) = 'text' AND length(hours_confirmed_at) > 0)),
+    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CHECK (hours_confirmed_at IS NULL OR source_confirmed_at IS NOT NULL),
     FOREIGN KEY (part_no) REFERENCES Parts(part_no) ON DELETE CASCADE,
     FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id),
     FOREIGN KEY (supplier_id) REFERENCES Suppliers(supplier_id),
@@ -115,8 +125,8 @@ CREATE TABLE IF NOT EXISTS ExternalGroups (
     part_no         TEXT NOT NULL,
     start_seq       INTEGER NOT NULL,
     end_seq         INTEGER NOT NULL,
-    merge_mode      TEXT DEFAULT 'separate',
-    total_days      REAL,
+    merge_mode      TEXT NOT NULL DEFAULT 'separate' CHECK(merge_mode IN ('separate', 'merged')),
+    total_days      REAL CHECK(total_days IS NULL OR (typeof(total_days) IN ('integer', 'real') AND total_days > 0 AND total_days <= 36500)),
     supplier_id     TEXT,
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -126,18 +136,18 @@ CREATE TABLE IF NOT EXISTS ExternalGroups (
 CREATE INDEX IF NOT EXISTS idx_part_operations_part ON PartOperations(part_no);
 CREATE INDEX IF NOT EXISTS idx_part_operations_source ON PartOperations(source);
 CREATE INDEX IF NOT EXISTS idx_external_groups_part ON ExternalGroups(part_no);
+CREATE INDEX IF NOT EXISTS idx_external_groups_supplier ON ExternalGroups(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_machines_status ON Machines(status);
-CREATE INDEX IF NOT EXISTS idx_machines_op_type ON Machines(op_type_id);
 CREATE TABLE IF NOT EXISTS Batches (
     batch_id        TEXT PRIMARY KEY,
     part_no         TEXT NOT NULL,
     part_name       TEXT,
-    quantity        INTEGER NOT NULL,
+    quantity        INTEGER NOT NULL CHECK(typeof(quantity) = 'integer' AND quantity BETWEEN 1 AND 9007199254740991),
     due_date        DATE,
-    priority        TEXT DEFAULT 'normal',
-    ready_status    TEXT DEFAULT 'yes',
+    priority        TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('normal', 'urgent', 'critical')),
+    ready_status    TEXT NOT NULL DEFAULT 'yes' CHECK(ready_status IN ('yes', 'no', 'partial')),
     ready_date      DATE,                       -- 齐套日期（可选）：最早可开工日期（YYYY-MM-DD）
-    status          TEXT DEFAULT 'pending',
+    status          TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'scheduled', 'processing', 'completed', 'cancelled')),
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -145,20 +155,20 @@ CREATE TABLE IF NOT EXISTS Batches (
 );
 CREATE TABLE IF NOT EXISTS BatchOperations (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    op_code         TEXT NOT NULL UNIQUE,
+    op_code         TEXT NOT NULL UNIQUE CHECK(length(trim(op_code)) > 0),
     batch_id        TEXT NOT NULL,
     piece_id        TEXT,
     seq             INTEGER NOT NULL,
     op_type_id      TEXT,
     op_type_name    TEXT NOT NULL,
-    source          TEXT DEFAULT 'internal',
+    source          TEXT NOT NULL DEFAULT 'internal' CHECK(source IN ('internal', 'external')),
     machine_id      TEXT,
     operator_id     TEXT,
     supplier_id     TEXT,
     setup_hours     REAL DEFAULT 0,
     unit_hours      REAL DEFAULT 0,
-    ext_days        REAL,
-    status          TEXT DEFAULT 'pending',
+    ext_days        REAL CHECK(ext_days IS NULL OR (typeof(ext_days) IN ('integer', 'real') AND ext_days > 0 AND ext_days <= 36500)),
+    status          TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'scheduled', 'processing', 'completed', 'skipped')),
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (batch_id) REFERENCES Batches(batch_id) ON DELETE CASCADE,
     FOREIGN KEY (machine_id) REFERENCES Machines(machine_id),
@@ -166,17 +176,85 @@ CREATE TABLE IF NOT EXISTS BatchOperations (
     FOREIGN KEY (supplier_id) REFERENCES Suppliers(supplier_id),
     UNIQUE (batch_id, seq, piece_id)
 );
+CREATE TABLE IF NOT EXISTS ScheduleHistory (
+    version                      INTEGER PRIMARY KEY,
+    plan_ref                     TEXT NOT NULL UNIQUE CHECK(length(plan_ref) = 48 AND plan_ref NOT GLOB '*[^0-9a-f]*'),
+    schedule_time                DATETIME DEFAULT CURRENT_TIMESTAMP,
+    adopted_at                   TEXT NOT NULL,
+    strategy                     TEXT NOT NULL,
+    batch_count                  INTEGER NOT NULL,
+    op_count                     INTEGER NOT NULL CHECK(typeof(op_count) = 'integer' AND op_count BETWEEN 0 AND 9007199254740991),
+    result_status                TEXT NOT NULL,
+    created_by                   TEXT NOT NULL,
+    request_key                  TEXT,
+    declared_operator            TEXT,
+    application_operator         TEXT,
+    reason                       TEXT,
+    source_kind                  TEXT NOT NULL CHECK(source_kind IN ('candidate_adoption', 'trial_adoption')),
+    source_ref                   TEXT NOT NULL,
+    source_label                 TEXT,
+    run_ref                      TEXT,
+    draft_ref                    TEXT,
+    accepted_at                  TEXT,
+    finished_at                  TEXT,
+    algorithm_json               TEXT,
+    baseline_version             INTEGER,
+    baseline_ref                 TEXT,
+    baseline_kind                TEXT NOT NULL,
+    baseline_captured_at         TEXT NOT NULL,
+    baseline_captured_task_count INTEGER NOT NULL,
+    material_policy_json         TEXT NOT NULL,
+    deferred_operation_ids_json  TEXT NOT NULL,
+    operation_effort_json        TEXT,
+    plan_start_time              TEXT NOT NULL,
+    plan_end_time                TEXT NOT NULL,
+    end_includes_point           INTEGER NOT NULL CHECK(end_includes_point IN (0, 1)),
+    gantt_node_count             INTEGER NOT NULL CHECK(typeof(gantt_node_count) = 'integer' AND gantt_node_count BETWEEN 0 AND 9007199254740991),
+    gantt_graph_json             TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS Schedule (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    op_id           INTEGER NOT NULL,
-    machine_id      TEXT,
-    operator_id     TEXT,
-    start_time      DATETIME NOT NULL,
-    end_time        DATETIME NOT NULL,
-    lock_status     TEXT DEFAULT 'unlocked',
-    version         INTEGER DEFAULT 1,
-    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    version            INTEGER NOT NULL,
+    task_ref           TEXT NOT NULL UNIQUE CHECK(length(task_ref) = 48 AND task_ref NOT GLOB '*[^0-9a-f]*'),
+    op_id              INTEGER NOT NULL,
+    operation_ref      TEXT NOT NULL,
+    start_time         TEXT NOT NULL,
+    end_time           TEXT NOT NULL,
+    start_us           INTEGER NOT NULL CHECK(typeof(start_us) = 'integer' AND start_us BETWEEN -62135596800000000 AND 253402300799999999),
+    end_us             INTEGER NOT NULL CHECK(typeof(end_us) = 'integer' AND end_us BETWEEN -62135596800000000 AND 253402300799999999),
+    is_point_event     INTEGER NOT NULL,
+    batch_id           TEXT NOT NULL,
+    batch_priority     TEXT NOT NULL CHECK(batch_priority IN ('normal', 'urgent', 'critical')),
+    piece_id           TEXT,
+    seq                INTEGER NOT NULL,
+    op_type_name       TEXT NOT NULL,
+    op_type_ref        TEXT,
+    op_type_label      TEXT,
+    source             TEXT NOT NULL CHECK(source IN ('internal', 'external')),
+    setup_hours        REAL,
+    unit_hours         REAL,
+    quantity           INTEGER,
+    remaining_quantity INTEGER,
+    batch_quantity     INTEGER,
+    quantity_basis     TEXT NOT NULL CHECK(quantity_basis IN ('run_admission', 'trial_creation')),
+    quantity_reason    TEXT,
+    machine_id         TEXT,
+    machine_ref        TEXT,
+    machine_label      TEXT,
+    operator_id        TEXT,
+    operator_ref       TEXT,
+    operator_label     TEXT,
+    supplier_id        TEXT,
+    supplier_ref       TEXT,
+    supplier_label     TEXT,
+    lock_status        TEXT NOT NULL DEFAULT 'unlocked' CHECK(lock_status IN ('unlocked', 'locked')),
+    created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CHECK (start_us <= end_us),
+    CHECK (is_point_event = (start_us = end_us)),
+    CHECK ((source = 'internal' AND setup_hours IS NOT NULL AND unit_hours IS NOT NULL) OR source = 'external'),
+    FOREIGN KEY (version) REFERENCES ScheduleHistory(version),
     FOREIGN KEY (op_id) REFERENCES BatchOperations(id) ON DELETE CASCADE,
+    FOREIGN KEY (operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref),
     FOREIGN KEY (machine_id) REFERENCES Machines(machine_id),
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id)
 );
@@ -185,20 +263,20 @@ CREATE TABLE IF NOT EXISTS ScheduleVersionSeq (
 );
 CREATE TABLE IF NOT EXISTS WorkCalendar (
     date            DATE NOT NULL PRIMARY KEY,
-    day_type        TEXT NOT NULL,              -- workday / holiday
+    day_type        TEXT NOT NULL CHECK(day_type IN ('workday', 'holiday')),
     efficiency      REAL NOT NULL,
-    allow_normal    TEXT NOT NULL,
-    allow_urgent    TEXT NOT NULL,
+    allow_normal    TEXT NOT NULL CHECK(allow_normal IN ('yes', 'no')),
+    allow_urgent    TEXT NOT NULL CHECK(allow_urgent IN ('yes', 'no')),
     remark          TEXT,
     periods_json    TEXT NOT NULL               -- 工作时段数组；[] 表示零工时，起止与工时都由它现算
 );
 CREATE TABLE IF NOT EXISTS OperatorCalendar (
     operator_id     TEXT NOT NULL,
     date            DATE NOT NULL,
-    day_type        TEXT NOT NULL,              -- workday / holiday
+    day_type        TEXT NOT NULL CHECK(day_type IN ('workday', 'holiday')),
     efficiency      REAL NOT NULL,
-    allow_normal    TEXT NOT NULL,
-    allow_urgent    TEXT NOT NULL,
+    allow_normal    TEXT NOT NULL CHECK(allow_normal IN ('yes', 'no')),
+    allow_urgent    TEXT NOT NULL CHECK(allow_urgent IN ('yes', 'no')),
     remark          TEXT,
     periods_json    TEXT NOT NULL,              -- 工作时段数组；[] 表示零工时，起止与工时都由它现算
     PRIMARY KEY (operator_id, date),
@@ -227,6 +305,7 @@ CREATE TABLE IF NOT EXISTS SystemJobState (
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_system_job_state_time ON SystemJobState(last_run_time);
+CREATE INDEX IF NOT EXISTS idx_batches_part_no ON Batches(part_no);
 CREATE INDEX IF NOT EXISTS idx_batches_status ON Batches(status);
 CREATE INDEX IF NOT EXISTS idx_batches_priority ON Batches(priority);
 CREATE INDEX IF NOT EXISTS idx_batches_due_date ON Batches(due_date);
@@ -235,7 +314,6 @@ CREATE INDEX IF NOT EXISTS idx_batch_operations_status ON BatchOperations(status
 CREATE INDEX IF NOT EXISTS idx_schedule_op ON Schedule(op_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_machine ON Schedule(machine_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_operator ON Schedule(operator_id);
-CREATE INDEX IF NOT EXISTS idx_schedule_time ON Schedule(start_time, end_time);
 CREATE TABLE IF NOT EXISTS OperationLogs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     log_time        DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -249,17 +327,6 @@ CREATE TABLE IF NOT EXISTS OperationLogs (
     error_code      TEXT,
     error_message   TEXT
 );
-CREATE TABLE IF NOT EXISTS ScheduleHistory (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    schedule_time   DATETIME DEFAULT CURRENT_TIMESTAMP,
-    version         INTEGER NOT NULL,
-    strategy        TEXT NOT NULL,
-    batch_count     INTEGER,
-    op_count        INTEGER,
-    result_status   TEXT,
-    result_summary  TEXT,
-    created_by      TEXT
-);
 CREATE INDEX IF NOT EXISTS idx_operation_logs_time ON OperationLogs(log_time);
 CREATE INDEX IF NOT EXISTS idx_operation_logs_level ON OperationLogs(log_level);
 CREATE INDEX IF NOT EXISTS idx_operation_logs_module ON OperationLogs(module);
@@ -270,7 +337,7 @@ CREATE TABLE IF NOT EXISTS Materials (
     spec            TEXT,
     unit            TEXT,
     stock_qty       REAL DEFAULT 0,
-    status          TEXT DEFAULT 'active',
+    status          TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -280,7 +347,7 @@ CREATE TABLE IF NOT EXISTS BatchMaterials (
     material_id     TEXT NOT NULL,
     required_qty    REAL NOT NULL,
     available_qty   REAL DEFAULT 0,
-    ready_status    TEXT DEFAULT 'no',
+    ready_status    TEXT NOT NULL DEFAULT 'no' CHECK(ready_status IN ('yes', 'no', 'partial')),
     FOREIGN KEY (batch_id) REFERENCES Batches(batch_id) ON DELETE CASCADE,
     FOREIGN KEY (material_id) REFERENCES Materials(material_id)
 );
@@ -295,12 +362,10 @@ CREATE TABLE IF NOT EXISTS ResourceTeams (
 CREATE INDEX IF NOT EXISTS idx_operators_team_id ON Operators(team_id);
 CREATE INDEX IF NOT EXISTS idx_machines_team_id ON Machines(team_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_version_op_unique ON Schedule(version, op_id);
-CREATE INDEX IF NOT EXISTS idx_schedule_version_time
-ON Schedule(version, start_time, end_time);
-CREATE INDEX IF NOT EXISTS idx_schedule_history_version
-ON ScheduleHistory(version);
+CREATE INDEX IF NOT EXISTS idx_schedule_version_page ON Schedule(version, start_us ASC, id ASC);
+CREATE INDEX IF NOT EXISTS idx_schedule_version_span ON Schedule(version, end_us, start_us);
+CREATE INDEX IF NOT EXISTS idx_schedule_operation_ref_version ON Schedule(operation_ref, version);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_batch_operations_identity_unique ON BatchOperations(id, batch_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_identity_unique ON Schedule(id, version, op_id);
 CREATE TABLE IF NOT EXISTS WorkbenchEntityRefs (
         ref TEXT PRIMARY KEY NOT NULL CHECK(length(ref) = 48 AND ref NOT GLOB '*[^0-9a-f]*'),
         kind TEXT NOT NULL,
@@ -329,7 +394,7 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_part_insert AFTER INSERT ON "Parts" BEGIN
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), 'part', CAST(NEW."part_no" AS TEXT), NULL);
         END;
-CREATE TRIGGER IF NOT EXISTS wb_ref_part_update AFTER UPDATE ON "Parts" BEGIN
+CREATE TRIGGER IF NOT EXISTS wb_ref_part_update AFTER UPDATE OF "part_no", "part_name", "route_raw", "route_parsed", "remark", "created_at", "updated_at" ON "Parts" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
                 WHERE kind = 'part' AND active = 1 AND entity_key != CAST(OLD."part_no" AS TEXT) AND entity_key = CAST(NEW."part_no" AS TEXT);
             UPDATE WorkbenchEntityRefs SET entity_key = CAST(NEW."part_no" AS TEXT), alternate_key = NULL, revision = revision + 1
@@ -691,6 +756,7 @@ CREATE TRIGGER IF NOT EXISTS wb_resource_supplier_status_reason AFTER UPDATE OF 
             UPDATE WorkbenchSupplierProfiles SET inactive_reason = NULL WHERE supplier_id = NEW.supplier_id AND inactive_reason IS NOT NULL;
         END;
 CREATE INDEX IF NOT EXISTS idx_part_operations_ext_group ON PartOperations(ext_group_id);
+CREATE INDEX IF NOT EXISTS idx_part_operations_part_status ON PartOperations(part_no, status);
 CREATE TRIGGER IF NOT EXISTS wb_ref_template_operation_insert AFTER INSERT ON "PartOperations" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
                 WHERE kind = 'template_operation' AND active = 1 AND entity_key = CAST(NEW."id" AS TEXT);
@@ -699,7 +765,7 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_template_operation_insert AFTER INSERT ON "P
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), 'template_operation', CAST(NEW."id" AS TEXT), replace(replace(CAST(NEW."part_no" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."seq" AS TEXT), '%', '%25'), ':', '%3A'));
         END;
-CREATE TRIGGER IF NOT EXISTS wb_ref_template_operation_update AFTER UPDATE ON "PartOperations" BEGIN
+CREATE TRIGGER IF NOT EXISTS wb_ref_template_operation_update AFTER UPDATE OF "id", "part_no", "seq", "op_type_id", "op_type_name", "source", "supplier_id", "ext_days", "ext_group_id", "setup_hours", "unit_hours", "status", "created_at" ON "PartOperations" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
                 WHERE kind = 'template_operation' AND active = 1 AND entity_key != CAST(OLD."id" AS TEXT) AND entity_key = CAST(NEW."id" AS TEXT);
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
@@ -727,34 +793,10 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_template_external_group_delete AFTER DELETE 
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
                 WHERE kind = 'template_external_group' AND entity_key = CAST(OLD."group_id" AS TEXT) AND active = 1;
         END;
-CREATE TABLE IF NOT EXISTS WorkbenchProcessWorkflow (
-        part_ref TEXT PRIMARY KEY NOT NULL REFERENCES WorkbenchEntityRefs(ref),
-        route_confirmed_at TEXT, route_confirmed_by TEXT, route_content_json TEXT,
-        source_confirmed_at TEXT, source_confirmed_by TEXT, source_content_json TEXT,
-        hours_confirmed_at TEXT, hours_confirmed_by TEXT, hours_content_json TEXT,
-        CHECK((route_confirmed_at IS NULL AND route_confirmed_by IS NULL AND route_content_json IS NULL) OR (typeof(route_content_json) = 'text' AND length(route_content_json) > 0 AND typeof(route_confirmed_at) = 'text' AND length(route_confirmed_at) > 0)), CHECK(route_confirmed_by IS NULL OR (typeof(route_confirmed_by) = 'text' AND length(trim(route_confirmed_by)) > 0)),
-        CHECK((source_confirmed_at IS NULL AND source_confirmed_by IS NULL AND source_content_json IS NULL) OR (typeof(source_content_json) = 'text' AND length(source_content_json) > 0 AND typeof(source_confirmed_at) = 'text' AND length(source_confirmed_at) > 0)), CHECK(source_confirmed_by IS NULL OR (typeof(source_confirmed_by) = 'text' AND length(trim(source_confirmed_by)) > 0)),
-        CHECK((hours_confirmed_at IS NULL AND hours_confirmed_by IS NULL AND hours_content_json IS NULL) OR (typeof(hours_content_json) = 'text' AND length(hours_content_json) > 0 AND typeof(hours_confirmed_at) = 'text' AND length(hours_confirmed_at) > 0)), CHECK(hours_confirmed_by IS NULL OR (typeof(hours_confirmed_by) = 'text' AND length(trim(hours_confirmed_by)) > 0))
-    );
-CREATE TABLE IF NOT EXISTS WorkbenchProcessOperationConfirmations (
-        part_ref TEXT NOT NULL REFERENCES WorkbenchProcessWorkflow(part_ref),
-        operation_ref TEXT NOT NULL REFERENCES WorkbenchEntityRefs(ref),
-        stage TEXT NOT NULL CHECK(stage IN ('source', 'hours')),
-        confirmed_at TEXT, confirmed_by TEXT, content_json TEXT,
-        CHECK(typeof(content_json) = 'text' AND length(content_json) > 0 AND typeof(confirmed_at) = 'text' AND length(confirmed_at) > 0), CHECK(confirmed_by IS NULL OR (typeof(confirmed_by) = 'text' AND length(trim(confirmed_by)) > 0)),
-        PRIMARY KEY(part_ref, operation_ref, stage)
-    );
-CREATE INDEX IF NOT EXISTS idx_wb_process_confirmation_operation ON WorkbenchProcessOperationConfirmations(operation_ref);
 CREATE TABLE IF NOT EXISTS WorkbenchPlanSourceRefs (
-        ref TEXT PRIMARY KEY NOT NULL CHECK(length(ref) = 48 AND ref NOT GLOB '*[^0-9a-f]*'), kind TEXT NOT NULL, source_key TEXT NOT NULL,
-        alternate_key TEXT, extra_key TEXT, version INTEGER, plan_role TEXT,
-        source_table TEXT, owner_key TEXT, operation_id INTEGER,
-        operation_ref TEXT,
+        ref TEXT PRIMARY KEY NOT NULL CHECK(length(ref) = 48 AND ref NOT GLOB '*[^0-9a-f]*'), kind TEXT NOT NULL CHECK(kind IN ('operation')), source_key TEXT NOT NULL,
+        alternate_key TEXT, extra_key TEXT,
         active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1))
-    );
-CREATE TABLE IF NOT EXISTS WorkbenchTaskRefs (
-        ref TEXT PRIMARY KEY NOT NULL CHECK(length(ref) = 48 AND ref NOT GLOB '*[^0-9a-f]*'), plan_ref TEXT NOT NULL, row_ref TEXT NOT NULL,
-        UNIQUE(plan_ref, row_ref)
     );
 CREATE TABLE IF NOT EXISTS WorkbenchPlanIdentityClock (
         singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
@@ -763,38 +805,11 @@ CREATE TABLE IF NOT EXISTS WorkbenchPlanIdentityClock (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_wb_plan_source_key ON WorkbenchPlanSourceRefs(kind, source_key) WHERE active = 1;
 CREATE INDEX IF NOT EXISTS idx_wb_plan_source_alternate ON WorkbenchPlanSourceRefs(kind, alternate_key) WHERE active = 1;
 CREATE INDEX IF NOT EXISTS idx_wb_plan_source_extra ON WorkbenchPlanSourceRefs(kind, extra_key) WHERE active = 1;
-CREATE INDEX IF NOT EXISTS idx_wb_plan_source_version ON WorkbenchPlanSourceRefs(kind, version, plan_role) WHERE active = 1;
-CREATE INDEX IF NOT EXISTS idx_wb_plan_task_row ON WorkbenchTaskRefs(row_ref);
-CREATE INDEX IF NOT EXISTS idx_wb_plan_history_head ON ScheduleHistory(version, schedule_time DESC, id DESC);
-CREATE TRIGGER IF NOT EXISTS wb_plan_history_insert AFTER INSERT ON ScheduleHistory BEGIN INSERT INTO WorkbenchPlanSourceRefs(ref, kind, source_key, version, plan_role, source_table)
-        SELECT lower(hex(randomblob(24))), 'official', CAST(NEW.version AS TEXT), NEW.version, 'adopted', 'schedule'
-        WHERE NOT EXISTS (SELECT 1 FROM WorkbenchPlanSourceRefs WHERE kind = 'official'
-            AND source_key = CAST(NEW.version AS TEXT) AND active = 1);UPDATE WorkbenchPlanIdentityClock SET revision = revision + 1 WHERE singleton = 1; END;
-CREATE TRIGGER IF NOT EXISTS wb_plan_history_update AFTER UPDATE ON ScheduleHistory BEGIN INSERT INTO WorkbenchPlanSourceRefs(ref, kind, source_key, version, plan_role, source_table)
-        SELECT lower(hex(randomblob(24))), 'official', CAST(NEW.version AS TEXT), NEW.version, 'adopted', 'schedule'
-        WHERE NOT EXISTS (SELECT 1 FROM WorkbenchPlanSourceRefs WHERE kind = 'official'
-            AND source_key = CAST(NEW.version AS TEXT) AND active = 1);UPDATE WorkbenchPlanIdentityClock SET revision = revision + 1 WHERE singleton = 1; END;
-CREATE TRIGGER IF NOT EXISTS wb_plan_history_delete AFTER DELETE ON ScheduleHistory BEGIN UPDATE WorkbenchPlanIdentityClock SET revision = revision + 1 WHERE singleton = 1; END;
-CREATE TRIGGER IF NOT EXISTS wb_plan_operation_insert AFTER INSERT ON "BatchOperations" BEGIN UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'operation' AND active = 1 AND source_key = CAST(NEW."id" AS TEXT);UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'operation' AND active = 1 AND alternate_key = CAST(NEW."op_code" AS TEXT);UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'operation' AND active = 1 AND extra_key = replace(replace(CAST(NEW."batch_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."seq" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."piece_id" AS TEXT), '%', '%25'), ':', '%3A');INSERT INTO WorkbenchPlanSourceRefs(ref, kind, source_key, alternate_key, extra_key, version, plan_role, source_table, owner_key, operation_id, operation_ref) SELECT lower(hex(randomblob(24))), 'operation', CAST(NEW."id" AS TEXT), CAST(NEW."op_code" AS TEXT), replace(replace(CAST(NEW."batch_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."seq" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."piece_id" AS TEXT), '%', '%25'), ':', '%3A'), NULL, NULL, NULL, NULL, NULL, NULL WHERE 1;UPDATE WorkbenchPlanIdentityClock SET revision = revision + 1 WHERE singleton = 1; END;
-CREATE TRIGGER IF NOT EXISTS wb_plan_operation_update AFTER UPDATE ON "BatchOperations" BEGIN UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'operation' AND active = 1 AND source_key = CAST(NEW."id" AS TEXT) AND source_key != CAST(OLD."id" AS TEXT);UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'operation' AND active = 1 AND alternate_key = CAST(NEW."op_code" AS TEXT) AND source_key != CAST(OLD."id" AS TEXT);UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'operation' AND active = 1 AND extra_key = replace(replace(CAST(NEW."batch_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."seq" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."piece_id" AS TEXT), '%', '%25'), ':', '%3A') AND source_key != CAST(OLD."id" AS TEXT);UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'operation' AND active = 1 AND source_key = CAST(OLD."id" AS TEXT) AND (0);UPDATE WorkbenchPlanSourceRefs SET kind = 'operation', source_key = CAST(NEW."id" AS TEXT), alternate_key = CAST(NEW."op_code" AS TEXT), extra_key = replace(replace(CAST(NEW."batch_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."seq" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."piece_id" AS TEXT), '%', '%25'), ':', '%3A'), version = NULL, plan_role = NULL, source_table = NULL, owner_key = NULL, operation_id = NULL WHERE kind = 'operation' AND active = 1 AND source_key = CAST(OLD."id" AS TEXT);INSERT INTO WorkbenchPlanSourceRefs(ref, kind, source_key, alternate_key, extra_key, version, plan_role, source_table, owner_key, operation_id, operation_ref) SELECT lower(hex(randomblob(24))), 'operation', CAST(NEW."id" AS TEXT), CAST(NEW."op_code" AS TEXT), replace(replace(CAST(NEW."batch_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."seq" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."piece_id" AS TEXT), '%', '%25'), ':', '%3A'), NULL, NULL, NULL, NULL, NULL, NULL WHERE 0;UPDATE WorkbenchPlanIdentityClock SET revision = revision + 1 WHERE singleton = 1; END;
+CREATE TRIGGER IF NOT EXISTS wb_plan_history_insert AFTER INSERT ON ScheduleHistory BEGIN UPDATE WorkbenchPlanIdentityClock SET revision = revision + 1 WHERE singleton = 1; END;
+CREATE TRIGGER IF NOT EXISTS wb_plan_schedule_insert AFTER INSERT ON "Schedule" BEGIN UPDATE WorkbenchPlanIdentityClock SET revision = revision + 1 WHERE singleton = 1; END;
+CREATE TRIGGER IF NOT EXISTS wb_plan_operation_insert AFTER INSERT ON "BatchOperations" BEGIN UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'operation' AND active = 1 AND source_key = CAST(NEW."id" AS TEXT);UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'operation' AND active = 1 AND alternate_key = CAST(NEW."op_code" AS TEXT);UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'operation' AND active = 1 AND extra_key = replace(replace(CAST(NEW."batch_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."seq" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."piece_id" AS TEXT), '%', '%25'), ':', '%3A');INSERT INTO WorkbenchPlanSourceRefs(ref, kind, source_key, alternate_key, extra_key) VALUES (lower(hex(randomblob(24))), 'operation', CAST(NEW."id" AS TEXT), CAST(NEW."op_code" AS TEXT), replace(replace(CAST(NEW."batch_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."seq" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."piece_id" AS TEXT), '%', '%25'), ':', '%3A'));UPDATE WorkbenchPlanIdentityClock SET revision = revision + 1 WHERE singleton = 1; END;
+CREATE TRIGGER IF NOT EXISTS wb_plan_operation_update AFTER UPDATE ON "BatchOperations" BEGIN UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'operation' AND active = 1 AND source_key = CAST(NEW."id" AS TEXT) AND source_key != CAST(OLD."id" AS TEXT);UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'operation' AND active = 1 AND alternate_key = CAST(NEW."op_code" AS TEXT) AND source_key != CAST(OLD."id" AS TEXT);UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'operation' AND active = 1 AND extra_key = replace(replace(CAST(NEW."batch_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."seq" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."piece_id" AS TEXT), '%', '%25'), ':', '%3A') AND source_key != CAST(OLD."id" AS TEXT);UPDATE WorkbenchPlanSourceRefs SET kind = 'operation', source_key = CAST(NEW."id" AS TEXT), alternate_key = CAST(NEW."op_code" AS TEXT), extra_key = replace(replace(CAST(NEW."batch_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."seq" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."piece_id" AS TEXT), '%', '%25'), ':', '%3A') WHERE kind = 'operation' AND active = 1 AND source_key = CAST(OLD."id" AS TEXT);UPDATE WorkbenchPlanIdentityClock SET revision = revision + 1 WHERE singleton = 1; END;
 CREATE TRIGGER IF NOT EXISTS wb_plan_operation_delete AFTER DELETE ON "BatchOperations" BEGIN UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'operation' AND active = 1 AND source_key = CAST(OLD."id" AS TEXT);UPDATE WorkbenchPlanIdentityClock SET revision = revision + 1 WHERE singleton = 1; END;
-CREATE TRIGGER IF NOT EXISTS wb_plan_schedule_row_insert AFTER INSERT ON "Schedule" BEGIN UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'schedule_row' AND active = 1 AND source_key = CAST(NEW."id" AS TEXT);INSERT INTO WorkbenchPlanSourceRefs(ref, kind, source_key, alternate_key, extra_key, version, plan_role, source_table, owner_key, operation_id, operation_ref) SELECT lower(hex(randomblob(24))), 'schedule_row', CAST(NEW."id" AS TEXT), NULL, NULL, NEW.version, NULL, 'schedule', CAST(NEW.version AS TEXT), NEW.op_id, (SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind = 'operation' AND source_key = CAST(NEW.op_id AS TEXT) AND active = 1) WHERE 1;UPDATE WorkbenchPlanIdentityClock SET revision = revision + 1 WHERE singleton = 1; END;
-CREATE TRIGGER IF NOT EXISTS wb_plan_schedule_row_update AFTER UPDATE ON "Schedule" BEGIN UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'schedule_row' AND active = 1 AND source_key = CAST(NEW."id" AS TEXT) AND source_key != CAST(OLD."id" AS TEXT);UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'schedule_row' AND active = 1 AND source_key = CAST(OLD."id" AS TEXT) AND (OLD.version IS NOT NEW.version OR OLD.op_id IS NOT NEW.op_id);UPDATE WorkbenchPlanSourceRefs SET kind = 'schedule_row', source_key = CAST(NEW."id" AS TEXT), alternate_key = NULL, extra_key = NULL, version = NEW.version, plan_role = NULL, source_table = 'schedule', owner_key = CAST(NEW.version AS TEXT), operation_id = NEW.op_id WHERE kind = 'schedule_row' AND active = 1 AND source_key = CAST(OLD."id" AS TEXT);INSERT INTO WorkbenchPlanSourceRefs(ref, kind, source_key, alternate_key, extra_key, version, plan_role, source_table, owner_key, operation_id, operation_ref) SELECT lower(hex(randomblob(24))), 'schedule_row', CAST(NEW."id" AS TEXT), NULL, NULL, NEW.version, NULL, 'schedule', CAST(NEW.version AS TEXT), NEW.op_id, (SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind = 'operation' AND source_key = CAST(NEW.op_id AS TEXT) AND active = 1) WHERE OLD.version IS NOT NEW.version OR OLD.op_id IS NOT NEW.op_id;UPDATE WorkbenchPlanIdentityClock SET revision = revision + 1 WHERE singleton = 1; END;
-CREATE TRIGGER IF NOT EXISTS wb_plan_schedule_row_delete AFTER DELETE ON "Schedule" BEGIN UPDATE WorkbenchPlanSourceRefs SET active = 0 WHERE kind = 'schedule_row' AND active = 1 AND source_key = CAST(OLD."id" AS TEXT);UPDATE WorkbenchPlanIdentityClock SET revision = revision + 1 WHERE singleton = 1; END;
-CREATE TRIGGER IF NOT EXISTS wb_plan_task_plan_insert AFTER INSERT ON WorkbenchPlanSourceRefs WHEN NEW.kind = 'official' BEGIN INSERT INTO WorkbenchTaskRefs(ref, plan_ref, row_ref)
-        SELECT lower(hex(randomblob(24))), pairs.plan_ref, pairs.row_ref FROM (SELECT p.ref AS plan_ref, r.ref AS row_ref FROM WorkbenchPlanSourceRefs p JOIN WorkbenchPlanSourceRefs r ON p.kind = 'official' AND r.kind = 'schedule_row' AND r.version = p.version WHERE p.active = 1 AND r.active = 1 AND (p.ref = NEW.ref) AND (1)) pairs
-        WHERE NOT EXISTS (SELECT 1 FROM WorkbenchTaskRefs t
-            WHERE t.plan_ref = pairs.plan_ref AND t.row_ref = pairs.row_ref); END;
-CREATE TRIGGER IF NOT EXISTS wb_plan_task_row_insert AFTER INSERT ON WorkbenchPlanSourceRefs WHEN NEW.kind = 'schedule_row' BEGIN INSERT INTO WorkbenchTaskRefs(ref, plan_ref, row_ref)
-        SELECT lower(hex(randomblob(24))), pairs.plan_ref, pairs.row_ref FROM (SELECT p.ref AS plan_ref, r.ref AS row_ref FROM WorkbenchPlanSourceRefs p JOIN WorkbenchPlanSourceRefs r ON p.kind = 'official' AND r.kind = 'schedule_row' AND r.version = p.version WHERE p.active = 1 AND r.active = 1 AND (1) AND (r.ref = NEW.ref)) pairs
-        WHERE NOT EXISTS (SELECT 1 FROM WorkbenchTaskRefs t
-            WHERE t.plan_ref = pairs.plan_ref AND t.row_ref = pairs.row_ref); END;
-CREATE TRIGGER IF NOT EXISTS wb_plan_source_ref_insert_guard BEFORE INSERT ON WorkbenchPlanSourceRefs
-            WHEN EXISTS (SELECT 1 FROM WorkbenchPlanSourceRefs WHERE ref = NEW.ref)
-            BEGIN SELECT RAISE(ABORT, 'UNIQUE constraint failed: WorkbenchPlanSourceRefs.ref'); END;
-CREATE TRIGGER IF NOT EXISTS wb_plan_task_ref_insert_guard BEFORE INSERT ON WorkbenchTaskRefs
-            WHEN EXISTS (SELECT 1 FROM WorkbenchTaskRefs WHERE ref = NEW.ref)
-            BEGIN SELECT RAISE(ABORT, 'UNIQUE constraint failed: WorkbenchTaskRefs.ref'); END;
 CREATE TABLE IF NOT EXISTS WorkbenchExecutionLedgerClock (
             singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
             revision INTEGER NOT NULL CHECK(typeof(revision) = 'integer' AND revision > 0),
@@ -803,16 +818,29 @@ CREATE TABLE IF NOT EXISTS WorkbenchExecutionLedgerClock (
 CREATE TABLE IF NOT EXISTS WorkbenchProductionReports (
             report_ref TEXT NOT NULL CHECK(length(report_ref) = 48 AND report_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY,
             report_no TEXT NOT NULL UNIQUE CHECK(length(report_no) BETWEEN 1 AND 64),
-            operation_ref TEXT NOT NULL, recorded_against_task_ref TEXT NOT NULL,
-            recorded_against_plan_ref TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('manual', 'excel')),
+            operation_ref TEXT NOT NULL,
+            recorded_against_task_ref TEXT NOT NULL CHECK(length(recorded_against_task_ref) = 48 AND recorded_against_task_ref NOT GLOB '*[^0-9a-f]*'),
+            recorded_against_plan_ref TEXT NOT NULL,
+            source TEXT NOT NULL CHECK(source IN ('manual', 'excel')),
             recorded_at TEXT NOT NULL,
+            current_revision_ref TEXT,
+            revision_count INTEGER NOT NULL DEFAULT 1 CHECK(typeof(revision_count) = 'integer' AND revision_count BETWEEN 1 AND 9007199254740991),
+            voided INTEGER NOT NULL DEFAULT 0 CHECK(voided IN (0, 1)),
+            actual_start TEXT,
+            actual_end TEXT,
+            completed_quantity INTEGER CHECK(completed_quantity IS NULL OR (typeof(completed_quantity) = 'integer' AND completed_quantity BETWEEN 0 AND 9007199254740991)),
+            effective_processing_hours TEXT,
+            actual_machine_ref TEXT,
+            actual_operator_ref TEXT,
+            remark TEXT NOT NULL DEFAULT '',
+            current_local_operator TEXT NOT NULL DEFAULT '',
+            current_declared_operator TEXT NOT NULL DEFAULT '',
             FOREIGN KEY(operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref),
-            FOREIGN KEY(recorded_against_task_ref) REFERENCES WorkbenchTaskRefs(ref),
-            FOREIGN KEY(recorded_against_plan_ref) REFERENCES WorkbenchPlanSourceRefs(ref)
+            FOREIGN KEY(recorded_against_plan_ref) REFERENCES ScheduleHistory(plan_ref)
         );
 CREATE TABLE IF NOT EXISTS WorkbenchProductionReportRevisions (
             revision_ref TEXT NOT NULL CHECK(length(revision_ref) = 48 AND revision_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY,
-            report_ref TEXT NOT NULL, sequence INTEGER NOT NULL CHECK(sequence > 0),
+            report_ref TEXT NOT NULL, sequence INTEGER NOT NULL CHECK(typeof(sequence) = 'integer' AND sequence BETWEEN 1 AND 9007199254740991),
             previous_revision_ref TEXT, action TEXT NOT NULL CHECK(action IN ('create', 'supplement', 'correct')),
             values_json TEXT NOT NULL, reason TEXT NOT NULL,
             local_operator TEXT NOT NULL CHECK(length(trim(local_operator)) > 0),
@@ -823,13 +851,36 @@ CREATE TABLE IF NOT EXISTS WorkbenchProductionReportRevisions (
             FOREIGN KEY(previous_revision_ref) REFERENCES WorkbenchProductionReportRevisions(revision_ref),
             FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
         );
+CREATE TABLE IF NOT EXISTS OperationExecutionStates (
+            operation_ref TEXT NOT NULL CHECK(length(operation_ref) = 48 AND operation_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY,
+            active_report_count INTEGER NOT NULL CHECK(typeof(active_report_count) = 'integer' AND active_report_count BETWEEN 0 AND 9007199254740991),
+            known_completed_quantity INTEGER NOT NULL CHECK(typeof(known_completed_quantity) = 'integer' AND known_completed_quantity >= 0),
+            unknown_quantity_count INTEGER NOT NULL CHECK(typeof(unknown_quantity_count) = 'integer' AND unknown_quantity_count BETWEEN 0 AND 9007199254740991),
+            internal_complete_flag INTEGER NOT NULL CHECK(internal_complete_flag IN (0, 1)),
+            external_complete_flag INTEGER NOT NULL CHECK(external_complete_flag IN (0, 1)),
+            any_actual_end INTEGER NOT NULL CHECK(any_actual_end IN (0, 1)),
+            first_actual_start TEXT,
+            max_actual_end TEXT,
+            known_effective_hours_text TEXT,
+            unknown_hour_count INTEGER NOT NULL CHECK(typeof(unknown_hour_count) = 'integer' AND unknown_hour_count BETWEEN 0 AND 9007199254740991),
+            FOREIGN KEY(operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref)
+        );
 CREATE INDEX IF NOT EXISTS idx_wb_execution_reports_operation ON WorkbenchProductionReports(operation_ref, recorded_at, report_ref);
 CREATE INDEX IF NOT EXISTS idx_wb_execution_reports_task ON WorkbenchProductionReports(recorded_against_task_ref);
+CREATE INDEX IF NOT EXISTS idx_wb_exec_reports_active_op ON WorkbenchProductionReports(operation_ref, recorded_at, report_no) WHERE voided = 0;
+CREATE INDEX IF NOT EXISTS idx_wb_exec_reports_active_machine ON WorkbenchProductionReports(actual_machine_ref, operation_ref) WHERE voided = 0 AND actual_machine_ref IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_wb_exec_reports_active_operator ON WorkbenchProductionReports(actual_operator_ref, operation_ref) WHERE voided = 0 AND actual_operator_ref IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_wb_execution_revisions_request ON WorkbenchProductionReportRevisions(request_key);
-CREATE INDEX IF NOT EXISTS idx_wb_execution_task_operation ON WorkbenchPlanSourceRefs(operation_ref, kind, version);
-CREATE INDEX IF NOT EXISTS idx_wb_execution_source_row_history ON WorkbenchPlanSourceRefs(kind, source_key, version, operation_id);
 CREATE INDEX IF NOT EXISTS idx_wb_execution_resource_history ON WorkbenchEntityRefs(kind, entity_key);
-CREATE TRIGGER IF NOT EXISTS wb_execution_reports_no_update BEFORE UPDATE ON WorkbenchProductionReports BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS wb_execution_reports_identity_immutable BEFORE UPDATE ON WorkbenchProductionReports
+            WHEN NEW.report_ref IS NOT OLD.report_ref
+              OR NEW.report_no IS NOT OLD.report_no
+              OR NEW.operation_ref IS NOT OLD.operation_ref
+              OR NEW.recorded_against_task_ref IS NOT OLD.recorded_against_task_ref
+              OR NEW.recorded_against_plan_ref IS NOT OLD.recorded_against_plan_ref
+              OR NEW.source IS NOT OLD.source
+              OR NEW.recorded_at IS NOT OLD.recorded_at
+            BEGIN SELECT RAISE(ABORT, 'execution report identity is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS wb_execution_reports_no_delete BEFORE DELETE ON WorkbenchProductionReports BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS wb_execution_reports_clock AFTER INSERT ON WorkbenchProductionReports BEGIN UPDATE WorkbenchExecutionLedgerClock SET revision = revision + 1 WHERE singleton = 1; END;
 CREATE TRIGGER IF NOT EXISTS wb_execution_revisions_no_update BEFORE UPDATE ON WorkbenchProductionReportRevisions BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END;
@@ -867,38 +918,101 @@ CREATE TRIGGER IF NOT EXISTS wb_execution_voids_no_delete BEFORE DELETE ON Workb
 CREATE TABLE IF NOT EXISTS WorkbenchRunJobs (
             run_ref TEXT NOT NULL CHECK(length(run_ref)=48 AND run_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, request_key TEXT NOT NULL UNIQUE,
             input_ref TEXT NOT NULL, normalized_input_json TEXT NOT NULL,
-            facts_json TEXT NOT NULL, execution_json TEXT NOT NULL,
-            baseline_json TEXT NOT NULL, accepted_at TEXT NOT NULL,
-            state TEXT NOT NULL CHECK(state IN ('queued','running','complete','partial','failed','interrupted')),
-            stage TEXT NOT NULL CHECK(stage IN ('queued','computing','finished','awaiting_reconciliation')),
+            revisions_json TEXT NOT NULL, conditions_archive_json TEXT NOT NULL,
+            execution_json TEXT NOT NULL, baseline_json TEXT NOT NULL,
+            accepted_at TEXT NOT NULL,
+            state TEXT NOT NULL CHECK(state IN ('queued', 'running', 'complete', 'partial', 'failed', 'interrupted')),
+            stage TEXT NOT NULL CHECK(stage IN ('queued', 'computing', 'finished', 'awaiting_reconciliation')),
             executor_ref TEXT, started_at TEXT, finished_at TEXT, error_json TEXT,
-            CHECK((state='queued' AND stage IN ('queued','awaiting_reconciliation') AND executor_ref IS NULL
+            CHECK((state='queued' AND stage IN ('queued', 'awaiting_reconciliation') AND executor_ref IS NULL
                    AND started_at IS NULL AND finished_at IS NULL)
-               OR (state='running' AND stage IN ('computing','awaiting_reconciliation') AND executor_ref IS NOT NULL
+               OR (state='running' AND stage IN ('computing', 'awaiting_reconciliation') AND executor_ref IS NOT NULL
                    AND started_at IS NOT NULL AND finished_at IS NULL)
-               OR (state IN ('complete','partial','failed','interrupted') AND stage='finished' AND finished_at IS NOT NULL)),
+               OR (state IN ('complete', 'partial', 'failed', 'interrupted') AND stage='finished' AND finished_at IS NOT NULL)),
             FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
         );
 CREATE TABLE IF NOT EXISTS WorkbenchRunReceipts (
             receipt_ref TEXT NOT NULL CHECK(length(receipt_ref)=48 AND receipt_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, run_ref TEXT NOT NULL UNIQUE,
-            state TEXT NOT NULL CHECK(state IN ('complete','partial','failed','interrupted')),
+            state TEXT NOT NULL CHECK(state IN ('complete', 'partial', 'failed', 'interrupted')),
             result_json TEXT NOT NULL, recorded_at TEXT NOT NULL,
             FOREIGN KEY(run_ref) REFERENCES WorkbenchRunJobs(run_ref)
         );
 CREATE TABLE IF NOT EXISTS WorkbenchRunCandidates (
             candidate_ref TEXT NOT NULL CHECK(length(candidate_ref)=48 AND candidate_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, run_ref TEXT NOT NULL, candidate_key TEXT NOT NULL,
             sequence INTEGER NOT NULL CHECK(typeof(sequence)='integer' AND sequence>=0),
-            status TEXT NOT NULL CHECK(status='completed'),
             task_count INTEGER NOT NULL CHECK(typeof(task_count)='integer' AND task_count>=0),
             artifact_json TEXT NOT NULL, UNIQUE(run_ref,candidate_key), UNIQUE(run_ref,sequence),
             FOREIGN KEY(run_ref) REFERENCES WorkbenchRunJobs(run_ref)
         );
 CREATE TABLE IF NOT EXISTS WorkbenchRunCandidateTasks (
-            row_ref TEXT NOT NULL CHECK(length(row_ref)=48 AND row_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, candidate_ref TEXT NOT NULL, operation_ref TEXT NOT NULL,
+            row_ref TEXT NOT NULL CHECK(length(row_ref)=48 AND row_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY,
+            candidate_ref TEXT NOT NULL,
+            operation_ref TEXT NOT NULL,
             ordinal INTEGER NOT NULL CHECK(typeof(ordinal)='integer' AND ordinal>=0),
-            payload_json TEXT NOT NULL, UNIQUE(candidate_ref,operation_ref), UNIQUE(candidate_ref,ordinal),
+            op_id INTEGER NOT NULL,
+            source TEXT NOT NULL CHECK(source IN ('internal', 'external')),
+            machine_id TEXT,
+            operator_id TEXT,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            start_us INTEGER NOT NULL CHECK(typeof(start_us) = 'integer' AND start_us BETWEEN -62135596800000000 AND 253402300799999999),
+            end_us INTEGER NOT NULL CHECK(typeof(end_us) = 'integer' AND end_us BETWEEN -62135596800000000 AND 253402300799999999),
+            is_point_event INTEGER NOT NULL,
+            locked INTEGER NOT NULL CHECK(locked IN (0, 1)),
+            CHECK(start_us <= end_us),
+            CHECK(is_point_event = (start_us = end_us)),
+            UNIQUE(candidate_ref, ordinal),
+            UNIQUE(candidate_ref, operation_ref),
             FOREIGN KEY(candidate_ref) REFERENCES WorkbenchRunCandidates(candidate_ref),
             FOREIGN KEY(operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref)
+        );
+CREATE TABLE IF NOT EXISTS WorkbenchRunBatches (
+            run_ref TEXT NOT NULL CHECK(length(run_ref)=48 AND run_ref NOT GLOB '*[^0-9a-f]*'),
+            batch_ref TEXT NOT NULL CHECK(length(batch_ref)=48 AND batch_ref NOT GLOB '*[^0-9a-f]*'),
+            batch_id TEXT NOT NULL,
+            part_no TEXT,
+            part_ref TEXT,
+            part_name TEXT,
+            quantity INTEGER,
+            due_date TEXT,
+            priority TEXT CHECK(priority IS NULL OR priority IN ('normal', 'urgent', 'critical')),
+            ready_status TEXT CHECK(ready_status IS NULL OR ready_status IN ('yes', 'no', 'partial')),
+            ready_date TEXT,
+            status TEXT CHECK(status IS NULL OR status IN ('pending', 'scheduled', 'processing', 'completed', 'cancelled')),
+            PRIMARY KEY(run_ref, batch_ref),
+            UNIQUE(run_ref, batch_id),
+            FOREIGN KEY(run_ref) REFERENCES WorkbenchRunJobs(run_ref)
+        );
+CREATE TABLE IF NOT EXISTS WorkbenchRunOperations (
+            run_ref TEXT NOT NULL CHECK(length(run_ref)=48 AND run_ref NOT GLOB '*[^0-9a-f]*'),
+            operation_ref TEXT NOT NULL CHECK(length(operation_ref)=48 AND operation_ref NOT GLOB '*[^0-9a-f]*'),
+            op_id INTEGER NOT NULL,
+            op_code TEXT,
+            batch_id TEXT NOT NULL,
+            batch_ref TEXT,
+            piece_id TEXT,
+            seq INTEGER,
+            op_type_id TEXT,
+            op_type_name TEXT,
+            op_type_ref TEXT,
+            op_type_label TEXT,
+            source TEXT CHECK(source IS NULL OR source IN ('internal', 'external')),
+            setup_hours REAL,
+            unit_hours REAL,
+            ext_days REAL,
+            machine_id TEXT,
+            machine_ref TEXT,
+            machine_label TEXT,
+            operator_id TEXT,
+            operator_ref TEXT,
+            operator_label TEXT,
+            supplier_id TEXT,
+            supplier_ref TEXT,
+            supplier_label TEXT,
+            status TEXT CHECK(status IS NULL OR status IN ('pending', 'scheduled', 'processing', 'completed', 'skipped')),
+            PRIMARY KEY(run_ref, operation_ref),
+            UNIQUE(run_ref, op_id),
+            FOREIGN KEY(run_ref) REFERENCES WorkbenchRunJobs(run_ref)
         );
 CREATE INDEX IF NOT EXISTS idx_wb_run_state ON WorkbenchRunJobs(state,accepted_at,run_ref);
 CREATE TRIGGER IF NOT EXISTS wb_runjobs_no_delete BEFORE DELETE ON WorkbenchRunJobs BEGIN SELECT RAISE(ABORT,'run ledger is permanent'); END;
@@ -908,30 +1022,91 @@ CREATE TRIGGER IF NOT EXISTS wb_runcandidates_no_update BEFORE UPDATE ON Workben
 CREATE TRIGGER IF NOT EXISTS wb_runcandidates_no_delete BEFORE DELETE ON WorkbenchRunCandidates BEGIN SELECT RAISE(ABORT,'run ledger is permanent'); END;
 CREATE TRIGGER IF NOT EXISTS wb_runcandidatetasks_no_update BEFORE UPDATE ON WorkbenchRunCandidateTasks BEGIN SELECT RAISE(ABORT,'run ledger is permanent'); END;
 CREATE TRIGGER IF NOT EXISTS wb_runcandidatetasks_no_delete BEFORE DELETE ON WorkbenchRunCandidateTasks BEGIN SELECT RAISE(ABORT,'run ledger is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_runbatches_no_update BEFORE UPDATE ON WorkbenchRunBatches BEGIN SELECT RAISE(ABORT,'run ledger is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_runbatches_no_delete BEFORE DELETE ON WorkbenchRunBatches BEGIN SELECT RAISE(ABORT,'run ledger is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_runoperations_no_update BEFORE UPDATE ON WorkbenchRunOperations BEGIN SELECT RAISE(ABORT,'run ledger is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_runoperations_no_delete BEFORE DELETE ON WorkbenchRunOperations BEGIN SELECT RAISE(ABORT,'run ledger is permanent'); END;
 CREATE TRIGGER IF NOT EXISTS wb_run_admission_immutable
-        BEFORE UPDATE ON WorkbenchRunJobs WHEN NEW.run_ref IS NOT OLD.run_ref OR NEW.request_key IS NOT OLD.request_key OR NEW.input_ref IS NOT OLD.input_ref OR NEW.normalized_input_json IS NOT OLD.normalized_input_json OR NEW.facts_json IS NOT OLD.facts_json OR NEW.execution_json IS NOT OLD.execution_json OR NEW.baseline_json IS NOT OLD.baseline_json OR NEW.accepted_at IS NOT OLD.accepted_at
+        BEFORE UPDATE ON WorkbenchRunJobs WHEN NEW.run_ref IS NOT OLD.run_ref OR NEW.request_key IS NOT OLD.request_key OR NEW.input_ref IS NOT OLD.input_ref OR NEW.normalized_input_json IS NOT OLD.normalized_input_json OR NEW.revisions_json IS NOT OLD.revisions_json OR NEW.conditions_archive_json IS NOT OLD.conditions_archive_json OR NEW.execution_json IS NOT OLD.execution_json OR NEW.baseline_json IS NOT OLD.baseline_json OR NEW.accepted_at IS NOT OLD.accepted_at
         BEGIN SELECT RAISE(ABORT,'run admission is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS wb_run_state_transition
         BEFORE UPDATE ON WorkbenchRunJobs WHEN
-        OLD.state IN ('complete','partial','failed','interrupted') OR
-        NOT (NEW.state=OLD.state OR (OLD.state='queued' AND NEW.state IN ('running','interrupted'))
-             OR (OLD.state='running' AND NEW.state IN ('complete','partial','failed','interrupted')))
+        OLD.state IN ('complete', 'partial', 'failed', 'interrupted') OR
+        NOT (NEW.state=OLD.state
+             OR (OLD.state='queued' AND NEW.state IN ('running', 'interrupted'))
+             OR (OLD.state='running' AND NEW.state IN ('complete', 'partial', 'failed', 'interrupted')))
         BEGIN SELECT RAISE(ABORT,'invalid run transition'); END;
 CREATE TABLE IF NOT EXISTS WorkbenchRunAdmissionReadModels (
             run_ref TEXT NOT NULL CHECK(length(run_ref)=48 AND run_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY,
-            projection_version TEXT NOT NULL, scope_json TEXT NOT NULL, decision_json TEXT NOT NULL,
+            scope_json TEXT NOT NULL, decision_json TEXT NOT NULL,
             FOREIGN KEY(run_ref) REFERENCES WorkbenchRunJobs(run_ref));
 CREATE TABLE IF NOT EXISTS WorkbenchRunDecisionReadModels (
-            run_ref TEXT NOT NULL CHECK(length(run_ref)=48 AND run_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, projection_version TEXT NOT NULL,
+            run_ref TEXT NOT NULL CHECK(length(run_ref)=48 AND run_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY,
             header_json TEXT NOT NULL, context_json TEXT NOT NULL, memberships_json TEXT NOT NULL,
             calendar_json TEXT NOT NULL, official_json TEXT NOT NULL, process_json TEXT,
             FOREIGN KEY(run_ref) REFERENCES WorkbenchRunJobs(run_ref));
 CREATE TABLE IF NOT EXISTS WorkbenchRunCandidateReadModels (
             candidate_ref TEXT NOT NULL CHECK(length(candidate_ref)=48 AND candidate_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, run_ref TEXT NOT NULL,
-            projection_version TEXT NOT NULL, summary_json TEXT NOT NULL, preparation_json TEXT NOT NULL,
+            summary_json TEXT NOT NULL, preparation_json TEXT NOT NULL,
             completion_json TEXT NOT NULL, delivery_json TEXT NOT NULL, delivery_detail_json TEXT NOT NULL,
             arrangements_json TEXT NOT NULL,
             FOREIGN KEY(candidate_ref) REFERENCES WorkbenchRunCandidates(candidate_ref),
+            FOREIGN KEY(run_ref) REFERENCES WorkbenchRunJobs(run_ref));
+CREATE TABLE IF NOT EXISTS WorkbenchRunSideBatches (
+            run_ref TEXT NOT NULL CHECK(length(run_ref)=48 AND run_ref NOT GLOB '*[^0-9a-f]*'),
+            side_key TEXT NOT NULL,
+            batch_ref TEXT NOT NULL,
+            batch_label TEXT,
+            due_date TEXT,
+            is_overdue INTEGER,
+            delay_hours REAL,
+            finish_time TEXT,
+            finish_us INTEGER CHECK(finish_us IS NULL OR (typeof(finish_us) = 'integer' AND finish_us BETWEEN -62135596800000000 AND 253402300799999999)),
+            status TEXT NOT NULL,
+            scheduled_count INTEGER NOT NULL,
+            total_count INTEGER NOT NULL,
+            deferred_count INTEGER NOT NULL,
+            unplanned_count INTEGER NOT NULL,
+            detail_json TEXT NOT NULL,
+            PRIMARY KEY(run_ref, side_key, batch_ref),
+            FOREIGN KEY(run_ref) REFERENCES WorkbenchRunJobs(run_ref));
+CREATE TABLE IF NOT EXISTS WorkbenchRunOperationCatalog (
+            run_ref TEXT NOT NULL CHECK(length(run_ref)=48 AND run_ref NOT GLOB '*[^0-9a-f]*'),
+            operation_ref TEXT NOT NULL,
+            batch_ref TEXT,
+            batch_label TEXT,
+            sequence INTEGER,
+            sequence_unknown INTEGER NOT NULL CHECK(sequence_unknown IN (0, 1)),
+            op_id INTEGER NOT NULL,
+            saved_machine_ref TEXT,
+            label_json TEXT NOT NULL,
+            PRIMARY KEY(run_ref, operation_ref),
+            FOREIGN KEY(run_ref) REFERENCES WorkbenchRunJobs(run_ref));
+CREATE TABLE IF NOT EXISTS WorkbenchRunSideOperations (
+            run_ref TEXT NOT NULL CHECK(length(run_ref)=48 AND run_ref NOT GLOB '*[^0-9a-f]*'),
+            side_key TEXT NOT NULL,
+            operation_ref TEXT NOT NULL,
+            arranged INTEGER NOT NULL CHECK(arranged IN (0, 1)),
+            deferred INTEGER NOT NULL CHECK(deferred IN (0, 1)),
+            allocation_state TEXT NOT NULL,
+            is_remaining INTEGER NOT NULL CHECK(is_remaining IN (0, 1)),
+            start_us INTEGER CHECK(start_us IS NULL OR (typeof(start_us) = 'integer' AND start_us BETWEEN -62135596800000000 AND 253402300799999999)),
+            end_us INTEGER CHECK(end_us IS NULL OR (typeof(end_us) = 'integer' AND end_us BETWEEN -62135596800000000 AND 253402300799999999)),
+            machine_ref TEXT,
+            operator_ref TEXT,
+            resource_refs_json TEXT NOT NULL,
+            setup_hours REAL,
+            required_hours REAL,
+            arrangement_json TEXT,
+            preparation_json TEXT NOT NULL,
+            PRIMARY KEY(run_ref, side_key, operation_ref),
+            FOREIGN KEY(run_ref) REFERENCES WorkbenchRunJobs(run_ref));
+CREATE TABLE IF NOT EXISTS WorkbenchRunSideResources (
+            run_ref TEXT NOT NULL CHECK(length(run_ref)=48 AND run_ref NOT GLOB '*[^0-9a-f]*'),
+            side_key TEXT NOT NULL,
+            resource_view TEXT NOT NULL CHECK(resource_view IN ('selected_batches', 'full_candidate')),
+            payload_json TEXT NOT NULL,
+            PRIMARY KEY(run_ref, side_key, resource_view),
             FOREIGN KEY(run_ref) REFERENCES WorkbenchRunJobs(run_ref));
 CREATE INDEX IF NOT EXISTS idx_wb_run_input ON WorkbenchRunJobs(input_ref);
 CREATE INDEX IF NOT EXISTS idx_wb_command_action_context_time ON WorkbenchCommandReceipts(action,context_ref,committed_at_utc,request_key);
@@ -939,67 +1114,53 @@ CREATE INDEX IF NOT EXISTS idx_wb_run_candidate_model_run ON WorkbenchRunCandida
 CREATE INDEX IF NOT EXISTS idx_wb_run_accepted ON WorkbenchRunJobs(accepted_at,run_ref);
 CREATE INDEX IF NOT EXISTS idx_wb_run_started ON WorkbenchRunJobs(started_at,run_ref);
 CREATE INDEX IF NOT EXISTS idx_wb_run_finished ON WorkbenchRunJobs(finished_at,run_ref);
+CREATE INDEX IF NOT EXISTS idx_wb_run_op_cat_batch ON WorkbenchRunOperationCatalog(run_ref, batch_ref);
+CREATE INDEX IF NOT EXISTS idx_wb_run_side_ops_alloc ON WorkbenchRunSideOperations(run_ref, side_key, allocation_state);
 CREATE TRIGGER IF NOT EXISTS wb_runadmissionreadmodels_no_update BEFORE UPDATE ON WorkbenchRunAdmissionReadModels BEGIN SELECT RAISE(ABORT,'run read model is permanent'); END;
 CREATE TRIGGER IF NOT EXISTS wb_runadmissionreadmodels_no_delete BEFORE DELETE ON WorkbenchRunAdmissionReadModels BEGIN SELECT RAISE(ABORT,'run read model is permanent'); END;
 CREATE TRIGGER IF NOT EXISTS wb_rundecisionreadmodels_no_update BEFORE UPDATE ON WorkbenchRunDecisionReadModels BEGIN SELECT RAISE(ABORT,'run read model is permanent'); END;
 CREATE TRIGGER IF NOT EXISTS wb_rundecisionreadmodels_no_delete BEFORE DELETE ON WorkbenchRunDecisionReadModels BEGIN SELECT RAISE(ABORT,'run read model is permanent'); END;
 CREATE TRIGGER IF NOT EXISTS wb_runcandidatereadmodels_no_update BEFORE UPDATE ON WorkbenchRunCandidateReadModels BEGIN SELECT RAISE(ABORT,'run read model is permanent'); END;
 CREATE TRIGGER IF NOT EXISTS wb_runcandidatereadmodels_no_delete BEFORE DELETE ON WorkbenchRunCandidateReadModels BEGIN SELECT RAISE(ABORT,'run read model is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_runsidebatches_no_update BEFORE UPDATE ON WorkbenchRunSideBatches BEGIN SELECT RAISE(ABORT,'run read model is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_runsidebatches_no_delete BEFORE DELETE ON WorkbenchRunSideBatches BEGIN SELECT RAISE(ABORT,'run read model is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_runoperationcatalog_no_update BEFORE UPDATE ON WorkbenchRunOperationCatalog BEGIN SELECT RAISE(ABORT,'run read model is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_runoperationcatalog_no_delete BEFORE DELETE ON WorkbenchRunOperationCatalog BEGIN SELECT RAISE(ABORT,'run read model is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_runsideoperations_no_update BEFORE UPDATE ON WorkbenchRunSideOperations BEGIN SELECT RAISE(ABORT,'run read model is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_runsideoperations_no_delete BEFORE DELETE ON WorkbenchRunSideOperations BEGIN SELECT RAISE(ABORT,'run read model is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_runsideresources_no_update BEFORE UPDATE ON WorkbenchRunSideResources BEGIN SELECT RAISE(ABORT,'run read model is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_runsideresources_no_delete BEFORE DELETE ON WorkbenchRunSideResources BEGIN SELECT RAISE(ABORT,'run read model is permanent'); END;
 CREATE TABLE IF NOT EXISTS WorkbenchTemplateLineageOrigins (
             lineage_ref TEXT NOT NULL CHECK(length(lineage_ref)=48 AND lineage_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY,
-            operation_ref TEXT NOT NULL UNIQUE, template_operation_ref TEXT NOT NULL,
+            operation_ref TEXT NOT NULL UNIQUE,
+            template_operation_ref TEXT NOT NULL,
             template_revision INTEGER NOT NULL CHECK(typeof(template_revision)='integer' AND template_revision>0),
-            source_operation_ref TEXT, source_lineage_ref TEXT, source_event_id INTEGER,
-            source_eligible INTEGER NOT NULL CHECK(source_eligible IN (0,1)), birth_event_id INTEGER NOT NULL UNIQUE,
-            evidence_version TEXT NOT NULL CHECK(evidence_version='template-copy-v1'),
-            template_snapshot TEXT NOT NULL,
-            instance_snapshot TEXT NOT NULL,
-            recorded_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+            source_eligible INTEGER NOT NULL CHECK(source_eligible IN (0, 1)),
+            instance_modified INTEGER NOT NULL DEFAULT 0 CHECK(instance_modified IN (0, 1)),
             FOREIGN KEY(operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref),
-            FOREIGN KEY(template_operation_ref) REFERENCES WorkbenchEntityRefs(ref),
-            FOREIGN KEY(source_operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref),
-            FOREIGN KEY(source_lineage_ref) REFERENCES WorkbenchTemplateLineageOrigins(lineage_ref),
-            FOREIGN KEY(birth_event_id) REFERENCES WorkbenchTemplateLineageEvents(event_id),
-            CHECK((source_operation_ref IS NULL)=(source_lineage_ref IS NULL)),
-            CHECK((source_operation_ref IS NULL)=(source_event_id IS NULL)),
-            CHECK(source_operation_ref IS NOT NULL OR source_eligible=1)
+            FOREIGN KEY(template_operation_ref) REFERENCES WorkbenchEntityRefs(ref)
         );
-CREATE TABLE IF NOT EXISTS WorkbenchTemplateLineageEvents (
-            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            operation_ref TEXT NOT NULL,
-            event_type TEXT NOT NULL CHECK(event_type IN ('created','updated','retired','batch_changed','withdrawn')),
-            affects_calibration INTEGER NOT NULL CHECK(affects_calibration IN (0,1)),
-            reason TEXT, recorded_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-id,op_code,batch_id,piece_id,seq,op_type_id,op_type_name,source,machine_id,operator_id,supplier_id,setup_hours,unit_hours,ext_days,status,created_at,batch_ref,part_ref,quantity, FOREIGN KEY(operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref));
-CREATE INDEX IF NOT EXISTS idx_wb_lineage_events_operation ON WorkbenchTemplateLineageEvents(operation_ref,event_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_wb_lineage_birth ON WorkbenchTemplateLineageEvents(operation_ref) WHERE event_type='created';
 CREATE INDEX IF NOT EXISTS idx_wb_lineage_template_revision ON WorkbenchTemplateLineageOrigins(template_operation_ref,template_revision);
-CREATE TRIGGER IF NOT EXISTS wb_lineage_operation_born AFTER INSERT ON WorkbenchPlanSourceRefs WHEN NEW.kind='operation' AND NEW.active=1 BEGIN INSERT INTO WorkbenchTemplateLineageEvents(operation_ref,event_type,affects_calibration,id,op_code,batch_id,piece_id,seq,op_type_id,op_type_name,source,machine_id,operator_id,supplier_id,setup_hours,unit_hours,ext_days,status,created_at,batch_ref,part_ref,quantity) SELECT NEW.ref,'created',0,o.id,o.op_code,o.batch_id,o.piece_id,o.seq,o.op_type_id,o.op_type_name,o.source,o.machine_id,o.operator_id,o.supplier_id,o.setup_hours,o.unit_hours,o.ext_days,o.status,o.created_at,(SELECT ref FROM WorkbenchEntityRefs WHERE kind='batch' AND active=1 AND entity_key=b.batch_id),(SELECT ref FROM WorkbenchEntityRefs WHERE kind='part' AND active=1 AND entity_key=b.part_no),b.quantity FROM BatchOperations o JOIN Batches b ON b.batch_id=o.batch_id WHERE CAST(o.id AS TEXT)=NEW.source_key; END;
-CREATE TRIGGER IF NOT EXISTS wb_lineage_operation_update BEFORE UPDATE ON BatchOperations WHEN OLD.id IS NOT NEW.id OR OLD.op_code IS NOT NEW.op_code OR OLD.batch_id IS NOT NEW.batch_id OR OLD.piece_id IS NOT NEW.piece_id OR OLD.seq IS NOT NEW.seq OR OLD.op_type_id IS NOT NEW.op_type_id OR OLD.op_type_name IS NOT NEW.op_type_name OR OLD.source IS NOT NEW.source OR OLD.machine_id IS NOT NEW.machine_id OR OLD.operator_id IS NOT NEW.operator_id OR OLD.supplier_id IS NOT NEW.supplier_id OR OLD.setup_hours IS NOT NEW.setup_hours OR OLD.unit_hours IS NOT NEW.unit_hours OR OLD.ext_days IS NOT NEW.ext_days OR OLD.status IS NOT NEW.status OR OLD.created_at IS NOT NEW.created_at BEGIN INSERT INTO WorkbenchTemplateLineageEvents(operation_ref,event_type,affects_calibration,id,op_code,batch_id,piece_id,seq,op_type_id,op_type_name,source,machine_id,operator_id,supplier_id,setup_hours,unit_hours,ext_days,status,created_at,batch_ref,part_ref,quantity) SELECT (SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND active=1 AND source_key=CAST(OLD.id AS TEXT)),'updated',(OLD.piece_id IS NOT NEW.piece_id OR OLD.seq IS NOT NEW.seq OR OLD.op_type_id IS NOT NEW.op_type_id OR OLD.op_type_name IS NOT NEW.op_type_name OR OLD.source IS NOT NEW.source OR OLD.supplier_id IS NOT NEW.supplier_id OR OLD.setup_hours IS NOT NEW.setup_hours OR OLD.unit_hours IS NOT NEW.unit_hours OR OLD.ext_days IS NOT NEW.ext_days OR OLD.batch_id IS NOT NEW.batch_id),NEW.id,NEW.op_code,NEW.batch_id,NEW.piece_id,NEW.seq,NEW.op_type_id,NEW.op_type_name,NEW.source,NEW.machine_id,NEW.operator_id,NEW.supplier_id,NEW.setup_hours,NEW.unit_hours,NEW.ext_days,NEW.status,NEW.created_at,(SELECT ref FROM WorkbenchEntityRefs WHERE kind='batch' AND active=1 AND entity_key=b.batch_id),(SELECT ref FROM WorkbenchEntityRefs WHERE kind='part' AND active=1 AND entity_key=b.part_no),b.quantity FROM Batches b WHERE b.batch_id=NEW.batch_id AND (SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND active=1 AND source_key=CAST(OLD.id AS TEXT)) IS NOT NULL; END;
-CREATE TRIGGER IF NOT EXISTS wb_lineage_operation_retire AFTER UPDATE ON WorkbenchPlanSourceRefs WHEN OLD.kind='operation' AND OLD.active=1 AND NEW.active=0 BEGIN INSERT INTO WorkbenchTemplateLineageEvents(operation_ref,event_type,affects_calibration,id,op_code,batch_id,piece_id,seq,op_type_id,op_type_name,source,machine_id,operator_id,supplier_id,setup_hours,unit_hours,ext_days,status,created_at,batch_ref,part_ref,quantity) SELECT OLD.ref,'retired',1,id,op_code,batch_id,piece_id,seq,op_type_id,op_type_name,source,machine_id,operator_id,supplier_id,setup_hours,unit_hours,ext_days,status,created_at,batch_ref,part_ref,quantity FROM WorkbenchTemplateLineageEvents WHERE operation_ref=OLD.ref ORDER BY event_id DESC LIMIT 1; END;
-CREATE TRIGGER IF NOT EXISTS wb_lineage_batch_change AFTER UPDATE ON Batches WHEN OLD.part_no IS NOT NEW.part_no OR OLD.quantity IS NOT NEW.quantity BEGIN INSERT INTO WorkbenchTemplateLineageEvents(operation_ref,event_type,affects_calibration,id,op_code,batch_id,piece_id,seq,op_type_id,op_type_name,source,machine_id,operator_id,supplier_id,setup_hours,unit_hours,ext_days,status,created_at,batch_ref,part_ref,quantity) SELECT r.ref,'batch_changed',1,o.id,o.op_code,o.batch_id,o.piece_id,o.seq,o.op_type_id,o.op_type_name,o.source,o.machine_id,o.operator_id,o.supplier_id,o.setup_hours,o.unit_hours,o.ext_days,o.status,o.created_at,(SELECT ref FROM WorkbenchEntityRefs WHERE kind='batch' AND active=1 AND entity_key=b.batch_id),(SELECT ref FROM WorkbenchEntityRefs WHERE kind='part' AND active=1 AND entity_key=b.part_no),b.quantity FROM BatchOperations o JOIN WorkbenchPlanSourceRefs r ON r.kind='operation' AND r.active=1 AND r.source_key=CAST(o.id AS TEXT) JOIN Batches b ON b.batch_id=o.batch_id WHERE o.batch_id=NEW.batch_id; END;
-CREATE TRIGGER IF NOT EXISTS wb_lineage_origin_no_update BEFORE UPDATE ON WorkbenchTemplateLineageOrigins BEGIN SELECT RAISE(ABORT,'template lineage is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS wb_lineage_operation_update BEFORE UPDATE ON BatchOperations WHEN OLD.piece_id IS NOT NEW.piece_id OR OLD.seq IS NOT NEW.seq OR OLD.op_type_id IS NOT NEW.op_type_id OR OLD.op_type_name IS NOT NEW.op_type_name OR OLD.source IS NOT NEW.source OR OLD.supplier_id IS NOT NEW.supplier_id OR OLD.setup_hours IS NOT NEW.setup_hours OR OLD.unit_hours IS NOT NEW.unit_hours OR OLD.ext_days IS NOT NEW.ext_days OR OLD.batch_id IS NOT NEW.batch_id BEGIN UPDATE WorkbenchTemplateLineageOrigins SET instance_modified=1 WHERE operation_ref=(SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND active=1 AND source_key=CAST(OLD.id AS TEXT)) AND instance_modified=0; END;
+CREATE TRIGGER IF NOT EXISTS wb_lineage_batch_change AFTER UPDATE ON Batches WHEN OLD.part_no IS NOT NEW.part_no OR OLD.quantity IS NOT NEW.quantity BEGIN UPDATE WorkbenchTemplateLineageOrigins SET instance_modified=1 WHERE instance_modified=0 AND operation_ref IN (SELECT r.ref FROM BatchOperations o JOIN WorkbenchPlanSourceRefs r ON r.kind='operation' AND r.active=1 AND r.source_key=CAST(o.id AS TEXT) WHERE o.batch_id=NEW.batch_id); END;
+CREATE TRIGGER IF NOT EXISTS wb_lineage_origin_no_update BEFORE UPDATE ON WorkbenchTemplateLineageOrigins WHEN NEW.lineage_ref IS NOT OLD.lineage_ref OR NEW.operation_ref IS NOT OLD.operation_ref OR NEW.template_operation_ref IS NOT OLD.template_operation_ref OR NEW.template_revision IS NOT OLD.template_revision OR NEW.source_eligible IS NOT OLD.source_eligible OR OLD.instance_modified != 0 OR NEW.instance_modified != 1 BEGIN SELECT RAISE(ABORT,'template lineage is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS wb_lineage_origin_no_delete BEFORE DELETE ON WorkbenchTemplateLineageOrigins BEGIN SELECT RAISE(ABORT,'template lineage is append-only'); END;
-CREATE TRIGGER IF NOT EXISTS wb_lineage_event_no_update BEFORE UPDATE ON WorkbenchTemplateLineageEvents BEGIN SELECT RAISE(ABORT,'template lineage is append-only'); END;
-CREATE TRIGGER IF NOT EXISTS wb_lineage_event_no_delete BEFORE DELETE ON WorkbenchTemplateLineageEvents BEGIN SELECT RAISE(ABORT,'template lineage is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS wb_lineage_origin_birth BEFORE INSERT ON WorkbenchTemplateLineageOrigins BEGIN
-        SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM WorkbenchTemplateLineageEvents e
-            JOIN WorkbenchPlanSourceRefs r ON r.ref=e.operation_ref AND r.kind='operation' AND r.active=1
-            WHERE e.event_id=NEW.birth_event_id AND e.operation_ref=NEW.operation_ref AND e.event_type='created')
-            THEN RAISE(ABORT,'template lineage requires a new instance birth') END;
-        SELECT CASE WHEN EXISTS (SELECT 1 FROM WorkbenchTemplateLineageOrigins WHERE operation_ref=NEW.operation_ref OR lineage_ref=NEW.lineage_ref)
-            THEN RAISE(ABORT,'template lineage cannot be rebound') END;
+        SELECT CASE WHEN NEW.instance_modified != 0 OR NOT EXISTS (
+            SELECT 1 FROM WorkbenchPlanSourceRefs r
+            WHERE r.ref=NEW.operation_ref AND r.kind='operation' AND r.active=1
+        ) THEN RAISE(ABORT,'template lineage requires a new instance birth') END;
+        SELECT CASE WHEN EXISTS (
+            SELECT 1 FROM WorkbenchTemplateLineageOrigins
+            WHERE operation_ref=NEW.operation_ref OR lineage_ref=NEW.lineage_ref
+        ) THEN RAISE(ABORT,'template lineage cannot be rebound') END;
     END;
-CREATE TRIGGER IF NOT EXISTS wb_lineage_event_no_replace BEFORE INSERT ON WorkbenchTemplateLineageEvents
-        WHEN EXISTS (SELECT 1 FROM WorkbenchTemplateLineageEvents WHERE event_id=NEW.event_id)
-        BEGIN SELECT RAISE(ABORT,'template lineage events cannot be replaced'); END;
-CREATE INDEX IF NOT EXISTS idx_wb_lineage_operation_id_text ON BatchOperations(CAST(id AS TEXT));
 CREATE TABLE IF NOT EXISTS WorkbenchTrialDrafts (
-            draft_ref TEXT NOT NULL CHECK(length(draft_ref)=48 AND draft_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, base_kind TEXT NOT NULL CHECK(base_kind IN ('plan_ref','candidate_ref')),
+            draft_ref TEXT NOT NULL CHECK(length(draft_ref)=48 AND draft_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, base_kind TEXT NOT NULL CHECK(base_kind IN ('plan_ref', 'candidate_ref')),
             base_ref TEXT NOT NULL CHECK(length(base_ref)=48 AND base_ref NOT GLOB '*[^0-9a-f]*'), admission_json TEXT NOT NULL,
             row_count INTEGER NOT NULL CHECK(typeof(row_count)='integer' AND row_count>0),
             revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision>=1),
-            status TEXT NOT NULL CHECK(status IN ('editing','saved','discarded')),
+            status TEXT NOT NULL CHECK(status IN ('editing', 'saved', 'discarded')),
             validation_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
             local_operator TEXT NOT NULL, request_key TEXT NOT NULL UNIQUE,
             FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
@@ -1024,7 +1185,7 @@ CREATE TABLE IF NOT EXISTS WorkbenchTrialChanges (
         );
 CREATE TABLE IF NOT EXISTS WorkbenchTrialScenarios (
             scenario_ref TEXT NOT NULL CHECK(length(scenario_ref)=48 AND scenario_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, draft_ref TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
-            revision INTEGER NOT NULL, snapshot_json TEXT NOT NULL,
+            revision INTEGER NOT NULL, snapshot_json TEXT NOT NULL, resources_json TEXT NOT NULL,
             saved_at TEXT NOT NULL, local_operator TEXT NOT NULL, request_key TEXT NOT NULL UNIQUE,
             FOREIGN KEY(draft_ref) REFERENCES WorkbenchTrialDrafts(draft_ref),
             FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
@@ -1053,6 +1214,50 @@ CREATE TRIGGER IF NOT EXISTS wb_trial_transition BEFORE UPDATE ON WorkbenchTrial
 CREATE TRIGGER IF NOT EXISTS wb_trial_closed_rows BEFORE UPDATE ON WorkbenchTrialRows
         WHEN (SELECT status FROM WorkbenchTrialDrafts WHERE draft_ref=OLD.draft_ref)<>'editing'
         BEGIN SELECT RAISE(ABORT,'closed trial is immutable'); END;
+CREATE TABLE IF NOT EXISTS WorkbenchHistoryEntries (
+            entry_ref TEXT NOT NULL PRIMARY KEY,
+            timeline TEXT NOT NULL CHECK(timeline IN ('run','official')),
+            source_kind TEXT NOT NULL CHECK(source_kind IN ('run','candidate_adoption','trial_adoption')),
+            state TEXT NOT NULL,
+            occurred_at TEXT,
+            occurred_day TEXT,
+            occurred_us INTEGER CHECK(occurred_us IS NULL OR (typeof(occurred_us) = 'integer' AND occurred_us BETWEEN -62135596800000000 AND 253402300799999999)),
+            time_basis TEXT,
+            static_label TEXT,
+            run_ref TEXT,
+            candidate_ref TEXT,
+            scenario_ref TEXT,
+            draft_ref TEXT,
+            plan_ref TEXT,
+            plan_version INTEGER,
+            receipt_ref TEXT,
+            request_key TEXT NOT NULL UNIQUE,
+            baseline_plan_ref TEXT,
+            baseline_version INTEGER,
+            selected_candidate_ref TEXT,
+            selection_json TEXT NOT NULL,
+            times_json TEXT NOT NULL,
+            evidence_gaps_json TEXT NOT NULL,
+            objective_json TEXT NOT NULL,
+            static_condition_digest TEXT,
+            default_7d_calendar_digest TEXT
+        );
+CREATE INDEX IF NOT EXISTS idx_wb_history_timeline_order ON WorkbenchHistoryEntries(timeline, state, occurred_day, occurred_us, entry_ref);
+CREATE INDEX IF NOT EXISTS idx_wb_history_run_ref ON WorkbenchHistoryEntries(run_ref);
+CREATE TRIGGER IF NOT EXISTS wb_history_entry_bind_adoption_receipt
+            AFTER INSERT ON WorkbenchCommandReceipts
+            WHEN NEW.action IN ('scheduling.candidate.adopt', 'trial.scenario.adopt')
+             AND json_extract(NEW.outcome_json, '$.result') = 'committed'
+            BEGIN
+                UPDATE WorkbenchHistoryEntries
+                SET entry_ref = 'adoption:' || NEW.receipt_ref,
+                    receipt_ref = NEW.receipt_ref,
+                    occurred_at = COALESCE(occurred_at, NEW.committed_at_utc),
+                    occurred_day = COALESCE(occurred_day, substr(NEW.committed_at_utc, 1, 10)),
+                    times_json = json_set(times_json, '$.committed_at_utc', NEW.committed_at_utc)
+                WHERE request_key = NEW.request_key
+                  AND source_kind IN ('candidate_adoption', 'trial_adoption');
+            END;
 CREATE TABLE IF NOT EXISTS WorkbenchCalibrationAdoptions (
             adoption_ref TEXT NOT NULL CHECK(length(adoption_ref)=48 AND adoption_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY,
             template_operation_ref TEXT NOT NULL REFERENCES WorkbenchEntityRefs(ref),
@@ -1074,86 +1279,43 @@ CREATE TABLE IF NOT EXISTS WorkbenchCalibrationAdoptions (
 CREATE TRIGGER IF NOT EXISTS wb_calibration_adoption_no_update BEFORE UPDATE ON WorkbenchCalibrationAdoptions BEGIN SELECT RAISE(ABORT,'calibration adoption is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS wb_calibration_adoption_no_delete BEFORE DELETE ON WorkbenchCalibrationAdoptions BEGIN SELECT RAISE(ABORT,'calibration adoption is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS wb_calibration_adoption_no_replace BEFORE INSERT ON WorkbenchCalibrationAdoptions WHEN EXISTS (SELECT 1 FROM WorkbenchCalibrationAdoptions WHERE adoption_ref=NEW.adoption_ref OR request_key=NEW.request_key) BEGIN SELECT RAISE(ABORT,'calibration adoption cannot be replaced'); END;
-CREATE TABLE IF NOT EXISTS WorkbenchDashboardItems (
-            item_ref TEXT NOT NULL CHECK(length(item_ref)=48 AND item_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, category TEXT NOT NULL CHECK(category IN ('delivery','material','actual','downtime')),
-            batch_ref TEXT, task_ref TEXT,
-            CHECK((category IN ('delivery','material') AND batch_ref IS NOT NULL AND task_ref IS NULL)
-               OR (category IN ('actual','downtime') AND task_ref IS NOT NULL AND batch_ref IS NULL)),
-            UNIQUE(category,batch_ref), UNIQUE(category,task_ref),
-            FOREIGN KEY(batch_ref) REFERENCES WorkbenchEntityRefs(ref),
-            FOREIGN KEY(task_ref) REFERENCES WorkbenchTaskRefs(ref)
-        );
-CREATE TABLE IF NOT EXISTS WorkbenchDashboardStates (
-            item_ref TEXT PRIMARY KEY NOT NULL, revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision>0),
-            handling_json TEXT NOT NULL, origin_json TEXT NOT NULL, updated_at TEXT NOT NULL,
-            FOREIGN KEY(item_ref) REFERENCES WorkbenchDashboardItems(item_ref)
-        );
-CREATE TABLE IF NOT EXISTS WorkbenchDashboardHistory (
-            history_ref TEXT NOT NULL CHECK(length(history_ref)=48 AND history_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, item_ref TEXT NOT NULL,
-            sequence INTEGER NOT NULL CHECK(typeof(sequence)='integer' AND sequence>0),
-            action TEXT NOT NULL CHECK(action IN ('transition','reopen')), before_json TEXT NOT NULL, after_json TEXT NOT NULL,
-            source_json TEXT NOT NULL, source_facts_json TEXT NOT NULL,
-            reason TEXT, local_operator TEXT NOT NULL, recorded_at TEXT NOT NULL, request_key TEXT NOT NULL UNIQUE,
-            UNIQUE(item_ref,sequence), FOREIGN KEY(item_ref) REFERENCES WorkbenchDashboardStates(item_ref),
-            FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
-        );
-CREATE TABLE IF NOT EXISTS WorkbenchDashboardDowntimeRefs (
-            ref TEXT NOT NULL CHECK(length(ref)=48 AND ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, source_id INTEGER NOT NULL, active INTEGER NOT NULL CHECK(active IN (0,1)),
-            revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision>0)
-        );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_wb_dashboard_downtime_active ON WorkbenchDashboardDowntimeRefs(source_id) WHERE active=1;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_batch_insert AFTER INSERT ON WorkbenchEntityRefs
-            WHEN NEW.kind='batch' AND NEW.active=1 BEGIN
-            INSERT INTO WorkbenchDashboardItems(item_ref,category,batch_ref) VALUES(lower(hex(randomblob(24))),'delivery',NEW.ref);
-            INSERT INTO WorkbenchDashboardItems(item_ref,category,batch_ref) VALUES(lower(hex(randomblob(24))),'material',NEW.ref); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_task_insert AFTER INSERT ON WorkbenchTaskRefs BEGIN
-            INSERT INTO WorkbenchDashboardItems(item_ref,category,task_ref) VALUES(lower(hex(randomblob(24))),'actual',NEW.ref);
-            INSERT INTO WorkbenchDashboardItems(item_ref,category,task_ref) VALUES(lower(hex(randomblob(24))),'downtime',NEW.ref); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtime_insert AFTER INSERT ON MachineDowntimes BEGIN
-            UPDATE WorkbenchDashboardDowntimeRefs SET active=0,revision=revision+1 WHERE source_id=NEW.id AND active=1;
-            INSERT INTO WorkbenchDashboardDowntimeRefs VALUES(lower(hex(randomblob(24))),NEW.id,1,1); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtime_update AFTER UPDATE ON MachineDowntimes BEGIN
-            UPDATE WorkbenchDashboardDowntimeRefs SET source_id=NEW.id,revision=revision+1 WHERE source_id=OLD.id AND active=1; END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtime_delete AFTER DELETE ON MachineDowntimes BEGIN
-            UPDATE WorkbenchDashboardDowntimeRefs SET active=0,revision=revision+1 WHERE source_id=OLD.id AND active=1; END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_state_identity BEFORE UPDATE ON WorkbenchDashboardStates
-            WHEN NEW.item_ref IS NOT OLD.item_ref OR NEW.origin_json IS NOT OLD.origin_json OR NEW.revision<>OLD.revision+1
-            BEGIN SELECT RAISE(ABORT,'dashboard origin is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_items_no_update BEFORE UPDATE ON WorkbenchDashboardItems BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_items_no_delete BEFORE DELETE ON WorkbenchDashboardItems BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_history_no_update BEFORE UPDATE ON WorkbenchDashboardHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_history_no_delete BEFORE DELETE ON WorkbenchDashboardHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_states_no_delete BEFORE DELETE ON WorkbenchDashboardStates BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtimerefs_no_delete BEFORE DELETE ON WorkbenchDashboardDowntimeRefs BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_items_no_replace BEFORE INSERT ON WorkbenchDashboardItems WHEN EXISTS (SELECT 1 FROM WorkbenchDashboardItems WHERE item_ref=NEW.item_ref OR (category=NEW.category AND batch_ref=NEW.batch_ref) OR (category=NEW.category AND task_ref=NEW.task_ref)) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_states_no_replace BEFORE INSERT ON WorkbenchDashboardStates WHEN EXISTS (SELECT 1 FROM WorkbenchDashboardStates WHERE item_ref=NEW.item_ref) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_history_no_replace BEFORE INSERT ON WorkbenchDashboardHistory WHEN EXISTS (SELECT 1 FROM WorkbenchDashboardHistory WHERE history_ref=NEW.history_ref OR request_key=NEW.request_key OR (item_ref=NEW.item_ref AND sequence=NEW.sequence)) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtimerefs_no_replace BEFORE INSERT ON WorkbenchDashboardDowntimeRefs WHEN EXISTS (SELECT 1 FROM WorkbenchDashboardDowntimeRefs WHERE ref=NEW.ref OR (active=1 AND NEW.active=1 AND source_id=NEW.source_id)) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
-CREATE TABLE IF NOT EXISTS WorkbenchOutsourcingOperationOrigins (
-            operation_ref TEXT PRIMARY KEY NOT NULL, batch_ref TEXT,
-            FOREIGN KEY(operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref),
-            FOREIGN KEY(batch_ref) REFERENCES WorkbenchEntityRefs(ref));
 CREATE TABLE IF NOT EXISTS WorkbenchOutsourcingReceipts (
             outsourcing_ref TEXT NOT NULL CHECK(length(outsourcing_ref)=48 AND outsourcing_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY,
-            target_kind TEXT NOT NULL CHECK(target_kind IN ('single','merged')),
+            target_kind TEXT NOT NULL CHECK(target_kind IN ('single', 'merged')),
             batch_ref TEXT NOT NULL, supplier_ref TEXT NOT NULL,
             origin_json TEXT NOT NULL, identity_json TEXT NOT NULL, created_at TEXT NOT NULL,
+            latest_fact_ref TEXT NOT NULL CHECK(length(latest_fact_ref)=48 AND latest_fact_ref NOT GLOB '*[^0-9a-f]*'),
+            history_count INTEGER NOT NULL CHECK(typeof(history_count)='integer' AND history_count>0),
+            sent TEXT NOT NULL, planned TEXT NOT NULL, returned TEXT,
+            confirmed_state TEXT NOT NULL CHECK(confirmed_state IN ('in_transit', 'returned', 'awaiting_confirmation')),
+            declared_operator TEXT NOT NULL CHECK(length(trim(declared_operator))>0),
+            local_operator TEXT NOT NULL CHECK(length(trim(local_operator))>0),
+            reason TEXT NOT NULL CHECK(length(trim(reason))>0),
+            recorded_at TEXT NOT NULL,
+            CHECK(planned>=sent AND (returned IS NULL OR returned>=sent)),
+            CHECK(sent<=recorded_at AND (returned IS NULL OR returned<=recorded_at)),
+            CHECK((confirmed_state='returned')=(returned IS NOT NULL)),
             FOREIGN KEY(batch_ref) REFERENCES WorkbenchEntityRefs(ref),
-            FOREIGN KEY(supplier_ref) REFERENCES WorkbenchEntityRefs(ref));
+            FOREIGN KEY(supplier_ref) REFERENCES WorkbenchEntityRefs(ref)
+        );
 CREATE TABLE IF NOT EXISTS WorkbenchOutsourcingMembers (
             operation_ref TEXT PRIMARY KEY NOT NULL, outsourcing_ref TEXT NOT NULL,
-            FOREIGN KEY(operation_ref) REFERENCES WorkbenchOutsourcingOperationOrigins(operation_ref),
+            FOREIGN KEY(operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref),
             FOREIGN KEY(outsourcing_ref) REFERENCES WorkbenchOutsourcingReceipts(outsourcing_ref));
 CREATE INDEX IF NOT EXISTS idx_wb_outsourcing_members_receipt ON WorkbenchOutsourcingMembers(outsourcing_ref);
+CREATE INDEX IF NOT EXISTS idx_wb_outsourcing_receipts_batch ON WorkbenchOutsourcingReceipts(batch_ref, outsourcing_ref);
+CREATE INDEX IF NOT EXISTS idx_wb_outsourcing_receipts_awaiting ON WorkbenchOutsourcingReceipts(outsourcing_ref, planned) WHERE returned IS NULL;
+CREATE INDEX IF NOT EXISTS idx_wb_outsourcing_receipts_returned ON WorkbenchOutsourcingReceipts(outsourcing_ref) WHERE returned IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_wb_outsourcing_external_ops ON BatchOperations(batch_id COLLATE NOCASE, piece_id COLLATE NOCASE, seq, id) WHERE source='external';
 CREATE TABLE IF NOT EXISTS WorkbenchOutsourcingFacts (
             fact_ref TEXT NOT NULL CHECK(length(fact_ref)=48 AND fact_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, outsourcing_ref TEXT NOT NULL,
             sequence INTEGER NOT NULL CHECK(typeof(sequence)='integer' AND sequence>0), previous_fact_ref TEXT,
             sent TEXT NOT NULL, planned TEXT NOT NULL, returned TEXT,
-            confirmed_state TEXT NOT NULL CHECK(confirmed_state IN ('in_transit','returned','awaiting_confirmation')),
+            confirmed_state TEXT NOT NULL CHECK(confirmed_state IN ('in_transit', 'returned', 'awaiting_confirmation')),
             declared_operator TEXT NOT NULL CHECK(length(trim(declared_operator))>0),
             local_operator TEXT NOT NULL CHECK(length(trim(local_operator))>0),
             reason TEXT NOT NULL CHECK(length(trim(reason))>0), recorded_at TEXT NOT NULL,
-            before_json TEXT NOT NULL, source_facts_json TEXT NOT NULL, request_key TEXT NOT NULL UNIQUE,
+            before_json TEXT NOT NULL, request_key TEXT NOT NULL UNIQUE,
             UNIQUE(outsourcing_ref,sequence), UNIQUE(previous_fact_ref),
             CHECK(planned>=sent AND (returned IS NULL OR returned>=sent)),
             CHECK(sent<=recorded_at AND (returned IS NULL OR returned<=recorded_at)),
@@ -1161,11 +1323,6 @@ CREATE TABLE IF NOT EXISTS WorkbenchOutsourcingFacts (
             FOREIGN KEY(outsourcing_ref) REFERENCES WorkbenchOutsourcingReceipts(outsourcing_ref),
             FOREIGN KEY(previous_fact_ref) REFERENCES WorkbenchOutsourcingFacts(fact_ref),
             FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED);
-CREATE TRIGGER IF NOT EXISTS wb_outsourcing_operation_born AFTER INSERT ON WorkbenchPlanSourceRefs
-            WHEN NEW.kind='operation' AND NEW.active=1 BEGIN
-            INSERT INTO WorkbenchOutsourcingOperationOrigins(operation_ref,batch_ref)
-            SELECT NEW.ref,(SELECT ref FROM WorkbenchEntityRefs WHERE kind='batch' AND active=1 AND entity_key=o.batch_id)
-            FROM BatchOperations o WHERE CAST(o.id AS TEXT)=NEW.source_key; END;
 CREATE TRIGGER IF NOT EXISTS wb_outsourcing_fact_sequence BEFORE INSERT ON WorkbenchOutsourcingFacts BEGIN
             SELECT CASE WHEN NEW.sequence<>COALESCE((SELECT MAX(sequence) FROM WorkbenchOutsourcingFacts
                 WHERE outsourcing_ref=NEW.outsourcing_ref),0)+1 OR NEW.previous_fact_ref IS NOT
@@ -1179,10 +1336,17 @@ CREATE TRIGGER IF NOT EXISTS wb_outsourcing_members_sealed BEFORE INSERT ON Work
               OR EXISTS(SELECT 1 FROM WorkbenchOutsourcingReceipts r JOIN WorkbenchOutsourcingMembers m
                   ON m.outsourcing_ref=r.outsourcing_ref WHERE r.outsourcing_ref=NEW.outsourcing_ref AND r.target_kind='single')
             BEGIN SELECT RAISE(ABORT,'outsourcing membership is sealed'); END;
-CREATE TRIGGER IF NOT EXISTS wb_outsourcing_operationorigins_no_update BEFORE UPDATE ON WorkbenchOutsourcingOperationOrigins BEGIN SELECT RAISE(ABORT,'outsourcing evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_outsourcing_operationorigins_no_delete BEFORE DELETE ON WorkbenchOutsourcingOperationOrigins BEGIN SELECT RAISE(ABORT,'outsourcing evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_outsourcing_operationorigins_no_replace BEFORE INSERT ON WorkbenchOutsourcingOperationOrigins WHEN EXISTS(SELECT 1 FROM WorkbenchOutsourcingOperationOrigins WHERE operation_ref=NEW.operation_ref) BEGIN SELECT RAISE(ABORT,'outsourcing evidence cannot be replaced'); END;
-CREATE TRIGGER IF NOT EXISTS wb_outsourcing_receipts_no_update BEFORE UPDATE ON WorkbenchOutsourcingReceipts BEGIN SELECT RAISE(ABORT,'outsourcing evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_outsourcing_receipts_identity_immutable
+            BEFORE UPDATE ON WorkbenchOutsourcingReceipts
+            WHEN NEW.outsourcing_ref IS NOT OLD.outsourcing_ref
+              OR NEW.target_kind IS NOT OLD.target_kind
+              OR NEW.batch_ref IS NOT OLD.batch_ref
+              OR NEW.supplier_ref IS NOT OLD.supplier_ref
+              OR NEW.origin_json IS NOT OLD.origin_json
+              OR NEW.identity_json IS NOT OLD.identity_json
+              OR NEW.created_at IS NOT OLD.created_at
+              OR NEW.history_count IS NOT OLD.history_count + 1
+            BEGIN SELECT RAISE(ABORT,'outsourcing receipt identity is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS wb_outsourcing_receipts_no_delete BEFORE DELETE ON WorkbenchOutsourcingReceipts BEGIN SELECT RAISE(ABORT,'outsourcing evidence is permanent'); END;
 CREATE TRIGGER IF NOT EXISTS wb_outsourcing_receipts_no_replace BEFORE INSERT ON WorkbenchOutsourcingReceipts WHEN EXISTS(SELECT 1 FROM WorkbenchOutsourcingReceipts WHERE outsourcing_ref=NEW.outsourcing_ref) BEGIN SELECT RAISE(ABORT,'outsourcing evidence cannot be replaced'); END;
 CREATE TRIGGER IF NOT EXISTS wb_outsourcing_members_no_update BEFORE UPDATE ON WorkbenchOutsourcingMembers BEGIN SELECT RAISE(ABORT,'outsourcing evidence is permanent'); END;
@@ -1191,69 +1355,81 @@ CREATE TRIGGER IF NOT EXISTS wb_outsourcing_members_no_replace BEFORE INSERT ON 
 CREATE TRIGGER IF NOT EXISTS wb_outsourcing_facts_no_update BEFORE UPDATE ON WorkbenchOutsourcingFacts BEGIN SELECT RAISE(ABORT,'outsourcing evidence is permanent'); END;
 CREATE TRIGGER IF NOT EXISTS wb_outsourcing_facts_no_delete BEFORE DELETE ON WorkbenchOutsourcingFacts BEGIN SELECT RAISE(ABORT,'outsourcing evidence is permanent'); END;
 CREATE TRIGGER IF NOT EXISTS wb_outsourcing_facts_no_replace BEFORE INSERT ON WorkbenchOutsourcingFacts WHEN EXISTS(SELECT 1 FROM WorkbenchOutsourcingFacts WHERE fact_ref=NEW.fact_ref OR request_key=NEW.request_key OR (outsourcing_ref=NEW.outsourcing_ref AND sequence=NEW.sequence)) BEGIN SELECT RAISE(ABORT,'outsourcing evidence cannot be replaced'); END;
-CREATE TABLE IF NOT EXISTS WorkbenchDashboardExternalItems (
+CREATE TABLE IF NOT EXISTS WorkbenchDashboardItems (
             item_ref TEXT NOT NULL CHECK(length(item_ref)=48 AND item_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY,
-            category TEXT NOT NULL DEFAULT 'external' CHECK(category='external'),
-            outsourcing_ref TEXT NOT NULL UNIQUE,
-            FOREIGN KEY(outsourcing_ref) REFERENCES WorkbenchOutsourcingReceipts(outsourcing_ref));
-CREATE TABLE IF NOT EXISTS WorkbenchDashboardExternalStates (
+            category TEXT NOT NULL CHECK(category IN ('delivery', 'actual', 'external', 'downtime', 'material')),
+            batch_ref TEXT,
+            task_ref TEXT CHECK(task_ref IS NULL OR (length(task_ref)=48 AND task_ref NOT GLOB '*[^0-9a-f]*')),
+            outsourcing_ref TEXT,
+            CHECK((category IN ('delivery', 'material') AND batch_ref IS NOT NULL AND task_ref IS NULL AND outsourcing_ref IS NULL)
+               OR (category IN ('actual', 'downtime') AND task_ref IS NOT NULL AND batch_ref IS NULL AND outsourcing_ref IS NULL)
+               OR (category='external' AND outsourcing_ref IS NOT NULL AND batch_ref IS NULL AND task_ref IS NULL)),
+            UNIQUE(category,batch_ref), UNIQUE(category,task_ref), UNIQUE(outsourcing_ref),
+            FOREIGN KEY(batch_ref) REFERENCES WorkbenchEntityRefs(ref),
+            FOREIGN KEY(outsourcing_ref) REFERENCES WorkbenchOutsourcingReceipts(outsourcing_ref)
+        );
+CREATE TABLE IF NOT EXISTS WorkbenchDashboardStates (
             item_ref TEXT PRIMARY KEY NOT NULL, revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision>0),
             handling_json TEXT NOT NULL, origin_json TEXT NOT NULL, updated_at TEXT NOT NULL,
-            FOREIGN KEY(item_ref) REFERENCES WorkbenchDashboardExternalItems(item_ref));
-CREATE TABLE IF NOT EXISTS WorkbenchDashboardExternalHistory (
+            FOREIGN KEY(item_ref) REFERENCES WorkbenchDashboardItems(item_ref)
+        );
+CREATE TABLE IF NOT EXISTS WorkbenchDashboardHistory (
             history_ref TEXT NOT NULL CHECK(length(history_ref)=48 AND history_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, item_ref TEXT NOT NULL,
             sequence INTEGER NOT NULL CHECK(typeof(sequence)='integer' AND sequence>0),
-            action TEXT NOT NULL CHECK(action IN ('transition','reopen')), before_json TEXT NOT NULL, after_json TEXT NOT NULL,
-            source_json TEXT NOT NULL, source_facts_json TEXT NOT NULL,
+            action TEXT NOT NULL CHECK(action IN ('transition', 'reopen')), before_json TEXT NOT NULL, after_json TEXT NOT NULL,
+            source_json TEXT NOT NULL,
             reason TEXT, local_operator TEXT NOT NULL, recorded_at TEXT NOT NULL, request_key TEXT NOT NULL UNIQUE,
-            UNIQUE(item_ref,sequence), FOREIGN KEY(item_ref) REFERENCES WorkbenchDashboardExternalStates(item_ref),
-            FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED);
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_receipt_insert
-            AFTER INSERT ON WorkbenchOutsourcingReceipts BEGIN
-            INSERT INTO WorkbenchDashboardExternalItems(item_ref,outsourcing_ref)
-                VALUES(lower(hex(randomblob(24))),NEW.outsourcing_ref); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_state_identity
-            BEFORE UPDATE ON WorkbenchDashboardExternalStates
+            UNIQUE(item_ref,sequence), FOREIGN KEY(item_ref) REFERENCES WorkbenchDashboardStates(item_ref),
+            FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
+        );
+CREATE TABLE IF NOT EXISTS WorkbenchDashboardDowntimeRefs (
+            ref TEXT NOT NULL CHECK(length(ref)=48 AND ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, source_id INTEGER NOT NULL, active INTEGER NOT NULL CHECK(active IN (0, 1)),
+            revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision>0)
+        );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wb_dashboard_downtime_active ON WorkbenchDashboardDowntimeRefs(source_id) WHERE active=1;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_batch_insert AFTER INSERT ON WorkbenchEntityRefs
+            WHEN NEW.kind='batch' AND NEW.active=1 BEGIN
+            INSERT INTO WorkbenchDashboardItems(item_ref,category,batch_ref) VALUES(lower(hex(randomblob(24))),'delivery',NEW.ref);
+            INSERT INTO WorkbenchDashboardItems(item_ref,category,batch_ref) VALUES(lower(hex(randomblob(24))),'material',NEW.ref); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_task_insert AFTER INSERT ON Schedule BEGIN
+            INSERT INTO WorkbenchDashboardItems(item_ref,category,task_ref) VALUES(lower(hex(randomblob(24))),'actual',NEW.task_ref);
+            INSERT INTO WorkbenchDashboardItems(item_ref,category,task_ref) VALUES(lower(hex(randomblob(24))),'downtime',NEW.task_ref); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_receipt_insert AFTER INSERT ON WorkbenchOutsourcingReceipts BEGIN
+            INSERT INTO WorkbenchDashboardItems(item_ref,category,outsourcing_ref) VALUES(lower(hex(randomblob(24))),'external',NEW.outsourcing_ref); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtime_insert AFTER INSERT ON MachineDowntimes BEGIN
+            UPDATE WorkbenchDashboardDowntimeRefs SET active=0,revision=revision+1 WHERE source_id=NEW.id AND active=1;
+            INSERT INTO WorkbenchDashboardDowntimeRefs(ref,source_id,active,revision)
+            VALUES(lower(hex(randomblob(24))),NEW.id,1,1); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtime_update AFTER UPDATE ON MachineDowntimes BEGIN
+            UPDATE WorkbenchDashboardDowntimeRefs SET source_id=NEW.id,revision=revision+1 WHERE source_id=OLD.id AND active=1; END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtime_delete AFTER DELETE ON MachineDowntimes BEGIN
+            UPDATE WorkbenchDashboardDowntimeRefs SET active=0,revision=revision+1 WHERE source_id=OLD.id AND active=1; END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_state_identity BEFORE UPDATE ON WorkbenchDashboardStates
             WHEN NEW.item_ref IS NOT OLD.item_ref OR NEW.origin_json IS NOT OLD.origin_json OR NEW.revision<>OLD.revision+1
             BEGIN SELECT RAISE(ABORT,'dashboard origin is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_items_no_update BEFORE UPDATE ON WorkbenchDashboardExternalItems BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_items_no_delete BEFORE DELETE ON WorkbenchDashboardExternalItems BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_items_no_replace BEFORE INSERT ON WorkbenchDashboardExternalItems WHEN EXISTS(SELECT 1 FROM WorkbenchDashboardExternalItems WHERE item_ref=NEW.item_ref OR outsourcing_ref=NEW.outsourcing_ref) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_states_no_delete BEFORE DELETE ON WorkbenchDashboardExternalStates BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_states_no_replace BEFORE INSERT ON WorkbenchDashboardExternalStates WHEN EXISTS(SELECT 1 FROM WorkbenchDashboardExternalStates WHERE item_ref=NEW.item_ref) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_history_no_update BEFORE UPDATE ON WorkbenchDashboardExternalHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_history_no_delete BEFORE DELETE ON WorkbenchDashboardExternalHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_history_no_replace BEFORE INSERT ON WorkbenchDashboardExternalHistory WHEN EXISTS(SELECT 1 FROM WorkbenchDashboardExternalHistory WHERE history_ref=NEW.history_ref OR request_key=NEW.request_key OR (item_ref=NEW.item_ref AND sequence=NEW.sequence)) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
-CREATE TABLE IF NOT EXISTS WorkbenchOutsourcingSourceConfirmations (
-            operation_ref TEXT PRIMARY KEY NOT NULL, batch_ref TEXT NOT NULL, fact_ref TEXT NOT NULL,
-            FOREIGN KEY(operation_ref) REFERENCES WorkbenchOutsourcingOperationOrigins(operation_ref),
-            FOREIGN KEY(batch_ref) REFERENCES WorkbenchEntityRefs(ref),
-            FOREIGN KEY(fact_ref) REFERENCES WorkbenchOutsourcingFacts(fact_ref));
-CREATE TRIGGER IF NOT EXISTS wb_outsourcing_source_confirmation_guard
-            BEFORE INSERT ON WorkbenchOutsourcingSourceConfirmations BEGIN
-            SELECT CASE WHEN NOT EXISTS (
-                SELECT 1 FROM WorkbenchOutsourcingOperationOrigins o
-                JOIN WorkbenchOutsourcingMembers m ON m.operation_ref=o.operation_ref
-                JOIN WorkbenchOutsourcingReceipts r ON r.outsourcing_ref=m.outsourcing_ref
-                JOIN WorkbenchOutsourcingFacts f ON f.outsourcing_ref=r.outsourcing_ref
-                WHERE o.operation_ref=NEW.operation_ref AND o.batch_ref IS NULL
-                AND r.batch_ref=NEW.batch_ref AND f.fact_ref=NEW.fact_ref AND f.sequence=1)
-                THEN RAISE(ABORT,'outsourcing source confirmation must reference its first registration') END; END;
-CREATE TRIGGER IF NOT EXISTS wb_outsourcing_source_confirmation_no_update BEFORE UPDATE ON WorkbenchOutsourcingSourceConfirmations BEGIN SELECT RAISE(ABORT,'outsourcing source confirmation is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_outsourcing_source_confirmation_no_delete BEFORE DELETE ON WorkbenchOutsourcingSourceConfirmations BEGIN SELECT RAISE(ABORT,'outsourcing source confirmation is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_outsourcing_source_confirmation_no_replace BEFORE INSERT ON WorkbenchOutsourcingSourceConfirmations WHEN EXISTS(SELECT 1 FROM WorkbenchOutsourcingSourceConfirmations WHERE operation_ref=NEW.operation_ref) BEGIN SELECT RAISE(ABORT,'outsourcing source confirmation cannot be replaced'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_items_no_update BEFORE UPDATE ON WorkbenchDashboardItems BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_items_no_delete BEFORE DELETE ON WorkbenchDashboardItems BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_history_no_update BEFORE UPDATE ON WorkbenchDashboardHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_history_no_delete BEFORE DELETE ON WorkbenchDashboardHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_states_no_delete BEFORE DELETE ON WorkbenchDashboardStates BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtimerefs_no_delete BEFORE DELETE ON WorkbenchDashboardDowntimeRefs BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_items_no_replace BEFORE INSERT ON WorkbenchDashboardItems WHEN EXISTS (SELECT 1 FROM WorkbenchDashboardItems WHERE item_ref=NEW.item_ref OR (category=NEW.category AND batch_ref=NEW.batch_ref) OR (category=NEW.category AND task_ref=NEW.task_ref) OR outsourcing_ref=NEW.outsourcing_ref) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_states_no_replace BEFORE INSERT ON WorkbenchDashboardStates WHEN EXISTS (SELECT 1 FROM WorkbenchDashboardStates WHERE item_ref=NEW.item_ref) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_history_no_replace BEFORE INSERT ON WorkbenchDashboardHistory WHEN EXISTS (SELECT 1 FROM WorkbenchDashboardHistory WHERE history_ref=NEW.history_ref OR request_key=NEW.request_key OR (item_ref=NEW.item_ref AND sequence=NEW.sequence)) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtimerefs_no_replace BEFORE INSERT ON WorkbenchDashboardDowntimeRefs WHEN EXISTS (SELECT 1 FROM WorkbenchDashboardDowntimeRefs WHERE ref=NEW.ref OR (active=1 AND NEW.active=1 AND source_id=NEW.source_id)) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
 CREATE TABLE IF NOT EXISTS BatchExternalContexts (
             operation_id INTEGER PRIMARY KEY,
             part_no TEXT NOT NULL, sequence INTEGER NOT NULL,
             template_operation_id INTEGER, template_status TEXT,
             group_id TEXT, group_part_no TEXT, start_sequence INTEGER, end_sequence INTEGER,
-            merge_mode TEXT, total_days REAL, supplier_id TEXT, group_ref TEXT,
+            merge_mode TEXT CHECK(merge_mode IS NULL OR merge_mode IN ('separate', 'merged')),
+            total_days REAL CHECK(total_days IS NULL OR (typeof(total_days) IN ('integer', 'real') AND total_days > 0 AND total_days <= 36500)), supplier_id TEXT, group_ref TEXT,
             template_operation_ref TEXT,
-            origin TEXT NOT NULL CHECK(origin IN ('creation','template_copy','instance_copy')),
+            origin TEXT NOT NULL CHECK(origin IN ('creation', 'template_copy', 'instance_copy')),
             captured_at TEXT NOT NULL,
             FOREIGN KEY(operation_id) REFERENCES BatchOperations(id) ON DELETE CASCADE);
 CREATE TRIGGER IF NOT EXISTS batch_external_context_created
-            AFTER INSERT ON BatchOperations WHEN lower(trim(NEW.source))='external' BEGIN INSERT INTO BatchExternalContexts SELECT o.id,b.part_no,o.seq,t.id,t.status,t.ext_group_id,
+            AFTER INSERT ON BatchOperations WHEN NEW.source='external' BEGIN INSERT INTO BatchExternalContexts(operation_id,part_no,sequence,template_operation_id,template_status,group_id,group_part_no,start_sequence,end_sequence,merge_mode,total_days,supplier_id,group_ref,template_operation_ref,origin,captured_at) SELECT o.id,b.part_no,o.seq,t.id,t.status,t.ext_group_id,
         g.part_no,g.start_seq,g.end_seq,g.merge_mode,g.total_days,g.supplier_id,r.ref,tr.ref,
         'creation',CURRENT_TIMESTAMP
         FROM (SELECT * FROM BatchOperations WHERE id=NEW.id) o JOIN Batches b ON b.batch_id=o.batch_id
@@ -1263,11 +1439,11 @@ CREATE TRIGGER IF NOT EXISTS batch_external_context_created
             AND tr.entity_key=CAST(t.id AS TEXT) AND tr.active=1
         LEFT JOIN WorkbenchEntityRefs r ON r.kind='template_external_group'
             AND r.entity_key=g.group_id AND r.active=1
-        WHERE lower(trim(o.source))='external'; END;
+        WHERE o.source='external'; END;
 CREATE TRIGGER IF NOT EXISTS batch_external_context_source_changed
-            AFTER UPDATE OF source ON BatchOperations WHEN lower(trim(NEW.source))='external'
-                AND lower(trim(OLD.source)) IS NOT lower(trim(NEW.source))
-            BEGIN DELETE FROM BatchExternalContexts WHERE operation_id=NEW.id; INSERT INTO BatchExternalContexts SELECT o.id,b.part_no,o.seq,t.id,t.status,t.ext_group_id,
+            AFTER UPDATE OF source ON BatchOperations WHEN NEW.source='external'
+                AND OLD.source IS NOT NEW.source
+            BEGIN DELETE FROM BatchExternalContexts WHERE operation_id=NEW.id; INSERT INTO BatchExternalContexts(operation_id,part_no,sequence,template_operation_id,template_status,group_id,group_part_no,start_sequence,end_sequence,merge_mode,total_days,supplier_id,group_ref,template_operation_ref,origin,captured_at) SELECT o.id,b.part_no,o.seq,t.id,t.status,t.ext_group_id,
         g.part_no,g.start_seq,g.end_seq,g.merge_mode,g.total_days,g.supplier_id,r.ref,tr.ref,
         'creation',CURRENT_TIMESTAMP
         FROM (SELECT * FROM BatchOperations WHERE id=NEW.id) o JOIN Batches b ON b.batch_id=o.batch_id
@@ -1277,7 +1453,7 @@ CREATE TRIGGER IF NOT EXISTS batch_external_context_source_changed
             AND tr.entity_key=CAST(t.id AS TEXT) AND tr.active=1
         LEFT JOIN WorkbenchEntityRefs r ON r.kind='template_external_group'
             AND r.entity_key=g.group_id AND r.active=1
-        WHERE lower(trim(o.source))='external'; END;
+        WHERE o.source='external'; END;
 CREATE TABLE IF NOT EXISTS WorkbenchCalendarDefaults (
             singleton INTEGER PRIMARY KEY CHECK(singleton=1),
             state_ref TEXT NOT NULL DEFAULT (lower(hex(randomblob(24)))),
@@ -1298,7 +1474,7 @@ CREATE TRIGGER IF NOT EXISTS wb_machine_types_delete AFTER DELETE ON MachineOpTy
         END;
 CREATE TABLE IF NOT EXISTS BatchMaterialReviews (
             requirement_id INTEGER PRIMARY KEY REFERENCES BatchMaterials(id) ON DELETE CASCADE,
-            batch_quantity INTEGER CHECK(batch_quantity >= 0));
+            batch_quantity INTEGER NOT NULL CHECK(typeof(batch_quantity) = 'integer' AND batch_quantity BETWEEN 1 AND 9007199254740991));
 CREATE TABLE IF NOT EXISTS BatchMaterialStages (
             requirement_id INTEGER PRIMARY KEY REFERENCES BatchMaterials(id) ON DELETE CASCADE,
             operation_id INTEGER NOT NULL REFERENCES BatchOperations(id) ON DELETE RESTRICT);
@@ -1306,7 +1482,7 @@ CREATE TABLE IF NOT EXISTS BatchMaterialArrivals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             requirement_id INTEGER NOT NULL REFERENCES BatchMaterials(id) ON DELETE CASCADE,
             arrival_date TEXT NOT NULL,
-            quantity REAL NOT NULL CHECK(quantity > 0));
+            quantity REAL NOT NULL CHECK(typeof(quantity) IN ('integer', 'real') AND quantity > 0 AND quantity <= 9007199254740991));
 CREATE INDEX IF NOT EXISTS idx_material_arrival_requirement ON BatchMaterialArrivals(requirement_id);
 CREATE TABLE IF NOT EXISTS BatchQuantitySplits (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1316,30 +1492,29 @@ CREATE TABLE IF NOT EXISTS BatchQuantitySplits (
             split_quantity INTEGER NOT NULL,
             allocation_date TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS idx_batch_quantity_splits_source ON BatchQuantitySplits(source_batch_id);
 CREATE TRIGGER IF NOT EXISTS wb_material_quantity_basis
             AFTER UPDATE OF quantity ON Batches
             WHEN NEW.quantity IS NOT OLD.quantity
             BEGIN
                 INSERT OR IGNORE INTO BatchMaterialReviews(requirement_id,batch_quantity)
-                    SELECT id, CASE WHEN typeof(OLD.quantity) = 'integer' AND OLD.quantity >= 0
-                        THEN OLD.quantity ELSE NULL END
-                    FROM BatchMaterials WHERE batch_id = NEW.batch_id;
+                    SELECT id, OLD.quantity FROM BatchMaterials WHERE batch_id = NEW.batch_id;
                 UPDATE Batches SET ready_status = 'no'
                     WHERE batch_id = NEW.batch_id AND EXISTS (
                         SELECT 1 FROM BatchMaterials m
                         JOIN BatchMaterialReviews r ON r.requirement_id = m.id
                         WHERE m.batch_id = NEW.batch_id
-                            AND (r.batch_quantity IS NULL OR r.batch_quantity IS NOT NEW.quantity));
+                            AND r.batch_quantity IS NOT NEW.quantity);
             END;
 CREATE TABLE IF NOT EXISTS WorkbenchSourceRevisions (
         source_key TEXT PRIMARY KEY NOT NULL,
         revision INTEGER NOT NULL DEFAULT 1 CHECK(typeof(revision) = 'integer' AND revision >= 1)
     );
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_parts_insert AFTER INSERT ON "Parts" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'parts'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_parts_update AFTER UPDATE ON "Parts" WHEN OLD."part_no" IS NOT NEW."part_no" OR OLD."part_name" IS NOT NEW."part_name" OR OLD."route_raw" IS NOT NEW."route_raw" OR OLD."route_parsed" IS NOT NEW."route_parsed" OR OLD."remark" IS NOT NEW."remark" OR OLD."created_at" IS NOT NEW."created_at" OR OLD."updated_at" IS NOT NEW."updated_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'parts'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_parts_update AFTER UPDATE ON "Parts" WHEN OLD."part_no" IS NOT NEW."part_no" OR OLD."part_name" IS NOT NEW."part_name" OR OLD."route_raw" IS NOT NEW."route_raw" OR OLD."route_parsed" IS NOT NEW."route_parsed" OR OLD."remark" IS NOT NEW."remark" OR OLD."workflow_origin" IS NOT NEW."workflow_origin" OR OLD."route_confirmed_at" IS NOT NEW."route_confirmed_at" OR OLD."source_confirmed_at" IS NOT NEW."source_confirmed_at" OR OLD."hours_confirmed_at" IS NOT NEW."hours_confirmed_at" OR OLD."created_at" IS NOT NEW."created_at" OR OLD."updated_at" IS NOT NEW."updated_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'parts'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_parts_delete AFTER DELETE ON "Parts" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'parts'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_partoperations_insert AFTER INSERT ON "PartOperations" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'part_operations'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_partoperations_update AFTER UPDATE ON "PartOperations" WHEN OLD."id" IS NOT NEW."id" OR OLD."part_no" IS NOT NEW."part_no" OR OLD."seq" IS NOT NEW."seq" OR OLD."op_type_id" IS NOT NEW."op_type_id" OR OLD."op_type_name" IS NOT NEW."op_type_name" OR OLD."source" IS NOT NEW."source" OR OLD."supplier_id" IS NOT NEW."supplier_id" OR OLD."ext_days" IS NOT NEW."ext_days" OR OLD."ext_group_id" IS NOT NEW."ext_group_id" OR OLD."setup_hours" IS NOT NEW."setup_hours" OR OLD."unit_hours" IS NOT NEW."unit_hours" OR OLD."status" IS NOT NEW."status" OR OLD."created_at" IS NOT NEW."created_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'part_operations'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_partoperations_update AFTER UPDATE ON "PartOperations" WHEN OLD."id" IS NOT NEW."id" OR OLD."part_no" IS NOT NEW."part_no" OR OLD."seq" IS NOT NEW."seq" OR OLD."op_type_id" IS NOT NEW."op_type_id" OR OLD."op_type_name" IS NOT NEW."op_type_name" OR OLD."source" IS NOT NEW."source" OR OLD."supplier_id" IS NOT NEW."supplier_id" OR OLD."ext_days" IS NOT NEW."ext_days" OR OLD."ext_group_id" IS NOT NEW."ext_group_id" OR OLD."setup_hours" IS NOT NEW."setup_hours" OR OLD."unit_hours" IS NOT NEW."unit_hours" OR OLD."status" IS NOT NEW."status" OR OLD."source_confirmed_at" IS NOT NEW."source_confirmed_at" OR OLD."hours_confirmed_at" IS NOT NEW."hours_confirmed_at" OR OLD."created_at" IS NOT NEW."created_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'part_operations'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_partoperations_delete AFTER DELETE ON "PartOperations" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'part_operations'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_externalgroups_insert AFTER INSERT ON "ExternalGroups" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'external_groups'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_externalgroups_update AFTER UPDATE ON "ExternalGroups" WHEN OLD."group_id" IS NOT NEW."group_id" OR OLD."part_no" IS NOT NEW."part_no" OR OLD."start_seq" IS NOT NEW."start_seq" OR OLD."end_seq" IS NOT NEW."end_seq" OR OLD."merge_mode" IS NOT NEW."merge_mode" OR OLD."total_days" IS NOT NEW."total_days" OR OLD."supplier_id" IS NOT NEW."supplier_id" OR OLD."remark" IS NOT NEW."remark" OR OLD."created_at" IS NOT NEW."created_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'external_groups'; END;
@@ -1348,13 +1523,13 @@ CREATE TRIGGER IF NOT EXISTS wb_src_rev_optypes_insert AFTER INSERT ON "OpTypes"
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_optypes_update AFTER UPDATE ON "OpTypes" WHEN OLD."op_type_id" IS NOT NEW."op_type_id" OR OLD."name" IS NOT NEW."name" OR OLD."category" IS NOT NEW."category" OR OLD."default_hours" IS NOT NEW."default_hours" OR OLD."remark" IS NOT NEW."remark" OR OLD."created_at" IS NOT NEW."created_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'op_types'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_optypes_delete AFTER DELETE ON "OpTypes" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'op_types'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_machines_insert AFTER INSERT ON "Machines" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'machines'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_machines_update AFTER UPDATE ON "Machines" WHEN OLD."machine_id" IS NOT NEW."machine_id" OR OLD."name" IS NOT NEW."name" OR OLD."op_type_id" IS NOT NEW."op_type_id" OR OLD."category" IS NOT NEW."category" OR OLD."status" IS NOT NEW."status" OR OLD."remark" IS NOT NEW."remark" OR OLD."created_at" IS NOT NEW."created_at" OR OLD."updated_at" IS NOT NEW."updated_at" OR OLD."team_id" IS NOT NEW."team_id" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'machines'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_machines_update AFTER UPDATE ON "Machines" WHEN OLD."machine_id" IS NOT NEW."machine_id" OR OLD."name" IS NOT NEW."name" OR OLD."category" IS NOT NEW."category" OR OLD."status" IS NOT NEW."status" OR OLD."remark" IS NOT NEW."remark" OR OLD."created_at" IS NOT NEW."created_at" OR OLD."updated_at" IS NOT NEW."updated_at" OR OLD."team_id" IS NOT NEW."team_id" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'machines'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_machines_delete AFTER DELETE ON "Machines" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'machines'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_machineoptypes_insert AFTER INSERT ON "MachineOpTypes" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'machine_op_types'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_machineoptypes_update AFTER UPDATE ON "MachineOpTypes" WHEN OLD."machine_id" IS NOT NEW."machine_id" OR OLD."op_type_id" IS NOT NEW."op_type_id" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'machine_op_types'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_machineoptypes_delete AFTER DELETE ON "MachineOpTypes" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'machine_op_types'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_machinedowntimes_insert AFTER INSERT ON "MachineDowntimes" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'machine_downtimes'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_machinedowntimes_update AFTER UPDATE ON "MachineDowntimes" WHEN OLD."id" IS NOT NEW."id" OR OLD."machine_id" IS NOT NEW."machine_id" OR OLD."scope_type" IS NOT NEW."scope_type" OR OLD."scope_value" IS NOT NEW."scope_value" OR OLD."start_time" IS NOT NEW."start_time" OR OLD."end_time" IS NOT NEW."end_time" OR OLD."reason_code" IS NOT NEW."reason_code" OR OLD."reason_detail" IS NOT NEW."reason_detail" OR OLD."status" IS NOT NEW."status" OR OLD."created_at" IS NOT NEW."created_at" OR OLD."updated_at" IS NOT NEW."updated_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'machine_downtimes'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_machinedowntimes_update AFTER UPDATE ON "MachineDowntimes" WHEN OLD."id" IS NOT NEW."id" OR OLD."machine_id" IS NOT NEW."machine_id" OR OLD."scope_type" IS NOT NEW."scope_type" OR OLD."scope_value" IS NOT NEW."scope_value" OR OLD."start_time" IS NOT NEW."start_time" OR OLD."end_time" IS NOT NEW."end_time" OR OLD."start_us" IS NOT NEW."start_us" OR OLD."end_us" IS NOT NEW."end_us" OR OLD."reason_code" IS NOT NEW."reason_code" OR OLD."reason_detail" IS NOT NEW."reason_detail" OR OLD."status" IS NOT NEW."status" OR OLD."created_at" IS NOT NEW."created_at" OR OLD."updated_at" IS NOT NEW."updated_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'machine_downtimes'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_machinedowntimes_delete AFTER DELETE ON "MachineDowntimes" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'machine_downtimes'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_operators_insert AFTER INSERT ON "Operators" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'operators'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_operators_update AFTER UPDATE ON "Operators" WHEN OLD."operator_id" IS NOT NEW."operator_id" OR OLD."name" IS NOT NEW."name" OR OLD."status" IS NOT NEW."status" OR OLD."remark" IS NOT NEW."remark" OR OLD."created_at" IS NOT NEW."created_at" OR OLD."updated_at" IS NOT NEW."updated_at" OR OLD."team_id" IS NOT NEW."team_id" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'operators'; END;
@@ -1434,20 +1609,11 @@ CREATE TRIGGER IF NOT EXISTS wb_src_rev_batchmaterialarrivals_delete AFTER DELET
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_batchquantitysplits_insert AFTER INSERT ON "BatchQuantitySplits" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'batch_quantity_splits'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_batchquantitysplits_update AFTER UPDATE ON "BatchQuantitySplits" WHEN OLD."id" IS NOT NEW."id" OR OLD."source_batch_id" IS NOT NEW."source_batch_id" OR OLD."child_batch_id" IS NOT NEW."child_batch_id" OR OLD."original_quantity" IS NOT NEW."original_quantity" OR OLD."split_quantity" IS NOT NEW."split_quantity" OR OLD."allocation_date" IS NOT NEW."allocation_date" OR OLD."created_at" IS NOT NEW."created_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'batch_quantity_splits'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_batchquantitysplits_delete AFTER DELETE ON "BatchQuantitySplits" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'batch_quantity_splits'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchprocessworkflow_insert AFTER INSERT ON "WorkbenchProcessWorkflow" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_process_workflow'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchprocessworkflow_update AFTER UPDATE ON "WorkbenchProcessWorkflow" WHEN OLD."part_ref" IS NOT NEW."part_ref" OR OLD."route_confirmed_at" IS NOT NEW."route_confirmed_at" OR OLD."route_confirmed_by" IS NOT NEW."route_confirmed_by" OR OLD."route_content_json" IS NOT NEW."route_content_json" OR OLD."source_confirmed_at" IS NOT NEW."source_confirmed_at" OR OLD."source_confirmed_by" IS NOT NEW."source_confirmed_by" OR OLD."source_content_json" IS NOT NEW."source_content_json" OR OLD."hours_confirmed_at" IS NOT NEW."hours_confirmed_at" OR OLD."hours_confirmed_by" IS NOT NEW."hours_confirmed_by" OR OLD."hours_content_json" IS NOT NEW."hours_content_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_process_workflow'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchprocessworkflow_delete AFTER DELETE ON "WorkbenchProcessWorkflow" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_process_workflow'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchprocessoperationconfirmations_insert AFTER INSERT ON "WorkbenchProcessOperationConfirmations" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_process_operation_confirmations'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchprocessoperationconfirmations_update AFTER UPDATE ON "WorkbenchProcessOperationConfirmations" WHEN OLD."part_ref" IS NOT NEW."part_ref" OR OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."stage" IS NOT NEW."stage" OR OLD."confirmed_at" IS NOT NEW."confirmed_at" OR OLD."confirmed_by" IS NOT NEW."confirmed_by" OR OLD."content_json" IS NOT NEW."content_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_process_operation_confirmations'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchprocessoperationconfirmations_delete AFTER DELETE ON "WorkbenchProcessOperationConfirmations" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_process_operation_confirmations'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtemplatelineageorigins_insert AFTER INSERT ON "WorkbenchTemplateLineageOrigins" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_template_lineage'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtemplatelineageorigins_update AFTER UPDATE ON "WorkbenchTemplateLineageOrigins" WHEN OLD."lineage_ref" IS NOT NEW."lineage_ref" OR OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."template_operation_ref" IS NOT NEW."template_operation_ref" OR OLD."template_revision" IS NOT NEW."template_revision" OR OLD."source_operation_ref" IS NOT NEW."source_operation_ref" OR OLD."source_lineage_ref" IS NOT NEW."source_lineage_ref" OR OLD."source_event_id" IS NOT NEW."source_event_id" OR OLD."source_eligible" IS NOT NEW."source_eligible" OR OLD."birth_event_id" IS NOT NEW."birth_event_id" OR OLD."evidence_version" IS NOT NEW."evidence_version" OR OLD."template_snapshot" IS NOT NEW."template_snapshot" OR OLD."instance_snapshot" IS NOT NEW."instance_snapshot" OR OLD."recorded_at_utc" IS NOT NEW."recorded_at_utc" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_template_lineage'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtemplatelineageorigins_update AFTER UPDATE ON "WorkbenchTemplateLineageOrigins" WHEN OLD."lineage_ref" IS NOT NEW."lineage_ref" OR OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."template_operation_ref" IS NOT NEW."template_operation_ref" OR OLD."template_revision" IS NOT NEW."template_revision" OR OLD."source_eligible" IS NOT NEW."source_eligible" OR OLD."instance_modified" IS NOT NEW."instance_modified" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_template_lineage'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtemplatelineageorigins_delete AFTER DELETE ON "WorkbenchTemplateLineageOrigins" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_template_lineage'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtemplatelineageevents_insert AFTER INSERT ON "WorkbenchTemplateLineageEvents" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_template_lineage'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtemplatelineageevents_update AFTER UPDATE ON "WorkbenchTemplateLineageEvents" WHEN OLD."event_id" IS NOT NEW."event_id" OR OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."event_type" IS NOT NEW."event_type" OR OLD."affects_calibration" IS NOT NEW."affects_calibration" OR OLD."reason" IS NOT NEW."reason" OR OLD."recorded_at_utc" IS NOT NEW."recorded_at_utc" OR OLD."id" IS NOT NEW."id" OR OLD."op_code" IS NOT NEW."op_code" OR OLD."batch_id" IS NOT NEW."batch_id" OR OLD."piece_id" IS NOT NEW."piece_id" OR OLD."seq" IS NOT NEW."seq" OR OLD."op_type_id" IS NOT NEW."op_type_id" OR OLD."op_type_name" IS NOT NEW."op_type_name" OR OLD."source" IS NOT NEW."source" OR OLD."machine_id" IS NOT NEW."machine_id" OR OLD."operator_id" IS NOT NEW."operator_id" OR OLD."supplier_id" IS NOT NEW."supplier_id" OR OLD."setup_hours" IS NOT NEW."setup_hours" OR OLD."unit_hours" IS NOT NEW."unit_hours" OR OLD."ext_days" IS NOT NEW."ext_days" OR OLD."status" IS NOT NEW."status" OR OLD."created_at" IS NOT NEW."created_at" OR OLD."batch_ref" IS NOT NEW."batch_ref" OR OLD."part_ref" IS NOT NEW."part_ref" OR OLD."quantity" IS NOT NEW."quantity" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_template_lineage'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtemplatelineageevents_delete AFTER DELETE ON "WorkbenchTemplateLineageEvents" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_template_lineage'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_schedulehistory_insert AFTER INSERT ON "ScheduleHistory" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'schedule_history'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_schedulehistory_update AFTER UPDATE ON "ScheduleHistory" WHEN OLD."id" IS NOT NEW."id" OR OLD."schedule_time" IS NOT NEW."schedule_time" OR OLD."version" IS NOT NEW."version" OR OLD."strategy" IS NOT NEW."strategy" OR OLD."batch_count" IS NOT NEW."batch_count" OR OLD."op_count" IS NOT NEW."op_count" OR OLD."result_status" IS NOT NEW."result_status" OR OLD."result_summary" IS NOT NEW."result_summary" OR OLD."created_by" IS NOT NEW."created_by" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'schedule_history'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_schedulehistory_update AFTER UPDATE ON "ScheduleHistory" WHEN OLD."version" IS NOT NEW."version" OR OLD."plan_ref" IS NOT NEW."plan_ref" OR OLD."schedule_time" IS NOT NEW."schedule_time" OR OLD."adopted_at" IS NOT NEW."adopted_at" OR OLD."strategy" IS NOT NEW."strategy" OR OLD."batch_count" IS NOT NEW."batch_count" OR OLD."op_count" IS NOT NEW."op_count" OR OLD."result_status" IS NOT NEW."result_status" OR OLD."created_by" IS NOT NEW."created_by" OR OLD."request_key" IS NOT NEW."request_key" OR OLD."declared_operator" IS NOT NEW."declared_operator" OR OLD."application_operator" IS NOT NEW."application_operator" OR OLD."reason" IS NOT NEW."reason" OR OLD."source_kind" IS NOT NEW."source_kind" OR OLD."source_ref" IS NOT NEW."source_ref" OR OLD."source_label" IS NOT NEW."source_label" OR OLD."run_ref" IS NOT NEW."run_ref" OR OLD."draft_ref" IS NOT NEW."draft_ref" OR OLD."accepted_at" IS NOT NEW."accepted_at" OR OLD."finished_at" IS NOT NEW."finished_at" OR OLD."algorithm_json" IS NOT NEW."algorithm_json" OR OLD."baseline_version" IS NOT NEW."baseline_version" OR OLD."baseline_ref" IS NOT NEW."baseline_ref" OR OLD."baseline_kind" IS NOT NEW."baseline_kind" OR OLD."baseline_captured_at" IS NOT NEW."baseline_captured_at" OR OLD."baseline_captured_task_count" IS NOT NEW."baseline_captured_task_count" OR OLD."material_policy_json" IS NOT NEW."material_policy_json" OR OLD."deferred_operation_ids_json" IS NOT NEW."deferred_operation_ids_json" OR OLD."operation_effort_json" IS NOT NEW."operation_effort_json" OR OLD."plan_start_time" IS NOT NEW."plan_start_time" OR OLD."plan_end_time" IS NOT NEW."plan_end_time" OR OLD."end_includes_point" IS NOT NEW."end_includes_point" OR OLD."gantt_node_count" IS NOT NEW."gantt_node_count" OR OLD."gantt_graph_json" IS NOT NEW."gantt_graph_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'schedule_history'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_schedulehistory_delete AFTER DELETE ON "ScheduleHistory" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'schedule_history'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_scheduleversionseq_insert AFTER INSERT ON "ScheduleVersionSeq" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'schedule_version_seq'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_scheduleversionseq_update AFTER UPDATE ON "ScheduleVersionSeq" WHEN OLD."version" IS NOT NEW."version" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'schedule_version_seq'; END;
@@ -1456,11 +1622,8 @@ CREATE TRIGGER IF NOT EXISTS wb_src_rev_scheduleconfig_insert AFTER INSERT ON "S
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_scheduleconfig_update AFTER UPDATE ON "ScheduleConfig" WHEN OLD."id" IS NOT NEW."id" OR OLD."config_key" IS NOT NEW."config_key" OR OLD."config_value" IS NOT NEW."config_value" OR OLD."description" IS NOT NEW."description" OR OLD."updated_at" IS NOT NEW."updated_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'schedule_config'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_scheduleconfig_delete AFTER DELETE ON "ScheduleConfig" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'schedule_config'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchplansourcerefs_insert AFTER INSERT ON "WorkbenchPlanSourceRefs" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_plan_identity'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchplansourcerefs_update AFTER UPDATE ON "WorkbenchPlanSourceRefs" WHEN OLD."ref" IS NOT NEW."ref" OR OLD."kind" IS NOT NEW."kind" OR OLD."source_key" IS NOT NEW."source_key" OR OLD."alternate_key" IS NOT NEW."alternate_key" OR OLD."extra_key" IS NOT NEW."extra_key" OR OLD."version" IS NOT NEW."version" OR OLD."plan_role" IS NOT NEW."plan_role" OR OLD."source_table" IS NOT NEW."source_table" OR OLD."owner_key" IS NOT NEW."owner_key" OR OLD."operation_id" IS NOT NEW."operation_id" OR OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."active" IS NOT NEW."active" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_plan_identity'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchplansourcerefs_update AFTER UPDATE ON "WorkbenchPlanSourceRefs" WHEN OLD."ref" IS NOT NEW."ref" OR OLD."kind" IS NOT NEW."kind" OR OLD."source_key" IS NOT NEW."source_key" OR OLD."alternate_key" IS NOT NEW."alternate_key" OR OLD."extra_key" IS NOT NEW."extra_key" OR OLD."active" IS NOT NEW."active" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_plan_identity'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchplansourcerefs_delete AFTER DELETE ON "WorkbenchPlanSourceRefs" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_plan_identity'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtaskrefs_insert AFTER INSERT ON "WorkbenchTaskRefs" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_plan_identity'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtaskrefs_update AFTER UPDATE ON "WorkbenchTaskRefs" WHEN OLD."ref" IS NOT NEW."ref" OR OLD."plan_ref" IS NOT NEW."plan_ref" OR OLD."row_ref" IS NOT NEW."row_ref" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_plan_identity'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtaskrefs_delete AFTER DELETE ON "WorkbenchTaskRefs" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_plan_identity'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchplanidentityclock_insert AFTER INSERT ON "WorkbenchPlanIdentityClock" WHEN NEW."singleton" IS NOT 1 OR NEW."revision" IS NOT 1 BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_plan_identity'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchplanidentityclock_update AFTER UPDATE ON "WorkbenchPlanIdentityClock" WHEN OLD."singleton" IS NOT NEW."singleton" OR OLD."revision" IS NOT NEW."revision" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_plan_identity'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchplanidentityclock_delete AFTER DELETE ON "WorkbenchPlanIdentityClock" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_plan_identity'; END;
@@ -1468,7 +1631,7 @@ CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchexecutionledgerclock_insert AFT
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchexecutionledgerclock_update AFTER UPDATE ON "WorkbenchExecutionLedgerClock" WHEN OLD."singleton" IS NOT NEW."singleton" OR OLD."revision" IS NOT NEW."revision" OR OLD."next_report_no" IS NOT NEW."next_report_no" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'execution_ledger'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchexecutionledgerclock_delete AFTER DELETE ON "WorkbenchExecutionLedgerClock" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'execution_ledger'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchproductionreports_insert AFTER INSERT ON "WorkbenchProductionReports" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'execution_ledger'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchproductionreports_update AFTER UPDATE ON "WorkbenchProductionReports" WHEN OLD."report_ref" IS NOT NEW."report_ref" OR OLD."report_no" IS NOT NEW."report_no" OR OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."recorded_against_task_ref" IS NOT NEW."recorded_against_task_ref" OR OLD."recorded_against_plan_ref" IS NOT NEW."recorded_against_plan_ref" OR OLD."source" IS NOT NEW."source" OR OLD."recorded_at" IS NOT NEW."recorded_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'execution_ledger'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchproductionreports_update AFTER UPDATE ON "WorkbenchProductionReports" WHEN OLD."report_ref" IS NOT NEW."report_ref" OR OLD."report_no" IS NOT NEW."report_no" OR OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."recorded_against_task_ref" IS NOT NEW."recorded_against_task_ref" OR OLD."recorded_against_plan_ref" IS NOT NEW."recorded_against_plan_ref" OR OLD."source" IS NOT NEW."source" OR OLD."recorded_at" IS NOT NEW."recorded_at" OR OLD."current_revision_ref" IS NOT NEW."current_revision_ref" OR OLD."revision_count" IS NOT NEW."revision_count" OR OLD."voided" IS NOT NEW."voided" OR OLD."actual_start" IS NOT NEW."actual_start" OR OLD."actual_end" IS NOT NEW."actual_end" OR OLD."completed_quantity" IS NOT NEW."completed_quantity" OR OLD."effective_processing_hours" IS NOT NEW."effective_processing_hours" OR OLD."actual_machine_ref" IS NOT NEW."actual_machine_ref" OR OLD."actual_operator_ref" IS NOT NEW."actual_operator_ref" OR OLD."remark" IS NOT NEW."remark" OR OLD."current_local_operator" IS NOT NEW."current_local_operator" OR OLD."current_declared_operator" IS NOT NEW."current_declared_operator" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'execution_ledger'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchproductionreports_delete AFTER DELETE ON "WorkbenchProductionReports" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'execution_ledger'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchproductionreportrevisions_insert AFTER INSERT ON "WorkbenchProductionReportRevisions" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'execution_ledger'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchproductionreportrevisions_update AFTER UPDATE ON "WorkbenchProductionReportRevisions" WHEN OLD."revision_ref" IS NOT NEW."revision_ref" OR OLD."report_ref" IS NOT NEW."report_ref" OR OLD."sequence" IS NOT NEW."sequence" OR OLD."previous_revision_ref" IS NOT NEW."previous_revision_ref" OR OLD."action" IS NOT NEW."action" OR OLD."values_json" IS NOT NEW."values_json" OR OLD."reason" IS NOT NEW."reason" OR OLD."local_operator" IS NOT NEW."local_operator" OR OLD."declared_operator" IS NOT NEW."declared_operator" OR OLD."recorded_at" IS NOT NEW."recorded_at" OR OLD."request_key" IS NOT NEW."request_key" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'execution_ledger'; END;
@@ -1476,66 +1639,72 @@ CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchproductionreportrevisions_delet
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchproductionreportvoids_insert AFTER INSERT ON "WorkbenchProductionReportVoids" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'execution_ledger'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchproductionreportvoids_update AFTER UPDATE ON "WorkbenchProductionReportVoids" WHEN OLD."void_fact_ref" IS NOT NEW."void_fact_ref" OR OLD."report_ref" IS NOT NEW."report_ref" OR OLD."original_revision_ref" IS NOT NEW."original_revision_ref" OR OLD."reason" IS NOT NEW."reason" OR OLD."local_operator" IS NOT NEW."local_operator" OR OLD."declared_operator" IS NOT NEW."declared_operator" OR OLD."recorded_at" IS NOT NEW."recorded_at" OR OLD."request_key" IS NOT NEW."request_key" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'execution_ledger'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchproductionreportvoids_delete AFTER DELETE ON "WorkbenchProductionReportVoids" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'execution_ledger'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingoperationorigins_insert AFTER INSERT ON "WorkbenchOutsourcingOperationOrigins" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingoperationorigins_update AFTER UPDATE ON "WorkbenchOutsourcingOperationOrigins" WHEN OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."batch_ref" IS NOT NEW."batch_ref" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingoperationorigins_delete AFTER DELETE ON "WorkbenchOutsourcingOperationOrigins" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingsourceconfirmations_insert AFTER INSERT ON "WorkbenchOutsourcingSourceConfirmations" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingsourceconfirmations_update AFTER UPDATE ON "WorkbenchOutsourcingSourceConfirmations" WHEN OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."batch_ref" IS NOT NEW."batch_ref" OR OLD."fact_ref" IS NOT NEW."fact_ref" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingsourceconfirmations_delete AFTER DELETE ON "WorkbenchOutsourcingSourceConfirmations" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_operationexecutionstates_insert AFTER INSERT ON "OperationExecutionStates" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'execution_ledger'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_operationexecutionstates_update AFTER UPDATE ON "OperationExecutionStates" WHEN OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."active_report_count" IS NOT NEW."active_report_count" OR OLD."known_completed_quantity" IS NOT NEW."known_completed_quantity" OR OLD."unknown_quantity_count" IS NOT NEW."unknown_quantity_count" OR OLD."internal_complete_flag" IS NOT NEW."internal_complete_flag" OR OLD."external_complete_flag" IS NOT NEW."external_complete_flag" OR OLD."any_actual_end" IS NOT NEW."any_actual_end" OR OLD."first_actual_start" IS NOT NEW."first_actual_start" OR OLD."max_actual_end" IS NOT NEW."max_actual_end" OR OLD."known_effective_hours_text" IS NOT NEW."known_effective_hours_text" OR OLD."unknown_hour_count" IS NOT NEW."unknown_hour_count" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'execution_ledger'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_operationexecutionstates_delete AFTER DELETE ON "OperationExecutionStates" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'execution_ledger'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingmembers_insert AFTER INSERT ON "WorkbenchOutsourcingMembers" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingmembers_update AFTER UPDATE ON "WorkbenchOutsourcingMembers" WHEN OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."outsourcing_ref" IS NOT NEW."outsourcing_ref" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingmembers_delete AFTER DELETE ON "WorkbenchOutsourcingMembers" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingreceipts_insert AFTER INSERT ON "WorkbenchOutsourcingReceipts" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingreceipts_update AFTER UPDATE ON "WorkbenchOutsourcingReceipts" WHEN OLD."outsourcing_ref" IS NOT NEW."outsourcing_ref" OR OLD."target_kind" IS NOT NEW."target_kind" OR OLD."batch_ref" IS NOT NEW."batch_ref" OR OLD."supplier_ref" IS NOT NEW."supplier_ref" OR OLD."origin_json" IS NOT NEW."origin_json" OR OLD."identity_json" IS NOT NEW."identity_json" OR OLD."created_at" IS NOT NEW."created_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingreceipts_update AFTER UPDATE ON "WorkbenchOutsourcingReceipts" WHEN OLD."outsourcing_ref" IS NOT NEW."outsourcing_ref" OR OLD."target_kind" IS NOT NEW."target_kind" OR OLD."batch_ref" IS NOT NEW."batch_ref" OR OLD."supplier_ref" IS NOT NEW."supplier_ref" OR OLD."origin_json" IS NOT NEW."origin_json" OR OLD."identity_json" IS NOT NEW."identity_json" OR OLD."created_at" IS NOT NEW."created_at" OR OLD."latest_fact_ref" IS NOT NEW."latest_fact_ref" OR OLD."history_count" IS NOT NEW."history_count" OR OLD."sent" IS NOT NEW."sent" OR OLD."planned" IS NOT NEW."planned" OR OLD."returned" IS NOT NEW."returned" OR OLD."confirmed_state" IS NOT NEW."confirmed_state" OR OLD."declared_operator" IS NOT NEW."declared_operator" OR OLD."local_operator" IS NOT NEW."local_operator" OR OLD."reason" IS NOT NEW."reason" OR OLD."recorded_at" IS NOT NEW."recorded_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingreceipts_delete AFTER DELETE ON "WorkbenchOutsourcingReceipts" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingfacts_insert AFTER INSERT ON "WorkbenchOutsourcingFacts" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingfacts_update AFTER UPDATE ON "WorkbenchOutsourcingFacts" WHEN OLD."fact_ref" IS NOT NEW."fact_ref" OR OLD."outsourcing_ref" IS NOT NEW."outsourcing_ref" OR OLD."sequence" IS NOT NEW."sequence" OR OLD."previous_fact_ref" IS NOT NEW."previous_fact_ref" OR OLD."sent" IS NOT NEW."sent" OR OLD."planned" IS NOT NEW."planned" OR OLD."returned" IS NOT NEW."returned" OR OLD."confirmed_state" IS NOT NEW."confirmed_state" OR OLD."declared_operator" IS NOT NEW."declared_operator" OR OLD."local_operator" IS NOT NEW."local_operator" OR OLD."reason" IS NOT NEW."reason" OR OLD."recorded_at" IS NOT NEW."recorded_at" OR OLD."before_json" IS NOT NEW."before_json" OR OLD."source_facts_json" IS NOT NEW."source_facts_json" OR OLD."request_key" IS NOT NEW."request_key" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingfacts_update AFTER UPDATE ON "WorkbenchOutsourcingFacts" WHEN OLD."fact_ref" IS NOT NEW."fact_ref" OR OLD."outsourcing_ref" IS NOT NEW."outsourcing_ref" OR OLD."sequence" IS NOT NEW."sequence" OR OLD."previous_fact_ref" IS NOT NEW."previous_fact_ref" OR OLD."sent" IS NOT NEW."sent" OR OLD."planned" IS NOT NEW."planned" OR OLD."returned" IS NOT NEW."returned" OR OLD."confirmed_state" IS NOT NEW."confirmed_state" OR OLD."declared_operator" IS NOT NEW."declared_operator" OR OLD."local_operator" IS NOT NEW."local_operator" OR OLD."reason" IS NOT NEW."reason" OR OLD."recorded_at" IS NOT NEW."recorded_at" OR OLD."before_json" IS NOT NEW."before_json" OR OLD."request_key" IS NOT NEW."request_key" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchoutsourcingfacts_delete AFTER DELETE ON "WorkbenchOutsourcingFacts" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'outsourcing'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboarditems_insert AFTER INSERT ON "WorkbenchDashboardItems" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_items'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboarditems_update AFTER UPDATE ON "WorkbenchDashboardItems" WHEN OLD."item_ref" IS NOT NEW."item_ref" OR OLD."category" IS NOT NEW."category" OR OLD."batch_ref" IS NOT NEW."batch_ref" OR OLD."task_ref" IS NOT NEW."task_ref" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_items'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboarditems_update AFTER UPDATE ON "WorkbenchDashboardItems" WHEN OLD."item_ref" IS NOT NEW."item_ref" OR OLD."category" IS NOT NEW."category" OR OLD."batch_ref" IS NOT NEW."batch_ref" OR OLD."task_ref" IS NOT NEW."task_ref" OR OLD."outsourcing_ref" IS NOT NEW."outsourcing_ref" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_items'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboarditems_delete AFTER DELETE ON "WorkbenchDashboardItems" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_items'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboarddowntimerefs_insert AFTER INSERT ON "WorkbenchDashboardDowntimeRefs" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_items'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboarddowntimerefs_update AFTER UPDATE ON "WorkbenchDashboardDowntimeRefs" WHEN OLD."ref" IS NOT NEW."ref" OR OLD."source_id" IS NOT NEW."source_id" OR OLD."active" IS NOT NEW."active" OR OLD."revision" IS NOT NEW."revision" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_items'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboarddowntimerefs_delete AFTER DELETE ON "WorkbenchDashboardDowntimeRefs" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_items'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardexternalitems_insert AFTER INSERT ON "WorkbenchDashboardExternalItems" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_items'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardexternalitems_update AFTER UPDATE ON "WorkbenchDashboardExternalItems" WHEN OLD."item_ref" IS NOT NEW."item_ref" OR OLD."category" IS NOT NEW."category" OR OLD."outsourcing_ref" IS NOT NEW."outsourcing_ref" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_items'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardexternalitems_delete AFTER DELETE ON "WorkbenchDashboardExternalItems" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_items'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardstates_insert AFTER INSERT ON "WorkbenchDashboardStates" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_handling'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardstates_update AFTER UPDATE ON "WorkbenchDashboardStates" WHEN OLD."item_ref" IS NOT NEW."item_ref" OR OLD."revision" IS NOT NEW."revision" OR OLD."handling_json" IS NOT NEW."handling_json" OR OLD."origin_json" IS NOT NEW."origin_json" OR OLD."updated_at" IS NOT NEW."updated_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_handling'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardstates_delete AFTER DELETE ON "WorkbenchDashboardStates" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_handling'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardhistory_insert AFTER INSERT ON "WorkbenchDashboardHistory" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_handling'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardhistory_update AFTER UPDATE ON "WorkbenchDashboardHistory" WHEN OLD."history_ref" IS NOT NEW."history_ref" OR OLD."item_ref" IS NOT NEW."item_ref" OR OLD."sequence" IS NOT NEW."sequence" OR OLD."action" IS NOT NEW."action" OR OLD."before_json" IS NOT NEW."before_json" OR OLD."after_json" IS NOT NEW."after_json" OR OLD."source_json" IS NOT NEW."source_json" OR OLD."source_facts_json" IS NOT NEW."source_facts_json" OR OLD."reason" IS NOT NEW."reason" OR OLD."local_operator" IS NOT NEW."local_operator" OR OLD."recorded_at" IS NOT NEW."recorded_at" OR OLD."request_key" IS NOT NEW."request_key" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_handling'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardhistory_update AFTER UPDATE ON "WorkbenchDashboardHistory" WHEN OLD."history_ref" IS NOT NEW."history_ref" OR OLD."item_ref" IS NOT NEW."item_ref" OR OLD."sequence" IS NOT NEW."sequence" OR OLD."action" IS NOT NEW."action" OR OLD."before_json" IS NOT NEW."before_json" OR OLD."after_json" IS NOT NEW."after_json" OR OLD."source_json" IS NOT NEW."source_json" OR OLD."reason" IS NOT NEW."reason" OR OLD."local_operator" IS NOT NEW."local_operator" OR OLD."recorded_at" IS NOT NEW."recorded_at" OR OLD."request_key" IS NOT NEW."request_key" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_handling'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardhistory_delete AFTER DELETE ON "WorkbenchDashboardHistory" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_handling'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardexternalstates_insert AFTER INSERT ON "WorkbenchDashboardExternalStates" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_handling'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardexternalstates_update AFTER UPDATE ON "WorkbenchDashboardExternalStates" WHEN OLD."item_ref" IS NOT NEW."item_ref" OR OLD."revision" IS NOT NEW."revision" OR OLD."handling_json" IS NOT NEW."handling_json" OR OLD."origin_json" IS NOT NEW."origin_json" OR OLD."updated_at" IS NOT NEW."updated_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_handling'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardexternalstates_delete AFTER DELETE ON "WorkbenchDashboardExternalStates" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_handling'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardexternalhistory_insert AFTER INSERT ON "WorkbenchDashboardExternalHistory" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_handling'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardexternalhistory_update AFTER UPDATE ON "WorkbenchDashboardExternalHistory" WHEN OLD."history_ref" IS NOT NEW."history_ref" OR OLD."item_ref" IS NOT NEW."item_ref" OR OLD."sequence" IS NOT NEW."sequence" OR OLD."action" IS NOT NEW."action" OR OLD."before_json" IS NOT NEW."before_json" OR OLD."after_json" IS NOT NEW."after_json" OR OLD."source_json" IS NOT NEW."source_json" OR OLD."source_facts_json" IS NOT NEW."source_facts_json" OR OLD."reason" IS NOT NEW."reason" OR OLD."local_operator" IS NOT NEW."local_operator" OR OLD."recorded_at" IS NOT NEW."recorded_at" OR OLD."request_key" IS NOT NEW."request_key" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_handling'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchdashboardexternalhistory_delete AFTER DELETE ON "WorkbenchDashboardExternalHistory" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'dashboard_handling'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchcalibrationadoptions_insert AFTER INSERT ON "WorkbenchCalibrationAdoptions" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'calibration_adoptions'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchcalibrationadoptions_update AFTER UPDATE ON "WorkbenchCalibrationAdoptions" WHEN OLD."adoption_ref" IS NOT NEW."adoption_ref" OR OLD."template_operation_ref" IS NOT NEW."template_operation_ref" OR OLD."request_key" IS NOT NEW."request_key" OR OLD."template_revision_before" IS NOT NEW."template_revision_before" OR OLD."template_revision_after" IS NOT NEW."template_revision_after" OR OLD."old_unit_hours" IS NOT NEW."old_unit_hours" OR OLD."new_unit_hours" IS NOT NEW."new_unit_hours" OR OLD."reason" IS NOT NEW."reason" OR OLD."declared_operator" IS NOT NEW."declared_operator" OR OLD."confirmed" IS NOT NEW."confirmed" OR OLD."application_operator" IS NOT NEW."application_operator" OR OLD."adopted_at" IS NOT NEW."adopted_at" OR OLD."generated_at" IS NOT NEW."generated_at" OR OLD."method_version" IS NOT NEW."method_version" OR OLD."sample_count" IS NOT NEW."sample_count" OR OLD."evidence_json" IS NOT NEW."evidence_json" OR OLD."template_before" IS NOT NEW."template_before" OR OLD."template_after" IS NOT NEW."template_after" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'calibration_adoptions'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchcalibrationadoptions_delete AFTER DELETE ON "WorkbenchCalibrationAdoptions" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'calibration_adoptions'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunjobs_insert AFTER INSERT ON "WorkbenchRunJobs" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunjobs_update AFTER UPDATE ON "WorkbenchRunJobs" WHEN OLD."run_ref" IS NOT NEW."run_ref" OR OLD."request_key" IS NOT NEW."request_key" OR OLD."input_ref" IS NOT NEW."input_ref" OR OLD."normalized_input_json" IS NOT NEW."normalized_input_json" OR OLD."facts_json" IS NOT NEW."facts_json" OR OLD."execution_json" IS NOT NEW."execution_json" OR OLD."baseline_json" IS NOT NEW."baseline_json" OR OLD."accepted_at" IS NOT NEW."accepted_at" OR OLD."state" IS NOT NEW."state" OR OLD."stage" IS NOT NEW."stage" OR OLD."executor_ref" IS NOT NEW."executor_ref" OR OLD."started_at" IS NOT NEW."started_at" OR OLD."finished_at" IS NOT NEW."finished_at" OR OLD."error_json" IS NOT NEW."error_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunjobs_update AFTER UPDATE ON "WorkbenchRunJobs" WHEN OLD."run_ref" IS NOT NEW."run_ref" OR OLD."request_key" IS NOT NEW."request_key" OR OLD."input_ref" IS NOT NEW."input_ref" OR OLD."normalized_input_json" IS NOT NEW."normalized_input_json" OR OLD."revisions_json" IS NOT NEW."revisions_json" OR OLD."conditions_archive_json" IS NOT NEW."conditions_archive_json" OR OLD."execution_json" IS NOT NEW."execution_json" OR OLD."baseline_json" IS NOT NEW."baseline_json" OR OLD."accepted_at" IS NOT NEW."accepted_at" OR OLD."state" IS NOT NEW."state" OR OLD."stage" IS NOT NEW."stage" OR OLD."executor_ref" IS NOT NEW."executor_ref" OR OLD."started_at" IS NOT NEW."started_at" OR OLD."finished_at" IS NOT NEW."finished_at" OR OLD."error_json" IS NOT NEW."error_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunjobs_delete AFTER DELETE ON "WorkbenchRunJobs" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunreceipts_insert AFTER INSERT ON "WorkbenchRunReceipts" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunreceipts_update AFTER UPDATE ON "WorkbenchRunReceipts" WHEN OLD."receipt_ref" IS NOT NEW."receipt_ref" OR OLD."run_ref" IS NOT NEW."run_ref" OR OLD."state" IS NOT NEW."state" OR OLD."result_json" IS NOT NEW."result_json" OR OLD."recorded_at" IS NOT NEW."recorded_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunreceipts_delete AFTER DELETE ON "WorkbenchRunReceipts" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchruncandidates_insert AFTER INSERT ON "WorkbenchRunCandidates" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchruncandidates_update AFTER UPDATE ON "WorkbenchRunCandidates" WHEN OLD."candidate_ref" IS NOT NEW."candidate_ref" OR OLD."run_ref" IS NOT NEW."run_ref" OR OLD."candidate_key" IS NOT NEW."candidate_key" OR OLD."sequence" IS NOT NEW."sequence" OR OLD."status" IS NOT NEW."status" OR OLD."task_count" IS NOT NEW."task_count" OR OLD."artifact_json" IS NOT NEW."artifact_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchruncandidates_update AFTER UPDATE ON "WorkbenchRunCandidates" WHEN OLD."candidate_ref" IS NOT NEW."candidate_ref" OR OLD."run_ref" IS NOT NEW."run_ref" OR OLD."candidate_key" IS NOT NEW."candidate_key" OR OLD."sequence" IS NOT NEW."sequence" OR OLD."task_count" IS NOT NEW."task_count" OR OLD."artifact_json" IS NOT NEW."artifact_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchruncandidates_delete AFTER DELETE ON "WorkbenchRunCandidates" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchruncandidatetasks_insert AFTER INSERT ON "WorkbenchRunCandidateTasks" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchruncandidatetasks_update AFTER UPDATE ON "WorkbenchRunCandidateTasks" WHEN OLD."row_ref" IS NOT NEW."row_ref" OR OLD."candidate_ref" IS NOT NEW."candidate_ref" OR OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."ordinal" IS NOT NEW."ordinal" OR OLD."payload_json" IS NOT NEW."payload_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchruncandidatetasks_update AFTER UPDATE ON "WorkbenchRunCandidateTasks" WHEN OLD."row_ref" IS NOT NEW."row_ref" OR OLD."candidate_ref" IS NOT NEW."candidate_ref" OR OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."ordinal" IS NOT NEW."ordinal" OR OLD."op_id" IS NOT NEW."op_id" OR OLD."source" IS NOT NEW."source" OR OLD."machine_id" IS NOT NEW."machine_id" OR OLD."operator_id" IS NOT NEW."operator_id" OR OLD."start_time" IS NOT NEW."start_time" OR OLD."end_time" IS NOT NEW."end_time" OR OLD."start_us" IS NOT NEW."start_us" OR OLD."end_us" IS NOT NEW."end_us" OR OLD."is_point_event" IS NOT NEW."is_point_event" OR OLD."locked" IS NOT NEW."locked" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchruncandidatetasks_delete AFTER DELETE ON "WorkbenchRunCandidateTasks" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunbatches_insert AFTER INSERT ON "WorkbenchRunBatches" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunbatches_update AFTER UPDATE ON "WorkbenchRunBatches" WHEN OLD."run_ref" IS NOT NEW."run_ref" OR OLD."batch_ref" IS NOT NEW."batch_ref" OR OLD."batch_id" IS NOT NEW."batch_id" OR OLD."part_no" IS NOT NEW."part_no" OR OLD."part_ref" IS NOT NEW."part_ref" OR OLD."part_name" IS NOT NEW."part_name" OR OLD."quantity" IS NOT NEW."quantity" OR OLD."due_date" IS NOT NEW."due_date" OR OLD."priority" IS NOT NEW."priority" OR OLD."ready_status" IS NOT NEW."ready_status" OR OLD."ready_date" IS NOT NEW."ready_date" OR OLD."status" IS NOT NEW."status" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunbatches_delete AFTER DELETE ON "WorkbenchRunBatches" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunoperations_insert AFTER INSERT ON "WorkbenchRunOperations" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunoperations_update AFTER UPDATE ON "WorkbenchRunOperations" WHEN OLD."run_ref" IS NOT NEW."run_ref" OR OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."op_id" IS NOT NEW."op_id" OR OLD."op_code" IS NOT NEW."op_code" OR OLD."batch_id" IS NOT NEW."batch_id" OR OLD."batch_ref" IS NOT NEW."batch_ref" OR OLD."piece_id" IS NOT NEW."piece_id" OR OLD."seq" IS NOT NEW."seq" OR OLD."op_type_id" IS NOT NEW."op_type_id" OR OLD."op_type_name" IS NOT NEW."op_type_name" OR OLD."op_type_ref" IS NOT NEW."op_type_ref" OR OLD."op_type_label" IS NOT NEW."op_type_label" OR OLD."source" IS NOT NEW."source" OR OLD."setup_hours" IS NOT NEW."setup_hours" OR OLD."unit_hours" IS NOT NEW."unit_hours" OR OLD."ext_days" IS NOT NEW."ext_days" OR OLD."machine_id" IS NOT NEW."machine_id" OR OLD."machine_ref" IS NOT NEW."machine_ref" OR OLD."machine_label" IS NOT NEW."machine_label" OR OLD."operator_id" IS NOT NEW."operator_id" OR OLD."operator_ref" IS NOT NEW."operator_ref" OR OLD."operator_label" IS NOT NEW."operator_label" OR OLD."supplier_id" IS NOT NEW."supplier_id" OR OLD."supplier_ref" IS NOT NEW."supplier_ref" OR OLD."supplier_label" IS NOT NEW."supplier_label" OR OLD."status" IS NOT NEW."status" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunoperations_delete AFTER DELETE ON "WorkbenchRunOperations" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunadmissionreadmodels_insert AFTER INSERT ON "WorkbenchRunAdmissionReadModels" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunadmissionreadmodels_update AFTER UPDATE ON "WorkbenchRunAdmissionReadModels" WHEN OLD."run_ref" IS NOT NEW."run_ref" OR OLD."projection_version" IS NOT NEW."projection_version" OR OLD."scope_json" IS NOT NEW."scope_json" OR OLD."decision_json" IS NOT NEW."decision_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunadmissionreadmodels_update AFTER UPDATE ON "WorkbenchRunAdmissionReadModels" WHEN OLD."run_ref" IS NOT NEW."run_ref" OR OLD."scope_json" IS NOT NEW."scope_json" OR OLD."decision_json" IS NOT NEW."decision_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunadmissionreadmodels_delete AFTER DELETE ON "WorkbenchRunAdmissionReadModels" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrundecisionreadmodels_insert AFTER INSERT ON "WorkbenchRunDecisionReadModels" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrundecisionreadmodels_update AFTER UPDATE ON "WorkbenchRunDecisionReadModels" WHEN OLD."run_ref" IS NOT NEW."run_ref" OR OLD."projection_version" IS NOT NEW."projection_version" OR OLD."header_json" IS NOT NEW."header_json" OR OLD."context_json" IS NOT NEW."context_json" OR OLD."memberships_json" IS NOT NEW."memberships_json" OR OLD."calendar_json" IS NOT NEW."calendar_json" OR OLD."official_json" IS NOT NEW."official_json" OR OLD."process_json" IS NOT NEW."process_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrundecisionreadmodels_update AFTER UPDATE ON "WorkbenchRunDecisionReadModels" WHEN OLD."run_ref" IS NOT NEW."run_ref" OR OLD."header_json" IS NOT NEW."header_json" OR OLD."context_json" IS NOT NEW."context_json" OR OLD."memberships_json" IS NOT NEW."memberships_json" OR OLD."calendar_json" IS NOT NEW."calendar_json" OR OLD."official_json" IS NOT NEW."official_json" OR OLD."process_json" IS NOT NEW."process_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrundecisionreadmodels_delete AFTER DELETE ON "WorkbenchRunDecisionReadModels" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchruncandidatereadmodels_insert AFTER INSERT ON "WorkbenchRunCandidateReadModels" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchruncandidatereadmodels_update AFTER UPDATE ON "WorkbenchRunCandidateReadModels" WHEN OLD."candidate_ref" IS NOT NEW."candidate_ref" OR OLD."run_ref" IS NOT NEW."run_ref" OR OLD."projection_version" IS NOT NEW."projection_version" OR OLD."summary_json" IS NOT NEW."summary_json" OR OLD."preparation_json" IS NOT NEW."preparation_json" OR OLD."completion_json" IS NOT NEW."completion_json" OR OLD."delivery_json" IS NOT NEW."delivery_json" OR OLD."delivery_detail_json" IS NOT NEW."delivery_detail_json" OR OLD."arrangements_json" IS NOT NEW."arrangements_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchruncandidatereadmodels_update AFTER UPDATE ON "WorkbenchRunCandidateReadModels" WHEN OLD."candidate_ref" IS NOT NEW."candidate_ref" OR OLD."run_ref" IS NOT NEW."run_ref" OR OLD."summary_json" IS NOT NEW."summary_json" OR OLD."preparation_json" IS NOT NEW."preparation_json" OR OLD."completion_json" IS NOT NEW."completion_json" OR OLD."delivery_json" IS NOT NEW."delivery_json" OR OLD."delivery_detail_json" IS NOT NEW."delivery_detail_json" OR OLD."arrangements_json" IS NOT NEW."arrangements_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchruncandidatereadmodels_delete AFTER DELETE ON "WorkbenchRunCandidateReadModels" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunsidebatches_insert AFTER INSERT ON "WorkbenchRunSideBatches" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunsidebatches_update AFTER UPDATE ON "WorkbenchRunSideBatches" WHEN OLD."run_ref" IS NOT NEW."run_ref" OR OLD."side_key" IS NOT NEW."side_key" OR OLD."batch_ref" IS NOT NEW."batch_ref" OR OLD."batch_label" IS NOT NEW."batch_label" OR OLD."due_date" IS NOT NEW."due_date" OR OLD."is_overdue" IS NOT NEW."is_overdue" OR OLD."delay_hours" IS NOT NEW."delay_hours" OR OLD."finish_time" IS NOT NEW."finish_time" OR OLD."finish_us" IS NOT NEW."finish_us" OR OLD."status" IS NOT NEW."status" OR OLD."scheduled_count" IS NOT NEW."scheduled_count" OR OLD."total_count" IS NOT NEW."total_count" OR OLD."deferred_count" IS NOT NEW."deferred_count" OR OLD."unplanned_count" IS NOT NEW."unplanned_count" OR OLD."detail_json" IS NOT NEW."detail_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunsidebatches_delete AFTER DELETE ON "WorkbenchRunSideBatches" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunoperationcatalog_insert AFTER INSERT ON "WorkbenchRunOperationCatalog" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunoperationcatalog_update AFTER UPDATE ON "WorkbenchRunOperationCatalog" WHEN OLD."run_ref" IS NOT NEW."run_ref" OR OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."batch_ref" IS NOT NEW."batch_ref" OR OLD."batch_label" IS NOT NEW."batch_label" OR OLD."sequence" IS NOT NEW."sequence" OR OLD."sequence_unknown" IS NOT NEW."sequence_unknown" OR OLD."op_id" IS NOT NEW."op_id" OR OLD."saved_machine_ref" IS NOT NEW."saved_machine_ref" OR OLD."label_json" IS NOT NEW."label_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunoperationcatalog_delete AFTER DELETE ON "WorkbenchRunOperationCatalog" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunsideoperations_insert AFTER INSERT ON "WorkbenchRunSideOperations" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunsideoperations_update AFTER UPDATE ON "WorkbenchRunSideOperations" WHEN OLD."run_ref" IS NOT NEW."run_ref" OR OLD."side_key" IS NOT NEW."side_key" OR OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."arranged" IS NOT NEW."arranged" OR OLD."deferred" IS NOT NEW."deferred" OR OLD."allocation_state" IS NOT NEW."allocation_state" OR OLD."is_remaining" IS NOT NEW."is_remaining" OR OLD."start_us" IS NOT NEW."start_us" OR OLD."end_us" IS NOT NEW."end_us" OR OLD."machine_ref" IS NOT NEW."machine_ref" OR OLD."operator_ref" IS NOT NEW."operator_ref" OR OLD."resource_refs_json" IS NOT NEW."resource_refs_json" OR OLD."setup_hours" IS NOT NEW."setup_hours" OR OLD."required_hours" IS NOT NEW."required_hours" OR OLD."arrangement_json" IS NOT NEW."arrangement_json" OR OLD."preparation_json" IS NOT NEW."preparation_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunsideoperations_delete AFTER DELETE ON "WorkbenchRunSideOperations" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunsideresources_insert AFTER INSERT ON "WorkbenchRunSideResources" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunsideresources_update AFTER UPDATE ON "WorkbenchRunSideResources" WHEN OLD."run_ref" IS NOT NEW."run_ref" OR OLD."side_key" IS NOT NEW."side_key" OR OLD."resource_view" IS NOT NEW."resource_view" OR OLD."payload_json" IS NOT NEW."payload_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchrunsideresources_delete AFTER DELETE ON "WorkbenchRunSideResources" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'run_jobs'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtrialdrafts_insert AFTER INSERT ON "WorkbenchTrialDrafts" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'trial_records'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtrialdrafts_update AFTER UPDATE ON "WorkbenchTrialDrafts" WHEN OLD."draft_ref" IS NOT NEW."draft_ref" OR OLD."base_kind" IS NOT NEW."base_kind" OR OLD."base_ref" IS NOT NEW."base_ref" OR OLD."admission_json" IS NOT NEW."admission_json" OR OLD."row_count" IS NOT NEW."row_count" OR OLD."revision" IS NOT NEW."revision" OR OLD."status" IS NOT NEW."status" OR OLD."validation_json" IS NOT NEW."validation_json" OR OLD."created_at" IS NOT NEW."created_at" OR OLD."updated_at" IS NOT NEW."updated_at" OR OLD."local_operator" IS NOT NEW."local_operator" OR OLD."request_key" IS NOT NEW."request_key" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'trial_records'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtrialdrafts_delete AFTER DELETE ON "WorkbenchTrialDrafts" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'trial_records'; END;
@@ -1546,7 +1715,7 @@ CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtrialchanges_insert AFTER INSER
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtrialchanges_update AFTER UPDATE ON "WorkbenchTrialChanges" WHEN OLD."change_ref" IS NOT NEW."change_ref" OR OLD."draft_ref" IS NOT NEW."draft_ref" OR OLD."task_ref" IS NOT NEW."task_ref" OR OLD."revision" IS NOT NEW."revision" OR OLD."before_json" IS NOT NEW."before_json" OR OLD."after_json" IS NOT NEW."after_json" OR OLD."validation_json" IS NOT NEW."validation_json" OR OLD."recorded_at" IS NOT NEW."recorded_at" OR OLD."local_operator" IS NOT NEW."local_operator" OR OLD."request_key" IS NOT NEW."request_key" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'trial_records'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtrialchanges_delete AFTER DELETE ON "WorkbenchTrialChanges" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'trial_records'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtrialscenarios_insert AFTER INSERT ON "WorkbenchTrialScenarios" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'trial_records'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtrialscenarios_update AFTER UPDATE ON "WorkbenchTrialScenarios" WHEN OLD."scenario_ref" IS NOT NEW."scenario_ref" OR OLD."draft_ref" IS NOT NEW."draft_ref" OR OLD."name" IS NOT NEW."name" OR OLD."revision" IS NOT NEW."revision" OR OLD."snapshot_json" IS NOT NEW."snapshot_json" OR OLD."saved_at" IS NOT NEW."saved_at" OR OLD."local_operator" IS NOT NEW."local_operator" OR OLD."request_key" IS NOT NEW."request_key" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'trial_records'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtrialscenarios_update AFTER UPDATE ON "WorkbenchTrialScenarios" WHEN OLD."scenario_ref" IS NOT NEW."scenario_ref" OR OLD."draft_ref" IS NOT NEW."draft_ref" OR OLD."name" IS NOT NEW."name" OR OLD."revision" IS NOT NEW."revision" OR OLD."snapshot_json" IS NOT NEW."snapshot_json" OR OLD."resources_json" IS NOT NEW."resources_json" OR OLD."saved_at" IS NOT NEW."saved_at" OR OLD."local_operator" IS NOT NEW."local_operator" OR OLD."request_key" IS NOT NEW."request_key" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'trial_records'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtrialscenarios_delete AFTER DELETE ON "WorkbenchTrialScenarios" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'trial_records'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtrialscenariorows_insert AFTER INSERT ON "WorkbenchTrialScenarioRows" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'trial_records'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchtrialscenariorows_update AFTER UPDATE ON "WorkbenchTrialScenarioRows" WHEN OLD."row_ref" IS NOT NEW."row_ref" OR OLD."task_ref" IS NOT NEW."task_ref" OR OLD."scenario_ref" IS NOT NEW."scenario_ref" OR OLD."source_row_ref" IS NOT NEW."source_row_ref" OR OLD."payload_json" IS NOT NEW."payload_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'trial_records'; END;
@@ -1558,7 +1727,7 @@ CREATE TRIGGER IF NOT EXISTS wb_src_rev_entity_refs_suppliers_insert AFTER INSER
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_entity_refs_suppliers_update AFTER UPDATE ON "WorkbenchEntityRefs" WHEN (OLD."kind" = 'supplier' OR NEW."kind" = 'supplier') AND (OLD."ref" IS NOT NEW."ref" OR OLD."kind" IS NOT NEW."kind" OR OLD."entity_key" IS NOT NEW."entity_key" OR OLD."alternate_key" IS NOT NEW."alternate_key" OR OLD."revision" IS NOT NEW."revision" OR OLD."active" IS NOT NEW."active" OR OLD."created_at_utc" IS NOT NEW."created_at_utc") BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'suppliers'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_entity_refs_suppliers_delete AFTER DELETE ON "WorkbenchEntityRefs" WHEN OLD."kind" = 'supplier' BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'suppliers'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_schedule_rows_insert AFTER INSERT ON "Schedule" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'schedule_rows'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_schedule_rows_update AFTER UPDATE ON "Schedule" WHEN OLD."id" IS NOT NEW."id" OR OLD."op_id" IS NOT NEW."op_id" OR OLD."machine_id" IS NOT NEW."machine_id" OR OLD."operator_id" IS NOT NEW."operator_id" OR OLD."start_time" IS NOT NEW."start_time" OR OLD."end_time" IS NOT NEW."end_time" OR OLD."lock_status" IS NOT NEW."lock_status" OR OLD."version" IS NOT NEW."version" OR OLD."created_at" IS NOT NEW."created_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'schedule_rows'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_schedule_rows_update AFTER UPDATE ON "Schedule" WHEN OLD."id" IS NOT NEW."id" OR OLD."version" IS NOT NEW."version" OR OLD."task_ref" IS NOT NEW."task_ref" OR OLD."op_id" IS NOT NEW."op_id" OR OLD."operation_ref" IS NOT NEW."operation_ref" OR OLD."start_time" IS NOT NEW."start_time" OR OLD."end_time" IS NOT NEW."end_time" OR OLD."start_us" IS NOT NEW."start_us" OR OLD."end_us" IS NOT NEW."end_us" OR OLD."is_point_event" IS NOT NEW."is_point_event" OR OLD."batch_id" IS NOT NEW."batch_id" OR OLD."batch_priority" IS NOT NEW."batch_priority" OR OLD."piece_id" IS NOT NEW."piece_id" OR OLD."seq" IS NOT NEW."seq" OR OLD."op_type_name" IS NOT NEW."op_type_name" OR OLD."op_type_ref" IS NOT NEW."op_type_ref" OR OLD."op_type_label" IS NOT NEW."op_type_label" OR OLD."source" IS NOT NEW."source" OR OLD."setup_hours" IS NOT NEW."setup_hours" OR OLD."unit_hours" IS NOT NEW."unit_hours" OR OLD."quantity" IS NOT NEW."quantity" OR OLD."remaining_quantity" IS NOT NEW."remaining_quantity" OR OLD."batch_quantity" IS NOT NEW."batch_quantity" OR OLD."quantity_basis" IS NOT NEW."quantity_basis" OR OLD."quantity_reason" IS NOT NEW."quantity_reason" OR OLD."machine_id" IS NOT NEW."machine_id" OR OLD."machine_ref" IS NOT NEW."machine_ref" OR OLD."machine_label" IS NOT NEW."machine_label" OR OLD."operator_id" IS NOT NEW."operator_id" OR OLD."operator_ref" IS NOT NEW."operator_ref" OR OLD."operator_label" IS NOT NEW."operator_label" OR OLD."supplier_id" IS NOT NEW."supplier_id" OR OLD."supplier_ref" IS NOT NEW."supplier_ref" OR OLD."supplier_label" IS NOT NEW."supplier_label" OR OLD."lock_status" IS NOT NEW."lock_status" OR OLD."created_at" IS NOT NEW."created_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'schedule_rows'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_schedule_rows_delete AFTER DELETE ON "Schedule" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'schedule_rows'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_schedule_references_insert AFTER INSERT ON "Schedule" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'schedule_references'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_schedule_references_update AFTER UPDATE ON "Schedule" WHEN OLD."op_id" IS NOT NEW."op_id" OR OLD."version" IS NOT NEW."version" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'schedule_references'; END;
@@ -1582,6 +1751,6 @@ CREATE INDEX IF NOT EXISTS idx_wb_run_accepted_sort ON WorkbenchRunJobs(substr(a
 CREATE INDEX IF NOT EXISTS idx_wb_run_started_sort ON WorkbenchRunJobs(substr(started_at,1,19),substr(started_at || '0000000',21,6),run_ref);
 CREATE INDEX IF NOT EXISTS idx_wb_run_finished_sort ON WorkbenchRunJobs(substr(finished_at,1,19),substr(finished_at || '0000000',21,6),run_ref);
 CREATE INDEX IF NOT EXISTS idx_material_stage_operation ON BatchMaterialStages(operation_id);
-INSERT INTO WorkbenchPlanIdentityClock(singleton, revision) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM "WorkbenchPlanSourceRefs" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "WorkbenchTaskRefs" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleHistory" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "BatchOperations" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "Schedule" LIMIT 1) THEN 1 ELSE 0 END WHERE NOT EXISTS (SELECT 1 FROM WorkbenchPlanIdentityClock);
-INSERT INTO WorkbenchExecutionLedgerClock(singleton, revision, next_report_no) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM WorkbenchProductionReports LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportRevisions LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1) THEN 1 ELSE 0 END, 1 WHERE NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLedgerClock);
-INSERT INTO WorkbenchSourceRevisions(source_key, revision) VALUES ('parts', 1), ('part_operations', 1), ('external_groups', 1), ('op_types', 1), ('machines', 1), ('machine_op_types', 1), ('machine_downtimes', 1), ('operators', 1), ('operator_skills', 1), ('operator_machines', 1), ('materials', 1), ('suppliers', 1), ('work_calendar', 1), ('operator_calendar', 1), ('resource_teams', 1), ('workbench_operator_profiles', 1), ('workbench_supplier_op_types', 1), ('workbench_supplier_profiles', 1), ('workbench_machine_groups', 1), ('workbench_machine_group_members', 1), ('workbench_shift_profiles', 1), ('workbench_shift_pattern_days', 1), ('workbench_calendar_defaults', 1), ('workbench_op_type_policies', 1), ('workbench_entity_refs', 1), ('batches', 1), ('batch_operations', 1), ('batch_external_contexts', 1), ('batch_materials', 1), ('batch_material_reviews', 1), ('batch_material_stages', 1), ('batch_material_arrivals', 1), ('batch_quantity_splits', 1), ('workbench_process_workflow', 1), ('workbench_process_operation_confirmations', 1), ('workbench_template_lineage', 1), ('schedule_history', 1), ('schedule_version_seq', 1), ('schedule_config', 1), ('workbench_plan_identity', 1), ('execution_ledger', 1), ('outsourcing', 1), ('dashboard_items', 1), ('dashboard_handling', 1), ('calibration_adoptions', 1), ('run_jobs', 1), ('trial_records', 1), ('schedule_rows', 1), ('schedule_references', 1), ('scheduling_preferences', 1), ('system_config', 1), ('trial_adoption_receipts', 1), ('production_input_receipts', 1) ON CONFLICT(source_key) DO NOTHING;
+INSERT INTO WorkbenchPlanIdentityClock(singleton, revision) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM "WorkbenchPlanSourceRefs" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleHistory" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "Schedule" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "BatchOperations" LIMIT 1) THEN 1 ELSE 0 END WHERE NOT EXISTS (SELECT 1 FROM WorkbenchPlanIdentityClock);
+INSERT INTO WorkbenchExecutionLedgerClock(singleton, revision, next_report_no) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM WorkbenchProductionReports LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportRevisions LIMIT 1) AND NOT EXISTS (SELECT 1 FROM OperationExecutionStates LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1) THEN 1 ELSE 0 END, 1 WHERE NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLedgerClock);
+INSERT INTO WorkbenchSourceRevisions(source_key, revision) VALUES ('parts', 1), ('part_operations', 1), ('external_groups', 1), ('op_types', 1), ('machines', 1), ('machine_op_types', 1), ('machine_downtimes', 1), ('operators', 1), ('operator_skills', 1), ('operator_machines', 1), ('materials', 1), ('suppliers', 1), ('work_calendar', 1), ('operator_calendar', 1), ('resource_teams', 1), ('workbench_operator_profiles', 1), ('workbench_supplier_op_types', 1), ('workbench_supplier_profiles', 1), ('workbench_machine_groups', 1), ('workbench_machine_group_members', 1), ('workbench_shift_profiles', 1), ('workbench_shift_pattern_days', 1), ('workbench_calendar_defaults', 1), ('workbench_op_type_policies', 1), ('workbench_entity_refs', 1), ('batches', 1), ('batch_operations', 1), ('batch_external_contexts', 1), ('batch_materials', 1), ('batch_material_reviews', 1), ('batch_material_stages', 1), ('batch_material_arrivals', 1), ('batch_quantity_splits', 1), ('workbench_template_lineage', 1), ('schedule_history', 1), ('schedule_version_seq', 1), ('schedule_config', 1), ('workbench_plan_identity', 1), ('execution_ledger', 1), ('outsourcing', 1), ('dashboard_items', 1), ('dashboard_handling', 1), ('calibration_adoptions', 1), ('run_jobs', 1), ('trial_records', 1), ('schedule_rows', 1), ('schedule_references', 1), ('scheduling_preferences', 1), ('system_config', 1), ('trial_adoption_receipts', 1), ('production_input_receipts', 1) ON CONFLICT(source_key) DO NOTHING;

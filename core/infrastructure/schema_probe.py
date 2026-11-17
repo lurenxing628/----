@@ -13,7 +13,7 @@ def user_table_count(conn: sqlite3.Connection) -> int:
     row = conn.execute(
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND substr(name, 1, 7) != 'sqlite_'"
     ).fetchone()
-    return int(row[0])
+    return row[0]
 
 
 def table_exists(conn: sqlite3.Connection, name: str) -> bool:

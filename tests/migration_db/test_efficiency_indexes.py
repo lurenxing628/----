@@ -1,6 +1,7 @@
 """Indexed history ordering and foreign-key lookups preserve saved business facts."""
 
 import json
+import logging
 import sqlite3
 from datetime import datetime
 
@@ -10,23 +11,22 @@ from core.errors import AppError, ErrorCode
 from core.infrastructure import database
 from core.infrastructure.efficiency_indexes_schema import ADDED, contract_issues
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_schema_contract_issues
-from core.infrastructure.schema_declaration import load_schema_sql
 from core.infrastructure.schema_structure import SchemaStructure
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_run_history import RunHistoryScope
-from core.services.workbench.facts.production_capture import ProductionFactsCapture
+from core.services.workbench.facts.production_capture import ProductionFactsCapture, validate_production_archive
 from data.repositories.batch_operation_repo import BatchOperationRepository
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 from data.repositories.workbench_run_query_repo import WorkbenchRunHistoryQueryRepository
-from data.repositories.workbench_run_repo import WorkbenchRunRepository
+from tests._support.production_facts_dump import production_facts
 
 
 @pytest.fixture
 def indexed_db(tmp_path):
     path = str(tmp_path / "efficiency-indexes.sqlite")
-    database.ensure_schema(path)
+    database.ensure_schema(path, logging.getLogger(__name__))
     conn = database.get_connection(path)
     try:
         yield path, conn
@@ -34,19 +34,55 @@ def indexed_db(tmp_path):
         conn.close()
 
 
-def _run(conn, number, accepted, *, time=None, archive='{"synthetic":"saved input"}'):
-    """Use real journal writers; timestamps deliberately retain their original precision."""
+def _run(
+    conn,
+    number,
+    accepted,
+    *,
+    time=None,
+    revisions_json='{"revisions":{"parts":1},"schema":[]}',
+    conditions_archive_json='{"synthetic":"saved input"}',
+):
+    """Use real journal tables and triggers; timestamps deliberately retain their original precision."""
     ref, request_key = f"{number:048x}", f"efficiency-run-{number:04d}"
     WorkbenchCommandRepository(conn).insert(
         request_key=request_key, receipt_ref=f"{number:032x}", action="scheduling.run", context_ref="input-" + ref,
         input_json=content_text({"input_ref": "input-" + ref}, json_input=True),
         outcome=WorkbenchCommandOutcome("committed", {"run_ref": ref}))
-    repo = WorkbenchRunRepository(conn)
-    repo.insert(request_key=request_key, input_ref="input-" + ref, settings={"saved": number},
-                facts_json=archive, projections=[], baseline={}, now=accepted, run_ref=ref)
+    conn.execute(
+        """INSERT INTO WorkbenchRunJobs(
+            run_ref, request_key, input_ref, normalized_input_json,
+            revisions_json, conditions_archive_json, execution_json, baseline_json,
+            accepted_at, state, stage
+        ) VALUES (?, ?, ?, ?, ?, ?, '[]', '{}', ?, 'queued', 'queued')""",
+        (
+            ref,
+            request_key,
+            "input-" + ref,
+            content_text({"saved": number}),
+            revisions_json,
+            conditions_archive_json,
+            accepted,
+        ),
+    )
     if time is not None:
-        repo.claim(ref, f"{number + 100:048x}", time)
-        repo.finish(ref, {"state": "complete", "candidates": [], "error": None}, time)
+        executor_ref = f"{number + 100:048x}"
+        receipt_ref = f"{number + 200:048x}"
+        conn.execute(
+            "UPDATE WorkbenchRunJobs SET state='running', stage='computing', executor_ref=?, started_at=? "
+            "WHERE run_ref=?",
+            (executor_ref, time, ref),
+        )
+        conn.execute(
+            "INSERT INTO WorkbenchRunReceipts(receipt_ref, run_ref, state, result_json, recorded_at) "
+            "VALUES (?, ?, 'complete', '{\"state\":\"complete\",\"candidates\":[],\"error\":null}', ?)",
+            (receipt_ref, ref, time),
+        )
+        conn.execute(
+            "UPDATE WorkbenchRunJobs SET state='complete', stage='finished', finished_at=?, error_json='null' "
+            "WHERE run_ref=?",
+            (time, ref),
+        )
     return ref
 
 
@@ -122,33 +158,66 @@ def test_operation_deletion_searches_child_key_and_keeps_foreign_key_actions(ind
 def test_declared_efficiency_indexes_contract_and_archive_projection(indexed_db):
     _path, conn = indexed_db
     _operations(conn)
-    archived = ProductionFactsCapture(conn).content()
-    archived_facts = json.loads(archived)
-    ref = _run(conn, 1, "2026-10-17T08:00:00", time="2026-10-17T08:01:00.100000", archive=archived)
+    before = production_facts(conn)
+    capture = ProductionFactsCapture(conn)
+    revisions_record = capture.revisions_record()
+    revisions_text = content_text(revisions_record)
+    scoped_archive = capture.scoped_archive(())
+    scoped_text = content_text(scoped_archive)
+    ref = _run(
+        conn,
+        1,
+        "2026-10-17T08:00:00",
+        time="2026-10-17T08:01:00.100000",
+        revisions_json=revisions_text,
+        conditions_archive_json=scoped_text,
+    )
+    conn.execute(
+        """INSERT INTO WorkbenchHistoryEntries(
+            entry_ref, timeline, source_kind, state, run_ref, request_key,
+            selection_json, times_json, evidence_gaps_json, objective_json
+        ) VALUES (?, 'run', 'run', 'complete', ?, 'efficiency-history-0001', '{}', '{}', '[]', '{}')""",
+        ("run:" + ref, ref),
+    )
     conn.commit()
 
     assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
     assert contract_issues(SchemaStructure(conn)) == current_schema_contract_issues(
-        conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
+        conn, schema_version=CURRENT_SCHEMA_VERSION) == []
     indexes = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
     assert set(ADDED) <= indexes
-    assert "idx_part_operations_ext_group" in indexes
-    assert conn.execute("SELECT facts_json FROM WorkbenchRunJobs WHERE run_ref=?", (ref,)).fetchone()[0] == archived
-    assert ProductionFactsCapture(conn).matches_archive(archived_facts)
-    # 写入运行账簿后存档内容逐字不变：运行记录本身不进生产事实存档。
-    assert ProductionFactsCapture(conn).content() == archived
-
-    for mutation in (
-            "CREATE INDEX idx_undeclared_efficiency_change ON Parts(part_name)",
-            "DROP INDEX idx_wb_run_accepted_sort; CREATE INDEX idx_wb_run_accepted_sort "
-            "ON WorkbenchRunJobs(substr(accepted_at,1,18),substr(accepted_at || '0000000',21,6),run_ref)"):
-        conn.execute("BEGIN")
-        try:
-            for sql in mutation.split(";"):
-                conn.execute(sql)
-            assert not ProductionFactsCapture(conn).matches_archive(archived_facts)
-        finally:
-            conn.rollback()
+    assert "idx_wb_lineage_operation_id_text" not in indexes
+    assert {"idx_part_operations_ext_group", "idx_part_operations_part_status"} <= indexes
+    assert {"idx_batches_part_no", "idx_external_groups_supplier", "idx_batch_quantity_splits_source"} <= indexes
+    assert {
+        "idx_wb_outsourcing_receipts_batch",
+        "idx_wb_outsourcing_receipts_awaiting",
+        "idx_wb_outsourcing_receipts_returned",
+        "idx_wb_outsourcing_external_ops",
+    } <= indexes
+    assert {"idx_schedule_version_page", "idx_schedule_version_span", "idx_schedule_operation_ref_version"} <= indexes
+    assert {
+        "idx_wb_run_op_cat_batch",
+        "idx_wb_run_side_ops_alloc",
+        "idx_wb_history_timeline_order",
+        "idx_wb_history_run_ref",
+        "idx_wb_exec_reports_active_op",
+        "idx_wb_exec_reports_active_machine",
+        "idx_wb_exec_reports_active_operator",
+    } <= indexes
+    assert tuple(
+        conn.execute(
+            "SELECT revisions_json, conditions_archive_json FROM WorkbenchRunJobs WHERE run_ref=?",
+            (ref,),
+        ).fetchone()
+    ) == (revisions_text, scoped_text)
+    fresh = ProductionFactsCapture(conn)
+    stored_scoped = json.loads(scoped_text)
+    validate_production_archive(stored_scoped)
+    assert fresh.matches_admitted(stored_scoped)
+    assert fresh.matches_recorded(revisions_record)
+    # 写入运行账簿与历史目录后生产事实逐字不变：运行与历史目录本身不是生产事实。
+    assert production_facts(conn) == before
 
 
 def test_scoped_process_operations_use_ext_group_index_and_split_identity_triggers(indexed_db):
@@ -160,8 +229,8 @@ def test_scoped_process_operations_use_ext_group_index_and_split_identity_trigge
             VALUES ('G1', 'P1', 2, 2, 'merged');
         INSERT INTO PartOperations(part_no, seq, op_type_name, source, ext_group_id, status) VALUES
             ('P1', 1, 'Turning', 'internal', NULL, 'active'),
-            ('P1', 2, 'HeatTreat', 'external', 'G1', 'inactive'),
-            ('P2', 1, 'HeatTreat', 'external', 'G1', 'inactive'),
+            ('P1', 2, 'HeatTreat', 'external', 'G1', 'deleted'),
+            ('P2', 1, 'HeatTreat', 'external', 'G1', 'deleted'),
             ('OTHER', 1, 'Milling', 'internal', NULL, 'active');
         """
     )
@@ -178,8 +247,8 @@ def test_scoped_process_operations_use_ext_group_index_and_split_identity_trigge
         conn.set_trace_callback(None)
     assert [(row["part_no"], row["seq"], row["status"]) for row in rows] == [
         ("P1", 1, "active"),
-        ("P1", 2, "inactive"),
-        ("P2", 1, "inactive"),
+        ("P1", 2, "deleted"),
+        ("P2", 1, "deleted"),
     ]
     ops_sql = next(sql for sql in statements if "scoped_ops ON scoped_ops.id=o.id" in sql)
     plan = [row[3] for row in conn.execute("EXPLAIN QUERY PLAN " + ops_sql)]

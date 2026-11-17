@@ -1,10 +1,10 @@
 """Read scopes for permanent run candidates, never formal plan identities."""
 
-import re
 from dataclasses import dataclass
 from typing import NoReturn, Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.refs import is_ref
 from core.shared.stored_dates import stored_local_iso_datetime
 
 MAX_FACT_BYTES = 64 * 1024 * 1024
@@ -12,8 +12,6 @@ MAX_ARTIFACT_BYTES = 32 * 1024 * 1024
 MAX_COLLECTION_BYTES = 128 * 1024 * 1024
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 MAX_CANDIDATES = 256
-MAX_TASKS = 20000
-_REF_RE = re.compile(r"[0-9a-f]{48}")
 
 
 def reject(code, message, status=409) -> NoReturn:
@@ -21,7 +19,7 @@ def reject(code, message, status=409) -> NoReturn:
 
 
 def reference(value, *, stored=False):
-    if type(value) is not str or _REF_RE.fullmatch(value) is None:
+    if not is_ref(value):
         reject("candidate_binding_invalid" if stored else "invalid_input",
                "候选方案或相关记录已失效，请刷新后重新选择。", 500 if stored else 400)
     return value

@@ -1,15 +1,19 @@
 """Dashboard wire contract. Handling state never stands in for risk evaluation."""
 
-import re
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
+from core.models.enums import DASHBOARD_ITEM_CATEGORY_VALUES
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.refs import is_ref
 
-MAX_ROWS = 10000
+# 全库计数上限：齐套视图的批次、外协登记对应的值班台条目、已存的处置记录、外协评估缺口与观察。外协那几项来自
+# 外协模块按 workbench_outsourcing.MAX_ROWS 读出的全库数，两处同值。
+MAX_ROWS = 20000
 MAX_FACT_ROWS = 50000
 MAX_BYTES = 8 * 1024 * 1024
-CATEGORIES = ("delivery", "actual", "external", "downtime", "material", "candidate")
+# 库里登记处置条目的五类，加上只读的候选方案风险类。
+CATEGORIES = DASHBOARD_ITEM_CATEGORY_VALUES + ("candidate",)
 STATUSES = ("new", "following", "awaiting_verification", "closed")
 STATUS_LABELS = dict(zip(STATUSES, ("待分析", "跟进中", "待验证", "已关闭")))
 HANDLING_FIELDS = ("owner", "deadline", "action", "remark", "completed_at",
@@ -17,7 +21,7 @@ HANDLING_FIELDS = ("owner", "deadline", "action", "remark", "completed_at",
 
 
 def reference(value):
-    if type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None:
+    if not is_ref(value):
         raise WorkbenchCommandRejected("entity_not_found", "这条记录已失效，请刷新后重新选择。", 404)
     return value
 

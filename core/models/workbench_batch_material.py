@@ -6,14 +6,16 @@ from .workbench_batch import number, object_fields, public_ref
 from .workbench_preflight import local_date
 
 
-def normalize_arrivals(value):
+def normalize_arrivals(value, path):
+    """Arrivals are stored in date order; a rejection points at the submitted position ``<path>.<j>``."""
     if type(value) is not list or len(value) > 200:
-        raise ValidationError("每条需求最多登记 200 次到料。", field="arrivals")
+        raise ValidationError("每条需求最多登记 200 次到料。", field=path)
     rows = []
-    for row in value:
+    for index, row in enumerate(value):
+        item = path + "." + str(index)
         object_fields(row, ("arrival_date", "quantity"), ("arrival_date", "quantity"))
-        rows.append({"arrival_date": local_date(row["arrival_date"]).isoformat(),
-                     "quantity": number(row["quantity"], "quantity", positive=True)})
+        rows.append({"arrival_date": local_date(row["arrival_date"], item + ".arrival_date").isoformat(),
+                     "quantity": number(row["quantity"], item + ".quantity", positive=True)})
     return sorted(rows, key=lambda row: (row["arrival_date"], row["quantity"]))
 
 
@@ -38,17 +40,19 @@ def normalize_material_changes(payload):
     if type(rows) is not list or type(removed) is not list or len(rows) + len(removed) > 2000:
         raise ValidationError("一次最多维护 2000 条物料需求。", field="rows")
     result = []
-    for row in rows:
+    # New requirement rows have no row_key: the submitted position is the identity a quantity rejection points at.
+    for index, row in enumerate(rows):
+        path = "rows." + str(index)
         object_fields(row, ("row_key", "material_ref", "required_quantity", "available_quantity", "operation_ref", "arrivals"),
                       ("row_key", "material_ref", "required_quantity", "available_quantity"))
         item = {"row_key": _key(row["row_key"]) if row["row_key"] is not None else None,
             "material_ref": public_ref(row["material_ref"]),
-            "required_quantity": number(row["required_quantity"], "required_quantity", positive=True),
-            "available_quantity": number(row["available_quantity"], "available_quantity")}
+            "required_quantity": number(row["required_quantity"], path + ".required_quantity", positive=True),
+            "available_quantity": number(row["available_quantity"], path + ".available_quantity")}
         if "operation_ref" in row:
             item["operation_ref"] = public_ref(row["operation_ref"]) if row["operation_ref"] is not None else None
         if "arrivals" in row:
-            item["arrivals"] = normalize_arrivals(row["arrivals"])
+            item["arrivals"] = normalize_arrivals(row["arrivals"], path + ".arrivals")
         result.append(item)
     keys = [row["row_key"] for row in result if row["row_key"] is not None] + [_key(key) for key in removed]
     if len(keys) != len(set(keys)):

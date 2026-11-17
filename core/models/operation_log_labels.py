@@ -7,7 +7,6 @@ MODULE_LABELS = {
     "excel_demo": "Excel 演示",
     "material": "物料管理",
     "personnel": "人员管理",
-    "plugins": "扩展功能管理",
     "process": "工艺管理",
     "scheduler": "排产管理",
     "system": "系统管理",

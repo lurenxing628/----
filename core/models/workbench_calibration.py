@@ -13,7 +13,6 @@ SUGGESTION_BELOW_PRECISION_CODE = "calibration_suggestion_below_precision"
 MIN_SAMPLES = 5
 MAX_SAMPLES = 20
 MAX_TEMPLATES = 10000
-MAX_OPERATIONS = 10000
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 MAX_EXPORT_BYTES = 16 * 1024 * 1024
 TABLE_COLUMNS = ("part_no", "operation_label", "old_unit_hours", "suggested_unit_hours", "sample_count", "absolute_deviation_percent", "status")
@@ -84,9 +83,6 @@ class CalibrationTemplate:
     operation_label: str
     source: Optional[str]
     old_unit_hours: Optional[float]
-
-    def to_dict(self) -> Dict[str, Any]:
-        return dict(vars(self))
 
 
 @dataclass(frozen=True)

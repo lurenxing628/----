@@ -18,10 +18,12 @@ from dataclasses import dataclass
 from typing import Any, Dict
 
 from core.errors import ValidationError
+from core.models.enums import MATERIAL_STATUS_VALUES
 from core.models.workbench_action_values import AtomicActionPreview
-from core.models.workbench_identity import is_entity_ref
 from core.models.workbench_material_query import MaterialPageRequest
+from core.models.workbench_resource_status import table_status_label
 from core.models.workbench_table_descriptor import DEFAULT_IMPORT_BYTE_LIMIT, UPSERT_ONLY
+from core.shared.refs import is_ref
 
 IMPORT_ROW_LIMIT = 2000
 HEADERS = ("物料编号", "名称", "规格", "单位", "库存数量", "状态", "备注", "创建时间")
@@ -31,7 +33,8 @@ MATERIAL_COLUMNS = ("material_id", "name", "spec", "unit", "stock_qty", "status"
 READONLY = ("created_at",)
 REQUIRED = ("business_code",)
 NULLABLE = ("spec", "unit", "remark")
-STATUS_LABELS = {"active": "启用", "inactive": "停用"}
+#: 物料文件与物料页面同一叫法（启用、停用）。
+STATUS_LABELS = {status: table_status_label("material", status) for status in MATERIAL_STATUS_VALUES}
 STATUS_VALUES = {label: key for key, label in STATUS_LABELS.items()}
 ENUMS = {"status": tuple(STATUS_LABELS.values())}
 _VALUE_HINTS = {
@@ -113,7 +116,7 @@ def wire_scope(request: MaterialPageRequest) -> Dict[str, Any]:
 def normalize_refs(refs: Any, *, allow_empty: bool = False):
     if type(refs) is not list or (not refs and not allow_empty):
         raise ValidationError("请先选择要操作的物料。", field="refs")
-    if any(not is_entity_ref(ref) for ref in refs):
+    if any(not is_ref(ref) for ref in refs):
         raise ValidationError("物料选择已失效，请刷新后重新选择。", field="refs")
     if len(set(refs)) != len(refs):
         raise ValidationError("物料选择里有重复，请重新选择。", field="refs")
@@ -127,9 +130,9 @@ class MaterialPreview(AtomicActionPreview):
 
 
 def preview_row(number, *, action=None, normalized=None):
-    return {"row": number, "business_code": None, "action": action, "input": normalized,
-            "expected": None, "result": "rejected", "changes": {}, "errors": [],
-            "requires_confirmation": False}
+    return {"row": number, "business_code": None, "entity_ref": None, "action": action, "input": normalized,
+            "expected": None, "result": "rejected", "changes": {}, "errors": [], "notes": [],
+            "requires_confirmation": False, "reference_fields": []}
 
 
 def reject_row(row, message, *, field="business_code", code="invalid_input"):

@@ -11,7 +11,8 @@ from .enums import MachineStatus
 class Machine:
     machine_id: str
     name: str
-    op_type_id: Optional[str] = None
+    #: 设备能做的全部工种；唯一存储是 MachineOpTypes，可以为空。
+    op_type_ids: Tuple[str, ...]
     category: Optional[str] = None
     status: str = MachineStatus.ACTIVE.value  # active/inactive/maintain
     remark: Optional[str] = None
@@ -19,22 +20,18 @@ class Machine:
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
-    op_type_ids: Tuple[str, ...] = ()
-
     @classmethod
     def from_row(cls, row: RowLike) -> Machine:
-        op_type_id = row["op_type_id"]
         category = row["category"]
         team_id = row["team_id"]
         return cls(
             machine_id=str(row["machine_id"] or ""),
             name=str(row["name"]),
-            op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
+            op_type_ids=tuple(row["op_type_ids"]),
             category=str(category) if category is not None and category != "" else None,
             status=row["status"],
             remark=row["remark"],
             team_id=str(team_id) if team_id is not None and team_id != "" else None,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
-            op_type_ids=tuple(row["op_type_ids"]),
         )

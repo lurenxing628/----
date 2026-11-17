@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import math
 from typing import Any, Dict
 
 from core.errors import ValidationError
+from core.models.enums import MATERIAL_STATUS_VALUES
 from core.models.workbench_resource_input import resource_object, resource_text
+from core.shared.strict_parse import JS_SAFE_INT_MAX, is_stored_number
 
-#: 物料命令与导入归一化接受的状态代号，与 workbench_material_file.STATUS_LABELS 的键及 ENUMS["status"] 保持一致。
-STATUS_VALUES = ("active", "inactive")
 _CLEARABLE = ("spec", "unit", "remark")
 _FIELDS = frozenset(_CLEARABLE + ("stock_qty", "status"))
 _TOP_LEVEL = {
@@ -20,15 +19,11 @@ _TOP_LEVEL = {
 
 
 def _stock_qty(value: Any) -> float:
-    message = "库存数量请填 0 或正数。"
-    if type(value) not in (int, float):
-        raise ValidationError(message, field="fields.stock_qty")
-    try:
-        quantity = float(value)
-    except OverflowError as exc:
-        raise ValidationError(message, field="fields.stock_qty") from exc
-    if not math.isfinite(quantity) or quantity < 0:
-        raise ValidationError(message, field="fields.stock_qty")
+    """写入与读取共用 is_stored_number：能存进去的库存，下次读出来一定合法。"""
+    if not is_stored_number(value):
+        over = type(value) in (int, float) and value > JS_SAFE_INT_MAX
+        raise ValidationError("库存数量超出有效数字范围。" if over else "库存数量请填 0 或正数。", field="fields.stock_qty")
+    quantity = float(value)
     return quantity if quantity else 0.0
 
 
@@ -53,7 +48,7 @@ def normalize_material_input(action: str, payload: Any) -> Dict[str, Any]:
             normalized[key] = _stock_qty(value)
         else:
             status = resource_text(value, "fields.status")
-            if status not in STATUS_VALUES:
+            if status not in MATERIAL_STATUS_VALUES:
                 raise ValidationError("状态请选择启用或停用。", field="fields.status")
             normalized[key] = status
     result["fields"] = normalized

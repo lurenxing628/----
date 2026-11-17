@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterator, Optional, Tuple
 
 from .base_repo import BaseRepository
 
@@ -25,14 +25,14 @@ class WorkbenchRunCandidateRepository(BaseRepository):
 
     def candidate_rows(self, run_ref: str, limit: int) -> Iterator[Tuple[Any, ...]]:
         """候选原件和 artifact 字节数，按 sequence 有界逐行读取。"""
-        rows = self.execute("""SELECT candidate_ref,run_ref,status,task_count,sequence,artifact_json,
+        rows = self.execute("""SELECT candidate_ref,run_ref,task_count,sequence,artifact_json,
             length(CAST(artifact_json AS BLOB)) FROM WorkbenchRunCandidates
             WHERE run_ref=? ORDER BY sequence LIMIT ?""", (run_ref, limit))
         return (tuple(row) for row in rows)
 
     def candidate_row(self, candidate_ref: str) -> Optional[Tuple[Any, ...]]:
         """只取这份永久候选的原件与字节数。"""
-        row = self.execute("""SELECT candidate_ref,run_ref,status,task_count,sequence,artifact_json,
+        row = self.execute("""SELECT candidate_ref,run_ref,task_count,sequence,artifact_json,
             length(CAST(artifact_json AS BLOB)) FROM WorkbenchRunCandidates
             WHERE candidate_ref=?""", (candidate_ref,)).fetchone()
         return tuple(row) if row is not None else None
@@ -43,25 +43,32 @@ class WorkbenchRunCandidateRepository(BaseRepository):
 
     def candidate_identity(self, candidate_ref: str):
         """永久 PK 与已保存 summary 小头；缺读模型由读取边界裁决。"""
-        return self.fetchone("""SELECT c.candidate_ref,c.run_ref,c.status,
-            m.projection_version,m.summary_json,length(CAST(m.summary_json AS BLOB)) AS summary_bytes
+        return self.fetchone("""SELECT c.candidate_ref,c.run_ref,
+            m.summary_json,length(CAST(m.summary_json AS BLOB)) AS summary_bytes
             FROM WorkbenchRunCandidates c LEFT JOIN WorkbenchRunCandidateReadModels m
             ON m.candidate_ref=c.candidate_ref AND m.run_ref=c.run_ref WHERE c.candidate_ref=?""", (candidate_ref,))
 
-    def job_capture(self, run_ref: str) -> Optional[Tuple[Any, ...]]:
-        """四份生产原件和各原件实际字节数。"""
-        row = self.execute("""SELECT normalized_input_json,execution_json,baseline_json,facts_json,
-            length(CAST(normalized_input_json AS BLOB)),length(CAST(execution_json AS BLOB)),
-            length(CAST(baseline_json AS BLOB)),length(CAST(facts_json AS BLOB))
-            FROM WorkbenchRunJobs WHERE run_ref=?""", (run_ref,)).fetchone()
-        return tuple(row) if row is not None else None
+    def job_capture(self, run_ref: str) -> Optional[Dict[str, Any]]:
+        """五份生产原件及各原件实际字节数。"""
+        return self.fetchone(
+            """SELECT normalized_input_json,execution_json,baseline_json,revisions_json,conditions_archive_json,
+                length(CAST(normalized_input_json AS BLOB)) AS normalized_input_bytes,
+                length(CAST(execution_json AS BLOB)) AS execution_bytes,
+                length(CAST(baseline_json AS BLOB)) AS baseline_bytes,
+                length(CAST(revisions_json AS BLOB)) AS revisions_bytes,
+                length(CAST(conditions_archive_json AS BLOB)) AS conditions_archive_bytes
+                FROM WorkbenchRunJobs WHERE run_ref=?""",
+            (run_ref,),
+        )
 
-    def task_rows(self, candidate_ref: str, limit: int) -> Iterator[Tuple[Any, ...]]:
-        """任务原件和 payload 字节数，按 ordinal 有界逐行读取。"""
-        rows = self.execute("""SELECT row_ref,operation_ref,ordinal,payload_json,
-            length(CAST(payload_json AS BLOB)) FROM WorkbenchRunCandidateTasks
-            WHERE candidate_ref=? ORDER BY ordinal LIMIT ?""", (candidate_ref, limit))
-        return (tuple(row) for row in rows)
+    def task_rows(self, candidate_ref: str, limit: int) -> Iterator[Dict[str, Any]]:
+        """结构化任务原件，按 ordinal 有界逐行读取。"""
+        return self.iter_rows(
+            """SELECT row_ref,operation_ref,ordinal,op_id,source,machine_id,operator_id,start_us,end_us,locked
+                FROM WorkbenchRunCandidateTasks
+                WHERE candidate_ref=? ORDER BY ordinal LIMIT ?""",
+            (candidate_ref, limit),
+        )
 
     def adoption_receipts(self, action: str, candidate_ref: str, limit: int):
         return self.iter_rows("SELECT * FROM WorkbenchCommandReceipts WHERE action=? AND context_ref=? "

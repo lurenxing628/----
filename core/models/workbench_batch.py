@@ -4,38 +4,32 @@ import re
 from datetime import date
 
 from core.errors import ValidationError
-from core.models.workbench_command import WorkbenchCommandRejected
-from core.shared.strict_parse import is_exact_finite_number
+from core.models.enums import BATCH_PRIORITY_VALUES, READY_STATUS_VALUES
+from core.models.workbench_command import SHAPE_REJECTED, WorkbenchCommandRejected
+from core.shared.key_sets import keys_conform
+from core.shared.refs import is_ref
+from core.shared.strict_parse import EXTERNAL_DAYS_RANGE_TEXT, is_external_days, is_stored_number
 
-PRIORITIES = ("normal", "urgent", "critical")
-READY = ("yes", "partial", "no")
-STATUSES = ("pending", "scheduled", "processing", "completed", "cancelled")
 FIELDS = ("quantity", "due_date", "priority", "ready_status", "ready_date", "remark")
 SORTS = ("business_code", "part_no", "quantity", "due_date", "priority", "ready_status", "status")
-MAX_INTEGER = 9007199254740991
 
-_PUBLIC_REF_RE = re.compile(r"[0-9a-f]{48}")
 _DATE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
 def object_fields(value, allowed, required=()):
-    if not isinstance(value, dict) or set(value) - set(allowed) or set(required) - set(value):
-        raise WorkbenchCommandRejected("invalid_input", "提交内容缺少必填项或含有多余项，这次操作没有执行。请刷新页面后重试。", 400)
+    if not keys_conform(value, required, allowed):
+        raise WorkbenchCommandRejected("invalid_input", SHAPE_REJECTED, 400)
     return value
 
 
 def public_ref(value):
-    if not isinstance(value, str) or _PUBLIC_REF_RE.fullmatch(value) is None:
+    if not is_ref(value):
         raise WorkbenchCommandRejected("invalid_input", "这条记录已失效，请刷新后重新选择。", 400)
     return value
 
 
-def number(value, field, *, integer=False, positive=False, nullable=False):
-    if nullable and value is None:
-        return None
-    valid = (type(value) is int if integer else is_exact_finite_number(value)) and 0 <= value <= MAX_INTEGER and (
-        not positive or value > 0)
-    if not valid:
+def number(value, field, *, integer=False, positive=False):
+    if not is_stored_number(value, positive=positive, integer=integer):
         raise ValidationError("请输入有效的" + ("正整数。" if integer and positive else "非负有限数字。"), field=field)
     return value
 
@@ -70,7 +64,7 @@ def normalize_batch_fields(fields):
             value = date_value(value, path)
         elif key == "remark":
             value = text(value, path, nullable=True)
-        elif value not in (PRIORITIES if key == "priority" else READY) or not isinstance(value, str):
+        elif value not in (BATCH_PRIORITY_VALUES if key == "priority" else READY_STATUS_VALUES) or not isinstance(value, str):
             raise ValidationError("请选择有效选项。", field=path)
         normalized[key] = value
     return normalized
@@ -102,6 +96,14 @@ def normalize_operation_input(payload):
         raise ValidationError("至少修改一项工序资料。", field="fields")
     normalized = {}
     for key, value in fields.items():
-        normalized[key] = (None if value is None else public_ref(value)) if key.endswith("_ref") else number(
-            value, "fields." + key, positive=key == "external_days", nullable=True)
+        if value is None:
+            normalized[key] = None
+        elif key.endswith("_ref"):
+            normalized[key] = public_ref(value)
+        elif key == "external_days":
+            if not is_external_days(value):
+                raise ValidationError("外协周期" + EXTERNAL_DAYS_RANGE_TEXT + "。", field="fields." + key)
+            normalized[key] = value
+        else:
+            normalized[key] = number(value, "fields." + key)
     return {"operation_ref": public_ref(payload["operation_ref"]), "fields": normalized}

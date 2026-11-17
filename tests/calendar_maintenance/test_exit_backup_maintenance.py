@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
@@ -61,7 +62,7 @@ def test_exit_backup_maintenance(db_path, tmp_path, monkeypatch) -> None:
     hold_release = threading.Event()
 
     def _hold_window() -> None:
-        with maintenance_window(db_path, logger=None, action="test_exit_guard"):
+        with maintenance_window(db_path, logger=logging.getLogger(__name__), action="test_exit_guard"):
             hold_started.set()
             if not hold_release.wait(5):
                 raise RuntimeError("维护窗口测试线程等待超时")
@@ -89,7 +90,6 @@ def test_exit_backup_maintenance(db_path, tmp_path, monkeypatch) -> None:
 
 
 def test_unconfirmed_config_connection_close_skips_exit_backup_with_its_own_reason(db_path, tmp_path, monkeypatch, caplog) -> None:
-    import logging
     import sqlite3
 
     from flask import Flask
@@ -145,7 +145,6 @@ def test_operation_log_cleanup_uses_utc_boundary_and_keeps_limits(schema_conn, t
     from datetime import datetime
 
     from core.services.system.maintenance import cleanup_task
-    from core.services.system.system_maintenance_service import _fmt_db_dt
 
     class Clock(datetime):
         @classmethod
@@ -162,26 +161,24 @@ def test_operation_log_cleanup_uses_utc_boundary_and_keeps_limits(schema_conn, t
     schema_conn.executemany("INSERT INTO OperationLogs(log_time,log_level,module,action) VALUES (?,'INFO','system','test')",
                             [(value,) for value in times])
     deleted, meta = cleanup_task.cleanup_operation_logs_with_limit(schema_conn, keep_days=1,
-        min_keep_logs=4, max_delete=1, fmt_db_dt_fn=_fmt_db_dt)
+        min_keep_logs=4, max_delete=1)
     assert deleted == 1 and meta["cutoff"] == "2026-10-14 16:30:00" and meta["candidates"] == 2
     assert [row[0] for row in schema_conn.execute("SELECT log_time FROM OperationLogs ORDER BY id")] == list(times[1:])
     deleted, meta = cleanup_task.cleanup_operation_logs_with_limit(schema_conn, keep_days=1,
-        min_keep_logs=4, max_delete=10, fmt_db_dt_fn=_fmt_db_dt)
+        min_keep_logs=4, max_delete=10)
     assert deleted == 1 and meta["allow"] == 1
     assert [row[0] for row in schema_conn.execute("SELECT log_time FROM OperationLogs ORDER BY id")] == list(times[2:])
     deleted, meta = cleanup_task.cleanup_operation_logs_with_limit(schema_conn, keep_days=1,
-        min_keep_logs=4, max_delete=10, fmt_db_dt_fn=_fmt_db_dt)
+        min_keep_logs=4, max_delete=10)
     assert deleted == 0 and meta["reason"] == "total_le_min_keep"
     _, backup_meta = cleanup_task.cleanup_backups_with_limit(str(tmp_path / "missing-backups"),
-        keep_days=1, max_delete=10, fmt_db_dt_fn=_fmt_db_dt)
+        keep_days=1, max_delete=10)
     assert backup_meta["cutoff"] == "2026-10-15 00:30:00"
 
 
 @pytest.mark.parametrize("number", [float("nan"), float("inf"), float("-inf")])
 def test_operation_log_detail_is_strict_json_and_rejects_non_finite_numbers(schema_conn, caplog, number):
-    import logging
-
-    from core.infrastructure.logging import OperationLogger
+    from core.infrastructure.operation_logging import OperationLogger
     from core.shared.strict_json import canonical_json
 
     logger = logging.getLogger("tests.operation_log_detail")
@@ -216,7 +213,7 @@ def test_unreadable_stale_maintenance_lock_fails_closed_without_deleting_lock(tm
 
     monkeypatch.setattr(maintenance_lock, "read_fixed_bytes", deny_read)
     with pytest.raises(maintenance_lock.MaintenanceWindowError) as exc:
-        maintenance_lock.is_maintenance_window_active(str(db_path))
+        maintenance_lock.is_maintenance_window_active(str(db_path), logger=logging.getLogger(__name__))
     assert exc.value.code == "lock_state_unavailable"
     assert lock_path.exists()
 
@@ -226,12 +223,10 @@ def test_maintenance_tasks_overview_and_records_share_one_result_classification(
     tmp_path,
     monkeypatch,
 ) -> None:
-    import logging
     from datetime import datetime
 
-    from core.infrastructure.logging import OperationLogger
+    from core.infrastructure.operation_logging import OperationLogger
     from core.services.system.maintenance import backup_task, cleanup_task
-    from core.services.system.system_maintenance_service import _fmt_db_dt
     from core.services.system.workbench_overview import build_system_overview
     from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
     from core.services.workbench.system.maintenance_records import maintenance_records
@@ -263,7 +258,6 @@ def test_maintenance_tasks_overview_and_records_share_one_result_classification(
         logger=logger,
         op_logger=op_logger,
         is_due_fn=lambda *_args: True,
-        fmt_db_dt_fn=_fmt_db_dt,
     ) is True
     assert cleanup_task.maybe_run_auto_log_cleanup(
         schema_conn,
@@ -277,7 +271,6 @@ def test_maintenance_tasks_overview_and_records_share_one_result_classification(
         logger=logger,
         op_logger=op_logger,
         is_due_fn=lambda *_args: True,
-        fmt_db_dt_fn=_fmt_db_dt,
     ) is True
 
     overview = build_system_overview(
@@ -326,12 +319,10 @@ def test_maintenance_tasks_overview_and_records_share_one_result_classification(
         interval_minutes=60,
         db_path=str(db_file),
         backup_dir=str(backup_dir),
-        keep_days=7,
         job_key="auto_backup",
         logger=logger,
         op_logger=op_logger,
         is_due_fn=lambda *_args: True,
-        fmt_db_dt_fn=_fmt_db_dt,
     )
     assert (due, ok) == (True, True)
 
@@ -367,7 +358,6 @@ def test_maintenance_tasks_overview_and_records_share_one_result_classification(
         logger=logger,
         op_logger=op_logger,
         is_due_fn=lambda *_args: True,
-        fmt_db_dt_fn=_fmt_db_dt,
     ) is True
 
     logged = schema_conn.execute(
@@ -498,3 +488,45 @@ def test_maintenance_tasks_overview_and_records_share_one_result_classification(
     ]
     assert len(audit_long_error_events) == 1
     assert audit_long_error_events[0]["status"] == "failed"
+
+
+@pytest.mark.parametrize(("stored", "state"), [
+    (None, "missing"),
+    ("2026-10-16 08:00:00", "valid"),
+    ("2026-10-16T08:00:00", "invalid"),
+    (" 2026-10-16 08:00:00", "invalid"),
+    ("", "invalid"),
+    ("0", "invalid"),  # DATETIME 列按数值亲和存成整数 0，读回不是字符串
+])
+def test_due_check_overview_and_records_read_job_time_with_one_three_state_rule(schema_conn, tmp_path, stored, state):
+    from datetime import datetime
+
+    from core.services.system.system_maintenance_service import SystemMaintenanceService
+    from core.services.system.workbench_overview import build_system_overview
+    from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
+    from core.services.workbench.system.maintenance_records import maintenance_records
+    from data.repositories.system_job_state_repo import SystemJobStateRepository
+
+    repo = SystemJobStateRepository(schema_conn)
+    with schema_conn:
+        repo.set_last_run("auto_backup_cleanup", last_run_time=stored, last_run_detail='{"removed_count": 0}')
+    (stored_row,) = repo.list_all()
+    expected_time = "2026-10-16T08:00:00" if state == "valid" else None
+    assert SystemMaintenanceService._is_due(stored_row, datetime(2026, 10, 16, 8, 30), 60) is (state != "valid")
+
+    db_file = tmp_path / "aps.db"
+    db_file.write_bytes(b"sqlite-placeholder")
+    (tmp_path / "logs").mkdir()
+    overview = build_system_overview(schema_conn, db_path=str(db_file), backup_dir=str(tmp_path / "backups"),
+                                     log_dir=str(tmp_path / "logs"))
+    overview_job = {job["kind"]: job for job in overview["maintenance"]["jobs"]}["auto_backup_cleanup"]
+    assert (overview_job["status"], overview_job["last_run_time_status"], overview_job["last_run_time"]) == (
+        "available" if state == "valid" else "partial", state, expected_time)
+
+    (tmp_path / "journal").mkdir()
+    journal = SystemMaintenanceJournal(str(tmp_path / "journal"), str(db_file))
+    rows, sources = maintenance_records(schema_conn, str(tmp_path / "backups"), journal, journal_records=[])
+    assert [(row["event_ref"], row["time"]) for row in rows if row["record_kind"] == "cleanup_event"] == [
+        ("auto_backup_cleanup", expected_time)]
+    flagged = [item["job_key"] for item in sources if item["code"] == "maintenance_last_time_invalid"]
+    assert flagged == (["auto_backup_cleanup"] if state == "invalid" else [])

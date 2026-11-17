@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import re
 from datetime import date
 from typing import Any, Dict, Literal, Optional, overload
 
 from core.errors import ValidationError
 from core.models.calendar_periods import normalize_periods, period_windows, reject_rest_day_periods
-from core.models.resource_capabilities import OP_TYPE_CATEGORIES
+from core.models.enums import MERGE_MODE_VALUES, OP_TYPE_CATEGORY_VALUES, SHIFT_CYCLE_DAYS_MAX, SHIFT_DAY_OFFSET_MAX
+from core.models.workbench_resource_status import PUBLIC_STATUS_VALUES
+from core.shared.key_sets import keys_conform
+from core.shared.refs import is_ref
 from core.shared.stored_dates import stored_day
 
 _FIELDS = {
@@ -20,12 +22,6 @@ _FIELDS = {
 }
 _RELATIONS = {"op_type": set(), "machine": {"op_type_refs", "group_ref"},
               "operator": {"skill_refs", "shift_profile_ref"}, "machine_group": set(), "shift_profile": set()}
-_STATUS = {"machine": ("active", "maintain", "inactive"), "operator": ("active", "leave", "inactive"),
-           "machine_group": ("active", "inactive"), "shift_profile": ("active", "inactive")}
-#: 工种的归属与默认合并方式。原来内联在 _validate_field 的一行三元里，
-#: 描述符那份在 workbench_resource_file.ENUMS["op_type"]，两份分叉要能被测出来。
-_CATEGORY = OP_TYPE_CATEGORIES
-_MERGE_MODE = ("separate", "merged")
 _SHIFT_BASE_DATE = date(2000, 1, 1)
 _SHIFT_NEXT_DATE = date(2000, 1, 2)
 
@@ -33,7 +29,7 @@ _SHIFT_NEXT_DATE = date(2000, 1, 2)
 def resource_object(value: Any, allowed, field: str) -> Dict[str, Any]:
     if type(value) is not dict:
         raise ValidationError("提交内容格式不对，这次操作没有执行。请刷新页面后重试。", field=field)
-    if any(type(key) is not str or key not in allowed for key in value):
+    if not keys_conform(value, (), allowed):
         raise ValidationError("提交内容含有不支持的项，这次操作没有执行。请刷新页面后重试。", field=field)
     return value
 
@@ -62,50 +58,52 @@ def resource_ref(value, path, *, nullable: Literal[True]) -> Optional[str]: ...
 def resource_ref(value, path, *, nullable=False):
     if value is None and nullable:
         return None
-    if type(value) is not str or re.fullmatch("[0-9a-f]{48}", value) is None:
+    if not is_ref(value):
         raise ValidationError("请重新选择真实资料记录，不能以显示名称或内部编号代替。", field=path)
     return value
 
 
 def _pattern(value):
+    """Each day's rejection points at its submitted position ``fields.pattern.<i>``; the rows are stored in day order."""
     if type(value) is not list or not 1 <= len(value) <= 366:
         raise ValidationError("班次周期必须包含1至366条日期规则。", field="fields.pattern")
-    days = [_pattern_day(row) for row in value]
-    days.sort(key=lambda row: row["day_offset"])
-    if [row["day_offset"] for row in days] != list(range(len(days))):
+    days = [_pattern_day(row, "fields.pattern." + str(index)) for index, row in enumerate(value)]
+    order = sorted(range(len(days)), key=lambda index: days[index]["day_offset"])
+    if [days[index]["day_offset"] for index in order] != list(range(len(days))):
         raise ValidationError("班次周期必须从第0天连续填写，不能重复或遗漏日期。", field="fields.pattern")
-    _validate_adjacent_shifts(days)
-    return days
+    _validate_adjacent_shifts(days, order)
+    return [days[index] for index in order]
 
 
-
-def _pattern_day(raw):
-    resource_object(raw, {"day_offset", "is_rest", "periods"}, "fields.pattern")
+def _pattern_day(raw, path):
+    resource_object(raw, {"day_offset", "is_rest", "periods"}, path)
     offset = raw.get("day_offset")
     is_rest = raw.get("is_rest")
-    if type(offset) is not int or not 0 <= offset <= 365 or type(is_rest) is not bool:
-        raise ValidationError("班次日期序号和休息标记不正确。", field="fields.pattern")
+    if type(offset) is not int or not 0 <= offset <= SHIFT_DAY_OFFSET_MAX or type(is_rest) is not bool:
+        raise ValidationError("班次日期序号和休息标记不正确。", field=path)
     try:
         periods = normalize_periods(raw.get("periods"))
         if is_rest:
             reject_rest_day_periods(periods)
     except ValidationError as exc:
-        # 时段与休息日规则报中立字段名，班次档统一落到 fields.pattern.periods。
-        raise ValidationError(exc.message, field="fields.pattern.periods") from exc
+        # 时段与休息日规则报中立字段名，班次档落到这一天的 fields.pattern.<i>.periods。
+        raise ValidationError(exc.message, field=path + ".periods") from exc
     if not is_rest and not periods:
-        raise ValidationError("工作日请至少填写一个工作时段，或明确改为休息日。", field="fields.pattern.periods")
+        raise ValidationError("工作日请至少填写一个工作时段，或明确改为休息日。", field=path + ".periods")
     return {"day_offset": offset, "is_rest": is_rest, "periods": periods}
 
 
-def _validate_adjacent_shifts(days):
-    effective = [None if day["is_rest"] else day["periods"] for day in days]
-    for index, current in enumerate(effective):
-        following = effective[(index + 1) % len(effective)]
+def _validate_adjacent_shifts(days, order):
+    """``order`` lists submitted positions in day order; an overlap points at the earlier day's periods."""
+    effective = [None if days[index]["is_rest"] else days[index]["periods"] for index in order]
+    for position, current in enumerate(effective):
+        following = effective[(position + 1) % len(effective)]
         if current is None or following is None:
             continue
         left, right = period_windows(_SHIFT_BASE_DATE, current), period_windows(_SHIFT_NEXT_DATE, following)
         if left and right and left[-1][1] > right[0][0]:
-            raise ValidationError("相邻轮换日期的班次时间重叠，请核对跨午夜结束时间。", field="fields.pattern")
+            raise ValidationError("相邻轮换日期的班次时间重叠，请核对跨午夜结束时间。",
+                                  field="fields.pattern." + str(order[position]) + ".periods")
 
 
 
@@ -116,14 +114,15 @@ def _field(kind, name, value):
     if name == "pattern":
         return _pattern(value)
     if name == "cycle_days":
-        if type(value) is not int or not 1 <= value <= 366:
-            raise ValidationError("轮换周期必须是1至366之间的整数。", field=path)
+        if type(value) is not int or not 1 <= value <= SHIFT_CYCLE_DAYS_MAX:
+            raise ValidationError(f"轮换周期必须是1至{SHIFT_CYCLE_DAYS_MAX}之间的整数。", field=path)
         return value
     if name == "anchor_date":
         if stored_day(value) is None:
             raise ValidationError("班次起始日期必须是有效的YYYY-MM-DD。", field=path)
         return value
-    allowed = _STATUS[kind] if name == "status" else (_CATEGORY if name == "category" else (None,) + _MERGE_MODE)
+    allowed = (PUBLIC_STATUS_VALUES[kind] if name == "status"
+               else OP_TYPE_CATEGORY_VALUES if name == "category" else (None,) + MERGE_MODE_VALUES)
     if value not in allowed:
         raise ValidationError("这一项的选项不正确。", field=path)
     return value

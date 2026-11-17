@@ -8,11 +8,10 @@ from datetime import date
 from typing import Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.refs import is_ref
 
 TOPICS = ("delivery", "records", "machines", "people", "quality")
 FOCUSES = ("all", "unreported", "unclosed", "late_open", "finish_late", "complete", "data_gaps")
-MAX_REPORT_OPERATIONS = 10000
-MAX_REPORT_EVENTS = 20000
 
 
 def reject(message):
@@ -20,7 +19,7 @@ def reject(message):
 
 
 def reference(value):
-    if value is not None and (type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None):
+    if value is not None and not is_ref(value):
         reject("这条记录已失效，请刷新后重新选择。")
 
 

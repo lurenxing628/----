@@ -13,7 +13,11 @@ _SCOPE_LABELS = {"WorkCalendar": "工作日历", "OperatorCalendar": "个人日�
 
 
 def _parse_common_calendar_row(row: RowLike, scope: str) -> Dict[str, Any]:
-    """Stored row -> model. Every column is required by the DDL; only periods own time, so no clock or hours here."""
+    """Stored row -> model. Every column is required by the DDL; only periods own time, so no clock or hours here.
+
+    类型与两项许可由存储值域约束保证只有规范代号，这里直接取；日期与效率的格式和正数不在约束里，仍在这里核。
+    工作时段文本原样带出，由 ``calendar_periods.decode_periods`` 在用到时一处准入（损坏报存储失败）。
+    """
     day = str(row["date"])
     if stored_date(day) is None:
         raise ValidationError(
@@ -27,24 +31,6 @@ def _parse_common_calendar_row(row: RowLike, scope: str) -> Dict[str, Any]:
             f"{_SCOPE_LABELS[scope]}里 {day} 的效率读不出来或不大于 0，请到{_SCOPE_LABELS[scope]}重新设置这一天。",
             field="efficiency",
             details={"reason": "invalid_calendar_number", "table": scope, "field": "efficiency"},
-        )
-    if row["day_type"] not in ("workday", "weekend", "holiday"):
-        raise ValidationError(
-            f"{_SCOPE_LABELS[scope]}里有日期类型认不出来，请到{_SCOPE_LABELS[scope]}重新选工作日、周末或假期。",
-            field="day_type",
-            details={"reason": "invalid_calendar_state", "table": scope},
-        )
-    if row["allow_normal"] not in ("yes", "no") or row["allow_urgent"] not in ("yes", "no"):
-        raise ValidationError(
-            f"{_SCOPE_LABELS[scope]}里普通件或急件的许可认不出来，请到{_SCOPE_LABELS[scope]}重新设置。",
-            field="allow_normal",
-            details={"reason": "invalid_calendar_state", "table": scope},
-        )
-    if not isinstance(row["periods_json"], str):
-        raise ValidationError(
-            f"{_SCOPE_LABELS[scope]}里的工作时段读不出来或者填得不对，请到{_SCOPE_LABELS[scope]}重新设置。",
-            field="periods_json",
-            details={"reason": "invalid_calendar_shift", "table": scope, "field": "periods_json"},
         )
     return {
         "date": day,
