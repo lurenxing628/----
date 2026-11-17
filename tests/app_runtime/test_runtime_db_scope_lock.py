@@ -390,26 +390,28 @@ def test_quality_gate_runtime_probe_does_not_let_stale_contract_mask_active_lock
     active_lock = {"pid": 2002, "exe_path": "/bin/live-aps"}
     paths = {"contract_path": "/tmp/aps_runtime.json", "lock_path": "/tmp/aps_runtime.lock"}
 
-    monkeypatch.setattr(gate_mod, "_pid_state", lambda pid: pid == 2002)
-    monkeypatch.setattr(gate_mod, "_pid_matches_contract", lambda pid, exe_path: pid == 2002)
+    monkeypatch.setattr(gate_mod, "query_pid_state", lambda pid, *, state_dir: pid == 2002)
+    monkeypatch.setattr(gate_mod, "pid_matches_contract", lambda pid, exe_path, *, state_dir: pid == 2002)
 
     pid_state, pid, pid_match, exe_path = gate_mod._effective_pid_signal(stale_contract, active_lock)
     assert pid_state == "active"
     assert pid == 2002 and pid_match is True and exe_path == "/bin/live-aps"
 
-    monkeypatch.setattr(gate_mod, "_load_runtime_state", lambda: (stale_contract, active_lock, paths))
+    # 门禁运行时探针按一次运行的 GateContext 取仓库根（第 7 批收口后的签名）。
+    ctx = gate_mod.GateContext(repo_root=str(Path(gate_mod.__file__).resolve().parents[1]))
+    monkeypatch.setattr(gate_mod, "_load_runtime_state", lambda _ctx: (stale_contract, active_lock, paths))
     monkeypatch.setattr(
         gate_mod, "_health_signal", lambda contract: (gate_mod.RuntimeProbeState.STALE, "127.0.0.1", 6322)
     )
     with pytest.raises(RuntimeError, match="pid=2002"):
-        gate_mod._assert_no_active_runtime()
+        gate_mod._assert_no_active_runtime(ctx)
 
-    monkeypatch.setattr(gate_mod, "_load_runtime_state", lambda: (stale_contract, None, paths))
+    monkeypatch.setattr(gate_mod, "_load_runtime_state", lambda _ctx: (stale_contract, None, paths))
     monkeypatch.setattr(
         gate_mod, "_health_signal", lambda contract: (gate_mod.RuntimeProbeState.ACTIVE, "127.0.0.1", 6322)
     )
     with pytest.raises(RuntimeError, match="pid_state=stale health_state=active"):
-        gate_mod._assert_no_active_runtime()
+        gate_mod._assert_no_active_runtime(ctx)
 
 
 @pytest.fixture
@@ -719,7 +721,6 @@ def test_reloader_child_file_change_triggers_ordered_cleanup_and_exit_3_then_nor
             BACKUP_DIR=str(runtime_dir / "backups"),
             EXCEL_TEMPLATE_DIR=str(runtime_dir / "templates"),
         )
-        app.extensions["workbench_startup_maintenance_records"] = ()
 
         @app.get("/ping")
         def _ping() -> str:

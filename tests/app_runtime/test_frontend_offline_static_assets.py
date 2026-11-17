@@ -4,35 +4,18 @@ from __future__ import annotations
 
 import json
 import re
-from fnmatch import fnmatch
 from pathlib import Path
-from typing import Iterable, List, Set
+from typing import List
 
 from tests._support.paths import REPO_ROOT
 
-FRONTEND_ROOTS = [
+# 随包交付的网页资源根，来源 build_win7_onedir.bat:45-46。
+DELIVERED_WEB_ROOTS = (
     REPO_ROOT / "templates",
     REPO_ROOT / "static",
-]
+)
 
 FRONTEND_SUFFIXES = {".html", ".css", ".js", ".md"}
-WORKBENCH_MOCKUP = REPO_ROOT / "docs" / "aps_frontend_workbench_mockup.html"
-USER_VISIBLE_DOC_ROOTS = [
-    REPO_ROOT / "docs",
-    REPO_ROOT / "static" / "docs",
-]
-USER_VISIBLE_DOC_EXCLUDED_DIRS = {
-    (REPO_ROOT / "docs" / "dev").resolve(),
-}
-GENERATED_USER_VISIBLE_DOC_GLOBS = (
-    "docs/_panorama_data/**",
-    "docs/*全景图*.html",
-    "docs/*演进时间线.html",
-    "docs/**/*全景图*.html",
-    "docs/**/*演进时间线.html",
-    "docs/v2/panorama.css",
-    "docs/v2/panorama.js",
-)
 
 EXTERNAL_RESOURCE_PATTERNS = [
     re.compile(r"<script\b[^>]*\bsrc\s*=\s*['\"]?(?:https?:)?//", re.IGNORECASE),
@@ -66,43 +49,17 @@ CDN_MARKERS = [
 ]
 
 
-def _frontend_files() -> Iterable[Path]:
-    seen: Set[Path] = set()
-    for root in FRONTEND_ROOTS:
-        if not root.exists():
-            continue
-        for path in root.rglob("*"):
-            if path.is_file() and path.suffix.lower() in FRONTEND_SUFFIXES:
-                seen.add(path)
-                yield path
-    for root in USER_VISIBLE_DOC_ROOTS:
-        if not root.exists():
-            continue
-        for path in root.rglob("*"):
-            if not path.is_file() or path.suffix.lower() not in FRONTEND_SUFFIXES:
-                continue
-            resolved_parent = path.parent.resolve()
-            if any(excluded == resolved_parent or excluded in resolved_parent.parents for excluded in USER_VISIBLE_DOC_EXCLUDED_DIRS):
-                continue
-            if _is_generated_user_visible_doc(path):
-                continue
-            if path not in seen:
-                seen.add(path)
-                yield path
-    if WORKBENCH_MOCKUP.exists() and WORKBENCH_MOCKUP not in seen:
-        yield WORKBENCH_MOCKUP
+def _frontend_files() -> List[Path]:
+    return [
+        path
+        for root in DELIVERED_WEB_ROOTS
+        for path in root.rglob("*")
+        if path.is_file() and path.suffix.lower() in FRONTEND_SUFFIXES
+    ]
 
 
 def _line_no(text: str, index: int) -> int:
     return text.count("\n", 0, index) + 1
-
-
-def _is_generated_user_visible_doc(path: Path) -> bool:
-    try:
-        rel = path.relative_to(REPO_ROOT).as_posix()
-    except ValueError:
-        return False
-    return any(fnmatch(rel, pattern) for pattern in GENERATED_USER_VISIBLE_DOC_GLOBS)
 
 
 def _collect_external_resource_violations_from_text(rel: str, text: str) -> List[str]:

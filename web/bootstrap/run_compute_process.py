@@ -7,14 +7,12 @@ freshness checks and result persistence. A failed child is never recomputed here
 import logging
 import multiprocessing
 import os
-import sqlite3
 import tempfile
 import threading
 from pathlib import Path
 
 from core.errors import AppError, ErrorCode
 from core.infrastructure.connection_guards import query_only
-from core.infrastructure.logging import safe_log
 from core.infrastructure.snapshot_connection import backup_to_file, open_readonly_immutable
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_compute import CandidateRunInputError
@@ -64,14 +62,12 @@ def _raise_remote(error):
 def _compute_child(snapshot_path, row, admission, sender, control):
     threading.Thread(target=_parent_watchdog, args=(control,), daemon=True).start()
     try:
-        from core.services.workbench.run.worker import WorkbenchRunWorker
+        from core.services.workbench.run.worker import compute_owned_snapshot
 
         # Only this owned, consistent copy enters the child. The production path,
-        # host runtime locks and the parent's writable connection are not passed.
-        with open_readonly_immutable(snapshot_path,
-                detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES, row_factory=sqlite3.Row) as snapshot, query_only(snapshot):
-            worker = WorkbenchRunWorker(snapshot)
-            result = worker.compute_owned_snapshot(snapshot, row, admission)
+        # host runtime locks, the parent's writable connection and its clock are not passed.
+        with open_readonly_immutable(snapshot_path) as snapshot, query_only(snapshot):
+            result = compute_owned_snapshot(snapshot, row, admission)
         sender.send(("result", result))
     except Exception as exc:
         sender.send(("error", _error_message(exc)))
@@ -114,7 +110,7 @@ def run_compute_in_process(source, row, *, admission):
             args=(path, row, admission, sender, child_control), name="aps-candidate-compute", daemon=True)
         try:
             process.start()
-            safe_log(_LOGGER, "info", "Candidate read-only computation started: run_ref=%s child_pid=%s", row["run_ref"], process.pid)
+            _LOGGER.info("Candidate read-only computation started: run_ref=%s child_pid=%s", row["run_ref"], process.pid)
             sender.close()
             child_control.close()
             return _receive(process, receiver)

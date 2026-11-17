@@ -21,11 +21,9 @@ RECOVERY = "workbench_system_restore_recovery"
 
 
 def prepare_system_restore_startup(app):
-    """Run before templates, plugins, schema or any database connection."""
-    directory = app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR")
-    if directory is None:
-        directory = os.environ.get("APS_SYSTEM_JOURNAL_DIR", system_journal_directory(app.config["DATABASE_PATH"]))
-        app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"] = directory
+    """Run before templates, schema or any database connection."""
+    directory = system_journal_directory(app.config["DATABASE_PATH"])
+    app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"] = directory
     try:
         app.extensions["workbench_startup_maintenance_records"] = assert_system_maintenance_ready(
             app.config["DATABASE_PATH"], directory)
@@ -48,7 +46,7 @@ def configure_system_restore_recovery(app):
     app.extensions.pop("workbench_system_restore_guard", None)
     app.extensions[RECOVERY] = True
     app.wsgi_app = make_workbench_system_restore_recovery_app(
-        app.config["DATABASE_PATH"], app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"))
+        app.config["DATABASE_PATH"], app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"], app.logger)
 
 
 class RecoveryLockProof(RunRuntimeLockProof):

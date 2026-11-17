@@ -12,7 +12,6 @@ from typing import Any, Callable, Dict, Optional
 
 from flask import Flask
 
-from core.infrastructure.logging import safe_log
 from web.runtime_host import runtime_identity
 
 from . import factory as _factory
@@ -29,7 +28,7 @@ from .launcher_contracts import (
     write_runtime_contract_file,
 )
 from .launcher_network import pick_bind_host
-from .launcher_observability import launcher_log_warning
+from .launcher_observability import launcher_log_warning, write_launch_error
 from .launcher_paths import (
     current_runtime_owner,
     default_chrome_profile_dir,
@@ -109,39 +108,6 @@ def _default_deps() -> EntryPointDeps:
     )
 
 
-def _write_launch_error_with_observability(
-    runtime_dir: str,
-    message: str,
-    log_dir: Optional[str],
-    *,
-    logger,
-    context: str,
-) -> None:
-    public_message = PUBLIC_LAUNCH_ERROR_MESSAGE
-    result = launcher_log_warning(
-        logger,
-        "%s：%s",
-        context,
-        message,
-        runtime_dir=runtime_dir,
-        state_dir=log_dir,
-        write_launch_error=True,
-        logger_level="error",
-        public_launch_error_message=public_message,
-    )
-    if not result.file_ok:
-        return
-    if not result.error_file_ok:
-        launcher_log_warning(
-            logger,
-            "写入启动错误提示文件失败。",
-            runtime_dir=runtime_dir,
-            state_dir=log_dir,
-            write_launch_error=False,
-            logger_level="error",
-        )
-
-
 def configure_runtime_contract(
     app: Flask,
     runtime_dir: str,
@@ -162,12 +128,12 @@ def configure_runtime_contract(
         runtime_dir,
         host,
         port,
-        db_path=app.config.get("DATABASE_PATH"),
+        db_path=app.config["DATABASE_PATH"],
         shutdown_token=shutdown_token,
         instance_id=identity["instance_id"],
-        log_dir=app.config.get("LOG_DIR"),
-        backup_dir=app.config.get("BACKUP_DIR"),
-        excel_template_dir=app.config.get("EXCEL_TEMPLATE_DIR"),
+        log_dir=app.config["LOG_DIR"],
+        backup_dir=app.config["BACKUP_DIR"],
+        excel_template_dir=app.config["EXCEL_TEMPLATE_DIR"],
         exe_path=sys.executable,
         chrome_profile_dir=deps.default_chrome_profile_dir(runtime_dir),
         owner=owner,
@@ -241,8 +207,9 @@ def app_main(
         try:
             app = deps.create_app()
         except Exception as e:
-            _write_launch_error_with_observability(
-                runtime_dir, str(e), prelaunch_log_dir, logger=None, context="应用启动失败"
+            write_launch_error(
+                None, "应用启动失败：%s", e, state_dir=prelaunch_log_dir, runtime_dir=runtime_dir,
+                public_message=PUBLIC_LAUNCH_ERROR_MESSAGE,
             )
             return 14
         return _serve_created_app(
@@ -270,7 +237,7 @@ def _serve_created_app(
     runtime_owner: str,
     runtime_lock_state: Dict[str, Any],
 ) -> int:
-    debug = bool(app.config.get("DEBUG", False))
+    debug = app.config["DEBUG"]
     prepared_server = None
     try:
         try:
@@ -292,12 +259,9 @@ def _serve_created_app(
                 logger_level="info",
             )
         except Exception as exc:
-            _write_launch_error_with_observability(
-                runtime_dir,
-                str(exc),
-                prelaunch_log_dir,
-                logger=app.logger,
-                context="排产运行恢复检查失败",
+            write_launch_error(
+                app.logger, "排产运行恢复检查失败：%s", exc, state_dir=prelaunch_log_dir, runtime_dir=runtime_dir,
+                public_message=PUBLIC_LAUNCH_ERROR_MESSAGE,
             )
             return 14
 
@@ -313,23 +277,13 @@ def _serve_created_app(
             )
             host, port = prepared_server.server_address[:2]
         except Exception as exc:
-            _write_launch_error_with_observability(
-                runtime_dir,
-                str(exc),
-                prelaunch_log_dir,
-                logger=app.logger,
-                context="监听端口绑定失败",
+            write_launch_error(
+                app.logger, "监听端口绑定失败：%s", exc, state_dir=prelaunch_log_dir, runtime_dir=runtime_dir,
+                public_message=PUBLIC_LAUNCH_ERROR_MESSAGE,
             )
             return 16
         if host != requested_host:
-            safe_log(
-                app.logger,
-                "warning",
-                "APS_HOST=%s 不可绑定，已回退到 %s（port=%s）",
-                requested_host,
-                host,
-                port,
-            )
+            app.logger.warning("APS_HOST=%s 不可绑定，已回退到 %s（port=%s）", requested_host, host, port)
         _writeback_listen_env(host, port)
 
         rc = _publish_runtime_contract(
@@ -404,7 +358,7 @@ def _preferred_listen_port(*, logger) -> int:
             preferred_port = int(str(raw_port).strip())
         except ValueError as exc:
             preferred_port = 5000
-            safe_log(logger, "warning", "APS_PORT=%r 非法，已回退到默认候选端口 5000：%s", raw_port, exc)
+            logger.warning("APS_PORT=%r 非法，已回退到默认候选端口 5000：%s", raw_port, exc)
     return preferred_port
 
 
@@ -440,8 +394,9 @@ def _acquire_runtime_lock_before_app(
             db_path=runtime_db_path,
         )
     except Exception as e:
-        _write_launch_error_with_observability(
-            runtime_dir, str(e), prelaunch_log_dir, logger=None, context="获取运行时锁失败"
+        write_launch_error(
+            None, "获取运行时锁失败：%s", e, state_dir=prelaunch_log_dir, runtime_dir=runtime_dir,
+            public_message=PUBLIC_LAUNCH_ERROR_MESSAGE,
         )
         return 13
     runtime_lock_state["payload"] = acquired
@@ -471,8 +426,9 @@ def _publish_runtime_contract(
         )
         lock_state["contract"] = publication["payload"]
     except Exception as e:
-        _write_launch_error_with_observability(
-            runtime_dir, str(e), app.config.get("LOG_DIR"), logger=app.logger, context="写入运行时契约失败"
+        write_launch_error(
+            app.logger, "写入运行时契约失败：%s", e, state_dir=app.config["LOG_DIR"], runtime_dir=runtime_dir,
+            public_message=PUBLIC_LAUNCH_ERROR_MESSAGE,
         )
         return 15
     # 停机 finally 在退出备份之后按这里记录的目录删除契约。

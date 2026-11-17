@@ -1,16 +1,26 @@
 """Join managed computations before exit backups and release of launcher locks."""
 
+from typing import Optional, Protocol
+
 from .launcher_runtime_lock import RuntimeLockError
 from .workbench_request_lifecycle import lookup_workbench_request_lifecycle
 from .workbench_system_restore_recovery import (
     RECOVERY,
     WorkbenchSystemRestoreRecoveryHost,
     configure_system_restore_recovery,
-    prepare_system_restore_startup,
 )
 
 
-def stop_run_runtime(runtime):
+class ManagedRuntime(Protocol):
+    """What lock_state["runtime"] holds: the normal WorkbenchRunRuntime or the restore recovery host."""
+
+    @property
+    def db_path(self) -> str: ...
+
+    def shutdown(self, wait: bool) -> bool: ...
+
+
+def stop_run_runtime(runtime: Optional[ManagedRuntime]):
     if runtime is None:
         return
     gate = lookup_workbench_request_lifecycle(runtime.db_path)
@@ -23,9 +33,7 @@ def stop_run_runtime(runtime):
 def install_run_lifecycle(deps, app, lock_state):
     from .workbench_system_restore import install_workbench_system_restore_host
 
-    if app.extensions.get(RECOVERY) or (
-        "workbench_startup_maintenance_records" not in app.extensions and prepare_system_restore_startup(app)
-    ):
+    if app.extensions.get(RECOVERY):
         return _install_recovery_lifecycle(app, lock_state)
     runtime = deps.install_run_runtime(app, runtime_lock=lock_state["payload"])
     lock_state["runtime"] = runtime

@@ -64,7 +64,7 @@ def install_workbench_request_lifecycle(app):
     Closed apps/DBs cannot reopen in this process, including fresh app objects:
     allowing replacement could admit writes between drain and backup/lock release.
     """
-    key = _database_key(app.config.get("DATABASE_PATH"))
+    key = _database_key(app.config["DATABASE_PATH"])
     with _INSTALL_LOCK:
         existing = app.extensions.get(_EXTENSION)
         if existing is not None:

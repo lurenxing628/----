@@ -1,10 +1,8 @@
 """Keep request tickets through Flask teardown AND WSGI iteration/close."""
 
-from contextlib import contextmanager
-
 from flask import Response, g, request
 
-from .workbench_request_lifecycle_state import _LOCAL, RequestFrame, current_frame
+from .workbench_request_lifecycle_state import RequestFrame, bind_frame, current_frame
 
 _FRAME_KEY = "aps.workbench.request_lifecycle"
 _RESPONSE_KEY = "aps.workbench.request_lifecycle_response"
@@ -26,16 +24,6 @@ def stopping_response():
                     headers={"Cache-Control": "no-store"})
 
 
-@contextmanager
-def frame_scope(frame):
-    previous = current_frame()
-    _LOCAL.frame = frame
-    try:
-        yield
-    finally:
-        _LOCAL.frame = previous
-
-
 class RequestIterable:
     def __init__(self, iterable, frame, close_callbacks=()):
         self._source, self._iterator = iterable, iter(iterable)
@@ -48,7 +36,7 @@ class RequestIterable:
     def __next__(self):
         if self._closed:
             raise StopIteration
-        with frame_scope(self._frame):
+        with bind_frame(self._frame):
             try:
                 return next(self._iterator)
             except BaseException:
@@ -59,7 +47,7 @@ class RequestIterable:
         if self._closed:
             return
         self._closed = True
-        with frame_scope(self._frame):
+        with bind_frame(self._frame):
             try:
                 close = getattr(self._source, "close", None)
                 if close is not None:
@@ -79,7 +67,7 @@ def wrap_wsgi(app, gate):
     def wsgi(environ, start_response):
         frame = RequestFrame(app, gate)
         environ[_FRAME_KEY] = frame
-        with frame_scope(frame):
+        with bind_frame(frame):
             try:
                 iterable = original(environ, start_response)
                 response = RequestIterable(iterable, frame, environ.pop(_CLOSE_CALLBACKS_KEY, ()))
@@ -106,7 +94,7 @@ def install_admission_hook(app, gate, normalize):
             raise RuntimeError("Request lifecycle WSGI envelope is missing")
         if frame.ticket is not None:
             return None
-        if normalize(app.config.get("DATABASE_PATH")) != gate.db_path:
+        if normalize(app.config["DATABASE_PATH"]) != gate.db_path:
             raise RuntimeError("Request lifecycle database configuration changed")
         frame.ticket = gate.admit(app)
         if frame.ticket is not None:

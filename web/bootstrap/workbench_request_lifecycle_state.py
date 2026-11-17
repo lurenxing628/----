@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import List, Optional, Protocol, Set, TypeVar
+from typing import Iterator, List, Optional, Protocol, Set, TypeVar
 
 from flask import Flask, has_request_context
 
@@ -13,7 +14,19 @@ _LOCAL = threading.local()
 
 
 def current_frame() -> Optional[RequestFrame]:
+    # threading.local 在没进过请求的线程里没有 frame 属性，那时就是没有当前请求帧。
     return getattr(_LOCAL, "frame", None)
+
+
+@contextmanager
+def bind_frame(frame: RequestFrame) -> Iterator[None]:
+    """在本线程把 frame 设为当前请求帧，退出时恢复进入前的那一帧（WSGI 迭代结束会嵌套进入 close）。"""
+    previous = current_frame()
+    _LOCAL.frame = frame
+    try:
+        yield
+    finally:
+        _LOCAL.frame = previous
 
 
 def reject_request_wait():

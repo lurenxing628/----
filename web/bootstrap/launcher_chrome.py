@@ -11,7 +11,7 @@ from .launcher_processes import kill_runtime_pid, run_powershell_text
 
 
 @dataclass(frozen=True)
-class _StopChromeResult:
+class StopChromeResult:
     ok: bool
     status: str
     profile_dir: str
@@ -98,29 +98,29 @@ def _parse_chrome_pid_output(output: str) -> List[int]:
     return pids
 
 
-def _list_aps_chrome_pids(profile_dir: str) -> Optional[List[int]]:
+def _list_aps_chrome_pids(profile_dir: str, *, state_dir: str) -> Optional[List[int]]:
     if os.name != "nt":
         return []
-    rc, output = run_powershell_text(_chrome_pid_query_script(os.path.abspath(profile_dir)))
+    rc, output = run_powershell_text(_chrome_pid_query_script(os.path.abspath(profile_dir)), state_dir=state_dir)
     if rc is None or rc != 0:
         return None
     return _parse_chrome_pid_output(output)
 
 
-def _stop_aps_chrome_with_result(target_profile: str) -> _StopChromeResult:
-    pids = _list_aps_chrome_pids(target_profile)
+def stop_aps_chrome_with_result(target_profile: str, *, state_dir: str) -> StopChromeResult:
+    pids = _list_aps_chrome_pids(target_profile, state_dir=state_dir)
     if pids is None:
-        return _StopChromeResult(False, "process_list_unavailable", target_profile, [], [], [], "list_failed")
-    failed_pids = [pid for pid in pids if not kill_runtime_pid(pid)]
-    remaining_pids = _list_aps_chrome_pids(target_profile)
+        return StopChromeResult(False, "process_list_unavailable", target_profile, [], [], [], "list_failed")
+    failed_pids = [pid for pid in pids if not kill_runtime_pid(pid, state_dir=state_dir)]
+    remaining_pids = _list_aps_chrome_pids(target_profile, state_dir=state_dir)
     if remaining_pids is None:
-        return _StopChromeResult(False, "final_recheck_unavailable", target_profile, pids, [], failed_pids, "recheck_failed")
+        return StopChromeResult(False, "final_recheck_unavailable", target_profile, pids, [], failed_pids, "recheck_failed")
     if remaining_pids:
-        return _StopChromeResult(False, "profile_processes_still_running", target_profile, pids, remaining_pids, failed_pids)
-    return _StopChromeResult(True, "stopped", target_profile, pids, [], failed_pids)
+        return StopChromeResult(False, "profile_processes_still_running", target_profile, pids, remaining_pids, failed_pids)
+    return StopChromeResult(True, "stopped", target_profile, pids, [], failed_pids)
 
 
-def _log_chrome_stop_failure(result: _StopChromeResult, *, state_dir: str) -> None:
+def log_chrome_stop_failure(result: StopChromeResult, *, state_dir: str) -> None:
     message = (
         f"chrome_stop_failed status={result.status} profile={result.profile_dir} "
         f"pids={result.pids} failed_pids={result.failed_pids} remaining_pids={result.remaining_pids}"

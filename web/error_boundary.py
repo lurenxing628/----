@@ -81,8 +81,6 @@ def _validation_error_message(exc: AppError, details: dict) -> str:
     }
     if reason in reason_messages:
         return reason_messages[reason]
-    if field == "freeze_window":
-        return "冻结期设置或打底排程有问题，请修复后重试。"
     if not (
         _looks_internal_non_validation_message(exc.message)
         or _message_mentions_internal_field(exc.message, field)

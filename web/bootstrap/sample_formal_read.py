@@ -117,8 +117,9 @@ def _assembled(plan_ref, expected, documents, rejected, low, high):
     data = {"plan": plan, "tasks": tasks, "task_count": len(tasks), "tasks_complete": True,
             "resources": resources, "scope": {"kind": "sample_assembled_plan_workspace", "plan_ref": plan_ref},
             "plan_span": span, "projections": {"kind": "segmented_http", "source": "assembly.segments[].data.projections"}}
-    # 拼装件没有整体快照：snapshot_ref 为空，as_of 记拼装完成的工厂本地时间；各分段原快照留在 assembly.reads。
-    document = query_payload(data, unbound_snapshot())
+    # 拼装件没有整体快照：snapshot_ref 为空，as_of 记样例客户端拼装完成的工厂本地时间（不在服务请求里，
+    # 不取工作台请求时钟）；各分段原快照留在 assembly.reads。
+    document = query_payload(data, unbound_snapshot(datetime.now()))
     document["assembly"] = {"kind": "segmented_http", "segments": documents, "reads": reads, "rejected_scopes": rejected,
                            "requested_span": {"range_start": low.isoformat(), "range_end": high.isoformat()},
                            "unique_task_count": len(tasks), "segment_count": len(documents),

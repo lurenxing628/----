@@ -11,9 +11,8 @@ from .launcher_contract_result import (
     read_runtime_contract_result,
 )
 from .launcher_lock_result import LOCK_STATUS_MISSING, read_runtime_lock_result_from_path
-from .launcher_observability import launcher_log_warning
+from .launcher_observability import RUNTIME_ERROR_FILE, launcher_log_warning
 from .launcher_paths import (
-    RUNTIME_ERROR_FILE,
     resolve_runtime_state_dir_for_read,
     runtime_lock_path,
     runtime_log_dir,

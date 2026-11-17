@@ -6,12 +6,11 @@ import os
 import sys
 from typing import Dict, Optional, Tuple
 
-from .launcher_observability import launcher_log_warning
+from .launcher_observability import RUNTIME_ERROR_FILE, launcher_log_warning
 
 RUNTIME_CONTRACT_VERSION = 1
 RUNTIME_SHUTDOWN_PATH = "/system/runtime/shutdown"
 RUNTIME_LOCK_FILE = "aps_runtime.lock"
-RUNTIME_ERROR_FILE = "aps_launch_error.txt"
 RUNTIME_DB_LOCK_SUFFIX = ".lock"
 PORTABLE_MARKER_FILE = "aps-portable.txt"
 
@@ -39,7 +38,7 @@ def current_runtime_owner() -> str:
     if not user:
         try:
             user = getpass.getuser().strip()
-        except Exception as exc:
+        except (ImportError, KeyError) as exc:
             launcher_log_warning(None, "读取当前用户失败，运行时 owner 将按 unknown 处理：%s", exc)
             user = ""
     domain = str(os.environ.get("USERDOMAIN") or os.environ.get("COMPUTERNAME") or "").strip()
@@ -59,17 +58,12 @@ def read_shared_data_root_from_registry() -> str:
         except OSError as exc:
             launcher_log_warning(None, "读取 APS 共享数据目录注册表失败，尝试下一个访问模式：access=%s error=%s", access, exc)
             continue
-        try:
-            result = winreg.QueryValueEx(key, "SharedDataRoot")
-            value = result[0] if isinstance(result, tuple) and result else ""
-        except Exception as exc:
-            launcher_log_warning(None, "读取 APS SharedDataRoot 注册表值失败，将继续使用后续回退路径：%s", exc)
-            value = ""
-        finally:
+        with key:
             try:
-                winreg.CloseKey(key)
-            except Exception as exc:
-                launcher_log_warning(None, "关闭 APS 注册表句柄失败，已继续：%s", exc)
+                value = winreg.QueryValueEx(key, "SharedDataRoot")[0]
+            except OSError as exc:
+                launcher_log_warning(None, "读取 APS SharedDataRoot 注册表值失败，将继续使用后续回退路径：%s", exc)
+                value = ""
         shared_root = _normalize_abs_dir(value)
         if shared_root:
             return shared_root

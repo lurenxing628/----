@@ -9,8 +9,6 @@ from typing import cast
 
 from werkzeug.serving import ThreadedWSGIServer
 
-from core.infrastructure.logging import safe_log
-
 from .launcher_network import candidate_ports
 from .launcher_shutdown import RuntimeHostStopTransport
 from .workbench_request_lifecycle import WorkbenchRequestHandler
@@ -69,5 +67,5 @@ def prepare_runtime_server(app, host, preferred_port):
             return create_runtime_server(app, bind_host, port)
         except RuntimeBindError as exc:
             last_error = exc
-            safe_log(app.logger, "warning", "Runtime bind failed: host=%s port=%s error=%s", bind_host, port, exc)
+            app.logger.warning("Runtime bind failed: host=%s port=%s error=%s", bind_host, port, exc)
     raise RuntimeBindError(f"No available runtime listener: {last_error}")

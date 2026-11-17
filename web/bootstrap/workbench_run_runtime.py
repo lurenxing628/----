@@ -12,15 +12,16 @@ import time
 from contextlib import closing
 
 from core.infrastructure.database import get_connection
-from core.infrastructure.logging import OperationLogger
+from core.infrastructure.operation_logging import OperationLogger
+from core.models.enums import RUN_TERMINAL_STATES, RunStage, RunState
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_run_job import TERMINAL_STATES, validate_run_ref
+from core.models.workbench_run_job import validate_run_ref
 from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.system.system_maintenance_service import SystemMaintenanceService
 from core.services.workbench.run.worker_claim import RunClaimBusy, capture_claim_retry_state, require_retryable_claim
 from core.services.workbench.run.worker_recovery import recover_unfinished_runs
 from web.error_boundary import user_visible_app_error_message
-from web.runtime_host import normalize_runtime_db_path, restore_host
+from web.runtime_host import normalize_runtime_db_path, restore_host, wall_clock
 
 from .workbench_request_lifecycle import lookup_workbench_request_lifecycle
 from .workbench_run_runtime_lock import RunRuntimeLockProof, RunRuntimeOwnershipError
@@ -35,7 +36,7 @@ _ENABLED = "WORKBENCH_RUN_JOBS_ENABLED"
 class WorkbenchRunRuntime:
     def __init__(self, app):
         self.app = app
-        self.db_path = normalize_runtime_db_path(app.config.get("DATABASE_PATH"))
+        self.db_path = normalize_runtime_db_path(app.config["DATABASE_PATH"])
         self.proof = None
         self.recovery = None
         self._condition = threading.Condition()
@@ -86,7 +87,7 @@ class WorkbenchRunRuntime:
         self.app.logger.error("Workbench run runtime disabled: db=%s reason=%s", self.db_path, reason)
 
     def _verify(self):
-        if normalize_runtime_db_path(self.app.config.get("DATABASE_PATH")) != self.db_path:
+        if normalize_runtime_db_path(self.app.config["DATABASE_PATH"]) != self.db_path:
             raise RunRuntimeOwnershipError("runtime_database_config_changed")
         if self.proof is None:
             raise RunRuntimeOwnershipError("runtime_lock_not_supplied")
@@ -104,7 +105,8 @@ class WorkbenchRunRuntime:
     def _recover(self, run_ref=None):
         self._verify()
         with closing(get_connection(self.db_path)) as conn:
-            result = recover_unfinished_runs(conn, executor_is_active=self._executor_is_active, run_ref=run_ref)
+            result = recover_unfinished_runs(conn, executor_is_active=self._executor_is_active,
+                                             clock=wall_clock(self.app), run_ref=run_ref)
         self.recovery = result
         self._verify()
         if result["scheduling_busy"]:
@@ -173,15 +175,15 @@ class WorkbenchRunRuntime:
                 if claim_failures:
                     require_retryable_claim(conn, original)
                 row = read_run_head(conn, run_ref)
-                if row["state"] != "queued" or row["stage"] != "queued":
-                    if row["state"] not in TERMINAL_STATES:
+                if row["state"] != RunState.QUEUED.value or row["stage"] != RunStage.QUEUED.value:
+                    if row["state"] not in RUN_TERMINAL_STATES:
                         self._disable("awaiting_reconciliation: " + run_ref)
                         self._stop.set()
                     return
                 if original is None:
                     original = capture_claim_retry_state(conn, run_ref)
                 try:
-                    worker = WorkbenchRunWorker(conn, compute_runner=self._compute_runner,
+                    worker = WorkbenchRunWorker(conn, clock=wall_clock(self.app), compute_runner=self._compute_runner,
                                                 app_error_message=user_visible_app_error_message)
                     if claim_failures:
                         worker.execute(run_ref, retry_original=original)
@@ -223,12 +225,12 @@ class WorkbenchRunRuntime:
                 self._verify()
                 with closing(get_connection(self.db_path)) as conn:
                     state = read_run_head(conn, run_ref)
-                if state["state"] in TERMINAL_STATES:
+                if state["state"] in RUN_TERMINAL_STATES:
                     return
                 self._recover(run_ref)
                 with closing(get_connection(self.db_path)) as conn:
                     state = read_run_head(conn, run_ref)
-                if state["state"] not in TERMINAL_STATES:
+                if state["state"] not in RUN_TERMINAL_STATES:
                     self._disable("awaiting_reconciliation: " + run_ref)
                     self._stop.set()
             except Exception as exc:
@@ -261,7 +263,7 @@ class WorkbenchRunRuntime:
             with closing(get_connection(self.db_path)) as conn:
                 SystemMaintenanceService.run_if_due(
                     conn, db_path=self.db_path, backup_dir=self.app.config["BACKUP_DIR"],
-                    backup_keep_days_default=int(self.app.config.get("BACKUP_KEEP_DAYS", 7)),
+                    backup_keep_days_default=self.app.config["BACKUP_KEEP_DAYS"],
                     logger=self.app.logger, op_logger=OperationLogger(conn, logger=self.app.logger),
                     admission_window=owner.automatic_maintenance,
                 )
@@ -340,7 +342,7 @@ def install_workbench_run_runtime(app, *, runtime_lock):
         if runtime is not None:
             if not isinstance(runtime, WorkbenchRunRuntime) or runtime._closed:
                 raise RuntimeError("Workbench runtime already closed or foreign")
-            if runtime.db_path != normalize_runtime_db_path(app.config.get("DATABASE_PATH")):
+            if runtime.db_path != normalize_runtime_db_path(app.config["DATABASE_PATH"]):
                 raise RuntimeError("Workbench runtime database changed")
             if runtime.proof is not None:
                 if not runtime.proof.matches(runtime.db_path, runtime_lock):

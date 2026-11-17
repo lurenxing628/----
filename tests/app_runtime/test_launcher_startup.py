@@ -46,6 +46,8 @@ def run_ps(tmp_path):
 
 @pytest.fixture
 def health_server(tmp_path):
+    import sys
+
     from flask import Flask
     from werkzeug.test import Client
     from werkzeug.wrappers import Response
@@ -88,7 +90,8 @@ def health_server(tmp_path):
         previous = state.get("lock")
         if previous is not None:
             assert release_runtime_lock(str(tmp_path), expected_payload=previous)
-        state["lock"] = acquire_runtime_lock(str(tmp_path), owner="LOCAL\\operator", db_path=str(database_path))
+        state["lock"] = acquire_runtime_lock(str(tmp_path), owner="LOCAL\\operator", exe_path=sys.executable,
+                                             db_path=str(database_path))
         configure_runtime_contract(app, str(tmp_path), "127.0.0.1", server.server_port, "LOCAL\\operator",
                                    deps=_default_deps(), runtime_lock=state["lock"])
         result = read_runtime_contract_result(str(tmp_path))
@@ -565,10 +568,12 @@ app = mod.create_app()
 from web.bootstrap import factory
 from web.bootstrap.entrypoint import _default_deps
 from web.bootstrap.workbench_run_lifecycle import install_run_lifecycle, stop_run_runtime
+from web.bootstrap.launcher_paths import current_runtime_owner
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
 atexit.unregister(factory._run_exit_backup)
 scope = str(root / 'cold-start-lock')
-payload = acquire_runtime_lock(scope, db_path=str(root / Path(os.environ['APS_DB_PATH']).name))
+payload = acquire_runtime_lock(scope, owner=current_runtime_owner(), exe_path=sys.executable,
+                               db_path=str(root / Path(os.environ['APS_DB_PATH']).name))
 runtime = install_run_lifecycle(_default_deps(), app, {'payload': payload})
 try:
     assert runtime.ready and app.extensions['workbench_system_restore_host'].status['operations_available']
@@ -597,3 +602,42 @@ finally:
     assert json.loads(result.stdout) == {"ready": True, "xlsx": 200, "shared_lock": True}
     log = (Path(os.environ["APS_LOG_DIR"]) / "launcher.log").read_text(encoding="utf-8")
     assert "python_entry" in log and "application_import_complete" in log and "schema_complete" in log
+
+
+@pytest.mark.parametrize("launcher_log_writable", [True, False], ids=["both-files", "error-file-without-log"])
+def test_entry_import_failure_leaves_launch_error_without_database_or_stderr(tmp_path, launcher_log_writable):
+    """入口模块链在事务模块处导入失败：退出码 14，启动日志写原因、错误文件写公开提示，两份各自尝试。"""
+    import sys
+
+    from app import PRELAUNCH_PUBLIC_MESSAGE
+
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    if not launcher_log_writable:
+        (logs / "launcher.log").mkdir()
+    script = """
+import importlib.abc, sqlite3, sys
+class BlockTransaction(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        if fullname == "core.infrastructure.transaction":
+            raise ImportError("blocked core.infrastructure.transaction")
+        return None
+sys.meta_path.insert(0, BlockTransaction())
+connects = []
+def deny_connect(*args, **kwargs):
+    connects.append(args)
+    raise AssertionError("sqlite connection during prelaunch failure")
+sqlite3.connect = deny_connect
+sys.stderr = None
+import app
+rc = app.main([])
+sys.exit(99 if connects else rc)
+"""
+    result = subprocess.run([sys.executable, "-c", script], cwd=str(ROOT), capture_output=True, timeout=60,
+                            env={**os.environ, "APS_LOG_DIR": str(logs), "PYTHONIOENCODING": "utf-8"})
+    assert result.returncode == 14, result.stdout.decode("utf-8", "replace") + result.stderr.decode("utf-8", "replace")
+    assert (logs / "aps_launch_error.txt").read_text(encoding="utf-8") == PRELAUNCH_PUBLIC_MESSAGE + "\n"
+    if launcher_log_writable:
+        log = (logs / "launcher.log").read_text(encoding="utf-8")
+        assert "python_entry" in log
+        assert "[ERROR] 应用启动前加载失败：blocked core.infrastructure.transaction" in log

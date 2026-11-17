@@ -1,6 +1,6 @@
 """DB-free maintenance receipt transport; never forwards a privileged app request.
 
-The host can also serve RestoreStatusTransport(None, journal_factory, status) alone when
+The host can also serve RestoreStatusTransport(None, journal_factory, status, logger) alone when
 startup refuses a pending journal. That recovery server must keep the original
 launcher lock and must not construct the normal app, open SQLite or start workers.
 """
@@ -8,13 +8,16 @@ launcher lock and must not construct the normal app, open SQLite or start worker
 from __future__ import annotations
 
 import json
-import re
+import logging
 import uuid
 from typing import TYPE_CHECKING
 
 from werkzeug.wrappers import Response
 
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_system import validate_maintenance_reference
+
+from .workbench_system_restore_view import recovery_response
 
 if TYPE_CHECKING:
     from .workbench_system_restore import WorkbenchSystemRestoreHost
@@ -30,16 +33,10 @@ def request_restore_status(environ, controller: WorkbenchSystemRestoreHost):
     return environ[RESTORE_STATUS_ENV]
 
 
-def validate_maintenance_reference(kind, reference):
-    if kind == "request":
-        validate_request_key(reference)
-    elif not re.fullmatch(r"[a-f0-9]{32}", reference):
-        raise WorkbenchCommandRejected("invalid_input", "这个维护记录编号无效，请重新打开维护页。", 400)
-
-
 class RestoreStatusTransport:
-    def __init__(self, application, journal_factory, status, *, static_status=None):
+    def __init__(self, application, journal_factory, status, logger: logging.Logger, *, static_status=None):
         self.application, self.journal_factory, self.status = application, journal_factory, status
+        self.logger = logger
         self.static_status = static_status
 
     def __call__(self, environ, start_response):
@@ -47,8 +44,8 @@ class RestoreStatusTransport:
         status = self._request_status(environ, path)
         stopped = status["state"] != "ready"
         if stopped and environ.get("REQUEST_METHOD") == "GET" and path in ("/", "/workbench", "/workbench/", "/workbench/trial"):
-            from .workbench_system_restore_view import recovery_response
-            return recovery_response(environ, self.journal_factory, status, self._result)(environ, start_response)
+            return recovery_response(environ, self.journal_factory, status, self._result, self.logger)(
+                environ, start_response)
         status_path = path == BASE + "/restore-host"
         result_path = path.startswith(BASE + "/results/") or path.startswith(BASE + "/jobs/")
         if not status_path and not (stopped and result_path):
@@ -75,6 +72,8 @@ class RestoreStatusTransport:
         except WorkbenchCommandRejected as exc:
             response = self._error(exc.code, str(exc), exc.status)
         except Exception:
+            # 与恢复页同口径：维护记录损坏（RuntimeError）也按读不出处理，同时留下原因。
+            self.logger.exception("维护结果查询读取维护记录失败：path=%s", path)
             response = self._error("maintenance_unconfirmed", "维护记录读不出来，不能确认结果。系统已停下，请不要再操作，联系维护人员。", 503)
         return response(environ, start_response)
 
@@ -116,4 +115,5 @@ def install_restore_status_transport(app, controller):
     app.wsgi_app = RestoreStatusTransport(app.wsgi_app,
                                         lambda: SystemMaintenanceJournal(controller.journal.directory, controller.db_path),
                                         lambda: controller.status,
+                                        app.logger,
                                         static_status=controller.static_status)

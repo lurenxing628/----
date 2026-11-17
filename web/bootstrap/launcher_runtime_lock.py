@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import errno
 import os
-import sys
 import time
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional, Tuple, cast
@@ -34,13 +33,12 @@ from .launcher_lock_result import (
 )
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import (
-    current_runtime_owner,
     db_scope_lock_path,
     resolve_runtime_state_dir,
     resolve_runtime_state_dir_for_read,
     runtime_lock_path,
 )
-from .launcher_processes import _pid_matches_contract, _pid_state, set_process_log_context
+from .launcher_processes import pid_matches_contract, query_pid_state
 
 
 class RuntimeLockError(RuntimeError):
@@ -97,20 +95,20 @@ def _raise_uncertain_runtime_lock(result: RuntimeLockReadResult) -> None:
 
 
 def is_runtime_lock_active(lock_payload: Dict[str, Any], expected_exe_path: str = "", *, local_probe_only: bool = False) -> bool:
-    state_dir = str(lock_payload.get("state_dir") or "")
-    set_process_log_context(state_dir=state_dir)
+    # 读出的锁带 state_dir；镜像核对时传入的运行时契约没有它，探测失败只写 stderr。
+    state_dir: Optional[str] = lock_payload.get("state_dir")
     pid = lock_payload["pid"]
     if local_probe_only and os.name == "nt":
         return _native_runtime_lock_active(pid, lock_payload, expected_exe_path)
-    pid_state = _pid_state(pid)
+    pid_state = query_pid_state(pid, state_dir=state_dir)
     if pid_state is False:
         return False
     if pid_state is None:
-        launcher_log_warning(None, "运行时锁 pid 状态无法确认，按仍可能活跃处理：pid=%s", pid, state_dir=str(lock_payload.get("state_dir") or ""))
+        launcher_log_warning(None, "运行时锁 pid 状态无法确认，按仍可能活跃处理：pid=%s", pid, state_dir=state_dir)
         return True
     exe_path = str(lock_payload.get("exe_path") or expected_exe_path or "").strip()
     if exe_path:
-        pid_match = _pid_matches_contract(pid, exe_path)
+        pid_match = pid_matches_contract(pid, exe_path, state_dir=state_dir)
         if pid_match is False:
             return False
     return True
@@ -158,7 +156,7 @@ def _create_new_runtime_lock(lock_path: str, payload: Dict[str, Any]) -> bool:
     except Exception:
         try:
             remove_fixed_file(lock_path)
-        except Exception as cleanup_exc:
+        except OSError as cleanup_exc:
             launcher_log_warning(
                 None,
                 "创建运行时锁失败后清理锁文件失败，已继续抛出原错误：path=%s error=%s",
@@ -238,8 +236,8 @@ def _acquire_lock_file(
     raise RuntimeLockError("创建运行时锁失败，请稍后重试。")
 
 
-def _acquire_db_scope_lock(db_path: str, database: str, *, owner_s: str, exe_path_s: str) -> Dict[str, Any]:
-    lock_path = db_scope_lock_path(db_path)
+def _acquire_db_scope_lock(database: str, *, owner_s: str, exe_path_s: str) -> Dict[str, Any]:
+    lock_path = db_scope_lock_path(database)
     lock_dir = os.path.dirname(lock_path)
     os.makedirs(lock_dir, exist_ok=True)
     payload = _runtime_lock_payload(owner_s, exe_path_s, database)
@@ -287,27 +285,26 @@ def acquire_runtime_lock(
     runtime_dir: str,
     cfg_log_dir: Optional[str] = None,
     *,
-    owner: Optional[str] = None,
-    exe_path: Optional[str] = None,
+    owner: str,
+    exe_path: str,
     db_path: str,
 ) -> Dict[str, Any]:
+    """owner 取自 current_runtime_owner()（已去空白，至少是 "unknown"），exe_path 是本进程可执行文件。"""
     state_dir = resolve_runtime_state_dir(runtime_dir, cfg_log_dir)
     os.makedirs(state_dir, exist_ok=True)
     lock_path = runtime_lock_path(state_dir)
-    # current_runtime_owner() 已去空白且至少是 "unknown"；入口传入的 owner 也取自它。
-    owner_s = current_runtime_owner() if owner is None else owner
-    exe_path_s = os.path.abspath(sys.executable if exe_path is None else exe_path)
-    db_path_s = str(db_path).strip()
-    # DB 身份只在入口归一一次，壳锁与 db-scope 锁的 payload、提示文案都用这一份。
-    database = normalize_runtime_db_path(db_path_s)
-    payload = _runtime_lock_payload(owner_s, exe_path_s, database)
-    acquired = _acquire_lock_file(lock_path, payload, owner_s, state_dir=state_dir)
+    exe_path_s = os.path.abspath(exe_path)
+    # DB 身份只在入口归一一次：两把锁的 payload、db-scope 锁路径与提示文案都用这一份，
+    # 与运行期所有权证明（RunRuntimeLockProof）按同一归一路径找锁。
+    database = normalize_runtime_db_path(db_path)
+    payload = _runtime_lock_payload(owner, exe_path_s, database)
+    acquired = _acquire_lock_file(lock_path, payload, owner, state_dir=state_dir)
     acquired["state_dir"] = state_dir
     acquired["path"] = lock_path
     # B03 锁命名空间与被保护资源绑定（方案乙）：壳锁位置不动（bat/stop 读取端合同不破），
     # 在解析后的 DB 同路径追加 db-scope 排他锁作为同库双开的真互斥防线。
     try:
-        acquired["db_lock"] = _acquire_db_scope_lock(db_path_s, database, owner_s=owner_s, exe_path_s=exe_path_s)
+        acquired["db_lock"] = _acquire_db_scope_lock(database, owner_s=owner, exe_path_s=exe_path_s)
     except Exception:
         _rollback_own_runtime_lock(lock_path, acquired)
         raise

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import os
 import time
 import urllib.error
@@ -11,9 +12,9 @@ from typing import (
 )
 
 from .launcher_chrome import (
-    _log_chrome_stop_failure,
-    _stop_aps_chrome_with_result,
-    _StopChromeResult,
+    StopChromeResult,
+    log_chrome_stop_failure,
+    stop_aps_chrome_with_result,
 )
 from .launcher_cleanup_result import delete_runtime_contract_files_result
 from .launcher_contract_result import (
@@ -44,9 +45,8 @@ from .launcher_paths import (
     resolve_runtime_stop_context,
 )
 from .launcher_processes import (
-    _pid_matches_contract,
-    _pid_state,
-    set_process_log_context,
+    pid_matches_contract,
+    query_pid_state,
 )
 from .launcher_runtime_lock import is_runtime_lock_active
 from .launcher_shutdown import HOST_STOP_PATH
@@ -55,8 +55,8 @@ from .launcher_stop_cleanup import (
     release_initial_runtime_locks,
 )
 from .launcher_stop_state import (
-    _runtime_state_name,
-    _runtime_stop_is_complete,
+    runtime_state_name,
+    runtime_stop_is_complete,
 )
 
 _STOP_GRACE_SECONDS = 12.0
@@ -108,27 +108,33 @@ def _request_runtime_shutdown(contract: Dict[str, Any]) -> bool:
         if not ok:
             _launcher_log_contract_warning("运行时关闭请求被拒绝：url=%s status=%s", url, e.code, contract=contract)
         return ok
-    except Exception as exc:
+    except (OSError, http.client.HTTPException) as exc:
         _launcher_log_contract_warning("运行时关闭请求失败：url=%s error=%s", url, exc, contract=contract)
         return False
 
 
-def _stop_aps_chrome_if_requested(stop_aps_chrome: bool, profile_dir: str, *, state_dir: str) -> _StopChromeResult:
+def _stop_aps_chrome_if_requested(stop_aps_chrome: bool, profile_dir: str, *, state_dir: str) -> StopChromeResult:
     if not stop_aps_chrome:
-        return _StopChromeResult(True, "not_requested", profile_dir, [], [], [])
-    result = _stop_aps_chrome_with_result(profile_dir)
+        return StopChromeResult(True, "not_requested", profile_dir, [], [], [])
+    result = stop_aps_chrome_with_result(profile_dir, state_dir=state_dir)
     if not result.ok:
-        _log_chrome_stop_failure(result, state_dir=state_dir)
+        log_chrome_stop_failure(result, state_dir=state_dir)
     return result
 
 
-def _runtime_identity(contract: Optional[Dict[str, Any]], lock_payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def _runtime_identity(
+    contract: Optional[Dict[str, Any]], lock_payload: Optional[Dict[str, Any]], *, state_dir: str
+) -> Dict[str, Any]:
     contract_pid = contract["pid"] if contract else 0
     lock_pid = lock_payload["pid"] if lock_payload else 0
     expected_exe_path = str((contract or {}).get("exe_path") or (lock_payload or {}).get("exe_path") or "").strip()
     pid = contract_pid if contract_pid > 0 else lock_pid
-    pid_state = _pid_state(pid) if pid > 0 else False
-    pid_match = _pid_matches_contract(pid, expected_exe_path) if pid_state is True and expected_exe_path else None
+    pid_state = query_pid_state(pid, state_dir=state_dir) if pid > 0 else False
+    pid_match = (
+        pid_matches_contract(pid, expected_exe_path, state_dir=state_dir)
+        if pid_state is True and expected_exe_path
+        else None
+    )
     return {
         "contract_pid": contract_pid,
         "lock_pid": lock_pid,
@@ -192,7 +198,6 @@ def _has_runtime_artifacts(paths: Dict[str, str]) -> bool:
 
 def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
     runtime_dir_abs, state_dir = resolve_runtime_stop_context(runtime_dir_or_state_dir)
-    set_process_log_context(state_dir=state_dir, runtime_dir=runtime_dir_abs)
     paths = resolve_runtime_state_paths(state_dir)
     endpoint_files = read_runtime_endpoint_files_result(state_dir)
     contract_result = read_runtime_contract_result(state_dir)
@@ -200,12 +205,12 @@ def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
     contract = contract_result.payload if contract_result.ok else None
     lock_result = read_runtime_lock_result(state_dir)
     lock_payload = lock_result.payload if lock_result.ok else None
-    identity = _runtime_identity(contract, lock_payload)
+    identity = _runtime_identity(contract, lock_payload, state_dir=state_dir)
     endpoint = _endpoint_status(contract, endpoint_files)
     endpoint_uncertain = bool(endpoint_files.uncertain and not contract_result.ok)
     lock_unknown = lock_result.status not in {LOCK_STATUS_MISSING, LOCK_STATUS_VALID}
     lock_active = bool(lock_unknown or _lock_active_for_identity(lock_payload, identity))
-    state = _runtime_state_name(
+    state = runtime_state_name(
         endpoint_up=bool(endpoint["endpoint_up"]),
         contract=contract,
         contract_status=contract_result.status,
@@ -305,13 +310,13 @@ def stop_runtime_from_dir(
     state_dir = status["state_dir"]
     original_status = status
     expected = read_initial_runtime_claims(status)
-    if _runtime_stop_is_complete(status):
+    if runtime_stop_is_complete(status):
         return _finalize_stopped_runtime(original_status, runtime_dir_abs, stop_aps_chrome=stop_aps_chrome, **expected)
 
     grace_deadline = time.time() + _STOP_GRACE_SECONDS
     shutdown_requested = _request_runtime_shutdown(status["contract"]) if isinstance(status.get("contract"), dict) else False
     status = _wait_for_runtime_stop(state_dir, grace_deadline)
-    if _runtime_stop_is_complete(status):
+    if runtime_stop_is_complete(status):
         return _finalize_stopped_runtime(original_status, runtime_dir_abs, stop_aps_chrome=stop_aps_chrome, **expected)
 
     # 关闭请求受理或 HTTP 不再响应，都不能证明后台计算、写入和退出备份已结束。
@@ -323,7 +328,7 @@ def stop_runtime_from_dir(
 def _wait_for_runtime_stop(state_dir: str, deadline: float) -> Dict[str, Any]:
     while time.time() < deadline:
         status = _classify_runtime_state(state_dir)
-        if _runtime_stop_is_complete(status):
+        if runtime_stop_is_complete(status):
             return status
         time.sleep(0.25)
     return _classify_runtime_state(state_dir)

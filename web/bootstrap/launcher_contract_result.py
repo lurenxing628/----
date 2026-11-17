@@ -7,13 +7,14 @@ from typing import Any, Dict, Optional, Tuple
 from core.infrastructure.safe_files import read_fixed_json
 from core.shared.strict_parse import PORT_MAX, WIN32_DWORD_MAX, parse_bounded_positive_int
 
-from .launcher_observability import launcher_log_warning
+from .launcher_observability import write_launch_error
 from .launcher_paths import RUNTIME_CONTRACT_VERSION, resolve_runtime_state_dir_for_read
 
 CONTRACT_STATUS_MISSING = "missing"
 CONTRACT_STATUS_VALID = "valid"
 CONTRACT_STATUS_INVALID = "invalid"
 CONTRACT_STATUS_UNREADABLE = "unreadable"
+CONTRACT_PUBLIC_LAUNCH_ERROR = "应用启动时遇到问题，请把 launcher.log 发给维护人员排查。"
 
 
 @dataclass(frozen=True)
@@ -47,13 +48,13 @@ def read_runtime_contract_result(runtime_dir: str) -> RuntimeContractReadResult:
             reason="contract_missing",
         )
     except (OSError, TypeError, ValueError) as exc:
-        launcher_log_warning(
+        write_launch_error(
             None,
             "读取运行时契约失败，已按不可读契约处理：path=%s error=%s",
             contract_path,
             exc,
             state_dir=state_dir,
-            write_launch_error=True,
+            public_message=CONTRACT_PUBLIC_LAUNCH_ERROR,
         )
         return RuntimeContractReadResult(
             status=CONTRACT_STATUS_UNREADABLE,
@@ -65,14 +66,14 @@ def read_runtime_contract_result(runtime_dir: str) -> RuntimeContractReadResult:
         )
     normalized, reason, error = _normalize_runtime_contract_payload(payload)
     if normalized is None:
-        launcher_log_warning(
+        write_launch_error(
             None,
             "运行时契约无效：path=%s reason=%s error=%s",
             contract_path,
             reason,
             error,
             state_dir=state_dir,
-            write_launch_error=True,
+            public_message=CONTRACT_PUBLIC_LAUNCH_ERROR,
         )
         return RuntimeContractReadResult(
             status=CONTRACT_STATUS_INVALID,

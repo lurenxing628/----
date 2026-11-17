@@ -1,7 +1,7 @@
 """HTTP restore host; never acquire/release launcher locks or restart a worker.
 
 Integration contract (owned by factory/entrypoint, not this module):
-* At startup, BEFORE the first DB open/migration/plugin/worker, call the external
+* At startup, BEFORE the first DB open/migration/worker, call the external
   assert_system_maintenance_ready(database_path, journal_dir) hook. Check it
   before automatic exit backups too, not inside the restore's owned DB access.
 * Install the real request lifecycle, then the real run runtime with the original
@@ -34,6 +34,7 @@ from web.runtime_host import (
     RESTORE_HOST_GUARD,
     SystemRestoreHost,
     normalize_runtime_db_path,
+    wall_clock,
 )
 
 from .workbench_request_lifecycle import (
@@ -52,7 +53,7 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
     def __init__(self, app, runtime):
         self.app, self.runtime = app, runtime
         self.db_path = normalize_runtime_db_path(app.config["DATABASE_PATH"])
-        self.journal = SystemMaintenanceJournal(app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"), self.db_path)
+        self.journal = SystemMaintenanceJournal(app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"], self.db_path)
         self.gate = app.extensions.get("workbench_request_lifecycle")
         self._lock = threading.RLock()
         self._state, self._request_key = "ready", None
@@ -62,7 +63,7 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
         self.verify()
         if not runtime.ready or self.gate.status["state"] != "accepting":
             raise RuntimeError("Restore requires a ready managed runtime and accepting HTTP lifecycle")
-        records = app.extensions.pop("workbench_startup_maintenance_records", None)
+        records = app.extensions.pop("workbench_startup_maintenance_records")
         self.journal.assert_ready(records)
 
     def __call__(self):
@@ -177,8 +178,8 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
 
     def verify(self):
         app, runtime, gate = self.app, self.runtime, self.gate
-        if (normalize_runtime_db_path(app.config.get("DATABASE_PATH")) != self.db_path
-                or app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") != self.journal.directory
+        if (normalize_runtime_db_path(app.config["DATABASE_PATH"]) != self.db_path
+                or app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"] != self.journal.directory
                 or not isinstance(gate, WorkbenchRequestLifecycle)
                 or gate is not lookup_workbench_request_lifecycle(self.db_path)
                 or gate is not app.extensions.get("workbench_request_lifecycle")
@@ -222,6 +223,7 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
                 row = service.journal.record(
                     row,
                     state="failed",
+                    now=wall_clock(self.app)(),
                     code="busy",
                     database_origin="unchanged",
                     restart_required=True,
@@ -236,7 +238,7 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
             self._stop_unconfirmed(request_key)
             # A failed terminal write leaves the prior pending record intact.
             self.journal = service.journal
-            self.journal.record(row, "recovery_required", code="host_restore_unconfirmed",
+            self.journal.record(row, "recovery_required", now=wall_clock(self.app)(), code="host_restore_unconfirmed",
                                 database_origin="unconfirmed", restart_required=True,
                                 message="这次恢复没有得到能确认的最终结果，系统已停下。请不要再操作，留好恢复前的保护副本并联系维护人员。")
             return self.journal.public(row)
@@ -337,7 +339,7 @@ def install_workbench_system_restore_host(app, *, runtime):
     return controller
 
 
-def make_workbench_system_restore_recovery_app(database_path, journal_dir):
+def make_workbench_system_restore_recovery_app(database_path, journal_dir, logger):
     """Optional pre-factory WSGI host for pending/corrupt records; no DB access.
 
     The launcher calls this instead of normal factory/worker initialization when
@@ -348,4 +350,5 @@ def make_workbench_system_restore_recovery_app(database_path, journal_dir):
     status = {"state": "recovery_required", "restart_required": True, "automatic_resume": False,
               "operations_available": False, "result_source": "external_maintenance_journal",
               "references": "unconfirmed_do_not_use", "request_key": None}
-    return RestoreStatusTransport(None, lambda: SystemMaintenanceJournal(journal_dir, database_path), lambda: status)
+    return RestoreStatusTransport(None, lambda: SystemMaintenanceJournal(journal_dir, database_path), lambda: status,
+                                  logger)

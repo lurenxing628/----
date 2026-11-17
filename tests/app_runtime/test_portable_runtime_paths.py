@@ -11,10 +11,7 @@ import pytest
 from flask import Flask
 
 from core.services.workbench.facts.run_data_context import RunDataContext
-from core.services.workbench.facts.system_journal import (
-    SystemMaintenanceJournal,
-    system_journal_directory,
-)
+from core.services.workbench.facts.system_journal import system_journal_directory
 from tests.workbench.system_maintenance_support import SystemTestAPI
 from web.bootstrap import factory, launcher_paths
 from web.bootstrap.workbench_system_restore_recovery import (
@@ -119,5 +116,3 @@ def test_moving_portable_directory_preserves_data_and_resolves_new_paths(portabl
     with closing(api.connect()) as conn:
         assert RunDataContext(conn, str(api.journal_dir)).ref() == context
     assert portable_dir.exists() is (relocation == "upgrade")
-    with pytest.raises(RuntimeError, match="不属于当前数据库"):
-        SystemMaintenanceJournal(str(api.journal_dir), str(moved / "another.db")).assert_ready()

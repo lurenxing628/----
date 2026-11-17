@@ -27,7 +27,7 @@ def _contract_pid_requires_mixed(contract_pid: int, identity: Dict[str, Any]) ->
     return bool(identity.get("pid_exists")) and identity.get("pid_match") is not False
 
 
-def _runtime_state_name(
+def runtime_state_name(
     *,
     endpoint_up: bool,
     contract: Optional[Dict[str, Any]],
@@ -55,5 +55,5 @@ def _runtime_state_name(
     return "absent"
 
 
-def _runtime_stop_is_complete(status: Dict[str, Any]) -> bool:
+def runtime_stop_is_complete(status: Dict[str, Any]) -> bool:
     return status["state"] in ("absent", "stale")

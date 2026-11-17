@@ -44,8 +44,6 @@ class RunRuntimeLockProof:
 
     def __init__(self, db_path, runtime_lock):
         self.db_path = normalize_runtime_db_path(db_path)
-        if not self.db_path:
-            raise RunRuntimeOwnershipError("runtime_lock_not_supplied")
         self.claim = dict(runtime_lock)
         self.shell_path = self.claim["path"]
         self.db_lock_path = db_scope_lock_path(self.db_path)

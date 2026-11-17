@@ -3,9 +3,8 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, cast
 
-from core.infrastructure.logging import safe_log
 from core.infrastructure.safe_files import (
     remove_fixed_file,
     write_fixed_json,
@@ -66,7 +65,7 @@ def _runtime_contract_payload(
     host: str,
     port: int,
     *,
-    db_path: Optional[str],
+    db_path: str,
     shutdown_token: str,
     instance_id: str,
     log_dir: str,
@@ -104,7 +103,7 @@ def write_runtime_contract_file(
     host: str,
     port: int,
     *,
-    db_path: Optional[str],
+    db_path: str,
     shutdown_token: str,
     instance_id: str,
     log_dir: str,
@@ -145,7 +144,7 @@ def write_runtime_contract_file(
         try:
             _publish_runtime_contract_directory(mirror_log_dir, payload, expected_lock, primary=False)
         except (RuntimeLockError, OSError, TypeError, ValueError) as exc:
-            safe_log(logger, "warning", "写入运行时镜像契约失败，主契约已写入：dir=%s error=%s", mirror_log_dir, exc)
+            logger.warning("写入运行时镜像契约失败，主契约已写入：dir=%s error=%s", mirror_log_dir, exc)
     logger.info(f"运行时契约已写入：{contract_path}")
     return {"path": contract_path, "payload": payload}
 

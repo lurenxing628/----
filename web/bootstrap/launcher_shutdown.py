@@ -1,7 +1,9 @@
 """DB-free, exact-server stop transport, outside business HTTP admission."""
 
 import json
+import logging
 import secrets
+import sqlite3
 import threading
 from typing import Optional
 
@@ -9,7 +11,6 @@ from werkzeug.serving import BaseWSGIServer
 from werkzeug.wrappers import Response
 
 from core.infrastructure.backup import BackupManager, MaintenanceWindowError
-from core.infrastructure.migration_common import fallback_log
 from core.models.enums import YesNo
 from web.runtime_host import RESTORE_HOST_EXTENSION, runtime_identity
 
@@ -66,7 +67,7 @@ class RuntimeHostStopTransport:
 class RuntimeExitBackupManager(BackupManager):
     def __init__(self, app):
         super().__init__(db_path=app.config["DATABASE_PATH"], backup_dir=app.config["BACKUP_DIR"],
-                         keep_days=app.config.get("BACKUP_KEEP_DAYS", 7), logger=app.logger)
+                         logger=app.logger)
         self.app = app
 
 
@@ -92,16 +93,16 @@ def read_exit_backup_enabled(manager, connect):
         from core.services.system.system_config_service import SystemConfigService
 
         cfg = SystemConfigService(conn, logger=manager.logger).get_snapshot_readonly(
-            backup_keep_days_default=int(manager.keep_days))
+            backup_keep_days_default=manager.app.config["BACKUP_KEEP_DAYS"])
         enabled = cfg.auto_backup_enabled == YesNo.YES.value
     except Exception as exc:
-        fallback_log(manager.logger, "error", "读取退出自动备份配置失败：" + str(exc))
+        manager.logger.error("读取退出自动备份配置失败：" + str(exc))
         enabled = None
     if conn is not None:
         try:
             conn.close()
-        except Exception as exc:
-            fallback_log(manager.logger, "error", "关闭退出自动备份配置连接失败，本次不做退出备份：" + str(exc))
+        except sqlite3.Error as exc:
+            manager.logger.error("关闭退出自动备份配置连接失败，本次不做退出备份：" + str(exc))
             return None
     return enabled
 
@@ -113,21 +114,21 @@ def run_exit_backup(manager, is_enabled):
         drain_before_exit_backup(manager)
         enabled = is_enabled(manager)
     except Exception as exc:
-        fallback_log(manager.logger, "error", "退出自动备份已跳过：维护状态或停止屏障未核实：" + str(exc))
+        manager.logger.error("退出自动备份已跳过：维护状态或停止屏障未核实：" + str(exc))
         return False
     if enabled is not True:
         if enabled is None:
-            fallback_log(manager.logger, "warning", "退出自动备份已跳过：读取配置失败。")
+            manager.logger.warning("退出自动备份已跳过：读取配置失败。")
         else:
-            fallback_log(manager.logger, "info", "退出自动备份已跳过：auto_backup_enabled=no。")
+            manager.logger.info("退出自动备份已跳过：auto_backup_enabled=no。")
         return False
     try:
         assert_exit_system_restore_ready(manager)
         manager.backup(suffix="exit")
         return True
     except MaintenanceWindowError as exc:
-        fallback_log(manager.logger, "warning" if exc.code == "busy" else "error", "退出自动备份已跳过：" + exc.message)
+        manager.logger.log(logging.WARNING if exc.code == "busy" else logging.ERROR, "退出自动备份已跳过：" + exc.message)
         return False
     except Exception as exc:
-        fallback_log(manager.logger, "error", "退出自动备份失败：" + str(exc))
+        manager.logger.error("退出自动备份失败：" + str(exc))
         return False

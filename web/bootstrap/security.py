@@ -5,7 +5,6 @@ import secrets
 
 from flask import Flask
 
-from core.infrastructure.logging import safe_log
 from core.infrastructure.safe_files import is_regular_file, read_fixed_text, write_fixed_text
 
 
@@ -32,17 +31,18 @@ def ensure_secret_key(app: Flask) -> None:
             if len(key0) >= min_len:
                 app.config["SECRET_KEY"] = key0
                 return
-    except Exception as e:
-        safe_log(app.logger, "warning", "读取 SECRET_KEY 文件失败（将尝试重新生成）：%s", e)
+    except (OSError, UnicodeDecodeError) as e:
+        app.logger.warning("读取 SECRET_KEY 文件失败（将尝试重新生成）：%s", e)
 
     key = secrets.token_urlsafe(32)
     app.config["SECRET_KEY"] = key
 
     try:
         write_fixed_text(secret_file, key + "\n", replace_symlink=True)
+    except OSError as e:
+        app.logger.warning("写入 SECRET_KEY 文件失败（将使用进程内随机 SECRET_KEY）：%s", e)
+    else:
         app.logger.info("已生成 SECRET_KEY 并写入：%s", secret_file)
-    except Exception as e:
-        safe_log(app.logger, "warning", "写入 SECRET_KEY 文件失败（将使用进程内随机 SECRET_KEY）：%s", e)
 
 
 def apply_session_cookie_hardening(app: Flask) -> None:

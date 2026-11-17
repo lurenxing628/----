@@ -5,8 +5,9 @@ import os
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from flask import Flask, current_app, g, request
 from werkzeug.serving import ThreadedWSGIServer
@@ -22,7 +23,7 @@ from web.error_handlers import register_error_handlers
 from web.routes.workbench.manual_page import bp as manual_bp
 from web.routes.workbench.registration import bp as workbench_bp
 from web.routes.workbench.system_runtime import bp as runtime_bp
-from web.runtime_host import install_runtime_host
+from web.runtime_host import install_runtime_host, install_wall_clock
 
 from .app_config import config as _config_map
 from .json_provider import StrictJSONProvider
@@ -34,7 +35,6 @@ from .launcher_shutdown import (
     run_exit_backup,
 )
 from .paths import runtime_base_dir
-from .plugins import bootstrap_plugins
 from .schedule_config import bootstrap_schedule_config
 from .security import apply_session_cookie_hardening, ensure_secret_key, register_security_headers
 from .startup_config import resolve_config_class
@@ -46,6 +46,9 @@ from .workbench_request_lifecycle import (
 )
 from .workbench_request_lifecycle_wsgi import call_on_workbench_request_close
 from .workbench_system_restore_recovery import prepare_system_restore_startup
+
+if TYPE_CHECKING:
+    from .workbench_run_runtime import WorkbenchRunRuntime
 
 # atexit 退出备份服务于不经 entrypoint 停机的宿主（如脚本直接调用 create_app）；
 # entrypoint 在停机 finally 里经 run_exit_backup_now 接管。去重避免 create_app_core() 多次调用重复注册。
@@ -62,12 +65,12 @@ def resolve_startup_debug_flag() -> bool:
     return bool(resolve_config_class(_config_map).DEBUG)
 
 
-def _app_log_once(app: Flask, key: str, level: str, message: str, *args: Any) -> None:
+def _app_log_once(app: Flask, key: str, message: str, *args: Any) -> None:
     flags = app.extensions.setdefault(_FACTORY_ONCE_FLAGS_KEY, set())
     if key in flags:
         return
     flags.add(key)
-    safe_log(app.logger, level, message, *args)
+    app.logger.warning(message, *args)
 
 
 
@@ -197,7 +200,7 @@ def _register_exit_backup(app: Flask) -> None:
     global _EXIT_BACKUP_MANAGER, _EXIT_BACKUP_REGISTERED
     _EXIT_BACKUP_MANAGER = backup_manager
 
-    if not _EXIT_BACKUP_REGISTERED and should_own_runtime_resources(bool(app.config.get("DEBUG", False))):
+    if not _EXIT_BACKUP_REGISTERED and should_own_runtime_resources(app.config["DEBUG"]):
         atexit.register(_run_exit_backup)
         _EXIT_BACKUP_REGISTERED = True
 
@@ -238,7 +241,6 @@ def _register_request_db_hooks(app: Flask) -> None:
                         _app_log_once(
                             app,
                             "request_scope_mount_close_failed",
-                            "warning",
                             "请求级容器装配失败后的数据库关闭失败，已按清理型尽力而为继续：%s",
                             close_exc,
                         )
@@ -253,13 +255,13 @@ def _register_request_db_hooks(app: Flask) -> None:
             try:
                 close_workbench_request_connection(db)
             except Exception as exc:
-                _app_log_once(app, "close_db_failed", "warning", "数据库连接关闭失败，已按清理型尽力而为继续：%s", exc)
+                _app_log_once(app, "close_db_failed", "数据库连接关闭失败，已按清理型尽力而为继续：%s", exc)
 
 
 def _register_after_request_hooks(app: Flask) -> None:
     @app.after_request
     def _schedule_idle_maintenance(resp):
-        runtime = app.extensions.get("workbench_run_runtime")
+        runtime: Optional[WorkbenchRunRuntime] = app.extensions.get("workbench_run_runtime")
         if (runtime is not None and runtime.ready and resp.status_code < 400
                 and not request.path.startswith("/static/")
                 and request.path not in {"/system/health", "/system/runtime/shutdown"}):
@@ -299,24 +301,26 @@ def create_app_core() -> Flask:
     app = Flask(__name__, static_folder=static_dir, template_folder=templates_dir)
     app.json = StrictJSONProvider(app)
     install_runtime_host(app, request_shutdown=request_runtime_server_shutdown)
+    install_wall_clock(app, datetime.now)
     app.config.from_object(cfg_class)
     _apply_runtime_config(app, base_dir=base_dir)
+    # 普通宿主与恢复宿主共用这套文件日志；它只建日志目录和文件，不碰数据库。
+    # 打包宿主没有 stderr，恢复分流记下的维护记录损坏原因只能靠这里落盘。
+    app_logger = AppLogger(
+        app_name=app.config["APP_NAME"],
+        log_dir=app.config["LOG_DIR"],
+        log_level=app.config["LOG_LEVEL"],
+        max_bytes=app.config["LOG_MAX_BYTES"],
+        backup_count=app.config["LOG_BACKUP_COUNT"],
+    )
+    app.logger.handlers = app_logger.logger.handlers
+    app.logger.setLevel(app_logger.logger.level)
     if prepare_system_restore_startup(app):
         return app
     # 静态资源长缓存（配合 url_for('static', ...) 版本参数）；只在没配置时给默认值，配成 0 就是不缓存。
     static_max_age = app.config["SEND_FILE_MAX_AGE_DEFAULT"]
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 43200 if static_max_age is None else int(static_max_age)
     install_versioned_url_for(app, static_dir)
-
-    app_logger = AppLogger(
-        app_name=app.config.get("APP_NAME", "APS"),
-        log_dir=app.config["LOG_DIR"],
-        log_level=app.config.get("LOG_LEVEL", "INFO"),
-        max_bytes=app.config.get("LOG_MAX_BYTES", 10 * 1024 * 1024),
-        backup_count=app.config.get("LOG_BACKUP_COUNT", 5),
-    )
-    app.logger.handlers = app_logger.logger.handlers
-    app.logger.setLevel(app_logger.logger.level)
 
     ensure_secret_key(app)
     apply_session_cookie_hardening(app)
@@ -339,12 +343,6 @@ def create_app_core() -> Flask:
                              os.getpid(), time.perf_counter() - schema_started,
                              cfg_log_dir=app.config["LOG_DIR"], logger_level="info")
         bootstrap_schedule_config(startup_conn, app.logger)
-        plugin_status = bootstrap_plugins(
-            base_dir,
-            startup_conn,
-            logger=app.logger,
-        )
-        app.config["PLUGIN_STATUS"] = plugin_status
     finally:
         startup_conn.close()
 

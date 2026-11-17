@@ -16,6 +16,7 @@ RUNTIME_HOST_EXTENSION = "aps.runtime_host"
 RESTORE_HOST_EXTENSION = "workbench_system_restore_host"
 RESTORE_HOST_GUARD = "workbench_system_restore_guard"
 RUNTIME_IDENTITY_EXTENSION = "aps.runtime_identity"
+WALL_CLOCK_EXTENSION = "aps.wall_clock"
 
 
 def normalize_runtime_db_path(db_path: Optional[str]) -> str:
@@ -24,7 +25,7 @@ def normalize_runtime_db_path(db_path: Optional[str]) -> str:
 
 
 def runtime_identity(app) -> Dict[str, Any]:
-    db_path = normalize_runtime_db_path(app.config.get("DATABASE_PATH"))
+    db_path = normalize_runtime_db_path(app.config["DATABASE_PATH"])
     identity = app.extensions.get(RUNTIME_IDENTITY_EXTENSION)
     if identity is None:
         identity = app.extensions.setdefault(RUNTIME_IDENTITY_EXTENSION, {
@@ -66,6 +67,19 @@ class SystemRestoreHost(ABC):
 def install_runtime_host(app, *, request_shutdown: Callable[..., bool]) -> None:
     """由 factory 在建 app 时调用一次；request_shutdown(logger=None) -> bool 请求运行时 Server 关停。"""
     app.extensions[RUNTIME_HOST_EXTENSION] = {"request_shutdown": request_shutdown}
+
+
+def install_wall_clock(app, clock: Callable[[], datetime]) -> None:
+    """工作台请求与排产作业共用的工厂本地墙钟，由 factory 建 app 时装一次。
+
+    装的是可调用对象，返回无时区的工厂本地时间，每次取时都是真实时刻；请求读快照时刻、命令落时和
+    作业起止都从这里取，下游服务不再各自核对时区。测试应用照 factory 的做法装自己的钟，不另开注入口。
+    """
+    app.extensions[WALL_CLOCK_EXTENSION] = clock
+
+
+def wall_clock(app) -> Callable[[], datetime]:
+    return app.extensions[WALL_CLOCK_EXTENSION]
 
 
 def request_shutdown(app, logger=None) -> bool:

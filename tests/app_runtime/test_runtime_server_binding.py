@@ -174,7 +174,6 @@ def test_prepared_runtime_server_fallback_matches_published_contract_endpoint(tm
             BACKUP_DIR=str(runtime_dir / "backups"),
             EXCEL_TEMPLATE_DIR=str(runtime_dir / "templates"),
         )
-        app.extensions["workbench_startup_maintenance_records"] = ()
         monkeypatch.setattr(
             "web.bootstrap.workbench_system_restore.install_workbench_system_restore_host",
             lambda target_app, runtime: None,

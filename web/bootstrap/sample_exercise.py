@@ -114,7 +114,7 @@ def _conflict_trial(client, plan_ref):
 
 def _partial_report(client, task, quantity):
     path = BASE + "/execution/tasks/" + task["task_ref"]
-    document = client.document(path)
+    document = client.post(path, {})
     current = document["data"]["task"]
     start = datetime.fromisoformat(current["planned_start"])
     if start.microsecond:
@@ -131,7 +131,7 @@ def _partial_report(client, task, quantity):
              "actual_machine_ref": current["planned_machine_ref"], "actual_operator_ref": current["planned_operator_ref"],
              "remark": "[复杂样例] 按已采用计划的过去时段保存分次报工，保留剩余数量并核对重排保护"}
     receipt = client.command(path + "/reports", current["execution"]["write_context"], value)
-    fresh = client.get(path)["task"]["execution"]
+    fresh = client.post(path, {})["data"]["task"]["execution"]
     require(fresh["known_completed_quantity"] == quantity and fresh["remaining_quantity"] == current["quantity"] - quantity,
             "分次报工保存后的数量/剩余数量不一致。")
     require(fresh["execution_state"] == "partial", "分次报工被误读为完全完成或未开工。")
@@ -180,7 +180,7 @@ def _blocked_replan_request(client, seed, batch_codes, expected_code):
 def _check_replan_invariants(client, before, reports):
     require(before == _directory(client), "被拒绝的排产改变了已有run/candidate/plan目录。")
     for report in reports:
-        fresh = client.get(BASE + "/execution/tasks/" + report["task_ref"])["task"]["execution"]
+        fresh = client.post(BASE + "/execution/tasks/" + report["task_ref"], {})["data"]["task"]["execution"]
         original = next(row for row in fresh["reports"] if row["report_ref"] == report["original_report_ref"])
         require(fresh["known_completed_quantity"] == report["known_completed_quantity"]
                 and fresh["remaining_quantity"] == report["remaining_quantity"] and fresh["execution_state"] == "partial"
@@ -230,7 +230,7 @@ def _adopted_projections(client, seed, artifacts):
     dashboard = client.get(BASE + "/dashboard")
     analysis_document = client.document(_query(BASE + "/dashboard/analysis", {"plan_ref": plan_ref}))
     analysis = analysis_document["data"]
-    actual = client.get(_query(BASE + "/actual-gantt", {"plan_ref": plan_ref}))
+    actual = client.post(BASE + "/actual-gantt", {"plan_ref": plan_ref})["data"]
     require(dashboard["plan"]["plan_ref"] == plan_ref, "值班台没有读取刚采用的正式计划。")
     require(dashboard["analysis_error"] is None and dashboard["analysis"]["plan"]["plan_ref"] == plan_ref,
             "复杂样例的值班台分析没有正常读取：{}".format(dashboard["analysis_error"]))
@@ -269,7 +269,7 @@ def _second_run(client, seed, progress, artifacts):
 def _available_partial_report_tasks(client, artifacts):
     formal = {row["operation_ref"]: row for row in artifacts["formal"]["data"]["tasks"]}
     baseline = {row["operation_ref"]: row for row in artifacts["baseline"]["workspace"]["data"]["tasks"]}
-    now = client.document(_query(BASE + "/execution/tasks", {"plan_ref": artifacts["plan_ref"], "size": 1}))["meta"]["as_of"]
+    now = client.post(BASE + "/execution/tasks", {"plan_ref": artifacts["plan_ref"], "size": 1})["meta"]["as_of"]
     server_now = datetime.fromisoformat(now)
     available = [row for row in formal.values() if row["sequence"] == 1 and row["quantity"] > 1
                  and baseline[row["operation_ref"]]["source"] == "internal" and datetime.fromisoformat(row["end"]) <= server_now]

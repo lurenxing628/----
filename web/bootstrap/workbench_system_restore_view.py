@@ -8,9 +8,9 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from werkzeug.wrappers import Request, Response
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_system import validate_maintenance_reference
 
 from .paths import runtime_base_dir
-from .workbench_system_restore_status import validate_maintenance_reference
 
 DIAGNOSTIC_FILENAME = "维护诊断.json"
 # 恢复各阶段与数据库来源的叫法必须和 frontend/workbench/app/SystemRestoreStatus.js 的 labels / origins 逐字相同，
@@ -42,7 +42,7 @@ def _recent_records(journal, records):
     return [journal.public(row, True) for row in records[:20]]
 
 
-def recovery_response(environ, journal_factory, status, lookup):
+def recovery_response(environ, journal_factory, status, lookup, logger):
     request = Request(environ)
     kind, reference, result, error, code = "request", "", None, "", 503
     rows, history_error, journal, records = [], "", None, None
@@ -55,6 +55,8 @@ def recovery_response(environ, journal_factory, status, lookup):
             journal = None
         history_error = "维护记录列表没能完整读出来，这里不是完整清单。可以用操作编号单独查一条记录。"
     except Exception:
+        # 损坏的维护记录抛 RuntimeError；这一页是恢复期唯一入口，读不出也要照常展示并留下原因。
+        logger.exception("恢复页读取维护记录列表失败")
         journal = None
         history_error = "维护记录列表没能完整读出来，这里不是完整清单。可以用操作编号单独查一条记录。"
     try:
@@ -67,6 +69,7 @@ def recovery_response(environ, journal_factory, status, lookup):
     except WorkbenchCommandRejected as exc:
         error, code = str(exc), exc.status
     except Exception:
+        logger.exception("恢复页查询维护记录失败：kind=%s reference=%s", kind, reference)
         error = "维护记录损坏或读不出来，不能确认这次恢复的结果。系统已停下，请不要再操作，联系维护人员。"
     operation = result.get("operation") if result else None
     uncertain = (status["state"] == "recovery_required" or not operation or not operation["terminal"]
