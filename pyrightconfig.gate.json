@@ -25,9 +25,7 @@
     "scripts",
     "templates_excel",
     "tools",
-    "check_manual_layout.py",
-    "validate_dist_exe.py",
-    "verify_manual_styles.py"
+    "validate_dist_exe.py"
   ],
   "pythonVersion": "3.8",
   "pythonPlatform": "Windows",

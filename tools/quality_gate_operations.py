@@ -18,39 +18,26 @@ from .quality_gate_ledger import (
     silent_entry_has_content,
     silent_entry_key,
 )
-from .quality_gate_scan import validate_startup_samples
+from .quality_gate_scan_primitives import validate_startup_samples
 from .quality_gate_shared import (
     COMPLEXITY_THRESHOLD,
     FILE_SIZE_LIMIT,
     STARTUP_SCOPE_PATTERNS,
     QualityGateError,
-    collect_quality_rule_files,
     collect_startup_scope_files,
     is_startup_scope_path,
 )
 
-SILENT_REFRESH_SYMBOL_ALIASES = {
-    ("web/bootstrap/launcher_processes.py", "_posix_pid_state"): "_pid_state",
-    ("web/bootstrap/launcher_processes.py", "_windows_pid_state"): "_pid_state",
-}
-SILENT_REFRESH_GROUP_ALIASES: dict = {}
-ALLOWED_SILENT_REALIGN_KIND_TRANSITIONS = {
-    ("silent_swallow", "observable_degrade"),
-    ("silent_default_fallback", "observable_degrade"),
-    ("cleanup_best_effort", "cleanup_best_effort"),
-    ("observable_degrade", "observable_degrade"),
-}
 
-
-def refresh_scan_startup_baseline(ledger: Dict[str, Any]) -> Dict[str, Any]:
-    startup_files = collect_startup_scope_files()
+def refresh_scan_startup_baseline(repo_root: str, ledger: Dict[str, Any]) -> Dict[str, Any]:
+    startup_files = collect_startup_scope_files(repo_root)
     oversize_existing = ledger["oversize_allowlist"]
     complexity_existing = ledger["complexity_allowlist"]
     silent_existing = ledger["silent_fallback"]["entries"]
 
     startup_path_set = set(startup_files)
     # 启动链三类事实共用一次扫描快照。
-    startup_scan = _cached_architecture_aggregate(startup_files, ("silent", "complexity"))
+    startup_scan = _cached_architecture_aggregate(repo_root, startup_files, ("silent", "complexity"))
     startup_silent_scan_entries = startup_scan["silent_fallback_entries"]
     validate_startup_samples(startup_silent_scan_entries)
 
@@ -74,6 +61,10 @@ def refresh_scan_startup_baseline(ledger: Dict[str, Any]) -> Dict[str, Any]:
     startup_silent = []
     for item in startup_silent_scan_entries:
         existing = _find_existing_entry(silent_existing, silent_entry_key, silent_entry_key(item), "静默回退")
+        if existing is None and item["fallback_kind"] == "broad_io_boundary":
+            raise QualityGateError(
+                f"新处理器用宽泛 except 包住外部 I/O，不登记台账，请收窄为实际会抛出的异常类型：{item['id']}"
+            )
         entry = build_silent_entry(item, source="baseline_scan", existing=existing)
         startup_silent.append(entry)
 
@@ -122,26 +113,26 @@ def _silent_scan_index(entries: Sequence[Dict[str, Any]]) -> Dict[Tuple[str, str
     return {silent_entry_key(entry): entry for entry in entries}
 
 
-def _is_allowed_silent_realign(
+def _silent_realign_rejection(
     old_entry: Dict[str, Any], new_entry: Dict[str, Any], *, allow_ordinal_shift: bool = False,
-) -> Tuple[bool, str]:
-    old_kind = old_entry["fallback_kind"]
-    new_kind = new_entry["fallback_kind"]
-    if _silent_refresh_group_key(old_entry) != _silent_refresh_group_key(new_entry):
-        return False, "path/symbol alias group changed"
+) -> Optional[str]:
+    """自动对齐的拒绝原因；处理器内容与分类都没变、可以对齐时返回 None。
 
+    调用方只拿同一 path + symbol 组（`_silent_refresh_group_key`）里的新旧条目来比。
+    分类变化（含分类器口径调整）不自动对齐，一律经 `refresh --mode scan-startup-baseline` 显式重建。
+    """
     if not silent_entry_has_content(old_entry):
-        return False, "old handler_signature / handler_context missing; explicit content baseline review required"
+        return "old handler_signature / handler_context missing; explicit content baseline review required"
     if not allow_ordinal_shift and old_entry["except_ordinal"] != new_entry["except_ordinal"]:
-        return False, "except ordinal changed"
+        return "except ordinal changed"
     if not silent_entry_content_equal(old_entry, new_entry):
-        return False, "handler_signature / handler_context changed"
-
-    if old_kind == new_kind:
-        return True, f"same path/symbol alias and except ordinal; kind {old_kind}->{new_kind}; handler content matched"
-    if (old_kind, new_kind) not in ALLOWED_SILENT_REALIGN_KIND_TRANSITIONS:
-        return False, f"fallback kind transition {old_kind}->{new_kind} is not allowed"
-    return True, f"same path/symbol alias and except ordinal; kind {old_kind}->{new_kind}; handler content matched"
+        return "handler_signature / handler_context changed"
+    if old_entry["fallback_kind"] != new_entry["fallback_kind"]:
+        return (
+            f"fallback_kind changed {old_entry['fallback_kind']}->{new_entry['fallback_kind']}; "
+            "rebuild with refresh --mode scan-startup-baseline"
+        )
+    return None
 
 
 def _resolve_silent_refresh_entry(
@@ -151,9 +142,9 @@ def _resolve_silent_refresh_entry(
     key = silent_entry_key(entry)
     matched = silent_scan.get(key)
     if matched is not None:
-        allowed, reason = _is_allowed_silent_realign(entry, matched)
-        if not allowed:
-            raise QualityGateError(f"静默回退条目自动对齐被拒绝：{entry['id']} {reason}")
+        rejection = _silent_realign_rejection(entry, matched)
+        if rejection is not None:
+            raise QualityGateError(f"静默回退条目自动对齐被拒绝：{entry['id']} {rejection}")
         return matched
 
     same_handler_candidates = [
@@ -163,9 +154,9 @@ def _resolve_silent_refresh_entry(
         and candidate["except_ordinal"] == key[2]
     ]
     if len(same_handler_candidates) == 1:
-        allowed, reason = _is_allowed_silent_realign(entry, same_handler_candidates[0])
-        if not allowed:
-            raise QualityGateError(f"静默回退条目自动对齐被拒绝：{entry['id']} {reason}")
+        rejection = _silent_realign_rejection(entry, same_handler_candidates[0])
+        if rejection is not None:
+            raise QualityGateError(f"静默回退条目自动对齐被拒绝：{entry['id']} {rejection}")
         return same_handler_candidates[0]
 
     raise QualityGateError(f"静默回退条目已无法通过当前扫描对齐：{entry['id']}")
@@ -188,9 +179,9 @@ def _silent_deletion_alignment(
     position = 0
     for old_item in old_ordered:
         old_id = old_item["id"]
-        if position < len(new_ordered) and _is_allowed_silent_realign(
+        if position < len(new_ordered) and _silent_realign_rejection(
             old_item, new_ordered[position], allow_ordinal_shift=True,
-        )[0]:
+        ) is None:
             aligned[old_id] = new_ordered[position]
             position += 1
         else:
@@ -228,20 +219,13 @@ def _silent_group_alignment(
         if len(old_items) != len(new_items):
             continue
         for old_item, new_item in zip(old_ordered, new_ordered):
-            old_id = old_item["id"]
-            allowed, _reason = _is_allowed_silent_realign(old_item, new_item)
-            if allowed:
-                aligned[old_id] = new_item
+            if _silent_realign_rejection(old_item, new_item) is None:
+                aligned[old_item["id"]] = new_item
     return aligned, retired
 
 
 def _silent_refresh_group_key(entry: Dict[str, Any]) -> Tuple[str, str]:
-    path: str = entry["path"]
-    symbol: str = entry["symbol"]
-    group_alias = SILENT_REFRESH_GROUP_ALIASES.get((path, symbol))
-    if group_alias is not None:
-        return group_alias
-    return path, SILENT_REFRESH_SYMBOL_ALIASES.get((path, symbol), symbol)
+    return entry["path"], entry["symbol"]
 
 
 def _silent_scan_has_group(entry: Dict[str, Any], scan_entries: Sequence[Dict[str, Any]]) -> bool:
@@ -268,17 +252,17 @@ def _reject_fixed_entry(entry: Dict[str, Any], label: str) -> None:
         raise QualityGateError(f"{label}条目仍超过限制，不能标记为 fixed：{entry['id']}")
 
 
-def _reject_fixed_tracked_entries_still_current(ledger: Dict[str, Any]) -> None:
+def _reject_fixed_tracked_entries_still_current(repo_root: str, ledger: Dict[str, Any]) -> None:
     fixed_oversize_entries = [
         entry for entry in ledger["oversize_allowlist"] if entry["status"] == "fixed"
     ]
-    line_counts = _cached_file_line_counts([entry["path"] for entry in fixed_oversize_entries])
+    line_counts = _cached_file_line_counts(repo_root, [entry["path"] for entry in fixed_oversize_entries])
     for entry in fixed_oversize_entries:
         if line_counts[entry["path"]] > FILE_SIZE_LIMIT:
             _reject_fixed_entry(entry, "超长文件")
     complexity_entries = ledger["complexity_allowlist"]
     if complexity_entries:
-        complexity_scan = _cached_complexity_scan_map(sorted({entry["path"] for entry in complexity_entries}))
+        complexity_scan = _cached_complexity_scan_map(repo_root, sorted({entry["path"] for entry in complexity_entries}))
         for entry in complexity_entries:
             if complexity_entry_key(entry) in complexity_scan:
                 _reject_fixed_entry(entry, "复杂度")
@@ -289,11 +273,11 @@ def _reject_fixed_tracked_entries_still_current(ledger: Dict[str, Any]) -> None:
     if fixed_silent_paths:
         _reject_fixed_silent_entries_still_in_scan(
             silent_entries,
-            _cached_silent_scan_entries(fixed_silent_paths),
+            architecture_silent_scan_entries(repo_root, fixed_silent_paths),
         )
 
 
-def refresh_auto_fields(ledger: Dict[str, Any]) -> Dict[str, Any]:
+def refresh_auto_fields(repo_root: str, ledger: Dict[str, Any]) -> Dict[str, Any]:
     oversize_entries = ledger["oversize_allowlist"]
     complexity_entries = ledger["complexity_allowlist"]
     silent_entries = ledger["silent_fallback"]["entries"]
@@ -303,7 +287,7 @@ def refresh_auto_fields(ledger: Dict[str, Any]) -> Dict[str, Any]:
         for entry_id in risk["entry_ids"]
     }
 
-    line_counts = _cached_file_line_counts([entry["path"] for entry in oversize_entries])
+    line_counts = _cached_file_line_counts(repo_root, [entry["path"] for entry in oversize_entries])
     refreshed_oversize = []
     for entry in oversize_entries:
         path = entry["path"]
@@ -316,7 +300,7 @@ def refresh_auto_fields(ledger: Dict[str, Any]) -> Dict[str, Any]:
         refreshed_oversize.append(build_oversize_entry(path, current_value, existing=entry))
 
     complexity_paths = sorted({entry["path"] for entry in complexity_entries})
-    complexity_scan = _cached_complexity_scan_map(complexity_paths, include_all=True)
+    complexity_scan = _cached_complexity_scan_map(repo_root, complexity_paths, include_all=True)
     refreshed_complexity = []
     for entry in complexity_entries:
         key = complexity_entry_key(entry)
@@ -333,7 +317,7 @@ def refresh_auto_fields(ledger: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     silent_paths = sorted({entry["path"] for entry in silent_entries})
-    silent_scan_entries = _cached_silent_scan_entries(silent_paths)
+    silent_scan_entries = architecture_silent_scan_entries(repo_root, silent_paths)
     silent_scan = _silent_scan_index(silent_scan_entries)
     silent_group_alignment, retired_silent_ids = _silent_group_alignment(silent_entries, silent_scan_entries)
     _reject_fixed_silent_entries_still_in_scan(silent_entries, silent_scan_entries)
@@ -374,7 +358,9 @@ def refresh_auto_fields(ledger: Dict[str, Any]) -> Dict[str, Any]:
     return finalize_ledger_update(next_ledger, current=ledger)
 
 
-def set_entry_fields(ledger: Dict[str, Any], entry_id: str, updates: Dict[str, Optional[str]]) -> Dict[str, Any]:
+def set_entry_fields(
+    repo_root: str, ledger: Dict[str, Any], entry_id: str, updates: Dict[str, Optional[str]]
+) -> Dict[str, Any]:
     non_null_updates = {key: value for key, value in updates.items() if value is not None}
     applied = False
     next_sections: Dict[str, List[Dict[str, Any]]] = {}
@@ -402,7 +388,7 @@ def set_entry_fields(ledger: Dict[str, Any], entry_id: str, updates: Dict[str, O
         "silent_fallback": {**ledger["silent_fallback"], "entries": updated_silent},
     }
     if updates.get("status") == "fixed":
-        _reject_fixed_tracked_entries_still_current(next_ledger)
+        _reject_fixed_tracked_entries_still_current(repo_root, next_ledger)
     return finalize_ledger_update(next_ledger, current=ledger)
 
 
@@ -453,7 +439,7 @@ def delete_risk(ledger: Dict[str, Any], risk_id: str) -> Dict[str, Any]:
     return finalize_ledger_update(next_ledger, current=ledger)
 
 
-def validate_ledger_against_current_scan(ledger: Dict[str, Any]) -> Dict[str, Any]:
+def validate_ledger_against_current_scan(repo_root: str, ledger: Dict[str, Any]) -> Dict[str, Any]:
     """把已准入台账与当前扫描逐条对账。
 
     ledger 必须来自 load_ledger（已经过 validate_ledger 准入）；唯一生产调用者是
@@ -462,13 +448,15 @@ def validate_ledger_against_current_scan(ledger: Dict[str, Any]) -> Dict[str, An
     silent_entries = ledger["silent_fallback"]["entries"]
     silent_paths = {entry["path"] for entry in silent_entries}
     # 启动样本校验与台账静默回退核对共用这一次扫描，各自只取自己负责的文件。
-    shared_silent_scan = _cached_silent_scan_entries(collect_startup_scope_files() + sorted(silent_paths))
+    shared_silent_scan = architecture_silent_scan_entries(
+        repo_root, collect_startup_scope_files(repo_root) + sorted(silent_paths)
+    )
     startup_scan_entries = [entry for entry in shared_silent_scan if is_startup_scope_path(entry["path"])]
     sample_summary = validate_startup_samples(startup_scan_entries)
 
     oversize_entries = ledger["oversize_allowlist"]
     if oversize_entries:
-        line_counts = _cached_file_line_counts([entry["path"] for entry in oversize_entries])
+        line_counts = _cached_file_line_counts(repo_root, [entry["path"] for entry in oversize_entries])
         for entry in oversize_entries:
             current_value = line_counts[entry["path"]]
             if current_value > FILE_SIZE_LIMIT:
@@ -477,7 +465,7 @@ def validate_ledger_against_current_scan(ledger: Dict[str, Any]) -> Dict[str, An
                 raise QualityGateError(f"oversize 条目 current_value 与当前扫描不一致：{entry['id']}")
     complexity_entries = ledger["complexity_allowlist"]
     if complexity_entries:
-        complexity_scan = _cached_complexity_scan_map([entry["path"] for entry in complexity_entries])
+        complexity_scan = _cached_complexity_scan_map(repo_root, [entry["path"] for entry in complexity_entries])
         for entry in complexity_entries:
             key = complexity_entry_key(entry)
             if key not in complexity_scan:
@@ -501,7 +489,7 @@ def validate_ledger_against_current_scan(ledger: Dict[str, Any]) -> Dict[str, An
         current_entry = silent_scan[key]
         if not silent_entry_content_equal(entry, current_entry):
             raise QualityGateError(f"静默回退条目 handler_signature / handler_context 与当前扫描不一致：{entry['id']}")
-        for field_name in ("line_start", "line_end"):
+        for field_name in ("fallback_kind", "line_start", "line_end"):
             if current_entry[field_name] != entry[field_name]:
                 raise QualityGateError(
                     f"静默回退条目 {field_name} 与当前扫描不一致：{entry['id']}"
@@ -510,42 +498,41 @@ def validate_ledger_against_current_scan(ledger: Dict[str, Any]) -> Dict[str, An
 
 
 def _cached_architecture_aggregate(
+    repo_root: str,
     paths: Sequence[str],
     fact_kinds: Sequence[str],
     include_all_complexity: bool = False,
 ) -> Dict[str, Any]:
     return aggregate_architecture_scan(
-        scan_files_with_cache(paths, fact_kinds=fact_kinds),
+        scan_files_with_cache(repo_root, paths, fact_kinds=fact_kinds),
         include_all_complexity=include_all_complexity,
     )
 
 
-def _cached_file_line_counts(paths: Sequence[str]) -> Dict[str, int]:
-    return {fact["path"]: fact["line_count"] for fact in scan_files_with_cache(paths, fact_kinds=())}
+def _cached_file_line_counts(repo_root: str, paths: Sequence[str]) -> Dict[str, int]:
+    return {fact["path"]: fact["line_count"] for fact in scan_files_with_cache(repo_root, paths, fact_kinds=())}
 
 
-def _cached_complexity_scan_map(paths: Sequence[str], include_all: bool = False) -> Dict[str, Dict[str, Any]]:
-    return _cached_architecture_aggregate(paths, ("complexity",), include_all_complexity=include_all)["complexity_map"]
+def _cached_complexity_scan_map(
+    repo_root: str, paths: Sequence[str], include_all: bool = False
+) -> Dict[str, Dict[str, Any]]:
+    return _cached_architecture_aggregate(repo_root, paths, ("complexity",), include_all_complexity=include_all)[
+        "complexity_map"
+    ]
 
 
-def _cached_silent_scan_entries(paths: Sequence[str]) -> List[Dict[str, Any]]:
-    return _cached_architecture_aggregate(paths, ("silent",))["silent_fallback_entries"]
+def architecture_silent_scan_entries(repo_root: str, paths: Sequence[str]) -> List[Dict[str, Any]]:
+    """静默回退门禁的唯一范围视图：台账 check、refresh-auto-fields 与 `quality_gate_scan --strict`
+    都拿它与台账比较，各自只决定扫描哪些文件。
 
-
-def architecture_silent_scan_entries() -> List[Dict[str, Any]]:
-    """返回当前架构门禁真正比较的静默回退条目。
-
-    边界说明：启动链范围保留四类分类的全量扫描结果；非启动链范围当前只续管
-    旧 `tests/gate_meta/test_architecture_fitness.py` 计数器迁移而来的遗留静默吞异常命中，
-    不据此把 `silent_default_fallback` / `observable_degrade` 扩展为全仓新增门禁。
+    启动链范围保留全部分类的扫描结果；非启动链范围当前只续管旧
+    `tests/gate_meta/test_architecture_fitness.py` 计数器迁移而来的遗留静默吞异常命中，一律按
+    `silent_swallow` 计，不据此把 `silent_default_fallback` / `observable_degrade` 扩展为全仓新增门禁。
     """
     entries = []
-    aggregate = _cached_architecture_aggregate(collect_quality_rule_files(), ("silent",))
-    for entry in aggregate["silent_fallback_entries"]:
+    for entry in _cached_architecture_aggregate(repo_root, paths, ("silent",))["silent_fallback_entries"]:
         if is_startup_scope_path(entry["path"]):
             entries.append(entry)
-            continue
-        if entry["legacy_swallow_hit"]:
-            entry["fallback_kind"] = "silent_swallow"
-            entries.append(entry)
+        elif entry["legacy_swallow_hit"]:
+            entries.append({**entry, "fallback_kind": "silent_swallow"})
     return entries

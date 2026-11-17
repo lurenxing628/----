@@ -7,13 +7,14 @@
 的一条断言也因为目标文件被删而变成永远通过的空断言。
 
 口径：
-- 扫描 core/ web/ data/ tools/ scripts/ tests/ plugins/ 与仓库根下的 .py。
+- 扫描 core/ web/ data/ tools/ scripts/ tests/ 与仓库根下的 .py。
 - 候选：字符串常量里含 `/`、首段是仓库顶层目录、带文件扩展名。
 - 不计入：运行时产物目录（evidence/ db/ logs/ backups/ tmp/ dist/ build/
   user-data/ output/）、含空白或通配或格式占位的字符串、绝对路径与 URL。
   这些要么是运行时才生成，要么根本不是路径。
 - 也不计入含按白名单局部忽略的本机历史归档目录（.codestable/、.limcode/，不纳入全仓字面量存在性扫描）
-  与本地生成的全景图样式/脚本。pre-push 在干净 worktree 里跑本扫描，结果必须与主工作区一致。
+  与本地生成的全景图样式/脚本（清单是 tools/git_hook_blocked_paths.py 的 LOCAL_PANORAMA_FILES）。
+  pre-push 在干净 worktree 里跑本扫描，结果必须与主工作区一致。
 - 条目键是 (源文件, 那条失效路径)，count 是出现次数。门禁元测试在临时目录里
   合成假仓库（core/services/example.py 之类）是正常做法，它们进基线当存量；
   基线只减不增，所以新删一个真文件必定报红。
@@ -32,11 +33,12 @@ import re
 import sys
 from typing import Any, Dict, List, Optional, Sequence
 
-from tools.boundary_baseline import run_ratchet_cli
+from tools.boundary_baseline import add_ratchet_arguments, run_ratchet_cli
+from tools.git_hook_blocked_paths import LOCAL_PANORAMA_FILES
+from tools.path_roles import iter_files
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 RULE = "dead_path_literal"
-SCAN_ROOTS = ("core", "web", "data", "tools", "scripts", "tests", "plugins")
+SCAN_ROOTS = ("core", "web", "data", "tools", "scripts", "tests", "*.py")
 BASELINE_NOTE = "失效仓库路径字面量棘轮基线：删文件必须同步删掉引用它的字符串；条目只减不增，刷新走 --refresh。"
 
 #: 仓库顶层目录。首段不在这里的字符串不当成仓库路径，避免把 URL 片段、
@@ -44,7 +46,7 @@ BASELINE_NOTE = "失效仓库路径字面量棘轮基线：删文件必须同步
 #: 本机历史归档目录，不纳入全仓字面量存在性扫描。
 REPO_TOP_DIRS = frozenset({
     "core", "web", "data", "tools", "scripts", "tests", "static", "templates",
-    "frontend", "plugins", "installer", "assets", "docs", "开发文档",
+    "frontend", "installer", "assets", "docs", "开发文档",
     "templates_excel", ".github",
 })
 
@@ -53,33 +55,20 @@ RUNTIME_PREFIXES = (
     "evidence/", "db/", "logs/", "backups/", "tmp/", "dist/", "build/",
     "user-data/", "output/",
 )
-#: 本地生成、不进仓库的文件（见 tools/git_hook_blocked_paths.py）：只在本机存在，
-#: 干净 worktree 里没有，按存在与否判定会让两边结果不一致。
-LOCAL_GENERATED_PATHS = frozenset({
-    "docs/panorama.css", "docs/panorama.js", "docs/v2/panorama.css", "docs/v2/panorama.js",
-})
 
-_EXTENSION = re.compile(r"\.(py|js|jsx|cjs|json|html|css|md|xlsx|txt|bat|iss|ya?ml|cfg|toml|ini)$")
+#: 当成仓库路径的字符串必须带的扩展名。
+PATH_LITERAL_EXTENSIONS = (
+    "py", "js", "jsx", "cjs", "json", "html", "css", "md", "xlsx", "txt", "bat", "iss", "yaml", "yml", "cfg",
+    "toml", "ini",
+)
+_EXTENSION = re.compile(r"\.(" + "|".join(PATH_LITERAL_EXTENSIONS) + r")$")
+#: 判定结果取决于哪些路径存在：顶层目录 × 扩展名。门禁规格把它登记为只看存在性的输入
+#: （`GateCheckSpec.existence_file_scopes`），增删这些文件时日常门禁触发本扫描。
+EXISTENCE_FILE_SCOPES = tuple(f"{top}/**/*.{ext}" for top in sorted(REPO_TOP_DIRS) for ext in PATH_LITERAL_EXTENSIONS)
+
 #: 含这些字符的就不是一条确定的仓库路径：空白和逗号多半是散文，
 #: 通配和格式占位是模式不是路径，反斜杠是 Windows 路径另说。
 _NOT_A_PLAIN_PATH = re.compile(r"[\s,*?{}$\\<>|]")
-
-
-def _iter_python_files(repo_root: str, roots: Sequence[str]) -> List[str]:
-    files: List[str] = []
-    for root in roots:
-        base = os.path.join(repo_root, root)
-        if not os.path.isdir(base):
-            continue
-        for dirpath, dirnames, filenames in os.walk(base):
-            dirnames[:] = sorted(d for d in dirnames if d != "__pycache__")
-            for filename in sorted(filenames):
-                if filename.endswith(".py"):
-                    files.append(os.path.relpath(os.path.join(dirpath, filename), repo_root).replace("\\", "/"))
-    for filename in sorted(os.listdir(repo_root)):
-        if filename.endswith(".py") and os.path.isfile(os.path.join(repo_root, filename)):
-            files.append(filename)
-    return sorted(set(files))
 
 
 def is_repo_path_literal(value: str) -> bool:
@@ -90,7 +79,7 @@ def is_repo_path_literal(value: str) -> bool:
         return False
     if _NOT_A_PLAIN_PATH.search(value):
         return False
-    if value.startswith(RUNTIME_PREFIXES) or value in LOCAL_GENERATED_PATHS:
+    if value.startswith(RUNTIME_PREFIXES) or value in LOCAL_PANORAMA_FILES:
         return False
     return value.split("/", 1)[0] in REPO_TOP_DIRS and bool(_EXTENSION.search(value))
 
@@ -107,12 +96,12 @@ def scan_dead_path_literals_file(rel_path: str, source: str, exists) -> List[Dic
     return hits
 
 
-def scan(repo_root: str = REPO_ROOT) -> Dict[str, Any]:
+def scan(repo_root: str) -> Dict[str, Any]:
     def exists(literal: str) -> bool:
         return os.path.exists(os.path.join(repo_root, literal))
 
     entries: List[Dict[str, Any]] = []
-    files = _iter_python_files(repo_root, SCAN_ROOTS)
+    files = iter_files(repo_root, SCAN_ROOTS, (".py",))
     for rel_path in files:
         with open(os.path.join(repo_root, rel_path), encoding="utf-8") as handle:
             hits = scan_dead_path_literals_file(rel_path, handle.read(), exists)
@@ -141,12 +130,7 @@ def render_text(result: Dict[str, Any]) -> str:
 
 def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="失效仓库路径字面量棘轮扫描器")
-    parser.add_argument("--json", action="store_true")
-    parser.add_argument("--fail-on-new", action="store_true", help="相对基线有新增/增加/失效条目即退出码 1；基线异常退出码 2")
-    parser.add_argument("--refresh", action="store_true", help="按当前扫描结果重写基线（默认拒绝总命中数增长）")
-    parser.add_argument("--allow-growth", action="store_true")
-    parser.add_argument("--quiet-when-clean", action="store_true")
-    parser.add_argument("--repo-root", default=REPO_ROOT, help=argparse.SUPPRESS)
+    add_ratchet_arguments(parser)
     return parser.parse_args(list(argv) if argv is not None else None)
 
 

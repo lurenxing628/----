@@ -13,15 +13,24 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, NamedTuple, Optional, Sequence, TextIO, Tuple
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+if __name__ == "__main__":
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tools import git_hook_cache  # noqa: E402
-from tools.git_hook_blocked_paths import BLOCKED_PATH_RULES, GENERIC_COMMIT_SUBJECTS  # noqa: E402
-from tools.long_gate_schema import decode_nul_paths  # noqa: E402
+from tools import git_hook_cache
+from tools.daily_gate_scope import (
+    ZERO_SHA,
+    ChangedPathSet,
+    branch_diff_paths,
+    daily_gate_scope_payload,
+    plan_daily_gate_scope,
+    pre_push_diff_paths,
+    scanner_specs,
+    with_local_changes,
+)
+from tools.git_hook_blocked_paths import BLOCKED_PATH_RULES, GENERIC_COMMIT_SUBJECTS
+from tools.long_gate_paths import resolve_repo_root
+from tools.long_gate_schema import decode_nul_paths
 
-ZERO_SHA = "0" * 40
 _GIT_REPOSITORY_LOCAL_ENV_KEYS: Tuple[str, ...] = (
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
     "GIT_CONFIG",
@@ -41,10 +50,10 @@ _GIT_REPOSITORY_LOCAL_ENV_KEYS: Tuple[str, ...] = (
 )
 
 
-def _run_git_bytes(args: Sequence[str]) -> bytes:
+def _run_git_bytes(repo_root: Path, args: Sequence[str]) -> bytes:
     result = subprocess.run(
         ["git", *args],
-        cwd=str(REPO_ROOT),
+        cwd=str(repo_root),
         capture_output=True,
         check=False,
     )
@@ -54,9 +63,9 @@ def _run_git_bytes(args: Sequence[str]) -> bytes:
     return bytes(result.stdout or b"")
 
 
-def _staged_paths() -> List[str]:
+def _staged_paths(repo_root: Path) -> List[str]:
     return decode_nul_paths(
-        _run_git_bytes(["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"])
+        _run_git_bytes(repo_root, ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"])
     )
 
 
@@ -84,8 +93,8 @@ def _blocked_paths(paths: Iterable[str]) -> List[Tuple[str, str]]:
     return blocked
 
 
-def check_staged_artifacts(_args: argparse.Namespace) -> int:
-    blocked = _blocked_paths(_staged_paths())
+def check_staged_artifacts(repo_root: Path, _args: argparse.Namespace) -> int:
+    blocked = _blocked_paths(_staged_paths(repo_root))
     if not blocked:
         return 0
 
@@ -106,7 +115,7 @@ def _meaningful_commit_lines(message: str) -> List[str]:
     return lines
 
 
-def check_commit_msg(args: argparse.Namespace) -> int:
+def check_commit_msg(_repo_root: Path, args: argparse.Namespace) -> int:
     message_path = Path(args.message_file)
     message = message_path.read_text(encoding="utf-8", errors="replace")
     lines = _meaningful_commit_lines(message)
@@ -214,40 +223,27 @@ def _pre_push_contexts_payload(refs: Sequence[PrePushRef]) -> List[Dict[str, str
     ]
 
 
-def _daily_gate_module():
-    from scripts import run_daily_quality_gate
-
-    return run_daily_quality_gate
-
-
-def _daily_scope_for_refs(refs: Sequence[PrePushRef], *, remote_name: str) -> Dict[str, Any]:
-    daily_gate = _daily_gate_module()
+def _daily_scope_for_refs(repo_root: Path, refs: Sequence[PrePushRef], *, remote_name: str) -> Dict[str, Any]:
+    """与日常门禁 CLI 同一套计划机制：没有推送 ref 时取本地变更加上游差异，有 ref 时只取各目标提交的差异。"""
+    root = str(repo_root)
     if not refs:
-        scope = daily_gate.build_daily_gate_scope()
-        return daily_gate.daily_gate_scope_payload(scope)
-    changed_paths: List[str] = []
-    reasons: List[str] = []
-    scope_known = True
-    for ref in refs:
-        changed = daily_gate._pre_push_diff_paths(
-            ref.remote_sha,
-            ref.local_sha,
-            remote_name,
+        changed = with_local_changes(root, branch_diff_paths(root))
+    else:
+        changed_paths: List[str] = []
+        reasons: List[str] = []
+        scope_known = True
+        for ref in refs:
+            ref_changed = pre_push_diff_paths(root, ref.remote_sha, ref.local_sha, remote_name)
+            changed_paths.extend(ref_changed.paths)
+            if ref_changed.reason:
+                reasons.append(ref_changed.reason)
+            if not ref_changed.scope_known:
+                scope_known = False
+        # 推送范围属于已提交目标，当前 checkout 的 dirty 内容不进入目标范围。
+        changed = ChangedPathSet(
+            sorted(dict.fromkeys(changed_paths)), scope_known, "; ".join(sorted(dict.fromkeys(reasons)))
         )
-        changed_paths.extend(changed.paths)
-        if changed.reason:
-            reasons.append(changed.reason)
-        if not changed.scope_known:
-            scope_known = False
-    changed = daily_gate.ChangedPathSet(
-        sorted(dict.fromkeys(changed_paths)),
-        scope_known,
-        "; ".join(sorted(dict.fromkeys(reasons))),
-    )
-    # 推送范围属于已提交目标，当前 checkout 的 dirty 内容不进入目标范围。
-    impact = daily_gate._build_impact_plan(changed)
-    scope = daily_gate.DailyGateScope(changed, impact, daily_gate._build_ruff_plan(changed, impact))
-    return daily_gate.daily_gate_scope_payload(scope)
+    return daily_gate_scope_payload(plan_daily_gate_scope(root, changed, scanner_specs(root)))
 
 
 def _daily_gate_command(executable: str, *, scope_file: str = "") -> List[str]:
@@ -258,17 +254,26 @@ def _daily_gate_command(executable: str, *, scope_file: str = "") -> List[str]:
 
 
 def _provision_worktree_esbuild_vendor(
-    source_root: Path, worktree: Path, *, environment: Optional[Mapping[str, str]] = None
+    source_root: Path, worktree: Path, *, environment: Mapping[str, str]
 ) -> None:
+    """按目标 worktree 的 manifest 先验宿主 vendor，复制进 worktree 后再验一次目标。"""
     manifest_path = worktree / "scripts/workbench/esbuild-manifest.json"
     if not manifest_path.is_file():
         return
-    from scripts.workbench.vendor_react import verify_esbuild_vendor
+    from scripts.workbench.vendor_react import (
+        current_esbuild_platform_key,
+        load_esbuild_manifest,
+        verify_esbuild_vendor,
+    )
     from tools.long_gate_fingerprint import _resolve_node_executable
 
     node_bin, _ = _resolve_node_executable(environment)
     try:
-        verified = verify_esbuild_vendor(source_root, manifest_path=manifest_path, node_executable=node_bin)
+        manifest = load_esbuild_manifest(manifest_path)
+        host_platform = current_esbuild_platform_key(node_executable=node_bin)
+        verified = verify_esbuild_vendor(
+            source_root, manifest, host_platform=host_platform, target_platform=host_platform
+        )
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         raise RuntimeError(
             f"宿主缺少或损坏固定版本 esbuild vendor（{exc}）。"
@@ -279,14 +284,12 @@ def _provision_worktree_esbuild_vendor(
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source_root / rel_dir, dest, dirs_exist_ok=True)
     try:
-        verify_esbuild_vendor(
-            worktree, platform_key=verified["platform"], manifest_path=manifest_path, node_executable=node_bin
-        )
+        verify_esbuild_vendor(worktree, manifest, host_platform=host_platform, target_platform=verified["platform"])
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         raise RuntimeError(f"预置 worktree esbuild vendor 复核失败：{exc}") from exc
 
 
-def _run_target_daily_gate(executable: str, refs: Sequence[PrePushRef], *, remote_name: str) -> int:
+def _run_target_daily_gate(repo_root: Path, executable: str, refs: Sequence[PrePushRef], *, remote_name: str) -> int:
     local_sha = refs[0].local_sha
     targets = ", ".join(sorted(dict.fromkeys(ref.remote_ref or ref.local_ref for ref in refs)))
     gate_env = _quality_gate_env()
@@ -294,11 +297,12 @@ def _run_target_daily_gate(executable: str, refs: Sequence[PrePushRef], *, remot
         worktree = Path(target_dir) / "worktree"
         scope_file = Path(target_dir) / "scope.json"
         scope_file.write_text(
-            json.dumps(_daily_scope_for_refs(refs, remote_name=remote_name), ensure_ascii=False), encoding="utf-8",
+            json.dumps(_daily_scope_for_refs(repo_root, refs, remote_name=remote_name), ensure_ascii=False),
+            encoding="utf-8",
         )
-        _run_git_bytes(["worktree", "add", "--detach", str(worktree), local_sha])
+        _run_git_bytes(repo_root, ["worktree", "add", "--detach", str(worktree), local_sha])
         try:
-            _provision_worktree_esbuild_vendor(REPO_ROOT, worktree, environment=gate_env)
+            _provision_worktree_esbuild_vendor(repo_root, worktree, environment=gate_env)
             print(f"[git-hook] daily gate target: {targets} ({local_sha})", flush=True)
             returncode = int(subprocess.call(
                 _daily_gate_command(executable, scope_file=str(scope_file)),
@@ -308,34 +312,32 @@ def _run_target_daily_gate(executable: str, refs: Sequence[PrePushRef], *, remot
                 print(f"[git-hook] daily gate failed: {targets} ({local_sha}), exit={returncode}", file=sys.stderr)
             return returncode
         finally:
-            _run_git_bytes(["worktree", "remove", "--force", str(worktree)])
+            _run_git_bytes(repo_root, ["worktree", "remove", "--force", str(worktree)])
 
 
-def run_quality_gate(args: argparse.Namespace) -> int:
+def run_quality_gate(repo_root: Path, args: argparse.Namespace) -> int:
     try:
-        executable = _project_python_executable()
+        executable = project_python_executable(repo_root)
         pre_push_input = _pre_push_input_for_hook()
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    remote_name = str(getattr(args, "remote_name", "") or os.environ.get("PRE_COMMIT_REMOTE_NAME") or "")
+    remote_name = args.remote_name or os.environ.get("PRE_COMMIT_REMOTE_NAME", "")
     refs = pre_push_input.refs
     if pre_push_input.saw_push_input and not refs:
         print("[git-hook-cache] pre-push daily gate: no local ref to validate, skipped", flush=True)
         return 0
-    remote_ref = str(getattr(args, "remote_ref", "") or "")
-    if not remote_ref:
-        remote_ref = ",".join(sorted(dict.fromkeys(ref.remote_ref for ref in refs if ref.remote_ref)))
-    scope_payload = _daily_scope_for_refs(refs, remote_name=remote_name)
+    remote_ref = args.remote_ref or ",".join(sorted(dict.fromkeys(ref.remote_ref for ref in refs if ref.remote_ref)))
+    scope_payload = _daily_scope_for_refs(repo_root, refs, remote_name=remote_name)
     ref_contexts = _pre_push_contexts_payload(refs)
     daily_cache_key = None
     try:
         daily_cache_key = git_hook_cache.daily_gate_cache_key(
-            executable, remote_name=remote_name, remote_ref=remote_ref,
+            repo_root, executable, remote_name=remote_name, remote_ref=remote_ref,
             scope_payload=scope_payload, ref_contexts=ref_contexts,
         )
         if git_hook_cache.pre_push_daily_cache_hit(
-            executable, remote_name=remote_name, remote_ref=remote_ref,
+            repo_root, executable, remote_name=remote_name, remote_ref=remote_ref,
             scope_payload=scope_payload, ref_contexts=ref_contexts, key_payload=daily_cache_key,
         ):
             print(
@@ -354,7 +356,7 @@ def run_quality_gate(args: argparse.Namespace) -> int:
         returncode = 0
         try:
             for local_sha in sorted(refs_by_sha):
-                returncode = _run_target_daily_gate(executable, refs_by_sha[local_sha], remote_name=remote_name)
+                returncode = _run_target_daily_gate(repo_root, executable, refs_by_sha[local_sha], remote_name=remote_name)
                 if returncode:
                     return returncode
         except RuntimeError as exc:
@@ -362,11 +364,11 @@ def run_quality_gate(args: argparse.Namespace) -> int:
             return 1
     else:
         command = _daily_gate_command(executable)
-        returncode = subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
+        returncode = subprocess.call(command, cwd=str(repo_root), env=_quality_gate_env())
     if int(returncode) == 0 and daily_cache_key is not None:
         try:
             git_hook_cache.write_pre_push_daily_cache(
-                executable, remote_name=remote_name, remote_ref=remote_ref,
+                repo_root, executable, remote_name=remote_name, remote_ref=remote_ref,
                 scope_payload=scope_payload, ref_contexts=ref_contexts, key_payload=daily_cache_key,
             )
         except git_hook_cache.HookCacheError as exc:
@@ -374,9 +376,9 @@ def run_quality_gate(args: argparse.Namespace) -> int:
     return int(returncode)
 
 
-def run_final_quality_gate(_args: argparse.Namespace) -> int:
+def run_final_quality_gate(repo_root: Path, _args: argparse.Namespace) -> int:
     try:
-        executable = _project_python_executable()
+        executable = project_python_executable(repo_root)
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -386,27 +388,27 @@ def run_final_quality_gate(_args: argparse.Namespace) -> int:
         "--require-clean-worktree",
         "--long-gate-cache",
     ]
-    return subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
+    return subprocess.call(command, cwd=str(repo_root), env=_quality_gate_env())
 
 
-def run_fast_static_precheck(_args: argparse.Namespace) -> int:
+def run_fast_static_precheck(repo_root: Path, _args: argparse.Namespace) -> int:
     try:
-        executable = _project_python_executable()
+        executable = project_python_executable(repo_root)
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 1
     command = [executable, "scripts/run_quality_gate.py", "--fast-precheck"]
-    return subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
+    return subprocess.call(command, cwd=str(repo_root), env=_quality_gate_env())
 
 
-def run_ruff(_args: argparse.Namespace) -> int:
+def run_ruff(repo_root: Path, _args: argparse.Namespace) -> int:
     try:
-        executable = _project_python_executable()
+        executable = project_python_executable(repo_root)
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 1
     try:
-        return git_hook_cache.run_staged_ruff(executable)
+        return git_hook_cache.run_staged_ruff(repo_root, executable)
     except git_hook_cache.HookCacheError as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -416,23 +418,23 @@ def _same_executable_path(left: str, right: str) -> bool:
     return os.path.normcase(os.path.realpath(str(left or ""))) == os.path.normcase(os.path.realpath(str(right or "")))
 
 
-def _ensure_project_python_runtime() -> None:
-    executable = _project_python_executable()
+def ensure_project_python_runtime(repo_root: Path) -> None:
+    executable = project_python_executable(repo_root)
     if _same_executable_path(sys.executable, executable):
         return
     os.execv(executable, [executable, *sys.argv])
 
 
-def _project_python_executable() -> str:
+def project_python_executable(repo_root: Path) -> str:
     if os.name == "nt":
         candidates = [
-            REPO_ROOT / ".venv" / "Scripts" / "python.exe",
-            REPO_ROOT / ".venv" / "bin" / "python",
+            repo_root / ".venv" / "Scripts" / "python.exe",
+            repo_root / ".venv" / "bin" / "python",
         ]
     else:
         candidates = [
-            REPO_ROOT / ".venv" / "bin" / "python",
-            REPO_ROOT / ".venv" / "Scripts" / "python.exe",
+            repo_root / ".venv" / "bin" / "python",
+            repo_root / ".venv" / "Scripts" / "python.exe",
         ]
     for python_path in candidates:
         if python_path.exists():
@@ -476,7 +478,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return int(args.func(args))
+    return int(args.func(Path(resolve_repo_root()), args))
 
 
 if __name__ == "__main__":

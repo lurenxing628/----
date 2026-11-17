@@ -419,21 +419,9 @@ def test_assert_isolated_empty_demo_db_accepts_empty_and_rejects_business_rows(t
     reports_db = tmp_path / "has_reports.db"
     with sqlite3.connect(str(reports_db)) as conn:
         conn.executescript(schema_sql)
-        op_ref, task_ref, plan_ref = "b" * 48, "c" * 48, "d" * 48
         conn.execute(
-            "INSERT INTO WorkbenchPlanSourceRefs (ref, kind, source_key) VALUES (?, 'operation', 'op-1'), (?, 'official', '1')",
-            (op_ref, plan_ref),
-        )
-        conn.execute(
-            "INSERT INTO WorkbenchTaskRefs (ref, plan_ref, row_ref) VALUES (?, ?, 'row-1')",
-            (task_ref, plan_ref),
-        )
-        conn.execute(
-            "INSERT INTO WorkbenchProductionReports ("
-            "report_ref, report_no, operation_ref, recorded_against_task_ref, "
-            "recorded_against_plan_ref, source, recorded_at"
-            ") VALUES (?, 'RPT-001', ?, ?, ?, 'manual', '2026-11-11T09:00:00')",
-            ("a" * 48, op_ref, task_ref, plan_ref),
+            "INSERT INTO WorkbenchPlanSourceRefs (ref, kind, source_key) VALUES (?, 'operation', 'op-1')",
+            ("b" * 48,),
         )
     with pytest.raises(RuntimeError, match=r"Refusing rerun on non-empty database .* table 'Workbench.*' already contains data"):
         module._assert_isolated_empty_demo_db(reports_db, before_server_start=False)

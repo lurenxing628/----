@@ -1,13 +1,13 @@
 {
- "note": "循环依赖硬加载期环基线。正式门禁同时锁定 scope/roots/文件加载语义，检查圈成员、圈内规范化有向模块边和按 file/scope/context/loader_kind/expression/call_ast 稳定语义身份与 count 锁定的未解析动态导入（物理行号仅用于定位展示，同名/匿名作用域按名称路径合并计数）；删边、消圈或 SCC 缩小允许，新增债务阻断。",
- "schema_version": 3,
+ "note": "循环依赖基线。正式门禁同时锁定 scope/roots/文件加载语义；硬加载期目录环、硬加载期文件环、延迟目录环（运行时图相对硬加载期图新增）与运行时文件环四类都按圈成员超集匹配；圈内规范化有向模块边只锁该类环的锁定类别：硬加载期两类锁全部圈内边（都是顶层硬导入），延迟/运行时两类只锁函数体内（lazy）与条件（cond）导入边，函数体内导入只推迟加载，闭合的延迟环同样计入；圈内新增的普通顶层导入不锁，若它闭合成环由硬加载期两类拦下。未解析动态导入按 file/scope/context/loader_kind/expression/call_ast 稳定语义身份与 count 锁定（物理行号仅用于定位展示，同名/匿名作用域按名称路径合并计数）；删边、消圈或 SCC 缩小允许，新增债务阻断；--update-baseline 默认拒绝增长，人工核对后加 --allow-growth。",
+ "schema_version": 4,
  "scope": "production",
  "scan_roots": [
   "core",
-  "web",
   "data",
+  "web",
   "desktop",
-  "plugins",
+  "app.py",
   "tools",
   "scripts",
   "*.py"
@@ -15,16 +15,116 @@
  "file_cycle_semantics": "explicit import edges plus implicit parent-package __init__ loading edges",
  "hard_dir_cycles": [],
  "hard_file_cycles": [],
- "unresolved_dynamic_imports": [
+ "delayed_dir_cycles": [
   {
-   "file": "core/plugins/manager.py",
-   "scope": "PluginManager.load_from_base_dir",
-   "context": "lazy",
-   "loader_kind": "spec_from_file_location",
-   "expression": "spec_from_file_location(module_name)",
-   "call_ast": "Call(func=Attribute(value=Attribute(value=Name(id='importlib'), attr='util'), attr='spec_from_file_location'), args=[Name(id='module_name'), Name(id='path')], keywords=[])",
-   "count": 1
+   "members": [
+    "core/algorithms/greedy",
+    "core/algorithms/greedy/dispatch"
+   ],
+   "edges": [
+    "core.algorithms.greedy.dispatch.sgs_checkpoint -> core.algorithms.greedy.seed",
+    "core.algorithms.greedy.schedule_preparation -> core.algorithms.greedy.dispatch.sgs_checkpoint",
+    "core.algorithms.greedy.schedule_preparation -> core.algorithms.greedy.dispatch.sgs_due_span",
+    "core.algorithms.greedy.scheduler -> core.algorithms.greedy.dispatch.sgs_graph"
+   ]
   },
+  {
+   "members": [
+    "core/services/capacity",
+    "core/services/common",
+    "core/services/execution",
+    "core/services/personnel",
+    "core/services/scheduler",
+    "core/services/scheduler/calendar",
+    "core/services/scheduler/execution",
+    "core/services/scheduler/run",
+    "core/services/scheduler/summary",
+    "core/services/system",
+    "core/services/system/maintenance",
+    "core/services/workbench",
+    "core/services/workbench/facts",
+    "core/services/workbench/history",
+    "core/services/workbench/plan",
+    "core/services/workbench/run",
+    "core/services/workbench/trial",
+    "data/repositories"
+   ],
+   "edges": [
+    "core.services.workbench.decision_file_export -> core.services.workbench.history.export",
+    "core.services.workbench.decision_file_export -> core.services.workbench.run.decision_export",
+    "core.services.workbench.plan.read_context -> core.services.workbench.facts.source_revisions",
+    "core.services.workbench.run.candidate_adoption -> core.services.workbench.history.entry_writer",
+    "core.services.workbench.run.decision_source -> core.services.workbench.facts.candidate_read_source",
+    "core.services.workbench.run.decision_workspace -> core.services.workbench.facts.decision_delivery",
+    "core.services.workbench.run.jobs -> core.services.workbench.facts.decision_read_model",
+    "core.services.workbench.run.jobs -> core.services.workbench.history.entry_writer",
+    "core.services.workbench.run.preflight_facts -> core.services.scheduler.calendar.engine",
+    "core.services.workbench.run.preflight_facts -> core.services.scheduler.execution.execution_ledger_adapter",
+    "core.services.workbench.run.preflight_facts -> core.services.workbench.facts.calendar_inputs",
+    "core.services.workbench.run.preflight_facts -> core.services.workbench.facts.preflight_checks",
+    "core.services.workbench.run.result_preparation -> data.repositories.workbench_run_repo",
+    "core.services.workbench.run.result_preparation -> data.repositories.workbench_run_result_repo",
+    "core.services.workbench.trial.adoption -> core.services.workbench.history.entry_writer",
+    "data.repositories.workbench_run_repo -> core.services.workbench.history.entry_writer"
+   ]
+  }
+ ],
+ "runtime_file_cycles": [
+  {
+   "members": [
+    "core.services.workbench.plan.baseline",
+    "core.services.workbench.plan.delivery",
+    "core.services.workbench.plan.queries",
+    "core.services.workbench.plan.read_context",
+    "core.services.workbench.plan.workspace_dto"
+   ],
+   "edges": [
+    "core.services.workbench.plan.read_context -> core.services.workbench.plan.queries"
+   ]
+  },
+  {
+   "members": [
+    "core.services.workbench.resource.catalogs",
+    "core.services.workbench.resource.entities",
+    "core.services.workbench.resource.operator_machine_permissions",
+    "core.services.workbench.resource.projection",
+    "core.services.workbench.resource.queries",
+    "core.services.workbench.resource.scope",
+    "core.services.workbench.resource.suppliers"
+   ],
+   "edges": [
+    "core.services.workbench.resource.projection -> core.services.workbench.resource.operator_machine_permissions"
+   ]
+  },
+  {
+   "members": [
+    "web.bootstrap.workbench_system_restore_status",
+    "web.bootstrap.workbench_system_restore_view"
+   ],
+   "edges": [
+    "web.bootstrap.workbench_system_restore_status -> web.bootstrap.workbench_system_restore_view"
+   ]
+  },
+  {
+   "members": [
+    "web.routes.workbench.execution",
+    "web.routes.workbench.execution_files"
+   ],
+   "edges": [
+    "web.routes.workbench.execution -> web.routes.workbench.execution_files"
+   ]
+  },
+  {
+   "members": [
+    "web.routes.workbench.reports",
+    "web.routes.workbench.reports_catalog"
+   ],
+   "edges": [
+    "web.routes.workbench.reports -> web.routes.workbench.reports_catalog"
+   ]
+  }
+ ],
+ "unresolved_dynamic_imports": [
   {
    "file": "data/repositories/__init__.py",
    "scope": "__getattr__",
@@ -35,12 +135,12 @@
    "count": 1
   },
   {
-   "file": "tools/host_tests/test_start_and_rerun_route_script.py",
-   "scope": "_load_route_script_module",
+   "file": "tools/dead_code_usage/protocols.py",
+   "scope": "ExternalSymbols._module",
    "context": "lazy",
-   "loader_kind": "spec_from_file_location",
-   "expression": "spec_from_file_location('run_start_and_rerun_route_test_mod')",
-   "call_ast": "Call(func=Attribute(value=Attribute(value=Name(id='importlib'), attr='util'), attr='spec_from_file_location'), args=[Constant(value='run_start_and_rerun_route_test_mod'), Name(id='_SCRIPT_PATH')], keywords=[])",
+   "loader_kind": "import_module",
+   "expression": "name",
+   "call_ast": "Call(func=Attribute(value=Name(id='importlib'), attr='import_module'), args=[Name(id='name')], keywords=[])",
    "count": 1
   }
  ]

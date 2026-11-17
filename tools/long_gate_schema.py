@@ -7,13 +7,16 @@ import os
 import subprocess
 from typing import Any, Dict, List, Mapping, Sequence
 
-from tools.long_gate_paths import LONG_GATE_CACHE_DIR_REL, real_repo_root
+from tools.long_gate_paths import real_repo_root
 
-LONG_GATE_CACHE_SCHEMA_VERSION = 2
-LONG_GATE_FINGERPRINT_SCHEMA_VERSION = 2
-FULL_TEST_DEBT_NODE_CACHE_SCHEMA_VERSION = 2
+# 各类门禁记录的 schema 版本各自只在这里定义一次；命令 manifest/receipt 的版本在
+# tools/quality_gate_shared.py（QUALITY_GATE_PROOF_SCHEMA_VERSION），环境指纹的版本在
+# tools/long_gate_fingerprint.py（ENVIRONMENT_FINGERPRINT_SCHEMA_VERSION）。形状变化时加 1，旧记录明确失效。
+LONG_GATE_CACHE_SCHEMA_VERSION = 3
+LONG_GATE_FINGERPRINT_SCHEMA_VERSION = 3
 LONG_GATE_MANIFEST_SCHEMA_VERSION = 2
-LONG_GATE_SUMMARY_SCHEMA_VERSION = 2
+LONG_GATE_SUMMARY_SCHEMA_VERSION = 3
+COLLECT_NODEIDS_SCHEMA_VERSION = 3
 
 LONG_GATE_RUNNER_VERSION_PATHS = ("scripts/run_quality_gate.py",)
 LONG_GATE_TOOLING_VERSION_PATHS = (
@@ -22,6 +25,7 @@ LONG_GATE_TOOLING_VERSION_PATHS = (
     "tools/long_gate_fingerprint.py",
     "tools/long_gate_manifest.py",
     "tools/long_gate_paths.py",
+    "tools/long_gate_records.py",
     "tools/long_gate_schema.py",
     "tools/long_gate_summary.py",
 )
@@ -262,18 +266,17 @@ def long_gate_repo_identity(repo_root: str) -> Dict[str, str]:
     }
 
 
-def long_gate_cache_metadata(repo_root: str, *, cache_dir: str = LONG_GATE_CACHE_DIR_REL) -> Dict[str, Any]:
+def long_gate_cache_metadata(repo_root: str, *, cache_dir: str) -> Dict[str, Any]:
+    """runner/tooling 源内容、缓存目录与仓库身份；缓存记录的 schema 版本只写在记录自己的 schema_version。"""
     root = real_repo_root(repo_root)
     runner = version_info_for_paths(root, LONG_GATE_RUNNER_VERSION_PATHS)
     tooling = version_info_for_paths(root, LONG_GATE_TOOLING_VERSION_PATHS)
     metadata: Dict[str, Any] = {
-        "cache_schema_version": LONG_GATE_CACHE_SCHEMA_VERSION,
-        "fingerprint_schema_version": LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
         "runner_version_content": runner["rows"],
         "tooling_version_content": tooling["rows"],
         "runner_version_untrusted_paths": runner["untrusted_paths"],
         "tooling_version_untrusted_paths": tooling["untrusted_paths"],
-        "cache_dir": str(cache_dir or LONG_GATE_CACHE_DIR_REL).replace("\\", "/"),
+        "cache_dir": cache_dir,
     }
     metadata.update(long_gate_repo_identity(root))
     return metadata

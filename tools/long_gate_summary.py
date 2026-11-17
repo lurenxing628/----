@@ -7,67 +7,47 @@ import shlex
 from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from tools.long_gate_paths import LONG_GATE_CACHE_DIR_REL, repo_relative_path
+from tools.long_gate_paths import LONG_GATE_CACHE_DIR_REL
+from tools.long_gate_records import CacheDecision, GateEntry, RuntimeEntry, StepOutcome
 from tools.long_gate_schema import LONG_GATE_SUMMARY_SCHEMA_VERSION
 from tools.quality_gate_shared import sanitize_quality_gate_output
 
-SUMMARY_SCHEMA_VERSION = LONG_GATE_SUMMARY_SCHEMA_VERSION
 SUMMARY_JSON_REL = os.path.join(LONG_GATE_CACHE_DIR_REL, "summary.v2.json").replace("\\", "/")
 SUMMARY_MD_REL = os.path.join(LONG_GATE_CACHE_DIR_REL, "summary.v2.md").replace("\\", "/")
+TAIL_LINES = 80
 
 
-def tail_text(text: str, max_lines: int = 80) -> str:
-    lines = str(text or "").splitlines()
+def tail_text(text: str) -> str:
+    lines = text.splitlines()
     if not lines:
         return "<empty>"
-    return "\n".join(lines[-int(max_lines) :])
+    return "\n".join(lines[-TAIL_LINES:])
 
 
-def _rel_path(repo_root: str, path: str) -> str:
-    raw_path = str(path or "").replace("\\", "/")
-    if not raw_path:
-        return ""
-    try:
-        return repo_relative_path(repo_root, raw_path, description="summary path")
-    except ValueError:
-        return raw_path
-
-
-def _posix_output_file(item: Mapping[str, Any]) -> Dict[str, Any]:
-    """摘要引用实际输出；完整内容由 long-gate 结果缓存保存。"""
-    return {"path": str(item.get("path") or "").replace("\\", "/")}
-
-
-def _input_snapshot_overview(fingerprint: Mapping[str, Any]) -> Dict[str, Any]:
-    if not fingerprint:
+def _input_snapshot_overview(fingerprint: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    if fingerprint is None:
         return {}
-    components = dict(fingerprint.get("components") or {})
-    files = dict(components.get("files") or {})
     return {
-        "schema_version": fingerprint.get("schema_version"),
-        "path_count": len(files.get("files") or []),
+        "schema_version": fingerprint["schema_version"],
+        "path_count": len(fingerprint["components"]["files"]["files"]),
     }
 
 
-def _fingerprint_change_reference(change: Mapping[str, Any]) -> Dict[str, Any]:
+def fingerprint_change_reference(change: Mapping[str, Any]) -> Dict[str, Any]:
+    """摘要与 explain 只引用变化位置，完整内容留在缓存记录里。"""
     return {key: change[key] for key in ("component", "reason", "path", "key", "field") if key in change}
 
 
-def _command_text_from_display(display: str) -> str:
-    return str(display or "").strip()
-
-
 def _compact_values_text(values: Sequence[Any], *, limit: int = 10) -> str:
-    rows = [str(item) for item in list(values or [])]
-    shown = rows[: int(limit)]
-    suffix = f"; ... {len(rows) - len(shown)} more" if len(rows) > len(shown) else ""
+    shown = [str(item) for item in values[:limit]]
+    suffix = f"; ... {len(values) - len(shown)} more" if len(values) > len(shown) else ""
     return "; ".join(shown) + suffix
 
 
 def _pytest_nodeids_from_text(text: str) -> List[str]:
     nodeids: List[str] = []
     pattern = re.compile(r"(?P<nodeid>(?:[A-Za-z0-9_.\-/]+/)?tests/[^\s:]+\.py::[^\s]+)")
-    for match in pattern.finditer(str(text or "")):
+    for match in pattern.finditer(text):
         nodeid = match.group("nodeid").strip().rstrip(".,;")
         if nodeid and nodeid not in nodeids:
             nodeids.append(nodeid)
@@ -75,211 +55,144 @@ def _pytest_nodeids_from_text(text: str) -> List[str]:
 
 
 def _display_is_pytest_command(display: str) -> bool:
-    normalized = str(display or "").strip()
-    return normalized == "python -m pytest" or normalized.startswith("python -m pytest ")
+    return display == "python -m pytest" or display.startswith("python -m pytest ")
 
 
-def extract_copyable_failure(
-    *,
-    entry_id: str,
-    display: str,
-    result: Mapping[str, Any],
-    receipt_path: str,
-    max_lines: int = 80,
-) -> Dict[str, Any]:
-    stdout = sanitize_quality_gate_output(str(result.get("stdout") or ""))
-    stderr = sanitize_quality_gate_output(str(result.get("stderr") or ""))
-    copyable_command = _command_text_from_display(display)
-    nodeids = []
-    if _display_is_pytest_command(copyable_command):
-        nodeids = _pytest_nodeids_from_text("\n".join([copyable_command, stdout, stderr]))
+def copyable_failure(entry: GateEntry, outcome: StepOutcome) -> Dict[str, Any]:
+    """失败步骤的可复制重跑信息。"""
+    result = outcome.result
+    display = entry.spec.display
+    stdout = sanitize_quality_gate_output(result.stdout)
+    stderr = sanitize_quality_gate_output(result.stderr)
+    copyable_command = display
+    nodeids: List[str] = []
+    if _display_is_pytest_command(display):
+        nodeids = _pytest_nodeids_from_text("\n".join([display, stdout, stderr]))
     if nodeids:
         copyable_command = "python -m pytest -q " + " ".join(shlex.quote(nodeid) for nodeid in nodeids)
     return {
-        "entry_id": str(entry_id or ""),
-        "display": _command_text_from_display(display),
+        "entry_id": entry.spec.check_id,
+        "display": display,
         "copyable_command": copyable_command,
         "copyable_nodeids": nodeids,
-        "receipt_path": str(receipt_path or "").replace("\\", "/"),
-        "stdout_log_path": str(result.get("stdout_log_path") or "").replace("\\", "/"),
-        "stderr_log_path": str(result.get("stderr_log_path") or "").replace("\\", "/"),
-        "stdout_tail": tail_text(stdout, max_lines=max_lines),
-        "stderr_tail": tail_text(stderr, max_lines=max_lines),
+        "receipt_path": outcome.receipt_path,
+        "stdout_log_path": result.stdout_log_path,
+        "stderr_log_path": result.stderr_log_path,
+        "stdout_tail": tail_text(stdout),
+        "stderr_tail": tail_text(stderr),
     }
 
 
-def _result_returncode(result: Optional[Mapping[str, Any]]) -> Optional[int]:
-    if result is None or "returncode" not in result:
-        return None
-    value = result.get("returncode")
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _duration_value(result: Optional[Mapping[str, Any]], key: str) -> float:
-    if result is None:
-        return 0.0
-    try:
-        return float(result.get(key) or 0.0)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _bool_value(result: Optional[Mapping[str, Any]], key: str) -> bool:
-    if result is None:
-        return False
-    return bool(result.get(key))
-
-
-def _summary_execution_mode(
-    decision: Mapping[str, Any],
-    *,
-    result: Optional[Mapping[str, Any]],
-    execution_mode: str,
-) -> str:
-    if execution_mode:
-        return execution_mode
-    decision_value = str(decision.get("decision") or "")
-    if decision_value == "reuse":
+def _planned_execution_mode(decision: CacheDecision) -> str:
+    """尚未执行的条目按决策给出计划中的执行方式。"""
+    if decision.kind == "reuse":
         return "reused_success_cache"
-    if decision_value in {"planned_only", "disabled"}:
-        return decision_value
-    if result is not None:
-        return str(result.get("execution_mode") or "executed")
+    if decision.kind == "disabled":
+        return "disabled"
     return ""
 
 
-def build_summary_entry(
-    *,
-    index: int,
-    entry: Mapping[str, Any],
-    decision: Mapping[str, Any],
-    result: Optional[Mapping[str, Any]] = None,
-    receipt_path: str = "",
-    output_files: Optional[Sequence[Mapping[str, Any]]] = None,
-    execution_mode: str = "",
-    failed: bool = False,
-) -> Dict[str, Any]:
-    invalidated_by = list(decision.get("invalidated_by") or [])
-    resolved_execution_mode = _summary_execution_mode(decision, result=result, execution_mode=execution_mode)
-    returncode = _result_returncode(result)
-    failed_value = bool(failed or (returncode is not None and returncode != 0))
-    return {
-        "index": int(index),
-        "entry_id": str(entry.get("entry_id") or decision.get("entry_id") or ""),
-        "entry_type": str(entry.get("entry_type") or ""),
-        "proof_kind": str(entry.get("proof_kind") or ""),
-        "display": str(entry.get("display") or ""),
-        "env_overlay_keys": [str(key) for key in list(entry.get("env_overlay_keys") or [])],
-        "cache_status": str(entry.get("cache_status") or ""),
-        "decision": str(decision.get("decision") or ""),
-        "reason": str(decision.get("reason") or ""),
-        "invalidated_by": invalidated_by,
-        "cache_unavailable": bool(decision.get("cache_unavailable")),
-        "fingerprint_error": dict(decision.get("fingerprint_error") or {}),
-        "fingerprint_diff": [
-            _fingerprint_change_reference(item) for item in list(decision.get("fingerprint_diff") or [])
-        ],
-        "execution_mode": resolved_execution_mode,
-        "returncode": returncode,
-        "failed": failed_value,
-        # 路径一律归一为 posix（正斜杠），与同结构的 cache_dir 口径一致：summary 是跨平台/跨机
-        # restore 的产物，Windows 反斜杠会破坏调用方对 "evidence/QualityGate/..." 形态的断言与比对。
-        "receipt_path": str(receipt_path or "").replace("\\", "/"),
-        "stdout_log_path": str((result or {}).get("stdout_log_path") or "").replace("\\", "/"),
-        "stderr_log_path": str((result or {}).get("stderr_log_path") or "").replace("\\", "/"),
-        "output_files": [_posix_output_file(item) for item in list(output_files or [])],
-        "input_snapshot": _input_snapshot_overview(dict(decision.get("current_fingerprint") or {})),
-        "previous_result_path": str(decision.get("previous_result_path") or ""),
-        "duration_s": _duration_value(result, "duration_s"),
-        "duration_kind": str((result or {}).get("duration_kind") or "").strip(),
-        "original_duration_s": _duration_value(result, "original_duration_s"),
-        "timed_out": _bool_value(result, "timed_out"),
-        "interrupted": _bool_value(result, "interrupted"),
-        "partial_write": _bool_value(result, "partial_write"),
+def summary_entry(rt: RuntimeEntry) -> Dict[str, Any]:
+    """summary 与 explain 共用的条目投影，由 RuntimeEntry 显式生成。"""
+    decision = rt.decision
+    spec = rt.entry.spec
+    outcome = rt.outcome
+    fingerprint_error = decision.fingerprint_error
+    row: Dict[str, Any] = {
+        "index": rt.entry.index,
+        "entry_id": spec.check_id,
+        "entry_type": spec.entry_type,
+        "proof_kind": spec.proof_kind,
+        "display": spec.display,
+        "env_overlay_keys": sorted(rt.entry.command["env_overlay"]),
+        "cache_status": "cache_unavailable" if decision.cache_unavailable else "enabled",
+        "decision": decision.kind,
+        "reason": decision.reason,
+        "invalidated_by": list(decision.invalidated_by),
+        "cache_unavailable": decision.cache_unavailable,
+        "fingerprint_error": {}
+        if fingerprint_error is None
+        else {"message": fingerprint_error.message, "failure_kind": fingerprint_error.failure_kind},
+        "fingerprint_diff": [fingerprint_change_reference(change) for change in decision.fingerprint_diff],
+        "input_snapshot": _input_snapshot_overview(rt.fingerprint),
+        "previous_result_path": decision.previous_result_path,
     }
+    if outcome is None:
+        row.update(
+            execution_mode=_planned_execution_mode(decision),
+            returncode=None,
+            failed=False,
+            receipt_path="",
+            stdout_log_path="",
+            stderr_log_path="",
+            output_files=[],
+            duration_s=0.0,
+            duration_kind="",
+            original_duration_s=0.0,
+        )
+        return row
+    result = outcome.result
+    row.update(
+        execution_mode=result.execution_mode,
+        returncode=result.returncode,
+        failed=outcome.failed,
+        receipt_path=outcome.receipt_path,
+        stdout_log_path=result.stdout_log_path,
+        stderr_log_path=result.stderr_log_path,
+        output_files=[{"path": path} for path in outcome.output_files],
+        duration_s=result.duration_s,
+        duration_kind=result.duration_kind,
+        original_duration_s=0.0 if result.original_duration_s is None else result.original_duration_s,
+    )
+    return row
 
 
-def _empty_counts() -> Dict[str, int]:
-    return {
-        "executed": 0,
-        "reused": 0,
-        "failed": 0,
-        "planned_only": 0,
-        "disabled": 0,
-    }
+_COUNT_BY_EXECUTION_MODE = {
+    "executed": "executed",
+    "reused_success_cache": "reused",
+    "resumed_success": "reused",
+    "disabled": "disabled",
+}
+SUMMARY_COUNT_KEYS = ("executed", "reused", "failed", "disabled")
+#: 复用旧结果（long-gate 缓存或续跑 receipt）本次只付出的开销。
+_REUSE_DURATION_KINDS = frozenset({"reuse_overhead", "resume_overhead"})
 
 
 def _count_entries(entries: Sequence[Mapping[str, Any]]) -> Dict[str, int]:
-    counts = _empty_counts()
+    counts = {key: 0 for key in SUMMARY_COUNT_KEYS}
     for entry in entries:
-        if bool(entry.get("failed")):
+        if entry["failed"]:
             counts["failed"] += 1
-            continue
-        execution_mode = str(entry.get("execution_mode") or "")
-        decision = str(entry.get("decision") or "")
-        if execution_mode == "reused_success_cache" or decision == "reuse":
-            counts["reused"] += 1
-        elif execution_mode == "executed":
-            counts["executed"] += 1
-        elif decision == "planned_only" or execution_mode == "planned_only":
-            counts["planned_only"] += 1
-        elif decision == "disabled" or execution_mode == "disabled":
-            counts["disabled"] += 1
+        elif entry["execution_mode"] in _COUNT_BY_EXECUTION_MODE:
+            counts[_COUNT_BY_EXECUTION_MODE[entry["execution_mode"]]] += 1
     return counts
 
 
-def _entry_duration(entry: Mapping[str, Any], key: str = "duration_s") -> float:
-    try:
-        return float(entry.get(key) or 0.0)
-    except (TypeError, ValueError):
-        return 0.0
-
-
 def _build_duration_summary(entries: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
-    executed_modes = {"executed"}
-    total_s = sum(_entry_duration(entry) for entry in entries)
-    executed_total_s = sum(
-        _entry_duration(entry) for entry in entries if str(entry.get("execution_mode") or "") in executed_modes
-    )
-    reuse_overhead_total_s = sum(
-        _entry_duration(entry)
-        for entry in entries
-        if str(entry.get("duration_kind") or "") == "reuse_overhead"
-        or str(entry.get("execution_mode") or "") == "reused_success_cache"
-    )
     ranked_entries = sorted(
-        [
-            entry
-            for entry in entries
-            if _entry_duration(entry) > 0.0 or _entry_duration(entry, "original_duration_s") > 0.0
-        ],
-        key=lambda entry: _entry_duration(entry),
+        [entry for entry in entries if entry["duration_s"] > 0.0 or entry["original_duration_s"] > 0.0],
+        key=lambda entry: entry["duration_s"],
         reverse=True,
     )
-    top_entries = []
-    for rank, entry in enumerate(ranked_entries[:10], start=1):
-        top_entries.append(
+    return {
+        "total_s": sum(entry["duration_s"] for entry in entries),
+        "executed_total_s": sum(entry["duration_s"] for entry in entries if entry["execution_mode"] == "executed"),
+        "reuse_overhead_total_s": sum(
+            entry["duration_s"] for entry in entries if entry["duration_kind"] in _REUSE_DURATION_KINDS
+        ),
+        "top_entries": [
             {
                 "rank": rank,
-                "entry_id": str(entry.get("entry_id") or ""),
-                "display": str(entry.get("display") or ""),
-                "execution_mode": str(entry.get("execution_mode") or ""),
-                "duration_s": _entry_duration(entry),
-                "duration_kind": str(entry.get("duration_kind") or ""),
-                "original_duration_s": _entry_duration(entry, "original_duration_s"),
-                "reason": str(entry.get("reason") or ""),
+                "entry_id": entry["entry_id"],
+                "display": entry["display"],
+                "execution_mode": entry["execution_mode"],
+                "duration_s": entry["duration_s"],
+                "duration_kind": entry["duration_kind"],
+                "original_duration_s": entry["original_duration_s"],
+                "reason": entry["reason"],
             }
-        )
-    return {
-        "total_s": total_s,
-        "executed_total_s": executed_total_s,
-        "reuse_overhead_total_s": reuse_overhead_total_s,
-        "top_entries": top_entries,
+            for rank, entry in enumerate(ranked_entries[:10], start=1)
+        ],
     }
 
 
@@ -290,68 +203,60 @@ def build_long_gate_summary(
     head_sha: str,
     worktree_clean: bool,
     cache_enabled: bool,
-    mode: str,
     entries: Sequence[Mapping[str, Any]],
-    failure: Optional[Mapping[str, Any]] = None,
-    cache_dir: str = LONG_GATE_CACHE_DIR_REL,
+    failure: Optional[Mapping[str, Any]],
+    cache_dir: str,
 ) -> Dict[str, Any]:
-    normalized_entries = [dict(entry) for entry in list(entries or [])]
     return {
-        "schema_version": SUMMARY_SCHEMA_VERSION,
-        "run_id": str(run_id or ""),
+        "schema_version": LONG_GATE_SUMMARY_SCHEMA_VERSION,
+        "run_id": run_id,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "repo_root": os.path.abspath(repo_root),
-        "head_sha": str(head_sha or ""),
-        "worktree_clean": bool(worktree_clean),
-        "cache_enabled": bool(cache_enabled),
-        "cache_dir": str(cache_dir or LONG_GATE_CACHE_DIR_REL).replace("\\", "/"),
-        "mode": str(mode or "run"),
-        "counts": _count_entries(normalized_entries),
-        "duration": _build_duration_summary(normalized_entries),
-        "entries": normalized_entries,
-        "failure": dict(failure) if failure is not None else None,
+        "head_sha": head_sha,
+        "worktree_clean": worktree_clean,
+        "cache_enabled": cache_enabled,
+        "cache_dir": cache_dir,
+        "counts": _count_entries(entries),
+        "duration": _build_duration_summary(entries),
+        "entries": entries,
+        "failure": failure,
     }
 
 
-def _format_seconds(value: Any) -> str:
-    try:
-        return f"{float(value):.3f}"
-    except (TypeError, ValueError):
-        return "unknown"
+def _escape_cell(value: Any) -> str:
+    return str(value).replace("|", "\\|")
 
 
 def _format_original_duration(entry: Mapping[str, Any]) -> str:
-    original = _entry_duration(entry, "original_duration_s")
-    if original <= 0.0 and str(entry.get("execution_mode") or "") == "reused_success_cache":
+    original = entry["original_duration_s"]
+    if original <= 0.0 and entry["execution_mode"] == "reused_success_cache":
         return "unknown"
-    return _format_seconds(original)
+    return f"{original:.3f}"
 
 
 def render_summary_markdown(summary: Mapping[str, Any]) -> str:
-    counts = dict(summary.get("counts") or {})
-    duration = dict(summary.get("duration") or {})
+    counts = summary["counts"]
+    duration = summary["duration"]
     lines = [
         "# Long gate summary",
         "",
-        f"- run_id: {summary.get('run_id') or ''}",
-        f"- head_sha: {summary.get('head_sha') or ''}",
-        f"- worktree_clean: {bool(summary.get('worktree_clean'))}",
-        f"- cache_enabled: {bool(summary.get('cache_enabled'))}",
-        f"- cache_dir: {summary.get('cache_dir') or ''}",
-        f"- mode: {summary.get('mode') or ''}",
+        f"- run_id: {summary['run_id']}",
+        f"- head_sha: {summary['head_sha']}",
+        f"- worktree_clean: {summary['worktree_clean']}",
+        f"- cache_enabled: {summary['cache_enabled']}",
+        f"- cache_dir: {summary['cache_dir']}",
         "",
         "## Counts",
     ]
-    for key in ("executed", "reused", "failed", "planned_only", "disabled"):
-        lines.append(f"- {key}: {int(counts.get(key) or 0)}")
+    lines.extend(f"- {key}: {counts[key]}" for key in SUMMARY_COUNT_KEYS)
     lines.extend(
         [
             "",
             "## Duration",
             "",
-            f"- total_s: {_format_seconds(duration.get('total_s') or 0.0)}",
-            f"- executed_total_s: {_format_seconds(duration.get('executed_total_s') or 0.0)}",
-            f"- reuse_overhead_total_s: {_format_seconds(duration.get('reuse_overhead_total_s') or 0.0)}",
+            f"- total_s: {duration['total_s']:.3f}",
+            f"- executed_total_s: {duration['executed_total_s']:.3f}",
+            f"- reuse_overhead_total_s: {duration['reuse_overhead_total_s']:.3f}",
             "",
             "## Slow entries",
             "",
@@ -359,16 +264,10 @@ def render_summary_markdown(summary: Mapping[str, Any]) -> str:
             "|---|---|---|---|---|---|",
         ]
     )
-    for entry in list(duration.get("top_entries") or []):
+    for entry in duration["top_entries"]:
         lines.append(
-            "| {rank} | {entry_id} | {execution_mode} | {duration_s} | {original_duration_s} | {reason} |".format(
-                rank=entry.get("rank") or "",
-                entry_id=str(entry.get("entry_id") or "").replace("|", "\\|"),
-                execution_mode=str(entry.get("execution_mode") or "").replace("|", "\\|"),
-                duration_s=_format_seconds(entry.get("duration_s") or 0.0),
-                original_duration_s=_format_original_duration(entry),
-                reason=str(entry.get("reason") or "").replace("|", "\\|"),
-            )
+            f"| {entry['rank']} | {_escape_cell(entry['entry_id'])} | {_escape_cell(entry['execution_mode'])} "
+            f"| {entry['duration_s']:.3f} | {_format_original_duration(entry)} | {_escape_cell(entry['reason'])} |"
         )
     lines.extend(
         [
@@ -379,48 +278,38 @@ def render_summary_markdown(summary: Mapping[str, Any]) -> str:
             "|---|---|---|---|---|---|---|---|---|",
         ]
     )
-    for entry in list(summary.get("entries") or []):
-        invalidated_by = _compact_values_text(list(entry.get("invalidated_by") or []), limit=10)
+    for entry in summary["entries"]:
         lines.append(
-            "| {index} | {entry_id} | {decision} | {cache_status} | {execution_mode} | {env_overlay_keys} | {reason} | {invalidated_by} | {receipt_path} |".format(
-                index=entry.get("index") or "",
-                entry_id=entry.get("entry_id") or "",
-                decision=entry.get("decision") or "",
-                cache_status=entry.get("cache_status") or "",
-                execution_mode=entry.get("execution_mode") or "",
-                env_overlay_keys=", ".join(str(key) for key in list(entry.get("env_overlay_keys") or [])).replace(
-                    "|", "\\|"
-                ),
-                reason=str(entry.get("reason") or "").replace("|", "\\|"),
-                invalidated_by=invalidated_by.replace("|", "\\|"),
-                receipt_path=entry.get("receipt_path") or "",
-            )
+            f"| {entry['index']} | {entry['entry_id']} | {entry['decision']} | {entry['cache_status']} "
+            f"| {entry['execution_mode']} | {_escape_cell(', '.join(entry['env_overlay_keys']))} "
+            f"| {_escape_cell(entry['reason'])} | {_escape_cell(_compact_values_text(entry['invalidated_by']))} "
+            f"| {entry['receipt_path']} |"
         )
-    failure = summary.get("failure")
-    if isinstance(failure, Mapping):
+    failure = summary["failure"]
+    if failure is not None:
         lines.extend(
             [
                 "",
                 "## Failure",
                 "",
-                f"- entry_id: {failure.get('entry_id') or ''}",
-                f"- display: {failure.get('display') or ''}",
-                f"- copyable_command: {failure.get('copyable_command') or ''}",
-                f"- copyable_nodeids: {', '.join(str(item) for item in list(failure.get('copyable_nodeids') or []))}",
-                f"- receipt_path: {failure.get('receipt_path') or ''}",
-                f"- stdout_log_path: {failure.get('stdout_log_path') or ''}",
-                f"- stderr_log_path: {failure.get('stderr_log_path') or ''}",
+                f"- entry_id: {failure['entry_id']}",
+                f"- display: {failure['display']}",
+                f"- copyable_command: {failure['copyable_command']}",
+                f"- copyable_nodeids: {', '.join(failure['copyable_nodeids'])}",
+                f"- receipt_path: {failure['receipt_path']}",
+                f"- stdout_log_path: {failure['stdout_log_path']}",
+                f"- stderr_log_path: {failure['stderr_log_path']}",
                 "",
                 "### stdout tail",
                 "",
                 "```text",
-                str(failure.get("stdout_tail") or ""),
+                failure["stdout_tail"],
                 "```",
                 "",
                 "### stderr tail",
                 "",
                 "```text",
-                str(failure.get("stderr_tail") or ""),
+                failure["stderr_tail"],
                 "```",
             ]
         )
@@ -428,23 +317,19 @@ def render_summary_markdown(summary: Mapping[str, Any]) -> str:
         [
             "",
             "For local profiling, run the exact final proof command and inspect evidence/QualityGate/long_gate/summary.v2.json.",
+            "",
         ]
     )
-    lines.append("")
     return "\n".join(lines)
 
 
 def write_long_gate_summary(summary: Mapping[str, Any], repo_root: str) -> Dict[str, str]:
-    root = os.path.abspath(repo_root)
-    summary_json_abs = os.path.join(root, SUMMARY_JSON_REL.replace("/", os.sep))
-    summary_md_abs = os.path.join(root, SUMMARY_MD_REL.replace("/", os.sep))
+    summary_json_abs = os.path.join(repo_root, SUMMARY_JSON_REL.replace("/", os.sep))
+    summary_md_abs = os.path.join(repo_root, SUMMARY_MD_REL.replace("/", os.sep))
     os.makedirs(os.path.dirname(summary_json_abs), exist_ok=True)
     with open(summary_json_abs, "w", encoding="utf-8") as handle:
-        json.dump(dict(summary), handle, ensure_ascii=False, indent=2)
+        json.dump(summary, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
     with open(summary_md_abs, "w", encoding="utf-8", newline="") as handle:
         handle.write(render_summary_markdown(summary))
-    return {
-        "summary_json": _rel_path(root, summary_json_abs),
-        "summary_md": _rel_path(root, summary_md_abs),
-    }
+    return {"summary_json": SUMMARY_JSON_REL, "summary_md": SUMMARY_MD_REL}

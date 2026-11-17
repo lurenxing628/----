@@ -4,7 +4,7 @@ requires-python = ">=3.8"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py", "regression_*.py"]
+python_files = ["test_*.py"]
 markers = [
     "required: 保留的业务回归(清单和分组在 tools.test_registry_data 中登记并自动打标)；人用入口 pytest -m required",
     "serial: 需独占进程态、不进 xdist 并行集的测试(口径同 tools.full_test_debt_shards.classify_nodeid 的 serial 清单)；人用入口 pytest -m serial",
@@ -32,7 +32,6 @@ exclude = [
     "dist",
     "build",
     "*.egg-info",
-    "static/js/frappe-gantt*",
     "backups",
     "evidence",
 ]
@@ -48,19 +47,13 @@ select = [
 ]
 ignore = [
     "E501",   # 行长度由 line-length 控制，允许适度超长
-    "E402",   # 模块级导入不在文件顶部（Flask 路由注册模式需要）
-    "F401",   # 已有 noqa 标记的 side-effect 导入
     "UP006",  # Python 3.8 不支持 list[X] 替代 List[X]
     "UP007",  # Python 3.8 不支持 X | Y 类型语法
     "UP045",  # Python 3.8 不支持 X | None 替代 Optional[X]
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"web/routes/scheduler.py" = ["F401"]  # side-effect 导入注册路由
-"web/routes/equipment.py" = ["F401"]
-"web/routes/personnel.py" = ["F401"]
-"web/routes/process.py" = ["F401"]
-"web/routes/material.py" = ["F401"]
+".codestable/checkup/scripts/callgraph_extract.py" = ["E402"]  # 宿主体检脚本须先补 sys.path，才能导入同目录模块
 "tests/*.py" = ["E", "W", "B", "UP015"]      # 根层测试文件宽松
 "tests/**/*.py" = ["E", "W", "B", "UP015"]   # 子目录测试文件宽松
 

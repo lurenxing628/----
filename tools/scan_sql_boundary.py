@@ -26,9 +26,8 @@ import re
 import sys
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-from tools.boundary_baseline import evaluate_ratchet_rule
-
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+from tools.boundary_baseline import add_ratchet_arguments, evaluate_ratchet_rule
+from tools.path_roles import iter_files
 
 RULE_SQL_BOUNDARY = "sql_boundary"
 RULE_DATA_POLICY = "data_policy"
@@ -52,27 +51,6 @@ BASELINE_NOTES = {
     RULE_SQL_BOUNDARY: "服务层不写 SQL 棘轮基线：SQL 文本只允许在 data/repositories 与 core/infrastructure；条目只减不增，刷新走 --refresh。",
     RULE_DATA_POLICY: "仓储层不做裁决棘轮基线：data/ 不得 import/raise 业务拒绝，也不得把形参当表名拼 SQL；条目只减不增，刷新走 --refresh。",
 }
-
-
-def _iter_python_files(repo_root: str, roots: Sequence[str], excluded_prefixes: Sequence[str] = ()) -> List[str]:
-    files: List[str] = []
-    for root in roots:
-        base = os.path.join(repo_root, root)
-        if os.path.isfile(base) and base.endswith(".py"):
-            files.append(root.replace("\\", "/"))
-            continue
-        if not os.path.isdir(base):
-            continue
-        for dirpath, dirnames, filenames in os.walk(base):
-            dirnames[:] = sorted(d for d in dirnames if d != "__pycache__")
-            for filename in sorted(filenames):
-                if not filename.endswith(".py"):
-                    continue
-                rel = os.path.relpath(os.path.join(dirpath, filename), repo_root).replace("\\", "/")
-                if any(rel.startswith(prefix) for prefix in excluded_prefixes):
-                    continue
-                files.append(rel)
-    return sorted(set(files))
 
 
 def _receiver_tail(node: ast.AST) -> Optional[str]:
@@ -210,15 +188,18 @@ def _read(repo_root: str, rel_path: str) -> str:
         return handle.read()
 
 
-def scan(rule: str, repo_root: str = REPO_ROOT) -> Dict[str, Any]:
+def scan(rule: str, repo_root: str) -> Dict[str, Any]:
     if rule == RULE_SQL_BOUNDARY:
-        files = _iter_python_files(repo_root, SQL_BOUNDARY_ROOTS, SQL_BOUNDARY_EXCLUDED_PREFIXES)
-        scanner = scan_sql_boundary_file
         roots: Sequence[str] = SQL_BOUNDARY_ROOTS
+        files = [
+            path for path in iter_files(repo_root, roots, (".py",))
+            if not path.startswith(SQL_BOUNDARY_EXCLUDED_PREFIXES)
+        ]
+        scanner = scan_sql_boundary_file
     elif rule == RULE_DATA_POLICY:
-        files = _iter_python_files(repo_root, DATA_POLICY_ROOTS)
-        scanner = scan_data_policy_file
         roots = DATA_POLICY_ROOTS
+        files = iter_files(repo_root, roots, (".py",))
+        scanner = scan_data_policy_file
     else:
         raise ValueError(f"未知规则：{rule}")
     entries: List[Dict[str, Any]] = []
@@ -257,12 +238,7 @@ def render_text(result: Dict[str, Any]) -> str:
 def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="SQL 边界棘轮扫描器（服务层不写 SQL / 仓储层不做裁决）")
     parser.add_argument("--rule", choices=list(RULES) + ["all"], default="all")
-    parser.add_argument("--json", action="store_true", help="输出机器可读 JSON")
-    parser.add_argument("--fail-on-new", action="store_true", help="相对基线有新增/增加/失效条目即退出码 1；基线异常退出码 2")
-    parser.add_argument("--refresh", action="store_true", help="按当前扫描结果重写基线（默认拒绝总命中数增长）")
-    parser.add_argument("--allow-growth", action="store_true", help="允许 --refresh 时总命中数增长（须人工核对）")
-    parser.add_argument("--quiet-when-clean", action="store_true", help="相对基线无新增时不输出")
-    parser.add_argument("--repo-root", default=REPO_ROOT, help=argparse.SUPPRESS)
+    add_ratchet_arguments(parser)
     return parser.parse_args(list(argv) if argv is not None else None)
 
 

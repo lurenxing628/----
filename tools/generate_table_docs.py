@@ -15,9 +15,9 @@ from typing import Dict, List
 
 from core.models.workbench_table_catalog import all_descriptors, table_descriptor
 from core.models.workbench_table_descriptor import INSTRUCTION_SHEET, writable_columns
+from tools.long_gate_paths import resolve_repo_root
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-MANUAL = REPO_ROOT / "static/docs/scheduler_manual.md"
+MANUAL_REL = "static/docs/scheduler_manual.md"
 BEGIN = "<!-- APS-TABLE-DOC:BEGIN "
 END = "<!-- APS-TABLE-DOC:END -->"
 _HINT = "<!-- 这一段由 python3 -m tools.generate_table_docs --write 生成，请勿手改。 -->"
@@ -118,7 +118,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--write", action="store_true", help="重新生成并写回说明书")
     parser.add_argument("--check", action="store_true", help="比对，不一致退出码 1")
-    parser.add_argument("--path", default=str(MANUAL), help="要处理的 Markdown 文件")
+    parser.add_argument("--path", default=str(Path(resolve_repo_root()) / MANUAL_REL), help="要处理的 Markdown 文件")
     args = parser.parse_args(argv)
     if args.write == args.check:
         parser.error("请选 --write 或 --check 其中一个。")

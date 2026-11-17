@@ -1,10 +1,12 @@
-"""边界棘轮基线：三条边界规则（sql_boundary / data_policy / private_import）共用的基线读写与比较。
+"""棘轮基线：SQL 边界、仓储策略、私有导入、失效路径字面量、反过度防御、死代码孤岛扫描器共用的基线读写与比较。
 
 口径（见 .codestable/roadmap/foundation-boundary-governance §4.1）：
 - 条目键为 (path, kind)，值为 count。
 - 当前有、基线无 → new；基线有、当前无 → stale（请从基线移除）；同键 count 变大 → increased。
 - 三者任一非空即门禁失败；count 变小允许，但提示刷新。
-- 刷新只能通过扫描器 --refresh；默认拒绝任何新增或计数增加的条目，除非显式 --allow-growth。
+- 刷新只能通过扫描器 --refresh：默认读旧基线，拒绝任何新增或计数增加的条目；
+  --allow-growth 表示人工核对后按当前扫描整份重写，不读旧基线（与循环依赖扫描器 --update-baseline --allow-growth 同一语义）。
+- 各扫描器的棘轮命令行参数统一由 add_ratchet_arguments 定义，evaluate_ratchet_rule 只读这些字段。
 """
 
 from __future__ import annotations
@@ -15,6 +17,8 @@ import os
 import tempfile
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+
+from tools.long_gate_paths import resolve_repo_root
 
 SCHEMA_VERSION = 1
 EntryKey = Tuple[str, str]
@@ -191,6 +195,39 @@ def refresh_growth_error(
     )
 
 
+def add_ratchet_arguments(parser: argparse.ArgumentParser) -> None:
+    """棘轮扫描器共用的命令行参数；帮助文字按 evaluate_ratchet_rule 的实际行为写。"""
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="把扫描结果以 JSON 输出到 stdout，不再输出文字结果；退出码规则不变",
+    )
+    parser.add_argument(
+        "--fail-on-new",
+        action="store_true",
+        help="与基线比较：出现新增条目、条目计数增加或基线条目已清理即退出码 1；基线缺失或无法读取退出码 2",
+    )
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help=(
+            "按当前扫描重写基线：先读旧基线，出现新增条目或任一条目计数增加就拒绝写入并退出码 1"
+            "（总命中数下降也不放行）；旧基线无法读取退出码 2，旧基线不存在时直接建立"
+        ),
+    )
+    parser.add_argument(
+        "--allow-growth",
+        action="store_true",
+        help="与 --refresh 合用：人工核对增长后按当前扫描整份重写基线，不读旧基线",
+    )
+    parser.add_argument(
+        "--quiet-when-clean",
+        action="store_true",
+        help="与 --fail-on-new 合用：相对基线没有新增、增加或已清理的条目时不输出",
+    )
+    parser.add_argument("--repo-root", default=resolve_repo_root(), help=argparse.SUPPRESS)
+
+
 def evaluate_ratchet_rule(
     args: argparse.Namespace,
     *,
@@ -206,12 +243,12 @@ def evaluate_ratchet_rule(
     current = entries_to_counts(result["entries"])
     baseline_path = default_baseline_path(args.repo_root, rule)
     if args.refresh:
-        try:
-            previous = load_baseline(baseline_path, expected_rule=rule)
-        except BoundaryBaselineError as exc:
-            error_fn(str(exc))
-            return 2, []
         if not args.allow_growth:
+            try:
+                previous = load_baseline(baseline_path, expected_rule=rule)
+            except BoundaryBaselineError as exc:
+                error_fn(str(exc))
+                return 2, []
             growth_error = refresh_growth_error(rule, current, previous)
             if growth_error is not None:
                 error_fn(growth_error)

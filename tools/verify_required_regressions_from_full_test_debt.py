@@ -22,50 +22,32 @@ import argparse
 import json
 import os
 import sys
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
+if __name__ == "__main__":  # 按文件路径运行时让仓库根下的 tools 包可导入
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tools import quality_gate_shared  # noqa: E402
-from tools.test_debt_registry import validate_full_test_proof  # noqa: E402
-from tools.test_registry import (  # noqa: E402
+from tools import quality_gate_shared
+from tools.long_gate_paths import resolve_repo_root
+from tools.test_debt_registry import validate_full_test_proof
+from tools.test_registry import (
     iter_required_tests,
     validate_test_registry,
 )
+from tools.test_registry_data import RegistryGroup
 
 CURRENT_FULL_TEST_DEBT_REL = quality_gate_shared.QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/")
-DEFAULT_COMMAND = "python tools/verify_required_regressions_from_full_test_debt.py"
 
 
 class RequiredRegressionProofError(ValueError):
     pass
 
 
-def _repo_rel_path(path: str) -> str:
-    normalized = str(path or "").replace("\\", "/")
-    if os.path.isabs(normalized):
-        real_path = os.path.realpath(normalized)
-        real_root = os.path.realpath(REPO_ROOT)
-        if real_path == real_root or real_path.startswith(real_root + os.sep):
-            return os.path.relpath(real_path, real_root).replace("\\", "/")
-        return normalized
-    return normalized
-
-
-def _abs_repo_path(path: str) -> str:
-    normalized = str(path or "").replace("\\", "/")
-    if os.path.isabs(normalized):
-        return normalized
-    return os.path.join(REPO_ROOT, normalized.replace("/", os.sep))
-
-
-def _load_json_object(path: str) -> Dict[str, Any]:
+def _load_json_object(path: str, *, display_path: str) -> Dict[str, Any]:
     with open(path, encoding="utf-8") as handle:
         payload = json.load(handle)
     if not isinstance(payload, dict):
-        raise RequiredRegressionProofError(f"{_repo_rel_path(path)} 顶层必须是 JSON 对象")
+        raise RequiredRegressionProofError(f"{display_path} 顶层必须是 JSON 对象")
     return payload
 
 
@@ -84,13 +66,14 @@ def _required_nodeids_by_path(collected_nodeids: Sequence[str], required_paths: 
 
 
 def _group_rows_for_required_paths(
+    repo_root: str,
     required_paths: Sequence[str],
     *,
-    required_groups: Optional[Sequence[Mapping[str, Any]]] = None,
+    required_groups: Optional[Sequence[RegistryGroup]],
 ) -> Dict[str, Any]:
     try:
         return validate_test_registry(
-            REPO_ROOT,
+            repo_root,
             required_paths=required_paths,
             groups=required_groups,
         )
@@ -101,8 +84,9 @@ def _group_rows_for_required_paths(
 def verify_required_regressions_from_payload(
     payload: Dict[str, Any],
     *,
+    repo_root: str,
     required_tests: Optional[Sequence[str]] = None,
-    required_groups: Optional[Sequence[Mapping[str, Any]]] = None,
+    required_groups: Optional[Sequence[RegistryGroup]] = None,
 ) -> Dict[str, Any]:
     validate_full_test_proof(payload)
     payload_os_name = payload.get("os_name")
@@ -154,10 +138,7 @@ def verify_required_regressions_from_payload(
     if xfail_reports:
         raise RequiredRegressionProofError("required nodeid 存在 xfail 信号：" + ", ".join(xfail_reports[:20]))
 
-    group_coverage = _group_rows_for_required_paths(
-        required_paths,
-        required_groups=required_groups,
-    )
+    group_coverage = _group_rows_for_required_paths(repo_root, required_paths, required_groups=required_groups)
 
     return {
         "required_target_paths": required_paths,
@@ -181,10 +162,11 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
-    payload_path = _abs_repo_path(str(args.payload))
+    repo_root = resolve_repo_root()
+    payload_path = os.path.join(repo_root, args.payload)
     try:
-        source_payload = _load_json_object(payload_path)
-        verification = verify_required_regressions_from_payload(source_payload)
+        source_payload = _load_json_object(payload_path, display_path=args.payload)
+        verification = verify_required_regressions_from_payload(source_payload, repo_root=repo_root)
         output_line = (
             "required_regressions verified "
             f"targets={len(verification['required_target_paths'])} "

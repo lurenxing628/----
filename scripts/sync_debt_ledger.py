@@ -6,17 +6,17 @@ import os
 import sys
 from typing import Dict, List, Optional
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
+if __name__ == "__main__":  # 按文件路径运行时让仓库根下的 tools 包可导入
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tools.quality_gate_ledger import (  # noqa: E402
+from tools.long_gate_paths import GateContext, resolve_repo_root
+from tools.quality_gate_ledger import (
     ledger_section_counts,
     load_ledger,
     load_ledger_unvalidated,
     save_ledger,
 )
-from tools.quality_gate_operations import (  # noqa: E402
+from tools.quality_gate_operations import (
     delete_risk,
     refresh_auto_fields,
     refresh_scan_startup_baseline,
@@ -24,12 +24,12 @@ from tools.quality_gate_operations import (  # noqa: E402
     upsert_risk,
     validate_ledger_against_current_scan,
 )
-from tools.quality_gate_shared import (  # noqa: E402
+from tools.quality_gate_shared import (
     ENTRY_STATUS_VALUES,
     QualityGateError,
     now_shanghai_iso,
 )
-from tools.test_debt_registry import (  # noqa: E402
+from tools.test_debt_registry import (
     mark_test_debt_fixed,
     retire_test_debt,
 )
@@ -95,9 +95,9 @@ def _print_summary(title: str, payload: Dict[str, object]) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
 
 
-def _handle_check(_args: argparse.Namespace) -> int:
-    ledger = load_ledger(required=True)
-    summary = validate_ledger_against_current_scan(ledger)
+def _handle_check(ctx: GateContext, _args: argparse.Namespace) -> int:
+    ledger = load_ledger(ctx.ledger_path)
+    summary = validate_ledger_against_current_scan(ctx.repo_root, ledger)
     payload: Dict[str, object] = {
         "checked_at": now_shanghai_iso(),
         "schema_version": ledger["schema_version"],
@@ -108,15 +108,15 @@ def _handle_check(_args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_refresh(args: argparse.Namespace) -> int:
+def _handle_refresh(ctx: GateContext, args: argparse.Namespace) -> int:
     mode = args.mode
     if mode == "scan-startup-baseline":
-        current = load_ledger_unvalidated(required=False)
-        next_ledger = refresh_scan_startup_baseline(current)
+        current = load_ledger_unvalidated(ctx.ledger_path, required=False)
+        next_ledger = refresh_scan_startup_baseline(ctx.repo_root, current)
     else:
-        current = load_ledger_unvalidated(required=True)
-        next_ledger = refresh_auto_fields(current)
-    save_ledger(next_ledger)
+        current = load_ledger_unvalidated(ctx.ledger_path, required=True)
+        next_ledger = refresh_auto_fields(ctx.repo_root, current)
+    save_ledger(ctx.ledger_path, next_ledger)
     payload: Dict[str, object] = {
         "mode": mode,
         "updated_at": next_ledger["updated_at"],
@@ -126,8 +126,8 @@ def _handle_refresh(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_set_entry_fields(args: argparse.Namespace) -> int:
-    ledger = load_ledger(required=True)
+def _handle_set_entry_fields(ctx: GateContext, args: argparse.Namespace) -> int:
+    ledger = load_ledger(ctx.ledger_path)
     updates = {
         "owner": args.owner,
         "batch": args.batch,
@@ -137,8 +137,8 @@ def _handle_set_entry_fields(args: argparse.Namespace) -> int:
     }
     if all(value is None for value in updates.values()):
         raise QualityGateError("set-entry-fields 至少需要一个待更新字段")
-    next_ledger = set_entry_fields(ledger, args.id, updates)
-    save_ledger(next_ledger)
+    next_ledger = set_entry_fields(ctx.repo_root, ledger, args.id, updates)
+    save_ledger(ctx.ledger_path, next_ledger)
     _print_summary(
         "主条目人工字段已更新",
         {
@@ -150,8 +150,8 @@ def _handle_set_entry_fields(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_upsert_risk(args: argparse.Namespace) -> int:
-    ledger = load_ledger(required=True)
+def _handle_upsert_risk(ctx: GateContext, args: argparse.Namespace) -> int:
+    ledger = load_ledger(ctx.ledger_path)
     next_ledger = upsert_risk(
         ledger,
         risk_id=args.id,
@@ -162,7 +162,7 @@ def _handle_upsert_risk(args: argparse.Namespace) -> int:
         exit_condition=args.exit_condition,
         notes=args.notes,
     )
-    save_ledger(next_ledger)
+    save_ledger(ctx.ledger_path, next_ledger)
     _print_summary(
         "accepted_risks 已更新",
         {
@@ -174,10 +174,10 @@ def _handle_upsert_risk(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_delete_risk(args: argparse.Namespace) -> int:
-    ledger = load_ledger(required=True)
+def _handle_delete_risk(ctx: GateContext, args: argparse.Namespace) -> int:
+    ledger = load_ledger(ctx.ledger_path)
     next_ledger = delete_risk(ledger, args.id)
-    save_ledger(next_ledger)
+    save_ledger(ctx.ledger_path, next_ledger)
     _print_summary(
         "accepted_risks 已删除",
         {"id": args.id, "updated_at": next_ledger["updated_at"]},
@@ -185,24 +185,24 @@ def _handle_delete_risk(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_mark_test_debt_fixed(args: argparse.Namespace) -> int:
-    ledger = load_ledger(required=True)
+def _handle_mark_test_debt_fixed(ctx: GateContext, args: argparse.Namespace) -> int:
+    ledger = load_ledger(ctx.ledger_path)
     next_ledger, summary = mark_test_debt_fixed(
         ledger,
         str(args.debt_id),
         fixed_at=now_shanghai_iso(),
     )
-    save_ledger(next_ledger)
+    save_ledger(ctx.ledger_path, next_ledger)
     _print_summary("测试债务已标记为 fixed", summary)
     return 0
 
 
-def _handle_retire_test_debt(args: argparse.Namespace) -> int:
-    ledger = load_ledger(required=True)
+def _handle_retire_test_debt(ctx: GateContext, args: argparse.Namespace) -> int:
+    ledger = load_ledger(ctx.ledger_path)
     next_ledger, summary = retire_test_debt(
         ledger, str(args.debt_id), reason=str(args.reason), retired_at=now_shanghai_iso(),
     )
-    save_ledger(next_ledger)
+    save_ledger(ctx.ledger_path, next_ledger)
     _print_summary("测试债务职责已退役，历史记录已保留", summary)
     return 0
 
@@ -210,8 +210,9 @@ def _handle_retire_test_debt(args: argparse.Namespace) -> int:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    ctx = GateContext(resolve_repo_root())
     try:
-        return int(args.handler(args))
+        return int(args.handler(ctx, args))
     except QualityGateError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2

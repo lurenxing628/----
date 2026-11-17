@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+if __name__ == "__main__":  # 按文件路径运行时让仓库根下的 tools 包可导入
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from tools.full_test_debt_shards import split_nodeids  # noqa: E402
-from tools.quality_gate_shared import QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL  # noqa: E402
+from tools.full_test_debt_shards import split_nodeids
+from tools.long_gate_paths import resolve_repo_root
+from tools.quality_gate_shared import QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL
 
 
 def _parse_counts(raw_value: str) -> List[int]:
@@ -69,7 +69,7 @@ def _distribution_row(nodeids: Sequence[str], shard_count: int, durations: Dict[
     }
 
 
-def build_distribution(payload_path: Path, shard_counts: Sequence[int]) -> Dict[str, Any]:
+def build_distribution(repo_root: Path, payload_path: Path, shard_counts: Sequence[int]) -> Dict[str, Any]:
     payload = json.loads(payload_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise RuntimeError(f"payload must be a JSON object: {payload_path}")
@@ -78,7 +78,7 @@ def build_distribution(payload_path: Path, shard_counts: Sequence[int]) -> Dict[
         raise RuntimeError(f"payload has no collected_nodeids: {payload_path}")
     durations = _duration_by_nodeid(payload)
     try:
-        source_payload = str(payload_path.relative_to(REPO_ROOT))
+        source_payload = str(payload_path.relative_to(repo_root))
     except ValueError:
         source_payload = str(payload_path)
     return {
@@ -90,7 +90,7 @@ def build_distribution(payload_path: Path, shard_counts: Sequence[int]) -> Dict[
     }
 
 
-def _run_shard_count(shard_count: int, *, allow_dirty_worktree_proof: bool = False) -> Dict[str, Any]:
+def _run_shard_count(repo_root: Path, shard_count: int, *, allow_dirty_worktree_proof: bool) -> Dict[str, Any]:
     command = [
         sys.executable,
         "tools/check_full_test_debt.py",
@@ -101,7 +101,7 @@ def _run_shard_count(shard_count: int, *, allow_dirty_worktree_proof: bool = Fal
     if allow_dirty_worktree_proof:
         command.append("--allow-dirty-worktree-proof")
     started = time.perf_counter()
-    completed = subprocess.run(command, cwd=str(REPO_ROOT), check=False)
+    completed = subprocess.run(command, cwd=str(repo_root), check=False)
     duration_s = time.perf_counter() - started
     return {
         "shard_count": int(shard_count),
@@ -120,26 +120,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--run", action="store_true", help="alias for --mode run")
     parser.add_argument("--allow-dirty-worktree-proof", action="store_true")
     parser.add_argument("--write-json", default="", help="optional output JSON path")
+    parser.add_argument("--repo-root", type=Path, default=resolve_repo_root(), help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
-    payload_path = Path(str(args.payload))
-    if not payload_path.is_absolute():
-        payload_path = REPO_ROOT / payload_path
+    repo_root: Path = args.repo_root
+    payload_path = repo_root / args.payload
     shard_counts = _parse_counts(str(args.counts or args.shard_counts))
-    result = build_distribution(payload_path, shard_counts)
+    result = build_distribution(repo_root, payload_path, shard_counts)
     mode = "run" if bool(args.run) else str(args.mode)
     result["mode"] = mode
     if mode == "run":
         result["runs"] = [
-            _run_shard_count(count, allow_dirty_worktree_proof=bool(args.allow_dirty_worktree_proof))
+            _run_shard_count(repo_root, count, allow_dirty_worktree_proof=bool(args.allow_dirty_worktree_proof))
             for count in shard_counts
         ]
 
     output = json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True)
     if args.write_json:
-        output_path = Path(str(args.write_json))
-        if not output_path.is_absolute():
-            output_path = REPO_ROOT / output_path
+        output_path = repo_root / args.write_json
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(output + "\n", encoding="utf-8")
     print(output)

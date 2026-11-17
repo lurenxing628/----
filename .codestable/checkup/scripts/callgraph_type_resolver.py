@@ -374,7 +374,7 @@ class TypeResolver:
         head = type_name.split(".")[0]
         if head in imports:
             mod = imports[head].split(".")[0]
-            if mod not in ("src", "core", "web", "data", "app", "tools", "scripts", "plugins", "desktop"):
+            if mod not in ("src", "core", "web", "data", "app", "tools", "scripts", "desktop"):
                 return BUILTIN_TYPE_TAG
         return None
 
@@ -646,7 +646,7 @@ class TypeResolver:
                 imports = local_imports if local_imports is not None else self.file_imports.get(rel, {})
                 if fname in imports:
                     mod = imports[fname].split(".")[0]
-                    if mod not in ("src", "core", "web", "data", "app", "tools", "scripts", "plugins", "desktop"):
+                    if mod not in ("src", "core", "web", "data", "app", "tools", "scripts", "desktop"):
                         return BUILTIN_TYPE_TAG
             elif isinstance(expr.func, ast.Attribute):
                 recv_cls = self._expr_class(rel, current_cls, expr.func.value, env, local_imports)
@@ -660,7 +660,7 @@ class TypeResolver:
                 head = callee.split(".")[0]
                 if head in imports:
                     mod = imports[head].split(".")[0]
-                    if mod not in ("src", "core", "web", "data", "app", "tools", "scripts", "plugins", "desktop"):
+                    if mod not in ("src", "core", "web", "data", "app", "tools", "scripts", "desktop"):
                         return BUILTIN_TYPE_TAG
         return None
 

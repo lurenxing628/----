@@ -7,11 +7,11 @@ import sys
 from collections import defaultdict
 from typing import Any, DefaultDict, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
+if __name__ == "__main__":  # 按文件路径运行时让仓库根下的 tools 包可导入
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tools.quality_gate_shared import QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL  # noqa: E402
+from tools.long_gate_paths import resolve_repo_root
+from tools.quality_gate_shared import QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL
 
 
 def _load_payload(path: str) -> Dict[str, Any]:
@@ -122,12 +122,15 @@ def build_duration_report(payload: Mapping[str, Any], *, top_nodeids: int = 50, 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Report slow full-test-debt nodeids and files.")
-    parser.add_argument("payload", nargs="?", default=os.path.join(REPO_ROOT, QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL))
+    parser.add_argument(
+        "payload", nargs="?", default=QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL, help="payload 路径；相对路径按仓库根解析"
+    )
     parser.add_argument("--top-nodeids", type=int, default=50)
     parser.add_argument("--top-files", type=int, default=30)
+    parser.add_argument("--repo-root", default=resolve_repo_root(), help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
-    payload = _load_payload(str(args.payload))
+    payload = _load_payload(os.path.join(args.repo_root, args.payload))
     sys.stdout.write(
         build_duration_report(
             payload,

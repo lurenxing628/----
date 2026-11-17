@@ -37,7 +37,6 @@ from tools.long_gate_schema import (
 )
 from tools.test_registry_data import REQUIRED_REGRESSION_COMMON_SCOPES, REQUIRED_REGRESSION_GROUPS
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 CACHE_SCHEMA_VERSION = 2
 STAGED_RUFF_CACHE_NAME = "staged-ruff.v2.json"
 PRE_PUSH_DAILY_CACHE_NAME = "pre-push-daily.v2.json"
@@ -57,6 +56,7 @@ DAILY_GATE_TOOL_PATHS = (
     "conftest.py",
     "tests/conftest.py",
     "scripts/run_daily_quality_gate.py",
+    "tools/daily_gate_scope.py",
     "tools/git_hook_cache.py",
     "tools/git_hook_checks.py",
     "tools/test_registry.py",
@@ -88,8 +88,8 @@ def _daily_gate_env_keys() -> Tuple[str, ...]:
     configured = tuple(
         dict.fromkeys(
             (
-                *REQUIRED_REGRESSION_COMMON_SCOPES.get("env_keys", ()),
-                *(item for group in REQUIRED_REGRESSION_GROUPS for item in group.get("env_keys", ())),
+                *REQUIRED_REGRESSION_COMMON_SCOPES["env_keys"],
+                *(item for group in REQUIRED_REGRESSION_GROUPS for item in group["env_keys"]),
                 "PYTHONHASHSEED",
             )
         )
@@ -125,10 +125,10 @@ class HookCacheError(RuntimeError):
     pass
 
 
-def _run_git_bytes(args: Sequence[str]) -> bytes:
+def _run_git_bytes(repo_root: Path, args: Sequence[str]) -> bytes:
     completed = subprocess.run(
         ["git", *list(args)],
-        cwd=str(REPO_ROOT),
+        cwd=str(repo_root),
         capture_output=True,
         check=False,
     )
@@ -140,28 +140,28 @@ def _run_git_bytes(args: Sequence[str]) -> bytes:
     return bytes(completed.stdout or b"")
 
 
-def _run_git(args: Sequence[str]) -> str:
-    return _run_git_bytes(args).decode("utf-8", errors="replace")
+def _run_git(repo_root: Path, args: Sequence[str]) -> str:
+    return _run_git_bytes(repo_root, args).decode("utf-8", errors="replace")
 
 
-def _git_common_dir() -> Path:
-    raw = _run_git(["rev-parse", "--git-common-dir"]).strip()
+def _git_common_dir(repo_root: Path) -> Path:
+    raw = _run_git(repo_root, ["rev-parse", "--git-common-dir"]).strip()
     if not raw:
         raise HookCacheError("无法读取 git common dir")
     path = Path(raw)
     if not path.is_absolute():
-        path = REPO_ROOT / path
+        path = repo_root / path
     return path
 
 
-def hook_cache_dir() -> Path:
-    cache_dir = _git_common_dir() / "aps-hook-cache"
+def hook_cache_dir(repo_root: Path) -> Path:
+    cache_dir = _git_common_dir(repo_root) / "aps-hook-cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
 
 
-def cache_path(name: str) -> Path:
-    return hook_cache_dir() / name
+def cache_path(repo_root: Path, name: str) -> Path:
+    return hook_cache_dir(repo_root) / name
 
 
 def _load_json(path: Path) -> Optional[Dict[str, Any]]:
@@ -186,10 +186,10 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     os.replace(str(tmp_path), str(path))
 
 
-def _file_contents(paths: Iterable[str]) -> Dict[str, Optional[str]]:
+def _file_contents(repo_root: Path, paths: Iterable[str]) -> Dict[str, Optional[str]]:
     rows: Dict[str, Optional[str]] = {}
     for rel_path in sorted({str(path) for path in paths if path}):
-        abs_path = REPO_ROOT / rel_path
+        abs_path = repo_root / rel_path
         if abs_path.is_file():
             try:
                 rows[rel_path] = read_file_content(str(abs_path))
@@ -200,12 +200,12 @@ def _file_contents(paths: Iterable[str]) -> Dict[str, Optional[str]]:
     return rows
 
 
-def _python_identity(executable: str) -> Dict[str, str]:
+def _python_identity(repo_root: Path, executable: str) -> Dict[str, str]:
     abspath = os.path.abspath(str(executable or sys.executable))
     realpath = os.path.realpath(abspath)
     completed = subprocess.run(
         [abspath, "-c", "import sys; print(sys.version.replace('\\n', ' '))"],
-        cwd=str(REPO_ROOT),
+        cwd=str(repo_root),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -220,10 +220,10 @@ def _python_identity(executable: str) -> Dict[str, str]:
     }
 
 
-def _tool_version(executable: str, module: str) -> str:
+def _tool_version(repo_root: Path, executable: str, module: str) -> str:
     completed = subprocess.run(
         [executable, "-m", module, "--version"],
-        cwd=str(REPO_ROOT),
+        cwd=str(repo_root),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -235,28 +235,29 @@ def _tool_version(executable: str, module: str) -> str:
     return str(completed.stdout or "").strip()
 
 
-def staged_paths() -> List[str]:
-    return decode_nul_paths(_run_git_bytes(["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"]))
+def staged_paths(repo_root: Path) -> List[str]:
+    return decode_nul_paths(_run_git_bytes(repo_root, ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"]))
 
 
-def staged_python_paths() -> Tuple[str, ...]:
-    return tuple(sorted(path for path in staged_paths() if path.endswith(".py")))
+def staged_python_paths(repo_root: Path) -> Tuple[str, ...]:
+    return tuple(sorted(path for path in staged_paths(repo_root) if path.endswith(".py")))
 
 
-def staged_tree_hash() -> str:
-    return _run_git(["write-tree"]).strip()
+def staged_tree_hash(repo_root: Path) -> str:
+    return _run_git(repo_root, ["write-tree"]).strip()
 
 
-def head_tree_hash() -> str:
-    return _run_git(["rev-parse", "HEAD^{tree}"]).strip()
+def head_tree_hash(repo_root: Path) -> str:
+    return _run_git(repo_root, ["rev-parse", "HEAD^{tree}"]).strip()
 
 
-def git_status_lines() -> List[str]:
-    output = _run_git(["status", "--short"])
+def git_status_lines(repo_root: Path) -> List[str]:
+    output = _run_git(repo_root, ["status", "--short"])
     return [line for line in output.splitlines() if line.strip()]
 
 
 def _cache_key_payload(
+    repo_root: Path,
     *,
     kind: str,
     executable: str,
@@ -264,15 +265,15 @@ def _cache_key_payload(
     watched_paths: Sequence[str],
     tool_modules: Sequence[str] = ("ruff",),
 ) -> Dict[str, Any]:
-    tool_versions = {str(module): _tool_version(executable, str(module)) for module in list(tool_modules or ())}
+    tool_versions = {str(module): _tool_version(repo_root, executable, str(module)) for module in list(tool_modules or ())}
     return {
         "schema_version": CACHE_SCHEMA_VERSION,
         "kind": kind,
         "extra": dict(extra),
-        "python": _python_identity(executable),
+        "python": _python_identity(repo_root, executable),
         "ruff_version": tool_versions.get("ruff", ""),
         "tool_versions": tool_versions,
-        "watched_files": _file_contents(watched_paths),
+        "watched_files": _file_contents(repo_root, watched_paths),
     }
 
 
@@ -298,13 +299,13 @@ def _write_pass_cache(path: Path, *, key_payload: Mapping[str, Any], extra: Mapp
     _write_json(path, payload)
 
 
-def _export_index_to_temp(prefix: Path) -> None:
+def _export_index_to_temp(repo_root: Path, prefix: Path) -> None:
     target_prefix = str(prefix)
     if not target_prefix.endswith(os.sep):
         target_prefix += os.sep
     completed = subprocess.run(
         ["git", "checkout-index", "--all", "--prefix", target_prefix],
-        cwd=str(REPO_ROOT),
+        cwd=str(repo_root),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -316,8 +317,8 @@ def _export_index_to_temp(prefix: Path) -> None:
         raise HookCacheError(f"导出暂存区失败：{detail}")
 
 
-def run_staged_ruff(executable: str) -> int:
-    targets = staged_python_paths()
+def run_staged_ruff(repo_root: Path, executable: str) -> int:
+    targets = staged_python_paths(repo_root)
     if not targets:
         print("[git-hook-cache] staged ruff: no staged Python files, skipped", flush=True)
         return 0
@@ -326,8 +327,9 @@ def run_staged_ruff(executable: str) -> int:
     path: Optional[Path] = None
     key_payload: Optional[Dict[str, Any]] = None
     try:
-        tree_hash = staged_tree_hash()
+        tree_hash = staged_tree_hash(repo_root)
         key_payload = _cache_key_payload(
+            repo_root,
             kind="staged-ruff",
             executable=executable,
             watched_paths=HOOK_CACHE_TOOL_PATHS,
@@ -336,7 +338,7 @@ def run_staged_ruff(executable: str) -> int:
                 "staged_python_paths": list(targets),
             },
         )
-        path = cache_path(STAGED_RUFF_CACHE_NAME)
+        path = cache_path(repo_root, STAGED_RUFF_CACHE_NAME)
         if _cache_matches(path, key_payload):
             print("[git-hook-cache] staged ruff: reuse passed cache for unchanged staged tree", flush=True)
             return 0
@@ -347,7 +349,7 @@ def run_staged_ruff(executable: str) -> int:
     temp_dir = tempfile.mkdtemp(prefix="aps-staged-ruff-")
     try:
         temp_root = Path(temp_dir)
-        _export_index_to_temp(temp_root)
+        _export_index_to_temp(repo_root, temp_root)
         command = [executable, "-m", "ruff", "check", "--force-exclude", "--", *list(targets)]
         print("[git-hook-cache] staged ruff:", " ".join(command), flush=True)
         returncode = subprocess.call(command, cwd=str(temp_root), env=_hook_env())
@@ -421,7 +423,7 @@ def _collect_in_process_pytest_plugins() -> List[Dict[str, Any]]:
     return [rows[key] for key in sorted(rows)]
 
 
-def _pytest_plugin_versions(executable: str, env: Optional[Mapping[str, str]] = None) -> List[Dict[str, Any]]:
+def _pytest_plugin_versions(repo_root: Path, executable: str, env: Optional[Mapping[str, str]] = None) -> List[Dict[str, Any]]:
     effective_env = dict(_hook_env() if env is None else env)
     abspath = os.path.abspath(str(executable or sys.executable))
     realpath = os.path.realpath(abspath)
@@ -439,7 +441,7 @@ def _pytest_plugin_versions(executable: str, env: Optional[Mapping[str, str]] = 
         return rows
     completed = subprocess.run(
         [abspath, "-c", _PYTEST_PLUGIN_PROBE_CODE],
-        cwd=str(REPO_ROOT),
+        cwd=str(repo_root),
         env=effective_env,
         capture_output=True,
         text=True,
@@ -479,15 +481,21 @@ def _daily_pytest_environment(env: Optional[Mapping[str, str]] = None) -> Dict[s
     return values
 
 
-def _esbuild_vendor_cache_identity(environment: Mapping[str, str]) -> Dict[str, Any]:
-    manifest_path = REPO_ROOT / "scripts/workbench/esbuild-manifest.json"
+def _esbuild_vendor_cache_identity(repo_root: Path, environment: Mapping[str, str]) -> Dict[str, Any]:
+    manifest_path = repo_root / "scripts/workbench/esbuild-manifest.json"
     if not manifest_path.is_file():
         return {"required": False}
-    from scripts.workbench.vendor_react import verify_esbuild_vendor
+    from scripts.workbench.vendor_react import (
+        current_esbuild_platform_key,
+        load_esbuild_manifest,
+        verify_esbuild_vendor,
+    )
 
     node_bin, _ = _resolve_node_executable(environment)
     try:
-        verified = verify_esbuild_vendor(REPO_ROOT, manifest_path=manifest_path, node_executable=node_bin)
+        manifest = load_esbuild_manifest(manifest_path)
+        host_platform = current_esbuild_platform_key(node_executable=node_bin)
+        verified = verify_esbuild_vendor(repo_root, manifest, host_platform=host_platform, target_platform=host_platform)
         files: Dict[str, List[int]] = {}
         for rel_path in (
             "scripts/workbench/esbuild-manifest.json",
@@ -497,7 +505,7 @@ def _esbuild_vendor_cache_identity(environment: Mapping[str, str]) -> Dict[str, 
             verified["platform_package_json"],
             verified["binary"],
         ):
-            st = (REPO_ROOT / rel_path).stat()
+            st = (repo_root / rel_path).stat()
             files[rel_path] = [int(st.st_size), int(st.st_mtime_ns)]
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         return {"required": True, "verified": False, "error": str(exc)}
@@ -511,6 +519,7 @@ def _esbuild_vendor_cache_identity(environment: Mapping[str, str]) -> Dict[str, 
 
 
 def daily_gate_cache_key(
+    repo_root: Path,
     executable: str,
     *,
     remote_name: str = "",
@@ -522,8 +531,11 @@ def daily_gate_cache_key(
     contexts = _daily_ref_contexts_cache_extra(ref_contexts)
     env = _hook_env()
     # Target refs execute in their committed worktrees; manual runs use this checkout.
-    source_extra = {} if contexts else {"head_tree": head_tree_hash(), "git_status_short": git_status_lines()}
+    source_extra = (
+        {} if contexts else {"head_tree": head_tree_hash(repo_root), "git_status_short": git_status_lines(repo_root)}
+    )
     key_payload = _cache_key_payload(
+        repo_root,
         kind="pre-push-daily",
         executable=executable,
         watched_paths=DAILY_GATE_TOOL_PATHS,
@@ -534,8 +546,8 @@ def daily_gate_cache_key(
             "remote_ref": str(remote_ref or ""),
             "ref_contexts": contexts,
             "pytest_env": _daily_pytest_environment(env),
-            "pytest_plugins": _pytest_plugin_versions(executable, env),
-            "esbuild_vendor": _esbuild_vendor_cache_identity(env),
+            "pytest_plugins": _pytest_plugin_versions(repo_root, executable, env),
+            "esbuild_vendor": _esbuild_vendor_cache_identity(repo_root, env),
             **scope_extra,
         },
     )
@@ -543,6 +555,7 @@ def daily_gate_cache_key(
 
 
 def pre_push_daily_cache_hit(
+    repo_root: Path,
     executable: str,
     *,
     remote_name: str = "",
@@ -551,11 +564,12 @@ def pre_push_daily_cache_hit(
     ref_contexts: Optional[Sequence[Mapping[str, Any]]] = None,
     key_payload: Optional[Mapping[str, Any]] = None,
 ) -> bool:
-    path = cache_path(PRE_PUSH_DAILY_CACHE_NAME)
+    path = cache_path(repo_root, PRE_PUSH_DAILY_CACHE_NAME)
     cached = _load_json(path)
-    if not cached or cached.get("status") != "passed" or (not ref_contexts and git_status_lines()):
+    if not cached or cached.get("status") != "passed" or (not ref_contexts and git_status_lines(repo_root)):
         return False
     current_key = key_payload if key_payload is not None else daily_gate_cache_key(
+        repo_root,
         executable,
         remote_name=remote_name,
         remote_ref=remote_ref,
@@ -566,6 +580,7 @@ def pre_push_daily_cache_hit(
 
 
 def write_pre_push_daily_cache(
+    repo_root: Path,
     executable: str,
     *,
     remote_name: str = "",
@@ -574,9 +589,10 @@ def write_pre_push_daily_cache(
     ref_contexts: Optional[Sequence[Mapping[str, Any]]] = None,
     key_payload: Optional[Mapping[str, Any]] = None,
 ) -> None:
-    if not ref_contexts and git_status_lines():
+    if not ref_contexts and git_status_lines(repo_root):
         raise HookCacheError("pre-push daily gate pass cache 只能在干净工作区写入")
     current_key = key_payload if key_payload is not None else daily_gate_cache_key(
+        repo_root,
         executable,
         remote_name=remote_name,
         remote_ref=remote_ref,
@@ -584,7 +600,7 @@ def write_pre_push_daily_cache(
         ref_contexts=ref_contexts,
     )
     _write_pass_cache(
-        cache_path(PRE_PUSH_DAILY_CACHE_NAME),
+        cache_path(repo_root, PRE_PUSH_DAILY_CACHE_NAME),
         key_payload=current_key,
         extra={
             "remote_name": str(remote_name or ""),

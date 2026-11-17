@@ -28,7 +28,7 @@ import callgraph_dataflow as _flow  # 敏感值共现与风险数据流 leaf hel
 import callgraph_function_index as _findex  # callable/import alias AST 索引 leaf helper
 import callgraph_type_resolver as _tresolver  # 两档类型消解（Tier 1 AST + Tier 2 SCIP/Runtime）
 
-FIRST_PARTY_ROOTS = ("src", "core", "web", "data", "app", "tools", "scripts", "plugins", "desktop")
+FIRST_PARTY_ROOTS = ("src", "core", "web", "data", "app", "tools", "scripts", "desktop")
 EXCLUDE = {".git", "__pycache__", ".venv", "venv", "node_modules", "vendor",
            "backups", "evidence", ".ruff_cache", ".pytest_cache", "dist", "build"}
 

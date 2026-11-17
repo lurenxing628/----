@@ -17,20 +17,16 @@ from __future__ import annotations
 
 import importlib
 import importlib.metadata
-import os
 import sys
-from typing import Any, Dict, List, Mapping, Optional, Sequence, cast
+from typing import Any, Dict, List, Mapping, Sequence, cast
 
 from .long_gate_schema import version_rows_for_paths
 from .quality_gate_ledger import entry_sort_key
-from .quality_gate_scan import ScanContext, complexity_scan_map, scan_silent_fallback_entries
-from .quality_gate_shared import (
-    COMPLEXITY_THRESHOLD,
-    FILE_SIZE_LIMIT,
-    REPO_ROOT,
-)
+from .quality_gate_scan_primitives import ScanContext, complexity_scan_map, scan_silent_fallback_entries
+from .quality_gate_shared import COMPLEXITY_THRESHOLD, FILE_SIZE_LIMIT
 
 ARCHITECTURE_SCAN_SCANNER_VERSION_PATHS = (
+    "tools/quality_gate_scan_primitives.py",
     "tools/quality_gate_scan.py",
     "tools/architecture_scan_cache.py",
     "tools/quality_gate_operations.py",
@@ -74,18 +70,17 @@ def _radon_behavior_marker() -> Dict[str, Any]:
         return {"kind": "unavailable", "error": payload}
 
 
-def architecture_scan_cache_metadata(repo_root: Optional[str] = None) -> Dict[str, Any]:
-    root = os.path.abspath(repo_root or REPO_ROOT)
+def architecture_scan_cache_metadata(repo_root: str) -> Dict[str, Any]:
     return {
-        "scanner_version_content": version_rows_for_paths(root, ARCHITECTURE_SCAN_SCANNER_VERSION_PATHS),
+        "scanner_version_content": version_rows_for_paths(repo_root, ARCHITECTURE_SCAN_SCANNER_VERSION_PATHS),
         "python_version": sys.version.splitlines()[0].strip(),
         "radon_version_or_behavior": _radon_behavior_marker(),
     }
 
 
-def scan_files_with_cache(paths: Sequence[str], fact_kinds: Sequence[str]) -> List[Dict[str, Any]]:
-    """对给定路径直扫并返回 facts；同一路径可能被调用方重复传入，这里只扫一次。"""
-    context = ScanContext()
+def scan_files_with_cache(repo_root: str, paths: Sequence[str], fact_kinds: Sequence[str]) -> List[Dict[str, Any]]:
+    """对 repo_root 下给定路径直扫并返回 facts；同一路径可能被调用方重复传入，这里只扫一次。"""
+    context = ScanContext(repo_root)
     scan_silent = "silent" in fact_kinds
     scan_complexity = "complexity" in fact_kinds
     return [

@@ -4,6 +4,7 @@ import os
 import textwrap
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from .long_gate_paths import LEDGER_REL
 from .long_gate_schema import canonical_content, content_equal
 from .quality_gate_shared import (
     ENTRY_COMMON_FIELDS,
@@ -13,7 +14,6 @@ from .quality_gate_shared import (
     LEDGER_BEGIN,
     LEDGER_END,
     LEDGER_IDENTITY_STRATEGY,
-    LEDGER_PATH,
     LEDGER_SCHEMA_VERSION,
     STARTUP_SCOPE_PATTERNS,
     TEST_DEBT_MODE_VALUES,
@@ -40,24 +40,25 @@ def default_ledger() -> Dict[str, Any]:
     }
 
 
-def load_ledger(required: bool = True) -> Dict[str, Any]:
-    if not os.path.exists(LEDGER_PATH):
-        if required:
-            raise QualityGateError("治理台账不存在：开发文档/技术债务治理台账.md")
-        return default_ledger()
-    text = read_text_file("开发文档/技术债务治理台账.md")
-    ledger = extract_json_code_block(text, LEDGER_BEGIN, LEDGER_END, "治理台账")
+_MISSING_LEDGER_MESSAGE = f"治理台账不存在：{LEDGER_REL}"
+
+
+def load_ledger(ledger_path: str) -> Dict[str, Any]:
+    """台账的唯一准入读：缺失即报错；ledger_path 取 `GateContext.ledger_path`。"""
+    if not os.path.exists(ledger_path):
+        raise QualityGateError(_MISSING_LEDGER_MESSAGE)
+    ledger = extract_json_code_block(read_text_file(ledger_path), LEDGER_BEGIN, LEDGER_END, "治理台账")
     validate_ledger(ledger)
     return sort_ledger(ledger)
 
 
-def load_ledger_unvalidated(required: bool = True) -> Dict[str, Any]:
-    if not os.path.exists(LEDGER_PATH):
+def load_ledger_unvalidated(ledger_path: str, *, required: bool) -> Dict[str, Any]:
+    """刷新入口读台账；`required=False` 时缺失台账从空台账开始（首次 scan-startup-baseline）。"""
+    if not os.path.exists(ledger_path):
         if required:
-            raise QualityGateError("治理台账不存在：开发文档/技术债务治理台账.md")
+            raise QualityGateError(_MISSING_LEDGER_MESSAGE)
         return default_ledger()
-    text = read_text_file("开发文档/技术债务治理台账.md")
-    ledger = extract_json_code_block(text, LEDGER_BEGIN, LEDGER_END, "治理台账")
+    ledger = extract_json_code_block(read_text_file(ledger_path), LEDGER_BEGIN, LEDGER_END, "治理台账")
     validate_ledger_for_refresh(ledger)
     return ledger
 
@@ -101,11 +102,15 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
         - `silent_default_fallback`：无可观测证据地回退默认值。
         - `observable_degrade`：先留可观测证据，再降级继续。
         - `cleanup_best_effort`：关闭、删除、清理、收尾类尽力而为逻辑。
+        - `broad_io_boundary`：`except Exception` 的 try 体只调用外部 I/O（标准库 I/O 与登记的项目 I/O 包装）和纯取值转换，应收窄为实际会抛出的异常类型；名单在 `tools/quality_gate_shared.py`，只减不增，`refresh --mode scan-startup-baseline` 拒绝登记新的此类处理器。优先于其余分类判定。
+        - 处理器顶层最后一条语句是 `raise`（清理或转换后重抛）的不是回退，不登记；`except_ordinal` 仍为它计数，其余条目编号不变。
+        - 分类只记在条目的 `fallback_kind`，`handler_signature` / `handler_context` 只描述处理器内容。`refresh --mode refresh-auto-fields` 只在处理器内容与分类都不变时自动对齐位置；分类变化（含分类器口径调整）一律经 `refresh --mode scan-startup-baseline` 显式重建。
 
         ## 当前静默回退门禁边界
 
-        - 启动链范围（`web/bootstrap/**/*.py`）按四类分类全量冻结。
-        - 非启动链范围当前只续管历史 `silent_swallow` 遗留项，不据此把 `silent_default_fallback` / `observable_degrade` 扩展为全仓新增门禁。
+        - 启动链范围（`web/bootstrap/**/*.py`）按上述分类全量冻结。
+        - 非启动链范围当前只续管历史 `silent_swallow` 遗留项（处理器体只有 `pass` 或 `...`），一律按 `silent_swallow` 计，不据此把 `silent_default_fallback` / `observable_degrade` 扩展为全仓新增门禁。
+        - `check`、`refresh --mode refresh-auto-fields` 与 `python -m tools.quality_gate_scan --strict` 用同一范围视图（`tools/quality_gate_operations.py` 的 `architecture_silent_scan_entries`）与台账比较。
 
         ## 当前快照
 
@@ -134,11 +139,10 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
     return body + "\n\n" + payload_block + "\n"
 
 
-def save_ledger(ledger: Dict[str, Any]) -> None:
+def save_ledger(ledger_path: str, ledger: Dict[str, Any]) -> None:
     rendered = render_ledger_markdown(ledger)
-    relative = "开发文档/技术债务治理台账.md"
-    if not os.path.exists(LEDGER_PATH) or read_text_file(relative) != rendered:
-        write_text_file(relative, rendered)
+    if not os.path.exists(ledger_path) or read_text_file(ledger_path) != rendered:
+        write_text_file(ledger_path, rendered)
 
 
 def _require_string(value: Any, field_name: str) -> str:

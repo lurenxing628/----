@@ -104,6 +104,8 @@ tmp_round*_check/
 .codestable/roadmap/*
 !.codestable/roadmap/aps-architecture-consolidation/
 !.codestable/roadmap/aps-architecture-consolidation/**
+!.codestable/roadmap/over-defense-and-redundancy-cleanup/
+!.codestable/roadmap/over-defense-and-redundancy-cleanup/**
 !.codestable/roadmap/foundation-boundary-governance/
 .codestable/roadmap/foundation-boundary-governance/*
 !.codestable/roadmap/foundation-boundary-governance/*.md

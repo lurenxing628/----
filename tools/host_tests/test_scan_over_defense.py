@@ -92,6 +92,14 @@ def zz_frontend_used_helper():
     return 4
 
 
+def zz_host_tested_helper():
+    return 9
+
+
+def zz_root_script_helper():
+    return 10
+
+
 def register(func):
     return func
 
@@ -148,6 +156,18 @@ def _mini_repo(root):
 
         print(zz_tool_used_helper())
     """)
+    _write(root, _p("tools/host_tests", "test_gen_doc.py"), """
+        from core.sample import zz_host_tested_helper
+
+
+        def test_host_helper():
+            assert zz_host_tested_helper() == 9
+    """)
+    _write(root, "release_check.py", """
+        from core.sample import zz_root_script_helper
+
+        print(zz_root_script_helper())
+    """)
     _write(root, "frontend/workbench/app/Comp.jsx", FRONTEND_COMPONENT)
     _write(root, "frontend/workbench/prototype/Proto.jsx", "if (typeof command.reset === 'function') command.reset();\n")
 
@@ -172,14 +192,15 @@ def test_scan_hits_each_signal_and_skips_exemptions(tmp_path):
         "internal_reflect_literal": 2,
         "param_overwritten": 1,
         "zero_ref_func": 2,
-        "test_only_func": 1,
+        "test_only_func": 2,
         "foreign_private_attr_assign": 4,
         "js_typeof_command_reset": 2,
     }
     assert _symbols(grouped, "internal_reflect_literal") == ["getattr:zz_attr", "hasattr:flag"]
     assert _symbols(grouped, "param_overwritten") == ["overwrite(value)"]
     assert _symbols(grouped, "zero_ref_func") == ["zz_dead_helper", "zz_unused_method"]
-    assert _symbols(grouped, "test_only_func") == ["zz_only_tested_helper"]
+    # tools/host_tests 归测试角色；仓库根下的工具脚本归宿主工具角色，它的引用让函数算在用。
+    assert _symbols(grouped, "test_only_func") == ["zz_host_tested_helper", "zz_only_tested_helper"]
     assert _symbols(grouped, "foreign_private_attr_assign") == [
         "target._cache", "target._count", "target._left", "target._right",
     ]
@@ -200,7 +221,7 @@ def test_cli_refresh_then_fail_on_new_ratchet(tmp_path, capsys):
     baseline_path = tmp_path / ".codestable" / "checkup" / "over_defense_baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     assert baseline["rule"] == "over_defense"
-    assert sum(entry["count"] for entry in baseline["entries"]) == 12
+    assert sum(entry["count"] for entry in baseline["entries"]) == 13
     capsys.readouterr()
 
     assert scanner.main(root + ["--fail-on-new", "--quiet-when-clean"]) == 0
@@ -222,13 +243,104 @@ def test_cli_refresh_then_fail_on_new_ratchet(tmp_path, capsys):
     capsys.readouterr()
     assert scanner.main(root + ["--fail-on-new"]) == 0
 
+    # --allow-growth 是人工核对后整份重写、不读旧基线：旧格式基线（受控格式迁移）不用先删文件就能重建；
+    # 不加 --allow-growth 的刷新仍要先读旧基线，格式不符直接退出 2。
+    baseline_path.write_text('{"schema_version": 2, "rule": "dead_code_islands", "items": []}', encoding="utf-8")
+    capsys.readouterr()
+    assert scanner.main(root + ["--refresh"]) == 2
+    assert "schema_version" in capsys.readouterr().err
+    assert scanner.main(root + ["--refresh", "--allow-growth"]) == 0
+    capsys.readouterr()
+    assert scanner.main(root + ["--fail-on-new", "--quiet-when-clean"]) == 0
+    assert json.loads(baseline_path.read_text(encoding="utf-8"))["rule"] == "over_defense"
+
+
+def test_private_import_cli_ratchets_exported_private_names_per_path_and_kind(tmp_path, capsys):
+    from tools import scan_private_imports
+
+    root = ["--repo-root", str(tmp_path)]
+    _write(tmp_path, _p("core", "mod_a.py"), "_secret = 1\n")
+    _write(tmp_path, _p("core", "facade.py"), """
+        from core.mod_a import _secret
+
+        __all__ = ["_secret", "__version__", "public"]
+    """)
+    assert scan_private_imports.main(root + ["--json"]) == 0
+    entries = json.loads(capsys.readouterr().out)["entries"]
+    # 同一文件的跨模块私有导入与 __all__ 导出私有名按 (path, kind) 各成一条；dunder 名不算私有名。
+    assert [(entry["path"], entry["kind"], entry["count"], entry["symbols"]) for entry in entries] == [
+        (_p("core", "facade.py"), "private_name_exported", 1, ["_secret"]),
+        (_p("core", "facade.py"), "private_symbol", 1, ["_secret"]),
+    ]
+    assert scan_private_imports.main(root + ["--refresh"]) == 0
+    capsys.readouterr()
+
+    # 再导出一个私有名：只有 private_name_exported 条目计数增加，刷新默认拒绝。
+    _write(tmp_path, _p("core", "facade.py"), """
+        from core.mod_a import _secret
+
+        _helper = 2
+        __all__ = ["_secret", "__version__", "public"]
+        __all__ += ["_helper"]
+    """)
+    assert scan_private_imports.main(root + ["--fail-on-new"]) == 1
+    out = capsys.readouterr().out
+    assert f"债务增加：{_p('core', 'facade.py')} kind=private_name_exported 1 -> 2" in out
+    assert "kind=private_symbol" not in out
+    assert scan_private_imports.main(root + ["--refresh"]) == 1
+    assert "刷新被拒绝" in capsys.readouterr().err
+
+    # 私有名全部移出 __all__：该 kind 的基线条目失效，门禁要求收紧基线。
+    _write(tmp_path, _p("core", "facade.py"), """
+        from core.mod_a import _secret
+
+        __all__ = ["__version__", "public"]
+    """)
+    assert scan_private_imports.main(root + ["--fail-on-new"]) == 1
+    assert (
+        f"基线条目已清理，请从基线移除（--refresh）：{_p('core', 'facade.py')} kind=private_name_exported count=1"
+        in capsys.readouterr().out
+    )
+    assert scan_private_imports.main(root + ["--refresh"]) == 0
+    capsys.readouterr()
+    assert scan_private_imports.main(root + ["--fail-on-new", "--quiet-when-clean"]) == 0
+
+
+def test_private_import_counts_exports_in_module_control_blocks_not_in_function_scope(tmp_path, capsys):
+    from tools import scan_private_imports
+
+    # 平台分支与可选依赖分支里的 __all__ 仍是模块导出；函数体里的同名变量只是局部变量。
+    _write(tmp_path, _p("core", "file_lock.py"), """
+        import sys
+
+        if sys.platform == "win32":
+            __all__ = ["acquire", "_win_handle"]
+        else:
+            __all__ = ["acquire"]
+
+        try:
+            import fcntl
+        except ImportError:
+            __all__ += ["_spin_lock"]
+
+
+        def _debug_exports():
+            __all__ = ["_debug_only"]
+            return __all__
+    """)
+    assert scan_private_imports.main(["--repo-root", str(tmp_path), "--json"]) == 0
+    entries = json.loads(capsys.readouterr().out)["entries"]
+    assert [(entry["kind"], entry["count"], entry["symbols"]) for entry in entries] == [
+        ("private_name_exported", 2, ["_spin_lock", "_win_handle"]),
+    ]
+
 
 def test_cli_json_and_parse_failure(tmp_path, capsys):
     _mini_repo(tmp_path)
     assert scanner.main(["--repo-root", str(tmp_path), "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["rule"] == "over_defense"
-    assert payload["total"] == 12
+    assert payload["total"] == 13
 
     _write(tmp_path, "core/broken.py", "def broken(:\n    pass\n")
     assert scanner.main(["--repo-root", str(tmp_path), "--fail-on-new"]) == 2
@@ -530,10 +642,8 @@ def test_full_test_debt_verifies_shard_nodeids_and_terminal_reports(tmp_path):
         }
 
     base_payload = {
-        "schema_version": 2,
+        "schema_version": registry.BASELINE_SCHEMA_VERSION,
         "baseline_kind": "after_main_style_isolation",
-        "importable": False,
-        "importable_blockers": [],
         "exitstatus": 0,
         "pytest_args": list(FORMAL_FULL_TEST_PYTEST_ARGS),
         "collected_nodeids": [n1, n2],

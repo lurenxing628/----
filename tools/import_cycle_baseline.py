@@ -5,17 +5,39 @@ import os
 from dataclasses import dataclass
 from typing import Dict, List, NamedTuple, Optional, Sequence, Set, Tuple
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 SCOPE_PRODUCTION = "production"
 SCOPE_WITH_TESTS = "production-and-tests"
 BASELINE_NOTE = (
-    "循环依赖硬加载期环基线。正式门禁同时锁定 scope/roots/文件加载语义，检查圈成员、"
-    "圈内规范化有向模块边和按 file/scope/context/loader_kind/expression/call_ast 稳定语义身份与 count 锁定的未解析动态导入"
-    "（物理行号仅用于定位展示，同名/匿名作用域按名称路径合并计数）；删边、消圈或 SCC 缩小允许，新增债务阻断。"
+    "循环依赖基线。正式门禁同时锁定 scope/roots/文件加载语义；硬加载期目录环、硬加载期文件环、"
+    "延迟目录环（运行时图相对硬加载期图新增）与运行时文件环四类都按圈成员超集匹配；圈内规范化有向模块边"
+    "只锁该类环的锁定类别：硬加载期两类锁全部圈内边（都是顶层硬导入），延迟/运行时两类只锁函数体内（lazy）"
+    "与条件（cond）导入边，函数体内导入只推迟加载，闭合的延迟环同样计入；圈内新增的普通顶层导入不锁，"
+    "若它闭合成环由硬加载期两类拦下。未解析动态导入按 file/scope/context/loader_kind/expression/call_ast "
+    "稳定语义身份与 count 锁定（物理行号仅用于定位展示，同名/匿名作用域按名称路径合并计数）；"
+    "删边、消圈或 SCC 缩小允许，新增债务阻断；--update-baseline 默认拒绝增长，人工核对后加 --allow-growth。"
 )
 UNRESOLVED_IDENTITY_FIELDS = ("file", "scope", "context", "loader_kind", "expression", "call_ast")
 CycleMap = Dict[str, Set[str]]
 CycleEdge = Tuple[str, str]
+
+
+class CycleCategory(NamedTuple):
+    name: str
+    result_key: str
+    label: str
+    locked_kinds: Tuple[str, ...]
+
+
+# 四类环共用同一套成员超集 + 圈内锁定边比较；name 是基线字段，result_key 是扫描结果字段，
+# locked_kinds 是该类环圈内要锁定的 import 类别。延迟/运行时两类是靠 lazy/cond 边闭合的，只锁这两类边：
+# 圈内新增普通顶层导入若闭合成环由硬加载期两类拦下，新成员由成员超集拦下，正常分层导入不必刷新基线。
+CYCLE_CATEGORIES = (
+    CycleCategory("hard_dir_cycles", "hard_dir_cycles", "硬加载期目录环", ("hard",)),
+    CycleCategory("hard_file_cycles", "hard_file_cycle_records", "硬加载期文件环", ("hard",)),
+    CycleCategory("delayed_dir_cycles", "delayed_dir_cycles", "延迟目录环", ("cond", "lazy")),
+    CycleCategory("runtime_file_cycles", "runtime_file_cycles", "运行时文件环", ("cond", "lazy")),
+)
 
 
 class UnresolvedDynamicKey(NamedTuple):
@@ -36,28 +58,23 @@ class CycleBaseline:
     scope: str
     scan_roots: Tuple[str, ...]
     file_cycle_semantics: str
-    dir_cycles: CycleMap
-    file_cycles: CycleMap
+    cycles: Dict[str, CycleMap]
     unresolved_dynamic_imports: Dict[UnresolvedDynamicKey, int]
 
 
 @dataclass
 class CycleBaselineComparison:
     baseline_missing: bool
-    new_dir: Set[str]
-    new_file: Set[str]
-    new_dir_edges: Set[CycleEdge]
-    new_file_edges: Set[CycleEdge]
+    new_cycles: Dict[str, Set[str]]
+    new_edges: Dict[str, Set[CycleEdge]]
     new_unresolved_dynamic_imports: Set[str]
 
     @property
     def has_new(self) -> bool:
-        return bool(
-            self.new_dir
-            or self.new_file
-            or self.new_dir_edges
-            or self.new_file_edges
-            or self.new_unresolved_dynamic_imports
+        return (
+            any(self.new_cycles.values())
+            or any(self.new_edges.values())
+            or bool(self.new_unresolved_dynamic_imports)
         )
 
     @property
@@ -82,25 +99,25 @@ def edge_signature(source: str, target: str) -> str:
     return f"{source} -> {target}"
 
 
-def _cycle_map(records: Sequence[dict]) -> CycleMap:
+def _locked_edges(record: dict, category: CycleCategory) -> List[dict]:
+    return [edge for edge in record["edges"] if edge["kind"] in category.locked_kinds]
+
+
+def _cycle_map(records: Sequence[dict], category: CycleCategory) -> CycleMap:
     return {
         cycle_signature(record["members"]): {
-            edge_signature(edge["source"], edge["target"]) for edge in record["edges"]
+            edge_signature(edge["source"], edge["target"]) for edge in _locked_edges(record, category)
         }
         for record in records
     }
 
 
-def current_cycle_maps(result: dict) -> Tuple[CycleMap, CycleMap]:
-    return (
-        _cycle_map(result["hard_dir_cycles"]),
-        _cycle_map(result["hard_file_cycle_records"]),
-    )
+def current_cycle_maps(result: dict) -> Dict[str, CycleMap]:
+    return {category.name: _cycle_map(result[category.result_key], category) for category in CYCLE_CATEGORIES}
 
 
-def current_signatures(result: dict) -> Tuple[Set[str], Set[str]]:
-    dir_cycles, file_cycles = current_cycle_maps(result)
-    return set(dir_cycles), set(file_cycles)
+def cycle_count_summary(result: dict) -> str:
+    return " / ".join(f"{category.label} {len(result[category.result_key])} 个" for category in CYCLE_CATEGORIES)
 
 
 def _unresolved_key(row: dict, *, error_prefix: str) -> UnresolvedDynamicKey:
@@ -201,8 +218,10 @@ def load_baseline(path: str, *, expected_scope: str) -> Optional[CycleBaseline]:
         scope=scope,
         scan_roots=tuple(scan_roots),
         file_cycle_semantics=file_cycle_semantics,
-        dir_cycles=_load_cycle_rows(data.get("hard_dir_cycles"), field="hard_dir_cycles", path=path),
-        file_cycles=_load_cycle_rows(data.get("hard_file_cycles"), field="hard_file_cycles", path=path),
+        cycles={
+            category.name: _load_cycle_rows(data.get(category.name), field=category.name, path=path)
+            for category in CYCLE_CATEGORIES
+        },
         unresolved_dynamic_imports=unresolved,
     )
 
@@ -230,15 +249,14 @@ def _unresolved_payload_rows(counts: Dict[UnresolvedDynamicKey, int]) -> List[di
 
 
 def write_baseline(path: str, result: dict, *, scope: str) -> None:
-    dir_cycles, file_cycles = current_cycle_maps(result)
+    cycles = current_cycle_maps(result)
     payload = {
         "note": BASELINE_NOTE,
         "schema_version": SCHEMA_VERSION,
         "scope": scope,
         "scan_roots": result["scan_roots"],
         "file_cycle_semantics": result["file_cycle_semantics"],
-        "hard_dir_cycles": _payload_rows(dir_cycles),
-        "hard_file_cycles": _payload_rows(file_cycles),
+        **{name: _payload_rows(rows) for name, rows in cycles.items()},
         "unresolved_dynamic_imports": _unresolved_payload_rows(unresolved_dynamic_counts(result)),
     }
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
@@ -300,7 +318,7 @@ def _new_unresolved_dynamic_imports(
 def compare_with_baseline(path: str, result: dict, *, expected_scope: str) -> CycleBaselineComparison:
     baseline = load_baseline(path, expected_scope=expected_scope)
     if baseline is None:
-        return CycleBaselineComparison(True, set(), set(), set(), set(), set())
+        return CycleBaselineComparison(True, {}, {}, set())
     current_roots = tuple(result["scan_roots"])
     if current_roots != baseline.scan_roots:
         raise CycleBaselineError(
@@ -311,13 +329,11 @@ def compare_with_baseline(path: str, result: dict, *, expected_scope: str) -> Cy
         raise CycleBaselineError(
             f"循环依赖基线 {path} 的 file_cycle_semantics 与当前扫描器不一致；请人工核对后受控重建基线"
         )
-    current_dir, current_file = current_cycle_maps(result)
+    current = current_cycle_maps(result)
     return CycleBaselineComparison(
         baseline_missing=False,
-        new_dir=_new_cycle_signatures(current_dir, baseline.dir_cycles),
-        new_file=_new_cycle_signatures(current_file, baseline.file_cycles),
-        new_dir_edges=_new_edges(current_dir, baseline.dir_cycles),
-        new_file_edges=_new_edges(current_file, baseline.file_cycles),
+        new_cycles={name: _new_cycle_signatures(cycles, baseline.cycles[name]) for name, cycles in current.items()},
+        new_edges={name: _new_edges(cycles, baseline.cycles[name]) for name, cycles in current.items()},
         new_unresolved_dynamic_imports=_new_unresolved_dynamic_imports(
             result, baseline.unresolved_dynamic_imports
         ),
@@ -325,25 +341,32 @@ def compare_with_baseline(path: str, result: dict, *, expected_scope: str) -> Cy
 
 
 def print_new_cycles(result: dict, comparison: CycleBaselineComparison) -> None:
+    counts = "；".join(
+        f"{category.label} {len(comparison.new_cycles[category.name])} 个、"
+        f"圈内锁定边 {len(comparison.new_edges[category.name])} 条"
+        for category in CYCLE_CATEGORIES
+    )
     print(
-        "⚠️ [import-cycles] 检出基线外新增硬加载期债务："
-        f"{len(comparison.new_dir)} 个目录环 + {len(comparison.new_file)} 个文件环 + "
-        f"{len(comparison.new_dir_edges)} 条目录圈内边 + {len(comparison.new_file_edges)} 条文件圈内边 + "
-        f"{len(comparison.new_unresolved_dynamic_imports)} 个未解析动态导入",
+        f"⚠️ [import-cycles] 检出基线外新增循环依赖债务：{counts}；"
+        f"未解析动态导入 {len(comparison.new_unresolved_dynamic_imports)} 个",
         flush=True,
     )
-    by_sig = {cycle_signature(c["members"]): c for c in result["hard_dir_cycles"]}
-    for signature in sorted(comparison.new_dir):
-        record = by_sig[signature]
-        print(f"  + [目录环] {' ⇄ '.join(record['members'])}", flush=True)
-        for edge in record["edges"][:4]:
-            print(f"        {edge['src']}:{edge['line']} -> {edge['target']}", flush=True)
-    for signature in sorted(comparison.new_file):
-        print(f"  + [文件环] {' ⇄ '.join(signature.split('|'))}", flush=True)
-    for signature, edge in sorted(comparison.new_dir_edges):
-        print(f"  + [目录圈内新增边] {edge}  (圈：{' ⇄ '.join(signature.split('|'))})", flush=True)
-    for signature, edge in sorted(comparison.new_file_edges):
-        print(f"  + [文件圈内新增边] {edge}  (圈：{' ⇄ '.join(signature.split('|'))})", flush=True)
+    for category in CYCLE_CATEGORIES:
+        by_sig = {cycle_signature(record["members"]): record for record in result[category.result_key]}
+        for signature in sorted(comparison.new_cycles[category.name]):
+            record = by_sig[signature]
+            print(f"  + [{category.label}] {' ⇄ '.join(record['members'])}", flush=True)
+            for edge in _locked_edges(record, category)[:4]:
+                print(f"        {edge['src']}:{edge['line']} -> {edge['target']} [{edge['kind']}]", flush=True)
+        for signature, edge in sorted(comparison.new_edges[category.name]):
+            print(
+                f"  + [{category.label}圈内新增锁定边] {edge}  (圈：{' ⇄ '.join(signature.split('|'))})",
+                flush=True,
+            )
     for unresolved in sorted(comparison.new_unresolved_dynamic_imports):
         print(f"  + [新增未解析动态导入] {unresolved}", flush=True)
-    print("  处理：先断开新增依赖；确需接受时，必须先人工核对差异，再用 --update-baseline 受控刷新。", flush=True)
+    print(
+        "  处理：先断开新增依赖（改成函数体内导入只推迟加载，不算断开）；"
+        "确需接受时，必须先人工核对差异，再用 --update-baseline --allow-growth 受控刷新。",
+        flush=True,
+    )

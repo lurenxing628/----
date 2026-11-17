@@ -4,39 +4,39 @@ import fnmatch
 import os
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set
 
+from tools.path_roles import PRODUCTION, ROOT_FILE_SCOPE_PREFIX, matches_root_file, role_roots
 from tools.test_registry_data import (
     QUALITY_GATE_REQUIRED_TESTS,
     QUALITY_GATE_STARTUP_REGRESSION_ARGS,
     REQUIRED_REGRESSION_COMMON_SCOPES,
     REQUIRED_REGRESSION_GROUPS,
+    RegistryGroup,
 )
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-PRODUCTION_SOURCE_DIRS = (
-    "core",
-    "data",
-    "web",
-    "plugins",
-    "desktop",
+# 生产源文件 = 生产角色的 Python 根（取自 tools/path_roles.py）+ 随包交付的前端应用、模板、静态资源与 schema.sql。
+# 各根下所有源码后缀的文件都要被 required 作用域覆盖；随包交付的第三方 vendor 资源同样计入
+# （路径角色为 Python 引用分析跳过 vendor 目录，这里不跳过）。
+PRODUCTION_SOURCE_ROOTS = (
+    *role_roots((PRODUCTION,)),
     "frontend/workbench/app",
     "templates",
     "static",
+    "schema.sql",
 )
-PRODUCTION_ROOT_FILES = ("app.py", "schema.sql")
 PRODUCTION_SOURCE_EXTENSIONS = (".py", ".js", ".jsx", ".cjs", ".css", ".html", ".sql")
 _SCOPE_KEYS = ("input_file_scopes", "config_file_scopes", "tool_file_scopes", "dependency_file_scopes")
 _SKIP_DIR_NAMES = frozenset({"__pycache__", "node_modules", ".git"})
 
 
 def _normalize_registry_path(path: str) -> str:
-    return str(path or "").strip().replace("\\", "/")
+    return path.strip().replace("\\", "/")
 
 
 def _normalize_scope_paths(paths: Sequence[str]) -> List[str]:
     out: List[str] = []
     seen = set()
     for raw_path in paths:
-        normalized = _normalize_registry_path(str(raw_path))
+        normalized = _normalize_registry_path(raw_path)
         if not normalized or normalized in seen:
             continue
         if os.path.isabs(normalized):
@@ -52,7 +52,7 @@ def _normalize_env_keys(keys: Sequence[str]) -> List[str]:
     out: List[str] = []
     seen = set()
     for raw_key in keys:
-        key = str(raw_key or "").strip()
+        key = raw_key.strip()
         if not key or key in seen:
             continue
         if "\0" in key:
@@ -94,31 +94,31 @@ def required_test_nodeid_matches(nodeid: str, required_tests: Sequence[str] = QU
 
 
 def iter_required_regression_groups(
-    groups: Optional[Sequence[Mapping[str, Any]]] = None,
+    groups: Optional[Sequence[RegistryGroup]] = None,
 ) -> List[Dict[str, Any]]:
     source = REQUIRED_REGRESSION_GROUPS if groups is None else groups
     rows: List[Dict[str, Any]] = []
     seen_group_ids = set()
     for raw_group in source:
-        group_id = str(raw_group.get("group_id") or "").strip()
+        group_id = raw_group["group_id"]
         if not group_id:
             raise ValueError("required regression group_id is empty")
         if group_id in seen_group_ids:
             raise ValueError("required regression group_id is duplicated: " + group_id)
         seen_group_ids.add(group_id)
-        target_paths = normalize_test_paths(raw_group.get("target_paths") or ())
+        target_paths = normalize_test_paths(raw_group["target_paths"])
         if not target_paths:
             raise ValueError("required regression group targets are empty: " + group_id)
         rows.append(
             {
                 "group_id": group_id,
-                "label": str(raw_group.get("label") or group_id).strip() or group_id,
+                "label": raw_group["label"],
                 "target_paths": target_paths,
-                "input_file_scopes": _normalize_scope_paths(raw_group.get("input_file_scopes") or ()),
-                "config_file_scopes": _normalize_scope_paths(raw_group.get("config_file_scopes") or ()),
-                "tool_file_scopes": _normalize_scope_paths(raw_group.get("tool_file_scopes") or ()),
-                "dependency_file_scopes": _normalize_scope_paths(raw_group.get("dependency_file_scopes") or ()),
-                "env_keys": _normalize_env_keys(raw_group.get("env_keys") or ()),
+                "input_file_scopes": _normalize_scope_paths(raw_group["input_file_scopes"]),
+                "config_file_scopes": _normalize_scope_paths(raw_group["config_file_scopes"]),
+                "tool_file_scopes": _normalize_scope_paths(raw_group["tool_file_scopes"]),
+                "dependency_file_scopes": _normalize_scope_paths(raw_group["dependency_file_scopes"]),
+                "env_keys": _normalize_env_keys(raw_group["env_keys"]),
             }
         )
     return rows
@@ -136,7 +136,7 @@ def iter_required_regression_common_scope_policy() -> Dict[str, List[str]]:
 
 def validate_required_regression_group_coverage(
     required_paths: Sequence[str],
-    groups: Optional[Sequence[Mapping[str, Any]]] = None,
+    groups: Optional[Sequence[RegistryGroup]] = None,
 ) -> Dict[str, Any]:
     required_set = set(required_paths)
     group_rows = iter_required_regression_groups(groups)
@@ -150,7 +150,7 @@ def validate_required_regression_group_coverage(
 
     duplicates = []
     for target, owning_groups in sorted(target_to_groups.items()):
-        if len(owning_groups) > 1 or flat_targets.count(target) > 1:
+        if len(owning_groups) > 1:
             duplicates.append(
                 {
                     "path": target,
@@ -173,37 +173,39 @@ def validate_required_regression_group_coverage(
 
 
 def scope_matches_path(path: str, scope: str) -> bool:
-    if fnmatch.fnmatch(path, scope):
-        return True
-    if "**/" in scope and fnmatch.fnmatch(path, scope.replace("**/", "")):
-        return True
-    return False
+    """门禁范围（规格与登记表的 `*_file_scopes`、`target_paths`）匹配仓库相对路径的唯一实现。
+
+    `./` 加文件名通配（如 `./*.json`）只匹配仓库根下的文件，与路径角色的根目录通配同一判定
+    （`tools.path_roles.matches_root_file`）。其余范围按 fnmatch 宽语义：`*` 跨 `/`，所以 `*.py`
+    匹配全仓 `.py`；含 `**/` 的范围再按去掉 `**/` 匹配一次，让 `tools/**/*.py` 也覆盖 `tools/x.py`。
+    """
+    if scope.startswith(ROOT_FILE_SCOPE_PREFIX):
+        return matches_root_file(path, scope[len(ROOT_FILE_SCOPE_PREFIX):])
+    return fnmatch.fnmatch(path, scope) or ("**/" in scope and fnmatch.fnmatch(path, scope.replace("**/", "")))
 
 
-def collect_production_source_files(repo_root: Optional[str] = None) -> List[str]:
-    root = os.path.abspath(repo_root or REPO_ROOT)
+def collect_production_source_files(repo_root: str) -> List[str]:
     files: List[str] = []
-    for root_file in PRODUCTION_ROOT_FILES:
-        abs_file = os.path.join(root, root_file.replace("/", os.sep))
-        if os.path.isfile(abs_file):
-            files.append(root_file)
-    for rel_dir in PRODUCTION_SOURCE_DIRS:
-        abs_dir = os.path.join(root, rel_dir.replace("/", os.sep))
-        if not os.path.isdir(abs_dir):
+    for rel_root in PRODUCTION_SOURCE_ROOTS:
+        abs_root = os.path.join(repo_root, rel_root.replace("/", os.sep))
+        if os.path.isfile(abs_root):
+            files.append(rel_root)
             continue
-        for dirpath, dirnames, filenames in os.walk(abs_dir):
+        if not os.path.isdir(abs_root):
+            continue
+        for dirpath, dirnames, filenames in os.walk(abs_root):
             dirnames[:] = [name for name in dirnames if name not in _SKIP_DIR_NAMES]
             for filename in filenames:
                 if not filename.endswith(PRODUCTION_SOURCE_EXTENSIONS):
                     continue
                 abs_path = os.path.join(dirpath, filename)
-                rel_path = os.path.relpath(abs_path, root).replace("\\", "/")
+                rel_path = os.path.relpath(abs_path, repo_root).replace("\\", "/")
                 files.append(rel_path)
     return sorted(dict.fromkeys(files))
 
 
 def _uncovered_production_sources(
-    repo_root: Optional[str],
+    repo_root: str,
     group_rows: Sequence[Mapping[str, Any]],
 ) -> List[str]:
     scope_globs: Set[str] = set()
@@ -219,10 +221,10 @@ def _uncovered_production_sources(
 
 
 def validate_test_registry(
-    repo_root: Optional[str] = None,
+    repo_root: str,
     *,
     required_paths: Optional[Sequence[str]] = None,
-    groups: Optional[Sequence[Mapping[str, Any]]] = None,
+    groups: Optional[Sequence[RegistryGroup]] = None,
 ) -> Dict[str, Any]:
     targets = iter_required_tests(required_paths) if required_paths is not None else iter_required_tests()
     coverage = validate_required_regression_group_coverage(targets, groups=groups)
@@ -246,9 +248,8 @@ def validate_test_registry(
 
 
 __all__ = [
-    "PRODUCTION_ROOT_FILES",
-    "PRODUCTION_SOURCE_DIRS",
     "PRODUCTION_SOURCE_EXTENSIONS",
+    "PRODUCTION_SOURCE_ROOTS",
     "QUALITY_GATE_REQUIRED_TESTS",
     "QUALITY_GATE_STARTUP_REGRESSION_ARGS",
     "REQUIRED_REGRESSION_COMMON_SCOPES",

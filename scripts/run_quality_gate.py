@@ -11,39 +11,54 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum
-from json import JSONDecodeError
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, cast
+from typing import Any, Callable, Dict, List, Mapping, NoReturn, Optional, Sequence, Set, Tuple, Union, cast
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
+if __name__ == "__main__":
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tools import quality_gate_shared  # noqa: E402
-from tools.long_gate_cache import cache_unavailable_decision, evaluate_failure_reuse, evaluate_reuse  # noqa: E402
-from tools.long_gate_cache import commit_prepared_success_write as commit_prepared_long_gate_success
-from tools.long_gate_cache import prepare_success_write as prepare_long_gate_success_write
-from tools.long_gate_cache import resolve_cache_dir as resolve_long_gate_cache_dir
-from tools.long_gate_cache import write_failure as write_long_gate_failure
-from tools.long_gate_collect import (  # noqa: E402
-    COLLECT_NODEIDS_REL,
-    build_collect_nodeids_payload,
-    write_collect_nodeids,
+from tools import quality_gate_shared
+from tools.long_gate_cache import (
+    PreparedSuccessWrite,
+    cache_log_rel_paths,
+    cache_result_rel_path,
+    cache_unavailable_decision,
+    commit_prepared_success_write,
+    evaluate_cache,
+    prepare_success_write,
+    resolve_cache_dir,
+    write_failure,
 )
-from tools.long_gate_fingerprint import (  # noqa: E402
+from tools.long_gate_collect import build_collect_nodeids_payload, write_collect_nodeids
+from tools.long_gate_fingerprint import (
     FingerprintFileSnapshot,
     LongGateFingerprintError,
+    command_environment,
     fingerprint_entry,
+    fingerprint_environment,
     pytest_distribution_version,
 )
-from tools.long_gate_manifest import (  # noqa: E402
-    build_manifest_from_quality_gate_plan,
-    explain_long_gate_impact,
-    normalize_repo_path,
+from tools.long_gate_manifest import explain_long_gate_impact, normalize_repo_path
+from tools.long_gate_paths import LEDGER_REL, LONG_GATE_CACHE_DIR_REL, GateContext, resolve_repo_root
+from tools.long_gate_records import (
+    CacheDecision,
+    CacheRecord,
+    CommandResult,
+    DecisionCause,
+    GateEntry,
+    Receipt,
+    ReceiptRow,
+    Rejection,
+    RuntimeEntry,
+    StepOutcome,
+    admit_manifest,
+    admit_receipt,
+    build_receipt,
+    gate_entries,
 )
-from tools.long_gate_schema import (  # noqa: E402
+from tools.long_gate_schema import (
     SensitiveSourceError,
     content_equal,
     decode_nul_paths,
@@ -51,20 +66,26 @@ from tools.long_gate_schema import (  # noqa: E402
     read_file_content,
     repo_identity,
 )
-from tools.long_gate_summary import (  # noqa: E402
+from tools.long_gate_summary import (
+    SUMMARY_COUNT_KEYS,
+    TAIL_LINES,
     build_long_gate_summary,
-    build_summary_entry,
-    extract_copyable_failure,
+    copyable_failure,
+    summary_entry,
+    tail_text,
     write_long_gate_summary,
 )
-from tools.quality_gate_shared import (  # noqa: E402
-    LEDGER_PATH,
+from tools.quality_gate_shared import (
+    QUALITY_GATE_COLLECT_NODEIDS_REL,
+    QUALITY_GATE_COMMAND_KEYS,
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
     QUALITY_GATE_DEBT_LEDGER_SYNC_REL,
     QUALITY_GATE_FAILED_FULL_TEST_DEBT_REL,
     QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL,
     QUALITY_GATE_LOGS_DIR_REL,
     QUALITY_GATE_MANIFEST_REL,
+    QUALITY_GATE_PROOF_SCHEMA_VERSION,
+    QUALITY_GATE_PROOF_SCOPE,
     QUALITY_GATE_PYRIGHT_GATE_CONFIG,
     QUALITY_GATE_PYRIGHT_GATE_FULL_REL,
     QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
@@ -76,32 +97,33 @@ from tools.quality_gate_shared import (  # noqa: E402
     QUALITY_GATE_TOOL_PATHS,
     GateCheckSpec,
     QualityGateError,
-    apply_quality_gate_manifest_proof_fields,
     build_quality_gate_collection_proof,
-    build_quality_gate_command_receipt,
     build_quality_gate_receipt_rel_path,
+    build_quality_gate_source_proof,
     iter_quality_gate_required_tests,
+    normalize_command_output_for_policy,
     parse_pytest_collect_nodeids,
 )
-from web.bootstrap.launcher_contract_result import read_runtime_contract_result  # noqa: E402
-from web.bootstrap.launcher_health import probe_runtime_health_result  # noqa: E402
-from web.bootstrap.launcher_lock_result import read_runtime_lock_result  # noqa: E402
-from web.bootstrap.launcher_paths import resolve_runtime_state_paths  # noqa: E402
-from web.bootstrap.launcher_processes import _pid_matches_contract, _pid_state  # noqa: E402
+from web.bootstrap.launcher_contract_result import read_runtime_contract_result
+from web.bootstrap.launcher_health import probe_runtime_health_result
+from web.bootstrap.launcher_lock_result import read_runtime_lock_result
+from web.bootstrap.launcher_paths import resolve_runtime_state_paths
+from web.bootstrap.launcher_processes import pid_matches_contract, query_pid_state
 
 REQUIRED_TEST_ARGS = list(iter_quality_gate_required_tests())
 
 PYRIGHT_REQUIRED_VERSION = (1, 1, 406)
 PYRIGHT_GATE_CONFIG = QUALITY_GATE_PYRIGHT_GATE_CONFIG
 PYRIGHT_TOOLS_CONFIG = QUALITY_GATE_PYRIGHT_TOOLS_CONFIG
-REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 5
-STATIC_CHECK_PROOF_SCHEMA_VERSION = 2
-DEBT_LEDGER_SYNC_PROOF_SCHEMA_VERSION = 2
+# long-gate 专题证明（随成功缓存作为输出文件保存，供人查看）的形状版本。
+REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 6
+STATIC_CHECK_PROOF_SCHEMA_VERSION = 3
+DEBT_LEDGER_SYNC_PROOF_SCHEMA_VERSION = 3
 GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     QUALITY_GATE_MANIFEST_REL.replace("\\", "/"),
     QUALITY_GATE_RECEIPTS_DIR_REL.replace("\\", "/") + "/",
     QUALITY_GATE_LOGS_DIR_REL.replace("\\", "/") + "/",
-    COLLECT_NODEIDS_REL.replace("\\", "/"),
+    QUALITY_GATE_COLLECT_NODEIDS_REL.replace("\\", "/"),
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"),
     QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL.replace("\\", "/"),
     "evidence/QualityGate/architecture_scan_cache.json",
@@ -115,28 +137,74 @@ GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
 ]
 HIGH_RISK_UNTRACKED_SOURCE_PREFIXES = ("core/", "web/", "data/", "tools/", "scripts/")
 HIGH_RISK_UNTRACKED_SOURCE_SUFFIXES = (".py", ".js", ".ts", ".html", ".css", ".sql")
+# 这两类条目的输入含本次前序步骤的产物（collect 收集结果、full_test_debt payload）：
+# 执行前按当时的输入重新判定复用，成功后按命令完成时的输入写成功缓存。
+_INPUTS_FROM_EARLIER_STEPS = frozenset({"full_test_debt", "required_regressions"})
 
 
 @dataclass(frozen=True)
-class LoadedJsonFile:
-    payload: Optional[Dict[str, Any]]
-    error: str = ""
+class ResumedStep:
+    """续跑可复用的一步：已绑定本次计划的旧 receipt，以及它两份日志的原文。"""
+
+    receipt: Receipt
+    stdout: str
+    stderr: str
 
 
 @dataclass(frozen=True)
 class ResumeDecision:
+    """续跑判定；resumed_steps 是旧失败位置之前、已校验成功的非 none 步骤，按原序号排列。"""
+
     enabled: bool
     reason: str
     previous_run_id: str = ""
-    previous_failure_message: str = ""
-    skip_count: int = 0
-    start_command_index: int = 0
-    start_command_display: str = ""
-    reusable_receipts: Tuple[Dict[str, Any], ...] = ()
-    reusable_receipt_payloads: Tuple[Dict[str, Any], ...] = ()
-    reusable_log_texts: Tuple[Dict[str, str], ...] = ()
-    validated_dirty_content: Optional[Dict[str, Any]] = None
+    previous_failure_message: Optional[str] = None
+    failed_command_index: int = 0
+    failed_command_display: str = ""
+    resumed_steps: Tuple[ResumedStep, ...] = ()
+    validated_dirty_content: Optional[Mapping[str, Any]] = None
 
+
+@dataclass(frozen=True)
+class LongGateCacheContext:
+    """本次生效的 long-gate 缓存：缓存目录、缓存元数据、是否写入缓存。
+
+    metadata 为 None 表示元数据含敏感内容、不可用；此时每个条目的决策都是 cache unavailable，
+    执行中不读写缓存。
+    """
+
+    cache_dir: str
+    metadata: Optional[Mapping[str, Any]]
+    write_success: bool
+
+
+@dataclass(frozen=True)
+class PendingSuccess:
+    """命令已通过、等 summary 写成功后再落盘的成功缓存。"""
+
+    entry: GateEntry
+    fingerprint: Mapping[str, Any]
+    result: CommandResult
+    receipt_path: str
+    output_files: Tuple[str, ...]
+    metadata: Mapping[str, Any]
+
+
+@dataclass
+class PlanProgress:
+    """命令计划执行中逐步更新的状态与产物；失败路径也要读到它们，所以由调用方持有。
+
+    `running_command_index` 是正在执行的步骤序号，步骤开始前与全部步骤结束后为 None；
+    失败收尾把它写成 manifest 的 `failure_command_index`，续跑按它划定可复用的步骤。
+    """
+
+    run_id: str
+    total: int
+    commands: List[Mapping[str, Any]]
+    command_receipts: List[Dict[str, Any]]
+    parsed_command_results: Dict[str, Any]
+    pending_successes: List[PendingSuccess]
+    running_command_index: Optional[int] = None
 
 
 class RuntimeProbeState(str, Enum):
@@ -146,22 +214,27 @@ class RuntimeProbeState(str, Enum):
     UNKNOWN = "unknown"
 
 
-def _safe_relpath(path: str, start: str) -> str:
-    """以 posix 形态返回 path 相对 start 的路径；跨盘（Windows 上 path 与 start 不同盘符）
-    时 os.path.relpath 会抛 ValueError，此时回退为 path 自身的 posix 绝对形态。
-    生产环境 path/start 恒同盘，永走 relpath 分支；此兜底只为 Windows 上 tmp 与仓库异盘的
-    自测场景不再让门禁因算一个显示路径而崩。"""
-    try:
-        return os.path.relpath(path, start).replace(os.sep, "/")
-    except ValueError:
-        return os.path.abspath(path).replace(os.sep, "/")
+#: 父进程收到中断后等子命令自行退出的秒数（终端 Ctrl+C 已同时发给子命令），超时才终止它。
+_INTERRUPT_GRACE_S = 10.0
+#: 等待子命令的轮询间隔：Windows 上无超时的 wait 停在原生等待里，主线程处理不了 Ctrl+C，带超时的 wait 每轮回到 Python 层。
+_WAIT_POLL_S = 0.2
+
+
+def _wait_polling(process: subprocess.Popen[str]) -> int:
+    while True:
+        try:
+            return process.wait(timeout=_WAIT_POLL_S)
+        except subprocess.TimeoutExpired:
+            continue
 
 
 def _run_command(
+    ctx: GateContext,
     check_id: str,
     args: Sequence[str],
     capture_output: bool = False,
-    env_overlay: Optional[Mapping[str, str]] = None,
+    *,
+    environment: Mapping[str, str],
 ) -> Dict[str, Any]:
     stdout_chunks: List[str] = []
     stderr_chunks: List[str] = []
@@ -175,14 +248,10 @@ def _run_command(
         finally:
             stream.close()
 
-    env = os.environ.copy()
-    if env_overlay:
-        env.update(quality_gate_shared._normalize_env_overlay(dict(env_overlay)))
-
     process = subprocess.Popen(
         list(args),
-        cwd=REPO_ROOT,
-        env=env,
+        cwd=ctx.repo_root,
+        env=environment,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -206,7 +275,18 @@ def _run_command(
     )
     stdout_thread.start()
     stderr_thread.start()
-    returncode = process.wait()
+    # 父进程在等待时收到中断：先等子命令退出（超时则终止），把管道读到结尾，如实返回已取得的输出与退出码，
+    # 由执行边界登记本步后继续传播中断。
+    interrupted = False
+    try:
+        returncode = _wait_polling(process)
+    except KeyboardInterrupt:
+        interrupted = True
+        try:
+            returncode = process.wait(timeout=_INTERRUPT_GRACE_S)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            returncode = process.wait()
     stdout_thread.join()
     stderr_thread.join()
 
@@ -227,26 +307,8 @@ def _run_command(
         "stdout": stdout,
         "stderr": stderr,
         "returncode": int(returncode),
+        "interrupted": interrupted,
     }
-
-
-def _coerce_command_result(result: Mapping[str, Any]) -> Dict[str, Any]:
-    coerced: Dict[str, Any] = {
-        "stdout": str(result.get("stdout") or ""),
-        "stderr": str(result.get("stderr") or ""),
-        "returncode": int(result.get("returncode") or 0),
-        "stdout_log_path": str(result.get("stdout_log_path") or ""),
-        "stderr_log_path": str(result.get("stderr_log_path") or ""),
-    }
-    for field_name in ("timed_out", "interrupted", "partial_write"):
-        if field_name in result:
-            coerced[field_name] = bool(result.get(field_name))
-    return coerced
-
-
-def _assert_command_succeeded(display: str, result: Dict[str, Any]) -> None:
-    if int(result.get("returncode") or 0) != 0:
-        raise QualityGateError(f"命令失败：{display}")
 
 
 def _format_collect_only_success(stdout: str) -> str:
@@ -260,76 +322,51 @@ def _collect_nodeids_or_raise(stdout: str) -> List[str]:
     return nodeids
 
 
-def _tail_lines(text: str, limit: int = 80) -> str:
-    lines = str(text or "").splitlines()
-    if not lines:
-        return "<空>"
-    return "\n".join(lines[-limit:])
-
-
-def _print_command_log_tail(result: Dict[str, Any], *, limit: int = 80) -> None:
-    stdout_log_rel = str(result.get("stdout_log_path") or "")
-    stderr_log_rel = str(result.get("stderr_log_path") or "")
-    print(f"--- stdout 最后 {limit} 行：{stdout_log_rel or '<未落盘>'} ---", flush=True)
-    print(_tail_lines(quality_gate_shared.sanitize_quality_gate_output(str(result.get("stdout") or "")), limit=limit), flush=True)
-    print(f"--- stderr 最后 {limit} 行：{stderr_log_rel or '<未落盘>'} ---", file=sys.stderr, flush=True)
-    print(_tail_lines(quality_gate_shared.sanitize_quality_gate_output(str(result.get("stderr") or "")), limit=limit), file=sys.stderr, flush=True)
+def _print_command_log_tail(result: CommandResult) -> None:
+    print(f"--- stdout 最后 {TAIL_LINES} 行：{result.stdout_log_path} ---", flush=True)
+    print(tail_text(quality_gate_shared.sanitize_quality_gate_output(result.stdout)), flush=True)
+    print(f"--- stderr 最后 {TAIL_LINES} 行：{result.stderr_log_path} ---", file=sys.stderr, flush=True)
+    print(tail_text(quality_gate_shared.sanitize_quality_gate_output(result.stderr)), file=sys.stderr, flush=True)
 
 
 def _raise_command_failure(
+    entry: GateEntry,
     *,
-    index: int,
     total: int,
-    display: str,
-    receipt_rel: str,
-    result: Dict[str, Any],
+    receipt_path: str,
+    result: CommandResult,
     detail: str = "",
-) -> None:
+) -> NoReturn:
     _print_command_log_tail(result)
-    returncode = int(result.get("returncode") or 0)
     message = (
-        f"质量门禁第 {index}/{total} 步失败：\n"
-        f"命令：{display}\n"
-        f"returncode：{returncode}\n"
-        f"receipt：{receipt_rel}\n"
-        f"stdout 日志：{result.get('stdout_log_path') or '<未落盘>'}\n"
-        f"stderr 日志：{result.get('stderr_log_path') or '<未落盘>'}"
+        f"质量门禁第 {entry.index}/{total} 步失败：\n"
+        f"命令：{entry.spec.display}\n"
+        f"returncode：{result.returncode}\n"
+        f"receipt：{receipt_path}\n"
+        f"stdout 日志：{result.stdout_log_path}\n"
+        f"stderr 日志：{result.stderr_log_path}"
     )
     if detail:
         message += f"\n原因：{detail}"
     raise QualityGateError(message)
 
 
+def _print_step_end(
+    entry: GateEntry, *, total: int, result: CommandResult, receipt_path: str, failed: bool, label: str = ""
+) -> None:
+    status = f"失败(returncode={result.returncode})" if failed else "通过"
+    print(
+        f"==> 第 {entry.index}/{total} 步结束：{label}{status}，耗时 {result.duration_s:.1f}s，receipt={receipt_path}",
+        flush=True,
+    )
 
 
-def _quality_gate_manifest_abs_path() -> str:
-    return os.path.join(REPO_ROOT, QUALITY_GATE_MANIFEST_REL.replace("/", os.sep))
+def _quality_gate_manifest_abs_path(ctx: GateContext) -> str:
+    return os.path.join(ctx.repo_root, QUALITY_GATE_MANIFEST_REL.replace("/", os.sep))
 
 
-def _load_json_file(abs_path: str) -> LoadedJsonFile:
-    if not os.path.isfile(abs_path):
-        return LoadedJsonFile(None, "文件不存在")
-    try:
-        with open(abs_path, encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except JSONDecodeError as exc:
-        return LoadedJsonFile(None, f"JSON 解析失败：{exc}")
-    except OSError as exc:
-        return LoadedJsonFile(None, f"读取失败：{exc}")
-    if not isinstance(payload, dict):
-        return LoadedJsonFile(None, "JSON 顶层不是对象")
-    return LoadedJsonFile(cast(Dict[str, Any], payload), "")
-
-
-_command_identity = quality_gate_shared.normalize_quality_gate_command
-
-
-def _commands_match(left: Dict[str, Any], right: Dict[str, Any]) -> bool:
-    return content_equal(_command_identity(left), _command_identity(right))
-
-
-def _read_repo_text(rel_path: str) -> str:
-    abs_path = os.path.join(REPO_ROOT, str(rel_path or "").replace("/", os.sep))
+def _read_repo_text(ctx: GateContext, rel_path: str) -> str:
+    abs_path = os.path.join(ctx.repo_root, rel_path.replace("/", os.sep))
     with open(abs_path, encoding="utf-8", newline="") as handle:
         return handle.read()
 
@@ -338,10 +375,10 @@ def _worktree_status_lines(status_lines: Sequence[str]) -> List[str]:
     return [str(line) for line in list(status_lines or []) if str(line)]
 
 
-def _run_git_bytes(args: Sequence[str]) -> bytes:
+def _run_git_bytes(ctx: GateContext, args: Sequence[str]) -> bytes:
     completed = subprocess.run(
         ["git", *list(args)],
-        cwd=REPO_ROOT,
+        cwd=ctx.repo_root,
         text=False,
         capture_output=True,
         check=False,
@@ -378,7 +415,7 @@ def _status_line_path(line: str) -> str:
     return _decode_status_path(path_text)
 
 
-def _dirty_worktree_content(status_lines: Sequence[str]) -> Dict[str, Any]:
+def _dirty_worktree_content(ctx: GateContext, status_lines: Sequence[str]) -> Dict[str, Any]:
     normalized_lines = _worktree_status_lines(status_lines)
     diffs: Dict[str, str] = {}
     if normalized_lines:
@@ -386,7 +423,7 @@ def _dirty_worktree_content(status_lines: Sequence[str]) -> Dict[str, Any]:
             ("unstaged", ["diff", "--no-ext-diff", "--binary"]),
             ("staged", ["diff", "--cached", "--no-ext-diff", "--binary"]),
         ):
-            raw = _run_git_bytes(args)
+            raw = _run_git_bytes(ctx, args)
             text = raw.decode("utf-8", errors="replace")
             if quality_gate_shared.sanitize_quality_gate_output(text) != text:
                 raise QualityGateError("脏工作区差异包含敏感环境值，未保存来源内容。")
@@ -396,7 +433,7 @@ def _dirty_worktree_content(status_lines: Sequence[str]) -> Dict[str, Any]:
         rel_path = _status_line_path(line)
         if not rel_path:
             continue
-        abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
+        abs_path = os.path.join(ctx.repo_root, rel_path.replace("/", os.sep))
         row: Dict[str, Any] = {"path": rel_path}
         try:
             if os.path.islink(abs_path):
@@ -410,7 +447,7 @@ def _dirty_worktree_content(status_lines: Sequence[str]) -> Dict[str, Any]:
                     filenames.sort()
                     for filename in filenames:
                         file_path = os.path.join(dirpath, filename)
-                        files.append({"path": _safe_relpath(file_path, REPO_ROOT),
+                        files.append({"path": os.path.relpath(file_path, ctx.repo_root).replace(os.sep, "/"),
                                       "content_base64": read_file_content(file_path)})
                 row.update(kind="directory", files=files)
             else:
@@ -421,294 +458,350 @@ def _dirty_worktree_content(status_lines: Sequence[str]) -> Dict[str, Any]:
     return {"status_lines": normalized_lines, "diffs_base64": diffs, "paths": rows}
 
 
-def _expected_command_log_rel_paths(index: int, display: str) -> Dict[str, str]:
+def _expected_command_log_rel_paths(index: int, display: str) -> Tuple[str, str]:
+    """第 index 步命令日志的唯一路径规则：(stdout, stderr)。"""
     receipt_rel = build_quality_gate_receipt_rel_path(index, display)
     stem = os.path.splitext(os.path.basename(receipt_rel))[0]
     logs_dir = QUALITY_GATE_LOGS_DIR_REL.replace("\\", "/")
-    return {
-        "stdout_log_path": f"{logs_dir}/{stem}.stdout.log",
-        "stderr_log_path": f"{logs_dir}/{stem}.stderr.log",
-    }
+    return f"{logs_dir}/{stem}.stdout.log", f"{logs_dir}/{stem}.stderr.log"
 
 
-def _write_command_output_logs(*, index: int, display: str, result: Dict[str, Any]) -> Dict[str, str]:
-    log_paths = _expected_command_log_rel_paths(index, display)
-    for result_key, path_key in (("stdout", "stdout_log_path"), ("stderr", "stderr_log_path")):
-        rel_path = log_paths[path_key]
-        abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
+def _write_command_output_logs(ctx: GateContext, entry: GateEntry, *, stdout: str, stderr: str) -> Tuple[str, str]:
+    log_paths = _expected_command_log_rel_paths(entry.index, entry.spec.display)
+    for rel_path, text in zip(log_paths, (stdout, stderr)):
+        abs_path = os.path.join(ctx.repo_root, rel_path.replace("/", os.sep))
         os.makedirs(os.path.dirname(abs_path), exist_ok=True)
         with open(abs_path, "w", encoding="utf-8", newline="") as handle:
-            handle.write(quality_gate_shared.sanitize_quality_gate_output(str(result.get(result_key) or "")))
+            handle.write(quality_gate_shared.sanitize_quality_gate_output(text))
     return log_paths
 
 
-def _load_resume_receipt_payload(
-    receipt_entry: Dict[str, Any], command: Dict[str, Any], *,
-    index: int, previous_run_id: str,
-) -> Tuple[Optional[Dict[str, Any]], str, Dict[str, str]]:
-    payload, error = quality_gate_shared._load_verified_quality_gate_receipt(
-        REPO_ROOT, receipt_entry, command, index=index,
-    )
-    if error or payload is None:
-        return None, str(error or "旧 receipt 证据缺失"), {}
-    normalized_command = _command_identity(command)
-    error = quality_gate_shared._verify_receipt_header(
-        payload, index=index, run_id=previous_run_id,
-    )
-    if error:
-        return None, error, {}
-    error = quality_gate_shared._verify_receipt_command_fields(payload, normalized_command)
-    if error:
-        return None, error, {}
-    if int(payload.get("returncode") or 0) == 0:
-        error = quality_gate_shared._verify_receipt_execution_fields(payload)
-        if error:
-            return None, error, {}
-    expected_logs = _expected_command_log_rel_paths(index, str(command.get("display") or ""))
-    policy = quality_gate_shared._command_output_policy(command)
-    log_texts: Dict[str, str] = {}
-    for stream in ("stdout", "stderr"):
-        rel = str(payload.get(stream + "_log_path") or "").replace("\\", "/")
-        if rel != expected_logs[stream + "_log_path"]:
-            return None, f"旧 receipt 日志路径不匹配：第 {index} 步", {}
-        try:
-            text = _read_repo_text(rel)
-        except OSError:
-            return None, f"旧 receipt 日志缺失或不可读：{rel}", {}
-        if payload.get(stream + "_content") != quality_gate_shared._normalize_command_output_for_policy(text, policy=policy):
-            return None, f"旧 receipt 输出原文不一致：{rel}", {}
-        log_texts[stream] = text
-    return payload, "", log_texts
+def _step_start() -> Tuple[str, float]:
+    # 用 perf_counter 而非 monotonic：Windows 上 monotonic 分辨率粗（~15ms），瞬时返回的
+    # 命令会量到 duration_s=0.0；perf_counter 为高分辨率计时，快操作也能得到正时长。
+    return datetime.now().isoformat(timespec="seconds"), time.perf_counter()
 
 
-def _result_from_receipt_logs(receipt_payload: Mapping[str, Any], log_texts: Mapping[str, str]) -> Dict[str, Any]:
+def _command_result(
+    started: Tuple[str, float],
+    *,
+    stdout: str,
+    stderr: str,
+    returncode: int,
+    log_paths: Tuple[str, str],
+    execution_mode: str,
+    reused_from: Mapping[str, Any],
+    duration_kind: str,
+    original_duration_s: Optional[float],
+) -> CommandResult:
+    started_at, start_perf = started
+    return CommandResult(
+        stdout=stdout,
+        stderr=stderr,
+        returncode=returncode,
+        stdout_log_path=log_paths[0],
+        stderr_log_path=log_paths[1],
+        execution_mode=execution_mode,
+        reused_from=reused_from,
+        started_at=started_at,
+        ended_at=datetime.now().isoformat(timespec="seconds"),
+        duration_s=time.perf_counter() - start_perf,
+        duration_kind=duration_kind,
+        original_duration_s=original_duration_s,
+    )
+
+
+def _execute_step(
+    ctx: GateContext,
+    entry: GateEntry,
+    progress: PlanProgress,
+    runtime_entries: Dict[str, RuntimeEntry],
+    *,
+    started: Tuple[str, float],
+    environment: Mapping[str, str],
+    environment_fingerprint: Mapping[str, Any],
+) -> Tuple[CommandResult, str]:
+    """实际执行一步并写 receipt，返回结果与 receipt 路径。
+
+    等待子命令时被中断：按已取得的输出照常写日志与 receipt、登记本步失败，再继续向外传播中断。
+    """
+    raw = _run_command(
+        ctx,
+        entry.spec.check_id,
+        _resolve_command_args(entry.command["args"]),
+        capture_output=entry.command["capture_output"],
+        environment=environment,
+    )
+    result = _command_result(
+        started,
+        stdout=raw["stdout"],
+        stderr=raw["stderr"],
+        returncode=raw["returncode"],
+        log_paths=_write_command_output_logs(ctx, entry, stdout=raw["stdout"], stderr=raw["stderr"]),
+        execution_mode="executed",
+        reused_from={},
+        duration_kind="executed",
+        original_duration_s=None,
+    )
+    receipt_path = _record_step(ctx, progress, entry, result, environment_fingerprint)
+    if raw["interrupted"]:
+        _record_outcome(runtime_entries, entry, result, receipt_path, failed=True)
+        _print_step_end(entry, total=progress.total, result=result, receipt_path=receipt_path, failed=True, label="[interrupted] ")
+        raise KeyboardInterrupt(
+            f"质量门禁第 {entry.index}/{progress.total} 步被中断：{entry.spec.display}；receipt：{receipt_path}"
+        )
+    return result, receipt_path
+
+
+def _resumed_result(ctx: GateContext, entry: GateEntry, step: ResumedStep, started: Tuple[str, float]) -> CommandResult:
+    receipt = step.receipt
+    return _command_result(
+        started,
+        stdout=step.stdout,
+        stderr=step.stderr,
+        returncode=receipt.returncode,
+        log_paths=_write_command_output_logs(ctx, entry, stdout=step.stdout, stderr=step.stderr),
+        execution_mode="resumed_success",
+        reused_from={
+            "receipt_path": receipt.path,
+            "receipt_content": receipt.payload,
+            "run_id": receipt.run_id,
+            "completed_at": receipt.ended_at,
+        },
+        duration_kind="resume_overhead",
+        original_duration_s=receipt.duration_s,
+    )
+
+
+def _cache_reused_from(record: CacheRecord) -> Dict[str, Any]:
     return {
-        "stdout": log_texts["stdout"],
-        "stderr": log_texts["stderr"],
-        "returncode": int(receipt_payload.get("returncode") or 0),
+        "result_path": record.result_path,
+        "completed_at": record.completed_at,
+        "fingerprint": record.fingerprint,
+        "duration_s": record.duration_s,
     }
 
 
-def _strict_long_gate_fingerprint(entry: Dict[str, Any], *, file_snapshot: Optional[FingerprintFileSnapshot] = None) -> Dict[str, Any]:
+def _reused_success_result(
+    ctx: GateContext, entry: GateEntry, record: CacheRecord, started: Tuple[str, float]
+) -> CommandResult:
+    return _command_result(
+        started,
+        stdout=record.stdout_content,
+        stderr=record.stderr_content,
+        returncode=record.returncode,
+        log_paths=_write_command_output_logs(ctx, entry, stdout=record.stdout_content, stderr=record.stderr_content),
+        execution_mode="reused_success_cache",
+        reused_from=_cache_reused_from(record),
+        duration_kind="reuse_overhead",
+        original_duration_s=record.duration_s,
+    )
+
+
+def _cached_failure_result(record: CacheRecord, started: Tuple[str, float]) -> CommandResult:
+    # 缓存失败的 receipt 指向 long-gate 日志；续跑按命令日志目录绑定 receipt，因此这类失败步骤不会被续跑复用。
+    return _command_result(
+        started,
+        stdout=record.stdout_content,
+        stderr=record.stderr_content,
+        returncode=record.returncode,
+        log_paths=(record.stdout_log_path, record.stderr_log_path),
+        execution_mode="cached_failure",
+        reused_from=_cache_reused_from(record),
+        duration_kind="reuse_overhead",
+        original_duration_s=record.duration_s,
+    )
+
+
+def _strict_long_gate_fingerprint(
+    ctx: GateContext, entry: GateEntry, *, file_snapshot: Optional[FingerprintFileSnapshot] = None
+) -> Dict[str, Any]:
     try:
-        return fingerprint_entry(entry, REPO_ROOT, strict=True, file_snapshot=file_snapshot)
+        return fingerprint_entry(entry, ctx.repo_root, strict=True, file_snapshot=file_snapshot)
     except LongGateFingerprintError as exc:
         raise QualityGateError(str(exc)) from exc
 
 
+def _fingerprint_failure_kind(error: QualityGateError) -> str:
+    """_strict_long_gate_fingerprint 总是把带 failure_kind 的 LongGateFingerprintError 链在 __cause__ 上。"""
+    cause = cast(LongGateFingerprintError, error.__cause__)
+    return cause.details.get("failure_kind", "")
+
+
+def _changed_environment_keys(previous: Mapping[str, Any], current: Mapping[str, Any]) -> List[str]:
+    return [key for key in current["keys"] if not content_equal(previous["values"][key], current["values"][key])]
+
+
+def _bind_previous_receipt(
+    ctx: GateContext, row: ReceiptRow, entry: GateEntry, *, previous_run_id: str
+) -> Union[ResumedStep, str]:
+    """把旧 manifest 第 entry.index 步的 receipt 绑定到本次计划；返回可复用的步骤，或不能续跑的理由。"""
+    index = entry.index
+    if row.path != build_quality_gate_receipt_rel_path(index, entry.spec.display):
+        return "UNBOUND: quality gate command receipt path mismatch"
+    admitted = admit_receipt(ctx.repo_root, row.path)
+    if isinstance(admitted, Rejection):
+        return admitted.reason
+    if not content_equal(admitted.payload, row.content):
+        return "UNBOUND: quality gate command receipt content mismatch"
+    if admitted.run_id != previous_run_id:
+        return "UNBOUND: quality gate command receipt run_id mismatch"
+    if admitted.command_index != index:
+        return "UNBOUND: quality gate command receipt command_index mismatch"
+    for key in QUALITY_GATE_COMMAND_KEYS:
+        if not content_equal(admitted.command[key], entry.command[key]):
+            return f"UNBOUND: quality gate command receipt {key} mismatch"
+    # 准入已保证 values 恰好以 keys 为键；这里再绑定 keys 就是本步规格的 env_keys，环境比较才能逐键直接对照。
+    if admitted.environment["keys"] != list(entry.spec.env_keys):
+        return "UNBOUND: quality gate command receipt environment keys mismatch"
+    texts: List[str] = []
+    for rel_path, expected_rel_path, content in zip(
+        (admitted.stdout_log_path, admitted.stderr_log_path),
+        _expected_command_log_rel_paths(index, entry.spec.display),
+        (admitted.stdout_content, admitted.stderr_content),
+    ):
+        if rel_path != expected_rel_path:
+            return f"旧 receipt 日志路径不匹配：第 {index} 步"
+        try:
+            text = _read_repo_text(ctx, rel_path)
+        except (OSError, UnicodeDecodeError):
+            return f"旧 receipt 日志缺失或不可读：{rel_path}"
+        if normalize_command_output_for_policy(text, policy=admitted.command["output_policy"]) != content:
+            return f"旧 receipt 输出原文不一致：{rel_path}"
+        texts.append(text)
+    return ResumedStep(admitted, texts[0], texts[1])
+
+
 def _decide_resume_from_previous_failure(
-    command_specs: Sequence[GateCheckSpec],
+    ctx: GateContext,
+    plan: Sequence[GateEntry],
     *,
     current_head_sha: str,
     current_git_status_short: Sequence[str],
 ) -> ResumeDecision:
-    manifest_path = _quality_gate_manifest_abs_path()
-    if not os.path.isfile(manifest_path):
-        return ResumeDecision(False, "旧 manifest 不存在")
-    loaded_manifest = _load_json_file(manifest_path)
-    if loaded_manifest.error:
-        if loaded_manifest.error == "文件不存在":
-            return ResumeDecision(False, "旧 manifest 不存在")
-        return ResumeDecision(False, f"旧 manifest 不是合法 JSON：{loaded_manifest.error}")
-    manifest = dict(loaded_manifest.payload or {})
-    if str(manifest.get("status") or "") != "failed":
+    admitted = admit_manifest(_quality_gate_manifest_abs_path(ctx))
+    if isinstance(admitted, Rejection):
+        return ResumeDecision(False, admitted.reason)
+    manifest = admitted
+    if manifest.status != "failed":
         return ResumeDecision(False, "上次不是失败记录")
-    if manifest.get("schema_version") != quality_gate_shared.QUALITY_GATE_PROOF_SCHEMA_VERSION:
-        return ResumeDecision(False, "旧 manifest schema_version 不一致，不能续跑")
-
-    previous_head_sha = str(manifest.get("head_sha") or "").strip()
-    if not previous_head_sha:
-        return ResumeDecision(False, "旧 manifest 缺少 head_sha，不能续跑")
-    if previous_head_sha != str(current_head_sha or "").strip():
+    if manifest.head_sha != current_head_sha:
         return ResumeDecision(
-            False, f"旧 manifest head_sha 与当前 HEAD 不一致，不能续跑：previous={previous_head_sha} current={current_head_sha}"
+            False, f"旧 manifest head_sha 与当前 HEAD 不一致，不能续跑：previous={manifest.head_sha} current={current_head_sha}"
         )
-
-    current_identity = _repo_identity()
-    for field_name in ("checkout_root_realpath", "git_common_dir_realpath"):
-        previous_value = str(manifest.get(field_name) or "").strip()
-        current_value = str(current_identity.get(field_name) or "").strip()
-        if not previous_value or previous_value != current_value:
+    current_identity = _repo_identity(ctx)
+    for field_name, previous_value in (
+        ("checkout_root_realpath", manifest.checkout_root_realpath),
+        ("git_common_dir_realpath", manifest.git_common_dir_realpath),
+    ):
+        if previous_value != current_identity[field_name]:
             return ResumeDecision(False, f"旧 manifest 仓库身份不一致，不能续跑：{field_name}")
-    previous_python_executable = str(manifest.get("python_executable") or "").strip()
-    current_python_executable = str(sys.executable or "").strip()
-    if not previous_python_executable:
-        return ResumeDecision(False, "旧 manifest 缺少 python_executable，不能续跑")
-    previous_python_realpath = os.path.normcase(os.path.realpath(previous_python_executable))
-    current_python_realpath = os.path.normcase(os.path.realpath(current_python_executable))
-    if previous_python_realpath != current_python_realpath:
-        return ResumeDecision(False, "旧 manifest 使用的 Python 解释器与当前不一致，不能续跑")
-    previous_python_version = str(manifest.get("python_version") or "").strip()
-    current_python_version = sys.version.splitlines()[0].strip()
-    if not previous_python_version:
-        return ResumeDecision(False, "旧 manifest 缺少 python_version，不能续跑")
-    if previous_python_version != current_python_version:
-        return ResumeDecision(False, "旧 manifest 使用的 Python 版本与当前不一致，不能续跑")
-
-    previous_dirty_fingerprint = manifest.get("dirty_worktree_content_before")
-    current_dirty_fingerprint = _dirty_worktree_content(current_git_status_short)
-    if not isinstance(previous_dirty_fingerprint, dict):
-        return ResumeDecision(False, "旧 manifest 缺少脏工作区指纹，不能续跑")
-    if not content_equal(previous_dirty_fingerprint, current_dirty_fingerprint):
+    current_dirty_content = _dirty_worktree_content(ctx, current_git_status_short)
+    if not content_equal(manifest.dirty_worktree_content_before, current_dirty_content):
         return ResumeDecision(False, "脏工作区内容已变化，本次完整重跑")
-
-    previous_run_id = str(manifest.get("run_id") or "").strip()
-    if not previous_run_id:
-        return ResumeDecision(False, "旧 manifest 缺少 run_id，不能续跑")
-    previous_planned_commands = manifest.get("planned_commands")
-    if not isinstance(previous_planned_commands, list):
-        return ResumeDecision(False, "旧 manifest 没有完整命令计划，不能续跑")
-
-    current_planned_commands = [_command_identity(spec.to_command_dict()) for spec in command_specs]
-    normalized_previous_plan = [
-        _command_identity(command) for command in previous_planned_commands if isinstance(command, dict)
-    ]
-    if normalized_previous_plan != current_planned_commands:
+    if not content_equal(list(manifest.planned_commands), [entry.command for entry in plan]):
         return ResumeDecision(False, "命令计划已变化，本次完整重跑")
 
-    previous_commands = list(manifest.get("commands") or [])
-    previous_receipts = list(manifest.get("command_receipts") or [])
-    reusable_receipts: List[Dict[str, Any]] = []
-    reusable_payloads: List[Dict[str, Any]] = []
-    reusable_log_texts: List[Dict[str, str]] = []
-    if not previous_receipts:
-        return ResumeDecision(False, "旧 receipt 缺失：manifest 中没有 command_receipts")
-    for index, spec in enumerate(command_specs, start=1):
-        command = spec.to_command_dict()
-        if index > len(previous_commands) or not isinstance(previous_commands[index - 1], dict):
-            return ResumeDecision(False, f"旧 manifest.commands 缺少第 {index} 步，不能续跑")
-        if not _commands_match(cast(Dict[str, Any], previous_commands[index - 1]), command):
-            return ResumeDecision(False, f"旧 receipt 命令身份不一致：第 {index} 步")
-        if index > len(previous_receipts) or not isinstance(previous_receipts[index - 1], dict):
+    # 失败位置取 manifest 记录的失败步骤，不按退出码反推：中断后的子命令可能以 0 退出，
+    # 结果解析或写证明失败时退出码也是 0。只复用失败位置之前、已校验成功的非 none 步骤。
+    failed_index = manifest.failure_command_index
+    if failed_index is None:
+        return ResumeDecision(False, "上次失败不在某个命令步骤上，没有可复用的步骤")
+    if not 1 <= failed_index <= len(plan):
+        return ResumeDecision(False, f"旧 manifest 的失败步骤不在本次命令计划内：第 {failed_index} 步")
+    resumed_steps: List[ResumedStep] = []
+    for entry in plan[: failed_index - 1]:
+        index = entry.index
+        if index > len(manifest.command_receipts):
             return ResumeDecision(False, f"旧 receipt 缺失：第 {index} 步")
-        receipt_entry = cast(Dict[str, Any], previous_receipts[index - 1])
-        receipt_payload, receipt_error, log_texts = _load_resume_receipt_payload(
-            receipt_entry,
-            command,
-            index=index,
-            previous_run_id=previous_run_id,
+        bound = _bind_previous_receipt(
+            ctx, manifest.command_receipts[index - 1], entry, previous_run_id=manifest.run_id
         )
-        if receipt_error or receipt_payload is None:
-            return ResumeDecision(False, receipt_error)
-        returncode = int(receipt_payload.get("returncode") or 0)
-        if returncode != 0:
-            skip_count = len(reusable_receipts)
-            if skip_count <= 0:
-                return ResumeDecision(False, "上次失败发生在第 1 步，没有可跳过的成功前缀")
+        if isinstance(bound, str):
+            return ResumeDecision(False, bound)
+        if bound.receipt.returncode != 0:
+            return ResumeDecision(False, f"旧 receipt 在失败步骤之前就已失败：第 {index} 步")
+        if entry.spec.reuse_policy == "none":
+            # 版本与环境探针等 none 步骤每次都重新执行，不复用。
+            continue
+        current_environment = fingerprint_environment(
+            entry.spec.env_keys, environment=command_environment(entry.command["env_overlay"]), repo_root=ctx.repo_root
+        )
+        if not content_equal(bound.receipt.environment, current_environment):
+            changed_keys = _changed_environment_keys(bound.receipt.environment, current_environment)
+            return ResumeDecision(False, f"环境与上次不一致：第 {index} 步（{'、'.join(changed_keys)}）")
+        # 指纹相等时两边的私有键清单相同。私有键只记“是否存在”，取值换了也看不出来，
+        # 与 long-gate 缓存同一条规则：带私有键的步骤一律不复用。
+        private_keys = current_environment["non_reusable_env_keys"]
+        if private_keys:
             return ResumeDecision(
-                True,
-                "找到可复用的成功前缀",
-                previous_run_id=previous_run_id,
-                previous_failure_message=str(manifest.get("failure_message") or ""),
-                skip_count=skip_count,
-                start_command_index=index,
-                start_command_display=spec.display,
-                reusable_receipts=tuple(dict(item) for item in reusable_receipts),
-                reusable_receipt_payloads=tuple(dict(item) for item in reusable_payloads),
-                reusable_log_texts=tuple(reusable_log_texts),
-                validated_dirty_content=dict(current_dirty_fingerprint),
+                False, f"环境含私有键，只能确认存在、核对不了取值：第 {index} 步（{'、'.join(private_keys)}）"
             )
-        reusable_receipts.append(
-            {"path": str(receipt_entry.get("path") or ""), "content": dict(receipt_entry["content"])}
-        )
-        reusable_payloads.append(dict(receipt_payload))
-        reusable_log_texts.append(log_texts)
-    return ResumeDecision(False, "旧记录没有可定位的失败命令 receipt")
-
-
-def _write_command_receipt(command: Dict[str, Any], *, run_id: str, index: int, result: Dict[str, Any]) -> Dict[str, Any]:
-    display = str(command.get("display") or "")
-    if not str(result.get("stdout_log_path") or "") or not str(result.get("stderr_log_path") or ""):
-        result.update(_write_command_output_logs(index=index, display=display, result=result))
-    receipt_rel = build_quality_gate_receipt_rel_path(index, display)
-    receipt_abs = os.path.join(REPO_ROOT, receipt_rel.replace("/", os.sep))
-    os.makedirs(os.path.dirname(receipt_abs), exist_ok=True)
-    receipt_payload = build_quality_gate_command_receipt(
-        command,
-        run_id=run_id,
-        command_index=index,
-        returncode=int(result.get("returncode") or 0),
-        stdout=str(result.get("stdout") or ""),
-        stderr=str(result.get("stderr") or ""),
-        stdout_log_path=str(result.get("stdout_log_path") or ""),
-        stderr_log_path=str(result.get("stderr_log_path") or ""),
+        resumed_steps.append(bound)
+    if not resumed_steps:
+        return ResumeDecision(False, f"上次失败在第 {failed_index} 步，之前没有可复用的成功步骤")
+    return ResumeDecision(
+        True,
+        "找到可复用的成功步骤",
+        previous_run_id=manifest.run_id,
+        previous_failure_message=manifest.failure_message,
+        failed_command_index=failed_index,
+        failed_command_display=plan[failed_index - 1].spec.display,
+        resumed_steps=tuple(resumed_steps),
+        validated_dirty_content=current_dirty_content,
     )
-    receipt_payload["execution_mode"] = str(result.get("execution_mode") or "executed")
-    reused_from = result.get("reused_from")
-    if isinstance(reused_from, dict):
-        receipt_payload["reused_from"] = dict(reused_from)
-    if result.get("started_at"):
-        receipt_payload["started_at"] = str(result.get("started_at") or "")
-    if result.get("ended_at"):
-        receipt_payload["ended_at"] = str(result.get("ended_at") or "")
-    if "duration_s" in result:
-        receipt_payload["duration_s"] = float(result.get("duration_s") or 0.0)
-    duration_kind = str(result.get("duration_kind") or "").strip()
-    if duration_kind:
-        receipt_payload["duration_kind"] = duration_kind
-    if "original_duration_s" in result:
-        receipt_payload["original_duration_s"] = float(result.get("original_duration_s") or 0.0)
-    receipt_payload["timed_out"] = bool(result.get("timed_out"))
-    receipt_payload["interrupted"] = bool(result.get("interrupted"))
-    receipt_payload["partial_write"] = bool(result.get("partial_write"))
+
+
+def _write_command_receipt(
+    ctx: GateContext, entry: GateEntry, *, run_id: str, result: CommandResult, environment: Mapping[str, Any]
+) -> Dict[str, Any]:
+    receipt_rel = build_quality_gate_receipt_rel_path(entry.index, entry.spec.display)
+    receipt_abs = os.path.join(ctx.repo_root, receipt_rel.replace("/", os.sep))
+    os.makedirs(os.path.dirname(receipt_abs), exist_ok=True)
+    payload = build_receipt(
+        entry.command, run_id=run_id, command_index=entry.index, result=result, environment=environment
+    )
     with open(receipt_abs, "w", encoding="utf-8") as handle:
-        json.dump(receipt_payload, handle, ensure_ascii=False, indent=2)
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
-    result.update(receipt_path=receipt_rel, run_id=run_id, command_index=index)
-    return {
-        "path": receipt_rel,
-        "content": receipt_payload,
-    }
+    return {"path": receipt_rel, "content": payload}
 
 
-def _mark_command_timing(result: Dict[str, Any], *, started_at: str, start_perf: float) -> float:
-    # 用 perf_counter 而非 monotonic：Windows 上 monotonic 分辨率粗（~15ms），瞬时返回的
-    # 命令会量到 duration_s=0.0；perf_counter 为高分辨率计时，快操作也能得到正时长。
-    duration_s = time.perf_counter() - start_perf
-    result["started_at"] = started_at
-    result["ended_at"] = datetime.now().isoformat(timespec="seconds")
-    result["duration_s"] = duration_s
-    result.setdefault("duration_kind", "executed")
-    result.setdefault("timed_out", False)
-    result.setdefault("interrupted", False)
-    result.setdefault("partial_write", False)
-    return duration_s
+def _record_step(
+    ctx: GateContext, progress: PlanProgress, entry: GateEntry, result: CommandResult, environment: Mapping[str, Any]
+) -> str:
+    progress.commands.append(entry.command)
+    receipt = _write_command_receipt(ctx, entry, run_id=progress.run_id, result=result, environment=environment)
+    progress.command_receipts.append(receipt)
+    return receipt["path"]
 
 
 def _clear_quality_gate_run_outputs(
-    *,
-    remove_manifest: bool = True,
-    remove_receipts_and_logs: bool = True,
-    remove_current_debt: bool = True,
-    remove_full_test_debt_summary: bool = True,
+    ctx: GateContext, *, keep_receipts_and_logs: bool, keep_full_test_debt_outputs: bool
 ) -> None:
-    for rel_path in (QUALITY_GATE_RECEIPTS_DIR_REL, QUALITY_GATE_LOGS_DIR_REL):
-        if not remove_receipts_and_logs:
-            continue
-        abs_path = os.path.join(REPO_ROOT, rel_path)
-        if os.path.isdir(abs_path):
-            shutil.rmtree(abs_path)
-    if remove_current_debt:
-        _clear_quality_gate_current_full_test_debt()
-    if remove_full_test_debt_summary:
-        _clear_quality_gate_full_test_debt_summary()
-    if remove_manifest:
-        _remove_quality_gate_manifest()
+    if not keep_receipts_and_logs:
+        for rel_path in (QUALITY_GATE_RECEIPTS_DIR_REL, QUALITY_GATE_LOGS_DIR_REL):
+            abs_path = os.path.join(ctx.repo_root, rel_path)
+            if os.path.isdir(abs_path):
+                shutil.rmtree(abs_path)
+    if not keep_full_test_debt_outputs:
+        _clear_quality_gate_current_full_test_debt(ctx)
+        _clear_quality_gate_full_test_debt_summary(ctx)
 
 
-def _clear_quality_gate_current_full_test_debt() -> None:
-    current_debt_path = os.path.join(REPO_ROOT, QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL)
+def _clear_quality_gate_current_full_test_debt(ctx: GateContext) -> None:
+    current_debt_path = os.path.join(ctx.repo_root, QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL)
     if os.path.isfile(current_debt_path):
         os.remove(current_debt_path)
 
 
-def _clear_quality_gate_full_test_debt_summary() -> None:
-    summary_path = os.path.join(REPO_ROOT, QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL)
+def _clear_quality_gate_full_test_debt_summary(ctx: GateContext) -> None:
+    summary_path = os.path.join(ctx.repo_root, QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL)
     if os.path.isfile(summary_path):
         os.remove(summary_path)
 
 
-def _preserve_failed_full_test_debt_payload() -> Optional[str]:
+def _preserve_failed_full_test_debt_payload(ctx: GateContext) -> Optional[str]:
     """把失败的 current 明细改名留存供事后排错；返回留存相对路径（无文件则 None）。
 
     改名（而非保留原名）是刻意为之：原名一旦消失，下一轮 long-gate 指纹就走「文件不存在＝
@@ -716,10 +809,10 @@ def _preserve_failed_full_test_debt_payload() -> Optional[str]:
     重跑整轮全量。.failed.json 已纳入 .gitignore 与禁提交名单，os.replace 单文件覆盖（最多常驻
     一份、不跨次堆积），且不计入 git status，因此也不会判脏工作区。
     """
-    current_debt_path = os.path.join(REPO_ROOT, QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL)
+    current_debt_path = os.path.join(ctx.repo_root, QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL)
     if not os.path.isfile(current_debt_path):
         return None
-    preserved_path = os.path.join(REPO_ROOT, QUALITY_GATE_FAILED_FULL_TEST_DEBT_REL)
+    preserved_path = os.path.join(ctx.repo_root, QUALITY_GATE_FAILED_FULL_TEST_DEBT_REL)
     try:
         os.replace(current_debt_path, preserved_path)
     except OSError:
@@ -727,14 +820,11 @@ def _preserve_failed_full_test_debt_payload() -> Optional[str]:
     return QUALITY_GATE_FAILED_FULL_TEST_DEBT_REL.replace("\\", "/")
 
 
-def _clear_full_test_debt_current_outputs_after_failure(runtime_entry: Optional[Mapping[str, Any]]) -> None:
-    if not isinstance(runtime_entry, Mapping):
+def _clear_full_test_debt_current_outputs_after_failure(ctx: GateContext, entry: GateEntry) -> None:
+    if entry.spec.proof_kind != "full_test_debt":
         return
-    entry = dict(runtime_entry.get("entry") or {})
-    if str(entry.get("proof_kind") or "") != "full_test_debt":
-        return
-    preserved_rel = _preserve_failed_full_test_debt_payload()
-    _clear_quality_gate_full_test_debt_summary()
+    preserved_rel = _preserve_failed_full_test_debt_payload(ctx)
+    _clear_quality_gate_full_test_debt_summary(ctx)
     if preserved_rel:
         print(
             f"==> 失败明细已留存：{preserved_rel}"
@@ -743,17 +833,8 @@ def _clear_full_test_debt_current_outputs_after_failure(runtime_entry: Optional[
         )
 
 
-def _remove_quality_gate_manifest() -> None:
-    manifest_path = _quality_gate_manifest_abs_path()
-    if os.path.isfile(manifest_path):
-        os.remove(manifest_path)
-
-
-def _remove_quality_gate_run_output_path(rel_path: str) -> None:
-    normalized = str(rel_path or "").replace("\\", "/").strip()
-    if not normalized:
-        return
-    abs_path = os.path.join(REPO_ROOT, normalized.replace("/", os.sep))
+def _remove_quality_gate_run_output_path(ctx: GateContext, rel_path: str) -> None:
+    abs_path = os.path.join(ctx.repo_root, rel_path.replace("/", os.sep))
     if os.path.isdir(abs_path):
         shutil.rmtree(abs_path)
     elif os.path.isfile(abs_path):
@@ -761,36 +842,31 @@ def _remove_quality_gate_run_output_path(rel_path: str) -> None:
 
 
 def _clear_stale_long_gate_output_files(
-    runtime_entries: Mapping[str, Dict[str, Any]],
+    ctx: GateContext,
+    runtime_entries: Mapping[str, RuntimeEntry],
     *,
     preserve_full_test_debt_outputs: bool,
 ) -> None:
-    for runtime_entry in list(runtime_entries.values()):
-        entry = dict((runtime_entry or {}).get("entry") or {})
-        decision = dict((runtime_entry or {}).get("decision") or {})
-        proof_kind = str(entry.get("proof_kind") or "")
-        if str(decision.get("decision") or "") == "reuse":
+    for rt in runtime_entries.values():
+        if rt.record is not None:
             continue
+        proof_kind = rt.entry.spec.proof_kind
         if proof_kind == "full_test_debt" and preserve_full_test_debt_outputs:
             continue
-        for rel_path in list(entry.get("output_result_files") or []):
-            _remove_quality_gate_run_output_path(str(rel_path))
+        for rel_path in rt.entry.spec.output_result_files:
+            _remove_quality_gate_run_output_path(ctx, rel_path)
         if proof_kind == "required_regressions":
-            _remove_quality_gate_run_output_path("evidence/QualityGate/required_regressions")
+            _remove_quality_gate_run_output_path(ctx, "evidence/QualityGate/required_regressions")
 
 
-def _guard_test_abs_path(rel_path: str) -> str:
-    return os.path.join(REPO_ROOT, rel_path)
+def _guard_test_exists(ctx: GateContext, rel_path: str) -> bool:
+    return os.path.isfile(os.path.join(ctx.repo_root, rel_path))
 
 
-def _guard_test_exists(rel_path: str) -> bool:
-    return os.path.isfile(_guard_test_abs_path(rel_path))
-
-
-def _guard_test_tracked(rel_path: str) -> bool:
+def _guard_test_tracked(ctx: GateContext, rel_path: str) -> bool:
     completed = subprocess.run(
         ["git", "ls-files", "--error-unmatch", "--", rel_path],
-        cwd=REPO_ROOT,
+        cwd=ctx.repo_root,
         text=True,
         capture_output=True,
         encoding="utf-8",
@@ -799,16 +875,16 @@ def _guard_test_tracked(rel_path: str) -> bool:
     return completed.returncode == 0
 
 
-def _repo_identity() -> Dict[str, str]:
+def _repo_identity(ctx: GateContext) -> Dict[str, str]:
     try:
-        return repo_identity(REPO_ROOT)
+        return repo_identity(ctx.repo_root)
     except RuntimeError as exc:
         raise QualityGateError(f"无法确认仓库身份：{exc}") from exc
 
 
-def _assert_guard_tests_ready(*, require_tracked: bool = True) -> None:
-    missing = [path for path in REQUIRED_TEST_ARGS if not _guard_test_exists(path)]
-    untracked = ([path for path in REQUIRED_TEST_ARGS if path not in missing and not _guard_test_tracked(path)]
+def _assert_guard_tests_ready(ctx: GateContext, *, require_tracked: bool) -> None:
+    missing = [path for path in REQUIRED_TEST_ARGS if not _guard_test_exists(ctx, path)]
+    untracked = ([path for path in REQUIRED_TEST_ARGS if path not in missing and not _guard_test_tracked(ctx, path)]
                  if require_tracked else [])
     if not missing and not untracked:
         return
@@ -831,9 +907,8 @@ def _parse_ruff_version(text: str) -> Tuple[int, int, int]:
     return major, minor, patch
 
 
-def _assert_ruff_version(output: Dict[str, Any]) -> str:
-    _assert_command_succeeded("python -m ruff --version", output)
-    text = str(output.get("stdout") or "").strip()
+def _assert_ruff_version(output: str) -> str:
+    text = output.strip()
     version = _parse_ruff_version(text)
     if version < (0, 15, 0) or version >= (0, 16, 0):
         raise QualityGateError(f"ruff 版本超出允许范围 >=0.15,<0.16：{text}")
@@ -847,9 +922,8 @@ def _parse_pyright_version(text: str) -> Tuple[int, int, int]:
     return int(match.group(1)), int(match.group(2)), int(match.group(3))
 
 
-def _assert_pyright_version(output: Dict[str, Any]) -> str:
-    _assert_command_succeeded("python -m pyright --version", output)
-    text = str(output.get("stdout") or "").strip()
+def _assert_pyright_version(output: str) -> str:
+    text = output.strip()
     version = _parse_pyright_version(text)
     if version != PYRIGHT_REQUIRED_VERSION:
         expected = ".".join(str(part) for part in PYRIGHT_REQUIRED_VERSION)
@@ -857,35 +931,33 @@ def _assert_pyright_version(output: Dict[str, Any]) -> str:
     return text
 
 
-CommandResultHandler = Callable[[str, Dict[str, Any]], Dict[str, Any]]
+# 结果处理器只在命令返回 0 后调用，产出 manifest 需要的解析结果；不通过时抛 QualityGateError。
+CommandResultHandler = Callable[[GateContext, CommandResult], Dict[str, Any]]
 
 
-def _handle_checked_quality_gate_command(display: str, result: Dict[str, Any]) -> Dict[str, Any]:
-    _assert_command_succeeded(display, result)
+def _handle_checked_quality_gate_command(_ctx: GateContext, _result: CommandResult) -> Dict[str, Any]:
     return {}
 
 
-def _handle_collect_quality_gate_command(display: str, result: Dict[str, Any]) -> Dict[str, Any]:
-    _assert_command_succeeded(display, result)
-    collect_output = str(result.get("stdout") or "").strip()
-    nodeids = _collect_nodeids_or_raise(collect_output)
+def _handle_collect_quality_gate_command(_ctx: GateContext, result: CommandResult) -> Dict[str, Any]:
+    nodeids = _collect_nodeids_or_raise(result.stdout.strip())
     collected_paths = {nodeid.split("::", 1)[0].replace("\\", "/") for nodeid in nodeids}
     missing = [path for path in REQUIRED_TEST_ARGS if path.replace("\\", "/") not in collected_paths]
     if missing:
         raise QualityGateError("required 文件没有被实际 collect 覆盖：" + ", ".join(missing))
-    return {"collection_proof": _build_collection_proof(nodeids)}
+    return {"collection_proof": build_quality_gate_collection_proof(nodeids, required_tests=REQUIRED_TEST_ARGS)}
 
 
-def _handle_ruff_version_quality_gate_command(_display: str, result: Dict[str, Any]) -> Dict[str, Any]:
-    return {"ruff_version_output": _assert_ruff_version(result)}
+def _handle_ruff_version_quality_gate_command(_ctx: GateContext, result: CommandResult) -> Dict[str, Any]:
+    return {"ruff_version_output": _assert_ruff_version(result.stdout)}
 
 
-def _handle_pyright_version_quality_gate_command(_display: str, result: Dict[str, Any]) -> Dict[str, Any]:
-    return {"pyright_version_output": _assert_pyright_version(result)}
+def _handle_pyright_version_quality_gate_command(_ctx: GateContext, result: CommandResult) -> Dict[str, Any]:
+    return {"pyright_version_output": _assert_pyright_version(result.stdout)}
 
 
-def _load_pyright_tools_config_include() -> List[str]:
-    config_path = os.path.join(REPO_ROOT, PYRIGHT_TOOLS_CONFIG.replace("/", os.sep))
+def _load_pyright_tools_config_include(ctx: GateContext) -> List[str]:
+    config_path = os.path.join(ctx.repo_root, PYRIGHT_TOOLS_CONFIG.replace("/", os.sep))
     try:
         with open(config_path, encoding="utf-8") as handle:
             payload = json.load(handle)
@@ -899,8 +971,8 @@ def _load_pyright_tools_config_include() -> List[str]:
     return [str(item).replace("\\", "/").strip() for item in include if str(item).strip()]
 
 
-def _assert_pyright_tools_config_matches_tool_paths() -> None:
-    configured = _load_pyright_tools_config_include()
+def _assert_pyright_tools_config_matches_tool_paths(ctx: GateContext) -> None:
+    configured = _load_pyright_tools_config_include(ctx)
     expected = [str(path).replace("\\", "/").strip() for path in QUALITY_GATE_TOOL_PATHS]
     if configured == expected:
         return
@@ -914,19 +986,16 @@ def _assert_pyright_tools_config_matches_tool_paths() -> None:
     )
 
 
-def _handle_pyright_tools_quality_gate_command(display: str, result: Dict[str, Any]) -> Dict[str, Any]:
-    _assert_command_succeeded(display, result)
-    _assert_pyright_tools_config_matches_tool_paths()
+def _handle_pyright_tools_quality_gate_command(ctx: GateContext, _result: CommandResult) -> Dict[str, Any]:
+    _assert_pyright_tools_config_matches_tool_paths(ctx)
     return {}
 
 
-def _handle_import_cycle_production_quality_gate_command(display: str, result: Dict[str, Any]) -> Dict[str, Any]:
-    _assert_command_succeeded(display, result)
+def _handle_import_cycle_production_quality_gate_command(_ctx: GateContext, _result: CommandResult) -> Dict[str, Any]:
     return {"import_cycle_production_proof": True}
 
 
-def _handle_import_cycle_with_tests_quality_gate_command(display: str, result: Dict[str, Any]) -> Dict[str, Any]:
-    _assert_command_succeeded(display, result)
+def _handle_import_cycle_with_tests_quality_gate_command(_ctx: GateContext, _result: CommandResult) -> Dict[str, Any]:
     return {"import_cycle_with_tests_proof": True}
 
 
@@ -942,348 +1011,180 @@ RUNNER_HANDLERS: Dict[str, CommandResultHandler] = {
 
 
 def _run_quality_gate_command_plan(
-    command_specs: Sequence[GateCheckSpec],
+    ctx: GateContext,
+    plan: Sequence[GateEntry],
+    progress: PlanProgress,
     *,
-    run_id: str,
-    commands: List[Dict[str, Any]],
-    command_receipts: List[Dict[str, Any]],
-    parsed_command_results: Dict[str, Any],
-    resume_decision: Optional[ResumeDecision] = None,
-    long_gate_cache: bool = False,
-    long_gate_cache_write_success: bool = True,
-    long_gate_cache_dir: str = "",
-    long_gate_runtime_entries: Optional[Dict[str, Dict[str, Any]]] = None,
-    long_gate_failure: Optional[Dict[str, Any]] = None,
-    pending_long_gate_successes: Optional[List[Dict[str, Any]]] = None,
+    resume_decision: ResumeDecision,
+    long_gate_runtime_entries: Dict[str, RuntimeEntry],
+    long_gate_context: Optional[LongGateCacheContext],
 ) -> None:
-    specs = list(command_specs)
-    normalized_plan = [spec.to_command_dict() for spec in specs]
-    total = len(specs)
-    long_gate_entries = dict(long_gate_runtime_entries or {}) if long_gate_cache else {}
-    skip_count = int(resume_decision.skip_count if resume_decision and resume_decision.enabled else 0)
-    if skip_count > 0 and resume_decision is not None:
-        reusable_receipts = resume_decision.reusable_receipts
-        reusable_payloads = resume_decision.reusable_receipt_payloads
-        reusable_log_texts = resume_decision.reusable_log_texts
-        for index, spec in enumerate(specs[:skip_count], start=1):
-            command = spec.to_command_dict()
-            display = spec.display
-            handler = RUNNER_HANDLERS[spec.runner_handler]
-            print(f"==> 第 {index}/{total} 步：[resume-skip] {display}", flush=True)
-            command_started_at = datetime.now().isoformat(timespec="seconds")
-            start_perf = time.perf_counter()
-            result = _result_from_receipt_logs(reusable_payloads[index - 1], reusable_log_texts[index - 1])
-            result["execution_mode"] = "resumed_success_prefix"
-            result["reused_from"] = {
-                "receipt_path": str(reusable_receipts[index - 1].get("path") or ""),
-                "receipt_content": dict(reusable_receipts[index - 1].get("content") or {}),
-                "run_id": str(reusable_payloads[index - 1].get("run_id") or ""),
-                "completed_at": str(reusable_payloads[index - 1].get("ended_at") or ""),
-            }
-            _mark_command_timing(result, started_at=command_started_at, start_perf=start_perf)
-            result["duration_kind"] = "resume_overhead"
-            result["original_duration_s"] = float(reusable_payloads[index - 1].get("duration_s") or 0.0)
-            commands.append(command)
-            receipt_entry = _write_command_receipt(command, run_id=run_id, index=index, result=result)
-            command_receipts.append(receipt_entry)
-            try:
-                parsed_command_results.update(handler(display, result))
-            except QualityGateError as exc:
-                _raise_command_failure(
-                    index=index,
-                    total=total,
-                    display=display,
-                    receipt_rel=receipt_entry["path"],
-                    result=result,
-                    detail=str(exc),
-                )
+    """按命令序号逐步执行：同一个循环里逐步决定续跑复用、long-gate 复用、缓存失败复用或实际执行。
 
-    for zero_based_index, spec in enumerate(specs[skip_count:], start=skip_count):
-        command_index = zero_based_index + 1
-        command = spec.to_command_dict()
-        display = spec.display
-        handler = RUNNER_HANDLERS[spec.runner_handler]
-        print(f"==> 第 {command_index}/{total} 步开始：{display}", flush=True)
-        command_started_at = datetime.now().isoformat(timespec="seconds")
-        start_perf = time.perf_counter()
-        long_gate_runtime_entry = long_gate_entries.get(spec.check_id)
-        long_gate_entry = dict((long_gate_runtime_entry or {}).get("entry") or {})
-        long_gate_fingerprint: Optional[Dict[str, Any]] = None
-        if long_gate_runtime_entry is not None:
-            _refresh_full_test_debt_reuse_decision(long_gate_runtime_entry, cache_dir=long_gate_cache_dir)
-            _refresh_required_regressions_reuse_decision(long_gate_runtime_entry, cache_dir=long_gate_cache_dir)
-            long_gate_fingerprint = dict(long_gate_runtime_entry.get("fingerprint") or {})
-            reuse_evaluation = dict(long_gate_runtime_entry.get("evaluation") or {})
-            decision = dict(long_gate_runtime_entry.get("decision") or {})
-            if decision["decision"] == "reuse":
-                previous = reuse_evaluation["validated_success"]
-                reused_from = {
-                    "result_path": str(decision.get("previous_result_path") or ""),
-                    "completed_at": str(previous.get("completed_at") or ""),
-                    "fingerprint": dict(previous.get("fingerprint") or {}),
-                    "duration_s": float(previous.get("duration_s") or 0.0),
-                }
-                result = _coerce_command_result(
-                    {
-                        "stdout": str(reuse_evaluation.get("stdout") or ""),
-                        "stderr": str(reuse_evaluation.get("stderr") or ""),
-                        "returncode": int(previous.get("returncode") or 0),
-                    }
-                )
-                result["execution_mode"] = "reused_success_cache"
-                result["reused_from"] = reused_from
-                elapsed = _mark_command_timing(result, started_at=command_started_at, start_perf=start_perf)
-                result["duration_kind"] = "reuse_overhead"
-                result["original_duration_s"] = reused_from["duration_s"]
-                commands.append(command)
-                receipt_entry = _write_command_receipt(command, run_id=run_id, index=command_index, result=result)
-                command_receipts.append(receipt_entry)
-                _refresh_summary_entry(
-                    long_gate_runtime_entry,
-                    result=result,
-                    receipt_path=receipt_entry["path"],
-                    output_file_paths=[
-                        str(row.get("path") or "")
-                        for row in list(previous.get("output_files") or [])
-                        if isinstance(row, dict)
-                    ],
-                )
-                try:
-                    parsed_command_results.update(handler(display, result))
-                except QualityGateError as exc:
-                    if long_gate_failure is not None:
-                        long_gate_failure.clear()
-                        long_gate_failure.update(
-                            extract_copyable_failure(
-                                entry_id=str(long_gate_entry.get("entry_id") or ""),
-                                display=display,
-                                result=result,
-                                receipt_path=receipt_entry["path"],
-                            )
-                        )
-                        _refresh_summary_entry(
-                            long_gate_runtime_entry,
-                            result=result,
-                            receipt_path=receipt_entry["path"],
-                            failed=True,
-                        )
-                        _print_long_gate_failure(long_gate_failure)
-                    _raise_command_failure(
-                        index=command_index,
-                        total=total,
-                        display=display,
-                        receipt_rel=receipt_entry["path"],
-                        result=result,
-                        detail=str(exc),
-                    )
-                print(
-                    f"==> 第 {command_index}/{total} 步结束：[long-gate-reuse] 通过，"
-                    f"耗时 {elapsed:.1f}s，receipt={receipt_entry['path']}",
-                    flush=True,
-                )
-                continue
-            cached_failure = None
-            if long_gate_cache_write_success:
-                cached_failure = _cached_full_test_debt_failure_result(
-                    long_gate_runtime_entry,
-                    cache_dir=long_gate_cache_dir,
-                )
-            if cached_failure is not None:
-                reused_from = cached_failure["reused_from"]
-                result = _coerce_command_result(cached_failure)
-                result["execution_mode"] = "cached_failure"
-                result["reused_from"] = reused_from
-                elapsed = _mark_command_timing(result, started_at=command_started_at, start_perf=start_perf)
-                result["duration_kind"] = "reuse_overhead"
-                result["original_duration_s"] = float(reused_from["duration_s"])
-                commands.append(command)
-                receipt_entry = _write_command_receipt(command, run_id=run_id, index=command_index, result=result)
-                command_receipts.append(receipt_entry)
-                if long_gate_failure is not None:
-                    long_gate_failure.clear()
-                    long_gate_failure.update(
-                        extract_copyable_failure(
-                            entry_id=str(long_gate_entry.get("entry_id") or ""),
-                            display=display,
-                            result=result,
-                            receipt_path=receipt_entry["path"],
-                        )
-                    )
-                    _refresh_summary_entry(
-                        long_gate_runtime_entry,
-                        result=result,
-                        receipt_path=receipt_entry["path"],
-                        failed=True,
-                    )
-                    _print_long_gate_failure(long_gate_failure)
-                    _clear_full_test_debt_current_outputs_after_failure(long_gate_runtime_entry)
-                print(
-                    f"==> 第 {command_index}/{total} 步结束：[long-gate-cached-failure] "
-                    f"失败(returncode={int(result.get('returncode') or 0)})，耗时 {elapsed:.1f}s，"
-                    f"receipt={receipt_entry['path']}",
-                    flush=True,
-                )
-                _raise_command_failure(
-                    index=command_index,
-                    total=total,
-                    display=display,
-                    receipt_rel=receipt_entry["path"],
-                    result=result,
-                )
-
-        raw_result = _run_command(
-            spec.check_id,
-            _resolve_command_args(spec.args),
-            capture_output=bool(spec.capture_output),
-            env_overlay=dict(spec.env_overlay),
+    每条路径都经 `_record_outcome` 把可复用条目换成带结果的条目，summary（含失败）由它生成；
+    long_gate_context 为 None 表示本次缓存未生效（未启用或续跑），不读写缓存。
+    """
+    resumed_steps = {step.receipt.command_index: step for step in resume_decision.resumed_steps}
+    for entry in plan:
+        progress.running_command_index = entry.index
+        if entry.index in resumed_steps:
+            _run_resumed_step(ctx, entry, resumed_steps[entry.index], progress, long_gate_runtime_entries)
+            continue
+        environment = command_environment(entry.command["env_overlay"])
+        environment_fingerprint = fingerprint_environment(
+            entry.spec.env_keys, environment=environment, repo_root=ctx.repo_root
         )
-        result = _coerce_command_result(raw_result)
-        result.update(_write_command_output_logs(index=command_index, display=display, result=result))
-        result["execution_mode"] = "executed"
-        elapsed = _mark_command_timing(result, started_at=command_started_at, start_perf=start_perf)
-        commands.append(command)
-        receipt_entry = _write_command_receipt(command, run_id=run_id, index=command_index, result=result)
-        command_receipts.append(receipt_entry)
-        returncode = int(result.get("returncode") or 0)
-        if returncode != 0:
-            if long_gate_runtime_entry is not None and long_gate_failure is not None:
-                long_gate_failure.clear()
-                long_gate_failure.update(
-                    extract_copyable_failure(
-                        entry_id=str(long_gate_entry.get("entry_id") or ""),
-                        display=display,
-                        result=result,
-                        receipt_path=receipt_entry["path"],
-                    )
-                )
-                _refresh_summary_entry(
-                    long_gate_runtime_entry,
-                    result=result,
-                    receipt_path=receipt_entry["path"],
-                    failed=True,
-                )
-                _print_long_gate_failure(long_gate_failure)
-                _clear_full_test_debt_current_outputs_after_failure(long_gate_runtime_entry)
-                _maybe_write_full_test_debt_failure_cache(
-                    long_gate_runtime_entry,
-                    result=result,
-                    receipt_path=receipt_entry["path"],
-                    cache_dir=long_gate_cache_dir,
-                    long_gate_cache_write_success=long_gate_cache_write_success,
-                )
-            print(
-                f"==> 第 {command_index}/{total} 步结束：失败(returncode={returncode})，"
-                f"耗时 {elapsed:.1f}s，receipt={receipt_entry['path']}",
-                flush=True,
+        print(f"==> 第 {entry.index}/{progress.total} 步开始：{entry.spec.display}", flush=True)
+        started = _step_start()
+        if long_gate_context is not None and entry.spec.check_id in long_gate_runtime_entries:
+            _run_long_gate_step(
+                ctx,
+                entry,
+                progress,
+                long_gate_runtime_entries,
+                long_gate_context,
+                started=started,
+                environment=environment,
+                environment_fingerprint=environment_fingerprint,
             )
-            _raise_command_failure(
-                index=command_index,
-                total=total,
-                display=display,
-                receipt_rel=receipt_entry["path"],
-                result=result,
-            )
+            continue
+        result, receipt_path = _execute_step(
+            ctx,
+            entry,
+            progress,
+            long_gate_runtime_entries,
+            started=started,
+            environment=environment,
+            environment_fingerprint=environment_fingerprint,
+        )
+        if result.returncode != 0:
+            _record_outcome(long_gate_runtime_entries, entry, result, receipt_path, failed=True)
+            _print_step_end(entry, total=progress.total, result=result, receipt_path=receipt_path, failed=True)
+            _raise_command_failure(entry, total=progress.total, receipt_path=receipt_path, result=result)
         try:
-            parsed_command_results.update(handler(display, result))
+            progress.parsed_command_results.update(RUNNER_HANDLERS[entry.spec.runner_handler](ctx, result))
         except QualityGateError as exc:
-            if long_gate_runtime_entry is not None and long_gate_failure is not None:
-                long_gate_failure.clear()
-                long_gate_failure.update(
-                    extract_copyable_failure(
-                        entry_id=str(long_gate_entry.get("entry_id") or ""),
-                        display=display,
-                        result=result,
-                        receipt_path=receipt_entry["path"],
-                    )
-                )
-                _refresh_summary_entry(
-                    long_gate_runtime_entry,
-                    result=result,
-                    receipt_path=receipt_entry["path"],
-                    failed=True,
-                )
-                _print_long_gate_failure(long_gate_failure)
-            print(
-                f"==> 第 {command_index}/{total} 步结束：失败(returncode={returncode})，"
-                f"耗时 {elapsed:.1f}s，receipt={receipt_entry['path']}",
-                flush=True,
-            )
-            _raise_command_failure(
-                index=command_index,
-                total=total,
-                display=display,
-                receipt_rel=receipt_entry["path"],
-                result=result,
-                detail=str(exc),
-            )
-        output_file_paths: List[str] = []
-        if long_gate_runtime_entry is not None:
-            current_decision = dict(long_gate_runtime_entry.get("decision") or {})
-            if _decision_cache_unavailable(current_decision):
-                print(
-                    f"==> 第 {command_index}/{total} 步：跳过 long-gate success cache 写入，"
-                    f"该 entry 当前 cache unavailable：{current_decision['reason']}",
-                    flush=True,
-                )
-            elif not bool(long_gate_cache_write_success):
-                print(
-                    f"==> 第 {command_index}/{total} 步：跳过 long-gate success cache 写入，"
-                    "因为本次不是干净工作区的完整成功证明",
-                    flush=True,
-                )
-            else:
-                try:
-                    if not long_gate_fingerprint:
-                        long_gate_fingerprint = _strict_long_gate_fingerprint(long_gate_entry)
-                    if bool(long_gate_entry.get("reuse_allowed")):
-                        long_gate_fingerprint = _fingerprint_for_success_cache(
-                            long_gate_entry,
-                            long_gate_fingerprint,
-                        )
-                except QualityGateError as exc:
-                    _mark_runtime_entry_cache_unavailable(
-                        long_gate_runtime_entry, failure_kind=_fingerprint_failure_kind(exc), message=str(exc)
-                    )
-                    print(
-                        f"==> 第 {command_index}/{total} 步：跳过 long-gate success cache 写入，"
-                        "因为 strict fingerprint 失败，该 entry 当前 cache unavailable",
-                        flush=True,
-                    )
-                else:
-                    output_file_paths = _prepare_long_gate_success_output_files(
-                        long_gate_entry,
-                        result,
-                        cache_dir=long_gate_cache_dir,
-                        run_id=run_id,
-                        command_index=command_index,
-                        command_plan=normalized_plan,
-                        fingerprint=long_gate_fingerprint,
-                    )
-                    if bool(long_gate_entry.get("reuse_allowed")):
-                        long_gate_runtime_entry["fingerprint"] = long_gate_fingerprint
-                        decision_for_summary = long_gate_runtime_entry.get("decision")
-                        if isinstance(decision_for_summary, dict):
-                            decision_for_summary["current_fingerprint"] = long_gate_fingerprint
-                        cache_result = dict(result)
-                        cache_result.pop("stdout_log_path", None)
-                        cache_result.pop("stderr_log_path", None)
-                        if pending_long_gate_successes is not None:
-                            pending_long_gate_successes.append(
-                                {
-                                    "entry": dict(long_gate_entry),
-                                    "fingerprint": long_gate_fingerprint,
-                                    "command_result": cache_result,
-                                    "output_files": _abs_output_paths(output_file_paths),
-                                    "runtime_entry": long_gate_runtime_entry,
-                                }
-                            )
-            _refresh_summary_entry(
-                long_gate_runtime_entry,
-                result=result,
-                receipt_path=receipt_entry["path"],
-                output_file_paths=output_file_paths,
-            )
-        print(f"==> 第 {command_index}/{total} 步结束：通过，耗时 {elapsed:.1f}s，receipt={receipt_entry['path']}", flush=True)
+            _record_outcome(long_gate_runtime_entries, entry, result, receipt_path, failed=True)
+            _print_step_end(entry, total=progress.total, result=result, receipt_path=receipt_path, failed=True)
+            _raise_command_failure(entry, total=progress.total, receipt_path=receipt_path, result=result, detail=str(exc))
+        _record_outcome(long_gate_runtime_entries, entry, result, receipt_path, failed=False)
+        _print_step_end(entry, total=progress.total, result=result, receipt_path=receipt_path, failed=False)
+    progress.running_command_index = None
+
+
+def _run_resumed_step(
+    ctx: GateContext,
+    entry: GateEntry,
+    step: ResumedStep,
+    progress: PlanProgress,
+    runtime_entries: Dict[str, RuntimeEntry],
+) -> None:
+    print(f"==> 第 {entry.index}/{progress.total} 步：[resume-skip] {entry.spec.display}", flush=True)
+    result = _resumed_result(ctx, entry, step, _step_start())
+    # 续跑判定已核过这份环境指纹与当前环境逐项相等，直接沿用。
+    receipt_path = _record_step(ctx, progress, entry, result, step.receipt.environment)
+    try:
+        progress.parsed_command_results.update(RUNNER_HANDLERS[entry.spec.runner_handler](ctx, result))
+    except QualityGateError as exc:
+        _record_outcome(runtime_entries, entry, result, receipt_path, failed=True)
+        _raise_command_failure(entry, total=progress.total, receipt_path=receipt_path, result=result, detail=str(exc))
+    _record_outcome(runtime_entries, entry, result, receipt_path, failed=False)
+
+
+def _record_outcome(
+    runtime_entries: Dict[str, RuntimeEntry],
+    entry: GateEntry,
+    result: CommandResult,
+    receipt_path: str,
+    *,
+    failed: bool,
+    output_files: Tuple[str, ...] = (),
+) -> StepOutcome:
+    """登记一步的结果；执行、long-gate 复用、缓存失败复用与续跑复用都经这里。
+
+    只有可复用条目（runtime_entries 里有它）进 long-gate summary；output_files 是随成功缓存保存的输出文件。
+    """
+    outcome = StepOutcome(result, receipt_path, output_files, failed)
+    check_id = entry.spec.check_id
+    if check_id in runtime_entries:
+        runtime_entries[check_id] = replace(runtime_entries[check_id], outcome=outcome)
+    return outcome
+
+
+def _record_long_gate_failure(
+    runtime_entries: Dict[str, RuntimeEntry], entry: GateEntry, result: CommandResult, receipt_path: str
+) -> None:
+    outcome = _record_outcome(runtime_entries, entry, result, receipt_path, failed=True)
+    _print_long_gate_failure(copyable_failure(entry, outcome))
+
+
+def _run_long_gate_step(
+    ctx: GateContext,
+    entry: GateEntry,
+    progress: PlanProgress,
+    runtime_entries: Dict[str, RuntimeEntry],
+    context: LongGateCacheContext,
+    *,
+    started: Tuple[str, float],
+    environment: Mapping[str, str],
+    environment_fingerprint: Mapping[str, Any],
+) -> None:
+    total = progress.total
+    rt = _refresh_long_gate_decision(ctx, runtime_entries[entry.spec.check_id], context)
+    runtime_entries[entry.spec.check_id] = rt
+    handler = RUNNER_HANDLERS[entry.spec.runner_handler]
+    if rt.record is not None:
+        # 决策为复用成功缓存。
+        result = _reused_success_result(ctx, entry, rt.record, started)
+        receipt_path = _record_step(ctx, progress, entry, result, environment_fingerprint)
+        try:
+            progress.parsed_command_results.update(handler(ctx, result))
+        except QualityGateError as exc:
+            _record_long_gate_failure(runtime_entries, entry, result, receipt_path)
+            _raise_command_failure(entry, total=total, receipt_path=receipt_path, result=result, detail=str(exc))
+        output_files = tuple(row["path"] for row in rt.record.output_files)
+        _record_outcome(runtime_entries, entry, result, receipt_path, failed=False, output_files=output_files)
+        _print_step_end(entry, total=total, result=result, receipt_path=receipt_path, failed=False, label="[long-gate-reuse] ")
+        return
+
+    cached_failure = _cached_failure_record(ctx, rt, context)
+    if cached_failure is not None:
+        result = _cached_failure_result(cached_failure, started)
+        receipt_path = _record_step(ctx, progress, entry, result, environment_fingerprint)
+        _record_long_gate_failure(runtime_entries, entry, result, receipt_path)
+        _clear_full_test_debt_current_outputs_after_failure(ctx, entry)
+        label = "[long-gate-cached-failure] "
+        _print_step_end(entry, total=total, result=result, receipt_path=receipt_path, failed=True, label=label)
+        _raise_command_failure(entry, total=total, receipt_path=receipt_path, result=result)
+
+    result, receipt_path = _execute_step(
+        ctx,
+        entry,
+        progress,
+        runtime_entries,
+        started=started,
+        environment=environment,
+        environment_fingerprint=environment_fingerprint,
+    )
+    if result.returncode != 0:
+        _record_long_gate_failure(runtime_entries, entry, result, receipt_path)
+        _clear_full_test_debt_current_outputs_after_failure(ctx, entry)
+        _write_failure_cache(ctx, rt, result, receipt_path=receipt_path, context=context, run_id=progress.run_id)
+        _print_step_end(entry, total=total, result=result, receipt_path=receipt_path, failed=True)
+        _raise_command_failure(entry, total=total, receipt_path=receipt_path, result=result)
+    try:
+        progress.parsed_command_results.update(handler(ctx, result))
+    except QualityGateError as exc:
+        _record_long_gate_failure(runtime_entries, entry, result, receipt_path)
+        _print_step_end(entry, total=total, result=result, receipt_path=receipt_path, failed=True)
+        _raise_command_failure(entry, total=total, receipt_path=receipt_path, result=result, detail=str(exc))
+    # 输出文件与专题证明写出可能失败（磁盘、权限）：写之前先按失败登记已取得的结果与 receipt，写完才改记为通过，
+    # 写出失败时本步状态与已取得的信息都留在 summary 里。
+    _record_outcome(runtime_entries, entry, result, receipt_path, failed=True)
+    rt, output_files = _stage_long_gate_success(ctx, rt, context, result, receipt_path=receipt_path, progress=progress)
+    runtime_entries[entry.spec.check_id] = rt
+    _record_outcome(runtime_entries, entry, result, receipt_path, failed=False, output_files=output_files)
+    _print_step_end(entry, total=total, result=result, receipt_path=receipt_path, failed=False)
 
 
 def _require_quality_gate_command_proofs(
@@ -1319,17 +1220,13 @@ def _require_quality_gate_command_proofs(
         raise QualityGateError(f"shared command plan 缺少必需证明命令或解析结果：{missing_check}")
 
 
-def _state_paths() -> Dict[str, str]:
-    return resolve_runtime_state_paths(REPO_ROOT)
-
-
-def _load_runtime_state() -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Dict[str, str]]:
-    paths = _state_paths()
+def _load_runtime_state(ctx: GateContext) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Dict[str, str]]:
+    paths = resolve_runtime_state_paths(ctx.repo_root)
     contract_exists = os.path.exists(paths["contract_path"])
     lock_exists = os.path.exists(paths["lock_path"])
-    contract_result = read_runtime_contract_result(REPO_ROOT)
+    contract_result = read_runtime_contract_result(ctx.repo_root)
     contract = contract_result.payload if contract_result.ok else None
-    lock_result = read_runtime_lock_result(REPO_ROOT)
+    lock_result = read_runtime_lock_result(ctx.repo_root)
     lock = lock_result.payload if lock_result.ok else None
     if contract_exists and contract is None:
         raise QualityGateError("仓库根运行时契约存在但无法解析：{}".format(paths["contract_path"]))
@@ -1367,14 +1264,14 @@ def _pid_signal(payload: Optional[Dict[str, Any]]) -> Tuple[RuntimeProbeState, O
         return RuntimeProbeState.ABSENT, None, None, ""
     pid = payload["pid"]
     exe_path = str(payload.get("exe_path") or "").strip()
-    pid_state = _pid_state(pid)
+    pid_state = query_pid_state(pid, state_dir=None)
     if pid_state is False:
         return RuntimeProbeState.STALE, pid, False, exe_path
     if pid_state is None:
         return RuntimeProbeState.UNKNOWN, pid, None, exe_path
     if not exe_path:
         return RuntimeProbeState.UNKNOWN, pid, None, exe_path
-    pid_match = _pid_matches_contract(pid, exe_path)
+    pid_match = pid_matches_contract(pid, exe_path, state_dir=None)
     if pid_match is False:
         return RuntimeProbeState.STALE, pid, False, exe_path
     if pid_match is True:
@@ -1414,8 +1311,8 @@ def _health_signal(contract: Optional[Dict[str, Any]]) -> Tuple[RuntimeProbeStat
     return (RuntimeProbeState.ACTIVE if healthy else RuntimeProbeState.STALE), host, port
 
 
-def _runtime_state_snapshot() -> Dict[str, Any]:
-    contract, lock, paths = _load_runtime_state()
+def _runtime_state_snapshot(ctx: GateContext) -> Dict[str, Any]:
+    contract, lock, paths = _load_runtime_state(ctx)
     pid_state, pid, pid_match, exe_path = _effective_pid_signal(contract, lock)
     health_state, host, port = _health_signal(contract)
     return {
@@ -1432,8 +1329,8 @@ def _runtime_state_snapshot() -> Dict[str, Any]:
     }
 
 
-def _assert_no_active_runtime() -> None:
-    contract, lock, paths = _load_runtime_state()
+def _assert_no_active_runtime(ctx: GateContext) -> None:
+    contract, lock, paths = _load_runtime_state(ctx)
     if contract is None and lock is None:
         return
 
@@ -1489,10 +1386,10 @@ def _assert_no_active_runtime() -> None:
     )
 
 
-def _git_head_sha() -> str:
+def _git_head_sha(ctx: GateContext) -> str:
     completed = subprocess.run(
         ["git", "rev-parse", "HEAD"],
-        cwd=REPO_ROOT,
+        cwd=ctx.repo_root,
         text=True,
         capture_output=True,
         encoding="utf-8",
@@ -1503,10 +1400,10 @@ def _git_head_sha() -> str:
     return str(completed.stdout or "").strip()
 
 
-def _git_status_lines() -> List[str]:
+def _git_status_lines(ctx: GateContext) -> List[str]:
     completed = subprocess.run(
         ["git", "-c", "core.quotepath=false", "status", "--short", "--untracked-files=all"],
-        cwd=REPO_ROOT,
+        cwd=ctx.repo_root,
         text=True,
         capture_output=True,
         encoding="utf-8",
@@ -1550,65 +1447,39 @@ def _parse_collect_nodeids(output: str) -> List[str]:
     return parse_pytest_collect_nodeids(output)
 
 
-def _build_collection_proof(default_collect_nodeids: Sequence[str]) -> Dict[str, Any]:
-    return build_quality_gate_collection_proof(default_collect_nodeids, required_tests=REQUIRED_TEST_ARGS)
-
-
-def _long_gate_declared_output_paths(entry: Dict[str, Any]) -> List[str]:
-    return list(dict.fromkeys(str(path).replace("\\", "/") for path in list(entry.get("output_result_files") or [])))
-
-
-def _long_gate_success_log_row(result: Dict[str, Any], *, stream: str, rel_path: str) -> Dict[str, Any]:
-    text = quality_gate_shared.sanitize_quality_gate_output(str(result.get(stream) or ""))
-    return {"path": str(rel_path or "").replace("\\", "/"),
-            "content": text, "bytes": len(text.encode("utf-8"))}
-
-
-def _build_long_gate_execution_proof(
-    entry: Dict[str, Any], result: Dict[str, Any], *, schema_version: int, log_entry_id: str,
-    run_id: str, command_index: int, command_plan: Sequence[Dict[str, Any]],
-    fingerprint: Dict[str, Any], cache_dir: str,
+def _long_gate_execution_proof(
+    entry: GateEntry,
+    result: CommandResult,
+    *,
+    schema_version: int,
+    run_id: str,
+    fingerprint: Mapping[str, Any],
+    cache_dir: str,
 ) -> Dict[str, Any]:
-    """Capture the execution facts shared by all long-gate topic proofs."""
-    cache_root = str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/")
-    safe_entry_id = log_entry_id.replace("\\", "_").replace("/", "_").strip() or "unknown"
-    logs = {
-        stream: _long_gate_success_log_row(result, stream=stream, rel_path=f"{cache_root}/logs/{safe_entry_id}.v2.{stream}.log")
-        for stream in ("stdout", "stderr")
-    }
+    """long-gate 专题证明共有的执行事实；日志指向本条目的成功缓存日志，run_id 绑定本次 manifest。"""
+    stdout_log_path, stderr_log_path = cache_log_rel_paths(entry.spec.check_id, cache_dir=cache_dir)
     return {
         "schema_version": schema_version,
         "status": "passed",
-        "entry_id": str(entry.get("entry_id") or ""),
+        "entry_id": entry.spec.check_id,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "head_sha": _git_head_sha(),
-        "run_id": str(run_id or ""),
-        "quality_gate_plan": [_command_identity(command) for command in command_plan],
-        "command_index": int(command_index),
-        "display": str(entry.get("display") or ""),
-        "args": [str(arg) for arg in list(entry.get("args") or [])],
-        "command": _command_identity(entry),
-        "capture_output": bool(entry.get("capture_output")),
-        "output_policy": str(entry.get("output_policy") or ""),
-        "fingerprint_schema_version": int(entry.get("fingerprint_schema_version") or 0),
-        "fingerprint": dict(fingerprint),
-        "returncode": int(result.get("returncode") or 0),
-        "execution_mode": str(result.get("execution_mode") or "executed"),
-        "duration_s": float(result.get("duration_s") or 0.0),
-        "stdout_log_path": logs["stdout"]["path"],
-        "stderr_log_path": logs["stderr"]["path"],
-        "stdout_content": logs["stdout"]["content"],
-        "stderr_content": logs["stderr"]["content"],
-        "timed_out": bool(result.get("timed_out")),
-        "interrupted": bool(result.get("interrupted")),
-        "partial_write": bool(result.get("partial_write")),
+        "run_id": run_id,
+        "command_index": entry.index,
+        "command": entry.command,
+        "fingerprint": fingerprint,
+        "returncode": result.returncode,
+        "execution_mode": result.execution_mode,
+        "duration_s": result.duration_s,
+        "stdout_log_path": stdout_log_path,
+        "stderr_log_path": stderr_log_path,
+        "stdout_content": quality_gate_shared.sanitize_quality_gate_output(result.stdout),
+        "stderr_content": quality_gate_shared.sanitize_quality_gate_output(result.stderr),
         "does_not_claim": "clean_worktree_proof",
-        "logs": logs,
     }
 
 
-def _write_long_gate_topic_proof(rel_path: str, payload: Dict[str, Any]) -> str:
-    abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
+def _write_long_gate_topic_proof(ctx: GateContext, rel_path: str, payload: Dict[str, Any]) -> str:
+    abs_path = os.path.join(ctx.repo_root, rel_path.replace("/", os.sep))
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     with open(abs_path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
@@ -1617,28 +1488,28 @@ def _write_long_gate_topic_proof(rel_path: str, payload: Dict[str, Any]) -> str:
 
 
 def _write_required_regressions_proof(
-    entry: Dict[str, Any],
-    result: Dict[str, Any],
+    ctx: GateContext,
+    entry: GateEntry,
+    result: CommandResult,
     *,
     run_id: str,
-    command_index: int,
-    command_plan: Sequence[Dict[str, Any]],
-    fingerprint: Dict[str, Any],
+    fingerprint: Mapping[str, Any],
     cache_dir: str,
-) -> List[str]:
-    payload = _build_long_gate_execution_proof(
-        entry, result, schema_version=REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION,
-        log_entry_id=str(entry.get("entry_id") or ""), run_id=run_id, command_index=command_index,
-        command_plan=command_plan, fingerprint=fingerprint, cache_dir=cache_dir,
+) -> str:
+    payload = _long_gate_execution_proof(
+        entry,
+        result,
+        schema_version=REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION,
+        run_id=run_id,
+        fingerprint=fingerprint,
+        cache_dir=cache_dir,
     )
-    targets = list(iter_quality_gate_required_tests())
     payload.update(
-        required_target_count=len(targets), test_count=len(targets),
-        required_target_paths=targets,
-        pytest_exit_code=payload["returncode"], verification_exit_code=payload["returncode"],
+        required_target_count=len(REQUIRED_TEST_ARGS),
+        required_target_paths=REQUIRED_TEST_ARGS,
         verification_method="full_test_debt_payload_required_coverage",
     )
-    return [_write_long_gate_topic_proof(_long_gate_declared_output_paths(entry)[0], payload)]
+    return _write_long_gate_topic_proof(ctx, entry.spec.output_result_files[0], payload)
 
 
 def _parse_debt_ledger_check_stdout(stdout: str) -> Dict[str, Any]:
@@ -1660,30 +1531,32 @@ def _parse_debt_ledger_check_stdout(stdout: str) -> Dict[str, Any]:
 
 
 def _write_debt_ledger_sync_proof(
-    entry: Dict[str, Any],
-    result: Dict[str, Any],
+    ctx: GateContext,
+    entry: GateEntry,
+    result: CommandResult,
     *,
     run_id: str,
-    command_index: int,
-    command_plan: Sequence[Dict[str, Any]],
-    fingerprint: Dict[str, Any],
+    fingerprint: Mapping[str, Any],
     cache_dir: str,
 ) -> str:
-    summary = _parse_debt_ledger_check_stdout(str(result.get("stdout") or ""))
-    payload = _build_long_gate_execution_proof(
-        entry, result, schema_version=DEBT_LEDGER_SYNC_PROOF_SCHEMA_VERSION,
-        log_entry_id=str(entry.get("entry_id") or ""), run_id=run_id, command_index=command_index,
-        command_plan=command_plan, fingerprint=fingerprint, cache_dir=cache_dir,
+    summary = _parse_debt_ledger_check_stdout(result.stdout)
+    payload = _long_gate_execution_proof(
+        entry,
+        result,
+        schema_version=DEBT_LEDGER_SYNC_PROOF_SCHEMA_VERSION,
+        run_id=run_id,
+        fingerprint=fingerprint,
+        cache_dir=cache_dir,
     )
     payload.update(
-        ledger_path=_safe_relpath(LEDGER_PATH, REPO_ROOT),
+        ledger_path=LEDGER_REL,
         ledger_schema_version=int(summary.get("schema_version") or 0),
         ledger_checked_at=str(summary.get("checked_at") or ""),
         ledger_counts={key: int(summary.get(key) or 0) for key in (
             "oversize_count", "complexity_count", "silent_fallback_count", "test_debt_count", "accepted_risk_count")},
         samples=dict(summary.get("samples") or {}),
     )
-    return _write_long_gate_topic_proof(_long_gate_declared_output_paths(entry)[0], payload)
+    return _write_long_gate_topic_proof(ctx, entry.spec.output_result_files[0], payload)
 
 
 def _option_value(args: Sequence[str], option: str) -> str:
@@ -1697,215 +1570,211 @@ def _option_value(args: Sequence[str], option: str) -> str:
 
 
 def _write_static_check_proof(
-    entry: Dict[str, Any],
-    result: Dict[str, Any],
+    ctx: GateContext,
+    entry: GateEntry,
+    result: CommandResult,
     *,
     run_id: str,
-    command_index: int,
-    command_plan: Sequence[Dict[str, Any]],
-    fingerprint: Dict[str, Any],
+    fingerprint: Mapping[str, Any],
     cache_dir: str,
 ) -> str:
-    entry_id = str(entry.get("entry_id") or "")
-    rel_path = _long_gate_declared_output_paths(entry)[0]
-    payload = _build_long_gate_execution_proof(
-        entry, result, schema_version=STATIC_CHECK_PROOF_SCHEMA_VERSION,
-        log_entry_id=entry_id, run_id=run_id, command_index=command_index,
-        command_plan=command_plan, fingerprint=fingerprint, cache_dir=cache_dir,
+    payload = _long_gate_execution_proof(
+        entry,
+        result,
+        schema_version=STATIC_CHECK_PROOF_SCHEMA_VERSION,
+        run_id=run_id,
+        fingerprint=fingerprint,
+        cache_dir=cache_dir,
     )
-    args = payload["args"]
+    args = entry.command["args"]
     config_path = _option_value(args, "-p")
     paths = list(QUALITY_GATE_TOOL_PATHS) if config_path == PYRIGHT_TOOLS_CONFIG else [
         path for path in QUALITY_GATE_TOOL_PATHS if path in args]
-    payload.update(config_path=config_path, tool_path_count=len(paths),
-                   tool_paths=paths)
-    return _write_long_gate_topic_proof(rel_path, payload)
+    payload.update(config_path=config_path, tool_path_count=len(paths), tool_paths=paths)
+    return _write_long_gate_topic_proof(ctx, entry.spec.output_result_files[0], payload)
 
 
-def _full_test_debt_failure_cache_is_allowed(
-    runtime_entry: Mapping[str, Any],
+def _write_long_gate_output_files(
+    ctx: GateContext,
+    entry: GateEntry,
+    result: CommandResult,
     *,
-    long_gate_cache_write_success: bool,
-) -> bool:
-    if not long_gate_cache_write_success:
-        return False
-    entry = runtime_entry["entry"]
-    if entry["reuse_policy"] != "success_or_failure":
-        return False
-    decision = dict(runtime_entry.get("decision") or {})
-    if _decision_cache_unavailable(decision):
-        return False
-    reason = str(decision.get("reason") or "")
-    if reason.startswith("forced by --long-gate-force-rerun"):
-        return False
-    return str(decision.get("decision") or "") == "run"
-
-
-def _maybe_write_full_test_debt_failure_cache(
-    runtime_entry: Dict[str, Any],
-    *,
-    result: Mapping[str, Any],
-    receipt_path: str,
-    cache_dir: str,
-    long_gate_cache_write_success: bool,
-) -> None:
-    if not _full_test_debt_failure_cache_is_allowed(
-        runtime_entry,
-        long_gate_cache_write_success=long_gate_cache_write_success,
-    ):
-        return
-    if str(result.get("execution_mode") or "executed") != "executed":
-        return
-    cache_result = dict(result)
-    cache_result["receipt_path"] = str(receipt_path or "")
-    try:
-        write_long_gate_failure(
-            dict(runtime_entry.get("entry") or {}),
-            dict(runtime_entry.get("fingerprint") or {}),
-            cache_result,
-            repo_root=REPO_ROOT,
-            cache_dir=cache_dir,
-        )
-    except SensitiveSourceError as exc:
-        _mark_runtime_entry_cache_unavailable(runtime_entry, failure_kind="cache_write_unavailable", message=str(exc))
-
-
-def _cached_full_test_debt_failure_result(
-    runtime_entry: Dict[str, Any],
-    *,
-    cache_dir: str,
-) -> Optional[Dict[str, Any]]:
-    if not _full_test_debt_failure_cache_is_allowed(runtime_entry, long_gate_cache_write_success=True):
-        return None
-    evaluation = evaluate_failure_reuse(
-        dict(runtime_entry.get("entry") or {}),
-        dict(runtime_entry.get("fingerprint") or {}),
-        repo_root=REPO_ROOT,
-        cache_dir=cache_dir,
-    )
-    decision = dict(evaluation["decision"])
-    runtime_entry["failure_evaluation"] = dict(evaluation)
-    runtime_entry["failure_decision"] = decision
-    if str(decision.get("decision") or "") != "cached_failure":
-        return None
-    previous = cast(Dict[str, Any], evaluation["validated_failure"])
-    return {
-        "stdout": str(evaluation.get("stdout") or ""),
-        "stderr": str(evaluation.get("stderr") or ""),
-        "returncode": int(previous.get("returncode") or 1),
-        "execution_mode": "cached_failure",
-        "reused_from": {
-            "result_path": str(decision.get("previous_result_path") or ""),
-            "completed_at": str(previous.get("completed_at") or ""),
-            "fingerprint": dict(previous.get("fingerprint") or {}),
-            "duration_s": float(previous.get("duration_s") or 0.0),
-        },
-        "stdout_log_path": str(previous.get("stdout_log_path") or ""),
-        "stderr_log_path": str(previous.get("stderr_log_path") or ""),
-    }
-
-
-def _prepare_long_gate_success_output_files(
-    entry: Dict[str, Any],
-    result: Dict[str, Any],
-    *,
-    cache_dir: str,
     run_id: str,
-    command_index: int,
-    command_plan: Sequence[Dict[str, Any]],
-    fingerprint: Dict[str, Any],
-) -> List[str]:
-    proof_kind = entry.get("proof_kind")
+    fingerprint: Mapping[str, Any],
+    cache_dir: str,
+) -> Tuple[str, ...]:
+    """写本条目随成功缓存保存的输出文件，返回它们的仓库相对路径。"""
+    proof_kind = entry.spec.proof_kind
     if proof_kind == "collect_nodeids":
         collect_payload = build_collect_nodeids_payload(
-            str(result.get("stdout") or ""),
+            result.stdout,
             pytest_version=pytest_distribution_version(strict=True),
-            collect_stdout_log_path=str(result.get("stdout_log_path") or ""),
+            collect_stdout_log_path=result.stdout_log_path,
         )
-        return [write_collect_nodeids(collect_payload, repo_root=REPO_ROOT)]
-    if proof_kind == "required_regressions":
-        return _write_required_regressions_proof(
-            entry,
-            result,
-            run_id=run_id,
-            command_index=command_index,
-            command_plan=command_plan,
-            fingerprint=fingerprint,
-            cache_dir=cache_dir,
+        return (write_collect_nodeids(collect_payload, repo_root=ctx.repo_root),)
+    writers = {
+        "required_regressions": _write_required_regressions_proof,
+        "debt_ledger_sync": _write_debt_ledger_sync_proof,
+        "static_check": _write_static_check_proof,
+    }
+    if proof_kind in writers:
+        writer = writers[proof_kind]
+        return (writer(ctx, entry, result, run_id=run_id, fingerprint=fingerprint, cache_dir=cache_dir),)
+    return entry.spec.output_result_files
+
+
+def _cache_unavailable_runtime_entry(rt: RuntimeEntry, *, failure_kind: str, message: str) -> RuntimeEntry:
+    decision = cache_unavailable_decision(failure_kind=failure_kind, message=message)
+    return replace(rt, decision=decision, record=None)
+
+
+def _usable_cache_metadata(rt: RuntimeEntry, context: LongGateCacheContext) -> Optional[Mapping[str, Any]]:
+    """该条目本次能读写缓存时返回缓存元数据；决策为 cache unavailable（含元数据不可用）时返回 None。"""
+    if rt.decision.cache_unavailable:
+        return None
+    return context.metadata
+
+
+def _cache_fingerprint(rt: RuntimeEntry) -> Mapping[str, Any]:
+    """决策不是 cache unavailable 的条目必有本次完整指纹。"""
+    return cast(Mapping[str, Any], rt.fingerprint)
+
+
+def _refresh_long_gate_decision(ctx: GateContext, rt: RuntimeEntry, context: LongGateCacheContext) -> RuntimeEntry:
+    """输入含本次前序步骤产物的条目，执行前按当前输入重新判定；full_test_debt 不复用时删掉旧输出。"""
+    entry = rt.entry
+    metadata = _usable_cache_metadata(rt, context)
+    if (
+        entry.spec.proof_kind not in _INPUTS_FROM_EARLIER_STEPS
+        or metadata is None
+        or rt.decision.cause is DecisionCause.FORCED
+    ):
+        return rt
+    try:
+        fingerprint = _strict_long_gate_fingerprint(ctx, entry)
+    except QualityGateError as exc:
+        refreshed = _cache_unavailable_runtime_entry(
+            replace(rt, fingerprint=None), failure_kind=_fingerprint_failure_kind(exc), message=str(exc)
         )
-    if proof_kind == "debt_ledger_sync":
-        return [
-            _write_debt_ledger_sync_proof(
-                entry,
-                result,
-                run_id=run_id,
-                command_index=command_index,
-                command_plan=command_plan,
-                fingerprint=fingerprint,
-                cache_dir=cache_dir,
-            )
-        ]
-    if proof_kind == "static_check":
-        return [
-            _write_static_check_proof(
-                entry,
-                result,
-                run_id=run_id,
-                command_index=command_index,
-                command_plan=command_plan,
-                fingerprint=fingerprint,
-                cache_dir=cache_dir,
-            )
-        ]
-    return _long_gate_declared_output_paths(entry)
+    else:
+        evaluation = evaluate_cache(
+            entry, fingerprint, kind="success", metadata=metadata, repo_root=ctx.repo_root, cache_dir=context.cache_dir
+        )
+        refreshed = replace(rt, decision=evaluation.decision, fingerprint=fingerprint, record=evaluation.record)
+    if entry.spec.proof_kind == "full_test_debt" and refreshed.record is None:
+        for rel_path in entry.spec.output_result_files:
+            abs_path = os.path.join(ctx.repo_root, rel_path.replace("/", os.sep))
+            if os.path.isfile(abs_path):
+                os.remove(abs_path)
+    return refreshed
 
 
-def _fingerprint_for_success_cache(entry: Dict[str, Any], fingerprint: Dict[str, Any]) -> Dict[str, Any]:
-    if entry.get("proof_kind") in {"full_test_debt", "required_regressions"}:
-        return _strict_long_gate_fingerprint(entry)
-    return dict(fingerprint)
+def _failure_cache_metadata(rt: RuntimeEntry, context: LongGateCacheContext) -> Optional[Mapping[str, Any]]:
+    """reuse_policy=success_or_failure 的条目在写缓存、未强制重跑时读写失败缓存；返回可用的缓存元数据。"""
+    if (
+        not context.write_success
+        or rt.entry.spec.reuse_policy != "success_or_failure"
+        or rt.decision.cause is DecisionCause.FORCED
+    ):
+        return None
+    return _usable_cache_metadata(rt, context)
 
 
-def _abs_output_paths(rel_paths: Sequence[str]) -> List[str]:
-    return [os.path.join(REPO_ROOT, str(path).replace("\\", "/").replace("/", os.sep)) for path in list(rel_paths or [])]
+def _cached_failure_record(ctx: GateContext, rt: RuntimeEntry, context: LongGateCacheContext) -> Optional[CacheRecord]:
+    metadata = _failure_cache_metadata(rt, context)
+    if metadata is None:
+        return None
+    return evaluate_cache(
+        rt.entry,
+        _cache_fingerprint(rt),
+        kind="failure",
+        metadata=metadata,
+        repo_root=ctx.repo_root,
+        cache_dir=context.cache_dir,
+    ).record
 
 
-def _long_gate_success_cache_exists(entry_id: str, *, cache_dir: str) -> bool:
-    safe_entry_id = str(entry_id or "").replace("\\", "_").replace("/", "_").strip() or "unknown"
-    result_path = os.path.join(
-        REPO_ROOT,
-        str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/").replace("/", os.sep),
-        "results",
-        f"{safe_entry_id}.v2.success.json",
+def _write_failure_cache(
+    ctx: GateContext,
+    rt: RuntimeEntry,
+    result: CommandResult,
+    *,
+    receipt_path: str,
+    context: LongGateCacheContext,
+    run_id: str,
+) -> None:
+    metadata = _failure_cache_metadata(rt, context)
+    if metadata is None:
+        return
+    write_failure(
+        rt.entry,
+        _cache_fingerprint(rt),
+        result,
+        receipt_path=receipt_path,
+        run_id=run_id,
+        metadata=metadata,
+        repo_root=ctx.repo_root,
+        cache_dir=context.cache_dir,
     )
-    return os.path.isfile(result_path)
+
+
+def _stage_long_gate_success(
+    ctx: GateContext,
+    rt: RuntimeEntry,
+    context: LongGateCacheContext,
+    result: CommandResult,
+    *,
+    receipt_path: str,
+    progress: PlanProgress,
+) -> Tuple[RuntimeEntry, Tuple[str, ...]]:
+    """命令通过后写输出文件并登记待落盘的成功缓存；返回更新后的条目与输出文件路径。"""
+    entry = rt.entry
+    skip_prefix = f"==> 第 {entry.index}/{progress.total} 步：跳过 long-gate success cache 写入，"
+    metadata = _usable_cache_metadata(rt, context)
+    if metadata is None:
+        print(skip_prefix + f"该 entry 当前 cache unavailable：{rt.decision.reason}", flush=True)
+        return rt, ()
+    if not context.write_success:
+        print(skip_prefix + "因为本次不是干净工作区的完整成功证明", flush=True)
+        return rt, ()
+    try:
+        fingerprint = (
+            _strict_long_gate_fingerprint(ctx, entry)
+            if entry.spec.proof_kind in _INPUTS_FROM_EARLIER_STEPS
+            else _cache_fingerprint(rt)
+        )
+    except QualityGateError as exc:
+        print(skip_prefix + "因为 strict fingerprint 失败，该 entry 当前 cache unavailable", flush=True)
+        return _cache_unavailable_runtime_entry(rt, failure_kind=_fingerprint_failure_kind(exc), message=str(exc)), ()
+    output_files = _write_long_gate_output_files(
+        ctx, entry, result, run_id=progress.run_id, fingerprint=fingerprint, cache_dir=context.cache_dir
+    )
+    progress.pending_successes.append(PendingSuccess(entry, fingerprint, result, receipt_path, output_files, metadata))
+    return replace(rt, fingerprint=fingerprint), output_files
 
 
 def _should_preserve_full_test_debt_outputs(
-    runtime_entry: Dict[str, Any],
-    *,
-    cache_enabled: bool,
-    cache_dir: str,
+    ctx: GateContext, runtime_entries: Mapping[str, RuntimeEntry], *, cache_dir: str
 ) -> bool:
-    if not cache_enabled:
-        return False
-    entry = dict(runtime_entry.get("entry") or {})
-    if str(entry.get("proof_kind") or "") != "full_test_debt":
-        return False
-    decision = dict(runtime_entry.get("decision") or {})
-    if str(decision.get("decision") or "") == "reuse":
-        return True
-    if str(decision.get("reason") or "") != "collect nodeids proof is invalid":
-        return False
-    return _long_gate_success_cache_exists(str(entry.get("entry_id") or ""), cache_dir=cache_dir)
+    """full_test_debt 本次复用，或只因 collect 证明待本次重新生成而暂判重跑且已有成功缓存时，执行前保留它的输出。"""
+    for rt in runtime_entries.values():
+        if rt.entry.spec.proof_kind != "full_test_debt":
+            continue
+        if rt.record is not None:
+            return True
+        if rt.decision.cause is not DecisionCause.COLLECT_NODEIDS_INVALID:
+            return False
+        result_rel = cache_result_rel_path(rt.entry.spec.check_id, kind="success", cache_dir=cache_dir)
+        return os.path.isfile(os.path.join(ctx.repo_root, result_rel.replace("/", os.sep)))
+    return False
 
 
 def _resolve_command_args(raw_args: Sequence[str]) -> List[str]:
     return [sys.executable if idx == 0 and arg == "python" else arg for idx, arg in enumerate(raw_args)]
 
 
-def _write_quality_gate_manifest(manifest: Dict[str, Any]) -> None:
-    manifest_path = os.path.join(REPO_ROOT, QUALITY_GATE_MANIFEST_REL)
+def _write_quality_gate_manifest(ctx: GateContext, manifest: Dict[str, Any]) -> None:
+    manifest_path = _quality_gate_manifest_abs_path(ctx)
     os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
     with open(manifest_path, "w", encoding="utf-8") as handle:
         json.dump(manifest, handle, ensure_ascii=False, indent=2, sort_keys=True)
@@ -1913,6 +1782,7 @@ def _write_quality_gate_manifest(manifest: Dict[str, Any]) -> None:
 
 
 def _apply_worktree_proof(
+    ctx: GateContext,
     manifest: Dict[str, Any],
     *,
     git_status_short_before: Sequence[str],
@@ -1926,8 +1796,8 @@ def _apply_worktree_proof(
     if isinstance(previous_before_fingerprint, dict) and previous_before_fingerprint.get("status_lines") == before:
         before_fingerprint = previous_before_fingerprint
     else:
-        before_fingerprint = _dirty_worktree_content(before)
-    after_fingerprint = _dirty_worktree_content(after) if after is not None else None
+        before_fingerprint = _dirty_worktree_content(ctx, before)
+    after_fingerprint = _dirty_worktree_content(ctx, after) if after is not None else None
     manifest.update(
         {
             "git_status_short_before": before,
@@ -1942,34 +1812,35 @@ def _apply_worktree_proof(
 
 
 def _assert_resume_dirty_content_still_current(
+    ctx: GateContext,
     resume_decision: ResumeDecision,
     *,
     git_status_short_before: Sequence[str],
 ) -> None:
     if not resume_decision.enabled:
         return
-    expected = resume_decision.validated_dirty_content
-    if not isinstance(expected, dict):
-        raise QualityGateError("续跑缺少已校验的脏工作区指纹")
-    current = _dirty_worktree_content(git_status_short_before)
-    if not content_equal(current, expected):
-        raise QualityGateError("脏工作区内容在续跑判定后又发生变化，本次不能跳过前置命令")
+    current = _dirty_worktree_content(ctx, git_status_short_before)
+    if not content_equal(current, resume_decision.validated_dirty_content):
+        raise QualityGateError("脏工作区内容在续跑判定后又发生变化，本次不能复用上次的步骤")
 
 
 def _base_quality_gate_manifest(
+    ctx: GateContext,
     *,
+    run_id: str,
     started_at: str,
     head_sha: str,
     git_status_short_before: Sequence[str],
     runtime_snapshot: Dict[str, Any],
-    status: str,
-    command_plan: Sequence[GateCheckSpec],
+    plan: Sequence[GateEntry],
 ) -> Dict[str, Any]:
     manifest = {
-        "status": str(status or "").strip() or "running",
+        "schema_version": QUALITY_GATE_PROOF_SCHEMA_VERSION,
+        "proof_scope": dict(QUALITY_GATE_PROOF_SCOPE),
+        "status": "running",
         "head_sha": head_sha,
-        "run_id": f"{head_sha}:{started_at}",
-        **_repo_identity(),
+        "run_id": run_id,
+        **_repo_identity(ctx),
         "runtime_snapshot": runtime_snapshot,
         "python_version": sys.version.splitlines()[0].strip(),
         "python_executable": sys.executable,
@@ -1977,17 +1848,19 @@ def _base_quality_gate_manifest(
         "pyright_version": None,
         "started_at": started_at,
         "finished_at": None,
+        # collect 步骤通过前记 None；之后写出时换成该步骤构造的那一份。
         "collection_proof": None,
         "required_tests": list(REQUIRED_TEST_ARGS),
-        "planned_commands": [_command_identity(spec.to_command_dict()) for spec in command_plan],
+        "planned_commands": [entry.command for entry in plan],
         "commands": [],
-        "gate_sources": [],
+        "command_receipts": [],
+        "gate_sources": build_quality_gate_source_proof(ctx.repo_root),
         "clean_worktree_excluded_paths": list(GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS),
         "failure_kind": None,
         "failure_message": None,
+        "failure_command_index": None,
     }
-    _apply_worktree_proof(manifest, git_status_short_before=git_status_short_before, git_status_short_after=None)
-    apply_quality_gate_manifest_proof_fields(manifest, repo_root=REPO_ROOT)
+    _apply_worktree_proof(ctx, manifest, git_status_short_before=git_status_short_before, git_status_short_after=None)
     return manifest
 
 
@@ -2053,7 +1926,7 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser.add_argument(
         "--no-resume",
         action="store_true",
-        help="do not reuse the successful prefix from the previous failed dirty-worktree run",
+        help="do not reuse successful steps from the previous failed dirty-worktree run",
     )
     parsed = parser.parse_args(list(argv) if argv is not None else None)
     if parsed.require_clean_worktree and parsed.allow_dirty_worktree:
@@ -2115,290 +1988,124 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     return parsed
 
 
-def _disabled_long_gate_decision(entry: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "entry_id": str(entry.get("entry_id") or ""),
-        "decision": "disabled",
-        "reuse_policy": "none",
-        "reuse_allowed": False,
-        "reason": "long gate cache is disabled for this run",
-        "invalidated_by": [],
-        "previous_completed_at": "",
-        "previous_result_path": "",
-        "current_fingerprint": {},
-    }
+_DISABLED_LONG_GATE_DECISION = CacheDecision(
+    "disabled", DecisionCause.DISABLED, "long gate cache is disabled for this run"
+)
 
 
-def _fingerprint_failure_kind(error: QualityGateError) -> str:
-    """_strict_long_gate_fingerprint always chains the LongGateFingerprintError that carries failure_kind."""
-    cause = cast(LongGateFingerprintError, error.__cause__)
-    return str(cause.details.get("failure_kind") or "")
-
-
-def _decision_cache_unavailable(decision: Mapping[str, Any]) -> bool:
-    fingerprint = decision.get("current_fingerprint")
-    components = fingerprint.get("components") if isinstance(fingerprint, dict) else None
-    environment = components.get("environment") if isinstance(components, dict) else None
-    sensitive_inputs = environment.get("non_reusable_env_keys") if isinstance(environment, dict) else None
-    return bool(decision.get("cache_unavailable") or decision.get("fingerprint_error") or sensitive_inputs)
-
-
-def _force_long_gate_decision(entry: Dict[str, Any], decision: Dict[str, Any], *, force_reason: str) -> Dict[str, Any]:
-    invalidated_by = list(decision.get("invalidated_by") or [])
-    if force_reason not in invalidated_by:
-        invalidated_by.append(force_reason)
-    return {
-        "entry_id": str(entry.get("entry_id") or decision.get("entry_id") or ""),
-        "decision": "run",
-        "reuse_policy": "none",
-        "reuse_allowed": False,
-        "reason": force_reason,
-        "invalidated_by": invalidated_by,
-        "previous_completed_at": str(decision.get("previous_completed_at") or ""),
-        "previous_result_path": str(decision.get("previous_result_path") or ""),
-        "current_fingerprint": dict(decision.get("current_fingerprint") or {}),
-        "cache_unavailable": _decision_cache_unavailable(decision),
-    }
-
-
-def _mark_runtime_entry_cache_unavailable(
-    runtime_entry: Dict[str, Any],
-    *,
-    failure_kind: str,
-    message: str,
-) -> Dict[str, Any]:
-    entry = dict(runtime_entry["entry"])
-    entry["cache_status"] = "cache_unavailable"
-    decision = cache_unavailable_decision(str(entry.get("entry_id") or ""), failure_kind=failure_kind, message=message)
-    runtime_entry["entry"] = entry
-    runtime_entry["decision"] = decision
-    summary_entry = runtime_entry["summary_entry"]
-    summary_entry["cache_status"] = "cache_unavailable"
-    summary_entry["cache_unavailable"] = True
-    summary_entry["reason"] = decision["reason"]
-    summary_entry["invalidated_by"] = list(decision["invalidated_by"])
-    summary_entry["fingerprint_error"] = dict(decision["fingerprint_error"])
-    return decision
-
-
-def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cache_dir: str) -> None:
-    entry = dict(runtime_entry.get("entry") or {})
-    if str(entry.get("proof_kind") or "") != "full_test_debt":
-        return
-    current_decision = dict(runtime_entry.get("decision") or {})
-    if not _full_test_debt_decision_can_refresh(current_decision):
-        return
-    try:
-        fingerprint = _strict_long_gate_fingerprint(entry)
-    except QualityGateError as exc:
-        refreshed_decision = _mark_runtime_entry_cache_unavailable(
-            runtime_entry, failure_kind=_fingerprint_failure_kind(exc), message=str(exc)
-        )
-        runtime_entry["fingerprint"] = {}
-        runtime_entry["evaluation"] = {}
-    else:
-        evaluation = evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT, cache_dir=cache_dir)
-        runtime_entry["fingerprint"] = dict(fingerprint)
-        runtime_entry["evaluation"] = dict(evaluation)
-        refreshed_decision = dict(cast(Mapping[str, Any], evaluation["decision"]))
-        if _decision_cache_unavailable(refreshed_decision):
-            entry["cache_status"] = "cache_unavailable"
-            runtime_entry["entry"] = entry
-        runtime_entry["decision"] = refreshed_decision
-    if str(refreshed_decision.get("decision") or "") != "reuse":
-        for rel_path in list(entry.get("output_result_files") or []):
-            abs_path = os.path.join(REPO_ROOT, str(rel_path).replace("\\", "/").replace("/", os.sep))
-            if os.path.isfile(abs_path):
-                os.remove(abs_path)
-
-
-def _refresh_required_regressions_reuse_decision(runtime_entry: Dict[str, Any], *, cache_dir: str) -> None:
-    entry = dict(runtime_entry.get("entry") or {})
-    if str(entry.get("proof_kind") or "") != "required_regressions":
-        return
-    current_decision = dict(runtime_entry.get("decision") or {})
-    if not _full_test_debt_decision_can_refresh(current_decision):
-        return
-    try:
-        fingerprint = _strict_long_gate_fingerprint(entry)
-    except QualityGateError as exc:
-        _mark_runtime_entry_cache_unavailable(
-            runtime_entry, failure_kind=_fingerprint_failure_kind(exc), message=str(exc)
-        )
-        runtime_entry["fingerprint"] = {}
-        runtime_entry["evaluation"] = {}
-        return
-    evaluation = evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT, cache_dir=cache_dir)
-    runtime_entry["fingerprint"] = dict(fingerprint)
-    runtime_entry["evaluation"] = dict(evaluation)
-    refreshed_decision = dict(cast(Mapping[str, Any], evaluation["decision"]))
-    if _decision_cache_unavailable(refreshed_decision):
-        entry["cache_status"] = "cache_unavailable"
-        runtime_entry["entry"] = entry
-    runtime_entry["decision"] = refreshed_decision
-
-
-def _full_test_debt_decision_can_refresh(decision: Dict[str, Any]) -> bool:
-    if _decision_cache_unavailable(decision):
-        return False
-    decision_kind = str(decision.get("decision") or "")
-    if decision_kind == "reuse":
-        return True
-    if decision_kind != "run":
-        return False
-    reason = str(decision.get("reason") or "")
-    invalidated_by = [str(item) for item in list(decision.get("invalidated_by") or [])]
-    if reason.startswith("forced by --long-gate-force-rerun") or any(
-        item.startswith("forced by --long-gate-force-rerun") for item in invalidated_by
-    ):
-        return False
-    return True
+def _forced_long_gate_decision(fingerprint: Mapping[str, Any], reason: str) -> CacheDecision:
+    return CacheDecision(
+        "run",
+        DecisionCause.FORCED,
+        reason,
+        invalidated_by=(reason,),
+        non_reusable_env_keys=tuple(fingerprint["components"]["environment"]["non_reusable_env_keys"]),
+    )
 
 
 def _prepare_long_gate_cache_decisions(
-    command_specs: Sequence[GateCheckSpec],
+    ctx: GateContext,
+    plan: Sequence[GateEntry],
     *,
     cache_enabled: bool,
     cache_dir: str,
-    force_rerun_entry_ids: Optional[Sequence[str]] = None,
-    force_rerun_all: bool = False,
-) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
-    resolved_cache_dir = resolve_long_gate_cache_dir(REPO_ROOT, cache_dir)
-    forced_entry_ids: Set[str] = {
-        str(entry_id or "").strip() for entry_id in list(force_rerun_entry_ids or []) if str(entry_id or "").strip()
-    }
-    manifest = build_manifest_from_quality_gate_plan(command_specs, repo_root=REPO_ROOT)
-    known_long_gate_check_ids: Set[str] = set()
-    for entry in manifest["entries"]:
-        if entry["reuse_allowed"]:
-            check_id = str(entry.get("check_id") or "").strip()
-            if check_id:
-                known_long_gate_check_ids.add(check_id)
-    unknown_forced = sorted(forced_entry_ids - known_long_gate_check_ids)
+    write_success: bool,
+    force_rerun_entry_ids: Sequence[str],
+    force_rerun_all: bool,
+) -> Tuple[Dict[str, RuntimeEntry], Optional[LongGateCacheContext]]:
+    """给每个可复用条目本次的缓存决策；缓存生效时同时返回本次的缓存上下文。"""
+    cache_entries = [entry for entry in plan if entry.spec.reuse_allowed]
+    forced_entry_ids: Set[str] = {entry_id.strip() for entry_id in force_rerun_entry_ids if entry_id.strip()}
+    unknown_forced = sorted(forced_entry_ids - {entry.spec.check_id for entry in cache_entries})
     if unknown_forced:
         raise QualityGateError(
             "--long-gate-force-rerun 指定了未知的 long gate check_id: " + ", ".join(unknown_forced)
         )
-    summary_entries: List[Dict[str, Any]] = []
-    runtime_entries: Dict[str, Dict[str, Any]] = {}
-    file_snapshot = FingerprintFileSnapshot(REPO_ROOT, strict=True)
-    metadata: Optional[Dict[str, Any]] = None
-    metadata_error: Optional[SensitiveSourceError] = None
-    if cache_enabled:
-        try:
-            metadata = long_gate_cache_metadata(REPO_ROOT, cache_dir=resolved_cache_dir)
-        except SensitiveSourceError as exc:
-            metadata_error = exc
-    for index, raw_entry in enumerate(manifest["entries"], start=1):
-        entry = dict(raw_entry)
-        if not entry["reuse_allowed"]:
-            continue
-        entry_id = str(entry.get("entry_id") or "")
-        check_id = str(entry.get("check_id") or "").strip()
-        force_requested = bool(check_id and check_id in forced_entry_ids)
-        fingerprint: Optional[Dict[str, Any]] = None
-        evaluation: Optional[Dict[str, Any]] = None
-        if not cache_enabled:
-            decision = _disabled_long_gate_decision(entry)
-        elif metadata_error is not None:
-            decision = cache_unavailable_decision(
-                entry_id, failure_kind="cache_metadata_unavailable", message=str(metadata_error)
+    if not cache_enabled:
+        disabled = {
+            entry.spec.check_id: RuntimeEntry(entry, _DISABLED_LONG_GATE_DECISION, None, None)
+            for entry in cache_entries
+        }
+        return disabled, None
+    try:
+        metadata = long_gate_cache_metadata(ctx.repo_root, cache_dir=cache_dir)
+    except SensitiveSourceError as exc:
+        unavailable = {
+            entry.spec.check_id: RuntimeEntry(
+                entry,
+                cache_unavailable_decision(failure_kind="cache_metadata_unavailable", message=str(exc)),
+                None,
+                None,
             )
-            evaluation = {}
-            entry["cache_status"] = "cache_unavailable"
-        else:
-            try:
-                fingerprint = _strict_long_gate_fingerprint(entry, file_snapshot=file_snapshot)
-            except QualityGateError as exc:
-                decision = cache_unavailable_decision(
-                    entry_id, failure_kind=_fingerprint_failure_kind(exc), message=str(exc)
-                )
-                evaluation = {}
-                entry["cache_status"] = "cache_unavailable"
-            else:
-                if force_rerun_all or force_requested:
-                    decision = _force_long_gate_decision(
-                        entry,
-                        {"current_fingerprint": dict(fingerprint)},
-                        force_reason=("forced by --long-gate-force-rerun-all" if force_rerun_all
-                                      else f"forced by --long-gate-force-rerun {entry_id}"),
-                    )
-                    evaluation = {}
-                else:
-                    evaluation = dict(evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT,
-                                                     cache_dir=resolved_cache_dir, metadata=metadata))
-                    decision = dict(evaluation["decision"])
-                if _decision_cache_unavailable(decision):
-                    entry["cache_status"] = "cache_unavailable"
-        summary_entry = build_summary_entry(index=index, entry=entry, decision=decision)
-        summary_entries.append(summary_entry)
-        if cache_enabled:
-            runtime_entries[str(entry["entry_id"])] = {
-                "entry": entry,
-                "fingerprint": fingerprint or {},
-                "evaluation": evaluation or {},
-                "decision": decision,
-                "summary_entry": summary_entry,
-            }
-    return summary_entries, runtime_entries
+            for entry in cache_entries
+        }
+        return unavailable, LongGateCacheContext(cache_dir, None, write_success)
+    file_snapshot = FingerprintFileSnapshot(ctx.repo_root, strict=True)
+    runtime_entries: Dict[str, RuntimeEntry] = {}
+    for entry in cache_entries:
+        entry_id = entry.spec.check_id
+        try:
+            fingerprint = _strict_long_gate_fingerprint(ctx, entry, file_snapshot=file_snapshot)
+        except QualityGateError as exc:
+            decision = cache_unavailable_decision(failure_kind=_fingerprint_failure_kind(exc), message=str(exc))
+            runtime_entries[entry_id] = RuntimeEntry(entry, decision, None, None)
+            continue
+        if force_rerun_all or entry_id in forced_entry_ids:
+            reason = (
+                "forced by --long-gate-force-rerun-all" if force_rerun_all else f"forced by --long-gate-force-rerun {entry_id}"
+            )
+            runtime_entries[entry_id] = RuntimeEntry(
+                entry, _forced_long_gate_decision(fingerprint, reason), fingerprint, None
+            )
+            continue
+        evaluation = evaluate_cache(
+            entry, fingerprint, kind="success", metadata=metadata, repo_root=ctx.repo_root, cache_dir=cache_dir
+        )
+        runtime_entries[entry_id] = RuntimeEntry(entry, evaluation.decision, fingerprint, evaluation.record)
+    return runtime_entries, LongGateCacheContext(cache_dir, metadata, write_success)
 
 
-def _print_long_gate_cache_decisions(entries: Sequence[Dict[str, Any]], *, cache_dir: str) -> None:
+def _print_long_gate_cache_decisions(
+    ctx: GateContext, runtime_entries: Sequence[RuntimeEntry], *, cache_dir: str
+) -> None:
     print("Long gate cache decisions", flush=True)
     print("note: explain mode prints decisions only; it is not a quality gate proof", flush=True)
     print(f"cache_dir: {cache_dir}", flush=True)
-    if not entries:
+    if not runtime_entries:
         print("- no eligible long-gate entries", flush=True)
         return
-    for entry in entries:
-        decision = str(entry.get("decision") or "")
-        status = {
-            "reuse": "REUSE",
-            "run": "RUN",
-            "planned_only": "PLANNED_ONLY",
-            "disabled": "DISABLED",
-        }.get(decision, decision.upper() or "UNKNOWN")
-        print(f"- {entry.get('entry_id')}: {status}", flush=True)
-        print(f"  cache: {entry.get('cache_status')}", flush=True)
-        print(f"  reason: {entry.get('reason')}", flush=True)
-        fingerprint_error = entry.get("fingerprint_error")
-        if isinstance(fingerprint_error, Mapping) and fingerprint_error:
-            failure_kind = str(fingerprint_error.get("failure_kind") or "")
-            if failure_kind:
-                print(f"  failure_kind: {failure_kind}", flush=True)
+    for rt in runtime_entries:
+        row = summary_entry(rt)
+        fingerprint_error = rt.decision.fingerprint_error
+        print(f"- {row['entry_id']}: {row['decision'].upper()}", flush=True)
+        print(f"  cache: {row['cache_status']}", flush=True)
+        print(f"  reason: {row['reason']}", flush=True)
+        if fingerprint_error is not None:
+            if fingerprint_error.failure_kind:
+                print(f"  failure_kind: {fingerprint_error.failure_kind}", flush=True)
             print("  note: cache unavailable for this entry; old success cache will not be reused", flush=True)
-        if entry.get("previous_result_path"):
-            print(f"  previous_result: {entry.get('previous_result_path')}", flush=True)
-        if entry.get("input_snapshot"):
+        if row["previous_result_path"]:
+            print(f"  previous_result: {row['previous_result_path']}", flush=True)
+        if rt.fingerprint is not None:
             print("  fingerprint: complete input content compared", flush=True)
-        _print_long_gate_cache_decision_hint(entry)
-        invalidated_by = list(entry.get("invalidated_by") or [])
+        _print_long_gate_cache_decision_hint(ctx, rt)
+        invalidated_by = row["invalidated_by"]
         if invalidated_by:
             print("  invalidated_by:", flush=True)
             for item in invalidated_by[:10]:
                 print(f"    - {item}", flush=True)
             if len(invalidated_by) > 10:
                 print(f"    - ... {len(invalidated_by) - 10} more", flush=True)
-        _print_fingerprint_diff(entry)
+        _print_fingerprint_diff(row["fingerprint_diff"])
 
 
 def _format_fingerprint_component(change: Mapping[str, Any]) -> str:
-    component = str(change.get("component") or "fingerprint")
-    reason = str(change.get("reason") or "input fingerprint changed")
-    details: List[str] = []
-    for key in ("path", "key", "field"):
-        if change.get(key):
-            details.append(f"{key}={change.get(key)}")
-    if not details:
-        for key in ("previous", "current"):
-            if key in change:
-                details.append(f"{key}={change.get(key)!r}")
-    suffix = " " + " ".join(details) if details else ""
-    return f"{component}: {reason}{suffix}"
+    details = " ".join(f"{key}={change[key]}" for key in ("path", "key", "field") if key in change)
+    suffix = " " + details if details else ""
+    return f"{change['component']}: {change['reason']}{suffix}"
 
 
-def _print_fingerprint_diff(entry: Mapping[str, Any]) -> None:
-    changes = [dict(item) for item in list(entry.get("fingerprint_diff") or []) if isinstance(item, dict)]
+def _print_fingerprint_diff(changes: Sequence[Mapping[str, Any]]) -> None:
     if not changes:
         return
     print("  fingerprint_changed_components:", flush=True)
@@ -2420,10 +2127,10 @@ def _dedupe_impact_paths(paths: Sequence[str]) -> List[str]:
     return rows
 
 
-def _git_impact_paths(args: Sequence[str]) -> List[str]:
+def _git_impact_paths(ctx: GateContext, args: Sequence[str]) -> List[str]:
     completed = subprocess.run(
         ["git", *list(args)],
-        cwd=REPO_ROOT,
+        cwd=ctx.repo_root,
         capture_output=True,
         check=False,
     )
@@ -2435,33 +2142,32 @@ def _git_impact_paths(args: Sequence[str]) -> List[str]:
     return _dedupe_impact_paths(decode_nul_paths(bytes(completed.stdout or b"")))
 
 
-def _current_impact_paths() -> List[str]:
+def _current_impact_paths(ctx: GateContext) -> List[str]:
     paths: List[str] = []
     for args in (
         ["diff", "--name-only", "-z"],
         ["diff", "--cached", "--name-only", "-z"],
         ["ls-files", "--others", "--exclude-standard", "-z"],
     ):
-        paths.extend(_git_impact_paths(args))
+        paths.extend(_git_impact_paths(ctx, args))
     return _dedupe_impact_paths(paths)
 
 
-def _print_long_gate_impact_explain(command_specs: Sequence[GateCheckSpec], paths: Sequence[str]) -> None:
-    impact = explain_long_gate_impact(command_specs, paths, repo_root=REPO_ROOT)
+def _print_long_gate_impact_explain(ctx: GateContext, command_specs: Sequence[GateCheckSpec], paths: Sequence[str]) -> None:
+    impact = explain_long_gate_impact(command_specs, paths, repo_root=ctx.repo_root)
     print(json.dumps(impact, ensure_ascii=False, sort_keys=True, indent=2), flush=True)
 
 
-def _quality_gate_rel_exists(rel_path: str) -> bool:
-    return os.path.isfile(os.path.join(REPO_ROOT, str(rel_path).replace("\\", "/").replace("/", os.sep)))
+def _quality_gate_rel_exists(ctx: GateContext, rel_path: str) -> bool:
+    return os.path.isfile(os.path.join(ctx.repo_root, rel_path))
 
 
-def _print_long_gate_cache_decision_hint(entry: Dict[str, Any]) -> None:
-    if str(entry.get("decision") or "") != "run":
+def _print_long_gate_cache_decision_hint(ctx: GateContext, rt: RuntimeEntry) -> None:
+    if rt.decision.kind != "run":
         return
-    reason = str(entry.get("reason") or "")
-    if reason == "no previous success cache":
+    if rt.decision.cause is DecisionCause.MISSING:
         print("  cache_state: missing", flush=True)
-    if entry.get("proof_kind") != "full_test_debt":
+    if rt.entry.spec.proof_kind != "full_test_debt":
         return
     direct_outputs = [
         rel_path
@@ -2469,7 +2175,7 @@ def _print_long_gate_cache_decision_hint(entry: Dict[str, Any]) -> None:
             QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
             QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL,
         ]
-        if _quality_gate_rel_exists(rel_path)
+        if _quality_gate_rel_exists(ctx, rel_path)
     ]
     if direct_outputs:
         print("  direct_check_outputs:", flush=True)
@@ -2485,259 +2191,214 @@ def _print_long_gate_cache_decision_hint(entry: Dict[str, Any]) -> None:
         )
 
 
-def _print_long_gate_summary(summary: Dict[str, Any], summary_paths: Dict[str, str]) -> None:
-    counts = dict(summary.get("counts") or {})
-    print("Long gate summary", flush=True)
-    for key in ("executed", "reused", "failed", "planned_only", "disabled"):
-        print(f"- {key}: {int(counts.get(key) or 0)}", flush=True)
-    print(f"- summary_json: {summary_paths.get('summary_json') or ''}", flush=True)
-    print(f"- summary_md: {summary_paths.get('summary_md') or ''}", flush=True)
-
-
 def _write_and_print_long_gate_summary(
+    ctx: GateContext,
     *,
     run_id: str,
     head_sha: str,
     worktree_clean: bool,
     cache_enabled: bool,
-    entries: Sequence[Dict[str, Any]],
-    failure: Optional[Dict[str, Any]],
+    runtime_entries: Mapping[str, RuntimeEntry],
     cache_dir: str,
-) -> Dict[str, Any]:
+) -> None:
+    entries = list(runtime_entries.values())
+    failure = next(
+        (copyable_failure(rt.entry, rt.outcome) for rt in entries if rt.outcome is not None and rt.outcome.failed),
+        None,
+    )
     summary = build_long_gate_summary(
         run_id=run_id,
-        repo_root=REPO_ROOT,
+        repo_root=ctx.repo_root,
         head_sha=head_sha,
         worktree_clean=worktree_clean,
         cache_enabled=cache_enabled,
-        mode="run",
-        entries=entries,
+        entries=[summary_entry(rt) for rt in entries],
         failure=failure,
         cache_dir=cache_dir,
     )
-    summary_paths = write_long_gate_summary(summary, REPO_ROOT)
-    _print_long_gate_summary(summary, summary_paths)
-    return summary
+    summary_paths = write_long_gate_summary(summary, ctx.repo_root)
+    print("Long gate summary", flush=True)
+    for key in SUMMARY_COUNT_KEYS:
+        print(f"- {key}: {summary['counts'][key]}", flush=True)
+    print(f"- summary_json: {summary_paths['summary_json']}", flush=True)
+    print(f"- summary_md: {summary_paths['summary_md']}", flush=True)
 
 
 def _prepare_pending_long_gate_successes(
-    pending_successes: Sequence[Dict[str, Any]], *, cache_dir: str
-) -> List[Dict[str, Any]]:
-    prepared_writes: List[Dict[str, Any]] = []
+    ctx: GateContext,
+    pending_successes: Sequence[PendingSuccess],
+    *,
+    runtime_entries: Dict[str, RuntimeEntry],
+    run_id: str,
+    cache_dir: str,
+) -> List[PreparedSuccessWrite]:
+    prepared_writes: List[PreparedSuccessWrite] = []
     for pending in pending_successes:
+        entry_id = pending.entry.spec.check_id
         try:
             prepared_writes.append(
-                prepare_long_gate_success_write(
-                    pending["entry"],
-                    pending["fingerprint"],
-                    pending["command_result"],
-                    pending["output_files"],
-                    repo_root=REPO_ROOT,
+                prepare_success_write(
+                    pending.entry,
+                    pending.fingerprint,
+                    pending.result,
+                    pending.output_files,
+                    receipt_path=pending.receipt_path,
+                    run_id=run_id,
+                    metadata=pending.metadata,
+                    repo_root=ctx.repo_root,
                     cache_dir=cache_dir,
                 )
             )
         except SensitiveSourceError as exc:
-            _mark_runtime_entry_cache_unavailable(
-                pending["runtime_entry"], failure_kind="cache_write_unavailable", message=str(exc)
+            runtime_entries[entry_id] = _cache_unavailable_runtime_entry(
+                runtime_entries[entry_id], failure_kind="cache_write_unavailable", message=str(exc)
             )
     return prepared_writes
 
 
-def _commit_prepared_long_gate_successes(prepared_writes: Sequence[Mapping[str, Any]]) -> None:
-    for prepared in prepared_writes:
-        commit_prepared_long_gate_success(prepared)
-
-
-def _print_long_gate_failure(failure: Dict[str, Any]) -> None:
-    print(f"FAILED: {failure.get('entry_id') or failure.get('display') or 'unknown'}", flush=True)
+def _print_long_gate_failure(failure: Mapping[str, Any]) -> None:
+    print(f"FAILED: {failure['entry_id']}", flush=True)
     print("command:", flush=True)
-    print(f"  {failure.get('display') or ''}", flush=True)
+    print(f"  {failure['display']}", flush=True)
     print("copyable rerun:", flush=True)
-    print(f"  {failure.get('copyable_command') or ''}", flush=True)
+    print(f"  {failure['copyable_command']}", flush=True)
     print("receipt:", flush=True)
-    print(f"  {failure.get('receipt_path') or ''}", flush=True)
+    print(f"  {failure['receipt_path']}", flush=True)
     print("stdout log:", flush=True)
-    print(f"  {failure.get('stdout_log_path') or ''}", flush=True)
+    print(f"  {failure['stdout_log_path']}", flush=True)
     print("stderr log:", flush=True)
-    print(f"  {failure.get('stderr_log_path') or ''}", flush=True)
+    print(f"  {failure['stderr_log_path']}", flush=True)
     print("stdout tail:", flush=True)
-    print(str(failure.get("stdout_tail") or ""), flush=True)
+    print(failure["stdout_tail"], flush=True)
     print("stderr tail:", file=sys.stderr, flush=True)
-    print(str(failure.get("stderr_tail") or ""), file=sys.stderr, flush=True)
-
-
-def _output_file_rows(paths: Sequence[str]) -> List[Dict[str, str]]:
-    rows: List[Dict[str, str]] = []
-    for rel_path in list(paths or []):
-        normalized = str(rel_path or "").replace("\\", "/")
-        if not normalized:
-            continue
-        abs_path = os.path.join(REPO_ROOT, normalized.replace("/", os.sep))
-        if os.path.isfile(abs_path):
-            rows.append({"path": normalized})
-    return rows
-
-
-def _refresh_summary_entry(
-    runtime_entry: Dict[str, Any],
-    *,
-    result: Dict[str, Any],
-    receipt_path: str,
-    output_file_paths: Optional[Sequence[str]] = None,
-    failed: bool = False,
-) -> None:
-    summary_entry = runtime_entry.get("summary_entry")
-    if not isinstance(summary_entry, dict):
-        return
-    output_files = _output_file_rows(list(output_file_paths or []))
-    updated = build_summary_entry(
-        index=int(summary_entry.get("index") or 0),
-        entry=dict(runtime_entry.get("entry") or {}),
-        decision=dict(runtime_entry.get("decision") or {}),
-        result=result,
-        receipt_path=receipt_path,
-        output_files=output_files,
-        failed=failed,
-    )
-    summary_entry.clear()
-    summary_entry.update(updated)
+    print(failure["stderr_tail"], file=sys.stderr, flush=True)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
-    if bool(args.fast_precheck):
+    if args.fast_precheck:
         from tools import fast_static_precheck
 
         return int(fast_static_precheck.main([]))
+    ctx = GateContext(resolve_repo_root())
     command_specs = quality_gate_shared.build_quality_gate_check_specs(
-        repo_root=REPO_ROOT,
-        allow_dirty_worktree=bool(args.allow_dirty_worktree),
+        ctx.repo_root, allow_dirty_worktree=args.allow_dirty_worktree
     )
-    if bool(args.long_gate_impact_explain):
+    if args.long_gate_impact_explain:
         impact_paths = (
             _dedupe_impact_paths(args.long_gate_impact_path)
             if args.long_gate_impact_path
-            else _current_impact_paths()
+            else _current_impact_paths(ctx)
         )
-        _print_long_gate_impact_explain(command_specs, impact_paths)
+        _print_long_gate_impact_explain(ctx, command_specs, impact_paths)
         return 0
-    long_gate_cache_enabled = bool((args.long_gate_cache or args.long_gate_cache_explain) and not args.no_long_gate_cache)
-    resolved_long_gate_cache_dir = "evidence/QualityGate/long_gate"
+    plan = gate_entries(command_specs)
+    long_gate_cache_enabled = (args.long_gate_cache or args.long_gate_cache_explain) and not args.no_long_gate_cache
+    long_gate_cache_dir = LONG_GATE_CACHE_DIR_REL
     if long_gate_cache_enabled:
         try:
-            resolved_long_gate_cache_dir = resolve_long_gate_cache_dir(REPO_ROOT, args.long_gate_cache_dir)
+            long_gate_cache_dir = resolve_cache_dir(ctx.repo_root, args.long_gate_cache_dir)
         except ValueError as exc:
             raise QualityGateError(str(exc)) from exc
-    if bool(args.long_gate_cache_explain):
-        long_gate_summary_entries, _long_gate_runtime_entries = _prepare_long_gate_cache_decisions(
-            command_specs,
+    if args.long_gate_cache_explain:
+        explain_entries, _explain_context = _prepare_long_gate_cache_decisions(
+            ctx,
+            plan,
             cache_enabled=True,
-            cache_dir=resolved_long_gate_cache_dir,
-            force_rerun_entry_ids=list(args.long_gate_force_rerun or []),
-            force_rerun_all=bool(args.long_gate_force_rerun_all),
+            cache_dir=long_gate_cache_dir,
+            write_success=False,
+            force_rerun_entry_ids=args.long_gate_force_rerun,
+            force_rerun_all=args.long_gate_force_rerun_all,
         )
-        _print_long_gate_cache_decisions(long_gate_summary_entries, cache_dir=resolved_long_gate_cache_dir)
+        _print_long_gate_cache_decisions(ctx, list(explain_entries.values()), cache_dir=long_gate_cache_dir)
         return 0
     started_at = datetime.now().isoformat(timespec="seconds")
-    head_sha = _git_head_sha()
-    git_status_short_before = _git_status_lines()
-    if bool(args.allow_dirty_worktree and not args.no_resume):
-        resume_decision = _decide_resume_from_previous_failure(
-            command_specs,
-            current_head_sha=head_sha,
-            current_git_status_short=git_status_short_before,
-        )
-    elif bool(args.allow_dirty_worktree and args.no_resume):
+    head_sha = _git_head_sha(ctx)
+    git_status_short_before = _git_status_lines(ctx)
+    if not args.allow_dirty_worktree:
+        resume_decision = ResumeDecision(False, "当前不是 allow-dirty-worktree 模式")
+    elif args.no_resume:
         resume_decision = ResumeDecision(False, "--no-resume 已指定")
     else:
-        resume_decision = ResumeDecision(False, "当前不是 allow-dirty-worktree 模式")
+        resume_decision = _decide_resume_from_previous_failure(
+            ctx, plan, current_head_sha=head_sha, current_git_status_short=git_status_short_before
+        )
     if resume_decision.enabled:
         print(
-            f"提示：检测到上次质量门禁失败，本次从第 {resume_decision.start_command_index}/{len(command_specs)} "
-            f"步继续：{resume_decision.start_command_display}",
+            f"提示：检测到上次质量门禁在第 {resume_decision.failed_command_index}/{len(plan)} 步失败"
+            f"（{resume_decision.failed_command_display}），本次复用其前 {len(resume_decision.resumed_steps)} 个"
+            "已通过的步骤，其余步骤照常执行。",
             flush=True,
         )
     else:
         print(f"提示：未使用续跑：{resume_decision.reason}。本次完整重跑。", flush=True)
-    effective_long_gate_cache_enabled = bool(long_gate_cache_enabled and not resume_decision.enabled)
-    long_gate_summary_entries, long_gate_runtime_entries = _prepare_long_gate_cache_decisions(
-        command_specs,
+    require_clean_worktree = args.require_clean_worktree or not args.allow_dirty_worktree
+    effective_long_gate_cache_enabled = long_gate_cache_enabled and not resume_decision.enabled
+    runtime_entries, long_gate_context = _prepare_long_gate_cache_decisions(
+        ctx,
+        plan,
         cache_enabled=effective_long_gate_cache_enabled,
-        cache_dir=resolved_long_gate_cache_dir,
-        force_rerun_entry_ids=list(args.long_gate_force_rerun or []) if effective_long_gate_cache_enabled else [],
-        force_rerun_all=bool(args.long_gate_force_rerun_all and effective_long_gate_cache_enabled),
+        cache_dir=long_gate_cache_dir,
+        write_success=require_clean_worktree,
+        force_rerun_entry_ids=args.long_gate_force_rerun if effective_long_gate_cache_enabled else (),
+        force_rerun_all=args.long_gate_force_rerun_all and effective_long_gate_cache_enabled,
     )
     if long_gate_cache_enabled:
-        _print_long_gate_cache_decisions(long_gate_summary_entries, cache_dir=resolved_long_gate_cache_dir)
+        _print_long_gate_cache_decisions(ctx, list(runtime_entries.values()), cache_dir=long_gate_cache_dir)
     run_id = f"{head_sha}:{started_at}"
-    runtime_snapshot = _runtime_state_snapshot()
-    commands: List[Dict[str, Any]] = []
-    command_receipts: List[Dict[str, Any]] = []
-    collection_proof: Optional[Dict[str, Any]] = None
-    ruff_version_output: Optional[str] = None
-    pyright_version_output: Optional[str] = None
-    parsed_command_results: Dict[str, Any] = {}
-    long_gate_failure: Dict[str, Any] = {}
-    pending_long_gate_successes: List[Dict[str, Any]] = []
+    runtime_snapshot = _runtime_state_snapshot(ctx)
+    progress = PlanProgress(
+        run_id=run_id,
+        total=len(plan),
+        commands=[],
+        command_receipts=[],
+        parsed_command_results={},
+        pending_successes=[],
+    )
+    parsed_command_results = progress.parsed_command_results
     failure_kind: Optional[str] = None
     git_status_short_after: Optional[List[str]] = None
-    full_test_debt_runtime_entry = next(
-        (
-            dict(rt_entry)
-            for rt_entry in long_gate_runtime_entries.values()
-            if str(dict(rt_entry.get("entry") or {}).get("proof_kind") or "") == "full_test_debt"
-        ),
-        {},
-    )
     preserve_full_test_debt_outputs = _should_preserve_full_test_debt_outputs(
-        full_test_debt_runtime_entry,
-        cache_enabled=effective_long_gate_cache_enabled,
-        cache_dir=resolved_long_gate_cache_dir,
+        ctx, runtime_entries, cache_dir=long_gate_cache_dir
     )
-    require_clean_worktree = bool(args.require_clean_worktree or not args.allow_dirty_worktree)
     manifest = _base_quality_gate_manifest(
+        ctx,
+        run_id=run_id,
         started_at=started_at,
         head_sha=head_sha,
         git_status_short_before=git_status_short_before,
         runtime_snapshot=runtime_snapshot,
-        status="running",
-        command_plan=command_specs,
+        plan=plan,
     )
-    if effective_long_gate_cache_enabled:
-        manifest["long_gate_cache_dir"] = resolved_long_gate_cache_dir
+    if long_gate_context is not None:
+        manifest["long_gate_cache_dir"] = long_gate_cache_dir
     manifest["resume"] = {
-        "enabled": bool(resume_decision.enabled),
+        "enabled": resume_decision.enabled,
         "reason": resume_decision.reason,
-        "previous_run_id": resume_decision.previous_run_id or None,
-        "skip_count": int(resume_decision.skip_count),
-        "start_command_index": resume_decision.start_command_index or None,
-        "start_command_display": resume_decision.start_command_display or None,
-        "previous_failure_message": resume_decision.previous_failure_message or None,
+        "previous_run_id": resume_decision.previous_run_id,
+        "resumed_command_indexes": [step.receipt.command_index for step in resume_decision.resumed_steps],
+        "failed_command_index": resume_decision.failed_command_index,
+        "failed_command_display": resume_decision.failed_command_display,
+        "previous_failure_message": resume_decision.previous_failure_message,
         "proof_status": "pending",
     }
     if not require_clean_worktree:
         _mark_manifest_unbound(manifest)
-    _write_quality_gate_manifest(manifest)
+    _write_quality_gate_manifest(ctx, manifest)
 
     try:
         try:
-            if resume_decision.enabled:
-                _clear_quality_gate_run_outputs(
-                    remove_manifest=False,
-                    remove_receipts_and_logs=False,
-                    remove_current_debt=not preserve_full_test_debt_outputs,
-                    remove_full_test_debt_summary=not preserve_full_test_debt_outputs,
-                )
-            else:
-                _clear_quality_gate_run_outputs(
-                    remove_manifest=False,
-                    remove_current_debt=not preserve_full_test_debt_outputs,
-                    remove_full_test_debt_summary=not preserve_full_test_debt_outputs,
-                )
-            _clear_stale_long_gate_output_files(
-                long_gate_runtime_entries,
-                preserve_full_test_debt_outputs=preserve_full_test_debt_outputs,
+            _clear_quality_gate_run_outputs(
+                ctx,
+                keep_receipts_and_logs=resume_decision.enabled,
+                keep_full_test_debt_outputs=preserve_full_test_debt_outputs,
             )
+            if long_gate_context is not None:
+                _clear_stale_long_gate_output_files(
+                    ctx,
+                    runtime_entries,
+                    preserve_full_test_debt_outputs=preserve_full_test_debt_outputs,
+                )
         except Exception:
             failure_kind = "quality_gate_cleanup_failed"
             raise
@@ -2747,13 +2408,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             raise QualityGateError(_dirty_worktree_message(git_status_short_before))
 
         try:
-            _assert_no_active_runtime()
+            _assert_no_active_runtime(ctx)
         except QualityGateError:
             failure_kind = "environment_blocked"
             raise
-        _assert_guard_tests_ready(require_tracked=require_clean_worktree)
+        _assert_guard_tests_ready(ctx, require_tracked=require_clean_worktree)
         try:
             _assert_resume_dirty_content_still_current(
+                ctx,
                 resume_decision,
                 git_status_short_before=git_status_short_before,
             )
@@ -2762,36 +2424,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             raise
 
         _run_quality_gate_command_plan(
-            command_specs,
-            run_id=run_id,
-            commands=commands,
-            command_receipts=command_receipts,
-            parsed_command_results=parsed_command_results,
+            ctx,
+            plan,
+            progress,
             resume_decision=resume_decision,
-            long_gate_cache=effective_long_gate_cache_enabled,
-            long_gate_cache_write_success=bool(
-                effective_long_gate_cache_enabled and require_clean_worktree and not resume_decision.enabled
-            ),
-            long_gate_cache_dir=resolved_long_gate_cache_dir,
-            long_gate_runtime_entries=long_gate_runtime_entries,
-            long_gate_failure=long_gate_failure,
-            pending_long_gate_successes=pending_long_gate_successes,
+            long_gate_runtime_entries=runtime_entries,
+            long_gate_context=long_gate_context,
         )
-        collection_proof = cast(Optional[Dict[str, Any]], parsed_command_results.get("collection_proof"))
-        ruff_version_output = cast(Optional[str], parsed_command_results.get("ruff_version_output"))
-        pyright_version_output = cast(Optional[str], parsed_command_results.get("pyright_version_output"))
-        _require_quality_gate_command_proofs(
-            command_specs,
-            parsed_command_results,
-        )
+        _require_quality_gate_command_proofs(command_specs, parsed_command_results)
 
-        git_status_short_after = _git_status_lines()
+        git_status_short_after = _git_status_lines(ctx)
         _apply_worktree_proof(
+            ctx,
             manifest,
             git_status_short_before=git_status_short_before,
             git_status_short_after=git_status_short_after,
         )
-        if bool(manifest.get("tracked_drift_detected")):
+        if manifest["tracked_drift_detected"]:
             failure_kind = "tracked_drift_detected"
             raise QualityGateError("tracked drift detected during quality gate execution")
         if require_clean_worktree and git_status_short_after:
@@ -2800,18 +2449,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
         if long_gate_cache_enabled:
             prepared_long_gate_successes = _prepare_pending_long_gate_successes(
-                pending_long_gate_successes, cache_dir=resolved_long_gate_cache_dir
+                ctx,
+                progress.pending_successes,
+                runtime_entries=runtime_entries,
+                run_id=run_id,
+                cache_dir=long_gate_cache_dir,
             )
             _write_and_print_long_gate_summary(
+                ctx,
                 run_id=run_id,
                 head_sha=head_sha,
-                worktree_clean=not bool(git_status_short_before or git_status_short_after),
+                worktree_clean=not (git_status_short_before or git_status_short_after),
                 cache_enabled=effective_long_gate_cache_enabled,
-                entries=long_gate_summary_entries,
-                failure=long_gate_failure or None,
-                cache_dir=resolved_long_gate_cache_dir,
+                runtime_entries=runtime_entries,
+                cache_dir=long_gate_cache_dir,
             )
-            _commit_prepared_long_gate_successes(prepared_long_gate_successes)
+            for prepared in prepared_long_gate_successes:
+                commit_prepared_success_write(ctx.repo_root, prepared)
 
         success_by_clean_contract = {
             True: ("passed", "质量门禁通过", 0),
@@ -2824,10 +2478,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         success_status, success_message, success_return_code = success_by_clean_contract[require_clean_worktree]
         if resume_decision.enabled:
             success_message = (
-                "质量门禁续跑完成；本次跳过了上次已通过的前置命令，只能当作本地快速反馈，不能当作完整通过证明。"
+                "质量门禁续跑完成；本次复用了上次已通过的步骤，只能当作本地快速反馈，不能当作完整通过证明。"
             )
-        resume_info = dict(manifest.get("resume") or {})
-        resume_info["proof_status"] = (
+        manifest["resume"]["proof_status"] = (
             "fast_feedback_only"
             if resume_decision.enabled
             else ("full_command_plan_bound" if require_clean_worktree else "full_command_plan_unbound")
@@ -2836,69 +2489,58 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             {
                 "status": success_status,
                 "finished_at": datetime.now().isoformat(timespec="seconds"),
-                "collection_proof": collection_proof,
-                "required_tests": list(REQUIRED_TEST_ARGS),
-                "commands": commands,
-                "command_receipts": command_receipts,
-                "ruff_version": ruff_version_output,
-                "pyright_version": pyright_version_output,
+                "collection_proof": parsed_command_results["collection_proof"],
+                "commands": progress.commands,
+                "command_receipts": progress.command_receipts,
+                "ruff_version": parsed_command_results["ruff_version_output"],
+                "pyright_version": parsed_command_results["pyright_version_output"],
                 "failure_kind": None,
                 "failure_message": None,
-                "resume": resume_info,
+                "failure_command_index": None,
             }
         )
-        apply_quality_gate_manifest_proof_fields(manifest, repo_root=REPO_ROOT)
-        if not require_clean_worktree:
-            _mark_manifest_unbound(manifest)
-        _write_quality_gate_manifest(manifest)
+        _write_quality_gate_manifest(ctx, manifest)
         print(success_message, flush=True)
         return success_return_code
-    except Exception as exc:
-        collection_proof = cast(Optional[Dict[str, Any]], parsed_command_results.get("collection_proof"))
-        ruff_version_output = cast(Optional[str], parsed_command_results.get("ruff_version_output"))
-        pyright_version_output = cast(Optional[str], parsed_command_results.get("pyright_version_output"))
+    except (Exception, KeyboardInterrupt) as exc:
+        # 中断也先写完失败总账与 summary（已完成与被中断的步骤都在其中），再原样向外传播。
+        if isinstance(exc, KeyboardInterrupt):
+            failure_kind = "interrupted"
         worktree_proof_errors: List[str] = []
         if git_status_short_after is None:
             try:
-                git_status_short_after = _git_status_lines()
+                git_status_short_after = _git_status_lines(ctx)
             except (QualityGateError, OSError) as status_exc:
                 git_status_short_after = None
                 worktree_proof_errors.append(f"git_status_after: {status_exc}")
         try:
             _apply_worktree_proof(
+                ctx,
                 manifest,
                 git_status_short_before=git_status_short_before,
                 git_status_short_after=git_status_short_after,
             )
         except (QualityGateError, OSError) as proof_exc:
             worktree_proof_errors.append(f"worktree_fingerprint: {proof_exc}")
-        resume_info = dict(manifest.get("resume") or {})
-        resume_info["proof_status"] = "failed"
+        manifest["resume"]["proof_status"] = "failed"
         manifest.update(
             {
                 "status": "failed",
                 "finished_at": datetime.now().isoformat(timespec="seconds"),
-                "collection_proof": collection_proof,
-                "required_tests": list(REQUIRED_TEST_ARGS),
-                "commands": commands,
-                "command_receipts": command_receipts,
-                "ruff_version": ruff_version_output,
-                "pyright_version": pyright_version_output,
+                "collection_proof": parsed_command_results.get("collection_proof"),
+                "commands": progress.commands,
+                "command_receipts": progress.command_receipts,
+                "ruff_version": parsed_command_results.get("ruff_version_output"),
+                "pyright_version": parsed_command_results.get("pyright_version_output"),
                 "failure_kind": failure_kind or "quality_gate_failed",
                 "failure_message": str(exc),
-                "resume": resume_info,
+                "failure_command_index": progress.running_command_index,
             }
         )
         if worktree_proof_errors:
             manifest["worktree_proof_error"] = "；".join(worktree_proof_errors)
         try:
-            apply_quality_gate_manifest_proof_fields(manifest, repo_root=REPO_ROOT)
-            if not require_clean_worktree:
-                _mark_manifest_unbound(manifest)
-        except Exception as manifest_proof_exc:
-            manifest["manifest_proof_error"] = str(manifest_proof_exc)
-        try:
-            _write_quality_gate_manifest(manifest)
+            _write_quality_gate_manifest(ctx, manifest)
             print(
                 f"==> 失败总账已写入：{QUALITY_GATE_MANIFEST_REL.replace(os.sep, '/')}"
                 "（含每步 receipt 与 failure_message，是事后排错的总入口）",
@@ -2910,13 +2552,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if long_gate_cache_enabled:
             try:
                 _write_and_print_long_gate_summary(
+                    ctx,
                     run_id=run_id,
                     head_sha=head_sha,
-                    worktree_clean=not bool(git_status_short_before or (git_status_short_after or [])),
+                    worktree_clean=not (git_status_short_before or git_status_short_after),
                     cache_enabled=effective_long_gate_cache_enabled,
-                    entries=long_gate_summary_entries,
-                    failure=long_gate_failure or None,
-                    cache_dir=resolved_long_gate_cache_dir,
+                    runtime_entries=runtime_entries,
+                    cache_dir=long_gate_cache_dir,
                 )
             except Exception as summary_write_exc:
                 print(f"ERROR: 无法写入 long gate summary：{summary_write_exc}", file=sys.stderr, flush=True)

@@ -33,9 +33,9 @@ OUT_DIR = os.environ.get("CHECKUP_OUT") or os.path.join(HERE, "..", "latest", "c
 OUT_DIR = os.path.abspath(OUT_DIR)
 
 # 纳入分析的一方源码根（排除 tests/ —— 它单独由门禁专题处理；排除 vendor/backups/evidence）
-FIRST_PARTY_ROOTS = ("core", "web", "data", "tools", "scripts", "plugins", "desktop")
+FIRST_PARTY_ROOTS = ("core", "web", "data", "tools", "scripts", "desktop")
 # 纯第一方包前缀（用于判定 import 是否一方依赖）
-FIRST_PARTY_PKGS = ("core", "web", "data", "tools", "scripts", "plugins", "desktop", "config")
+FIRST_PARTY_PKGS = ("core", "web", "data", "tools", "scripts", "desktop", "config")
 
 EXCLUDE_DIR_PARTS = {".git", "__pycache__", ".venv", "venv", "node_modules", "vendor",
                      "backups", "evidence", ".ruff_cache", ".pytest_cache", "dist", "build"}
@@ -63,8 +63,6 @@ def _layer_of(rel_path: str) -> str:
         return "core.infrastructure"
     if p.startswith("core/shared/"):
         return "core.shared"
-    if p.startswith("core/plugins/"):
-        return "core.plugins"
     if p.startswith("data/repositories/"):
         return "data.repositories"
     if p.startswith("web/routes/domains/"):

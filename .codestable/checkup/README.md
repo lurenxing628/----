@@ -8,6 +8,14 @@
 
 机器可读总入口：[`baseline.json`](baseline.json)。
 
+## 基线现行口径（2026-11-15 起）
+
+下面按日期排列的各节是当时的机械证据与工具口径，现行门禁口径见 [`开发文档/README.md`](../../开发文档/README.md) 的“质量治理入口”。本目录自己负责的基线事实以源码为准：
+
+- **死代码基线** `dead_code_islands_baseline.json`：条目 `path` 为 `文件::函数限定名`，`kind` 为 `suspect_dead`（没有任何引用）或 `test_only`（只有测试代码引用），`count` 恒为 1。
+- **路径角色**：生产、测试、宿主工具三种角色见 `tools/path_roles.py`，`tests/` 与 `tools/host_tests/` 归测试。
+- **循环依赖两档**：生产档（`import_cycles_production_baseline.json`）扫生产与宿主工具代码；含测试档（`--include-tests`，`import_cycles_with_tests_baseline.json`）再加测试角色。
+
 ## 2026-07-13 未推送提交复审修正（当前工作树事实）
 
 未推送提交审计发现并修复两条证据/行为缺口：legacy dispatch adapter 重新执行 strict 工时校验，缺少当前路径所需 callback 时以专用合同错误 fail-loud；调用图对 imported-module 属性调用改为“精确 callsite 已命中则不再进入通用 attr 模糊分支”。
@@ -98,7 +106,7 @@ A1 的 clean proof 只绑定 `c2243cd0`；当前总入口已经由上节 A2 自�
 |---|---|---|
 | codemap | 通过 | 741 模块、145194 行、7370 定义、2374 条 import 边、分层违规 0、解析错误 0 |
 | callgraph | clean HEAD 重跑结果与已提交快照一致 | 6921 函数、26763 条边、20 个函数级环、164 个孤岛、解析错误 0 |
-| import cycles | 通过“无新增硬环”门禁 | 6 个既有目录硬环、0 个文件硬环、退出码 0 |
+| import cycles | 通过“无新增硬环”门禁（当时门禁只锁硬环；现行四类环口径见文首） | 6 个既有目录硬环、0 个文件硬环、退出码 0 |
 | dead-code quick | 经核验后刷新并复跑通过 | 164 候选、82 已解释、82 个基线疑似项、0 个新增 |
 
 `codemap/orphan_refined.json` 的 109 项只是“静态和已识别动态引用均未命中”的候选，**不能直接当死代码**。
@@ -158,7 +166,9 @@ python3.14 .codestable/checkup/scripts/dynamic_refs.py
 # APS 正式循环门禁双 scope
 .venv/bin/python -m tools.scan_import_cycles --fail-on-new-cycle --quiet-when-clean
 .venv/bin/python -m tools.scan_import_cycles --include-tests --fail-on-new-cycle --quiet-when-clean
-.venv/bin/python tools/scan_dead_code_islands.py --mode quick
+
+# 死代码共用棘轮（与日常门禁、完整门禁同一命令）
+.venv/bin/python -m tools.scan_dead_code_islands --mode quick --fail-on-new
 ```
 
 ### 复现历史 clean-source 源码投影
@@ -189,14 +199,15 @@ CHECKUP_OUT="$TMP/_baseline/codemap" \
 CHECKUP_CALLGRAPH="$TMP/_baseline/callgraph" \
   "$HOST_PY" .codestable/checkup/scripts/callgraph_extract.py
 
+# 下面两条在 $TMP 里运行，用的是归档提交自带的扫描器与基线，命令行与口径是当时的；现行命令见上一小节
 "$APS_PY" -m tools.scan_import_cycles --json --fail-on-new-cycle
 "$APS_PY" tools/scan_dead_code_islands.py --mode quick
 ```
 
-正式落盘前先比较临时输出、核对 parse errors / layering / 新增硬环 / dead-code 新项，并复算 `baseline.json` 的关键 SHA256。受控刷新 dead-code 基线前，必须逐项动态或调用证据核验；刷新命令是：
+正式落盘前先比较临时输出、核对 parse errors / layering / 循环依赖四类环的新增（新增环、新增成员、圈内新增锁定边、未解析动态导入增加）/ dead-code 新项，并复算 `baseline.json` 的关键 SHA256。dead-code 基线只减不增：报出项先逐项用动态或调用证据核验，误报回扫描器规则修，真死代码删掉；`--refresh` 默认拒绝新增条目，只能收紧。扫描范围或基线格式变化需要受控重建时，逐条核对差异后才加 `--allow-growth`（按当前扫描整份重写、不读旧基线）。刷新命令是：
 
 ```bash
-python3 tools/scan_dead_code_islands.py --mode quick --refresh
+.venv/bin/python -m tools.scan_dead_code_islands --mode quick --refresh
 ```
 
 ## 全景 HTML 的限制

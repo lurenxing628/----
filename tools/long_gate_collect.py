@@ -2,47 +2,31 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List, Mapping
+from typing import Any, Dict, Mapping
 
-from tools.quality_gate_shared import REPO_ROOT, parse_pytest_collect_nodeids, sanitize_quality_gate_output
-
-COLLECT_NODEIDS_REL = os.path.join("evidence", "QualityGate", "collect_nodeids.v2.json").replace("\\", "/")
-COLLECT_NODEIDS_SCHEMA_VERSION = 2
-
-
-def _nodeids_by_file(nodeids: List[str]) -> Dict[str, List[str]]:
-    grouped: Dict[str, List[str]] = {}
-    for nodeid in nodeids:
-        file_path = str(nodeid).split("::", 1)[0]
-        grouped.setdefault(file_path, []).append(str(nodeid))
-    return {path: grouped[path] for path in sorted(grouped)}
+from tools.long_gate_schema import COLLECT_NODEIDS_SCHEMA_VERSION
+from tools.quality_gate_shared import (
+    QUALITY_GATE_COLLECT_NODEIDS_REL,
+    parse_pytest_collect_nodeids,
+    sanitize_quality_gate_output,
+)
 
 
-def build_collect_nodeids_payload(
-    stdout: str,
-    *,
-    pytest_version: str = "",
-    collect_stdout_log_path: str = "",
-) -> Dict[str, Any]:
+def build_collect_nodeids_payload(stdout: str, *, pytest_version: str, collect_stdout_log_path: str) -> Dict[str, Any]:
+    """collect 收集结果的唯一写出形状；`tools.long_gate_records.admit_collect_nodeids` 按同一形状读回。"""
     stdout = sanitize_quality_gate_output(stdout)
-    nodeids = parse_pytest_collect_nodeids(stdout)
     return {
         "schema_version": COLLECT_NODEIDS_SCHEMA_VERSION,
-        "status": "passed",
-        "nodeids": nodeids,
-        "nodeid_count": len(nodeids),
-        "collect_stdout_content": str(stdout),
-        "nodeids_by_file": _nodeids_by_file(nodeids),
-        "pytest_version": str(pytest_version or ""),
-        "collect_stdout_log_path": str(collect_stdout_log_path or "").replace("\\", "/"),
+        "nodeids": parse_pytest_collect_nodeids(stdout),
+        "collect_stdout_content": stdout,
+        "pytest_version": pytest_version,
+        "collect_stdout_log_path": collect_stdout_log_path,
     }
 
 
-def write_collect_nodeids(payload: Mapping[str, Any], *, repo_root: str = REPO_ROOT) -> str:
-    root = os.path.abspath(repo_root)
-    rel_path = COLLECT_NODEIDS_REL
-    abs_path = os.path.join(root, rel_path.replace("/", os.sep))
+def write_collect_nodeids(payload: Mapping[str, Any], *, repo_root: str) -> str:
+    abs_path = os.path.join(repo_root, QUALITY_GATE_COLLECT_NODEIDS_REL.replace("/", os.sep))
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     with open(abs_path, "w", encoding="utf-8") as handle:
-        json.dump(dict(payload), handle, ensure_ascii=False, indent=2, sort_keys=True)
-    return rel_path
+        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+    return QUALITY_GATE_COLLECT_NODEIDS_REL

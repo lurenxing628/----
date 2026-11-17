@@ -5,10 +5,14 @@ import os
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, NamedTuple, Optional, Sequence, Set, Tuple, Union
+from typing import Dict, List, Mapping, NamedTuple, Optional, Sequence, Set, Tuple, Union
 
 LoaderCandidates = Dict[str, Set[str]]
 StaticValue = Union[str, Path]
+
+# import 四分类按加载期强度从强到弱排列；运行时图 = hard + cond + lazy（typeonly 运行时不执行）。
+IMPORT_KINDS = ("hard", "cond", "lazy", "typeonly")
+RUNTIME_KINDS = ("hard", "cond", "lazy")
 
 
 class ResolvedFileImport(NamedTuple):
@@ -341,12 +345,30 @@ def adjacency(edge_map: Dict[Tuple[str, str], list]) -> Dict[str, List[str]]:
     return {source: list(targets) for source, targets in rows.items()}
 
 
-def merge_edges(*maps: Dict[Tuple[str, str], list]) -> Dict[Tuple[str, str], list]:
+def merge_edges(
+    edges_by_kind: Mapping[str, Mapping[Tuple[str, str], list]],
+    kinds: Sequence[str],
+) -> Dict[Tuple[str, str], list]:
+    """把选定类别的边合成一张图；每个位置末尾追加它的 import 类别，供圈内边记录判定类别。"""
     merged: Dict[Tuple[str, str], list] = defaultdict(list)
-    for edge_map in maps:
-        for edge, locations in edge_map.items():
-            merged[edge].extend(locations)
+    for kind in kinds:
+        for edge, locations in edges_by_kind[kind].items():
+            merged[edge].extend(location + (kind,) for location in locations)
     return merged
+
+
+def _module_edge_record(source_mod: str, target_mod: str, locations: List[Tuple[str, int, str]]) -> dict:
+    # 一条模块边的类别取它所有位置里加载期最强的那类；证据位置取该类里排序最前的一处。
+    kind = min((location_kind for _, _, location_kind in locations), key=IMPORT_KINDS.index)
+    rel, line = min((rel, line) for rel, line, location_kind in locations if location_kind == kind)
+    return {
+        "source": source_mod,
+        "target": target_mod,
+        "kind": kind,
+        "src": rel,
+        "line": line,
+        "extra": len(locations) - 1,
+    }
 
 
 def dir_cycle_records(sccs: List[List[str]], dmap: Dict[Tuple[str, str], list]) -> List[dict]:
@@ -357,20 +379,12 @@ def dir_cycle_records(sccs: List[List[str]], dmap: Dict[Tuple[str, str], list]) 
         for (source_dir, target_dir), locations in dmap.items():
             if source_dir not in members or target_dir not in members:
                 continue
-            for rel, line, target_mod in locations:
-                by_module_edge[(module_from_path(rel), target_mod)].append((rel, line))
-        evidence: List[dict] = []
-        for (source_mod, target_mod), locations in sorted(by_module_edge.items()):
-            rel, line = sorted(locations, key=lambda item: (item[0], item[1]))[0]
-            evidence.append(
-                {
-                    "source": source_mod,
-                    "target": target_mod,
-                    "src": rel,
-                    "line": line,
-                    "extra": len(locations) - 1,
-                }
-            )
+            for rel, line, target_mod, kind in locations:
+                by_module_edge[(module_from_path(rel), target_mod)].append((rel, line, kind))
+        evidence = [
+            _module_edge_record(source_mod, target_mod, locations)
+            for (source_mod, target_mod), locations in sorted(by_module_edge.items())
+        ]
         records.append({"members": sorted(component), "edges": evidence})
     return records
 
@@ -379,47 +393,25 @@ def file_cycle_records(sccs: List[List[str]], fmap: Dict[Tuple[str, str], list])
     records: List[dict] = []
     for component in sorted(sccs, key=len, reverse=True):
         members = set(component)
-        evidence: List[dict] = []
-        for (source_mod, target_mod), locations in sorted(fmap.items()):
-            if source_mod not in members or target_mod not in members:
-                continue
-            rel, line = sorted(locations, key=lambda item: (item[0], item[1]))[0]
-            evidence.append(
-                {
-                    "source": source_mod,
-                    "target": target_mod,
-                    "src": rel,
-                    "line": line,
-                    "extra": len(locations) - 1,
-                }
-            )
+        evidence = [
+            _module_edge_record(source_mod, target_mod, locations)
+            for (source_mod, target_mod), locations in sorted(fmap.items())
+            if source_mod in members and target_mod in members
+        ]
         records.append({"members": sorted(component), "edges": evidence})
     return records
-
-
-def _runtime_cycle_record(component: List[str], runtime_dir: dict) -> dict:
-    members = set(component)
-    evidence: List[dict] = []
-    for (source, target), locations in runtime_dir.items():
-        if source in members and target in members:
-            rel, line, target_mod = locations[0]
-            evidence.append(
-                {"src": rel, "line": line, "target": target_mod, "extra": len(locations) - 1}
-            )
-    return {"members": sorted(component), "edges": evidence}
 
 
 def delayed_dir_cycle_records(
     runtime_sccs: List[List[str]],
     hard_sccs: List[List[str]],
-    runtime_dir: dict,
+    runtime_dir: Dict[Tuple[str, str], list],
 ) -> List[dict]:
-    hard_sets = [frozenset(component) for component in hard_sccs]
-    return [
-        _runtime_cycle_record(component, runtime_dir)
-        for component in sorted(runtime_sccs, key=len, reverse=True)
-        if not any(frozenset(component) == hard_set for hard_set in hard_sets)
-    ]
+    hard_sets = {frozenset(component) for component in hard_sccs}
+    return dir_cycle_records(
+        [component for component in runtime_sccs if frozenset(component) not in hard_sets],
+        runtime_dir,
+    )
 
 
 def render_text(result: dict) -> str:
@@ -458,7 +450,10 @@ def render_text(result: dict) -> str:
     for cycle in result["hard_file_cycles"]:
         append(f"  {cycle}")
     append("")
-    append(f"③ 延迟/条件耦合环(运行时图新增,by-design 缓解为主):{len(result['delayed_dir_cycles'])} 个")
+    append(
+        f"③ 延迟目录环(运行时图相对硬加载期图新增;函数体内导入只推迟加载,闭合的环同样计入基线):"
+        f"{len(result['delayed_dir_cycles'])} 个"
+    )
     for cycle in result["delayed_dir_cycles"]:
         append(f"  [size={len(cycle['members'])}] {' ⇄ '.join(cycle['members'])}")
         for edge in cycle["edges"][:4]:

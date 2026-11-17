@@ -2,6 +2,15 @@ from __future__ import annotations
 
 from typing import Tuple
 
+#: 本机生成、不进仓库的 CodeStable 全景图样式与脚本。hook 拦截提交它们；失效路径扫描
+#: （tools/scan_dead_path_literals.py）不按存在与否判定它们，否则干净 worktree 与主工作区结果不一致。
+LOCAL_PANORAMA_FILES: Tuple[str, ...] = (
+    "docs/panorama.css",
+    "docs/panorama.js",
+    "docs/v2/panorama.css",
+    "docs/v2/panorama.js",
+)
+
 BLOCKED_PATH_RULES: Tuple[Tuple[str, str], ...] = (
     (".DS_Store", "macOS 自动生成文件，提交后只会制造无意义 diff"),
     ("*/.DS_Store", "macOS 自动生成文件，提交后只会制造无意义 diff"),
@@ -41,10 +50,7 @@ BLOCKED_PATH_RULES: Tuple[Tuple[str, str], ...] = (
     ("evidence/QualityGate/collect_nodeids.v2.json", "pytest collect v2 nodeid 快照是运行产物，应由当前门禁重新生成"),
     ("evidence/FullSelfTest/pytest_tests_output.txt", "FullSelfTest 原始输出很重，应保留格式化报告而不是原始控制台输出"),
     ("docs/_panorama_data/", "CodeStable 全景图数据是本地生成物，不属于项目源码"),
-    ("docs/panorama.css", "CodeStable 全景图样式是本地生成物，不属于项目源码"),
-    ("docs/panorama.js", "CodeStable 全景图脚本是本地生成物，不属于项目源码"),
-    ("docs/v2/panorama.css", "CodeStable 全景图样式是本地生成物，不属于项目源码"),
-    ("docs/v2/panorama.js", "CodeStable 全景图脚本是本地生成物，不属于项目源码"),
+    *((path, "CodeStable 全景图样式与脚本是本地生成物，不属于项目源码") for path in LOCAL_PANORAMA_FILES),
     ("docs/*全景图*.html", "CodeStable 全景图页面是本地生成物，不属于项目源码"),
     ("docs/*演进时间线.html", "CodeStable 演进时间线页面是本地生成物，不属于项目源码"),
     ("docs/**/*全景图*.html", "CodeStable 全景图页面是本地生成物，不属于项目源码"),

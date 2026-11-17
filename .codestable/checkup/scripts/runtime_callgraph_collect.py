@@ -34,7 +34,7 @@ OUT_DIR = os.path.abspath(
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-FIRST_PARTY_ROOTS = ("src", "core", "web", "data", "app", "tools", "scripts", "plugins", "desktop")
+FIRST_PARTY_ROOTS = ("src", "core", "web", "data", "app", "tools", "scripts", "desktop")
 _FP_PREFIXES = tuple(os.path.join(REPO_ROOT, root) + os.sep for root in FIRST_PARTY_ROOTS)
 _COMP_NAMES = frozenset({"<listcomp>", "<dictcomp>", "<setcomp>", "<genexpr>"})
 

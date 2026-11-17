@@ -11,7 +11,8 @@ from .quality_gate_shared import (
     is_terminal_pytest_report,
 )
 
-BASELINE_SCHEMA_VERSION = 2
+#: full-test-debt payload 的唯一版本号：collect_full_test_debt 写入、这里准入。
+BASELINE_SCHEMA_VERSION = 3
 BASELINE_CLASSIFICATION_KEYS = (
     "candidate_test_debt",
     "main_style_isolation_candidate",
@@ -185,7 +186,7 @@ def _validate_baseline_reports(
 def validate_clean_worktree_proof(payload: Dict[str, Any]) -> None:
     """收集器写入的干净工作区证明，只接受 worktree_clean_before 为 True 且 git_status_short_before 为 []。
 
-    两个字段不在非导入的机器契约里，这里是唯一的读取边界；严格比较本身已拒绝缺失、None 和错类型。
+    两个字段不在 `_validate_baseline_machine_contract` 里，这里是唯一的读取边界；严格比较本身已拒绝缺失、None 和错类型。
     """
     if payload.get("worktree_clean_before") is not True:
         raise QualityGateError("worktree_clean_before 必须为 true")
@@ -210,22 +211,21 @@ def _validate_baseline_machine_contract(payload: Dict[str, Any]) -> None:
         raise QualityGateError(f"schema_version 必须等于 {BASELINE_SCHEMA_VERSION}")
     if payload.get("baseline_kind") != "after_main_style_isolation":
         raise QualityGateError("baseline_kind 必须是 after_main_style_isolation")
-    importable = _require_bool(payload.get("importable"), "importable")
-    if importable is not False:
-        raise QualityGateError("importable 与当前导入口径不一致")
     _require_plain_int(payload.get("exitstatus"), "exitstatus")
     _validate_formal_full_test_args(payload)
     collected_nodeids = _require_string_list(payload.get("collected_nodeids"), "collected_nodeids")
     collection_errors = _require_list(payload.get("collection_errors"), "collection_errors")
-    _require_string_list(payload.get("importable_blockers"), "importable_blockers")
     classification_lists = _validate_baseline_classifications(payload)
     _validate_baseline_reports(payload, collected_nodeids, classification_lists)
     _validate_baseline_summary(payload, classification_lists, collection_errors)
 
 
-def _format_nodeid_list(values: Sequence[Any], *, limit: int = 20) -> str:
-    nodeids = [str(value) for value in values]
-    visible = nodeids[:limit]
+#: 报错里逐条列出的条目上限，其余只报个数。
+VISIBLE_ITEM_LIMIT = 20
+
+
+def _format_nodeid_list(nodeids: Sequence[str]) -> str:
+    visible = nodeids[:VISIBLE_ITEM_LIMIT]
     parts = [f"\n  - {nodeid}" for nodeid in visible]
     hidden_count = len(nodeids) - len(visible)
     if hidden_count > 0:
@@ -233,8 +233,8 @@ def _format_nodeid_list(values: Sequence[Any], *, limit: int = 20) -> str:
     return "".join(parts)
 
 
-def _format_collection_error_items(values: Sequence[Any], *, limit: int = 20) -> str:
-    visible = list(values)[:limit]
+def _format_collection_error_items(values: Sequence[Any]) -> str:
+    visible = values[:VISIBLE_ITEM_LIMIT]
     parts = []
     for item in visible:
         if isinstance(item, dict):
@@ -369,10 +369,10 @@ def retire_test_debt(
     }
 
 
-def active_xfail_entries_by_nodeid() -> Dict[str, Dict[str, Any]]:
+def active_xfail_entries_by_nodeid(ledger_path: str) -> Dict[str, Dict[str, Any]]:
     return {
         entry["nodeid"]: entry
-        for entry in load_ledger(required=True)["test_debt"]["entries"]
+        for entry in load_ledger(ledger_path)["test_debt"]["entries"]
         if entry["mode"] == "xfail"
     }
 

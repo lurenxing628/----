@@ -8,18 +8,18 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+if __name__ == "__main__":  # 按文件路径运行时让仓库根下的 tools 包可导入
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tools.git_hook_checks import _ensure_project_python_runtime, _project_python_executable
+from tools.git_hook_checks import ensure_project_python_runtime, project_python_executable
+from tools.long_gate_paths import resolve_repo_root
 
 WRAPPER_MARKER = "# APS native pre-push input wrapper v1"
 HOOK_TYPES = ("pre-commit", "commit-msg", "pre-push")
 
 
-def _wrapper_content(executable: str) -> str:
-    entry = str(REPO_ROOT / "tools" / "native_pre_push.py")
+def _wrapper_content(repo_root: Path, executable: str) -> str:
+    entry = str(repo_root / "tools" / "native_pre_push.py")
     return (
         "#!/bin/sh\n" + WRAPPER_MARKER + "\n"
         + f"exec {shlex.quote(executable)} {shlex.quote(entry)} \"$0\" \"$@\"\n"
@@ -27,22 +27,23 @@ def _wrapper_content(executable: str) -> str:
 
 
 def main() -> int:
-    _ensure_project_python_runtime()
+    repo_root = Path(resolve_repo_root())
+    ensure_project_python_runtime(repo_root)
     from pre_commit.commands.install_uninstall import is_our_script
 
     custom_paths = subprocess.run(
-        ["git", "config", "--get", "core.hooksPath"], cwd=str(REPO_ROOT), capture_output=True,
+        ["git", "config", "--get", "core.hooksPath"], cwd=str(repo_root), capture_output=True,
     )
     if custom_paths.returncode == 0:
         print("当前仓库设置了 core.hooksPath，请先处理该安装位置后再安装项目 hooks。", file=sys.stderr)
         return 1
     common = subprocess.run(
-        ["git", "rev-parse", "--git-common-dir"], cwd=str(REPO_ROOT), capture_output=True, text=True,
+        ["git", "rev-parse", "--git-common-dir"], cwd=str(repo_root), capture_output=True, text=True,
         check=True,
     )
     common_dir = Path(common.stdout.strip())
     if not common_dir.is_absolute():
-        common_dir = REPO_ROOT / common_dir
+        common_dir = repo_root / common_dir
     hooks_dir = common_dir / "hooks"
     push_hook = hooks_dir / "pre-push"
     chain = hooks_dir / "pre-push.pre-commit"
@@ -59,11 +60,11 @@ def main() -> int:
         print(f"项目 pre-push 包装缺少原 pre-commit 链：{chain}", file=sys.stderr)
         return 1
 
-    executable = _project_python_executable()
+    executable = project_python_executable(repo_root)
     original_wrapper = push_hook.read_bytes() if ours else None
     if ours:
         os.replace(str(chain), str(push_hook))
-    returncode = subprocess.call([executable, "-m", "pre_commit", "install"], cwd=str(REPO_ROOT))
+    returncode = subprocess.call([executable, "-m", "pre_commit", "install"], cwd=str(repo_root))
     if returncode:
         if original_wrapper is not None:
             os.replace(str(push_hook), str(chain))
@@ -71,7 +72,7 @@ def main() -> int:
             push_hook.chmod(0o755)
         return int(returncode)
     os.replace(str(push_hook), str(chain))
-    push_hook.write_text(_wrapper_content(executable), encoding="utf-8")
+    push_hook.write_text(_wrapper_content(repo_root, executable), encoding="utf-8")
     push_hook.chmod(0o755)
     print(f"APS pre-push wrapper installed at {push_hook}")
     return 0

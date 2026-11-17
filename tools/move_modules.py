@@ -26,6 +26,7 @@ import argparse
 import ast
 import io
 import json
+import os
 import re
 import subprocess
 import sys
@@ -33,23 +34,27 @@ import tokenize
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
-ROOT = Path(__file__).resolve().parents[1]
+if __name__ == "__main__":  # 按文件路径运行时让仓库根下的 tools 包可导入
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from tools.long_gate_paths import resolve_repo_root
+
 SCAN_DIRS = ("core", "data", "web", "tests", "tools", "scripts")
 SKIP_PARTS = {".venv", "__pycache__", ".git", "node_modules", ".pytest_cache", ".ruff_cache"}
 INIT_DOC = '"""按簇分包的门面：只放显式导入，不做懒导出。"""\n'
 
 
-def iter_python_files() -> Iterable[Path]:
-    for path in sorted(ROOT.glob("*.py")):
+def iter_python_files(root: Path) -> Iterable[Path]:
+    for path in sorted(root.glob("*.py")):
         yield path
     for name in SCAN_DIRS:
-        for path in sorted((ROOT / name).rglob("*.py")):
+        for path in sorted((root / name).rglob("*.py")):
             if not SKIP_PARTS & set(path.parts):
                 yield path
 
 
-def module_of(path: Path) -> Tuple[str, bool]:
-    parts = list(path.resolve().relative_to(ROOT).with_suffix("").parts)
+def module_of(root: Path, path: Path) -> Tuple[str, bool]:
+    parts = list(path.resolve().relative_to(root).with_suffix("").parts)
     is_package = parts[-1] == "__init__"
     if is_package:
         parts = parts[:-1]
@@ -69,8 +74,9 @@ def base_of(module: str) -> str:
 
 
 class Plan:
-    def __init__(self, moves: Dict[str, str], globs: Optional[Dict[str, List[str]]] = None,
-                 redirects: Optional[Dict[str, str]] = None):
+    def __init__(self, root: Path, moves: Dict[str, str], globs: Optional[Dict[str, List[str]]],
+                 redirects: Optional[Dict[str, str]]):
+        self.root = root
         self.moves = dict(moves)
         self.redirects = dict(redirects or {})
         self.globs = {key: list(value) for key, value in (globs or {}).items()}
@@ -79,25 +85,25 @@ class Plan:
         for old, target in self.redirects.items():
             if old == target:
                 problems.append("垫片指向自己：" + old)
-            if not (ROOT / rel_path(old)).is_file():
+            if not (root / rel_path(old)).is_file():
                 problems.append("垫片不存在：" + old)
-            if not (ROOT / rel_path(target)).is_file():
+            if not (root / rel_path(target)).is_file():
                 problems.append("垫片目标不存在：" + target)
             if old in self.moves:
                 problems.append("既搬又退役：" + old)
         for old, new in self.moves.items():
             if old == new:
                 problems.append("原地不动：" + old)
-            if not (ROOT / rel_path(old)).is_file():
+            if not (root / rel_path(old)).is_file():
                 problems.append("源模块不存在：" + old)
-            if (ROOT / rel_path(new)).exists():
+            if (root / rel_path(new)).exists():
                 problems.append("目标已存在：" + new)
-            if (ROOT / old.replace(".", "/") / "__init__.py").exists():
+            if (root / old.replace(".", "/") / "__init__.py").exists():
                 problems.append("不支持搬包目录：" + old)
             if targets.count(new) > 1:
                 problems.append("目标重复：" + new)
         for package in self.new_packages():
-            if package not in self.moves and (ROOT / rel_path(package)).is_file():
+            if package not in self.moves and (root / rel_path(package)).is_file():
                 problems.append("同名模块会被新包遮蔽：" + package)
         if problems:
             raise SystemExit("plan 无效：\n  " + "\n  ".join(sorted(set(problems))))
@@ -114,7 +120,7 @@ class Plan:
         seen = []
         for new in self.moves.values():
             package = parent_of(new)
-            while package and package not in seen and not (ROOT / package.replace(".", "/") / "__init__.py").exists():
+            while package and package not in seen and not (self.root / package.replace(".", "/") / "__init__.py").exists():
                 seen.append(package)
                 package = parent_of(package)
         return sorted(seen)
@@ -324,15 +330,16 @@ def _require_parsable(text: str, where: str) -> None:
 
 
 def run(plan: Plan, apply: bool) -> int:
+    root = plan.root
     strings = StringRewriter(plan)
     changed: Dict[Path, str] = {}
     all_notes: List[str] = []
     all_warnings: List[str] = []
     all_blocked: List[str] = []
-    for path in iter_python_files():
-        old_module, is_package = module_of(path)
+    for path in iter_python_files(root):
+        old_module, is_package = module_of(root, path)
         new_module = plan.new_module(old_module) or old_module
-        where = str(path.relative_to(ROOT))
+        where = str(path.relative_to(root))
         with path.open(encoding="utf-8", newline="") as handle:
             source = handle.read()
         text, notes = rewrite_imports(source, ImportRewriter(plan, old_module, new_module, is_package), where)
@@ -363,29 +370,29 @@ def run(plan: Plan, apply: bool) -> int:
     if all_blocked:
         raise SystemExit("存在阻断项，未改动任何文件")
     for package in plan.new_packages():
-        directory = ROOT / package.replace(".", "/")
+        directory = root / package.replace(".", "/")
         directory.mkdir(parents=True, exist_ok=True)
         (directory / "__init__.py").write_text(INIT_DOC, encoding="utf-8")
-        subprocess.run(["git", "add", str(directory / "__init__.py")], cwd=str(ROOT), check=True)
+        subprocess.run(["git", "add", str(directory / "__init__.py")], cwd=str(root), check=True)
     for old in plan.redirects:
-        subprocess.run(["git", "rm", "-q", "-f", rel_path(old)], cwd=str(ROOT), check=True)
+        subprocess.run(["git", "rm", "-q", "-f", rel_path(old)], cwd=str(root), check=True)
     moved_paths = []
     for old, new in plan.moves.items():
-        (ROOT / rel_path(new)).parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["git", "mv", rel_path(old), rel_path(new)], cwd=str(ROOT), check=True)
+        (root / rel_path(new)).parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "mv", rel_path(old), rel_path(new)], cwd=str(root), check=True)
         moved_paths.append(rel_path(new))
     touched = []
     for path, text in changed.items():
-        old_module, _ = module_of(path)
+        old_module, _ = module_of(root, path)
         if old_module in plan.redirects:
             continue
         target = plan.moves.get(old_module)
-        destination = ROOT / rel_path(target) if target else path
+        destination = root / rel_path(target) if target else path
         with destination.open("w", encoding="utf-8", newline="") as handle:
             handle.write(text)
-        touched.append(str(destination.relative_to(ROOT)))
+        touched.append(str(destination.relative_to(root)))
     ruff = subprocess.run([sys.executable, "-m", "ruff", "check", "--fix", "--select", "I", "--quiet"]
-                          + sorted(set(touched) | set(moved_paths)), cwd=str(ROOT))
+                          + sorted(set(touched) | set(moved_paths)), cwd=str(root))
     if ruff.returncode != 0:
         print("ruff 导入排序返回非零，请检查上面的输出")
     print(f"\n已执行：git mv {len(plan.moves)} 个模块，git rm {len(plan.redirects)} 个垫片，写回 {len(changed)} 个文件")
@@ -398,7 +405,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--apply", action="store_true", help="真正执行 git mv 与改写；默认只预演")
     args = parser.parse_args(argv)
     data = json.loads(Path(args.plan).read_text(encoding="utf-8"))
-    return run(Plan(data.get("moves", {}), data.get("globs"), data.get("redirects")), args.apply)
+    plan = Plan(Path(resolve_repo_root()), data.get("moves", {}), data.get("globs"), data.get("redirects"))
+    return run(plan, args.apply)
 
 
 if __name__ == "__main__":

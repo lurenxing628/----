@@ -12,7 +12,6 @@ importlib 动态加载、字符串模块名引用。本脚本识别其中一部�
 """
 from __future__ import annotations
 
-import ast
 import json
 import os
 import re

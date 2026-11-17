@@ -13,63 +13,53 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import os
 import sqlite3
 import sys
 import tempfile
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+if __name__ == "__main__":  # 按文件路径运行时让仓库根下的包可导入
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.infrastructure.batch_external_context_schema import objects as batch_external_context_objects  # noqa: E402
-from core.infrastructure.calendar_periods_schema import objects as calendar_periods_objects  # noqa: E402
-from core.infrastructure.core_schema import core_objects  # noqa: E402
-from core.infrastructure.database import CURRENT_SCHEMA_VERSION, get_connection  # noqa: E402
-from core.infrastructure.efficiency_indexes_schema import ADDED as efficiency_indexes  # noqa: E402
-from core.infrastructure.machine_capabilities_schema import objects as machine_capabilities_objects  # noqa: E402
-from core.infrastructure.material_stages_schema import objects as material_stages_objects  # noqa: E402
-from core.infrastructure.migration_state import ensure_current_schema_contract  # noqa: E402
-from core.infrastructure.single_pass_indexes_schema import ADDED as single_pass_indexes  # noqa: E402
-from core.infrastructure.workbench_calibration_adoption_schema import (  # noqa: E402
+from core.infrastructure.batch_external_context_schema import objects as batch_external_context_objects
+from core.infrastructure.calendar_periods_schema import objects as calendar_periods_objects
+from core.infrastructure.core_schema import core_objects
+from core.infrastructure.database import get_connection
+from core.infrastructure.efficiency_indexes_schema import ADDED as efficiency_indexes
+from core.infrastructure.machine_capabilities_schema import objects as machine_capabilities_objects
+from core.infrastructure.material_stages_schema import objects as material_stages_objects
+from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, ensure_current_schema_contract
+from core.infrastructure.single_pass_indexes_schema import ADDED as single_pass_indexes
+from core.infrastructure.workbench_calibration_adoption_schema import (
     objects as calibration_adoption_objects,
 )
-from core.infrastructure.workbench_dashboard_external_schema import (  # noqa: E402
-    workbench_dashboard_external_objects,
-)
-from core.infrastructure.workbench_dashboard_schema import workbench_dashboard_objects  # noqa: E402
-from core.infrastructure.workbench_execution_ledger_schema import (  # noqa: E402
+from core.infrastructure.workbench_dashboard_schema import workbench_dashboard_objects
+from core.infrastructure.workbench_execution_ledger_schema import (
     execution_ledger_initialization_sql,
     execution_ledger_objects,
 )
-from core.infrastructure.workbench_execution_void_schema import execution_void_objects  # noqa: E402
-from core.infrastructure.workbench_lineage_lookup_schema import lineage_lookup_objects  # noqa: E402
-from core.infrastructure.workbench_metadata_schema import metadata_objects  # noqa: E402
-from core.infrastructure.workbench_outsourcing_schema import workbench_outsourcing_objects  # noqa: E402
-from core.infrastructure.workbench_outsourcing_source_schema import (  # noqa: E402
-    workbench_outsourcing_source_objects,
-)
-from core.infrastructure.workbench_plan_identity_schema import (  # noqa: E402
+from core.infrastructure.workbench_execution_void_schema import execution_void_objects
+from core.infrastructure.workbench_history_schema import workbench_history_objects
+from core.infrastructure.workbench_metadata_schema import metadata_objects
+from core.infrastructure.workbench_outsourcing_schema import workbench_outsourcing_objects
+from core.infrastructure.workbench_plan_identity_schema import (
     plan_identity_initialization_sql,
     plan_identity_objects,
 )
-from core.infrastructure.workbench_plan_identity_write_guard import (  # noqa: E402
-    plan_identity_write_guard_objects,
-)
-from core.infrastructure.workbench_process_schema import process_objects  # noqa: E402
-from core.infrastructure.workbench_process_workflow_schema import workflow_objects  # noqa: E402
-from core.infrastructure.workbench_resource_schema import resource_objects  # noqa: E402
-from core.infrastructure.workbench_run_read_model_schema import objects as run_read_model_objects  # noqa: E402
-from core.infrastructure.workbench_run_schema import workbench_run_objects  # noqa: E402
-from core.infrastructure.workbench_source_revisions_schema import (  # noqa: E402
+from core.infrastructure.workbench_process_schema import process_objects
+from core.infrastructure.workbench_resource_schema import resource_objects
+from core.infrastructure.workbench_run_read_model_schema import objects as run_read_model_objects
+from core.infrastructure.workbench_run_schema import workbench_run_objects
+from core.infrastructure.workbench_source_revisions_schema import (
     source_revisions_initialization_sql,
     source_revisions_objects,
 )
-from core.infrastructure.workbench_template_lineage_schema import template_lineage_objects  # noqa: E402
-from core.infrastructure.workbench_trial_schema import workbench_trial_objects  # noqa: E402
+from core.infrastructure.workbench_template_lineage_schema import template_lineage_objects
+from core.infrastructure.workbench_trial_schema import workbench_trial_objects
+from tools.long_gate_paths import resolve_repo_root
 
-DEFAULT_OUTPUT = REPO_ROOT / "schema.sql"
 HEADER = (
     "-- 本文件由 python -m tools.generate_schema_sql --write 生成：手写源是 core/infrastructure 的 DDL 模块，请勿手改。\n"
     "-- 校验：python -m tools.generate_schema_sql --check。\n"
@@ -84,21 +74,17 @@ DDL_SOURCES: Tuple[Callable[[], Dict[str, str]], ...] = (
     metadata_objects,
     resource_objects,
     process_objects,
-    workflow_objects,
     plan_identity_objects,
-    plan_identity_write_guard_objects,
     execution_ledger_objects,
     execution_void_objects,
     workbench_run_objects,
     run_read_model_objects,
     template_lineage_objects,
-    lineage_lookup_objects,
     workbench_trial_objects,
+    workbench_history_objects,
     calibration_adoption_objects,
-    workbench_dashboard_objects,
     workbench_outsourcing_objects,
-    workbench_dashboard_external_objects,
-    workbench_outsourcing_source_objects,
+    workbench_dashboard_objects,
     batch_external_context_objects,
     calendar_periods_objects,
     machine_capabilities_objects,
@@ -160,8 +146,12 @@ def render_schema_sql(db_path: Path) -> str:
     version_ddl = [sql for _kind, name, sql in rows if name == "SchemaVersion"]
     if len(version_ddl) != 1:
         raise RuntimeError("基线库缺少唯一的 SchemaVersion 表定义")
-    parts: List[str] = [HEADER, "PRAGMA foreign_keys = ON;\n", _with_if_not_exists(version_ddl[0]) + ";\n",
-                        "INSERT OR IGNORE INTO SchemaVersion (id, version) VALUES (1, 0);\n"]
+    parts: List[str] = [
+        HEADER,
+        "PRAGMA foreign_keys = ON;\n",
+        _with_if_not_exists(version_ddl[0]) + ";\n",
+        f"INSERT INTO SchemaVersion (id, version) VALUES (1, {CURRENT_SCHEMA_VERSION});\n",
+    ]
     for _kind, name, sql in rows:
         if name == "SchemaVersion" or str(name).startswith("sqlite_"):
             continue
@@ -171,9 +161,7 @@ def render_schema_sql(db_path: Path) -> str:
     rendered = "".join(parts)
     check_conn = get_connection(str(db_path))
     try:
-        ensure_current_schema_contract(
-            check_conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=rendered, full_data=True
-        )
+        ensure_current_schema_contract(check_conn, schema_version=CURRENT_SCHEMA_VERSION, full_data=True)
     finally:
         check_conn.close()
     return rendered
@@ -196,7 +184,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true", help="逐字节比较生成结果与 --output 文件，不等退出码 1")
     mode.add_argument("--write", action="store_true", help="生成并覆盖 --output 文件")
-    parser.add_argument("--output", default=str(DEFAULT_OUTPUT), help="schema.sql 路径（默认仓库根）")
+    parser.add_argument(
+        "--output", default=os.path.join(resolve_repo_root(), "schema.sql"), help="schema.sql 路径（默认仓库根）"
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
     output = Path(args.output)
     generated = generate_schema_text()

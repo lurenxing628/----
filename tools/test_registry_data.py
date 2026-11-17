@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Tuple, TypedDict
+
 QUALITY_GATE_STARTUP_REGRESSION_ARGS = (
     'tests/app_runtime/test_frontend_offline_static_assets.py',
     'tests/app_runtime/test_launcher_startup.py',
@@ -152,7 +154,6 @@ _DATA_IO_TESTS = (
     'tests/config/test_config_snapshot_strict_numeric.py',
     'tests/config/test_schedule_config_startup.py',
     'tests/excel_data_io/test_excel_import_hardening.py',
-    'tests/excel_data_io/test_operator_machine_exception_paths.py',
 )
 
 _DOMAIN_TESTS = (
@@ -197,19 +198,47 @@ ESBUILD_SCOPES = (
 )
 
 
-def _group(group_id, label, targets, scopes, env_keys=(), tool_file_scopes=(), dependency_file_scopes=()):
+#: `.codestable/tools/` 下受 git 跟踪的 CodeStable 检索/校验工具；同目录其余文件是本机忽略产物，不进门禁范围。
+CODESTABLE_TOOL_FILES = (
+    ".codestable/tools/_yaml_frontmatter.py",
+    ".codestable/tools/search-yaml.py",
+    ".codestable/tools/validate-yaml.py",
+)
+
+
+class RegistryGroup(TypedDict):
+    group_id: str
+    label: str
+    target_paths: Tuple[str, ...]
+    input_file_scopes: Tuple[str, ...]
+    config_file_scopes: Tuple[str, ...]
+    tool_file_scopes: Tuple[str, ...]
+    dependency_file_scopes: Tuple[str, ...]
+    env_keys: Tuple[str, ...]
+
+
+def _group(
+    group_id: str,
+    label: str,
+    targets: Tuple[str, ...],
+    scopes: Tuple[str, ...],
+    env_keys: Tuple[str, ...] = (),
+    tool_file_scopes: Tuple[str, ...] = (),
+    dependency_file_scopes: Tuple[str, ...] = (),
+) -> RegistryGroup:
     return {
         "group_id": group_id,
         "label": label,
         "target_paths": targets,
         "input_file_scopes": (*targets, *scopes),
-        "tool_file_scopes": tuple(tool_file_scopes),
-        "dependency_file_scopes": tuple(dependency_file_scopes),
+        "config_file_scopes": (),
+        "tool_file_scopes": tool_file_scopes,
+        "dependency_file_scopes": dependency_file_scopes,
         "env_keys": (*_TEST_ENV_KEYS, *env_keys),
     }
 
 
-REQUIRED_REGRESSION_GROUPS = (
+REQUIRED_REGRESSION_GROUPS: Tuple[RegistryGroup, ...] = (
     _group(
         'scheduler', 'Scheduling, candidates, dispatch, and analysis', _SCHEDULER_TESTS,
         (
@@ -250,9 +279,7 @@ REQUIRED_REGRESSION_GROUPS = (
             '.codex/hooks.json',
             'tests/web_pages/**/*.py',
             'app.py',
-            'core/plugins/**/*.py',
             'web/**/*.py',
-            'plugins/**/*.py',
             'desktop/**/*.py',
             'assets/**/*',
             'installer/**/*',
@@ -323,7 +350,7 @@ REQUIRED_REGRESSION_COMMON_SCOPES = {
         "pyproject.toml", "pytest.ini", "setup.cfg", "tox.ini", ".gitignore",
         "pyrightconfig*.json", ".pre-commit-config.yaml", ".github/workflows/*.yml",
     ),
-    "tool_file_scopes": ("tools/**/*.py", "scripts/**/*.py", ".codestable/tools/**/*.py"),
+    "tool_file_scopes": ("tools/**/*.py", "scripts/**/*.py", *CODESTABLE_TOOL_FILES),
     "dependency_file_scopes": ("requirements*.txt", "poetry.lock", "uv.lock", "Pipfile.lock", "vendor/wheels/*.whl"),
     "env_keys": (
         "python_executable_realpath", "python_version", "pytest_version",

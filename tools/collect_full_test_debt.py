@@ -15,14 +15,11 @@ from typing import Any, Dict, Generator, Iterable, List, Mapping, Optional, Sequ
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SCHEMA_VERSION = 2
+if __name__ == "__main__":  # 按文件路径运行时让仓库根下的 tools 包可导入
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from tools.full_test_debt_shards import split_nodeids  # noqa: E402
-from tools.quality_gate_shared import (  # noqa: E402
+from tools.full_test_debt_shards import split_nodeids
+from tools.quality_gate_shared import (
     FORMAL_FULL_TEST_PYTEST_ARGS,
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
     is_teardown_failure_report,
@@ -30,9 +27,11 @@ from tools.quality_gate_shared import (  # noqa: E402
     iter_quality_gate_required_tests,
     quality_gate_required_test_nodeid_matches,
 )
+from tools.test_debt_registry import BASELINE_SCHEMA_VERSION
 
 CURRENT_PAYLOAD_REL = QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/")
 FORMAL_FULL_TEST_PYTEST_OPTIONS = ["-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
+FAILURE_PREVIEW_LIMIT = 10
 
 
 def _progress(message: str) -> None:
@@ -217,16 +216,6 @@ class FullTestDebtCollector:
         self.exitstatus = int(exitstatus)
 
 
-def _nodeid_path(nodeid: str) -> str:
-    return str(nodeid or "").split("::", 1)[0]
-
-
-def _is_main_style_nodeid(nodeid: str) -> bool:
-    path = _nodeid_path(nodeid)
-    name = os.path.basename(path)
-    return name.startswith("regression_") and name.endswith(".py")
-
-
 def _belongs_to_required_tests(nodeid: str, required_paths: Iterable[str]) -> bool:
     return quality_gate_required_test_nodeid_matches(nodeid, tuple(required_paths))
 
@@ -253,7 +242,6 @@ def _failed_report_texts(reports: Sequence[Dict[str, Any]]) -> Dict[str, str]:
 def _classify_failures(
     reports: Sequence[Dict[str, Any]],
     required_paths: Sequence[str],
-    baseline_kind: str,
 ) -> Dict[str, List[str]]:
     failed_texts = _failed_report_texts(reports)
     classifications = {
@@ -265,9 +253,7 @@ def _classify_failures(
         text = failed_texts[nodeid]
         if _belongs_to_required_tests(nodeid, required_paths):
             classifications["required_or_quality_gate_self_failure"].append(nodeid)
-        elif _has_main_style_pollution_signature(text) or (
-            baseline_kind == "raw_before_isolation" and _is_main_style_nodeid(nodeid)
-        ):
+        elif _has_main_style_pollution_signature(text):
             classifications["main_style_isolation_candidate"].append(nodeid)
         else:
             classifications["candidate_test_debt"].append(nodeid)
@@ -291,9 +277,9 @@ def _summarize(
             failed_nodeids.add(str(report.get("nodeid") or ""))
     failed_nodeids.update(str(error.get("nodeid") or "") for error in collection_errors)
     return {
-        "collected_count": len(list(collected_nodeids)),
+        "collected_count": len(collected_nodeids),
         "failed_nodeid_count": len([nodeid for nodeid in failed_nodeids if nodeid]),
-        "collection_error_count": len(list(collection_errors)),
+        "collection_error_count": len(collection_errors),
         "outcome_counts": outcome_counts,
         "classification_counts": {key: len(value) for key, value in classifications.items()},
     }
@@ -313,13 +299,11 @@ def _build_payload(
     git_status_short_before: Optional[Sequence[str]],
     worktree_clean_before: Optional[bool],
 ) -> Dict[str, Any]:
-    classifications = _classify_failures(collector.reports, required_paths, baseline_kind)
+    classifications = _classify_failures(collector.reports, required_paths)
     summary = _summarize(collector.collected_nodeids, collector.reports, collector.collection_errors, classifications)
     return {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": BASELINE_SCHEMA_VERSION,
         "baseline_kind": baseline_kind,
-        "importable": False,
-        "importable_blockers": [],
         "generated_at": generated_at,
         "head_sha": head_sha,
         "collector_argv": list(collector_argv),
@@ -719,46 +703,31 @@ def _first_line(text: str) -> str:
     return next((line.strip() for line in str(text or "").splitlines() if line.strip()), "")
 
 
-def _render_failure_preview(payload: Dict[str, Any], *, limit: int = 10) -> str:
+def _render_failure_preview(payload: Dict[str, Any]) -> str:
     lines = ["full test debt 收集发现失败分类："]
-    classifications = dict(payload.get("classifications") or {})
-    for key in [
-        "required_or_quality_gate_self_failure",
-        "main_style_isolation_candidate",
-        "candidate_test_debt",
-    ]:
-        nodeids = [str(nodeid) for nodeid in list(classifications.get(key) or [])]
+    for key, nodeids in payload["classifications"].items():
         if not nodeids:
             continue
         lines.append(f"- {key}（{len(nodeids)} 个）：")
-        for nodeid in nodeids[:limit]:
-            lines.append(f"  - {nodeid}")
-        if len(nodeids) > limit:
-            lines.append(f"  - ... 另外 {len(nodeids) - limit} 个未显示")
-    collection_errors = list(payload.get("collection_errors") or [])
+        lines.extend(f"  - {nodeid}" for nodeid in nodeids[:FAILURE_PREVIEW_LIMIT])
+        if len(nodeids) > FAILURE_PREVIEW_LIMIT:
+            lines.append(f"  - ... 另外 {len(nodeids) - FAILURE_PREVIEW_LIMIT} 个未显示")
+    collection_errors = payload["collection_errors"]
     if collection_errors:
         lines.append(f"- collection_errors（{len(collection_errors)} 个）：")
-        for item in collection_errors[:limit]:
-            if isinstance(item, dict):
-                nodeid = str(item.get("nodeid") or "<unknown>")
-                detail = _first_line(str(item.get("longrepr") or ""))
-                lines.append(f"  - {nodeid}" + (f"：{detail}" if detail else ""))
-            else:
-                lines.append(f"  - {item}")
-        if len(collection_errors) > limit:
-            lines.append(f"  - ... 另外 {len(collection_errors) - limit} 个未显示")
-    blockers = [str(item) for item in list(payload.get("importable_blockers") or [])]
-    if blockers:
-        lines.append("- importable_blockers：" + ", ".join(blockers[:limit]))
+        # 条目可能来自 worker 子进程写回的 JSON，键只经过“是对象”准入，这里按边界数据读取。
+        for item in collection_errors[:FAILURE_PREVIEW_LIMIT]:
+            nodeid = str(item.get("nodeid") or "<unknown>")
+            detail = _first_line(str(item.get("longrepr") or ""))
+            lines.append(f"  - {nodeid}" + (f"：{detail}" if detail else ""))
+        if len(collection_errors) > FAILURE_PREVIEW_LIMIT:
+            lines.append(f"  - ... 另外 {len(collection_errors) - FAILURE_PREVIEW_LIMIT} 个未显示")
     lines.append(f"完整 JSON 已写入：{CURRENT_PAYLOAD_REL}")
     return "\n".join(lines)
 
 
 def _payload_has_failure_preview(payload: Dict[str, Any]) -> bool:
-    classifications = dict(payload.get("classifications") or {})
-    return any(list(classifications.get(key) or []) for key in classifications) or bool(
-        payload.get("collection_errors") or payload.get("importable_blockers")
-    )
+    return any(payload["classifications"].values()) or bool(payload["collection_errors"])
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

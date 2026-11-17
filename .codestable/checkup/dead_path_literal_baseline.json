@@ -8,7 +8,7 @@
     "tools",
     "scripts",
     "tests",
-    "plugins"
+    "*.py"
   ],
   "note": "失效仓库路径字面量棘轮基线：删文件必须同步删掉引用它的字符串；条目只减不增，刷新走 --refresh。",
   "entries": [
@@ -44,8 +44,13 @@
     },
     {
       "path": "tools/host_tests/test_long_gate_content.py",
+      "kind": "docs/guide.md",
+      "count": 1
+    },
+    {
+      "path": "tools/host_tests/test_long_gate_content.py",
       "kind": "tests/example.py",
-      "count": 2
+      "count": 1
     },
     {
       "path": "tools/host_tests/test_long_gate_content.py",
@@ -55,6 +60,16 @@
     {
       "path": "tools/host_tests/test_quality_ledger_content.py",
       "kind": "web/bootstrap/content_sample.py",
+      "count": 1
+    },
+    {
+      "path": "tools/host_tests/test_scan_dead_path_literals.py",
+      "kind": "frontend/workbench/app/nested/main.jsx",
+      "count": 1
+    },
+    {
+      "path": "tools/host_tests/test_scan_dead_path_literals.py",
+      "kind": "templates_excel/sample.xlsx",
       "count": 1
     },
     {

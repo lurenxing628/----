@@ -3,23 +3,29 @@
 
 补 checkup 函数调用图的盲区：其 cycle_count 是确信边上长度 2-8、最多 200 条的
 simple-cycle 记录数，不是 import SCC。本工具按目录(包)与文件(模块)两种粒度，用 Tarjan 求强连通
-分量,定位真正可能在加载期 ImportError 的硬环。
+分量,定位加载期可能 ImportError 的硬环,以及靠函数体内导入推迟、运行时仍闭合的延迟环。
 
-import 四分类(决定一条 import 边算不算"加载期耦合"):
+import 四分类(决定一条 import 边进哪张图):
   hard      无条件顶层 import(模块加载期必执行)—— 真正可能 ImportError 的环
   cond      顶层 try / 非 TYPE_CHECKING 的 if 块内(条件加载)
-  lazy      函数体内(延迟加载,by-design 拆环手段)
+  lazy      函数体内(只推迟加载,不拆环;闭合的延迟环同样计入基线、只减不增)
   typeonly  TYPE_CHECKING 块体(运行时不执行,不计入耦合)
 
-三类结果分开报:
-  ① 硬加载期目录环(只 hard 边)—— 治理重点
-  ② 硬加载期文件环(只 hard 边)
-  ③ 延迟/条件耦合环(运行时图相对硬加载期图新增,by-design 缓解为主)
+四类环分开报,正式门禁(--fail-on-new-cycle)按 scope 基线全部只减不增(成员按超集匹配):
+  ① 硬加载期目录环(只 hard 边)                    锁全部圈内边
+  ② 硬加载期文件环(hard 显式边 + 父包初始化边)     锁全部圈内边
+  ③ 延迟目录环(运行时图相对硬加载期图新增的目录环) 只锁圈内 lazy/cond 边
+  ④ 运行时文件环(运行时图上的文件环)               只锁圈内 lazy/cond 边
+  ③④ 是靠 lazy/cond 边闭合的;圈内新增普通顶层导入不锁,它若闭合成环由 ①② 拦下。
+
+--update-baseline 默认拒绝增长(新增环 / 新增成员 / 圈内新增锁定边 / 未解析动态导入计数增加),
+人工核对差异后加 --allow-growth 才写入。
 
 退出码:
-  0  正常(无硬加载期环,或未加 --fail-on-hard-cycle)
-  1  --fail-on-hard-cycle 且检出硬加载期目录环 / 文件环
-  2  工具自身错误
+  0  正常(相对基线无新增,或未加正式门禁参数);基线已刷新
+  1  --fail-on-new-cycle 检出基线外新增环 / 圈内锁定边 / 未解析动态导入;--fail-on-hard-cycle 检出硬加载期环;
+     --update-baseline 未加 --allow-growth 时遇到增长
+  2  工具自身错误、基线缺失或异常、正式模式下源码解析失败
 
 口径要点(经 Codex 对抗核验修正,详见 .codestable/audits/2026-06-28-circular-imports/):
   - `from . import 兄弟模块` 不连"包根"假边:仅当确有 name 来自 __init__/包符号时才连包根。
@@ -27,14 +33,14 @@ import 四分类(决定一条 import 边算不算"加载期耦合"):
   - 动态 importlib.import_module("字面量") 按顶层/函数内定 hard/lazy。
   - 运行时图 = hard + cond + lazy(排除 typeonly,运行时不执行)。
 
-默认扫描非测试代码(core/web/data/desktop/plugins/tools/scripts + 顶层 *.py)，排除 tests；--include-tests 纳入。
+扫描范围按 tools/path_roles.py 的路径角色：默认扫生产与宿主工具代码；测试角色(tests/ 与 tools/host_tests/)
+只在 --include-tests 时纳入。
 Py3.8 兼容、纯标准库。
 """
 from __future__ import annotations
 
 import argparse
 import ast
-import glob
 import importlib.util
 import json
 import os
@@ -49,21 +55,17 @@ from tools.import_cycle_baseline import (
     CycleBaselineError,
     baseline_scope,
     compare_with_baseline,
-    current_signatures,
+    cycle_count_summary,
     default_baseline_path,
     print_new_cycles,
     write_baseline,
 )
+from tools.long_gate_paths import resolve_repo_root
+from tools.path_roles import PRODUCTION, ROLES, TOOL, iter_role_files, role_roots
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-
-PROD_ROOTS = ["core", "web", "data", "desktop", "plugins", "tools", "scripts", "*.py"]
-TEST_ROOTS = ["tests"]
-KINDS = ("hard", "cond", "lazy", "typeonly")
+PRODUCTION_SCOPE_ROLES = (PRODUCTION, TOOL)
+WITH_TESTS_SCOPE_ROLES = ROLES
 FILE_CYCLE_SEMANTICS = "explicit import edges plus implicit parent-package __init__ loading edges"
-
-BASELINE_PATH = default_baseline_path(REPO_ROOT)
-WITH_TESTS_BASELINE_PATH = default_baseline_path(REPO_ROOT, include_tests=True)
 
 
 path_to_mod = _graph.module_from_path
@@ -79,39 +81,14 @@ _file_cycle_records = _graph.file_cycle_records
 _delayed_dir_cycle_records = _graph.delayed_dir_cycle_records
 
 
-def _remember_module(
-    path: str,
-    repo_root: str,
-    file_to_mod: Dict[str, str],
-    mod_to_file: Dict[str, str],
-) -> None:
-    if not path.endswith(".py") or not os.path.isfile(path):
-        return
-    absolute = os.path.abspath(path)
-    rel = os.path.relpath(absolute, repo_root)
-    module = path_to_mod(rel)
-    file_to_mod[absolute] = module
-    mod_to_file[module] = absolute
-
-
-def _index_modules(roots: Sequence[str], repo_root: str) -> Tuple[Dict[str, str], Dict[str, str]]:
+def _index_modules(roles: Sequence[str], repo_root: str) -> Tuple[Dict[str, str], Dict[str, str]]:
     file_to_mod: Dict[str, str] = {}
     mod_to_file: Dict[str, str] = {}
-    for root in roots:
-        base = os.path.join(repo_root, root)
-        if glob.has_magic(root):
-            for path in sorted(glob.glob(base)):
-                _remember_module(path, repo_root, file_to_mod, mod_to_file)
-            continue
-        if os.path.isfile(base):
-            _remember_module(base, repo_root, file_to_mod, mod_to_file)
-            continue
-        if not os.path.isdir(base):
-            continue
-        for directory, dirs, files in os.walk(base):
-            dirs[:] = [name for name in dirs if name != "__pycache__"]
-            for filename in files:
-                _remember_module(os.path.join(directory, filename), repo_root, file_to_mod, mod_to_file)
+    for rel in iter_role_files(repo_root, roles, (".py",)):
+        absolute = os.path.abspath(os.path.join(repo_root, rel))
+        module = path_to_mod(rel)
+        file_to_mod[absolute] = module
+        mod_to_file[module] = absolute
     return file_to_mod, mod_to_file
 
 
@@ -251,12 +228,12 @@ def _dynamic_targets(dynamic_import: tuple, target_mod: Optional[str], mod_to_fi
     return expand_parent_packages([target_mod], mod_to_file) if target_mod else []
 
 
-def scan(roots: Sequence[str], repo_root: str = REPO_ROOT) -> dict:
-    """扫描给定根目录,返回三类环 + 边计数 + 解析失败的结构化结果。"""
-    file_to_mod, mod_to_file = _index_modules(roots, repo_root)
-    edges_file = {k: defaultdict(list) for k in KINDS}
-    explicit_edges_file = {k: defaultdict(list) for k in KINDS}
-    edges_dir = {k: defaultdict(list) for k in KINDS}
+def scan(roles: Sequence[str], repo_root: str) -> dict:
+    """扫描属于给定路径角色的 Python 文件,返回四类环 + 边计数 + 解析失败的结构化结果。"""
+    file_to_mod, mod_to_file = _index_modules(roles, repo_root)
+    edges_file = {k: defaultdict(list) for k in _graph.IMPORT_KINDS}
+    explicit_edges_file = {k: defaultdict(list) for k in _graph.IMPORT_KINDS}
+    edges_dir = {k: defaultdict(list) for k in _graph.IMPORT_KINDS}
     parse_errors: List[dict] = []
     unresolved_dynamic_imports: List[dict] = []
     parent_package_init_edges: List[dict] = []
@@ -282,16 +259,12 @@ def scan(roots: Sequence[str], repo_root: str = REPO_ROOT) -> dict:
             repo_root,
         )
 
-    hard_dir = edges_dir["hard"]
-    hard_file = edges_file["hard"]
-    explicit_hard_file = explicit_edges_file["hard"]
-    rt_dir = _merge(edges_dir["hard"], edges_dir["cond"], edges_dir["lazy"])
-    rt_file = _merge(edges_file["hard"], edges_file["cond"], edges_file["lazy"])
-    explicit_rt_file = _merge(
-        explicit_edges_file["hard"],
-        explicit_edges_file["cond"],
-        explicit_edges_file["lazy"],
-    )
+    hard_dir = _merge(edges_dir, ("hard",))
+    hard_file = _merge(edges_file, ("hard",))
+    explicit_hard_file = _merge(explicit_edges_file, ("hard",))
+    rt_dir = _merge(edges_dir, _graph.RUNTIME_KINDS)
+    rt_file = _merge(edges_file, _graph.RUNTIME_KINDS)
+    explicit_rt_file = _merge(explicit_edges_file, _graph.RUNTIME_KINDS)
 
     hard_dir_sccs = _graph.tarjan(_adj(hard_dir))
     hard_file_sccs = _graph.tarjan(_adj(hard_file))
@@ -302,10 +275,10 @@ def scan(roots: Sequence[str], repo_root: str = REPO_ROOT) -> dict:
 
     return {
         "module_count": len(file_to_mod),
-        "scan_roots": list(roots),
+        "scan_roots": list(role_roots(roles)),
         "file_cycle_semantics": FILE_CYCLE_SEMANTICS,
         "parse_errors": parse_errors,
-        "edge_counts": {k: sum(len(v) for v in edges_file[k].values()) for k in KINDS},
+        "edge_counts": {k: sum(len(v) for v in edges_file[k].values()) for k in _graph.IMPORT_KINDS},
         "hard_dir_cycles": _dir_cycle_records(hard_dir_sccs, hard_dir),
         "hard_file_cycles": [sorted(c) for c in sorted(hard_file_sccs, key=len, reverse=True)],
         "hard_file_cycle_records": _file_cycle_records(hard_file_sccs, hard_file),
@@ -328,7 +301,11 @@ def scan(roots: Sequence[str], repo_root: str = REPO_ROOT) -> dict:
 def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="包级/文件级循环依赖扫描器")
     parser.add_argument("--json", action="store_true", help="输出机器可读 JSON(供门禁/checkup 消费)")
-    parser.add_argument("--include-tests", action="store_true", help="把 tests 也纳入扫描(默认只扫生产代码)")
+    parser.add_argument(
+        "--include-tests",
+        action="store_true",
+        help="把测试角色(tests/ 与 tools/host_tests/)也纳入扫描(默认只扫生产与宿主工具代码)",
+    )
     parser.add_argument(
         "--fail-on-hard-cycle",
         action="store_true",
@@ -337,12 +314,17 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser.add_argument(
         "--fail-on-new-cycle",
         action="store_true",
-        help="按 scope 匹配的 v3 基线阻断新增硬环或同成员圈内新增边；基线/解析异常 fail closed",
+        help="按 scope 匹配的 v4 基线阻断四类环的新增环、新增成员或圈内新增锁定边；基线/解析异常 fail closed",
     )
     parser.add_argument(
         "--update-baseline",
         action="store_true",
-        help="把当前硬加载期环及圈内模块边写入 scope 对应基线(仅限人工核对差异后的受控刷新)",
+        help="把当前四类环及圈内锁定边写入 scope 对应基线；默认拒绝任何增长",
+    )
+    parser.add_argument(
+        "--allow-growth",
+        action="store_true",
+        help="与 --update-baseline 合用：人工核对差异后允许把增长写入基线",
     )
     parser.add_argument(
         "--baseline",
@@ -354,9 +336,10 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
         action="store_true",
         help="无需报告时完全不输出(clean 含义随模式:相对基线无新增 / 无任何硬环)",
     )
+    parser.add_argument("--repo-root", default=resolve_repo_root(), help=argparse.SUPPRESS)
     args = parser.parse_args(list(argv) if argv is not None else None)
     if args.baseline is None:
-        args.baseline = default_baseline_path(REPO_ROOT, include_tests=bool(args.include_tests))
+        args.baseline = default_baseline_path(args.repo_root, include_tests=bool(args.include_tests))
     return args
 
 
@@ -365,9 +348,9 @@ def _error(message: str) -> None:
 
 
 def _load_scan_result(args: argparse.Namespace) -> Tuple[Optional[dict], int]:
-    roots = list(PROD_ROOTS) + (list(TEST_ROOTS) if args.include_tests else [])
+    roles = WITH_TESTS_SCOPE_ROLES if args.include_tests else PRODUCTION_SCOPE_ROLES
     try:
-        return scan(roots), 0
+        return scan(roles, args.repo_root), 0
     except Exception as exc:
         _error(f"扫描自身异常，无法产出可信结果：{exc}")
         return None, 2
@@ -396,8 +379,7 @@ def _print_result(
     if comparison.has_new:
         print_new_cycles(result, comparison)
     else:
-        dir_sigs, _ = current_signatures(result)
-        print(f"[import-cycles] 无新增硬加载期环或圈内边(基线内 {len(dir_sigs)} 个现存目录环)。", flush=True)
+        print(f"[import-cycles] 相对基线无新增环或圈内锁定边(现存:{cycle_count_summary(result)})。", flush=True)
 
 
 def _baseline_comparison(
@@ -419,6 +401,27 @@ def _baseline_comparison(
     return comparison, 0
 
 
+def _update_baseline(args: argparse.Namespace, result: dict, scope: str) -> int:
+    if not args.allow_growth:
+        try:
+            comparison = compare_with_baseline(args.baseline, result, expected_scope=scope)
+        except CycleBaselineError as exc:
+            _error(str(exc))
+            return 2
+        if comparison.has_new:
+            print_new_cycles(result, comparison)
+            _error("基线刷新被拒绝：存在上面列出的增长；请先断开新增依赖，或人工核对后加 --allow-growth")
+            return 1
+    try:
+        write_baseline(args.baseline, result, scope=scope)
+    except OSError as exc:
+        _error(f"无法写入循环依赖基线 {args.baseline}：{exc}")
+        return 2
+    rel = os.path.relpath(args.baseline, args.repo_root)
+    print(f"[import-cycles] {scope} 基线已刷新：{cycle_count_summary(result)} -> {rel}", flush=True)
+    return 0
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
     result, error_code = _load_scan_result(args)
@@ -432,23 +435,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
 
     scope = baseline_scope(bool(args.include_tests))
-    dir_sigs, file_sigs = current_signatures(result)
-    has_hard = bool(result["hard_dir_cycles"]) or bool(result["hard_file_cycles"])
-
     if args.update_baseline:
-        try:
-            write_baseline(args.baseline, result, scope=scope)
-        except OSError as exc:
-            _error(f"无法写入循环依赖基线 {args.baseline}：{exc}")
-            return 2
-        rel = os.path.relpath(args.baseline, REPO_ROOT)
-        print(
-            f"[import-cycles] {scope} 基线已刷新：{len(dir_sigs)} 个硬目录环 + "
-            f"{len(file_sigs)} 个硬文件环 -> {rel}",
-            flush=True,
-        )
-        return 0
+        return _update_baseline(args, result, scope)
 
+    has_hard = bool(result["hard_dir_cycles"]) or bool(result["hard_file_cycles"])
     comparison: Optional[CycleBaselineComparison] = None
     if args.fail_on_new_cycle:
         comparison, error_code = _baseline_comparison(args, result, scope)

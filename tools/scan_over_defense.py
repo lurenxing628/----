@@ -8,9 +8,9 @@
 - param_overwritten：函数参数在被读取前就被同名赋值覆盖——函数体（去掉 docstring）里第一条
   提到该参数的顶层语句是 `参数 = ...`（或元组解包/带注解赋值），且右侧不读它。
 - zero_ref_func：生产代码中全仓同名唯一、名字不短于 4、非嵌套、无装饰器（装饰器视为框架注册）、
-  非 dunder 的函数/方法，生产、tests/、宿主工具（tools/、scripts/ 的 Python）都没有引用，
+  非 dunder 的函数/方法，生产、测试、宿主工具三种角色的 Python 都没有引用（角色划分见 tools/path_roles.py），
   跨语言文本（前端、.cjs、模板、静态产物、打包脚本等）也搜不到。
-- test_only_func：同上，但被 tests/ 引用。
+- test_only_func：同上，但被测试角色（tests/ 与 tools/host_tests/）引用。
 - foreign_private_attr_assign：函数内往非 self/cls、非导入名的对象写私有属性 `obj._attr = ...`
   （含增量赋值、带值注解赋值、元组/列表解包目标）。obj 是本函数里刚构造出的新对象时豁免：`X.__new__(...)`、
   本类构造（`本类名(...)`、`cls(...)`、`type(...)(...)`、`self.__class__(...)`）、`copy(...)` 克隆。
@@ -33,20 +33,16 @@ import sys
 from collections import Counter, defaultdict
 from typing import Any, Dict, Iterable, Iterator, List, NamedTuple, Optional, Sequence, Set, Tuple, Union
 
-from tools.boundary_baseline import run_ratchet_cli
+from tools.boundary_baseline import add_ratchet_arguments, run_ratchet_cli
+from tools.path_roles import PRODUCTION, TEST, TOOL, iter_files, iter_role_files, role_roots
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 RULE = "over_defense"
-PROD_ROOTS = ("core", "data", "web", "plugins", "desktop", "app.py")
-TEST_ROOTS = ("tests",)
-TOOL_ROOTS = ("tools", "scripts")
 FRONTEND_ROOT = "frontend/workbench/app"
 FRONTEND_SUFFIXES = (".js", ".jsx")
-SCAN_ROOTS = PROD_ROOTS + (FRONTEND_ROOT,)
+SCAN_ROOTS = role_roots((PRODUCTION,)) + (FRONTEND_ROOT,)
 XLANG_ROOTS = ("frontend", "tests", "templates", "static", "scripts", "packaging")
 XLANG_SUFFIXES = (".js", ".jsx", ".cjs", ".mjs", ".html", ".json", ".bat", ".ps1", ".spec", ".txt")
 ROOT_XLANG_SUFFIXES = (".bat", ".spec", ".toml", ".json")
-SKIP_DIRS = frozenset({"__pycache__", "node_modules", "vendor", ".venv"})
 KINDS = (
     "internal_reflect_literal",
     "param_overwritten",
@@ -84,26 +80,6 @@ class DefSite(NamedTuple):
     is_class: bool
     nested: bool
     decorated: bool
-
-
-def _rel(repo_root: str, path: str) -> str:
-    return os.path.relpath(path, repo_root).replace("\\", "/")
-
-
-def _iter_files(repo_root: str, roots: Sequence[str], suffixes: Tuple[str, ...]) -> List[str]:
-    files: List[str] = []
-    for root in roots:
-        base = os.path.join(repo_root, root)
-        if os.path.isfile(base):
-            if base.endswith(suffixes):
-                files.append(_rel(repo_root, base))
-            continue
-        for dirpath, dirnames, filenames in os.walk(base):
-            dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
-            for filename in sorted(filenames):
-                if filename.endswith(suffixes):
-                    files.append(_rel(repo_root, os.path.join(dirpath, filename)))
-    return sorted(set(files))
 
 
 def _parse(repo_root: str, rel_path: str) -> ast.Module:
@@ -295,15 +271,11 @@ def _scan_prod_tree(
 
 
 def _cross_language_words(repo_root: str) -> Set[str]:
-    paths = [os.path.join(repo_root, rel) for rel in _iter_files(repo_root, XLANG_ROOTS, XLANG_SUFFIXES)]
-    paths.extend(
-        os.path.join(repo_root, name) for name in sorted(os.listdir(repo_root))
-        if name.endswith(ROOT_XLANG_SUFFIXES) and os.path.isfile(os.path.join(repo_root, name))
-    )
+    rels = iter_files(repo_root, XLANG_ROOTS, XLANG_SUFFIXES) + iter_files(repo_root, ("*",), ROOT_XLANG_SUFFIXES)
     words: Set[str] = set()
-    for path in paths:
+    for rel in rels:
         # 批处理等可能不是 UTF-8；这里只找 ASCII 标识符，坏字节替换成非单词字符不影响匹配。
-        with open(path, encoding="utf-8", errors="replace") as handle:
+        with open(os.path.join(repo_root, rel), encoding="utf-8", errors="replace") as handle:
             words.update(WORD_RE.findall(handle.read()))
     return words
 
@@ -357,23 +329,23 @@ def _entries(hits: Iterable[Hit]) -> List[Dict[str, Any]]:
     ]
 
 
-def scan(repo_root: str = REPO_ROOT) -> Dict[str, Any]:
+def scan(repo_root: str) -> Dict[str, Any]:
     hits: List[Hit] = []
     defs: Dict[str, List[DefSite]] = defaultdict(list)
     refs_prod: Counter = Counter()
     refs_test: Counter = Counter()
     refs_tool: Counter = Counter()
-    prod_files = _iter_files(repo_root, PROD_ROOTS, (".py",))
+    prod_files = iter_role_files(repo_root, (PRODUCTION,), (".py",))
     for rel_path in prod_files:
         _scan_prod_tree(rel_path, _parse(repo_root, rel_path), hits, defs, refs_prod)
     reference_files = 0
-    for roots, counter in ((TEST_ROOTS, refs_test), (TOOL_ROOTS, refs_tool)):
-        for rel_path in _iter_files(repo_root, roots, (".py",)):
+    for role, counter in ((TEST, refs_test), (TOOL, refs_tool)):
+        for rel_path in iter_role_files(repo_root, (role,), (".py",)):
             reference_files += 1
             for node in ast.walk(_parse(repo_root, rel_path)):
                 _count_reference(node, counter)
     hits.extend(_reference_hits(repo_root, defs, refs_prod, refs_test, refs_tool))
-    frontend_files = _iter_files(repo_root, (FRONTEND_ROOT,), FRONTEND_SUFFIXES)
+    frontend_files = iter_files(repo_root, (FRONTEND_ROOT,), FRONTEND_SUFFIXES)
     for rel_path in frontend_files:
         hits.extend(_frontend_hits(repo_root, rel_path))
     entries = _entries(hits)
@@ -403,12 +375,7 @@ def render_text(result: Dict[str, Any]) -> str:
 
 def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="反过度防御棘轮扫描器")
-    parser.add_argument("--json", action="store_true")
-    parser.add_argument("--fail-on-new", action="store_true", help="相对基线有新增/增加/失效条目即退出码 1；基线异常退出码 2")
-    parser.add_argument("--refresh", action="store_true", help="按当前扫描结果重写基线（默认拒绝总命中数增长）")
-    parser.add_argument("--allow-growth", action="store_true")
-    parser.add_argument("--quiet-when-clean", action="store_true")
-    parser.add_argument("--repo-root", default=REPO_ROOT, help=argparse.SUPPRESS)
+    add_ratchet_arguments(parser)
     return parser.parse_args(list(argv) if argv is not None else None)
 
 

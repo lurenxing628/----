@@ -6,18 +6,25 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union, cast
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from tools import (
+    scan_dead_path_literals,
+    scan_import_cycles,
+    scan_over_defense,
+    scan_private_imports,
+    scan_sql_boundary,
+)
+from tools.long_gate_paths import LEDGER_REL
 from tools.long_gate_schema import (
     PRIVATE_ENVIRONMENT_KEYS,
     PUBLIC_ENVIRONMENT_KEYS,
     RUNTIME_FINGERPRINT_KEYS,
     SensitiveSourceError,
-    canonical_content,
-    content_equal,
     private_environment_value,
     read_file_content,
 )
+from tools.path_roles import PRODUCTION, ROLES, ROOT_FILE_SCOPE_PREFIX, python_file_scopes, role_roots
 from tools.test_registry import (
     QUALITY_GATE_REQUIRED_TESTS,
     iter_required_regression_common_scope_policy,
@@ -27,15 +34,11 @@ from tools.test_registry import (
     iter_required_tests as _registry_required_tests,
 )
 from tools.test_registry import (
-    normalize_test_paths as _normalize_test_paths,
-)
-from tools.test_registry import (
     required_test_nodeid_matches as _registry_required_test_nodeid_matches,
 )
+from tools.test_registry_data import CODESTABLE_TOOL_FILES
 from tools.test_registry_data import ESBUILD_SCOPES as _ESBUILD_GATE_SCOPES
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-LEDGER_PATH = os.path.join(REPO_ROOT, "开发文档", "技术债务治理台账.md")
 QUALITY_GATE_LEGACY_ROOT_REL = os.path.join("evidence", "QualityGate")
 QUALITY_GATE_ROOT_REL = os.path.join(QUALITY_GATE_LEGACY_ROOT_REL, "v4")
 QUALITY_GATE_MANIFEST_REL = os.path.join(QUALITY_GATE_ROOT_REL, "quality_gate_manifest.json")
@@ -93,6 +96,20 @@ ENTRY_DEBT_LEDGER_SYNC = "debt_ledger_sync"
 ENTRY_QUICKREF_VS_ROUTES = "quickref_vs_routes"
 ENTRY_IMPORT_CYCLES_PRODUCTION = "import_cycles_production"
 ENTRY_IMPORT_CYCLES_WITH_TESTS = "import_cycles_with_tests"
+ENTRY_SQL_BOUNDARY = "sql_boundary"
+ENTRY_PRIVATE_IMPORTS = "private_imports"
+ENTRY_DEAD_PATH_LITERALS = "dead_path_literals"
+ENTRY_OVER_DEFENSE = "over_defense"
+ENTRY_DEAD_CODE_ISLANDS = "dead_code_islands"
+# 全仓棘轮扫描器：只要判了 Python 源码就一起跑；它们与循环依赖扫描器的 config_file_scopes 恰好是各自的基线文件。
+BOUNDARY_RATCHET_CHECK_IDS = (
+    ENTRY_SQL_BOUNDARY,
+    ENTRY_PRIVATE_IMPORTS,
+    ENTRY_DEAD_PATH_LITERALS,
+    ENTRY_OVER_DEFENSE,
+    ENTRY_DEAD_CODE_ISLANDS,
+)
+IMPORT_CYCLE_CHECK_IDS = (ENTRY_IMPORT_CYCLES_PRODUCTION, ENTRY_IMPORT_CYCLES_WITH_TESTS)
 ENTRY_VERSION_OR_ENV_PROBE = "version_or_env_probe"
 ENTRY_ROADMAP_YAML_VALIDATION = "roadmap_yaml_validation"
 ENTRY_PY38_SYNTAX_CHECK = "py38_syntax_check"
@@ -110,7 +127,7 @@ QUALITY_GATE_PROOF_SCOPE = {
     "does_not_claim": "risk_coverage_complete",
 }
 # Schema 2/3 records remain historical; new verification binds complete original content.
-QUALITY_GATE_PROOF_SCHEMA_VERSION = 4
+QUALITY_GATE_PROOF_SCHEMA_VERSION = 5
 IMPORT_CYCLE_PRODUCTION_DISPLAY = (
     "python -m tools.scan_import_cycles --fail-on-new-cycle --quiet-when-clean"
 )
@@ -138,6 +155,7 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/git_hook_blocked_paths.py",
     "tools/git_hook_cache.py",
     "tools/git_hook_checks.py",
+    "tools/daily_gate_scope.py",
     "tools/check_full_test_debt.py",
     "tools/collect_full_test_debt.py",
     "tools/full_test_debt_shards.py",
@@ -149,12 +167,14 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/long_gate_fingerprint.py",
     "tools/long_gate_manifest.py",
     "tools/long_gate_paths.py",
+    "tools/long_gate_records.py",
     "tools/long_gate_schema.py",
     "tools/long_gate_summary.py",
     "tools/quality_gate_entries.py",
     "tools/quality_gate_ledger.py",
     "tools/quality_gate_operations.py",
     "tools/quality_gate_scan.py",
+    "tools/quality_gate_scan_primitives.py",
     "tools/quality_gate_shared.py",
     "tools/scan_dead_code_islands.py",
     "tools/import_cycle_analysis.py",
@@ -166,26 +186,37 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/scan_private_imports.py",
     "tools/scan_dead_path_literals.py",
     "tools/scan_over_defense.py",
+    "tools/path_roles.py",
     ".codestable/checkup/scripts/callgraph_call_sites.py",
     ".codestable/checkup/scripts/callgraph_dataflow.py",
     ".codestable/checkup/scripts/callgraph_extract.py",
     ".codestable/checkup/scripts/callgraph_function_index.py",
+    ".codestable/checkup/scripts/callgraph_type_resolver.py",
     "tools/dead_code_usage/__init__.py",
     "tools/dead_code_usage/ast_nodes.py",
     "tools/dead_code_usage/ast_usage.py",
+    "tools/dead_code_usage/binder.py",
+    "tools/dead_code_usage/calls.py",
+    "tools/dead_code_usage/exprs.py",
+    "tools/dead_code_usage/frames.py",
     "tools/dead_code_usage/imports.py",
     "tools/dead_code_usage/model.py",
+    "tools/dead_code_usage/program.py",
+    "tools/dead_code_usage/protocols.py",
+    "tools/dead_code_usage/reference_index.py",
     "tools/dead_code_usage/scip_usage.py",
     "tools/dead_code_usage/scope.py",
+    "tools/dead_code_usage/solver.py",
+    "tools/dead_code_usage/stmts.py",
     "tools/dead_code_usage/type_hints.py",
+    "tools/dead_code_usage/values.py",
+    "tools/dead_code_usage/walker.py",
     "tools/scan_py38plus_syntax.py",
     "tools/test_debt_registry.py",
     "tools/test_registry.py",
     "tools/test_registry_data.py",
     "tests/conftest.py",
-    ".codestable/tools/_yaml_frontmatter.py",
-    ".codestable/tools/search-yaml.py",
-    ".codestable/tools/validate-yaml.py",
+    *CODESTABLE_TOOL_FILES,
     ".limcode/skills/aps-full-selftest/scripts/run_full_selftest.py",
     "tests/app_runtime/test_frontend_offline_static_assets.py",
     "scripts/workbench/asset_sources.py",
@@ -200,7 +231,7 @@ QUALITY_GATE_SOURCE_FILES = tuple(
             ".pre-commit-config.yaml",
             ".github/workflows/quality.yml",
             "pyproject.toml",
-            "开发文档/技术债务治理台账.md",
+            LEDGER_REL,
             QUALITY_GATE_PYRIGHT_GATE_CONFIG,
             QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
             ".codestable/checkup/baseline.json",
@@ -241,6 +272,7 @@ FALLBACK_KIND_VALUES = {
     "silent_default_fallback",
     "observable_degrade",
     "cleanup_best_effort",
+    "broad_io_boundary",
 }
 ENTRY_STATUS_VALUES = {"open", "in_progress", "blocked", "fixed"}
 TEST_DEBT_MODE_VALUES = {"xfail", "fixed", "retired"}
@@ -298,6 +330,27 @@ _OBSERVABLE_TARGET_KEYWORDS = {
     "warning",
     "ui_template_env_degraded",
 }
+# broad_io_boundary 判定名单：宽泛 except 的 try 体里，每个调用都按本模块导入解析到下面两类之一，
+# 且至少有一个外部 I/O 调用，才归此类。外部 I/O = 标准库 I/O 调用 + 登记的项目 I/O 包装（完整限定名）；
+# 纯取值转换 = 不触达外部、不进业务的内建调用与值方法。名单之外的调用一律不算，处理器保持原分类。
+SILENT_FALLBACK_EXTERNAL_IO_CALLS = frozenset(
+    {
+        "print",
+        "os.kill",
+        "subprocess.run",
+        "getpass.getuser",
+        "urllib.request.urlopen",
+        "winreg.CloseKey",
+        "winreg.QueryValueEx",
+        "core.infrastructure.safe_files.create_fixed_file_exclusive",
+        "core.infrastructure.safe_files.is_regular_file",
+        "core.infrastructure.safe_files.read_fixed_text",
+        "core.infrastructure.safe_files.remove_fixed_file",
+        "core.infrastructure.safe_files.write_fixed_text",
+    }
+)
+SILENT_FALLBACK_PURE_VALUE_CALLS = frozenset({"int", "isinstance", "len", "str"})
+SILENT_FALLBACK_PURE_VALUE_METHODS = frozenset({"strip"})
 
 
 class QualityGateError(RuntimeError):
@@ -315,32 +368,39 @@ class SilentFallbackSample:
 
 STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
-        path="web/bootstrap/launcher_observability.py",
-        symbol="_format_message",
-        line_start=64,
-        line_end=65,
-        fallback_kind="silent_default_fallback",
-    ),
-    SilentFallbackSample(
-        path="web/bootstrap/plugins.py",
-        symbol="bootstrap_plugins",
-        line_start=80,
-        line_end=96,
+        path="web/bootstrap/entrypoint.py",
+        symbol="_acquire_runtime_lock_before_app",
+        line_start=396,
+        line_end=401,
         fallback_kind="observable_degrade",
     ),
     SilentFallbackSample(
         path="web/bootstrap/launcher_shutdown.py",
         symbol="read_exit_backup_enabled",
-        line_start=103,
-        line_end=105,
+        line_start=98,
+        line_end=100,
+        fallback_kind="observable_degrade",
+    ),
+    SilentFallbackSample(
+        path="web/bootstrap/workbench_system_restore_view.py",
+        symbol="recovery_response",
+        line_start=57,
+        line_end=61,
+        fallback_kind="observable_degrade",
+    ),
+    SilentFallbackSample(
+        path="web/bootstrap/factory.py",
+        symbol="_shutdown",
+        line_start=172,
+        line_end=173,
         fallback_kind="cleanup_best_effort",
     ),
     SilentFallbackSample(
-        path="web/bootstrap/launcher_stop.py",
-        symbol="_request_runtime_shutdown",
-        line_start=110,
-        line_end=112,
-        fallback_kind="observable_degrade",
+        path="web/bootstrap/workbench_system_restore.py",
+        symbol="execute",
+        line_start=217,
+        line_end=232,
+        fallback_kind="cleanup_best_effort",
     ),
 ]
 
@@ -349,21 +409,20 @@ def now_shanghai_iso() -> str:
     return datetime.now(_SHANGHAI_TZ).replace(microsecond=0).isoformat()
 
 
-def repo_rel(path: str) -> str:
-    return os.path.relpath(path, REPO_ROOT).replace("\\", "/")
+def repo_rel(repo_root: str, path: str) -> str:
+    return os.path.relpath(path, repo_root).replace("\\", "/")
 
 
-def repo_abs(rel_path: str) -> str:
-    return os.path.join(REPO_ROOT, str(rel_path).replace("/", os.sep))
+def repo_abs(repo_root: str, rel_path: str) -> str:
+    return os.path.join(repo_root, str(rel_path).replace("/", os.sep))
 
 
-def read_text_file(rel_path: str) -> str:
-    with open(repo_abs(rel_path), encoding="utf-8", errors="strict", newline="") as f:
+def read_text_file(abs_path: str) -> str:
+    with open(abs_path, encoding="utf-8", errors="strict", newline="") as f:
         return f.read()
 
 
-def write_text_file(rel_path: str, content: str) -> None:
-    abs_path = repo_abs(rel_path)
+def write_text_file(abs_path: str, content: str) -> None:
     parent = os.path.dirname(abs_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
@@ -383,10 +442,10 @@ def slugify(value: Any) -> str:
     return text or "item"
 
 
-def collect_py_files(*rel_dirs: str) -> List[str]:
+def collect_py_files(repo_root: str, *rel_dirs: str) -> List[str]:
     files = []
     for rel_dir in rel_dirs:
-        base = repo_abs(rel_dir)
+        base = repo_abs(repo_root, rel_dir)
         if not os.path.isdir(base):
             continue
         for dirpath, _, filenames in os.walk(base):
@@ -395,22 +454,21 @@ def collect_py_files(*rel_dirs: str) -> List[str]:
                     continue
                 if name != "__init__.py" and name.startswith("__"):
                     continue
-                files.append(repo_rel(os.path.join(dirpath, name)))
+                files.append(repo_rel(repo_root, os.path.join(dirpath, name)))
     return sorted(set(files))
 
 
-def collect_globbed_files(patterns: Sequence[str]) -> List[str]:
+def collect_globbed_files(repo_root: str, patterns: Sequence[str]) -> List[str]:
     files = []
     for pattern in patterns:
-        abs_pattern = os.path.join(REPO_ROOT, pattern.replace("/", os.sep))
-        for matched in glob.glob(abs_pattern, recursive=True):
+        for matched in glob.glob(repo_abs(repo_root, pattern), recursive=True):
             if os.path.isfile(matched):
-                files.append(repo_rel(matched))
+                files.append(repo_rel(repo_root, matched))
     return sorted(set(files))
 
 
-def collect_startup_scope_files() -> List[str]:
-    return collect_globbed_files(STARTUP_SCOPE_PATTERNS)
+def collect_startup_scope_files(repo_root: str) -> List[str]:
+    return collect_globbed_files(repo_root, STARTUP_SCOPE_PATTERNS)
 
 
 _COMMAND_SPEC_METADATA_KEYS = (
@@ -420,6 +478,8 @@ _COMMAND_SPEC_METADATA_KEYS = (
     "reuse_policy",
     "runner_handler",
 )
+#: 规格生成的规范化命令身份的全部键（`normalize_quality_gate_command(spec.to_command_dict())`）。
+QUALITY_GATE_COMMAND_KEYS = ("display", "args", "capture_output", "output_policy", "env_overlay", *_COMMAND_SPEC_METADATA_KEYS)
 
 
 def normalize_quality_gate_command(command: Mapping[str, Any]) -> Dict[str, Any]:
@@ -437,10 +497,6 @@ def normalize_quality_gate_command(command: Mapping[str, Any]) -> Dict[str, Any]
         value = command.get(key)
         normalized[key] = None if value is None else str(value).strip()
     return normalized
-
-
-def _normalize_command_rows(commands: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return [normalize_quality_gate_command(command) for command in list(commands or [])]
 
 
 def _normalize_env_overlay(value: Any) -> Dict[str, str]:
@@ -474,57 +530,6 @@ def sanitize_quality_gate_output(text: str) -> str:
     return output
 
 
-def _normalize_source_rows(gate_sources: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    rows: List[Dict[str, Any]] = []
-    for row in list(gate_sources or []):
-        normalized = {"path": str(row.get("path") or "").replace("\\", "/"), "exists": row.get("exists")}
-        if "content_base64" in row:
-            normalized["content_base64"] = row["content_base64"]
-        rows.append(normalized)
-    rows.sort(key=lambda item: item["path"])
-    return rows
-
-
-def _normalize_required_tests(required_tests: Sequence[str]) -> List[str]:
-    return _normalize_test_paths(required_tests)
-
-
-def _normalize_collection_proof(collection_proof: Dict[str, Any]) -> Dict[str, Any]:
-    default_collect_nodeids = []
-    seen = set()
-    for nodeid in list(collection_proof.get("default_collect_nodeids") or []):
-        normalized = str(nodeid or "").strip()
-        if not normalized or normalized in seen:
-            continue
-        seen.add(normalized)
-        default_collect_nodeids.append(normalized)
-
-    key_tests = []
-    for row in list(collection_proof.get("key_tests") or []):
-        key_tests.append(
-            {
-                "path": str(row.get("path") or "").replace("\\", "/"),
-                "execution_mode": str(row.get("execution_mode") or "").strip(),
-            }
-        )
-    key_tests.sort(key=lambda item: item["path"])
-    return {
-        "collected_count": len(default_collect_nodeids),
-        "default_collect_nodeids": default_collect_nodeids,
-        "key_tests": key_tests,
-    }
-
-
-def _normalize_command_receipt_index(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
-    for row in list(rows or []):
-        normalized = {"path": str(row.get("path") or "").replace("\\", "/")}
-        if "content" in row:
-            normalized["content"] = json.loads(canonical_content(row["content"]))
-        out.append(normalized)
-    return out
-
-
 def parse_pytest_collect_nodeids(output: str) -> List[str]:
     nodeids: List[str] = []
     seen = set()
@@ -546,7 +551,7 @@ def _command_output_policy(command: Mapping[str, Any]) -> str:
     return policy
 
 
-def _normalize_command_output_for_policy(text: str, *, policy: str) -> str:
+def normalize_command_output_for_policy(text: str, *, policy: str) -> str:
     output = sanitize_quality_gate_output(text)
     if policy != "normalized":
         return output
@@ -609,6 +614,9 @@ class GateCheckSpec:
     config_file_scopes: Tuple[str, ...] = ()
     tool_file_scopes: Tuple[str, ...] = ()
     dependency_file_scopes: Tuple[str, ...] = ()
+    #: 只看路径是否存在、不读正文的输入：判定随这些路径的增删变化。指纹只记其中现存的路径清单，
+    #: 日常门禁的规格范围触发规则与其余范围一样消费它。
+    existence_file_scopes: Tuple[str, ...] = ()
     env_keys: Tuple[str, ...] = ()
     output_result_files: Tuple[str, ...] = ()
     proof_kind: Optional[str] = None
@@ -650,10 +658,8 @@ def _dedupe_tuple(items: Sequence[str]) -> Tuple[str, ...]:
     return tuple(dict.fromkeys(items))
 
 
-def _load_pyright_config(repo_root: Optional[str], config_path: str) -> Dict[str, Any]:
-    root = os.path.abspath(repo_root or REPO_ROOT)
-    abs_path = os.path.join(root, str(config_path).replace("\\", "/").replace("/", os.sep))
-    with open(abs_path, encoding="utf-8") as handle:
+def _load_pyright_config(repo_root: str, config_path: str) -> Dict[str, Any]:
+    with open(repo_abs(repo_root, config_path), encoding="utf-8") as handle:
         payload = json.load(handle)
     if not isinstance(payload, dict):
         raise ValueError(f"Pyright config must be a JSON object: {config_path}")
@@ -698,7 +704,7 @@ def _pyright_extra_path_scopes(config: Mapping[str, Any]) -> List[str]:
     return scopes
 
 
-def _pyright_gate_input_scopes(repo_root: Optional[str]) -> Tuple[str, ...]:
+def _pyright_gate_input_scopes(repo_root: str) -> Tuple[str, ...]:
     config = _load_pyright_config(repo_root, QUALITY_GATE_PYRIGHT_GATE_CONFIG)
     includes = _string_list(config.get("include"))
     if not includes:
@@ -751,8 +757,118 @@ def _required_regression_scopes() -> Tuple[Tuple[str, ...], Tuple[str, ...], Tup
     )
 
 
+_SCANNER_ENV_KEYS = (
+    "python_executable_realpath",
+    "python_version",
+    "platform",
+    "PYTHONPATH",
+    "PYTHONUTF8",
+    "PYTHONIOENCODING",
+)
+
+
+def _ratchet_spec(
+    check_id: str,
+    module_args: Tuple[str, ...],
+    *,
+    inputs: Sequence[str],
+    baselines: Tuple[str, ...],
+    tool_files: Tuple[str, ...],
+    dependencies: Tuple[str, ...] = (),
+    existence: Tuple[str, ...] = (),
+    env_keys: Tuple[str, ...] = _SCANNER_ENV_KEYS,
+    reuse_policy: str = "success",
+) -> GateCheckSpec:
+    """全仓棘轮扫描器：新增/增加/失效即失败，基线是它唯一的配置；判定读取已安装库时登记依赖声明与环境键。"""
+    args = ("python", "-m", *module_args, "--fail-on-new", "--quiet-when-clean")
+    return GateCheckSpec(
+        check_id=check_id,
+        entry_type=check_id,
+        display=" ".join(args),
+        args=args,
+        capture_output=True,
+        output_policy="normalized",
+        input_file_scopes=_dedupe_tuple(inputs),
+        config_file_scopes=baselines,
+        tool_file_scopes=("tools/boundary_baseline.py", "tools/long_gate_paths.py", "tools/path_roles.py", *tool_files),
+        dependency_file_scopes=dependencies,
+        existence_file_scopes=existence,
+        env_keys=env_keys,
+        reuse_policy=reuse_policy,
+    )
+
+
+def _boundary_ratchet_specs() -> List[GateCheckSpec]:
+    over_defense_text_scopes = (
+        *(
+            f"{root}/**/*{suffix}"
+            for root in scan_over_defense.XLANG_ROOTS
+            for suffix in scan_over_defense.XLANG_SUFFIXES
+        ),
+        *(f"{scan_over_defense.FRONTEND_ROOT}/**/*{suffix}" for suffix in scan_over_defense.FRONTEND_SUFFIXES),
+        *(f"{ROOT_FILE_SCOPE_PREFIX}*{suffix}" for suffix in scan_over_defense.ROOT_XLANG_SUFFIXES),
+    )
+    role_python_scopes = python_file_scopes(role_roots(ROLES))
+    return [
+        _ratchet_spec(
+            ENTRY_SQL_BOUNDARY,
+            ("tools.scan_sql_boundary", "--rule", "all"),
+            inputs=python_file_scopes(scan_sql_boundary.SQL_BOUNDARY_ROOTS + scan_sql_boundary.DATA_POLICY_ROOTS),
+            baselines=(
+                ".codestable/checkup/sql_boundary_baseline.json",
+                ".codestable/checkup/data_policy_baseline.json",
+            ),
+            tool_files=("tools/scan_sql_boundary.py",),
+        ),
+        _ratchet_spec(
+            ENTRY_PRIVATE_IMPORTS,
+            ("tools.scan_private_imports",),
+            inputs=python_file_scopes(scan_private_imports.SCAN_ROOTS),
+            baselines=(".codestable/checkup/private_import_baseline.json",),
+            tool_files=("tools/scan_private_imports.py",),
+        ),
+        # 判定还取决于源码里写到的路径是否存在：存在性范围取自扫描器自身的顶层目录 × 扩展名。
+        # 完整门禁不复用它的成功结果，每次重跑。
+        _ratchet_spec(
+            ENTRY_DEAD_PATH_LITERALS,
+            ("tools.scan_dead_path_literals",),
+            inputs=python_file_scopes(scan_dead_path_literals.SCAN_ROOTS),
+            baselines=(".codestable/checkup/dead_path_literal_baseline.json",),
+            tool_files=("tools/scan_dead_path_literals.py", "tools/git_hook_blocked_paths.py"),
+            existence=scan_dead_path_literals.EXISTENCE_FILE_SCOPES,
+            reuse_policy="none",
+        ),
+        _ratchet_spec(
+            ENTRY_OVER_DEFENSE,
+            ("tools.scan_over_defense",),
+            inputs=(*role_python_scopes, *over_defense_text_scopes),
+            baselines=(".codestable/checkup/over_defense_baseline.json",),
+            tool_files=("tools/scan_over_defense.py",),
+        ),
+        _ratchet_spec(
+            ENTRY_DEAD_CODE_ISLANDS,
+            ("tools.scan_dead_code_islands", "--mode", "quick"),
+            inputs=role_python_scopes,
+            baselines=(".codestable/checkup/dead_code_islands_baseline.json",),
+            tool_files=(
+                "tools/scan_dead_code_islands.py",
+                "tools/dead_code_usage/*.py",
+                ".codestable/checkup/scripts/callgraph_call_sites.py",
+                ".codestable/checkup/scripts/callgraph_dataflow.py",
+                ".codestable/checkup/scripts/callgraph_extract.py",
+                ".codestable/checkup/scripts/callgraph_function_index.py",
+                ".codestable/checkup/scripts/callgraph_type_resolver.py",
+            ),
+            # 外部基类的继承链与 pytest 钩子名从已安装的库读取（dead_code_usage.protocols），结果随依赖版本变化；
+            # 与 pytest 类步骤同一口径：绑定依赖声明，已安装 pytest 的版本另由 pytest_version 记录。
+            dependencies=_COMMON_DEPENDENCY_SCOPES,
+            env_keys=(*_SCANNER_ENV_KEYS, "pytest_version"),
+        ),
+    ]
+
+
 def build_quality_gate_check_specs(
-    repo_root: Optional[str] = None,
+    repo_root: str,
     *,
     allow_dirty_worktree: bool = False,
 ) -> List[GateCheckSpec]:
@@ -770,29 +886,13 @@ def build_quality_gate_check_specs(
         if allow_dirty_worktree
         else "python tools/check_full_test_debt.py --sharded --shard-count 3"
     )
-    import_cycle_base_inputs = (
-        "*.py",
-        "core/**/*.py",
-        "data/**/*.py",
-        "desktop/**/*.py",
-        "plugins/**/*.py",
-        "scripts/**/*.py",
-        "tools/**/*.py",
-        "web/**/*.py",
-    )
     import_cycle_tools = (
         "tools/import_cycle_analysis.py",
         "tools/import_cycle_baseline.py",
         "tools/import_cycle_graph.py",
         "tools/scan_import_cycles.py",
-    )
-    import_cycle_env = (
-        "python_executable_realpath",
-        "python_version",
-        "platform",
-        "PYTHONPATH",
-        "PYTHONUTF8",
-        "PYTHONIOENCODING",
+        "tools/long_gate_paths.py",
+        "tools/path_roles.py",
     )
     pyright_env = (
         "python_executable_realpath",
@@ -853,7 +953,6 @@ def build_quality_gate_check_specs(
                 "core/**/*.py",
                 "data/**/*.py",
                 "desktop/**/*.py",
-                "plugins/**/*.py",
                 "scripts/**/*.py",
                 "tests/**/*.py",
                 "tools/**/*.py",
@@ -889,13 +988,10 @@ def build_quality_gate_check_specs(
             args=("python", *IMPORT_CYCLE_PRODUCTION_ARGS),
             capture_output=True,
             output_policy="normalized",
-            input_file_scopes=(
-                *import_cycle_base_inputs,
-                ".codestable/checkup/import_cycles_production_baseline.json",
-            ),
+            input_file_scopes=python_file_scopes(role_roots(scan_import_cycles.PRODUCTION_SCOPE_ROLES)),
             config_file_scopes=(".codestable/checkup/import_cycles_production_baseline.json",),
             tool_file_scopes=import_cycle_tools,
-            env_keys=import_cycle_env,
+            env_keys=_SCANNER_ENV_KEYS,
             reuse_policy="success",
             runner_handler="import_cycle_production",
         ),
@@ -906,17 +1002,14 @@ def build_quality_gate_check_specs(
             args=("python", *IMPORT_CYCLE_WITH_TESTS_ARGS),
             capture_output=True,
             output_policy="normalized",
-            input_file_scopes=(
-                *import_cycle_base_inputs,
-                "tests/**/*.py",
-                ".codestable/checkup/import_cycles_with_tests_baseline.json",
-            ),
+            input_file_scopes=python_file_scopes(role_roots(scan_import_cycles.WITH_TESTS_SCOPE_ROLES)),
             config_file_scopes=(".codestable/checkup/import_cycles_with_tests_baseline.json",),
             tool_file_scopes=import_cycle_tools,
-            env_keys=import_cycle_env,
+            env_keys=_SCANNER_ENV_KEYS,
             reuse_policy="success",
             runner_handler="import_cycle_with_tests",
         ),
+        *_boundary_ratchet_specs(),
         GateCheckSpec(
             check_id=ENTRY_PYTEST_COLLECT_ALL,
             entry_type=ENTRY_PYTEST_COLLECT_ALL,
@@ -931,7 +1024,6 @@ def build_quality_gate_check_specs(
                     "core/**/*.py",
                     "web/**/*.py",
                     "data/**/*.py",
-                    "plugins/**/*.py",
                     "scripts/**/*.py",
                     "*.py",
                     "app.py",
@@ -947,7 +1039,7 @@ def build_quality_gate_check_specs(
                 "tools/test_debt_registry.py",
                 "tools/test_registry.py",
                 "scripts/run_quality_gate.py",
-                "开发文档/技术债务治理台账.md",
+                LEDGER_REL,
             ),
             tool_file_scopes=(
                 "tools/quality_gate_ledger.py",
@@ -1020,7 +1112,6 @@ def build_quality_gate_check_specs(
                 "schema.sql",
                 "core/**/*.py",
                 "data/**/*.py",
-                "plugins/**/*.py",
                 "web/**/*.py",
                 "templates/**/*.html",
                 "static/**/*",
@@ -1036,6 +1127,7 @@ def build_quality_gate_check_specs(
                 "tools/long_gate_manifest.py",
                 "tools/long_gate_fingerprint.py",
                 "tools/long_gate_cache.py",
+                "tools/long_gate_records.py",
                 "tools/long_gate_schema.py",
                 "scripts/run_quality_gate.py",
             ),
@@ -1087,13 +1179,15 @@ def build_quality_gate_check_specs(
             args=("python", "-m", "pyright", "-p", QUALITY_GATE_PYRIGHT_TOOLS_CONFIG),
             capture_output=False,
             output_policy="normalized",
+            # pyright 的结论还取决于它顺着导入读进来的文件：包初始化、tests/conftest.py 用的测试支撑，以及
+            # conftest 与启动器脚本经 web.bootstrap 牵进来的整棵生产代码；少列一个，缓存就可能复用过期的成功。
             input_file_scopes=_dedupe_tuple(
                 (
                     *QUALITY_GATE_TOOL_PATHS,
                     "tools/__init__.py",
-                    "web/bootstrap/**/*.py",
-                    "core/infrastructure/logging.py",
-                    "core/infrastructure/transaction.py",
+                    "scripts/__init__.py",
+                    "tests/_support/**/*.py",
+                    *python_file_scopes(role_roots((PRODUCTION,))),
                     "typings/**/*.pyi",
                     "py.typed",
                 )
@@ -1120,23 +1214,18 @@ def build_quality_gate_check_specs(
             args=("python", "scripts/sync_debt_ledger.py", "check"),
             capture_output=False,
             output_policy="normalized",
+            # check 只读台账与台账条目、启动链指向的 Python 源码（tools/quality_gate_operations.py
+            # 的 validate_ledger_against_current_scan）。
             input_file_scopes=(
-                "开发文档/技术债务治理台账.md",
-                *tracked_roadmap_scopes,
+                LEDGER_REL,
                 "app.py",
-                "schema.sql",
                 "core/**/*.py",
                 "data/**/*.py",
                 "web/**/*.py",
-                "plugins/**/*.py",
                 "desktop/**/*.py",
                 "scripts/**/*.py",
                 "tools/**/*.py",
                 "tests/**/*.py",
-                "templates/**/*.html",
-                "static/**/*",
-                "docs/**/*.md",
-                "开发文档/**/*.md",
             ),
             config_file_scopes=(
                 "pyproject.toml",
@@ -1149,14 +1238,13 @@ def build_quality_gate_check_specs(
                 QUALITY_GATE_PYRIGHT_GATE_CONFIG,
                 QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
                 "pyrightconfig.json",
-                ".codestable/roadmap/aps-architecture-consolidation/aps-architecture-consolidation-roadmap.md",
-                ".codestable/roadmap/aps-architecture-consolidation/aps-architecture-consolidation-items.yaml",
             ),
             tool_file_scopes=(
                 "scripts/sync_debt_ledger.py",
                 "tools/quality_gate_ledger.py",
                 "tools/quality_gate_operations.py",
                 "tools/quality_gate_scan.py",
+                "tools/quality_gate_scan_primitives.py",
                 "tools/quality_gate_entries.py",
                 "tools/quality_gate_shared.py",
                 "tools/architecture_scan_cache.py",
@@ -1167,6 +1255,7 @@ def build_quality_gate_check_specs(
                 "tools/long_gate_cache.py",
                 "tools/long_gate_schema.py",
                 "tools/long_gate_paths.py",
+                "tools/long_gate_records.py",
                 "tools/long_gate_summary.py",
                 "scripts/run_quality_gate.py",
             ),
@@ -1209,15 +1298,12 @@ def build_quality_gate_check_specs(
                     "core/**/*.py",
                     "web/**/*.py",
                     "data/**/*.py",
-                    "plugins/**/*.py",
                     "scripts/**/*.py",
                     "scripts/workbench/*.cjs",
                     "desktop/**/*.py",
                     "app.py",
-                    "check_manual_layout.py",
                     "schema.sql",
                     "validate_dist_exe.py",
-                    "verify_manual_styles.py",
                     "assets/**/*",
                     "installer/**/*",
                     "build_win7*.bat",
@@ -1234,10 +1320,6 @@ def build_quality_gate_check_specs(
                     ".codestable/architecture/**/*.md",
                     ".codestable/requirements/**/*.md",
                     *tracked_roadmap_scopes,
-                    "docs/**/*.md",
-                    "docs/**/*.html",
-                    "docs/**/*.css",
-                    "docs/**/*.js",
                     "evidence/README.md",
                     "evidence/current/README.md",
                     ".github/workflows/*.yml",
@@ -1254,13 +1336,13 @@ def build_quality_gate_check_specs(
                 "pyproject.toml",
                 "setup.cfg",
                 "tox.ini",
-                "开发文档/技术债务治理台账.md",
+                LEDGER_REL,
                 "tools/check_full_test_debt.py",
                 "tools/collect_full_test_debt.py",
                 "tools/full_test_debt_shards.py",
                 "tools/test_debt_registry.py",
                 "tools/quality_gate_shared.py",
-                ".codestable/tools/**/*.py",
+                *CODESTABLE_TOOL_FILES,
                 "scripts/run_quality_gate.py",
             ),
             tool_file_scopes=(
@@ -1331,206 +1413,46 @@ def build_quality_gate_receipt_rel_path(index: int, display: str) -> str:
     return os.path.join(QUALITY_GATE_RECEIPTS_DIR_REL, f"{int(index):02d}_{short_slug}.json").replace("\\", "/")
 
 
-def build_quality_gate_command_receipt(
-    command: Dict[str, Any],
-    *,
-    run_id: str = "",
-    command_index: int = 0,
-    returncode: int,
-    stdout: str = "",
-    stderr: str = "",
-    stdout_log_path: str = "",
-    stderr_log_path: str = "",
-) -> Dict[str, Any]:
-    normalized_command = _normalize_command_rows([command])[0]
-    output_policy = normalized_command["output_policy"]
-    receipt: Dict[str, Any] = {
-        "schema_version": int(QUALITY_GATE_PROOF_SCHEMA_VERSION),
-        "run_id": str(run_id or "").strip(),
-        "command_index": int(command_index or 0),
-        "display": normalized_command["display"],
-        "args": normalized_command["args"],
-        "capture_output": normalized_command["capture_output"],
-        "output_policy": output_policy,
-        "env_overlay": normalized_command["env_overlay"],
-        "returncode": int(returncode or 0),
-        "stdout_content": _normalize_command_output_for_policy(str(stdout or ""), policy=output_policy),
-        "stderr_content": _normalize_command_output_for_policy(str(stderr or ""), policy=output_policy),
-        "stdout_log_path": str(stdout_log_path or "").replace("\\", "/"),
-        "stderr_log_path": str(stderr_log_path or "").replace("\\", "/"),
-        "execution_mode": "executed",
-        "reused_from": {},
-        "timed_out": False,
-        "interrupted": False,
-        "partial_write": False,
-    }
-    for key in _COMMAND_SPEC_METADATA_KEYS:
-        if key in normalized_command:
-            receipt[key] = normalized_command[key]
-    return receipt
-
-
 def build_quality_gate_collection_proof(
-    default_collect_nodeids: Sequence[str],
+    default_collect_nodeids: List[str],
     *,
-    required_tests: Optional[Sequence[str]] = None,
+    required_tests: Sequence[str],
 ) -> Dict[str, Any]:
-    collected = [str(item).strip() for item in list(default_collect_nodeids or []) if str(item).strip()]
-    key_test_rows: List[Dict[str, Any]] = []
-    for path in _normalize_required_tests(required_tests or iter_quality_gate_required_tests()):
-        in_default_collect = any(nodeid == path or nodeid.startswith(f"{path}::") for nodeid in collected)
-        key_test_rows.append(
+    """manifest collection proof 的唯一构造，只在 collect 步骤通过后调用一次；collect 尚未通过时 manifest 里记 None。
+
+    nodeid 来自 `parse_pytest_collect_nodeids`（已去空、去重），required_tests 来自已规范化的登记表，这里不再清洗。
+    """
+    return {
+        "collected_count": len(default_collect_nodeids),
+        "default_collect_nodeids": default_collect_nodeids,
+        "key_tests": [
             {
                 "path": path,
-                "execution_mode": "default_collect" if in_default_collect else "explicit_run",
+                "execution_mode": "default_collect"
+                if any(nodeid == path or nodeid.startswith(f"{path}::") for nodeid in default_collect_nodeids)
+                else "explicit_run",
             }
-        )
-    return _normalize_collection_proof(
-        {
-            "default_collect_nodeids": collected,
-            "key_tests": key_test_rows,
-        }
-    )
+            for path in sorted(required_tests)
+        ],
+    }
 
 
-def build_quality_gate_source_proof(repo_root: Optional[Union[os.PathLike, str]] = None) -> List[Dict[str, Any]]:
-    root = os.path.abspath(os.fspath(repo_root) if repo_root is not None else REPO_ROOT)
+def build_quality_gate_source_proof(repo_root: str) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     for rel_path in QUALITY_GATE_SOURCE_FILES:
-        abs_path = os.path.join(root, rel_path.replace("/", os.sep))
+        abs_path = repo_abs(repo_root, rel_path)
         exists = os.path.isfile(abs_path)
         try:
             content_base64 = read_file_content(abs_path) if exists else ""
         except SensitiveSourceError as exc:
             raise QualityGateError(f"门禁来源文件包含敏感内容（{rel_path}）：{exc}") from exc
-        rows.append(
-            {
-                "path": str(rel_path).replace("\\", "/"),
-                "exists": bool(exists),
-                "content_base64": content_base64,
-            }
-        )
-    return _normalize_source_rows(rows)
+        rows.append({"path": rel_path.replace("\\", "/"), "exists": exists, "content_base64": content_base64})
+    rows.sort(key=lambda item: item["path"])
+    return rows
 
 
-def apply_quality_gate_manifest_proof_fields(
-    manifest: Dict[str, Any],
-    *,
-    repo_root: Optional[Union[os.PathLike, str]] = None,
-) -> Dict[str, Any]:
-    manifest["proof_scope"] = dict(QUALITY_GATE_PROOF_SCOPE)
-    required_tests = _normalize_required_tests(manifest.get("required_tests") or iter_quality_gate_required_tests())
-    manifest["required_tests"] = required_tests
-
-    commands = _normalize_command_rows(manifest.get("commands") or [])
-    manifest["commands"] = commands
-
-    collection_proof = _normalize_collection_proof(manifest.get("collection_proof") or {})
-    manifest["collection_proof"] = collection_proof
-
-    command_receipts = _normalize_command_receipt_index(manifest.get("command_receipts") or [])
-    if any(not isinstance(row.get("content"), dict) for row in command_receipts):
-        raise QualityGateError("Legacy quality gate receipt content is unavailable; execute a new run.")
-    manifest["command_receipts"] = command_receipts
-
-    gate_sources = _normalize_source_rows(manifest.get("gate_sources") or build_quality_gate_source_proof(repo_root))
-    if any(not isinstance(row.get("content_base64"), str) for row in gate_sources):
-        raise QualityGateError("Legacy quality gate source content is unavailable; execute a new run.")
-    manifest["gate_sources"] = gate_sources
-    manifest["schema_version"] = QUALITY_GATE_PROOF_SCHEMA_VERSION
-    return manifest
-
-
-def _load_verified_quality_gate_receipt(
-    repo_root: Union[os.PathLike, str],
-    receipt_entry: Dict[str, Any],
-    command: Dict[str, Any],
-    *,
-    index: int,
-) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    if not isinstance(receipt_entry.get("content"), dict):
-        return None, "UNBOUND: quality gate command receipt content missing"
-    receipt_path = str(receipt_entry.get("path") or "").replace("\\", "/")
-    expected_path = build_quality_gate_receipt_rel_path(index, str(command.get("display") or ""))
-    if receipt_path != expected_path:
-        return None, "UNBOUND: quality gate command receipt path mismatch"
-    allowed_directory = os.path.realpath(os.path.join(os.fspath(repo_root), QUALITY_GATE_RECEIPTS_DIR_REL))
-    abs_path = os.path.realpath(os.path.join(os.fspath(repo_root), receipt_path.replace("/", os.sep)))
-    if not receipt_path or not abs_path.startswith(allowed_directory + os.sep):
-        return None, "UNBOUND: quality gate command receipt path mismatch"
-    if not os.path.isfile(abs_path):
-        return None, "UNBOUND: quality gate command receipt missing"
-    try:
-        with open(abs_path, "rb") as handle:
-            receipt_bytes = handle.read()
-        payload = json.loads(receipt_bytes)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
-        return None, "UNBOUND: quality gate command receipt unreadable"
-    if not isinstance(payload, dict) or not payload:
-        return None, "UNBOUND: quality gate command receipt unreadable"
-    if not content_equal(payload, receipt_entry["content"]):
-        return None, "UNBOUND: quality gate command receipt content mismatch"
-    return payload, None
-
-
-def _verify_receipt_header(
-    receipt: Dict[str, Any],
-    *,
-    index: int,
-    run_id: str,
-) -> Optional[str]:
-    schema_version = int(receipt.get("schema_version") or 0)
-    if schema_version != QUALITY_GATE_PROOF_SCHEMA_VERSION:
-        return "UNBOUND: quality gate command receipt schema_version mismatch"
-    if str(receipt.get("run_id") or "").strip() != str(run_id or "").strip() or not str(run_id or "").strip():
-        return "UNBOUND: quality gate command receipt run_id mismatch"
-    if int(receipt.get("command_index") or 0) != int(index):
-        return "UNBOUND: quality gate command receipt command_index mismatch"
-    return None
-
-
-def _verify_receipt_command_fields(receipt: Dict[str, Any], normalized_command: Dict[str, Any]) -> Optional[str]:
-    for key in ("display", "args", "capture_output", "output_policy", "env_overlay", *_COMMAND_SPEC_METADATA_KEYS):
-        if key in normalized_command or key in receipt:
-            if (
-                key not in receipt
-                or key not in normalized_command
-                or not content_equal(receipt.get(key), normalized_command[key])
-            ):
-                return f"UNBOUND: quality gate command receipt {key} mismatch"
-    return None
-
-
-def _verify_receipt_execution_fields(receipt: Dict[str, Any]) -> Optional[str]:
-    execution_mode = str(receipt.get("execution_mode") or "").strip()
-    if execution_mode not in {
-        "executed",
-        "reused_success_cache",
-        "resumed_success_prefix",
-    }:
-        return "UNBOUND: quality gate command receipt execution_mode mismatch"
-    for field_name in ("timed_out", "interrupted", "partial_write"):
-        if not isinstance(receipt.get(field_name), bool):
-            return f"UNBOUND: quality gate command receipt {field_name} mismatch"
-    if any(bool(receipt.get(field_name)) for field_name in ("timed_out", "interrupted", "partial_write")):
-        return "UNBOUND: quality gate command receipt incomplete execution"
-    reused_from_obj = receipt.get("reused_from")
-    reused_from = cast(Mapping[str, Any], reused_from_obj if isinstance(reused_from_obj, dict) else {})
-    if execution_mode == "reused_success_cache":
-        if not str(reused_from.get("result_path") or "").strip():
-            return "UNBOUND: quality gate command receipt reused_from result_path missing"
-        if not isinstance(reused_from.get("fingerprint"), dict) or not reused_from["fingerprint"]:
-            return "UNBOUND: quality gate command receipt reused_from fingerprint content missing"
-    if execution_mode == "resumed_success_prefix":
-        if not str(reused_from.get("receipt_path") or "").strip():
-            return "UNBOUND: quality gate command receipt reused_from receipt_path missing"
-        if not str(reused_from.get("run_id") or "").strip():
-            return "UNBOUND: quality gate command receipt reused_from run_id missing"
-    return None
-
-
-def collect_quality_rule_files() -> List[str]:
-    return sorted(set(collect_py_files(*CORE_DIRS) + collect_startup_scope_files()))
+def collect_quality_rule_files(repo_root: str) -> List[str]:
+    return sorted(set(collect_py_files(repo_root, *CORE_DIRS) + collect_startup_scope_files(repo_root)))
 
 
 def is_startup_scope_path(path: str) -> bool:

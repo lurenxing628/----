@@ -18,12 +18,17 @@
 import argparse
 import ast
 import json
+import os
 import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-GLOSSARY_PATH = ROOT / "tools" / "ui_copy_glossary.json"
+if __name__ == "__main__":  # 按文件路径运行时让仓库根下的 tools 包可导入
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from tools.long_gate_paths import resolve_repo_root
+
+GLOSSARY_REL = "tools/ui_copy_glossary.json"
 CJK = re.compile(r"[一-鿿]")
 JS_STRING = re.compile(r"'((?:[^'\\\n]|\\.)*)'|\"((?:[^\"\\\n]|\\.)*)\"")
 JS_TEMPLATE = re.compile(r"`((?:[^`\\]|\\.)*)`")
@@ -46,7 +51,7 @@ class Rule:
         self.kind = kind
 
 
-def load_glossary(path=GLOSSARY_PATH):
+def load_glossary(path):
     data = json.loads(path.read_text(encoding="utf-8"))
     rules = [Rule(item, "banned") for item in data["banned"]] + [Rule(item, "unit") for item in data["units"]]
     allow = [(item["path"], item.get("term"), re.compile(item["text"]) if item.get("text") else None)
@@ -146,14 +151,14 @@ def line_texts(path, strip_jinja=False):
             yield number, line.strip()
 
 
-def iter_files(root_paths, suffixes):
+def iter_files(root, root_paths, suffixes):
     for entry in root_paths:
         if "*" in entry:
-            for child in sorted(ROOT.glob(entry)):
+            for child in sorted(root.glob(entry)):
                 if child.is_file() and child.suffix in suffixes:
                     yield child
             continue
-        path = ROOT / entry
+        path = root / entry
         if path.is_file():
             yield path
             continue
@@ -162,17 +167,17 @@ def iter_files(root_paths, suffixes):
                 yield child
 
 
-def collect(scan, rules, allow, prefixes=None):
+def collect(root, scan, rules, allow, prefixes):
     sources = (
-        ("frontend", iter_files(scan["frontend"], {".js", ".jsx"}), frontend_texts),
-        ("templates", iter_files(scan["templates"], {".html"}), lambda p: line_texts(p, strip_jinja=True)),
-        ("backend", iter_files(scan["backend"], {".py"}), python_texts),
-        ("docs", iter_files(scan["docs"], {".md"}), line_texts),
+        ("frontend", iter_files(root, scan["frontend"], {".js", ".jsx"}), frontend_texts),
+        ("templates", iter_files(root, scan["templates"], {".html"}), lambda p: line_texts(p, strip_jinja=True)),
+        ("backend", iter_files(root, scan["backend"], {".py"}), python_texts),
+        ("docs", iter_files(root, scan["docs"], {".md"}), line_texts),
     )
     hits = []
     for kind, files, extractor in sources:
         for path in files:
-            rel = path.relative_to(ROOT).as_posix()
+            rel = path.relative_to(root).as_posix()
             if prefixes and not any(rel.startswith(prefix) for prefix in prefixes):
                 continue
             for line, text in extractor(path):
@@ -209,14 +214,15 @@ def summarize(hits):
 
 
 def main(argv=None):
+    root = Path(resolve_repo_root())
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--paths", nargs="*", default=None, help="只扫这些仓库相对路径前缀")
     parser.add_argument("--summary", action="store_true", help="只输出统计")
     parser.add_argument("--json", action="store_true", help="输出 JSON")
-    parser.add_argument("--glossary", default=str(GLOSSARY_PATH))
+    parser.add_argument("--glossary", default=str(root / GLOSSARY_REL))
     args = parser.parse_args(argv)
     scan, rules, allow = load_glossary(Path(args.glossary))
-    hits = collect(scan, rules, allow, args.paths)
+    hits = collect(root, scan, rules, allow, args.paths)
     by_term, by_file = summarize(hits)
     if args.json:
         json.dump({"hits": hits, "by_term": by_term, "by_file": by_file}, sys.stdout, ensure_ascii=False, indent=1)

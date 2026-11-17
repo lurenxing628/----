@@ -8,7 +8,6 @@
     "tests",
     "tools",
     "scripts",
-    "plugins",
     "desktop"
   ],
   "exclude": [
@@ -28,11 +27,7 @@
     "installer",
     "logs",
     "templates_excel",
-    "check_manual_layout.py",
-    "quick_ui_check.py",
-    "ui_v1_v2_check.py",
-    "validate_dist_exe.py",
-    "verify_manual_styles.py"
+    "validate_dist_exe.py"
   ],
   "pythonVersion": "3.8",
   "typeCheckingMode": "basic",

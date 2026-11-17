@@ -8,20 +8,19 @@ import sys
 import threading
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if __name__ == "__main__":  # 按文件路径运行时让仓库根下的 tools 包可导入
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
-
-from tools.quality_gate_ledger import load_ledger  # noqa: E402
-from tools.quality_gate_shared import (  # noqa: E402
+from tools.long_gate_paths import GateContext, resolve_repo_root
+from tools.quality_gate_ledger import load_ledger
+from tools.quality_gate_shared import (
     FORMAL_FULL_TEST_PYTEST_ARGS,
     FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS,
     QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL,
     QualityGateError,
     is_xfail_signal_report,
 )
-from tools.test_debt_registry import (  # noqa: E402
+from tools.test_debt_registry import (
     _format_nodeid_list,
     validate_clean_worktree_proof,
     validate_full_test_proof,
@@ -257,6 +256,7 @@ def _resolve_shard_options(
 
 
 def collect_current_payload(
+    repo_root: str,
     *,
     sharded: Optional[bool],
     shard_count: Optional[int],
@@ -292,7 +292,7 @@ def collect_current_payload(
 
     process = subprocess.Popen(
         [sys.executable, *collector_args],
-        cwd=REPO_ROOT,
+        cwd=repo_root,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -322,15 +322,16 @@ def collect_current_payload(
 
 
 def run_check(
+    ctx: GateContext,
     *,
     require_clean_worktree_proof: bool,
     sharded: Optional[bool],
     shard_count: Optional[int],
 ) -> Dict[str, Any]:
     _progress("开始加载治理台账")
-    ledger = load_ledger(required=True)
+    ledger = load_ledger(ctx.ledger_path)
     _progress("治理台账已加载")
-    payload = collect_current_payload(sharded=sharded, shard_count=shard_count)
+    payload = collect_current_payload(ctx.repo_root, sharded=sharded, shard_count=shard_count)
     summary = build_full_test_debt_summary(
         payload,
         ledger=ledger,
@@ -340,12 +341,12 @@ def run_check(
     return summary
 
 
-def write_full_test_debt_summary(summary: Dict[str, Any], *, repo_root: str = REPO_ROOT) -> None:
-    _write_json_atomically(QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL, summary, repo_root=repo_root)
+def write_full_test_debt_summary(repo_root: str, summary: Dict[str, Any]) -> None:
+    _write_json_atomically(repo_root, QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL, summary)
 
 
-def _write_json_atomically(rel_path: str, payload: Dict[str, Any], *, repo_root: str = REPO_ROOT) -> None:
-    abs_path = os.path.join(str(repo_root), rel_path.replace("\\", "/").replace("/", os.sep))
+def _write_json_atomically(repo_root: str, rel_path: str, payload: Dict[str, Any]) -> None:
+    abs_path = os.path.join(repo_root, rel_path.replace("\\", "/").replace("/", os.sep))
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     temp_path = f"{abs_path}.tmp"
     with open(temp_path, "w", encoding="utf-8") as handle:
@@ -379,8 +380,10 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
+    ctx = GateContext(resolve_repo_root())
     try:
         summary = run_check(
+            ctx,
             require_clean_worktree_proof=not args.allow_dirty_worktree_proof,
             sharded=args.sharded,
             shard_count=args.shard_count,
@@ -388,7 +391,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except QualityGateError as exc:
         print(f"ERROR: {exc}", file=sys.stderr, flush=True)
         return 2
-    write_full_test_debt_summary(summary)
+    write_full_test_debt_summary(ctx.repo_root, summary)
     print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), flush=True)
     return 0
 

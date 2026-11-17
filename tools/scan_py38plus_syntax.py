@@ -30,9 +30,13 @@ import sys
 import tokenize
 from collections import Counter
 from dataclasses import asdict, dataclass
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple, Union
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if __name__ == "__main__":  # 按文件路径运行时让仓库根下的 tools 包可导入
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from tools.long_gate_paths import is_within_repo, resolve_repo_root
+
 PY38_FEATURE_VERSION = (3, 8)
 
 # Reference inventory from Python What's New / language reference documents.
@@ -76,15 +80,10 @@ SKIP_DIR_NAMES = {
 
 DEFAULT_SCAN_PATHS: Tuple[str, ...] = (
     "app.py",
-    "config.py",
-    "conftest.py",
-    "check_manual_layout.py",
     "validate_dist_exe.py",
-    "verify_manual_styles.py",
     "core",
     "data",
     "web",
-    "plugins",
     "desktop",
     "scripts",
     "tools",
@@ -155,7 +154,7 @@ class Finding:
     rule: str
     message: str
     snippet: str
-    detail: str = ""
+    detail: str
     introduced_in: str = ""
     future_annotations: bool = False
     host_parser_accepts: bool = False
@@ -174,54 +173,38 @@ class ScanResult:
 
 
 def normalize_repo_path(path: str) -> str:
-    normalized = os.path.normpath(str(path or "")).replace("\\", "/")
-    if normalized == ".":
-        return ""
-    if normalized.startswith("./"):
-        normalized = normalized[2:]
-    return normalized
-
-
-def _is_inside_root(abs_path: str, root: str) -> bool:
-    real_root = os.path.normcase(os.path.realpath(root))
-    real_path = os.path.normcase(os.path.realpath(abs_path))
-    return real_path == real_root or real_path.startswith(real_root + os.sep)
+    normalized = os.path.normpath(path).replace("\\", "/")
+    return "" if normalized == "." else normalized
 
 
 def _should_skip_rel_path(rel_path: str) -> bool:
-    normalized = normalize_repo_path(rel_path)
-    parts = [part for part in normalized.split("/") if part]
-    return any(part in SKIP_DIR_NAMES or part.startswith(".venv") for part in parts)
+    """rel_path 是 normalize_repo_path 的结果。"""
+    return any(part in SKIP_DIR_NAMES or part.startswith(".venv") for part in rel_path.split("/"))
 
 
-def collect_python_files(root: str, paths: Sequence[str] = DEFAULT_SCAN_PATHS) -> Tuple[str, ...]:
-    root_abs = os.path.abspath(root)
+def collect_python_files(root: str, paths: Sequence[str]) -> Tuple[str, ...]:
     collected: Set[str] = set()
-    requested = list(paths or DEFAULT_SCAN_PATHS)
-    for raw_path in requested:
-        abs_path = os.path.abspath(os.path.join(root_abs, str(raw_path)))
-        if not _is_inside_root(abs_path, root_abs):
+    for raw_path in paths:
+        abs_path = os.path.abspath(os.path.join(root, raw_path))
+        if not is_within_repo(abs_path, root):
             continue
         if os.path.isfile(abs_path):
-            rel_path = normalize_repo_path(os.path.relpath(abs_path, root_abs))
+            rel_path = normalize_repo_path(os.path.relpath(abs_path, root))
             if rel_path.endswith(".py") and not _should_skip_rel_path(rel_path):
                 collected.add(rel_path)
             continue
         if not os.path.isdir(abs_path):
             continue
         for current_dir, dirnames, filenames in os.walk(abs_path):
-            rel_dir = normalize_repo_path(os.path.relpath(current_dir, root_abs))
+            rel_dir = normalize_repo_path(os.path.relpath(current_dir, root))
             dirnames[:] = [
-                name
-                for name in dirnames
-                if name not in SKIP_DIR_NAMES
-                and not _should_skip_rel_path(normalize_repo_path(os.path.join(rel_dir, name)))
+                name for name in dirnames if not _should_skip_rel_path(normalize_repo_path(os.path.join(rel_dir, name)))
             ]
             for filename in filenames:
                 if not filename.endswith(".py"):
                     continue
                 file_abs = os.path.join(current_dir, filename)
-                rel_path = normalize_repo_path(os.path.relpath(file_abs, root_abs))
+                rel_path = normalize_repo_path(os.path.relpath(file_abs, root))
                 if not _should_skip_rel_path(rel_path):
                     collected.add(rel_path)
     return tuple(sorted(collected))
@@ -232,21 +215,12 @@ def read_python_source(abs_path: str) -> str:
         return handle.read()
 
 
-def _parse_latest(source: str, filename: str) -> ast.AST:
+def _parse_latest(source: str, filename: str) -> ast.Module:
     return ast.parse(source, filename=filename, type_comments=True)
 
 
-def _parse_as_py38(source: str, filename: str) -> ast.AST:
-    try:
-        return ast.parse(source, filename=filename, type_comments=True, feature_version=PY38_FEATURE_VERSION)
-    except TypeError:
-        # Python 3.8-era ast.parse variants may accept the minor version as an
-        # int instead of a (major, minor) tuple. If neither form exists, parsing
-        # with the host parser is still useful when the host is exactly 3.8.
-        try:
-            return ast.parse(source, filename=filename, type_comments=True, feature_version=8)  # type: ignore[arg-type]
-        except TypeError:
-            return ast.parse(source, filename=filename, type_comments=True)
+def _parse_as_py38(source: str, filename: str) -> ast.Module:
+    return ast.parse(source, filename=filename, type_comments=True, feature_version=PY38_FEATURE_VERSION)
 
 
 def _source_line(source: str, line: int) -> str:
@@ -258,9 +232,7 @@ def _source_line(source: str, line: int) -> str:
     return lines[line - 1].strip()
 
 
-def _has_future_annotations(tree: ast.AST) -> bool:
-    if not isinstance(tree, ast.Module):
-        return False
+def _has_future_annotations(tree: ast.Module) -> bool:
     for stmt in tree.body:
         value = stmt.value if isinstance(stmt, ast.Expr) else None
         if isinstance(value, ast.Constant):
@@ -275,10 +247,20 @@ def _has_future_annotations(tree: ast.AST) -> bool:
     return False
 
 
-def _is_annotation_context(node: ast.AST) -> bool:
+ParentMap = Dict[ast.AST, ast.AST]
+#: 扫描器报告位置的节点：解析出的表达式与语句都带 lineno/col_offset。
+SourceNode = Union[ast.expr, ast.stmt]
+
+
+def _parent_map(tree: ast.Module) -> ParentMap:
+    """子节点 -> 父节点；模块根没有父节点。"""
+    return {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+
+
+def _is_annotation_context(node: ast.AST, parents: ParentMap) -> bool:
     current = node
-    while hasattr(current, "_ast_parent"):
-        parent = current._ast_parent  # type: ignore[attr-defined]
+    while current in parents:
+        parent = parents[current]
         if isinstance(parent, ast.AnnAssign) and parent.annotation is current:
             return True
         if isinstance(parent, ast.arg) and parent.annotation is current:
@@ -289,21 +271,14 @@ def _is_annotation_context(node: ast.AST) -> bool:
     return False
 
 
-def _attach_parents(tree: ast.AST) -> ast.AST:
-    for node in ast.walk(tree):
-        for child in ast.iter_child_nodes(node):
-            child._ast_parent = node  # type: ignore[attr-defined]
-    return tree
-
-
 def _infer_syntax_introduced_in(error_message: str, snippet: str) -> str:
-    text = (error_message or "").lower()
+    text = error_message.lower()
     if "pattern matching" in text:
         return "3.10 / PEP 634"
-    if "exception groups" in text or "except*" in (snippet or ""):
+    if "exception groups" in text or "except*" in snippet:
         return "3.11 / PEP 654"
     if "type parameter" in text or "type statement" in text:
-        if "=" in (snippet or ""):
+        if "=" in snippet:
             return "3.12 / PEP 695 or 3.13 / PEP 696"
         return "3.12 / PEP 695"
     if "t-strings" in text:
@@ -322,7 +297,7 @@ def _collect_import_aliases(tree: ast.AST) -> Dict[str, str]:
                 if alias.name in {"collections", "collections.abc", "contextlib", "re"}:
                     aliases[bound_name] = alias.name
         elif isinstance(node, ast.ImportFrom):
-            module = node.module or ""
+            module = node.module
             if module in {"collections", "collections.abc", "contextlib", "re"}:
                 for alias in node.names:
                     if alias.name == "*":
@@ -345,21 +320,25 @@ def _qualified_name(node: ast.AST, import_aliases: Dict[str, str]) -> str:
     return ""
 
 
-def _annotation_context(prefix: str, name: str) -> str:
-    return prefix + name if prefix else name
-
-
 class AnnotationRiskScanner(ast.NodeVisitor):
-    def __init__(self, rel_path: str, source: str, future_annotations: bool, import_aliases: Dict[str, str]) -> None:
+    def __init__(
+        self,
+        rel_path: str,
+        source: str,
+        future_annotations: bool,
+        import_aliases: Dict[str, str],
+        parents: ParentMap,
+    ) -> None:
         self.rel_path = rel_path
         self.source = source
         self.future_annotations = future_annotations
         self.import_aliases = import_aliases
+        self.parents = parents
         self.findings: List[Finding] = []
 
-    def _add(self, node: ast.AST, rule: str, message: str, detail: str = "", introduced_in: str = "") -> None:
-        line = int(getattr(node, "lineno", 0) or 0)
-        column = int(getattr(node, "col_offset", 0) or 0) + 1 if line else 0
+    def _add(self, node: SourceNode, rule: str, message: str, detail: str, introduced_in: str) -> None:
+        line = node.lineno
+        column = node.col_offset + 1
         deferred = self.future_annotations and rule in {"PEP585_GENERIC_ALIAS", "PEP604_UNION_TYPE"}
         if deferred:
             message = "延迟注解可在 Python 3.8 定义和调用；仅在 get_type_hints/eval 解析注解时存在兼容风险"
@@ -413,7 +392,7 @@ class AnnotationRiskScanner(ast.NodeVisitor):
 
     def _scan_arguments(self, args: ast.arguments, context: str) -> None:
         all_args: List[ast.arg] = []
-        all_args.extend(getattr(args, "posonlyargs", []))
+        all_args.extend(args.posonlyargs)
         all_args.extend(args.args)
         if args.vararg is not None:
             all_args.append(args.vararg)
@@ -421,7 +400,7 @@ class AnnotationRiskScanner(ast.NodeVisitor):
         if args.kwarg is not None:
             all_args.append(args.kwarg)
         for arg in all_args:
-            self._scan_annotation(arg.annotation, _annotation_context(context, arg.arg))
+            self._scan_annotation(arg.annotation, context + arg.arg)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         context = node.name + "::"
@@ -438,24 +417,25 @@ class AnnotationRiskScanner(ast.NodeVisitor):
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         # The nearest lexical scope matters: a class nested in a function still
         # evaluates its class annotations, whereas function locals never do.
-        parent = getattr(node, "_ast_parent", None)
-        while parent is not None and not isinstance(parent, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-            parent = getattr(parent, "_ast_parent", None)
-        if not isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        scope = self.parents[node]
+        while not isinstance(scope, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            scope = self.parents[scope]
+        if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
             self._scan_annotation(node.annotation, "variable")
         self.generic_visit(node)
 
 
 class RuntimeSyntaxRiskScanner(ast.NodeVisitor):
-    def __init__(self, rel_path: str, source: str, import_aliases: Dict[str, str]) -> None:
+    def __init__(self, rel_path: str, source: str, import_aliases: Dict[str, str], parents: ParentMap) -> None:
         self.rel_path = rel_path
         self.source = source
         self.import_aliases = import_aliases
+        self.parents = parents
         self.findings: List[Finding] = []
 
-    def _add(self, node: ast.AST, rule: str, message: str, detail: str = "", introduced_in: str = "") -> None:
-        line = int(getattr(node, "lineno", 0) or 0)
-        column = int(getattr(node, "col_offset", 0) or 0) + 1 if line else 0
+    def _add(self, node: SourceNode, rule: str, message: str, detail: str, introduced_in: str) -> None:
+        line = node.lineno
+        column = node.col_offset + 1
         self.findings.append(
             Finding(
                 rel_path=self.rel_path,
@@ -472,7 +452,7 @@ class RuntimeSyntaxRiskScanner(ast.NodeVisitor):
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
         target = _qualified_name(node.value, self.import_aliases)
-        if not _is_annotation_context(node) and target in PEP585_QUALIFIED_TARGETS:
+        if not _is_annotation_context(node, self.parents) and target in PEP585_QUALIFIED_TARGETS:
             self._add(node, "PEP585_GENERIC_ALIAS",
                       "运行时代码使用内置/标准库泛型别名；Python 3.8 不支持该写法",
                       "runtime expression -> " + target, "3.9 / PEP 585")
@@ -480,7 +460,7 @@ class RuntimeSyntaxRiskScanner(ast.NodeVisitor):
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
         if isinstance(node.op, ast.BitOr):
-            if _is_annotation_context(node):
+            if _is_annotation_context(node, self.parents):
                 self.generic_visit(node)
                 return
             if isinstance(node.left, ast.Dict) or isinstance(node.right, ast.Dict):
@@ -519,60 +499,56 @@ class RuntimeSyntaxRiskScanner(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def _syntax_findings_for_source(rel_path: str, source: str) -> Tuple[Optional[ast.AST], List[Finding]]:
+def _parse_as_py38_or_rejection(rel_path: str, source: str) -> Union[ast.Module, Finding]:
+    """按 Python 3.8 语法解析；被拒绝时返回 PY38_PARSE_REJECTED 发现。"""
     try:
-        py38_tree = _attach_parents(_parse_as_py38(source, rel_path))
-        return py38_tree, []
+        return _parse_as_py38(source, rel_path)
     except SyntaxError as exc:
-        host_accepts = False
         try:
             _parse_latest(source, rel_path)
-            host_accepts = True
         except SyntaxError:
             host_accepts = False
-        line = int(exc.lineno or 0)
-        column = int(exc.offset or 0)
+        else:
+            host_accepts = True
+        line = exc.lineno or 0
+        snippet = _source_line(source, line)
         message = "Python 3.8 语法解析失败"
         if host_accepts:
             message = "宿主 Python 可解析，但 Python 3.8 语法解析失败；疑似使用了 3.9+ 新语法"
-        return None, [
-            Finding(
-                rel_path=rel_path,
-                line=line,
-                column=column,
-                rule="PY38_PARSE_REJECTED",
-                message=message,
-                detail=str(exc.msg),
-                introduced_in=_infer_syntax_introduced_in(str(exc.msg), _source_line(source, line)),
-                snippet=_source_line(source, line),
-                host_parser_accepts=host_accepts,
-            )
-        ]
+        return Finding(
+            rel_path=rel_path,
+            line=line,
+            column=exc.offset or 0,
+            rule="PY38_PARSE_REJECTED",
+            message=message,
+            detail=exc.msg,
+            introduced_in=_infer_syntax_introduced_in(exc.msg, snippet),
+            snippet=snippet,
+            host_parser_accepts=host_accepts,
+        )
 
 
-def scan_source(rel_path: str, source: str, include_annotation_runtime: bool = True) -> Tuple[Finding, ...]:
-    tree, findings = _syntax_findings_for_source(rel_path, source)
-    if tree is None:
-        return tuple(findings)
-    if include_annotation_runtime:
-        import_aliases = _collect_import_aliases(tree)
-        runtime_scanner = RuntimeSyntaxRiskScanner(rel_path, source, import_aliases)
-        runtime_scanner.visit(tree)
-        findings.extend(runtime_scanner.findings)
-        future_annotations = _has_future_annotations(tree)
-        scanner = AnnotationRiskScanner(rel_path, source, future_annotations, import_aliases)
-        scanner.visit(tree)
-        findings.extend(scanner.findings)
-    return tuple(sorted(findings, key=lambda item: (item.rel_path, item.line, item.column, item.rule)))
+def scan_source(rel_path: str, source: str, include_annotation_runtime: bool) -> List[Finding]:
+    parsed = _parse_as_py38_or_rejection(rel_path, source)
+    if isinstance(parsed, Finding):
+        return [parsed]
+    if not include_annotation_runtime:
+        return []
+    import_aliases = _collect_import_aliases(parsed)
+    parents = _parent_map(parsed)
+    runtime_scanner = RuntimeSyntaxRiskScanner(rel_path, source, import_aliases, parents)
+    runtime_scanner.visit(parsed)
+    scanner = AnnotationRiskScanner(rel_path, source, _has_future_annotations(parsed), import_aliases, parents)
+    scanner.visit(parsed)
+    return runtime_scanner.findings + scanner.findings
 
 
-def scan_paths(root: str, paths: Sequence[str], include_annotation_runtime: bool = True) -> ScanResult:
-    root_abs = os.path.abspath(root)
-    rel_paths = collect_python_files(root_abs, paths)
+def scan_paths(root: str, paths: Sequence[str], include_annotation_runtime: bool) -> ScanResult:
+    rel_paths = collect_python_files(root, paths)
     findings: List[Finding] = []
     skipped_files = 0
     for rel_path in rel_paths:
-        abs_path = os.path.join(root_abs, rel_path.replace("/", os.sep))
+        abs_path = os.path.join(root, rel_path.replace("/", os.sep))
         try:
             source = read_python_source(abs_path)
         except (OSError, UnicodeError, SyntaxError) as exc:
@@ -589,7 +565,7 @@ def scan_paths(root: str, paths: Sequence[str], include_annotation_runtime: bool
                 )
             )
             continue
-        findings.extend(scan_source(rel_path, source, include_annotation_runtime=include_annotation_runtime))
+        findings.extend(scan_source(rel_path, source, include_annotation_runtime))
     findings.sort(key=lambda item: (item.rel_path, item.line, item.column, item.rule))
     return ScanResult(scanned_files=len(rel_paths), skipped_files=skipped_files, findings=tuple(findings))
 
@@ -605,11 +581,12 @@ def _summary_by_file(findings: Iterable[Finding]) -> Dict[str, int]:
 
 
 def format_text_report(result: ScanResult, max_examples: int) -> str:
-    findings = list(result.findings)
+    findings = result.findings
+    blocking_count = len(result.blocking_findings)
     by_rule = _summary_by_rule(findings)
     syntax_count = by_rule.get("PY38_PARSE_REJECTED", 0)
     deferred_count = sum(finding.annotation_evaluation_required for finding in findings)
-    runtime_count = len(result.blocking_findings) - syntax_count - result.skipped_files
+    runtime_count = blocking_count - syntax_count - result.skipped_files
     lines = [
         "Python 3.8.10 兼容语法扫描结果",
         "================================",
@@ -618,7 +595,7 @@ def format_text_report(result: ScanResult, max_examples: int) -> str:
         f"Python 3.8 解析器拒绝: {syntax_count}",
         f"解析可过但 Python 3.8 运行/语义风险: {runtime_count}",
         f"需显式解析延迟注解才触发的风险（非阻断）: {deferred_count}",
-        f"阻断项数: {len(result.blocking_findings)}",
+        f"阻断项数: {blocking_count}",
         f"总发现数: {len(findings)}",
         "",
         "规则来源:",
@@ -675,10 +652,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "paths",
         nargs="*",
-        default=list(DEFAULT_SCAN_PATHS),
+        default=DEFAULT_SCAN_PATHS,
         help="要扫描的文件或目录，默认扫描全部产品与工具 Python 路径。",
     )
-    parser.add_argument("--root", default=REPO_ROOT, help="仓库根目录，默认自动取 tools/..。")
+    parser.add_argument("--root", default=resolve_repo_root(), help="仓库根目录，默认本工具所属仓库根。")
     parser.add_argument(
         "--syntax-only",
         action="store_true",
@@ -696,12 +673,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     result = scan_paths(
         root=os.path.abspath(args.root),
         paths=args.paths,
-        include_annotation_runtime=not bool(args.syntax_only),
+        include_annotation_runtime=not args.syntax_only,
     )
     if args.json:
         print(format_json_report(result))
     else:
-        print(format_text_report(result, max_examples=max(0, int(args.max_examples))))
+        print(format_text_report(result, max_examples=max(0, args.max_examples)))
     if args.fail_on_hit and result.blocking_findings:
         return 1
     return 0

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import fnmatch
 import glob
 import importlib.metadata
-import json
 import os
 import platform
 import shutil
@@ -13,6 +11,14 @@ import sys
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, cast
 
 from tools.long_gate_paths import is_within_repo, real_repo_root
+from tools.long_gate_records import (
+    DecisionCause,
+    GateEntry,
+    GateJsonError,
+    Rejection,
+    admit_collect_nodeids,
+    load_gate_json,
+)
 from tools.long_gate_schema import (
     LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
     PRIVATE_ENVIRONMENT_KEYS,
@@ -25,12 +31,12 @@ from tools.long_gate_schema import (
     read_file_content,
 )
 from tools.quality_gate_shared import (
+    QUALITY_GATE_COLLECT_NODEIDS_REL,
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
     QualityGateError,
-    normalize_quality_gate_command,
 )
+from tools.test_registry import scope_matches_path
 
-_EXPECTED_COLLECT_NODEIDS_SCHEMA_VERSION = 2
 _CURRENT_FULL_TEST_DEBT_REL = QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/")
 _RUNTIME_FINGERPRINT_CACHE: Dict[Tuple[str, str, Tuple[Tuple[str, str], ...]], Any] = {}
 ENVIRONMENT_FINGERPRINT_SCHEMA_VERSION = 2
@@ -42,12 +48,11 @@ class LongGateFingerprintError(RuntimeError):
         self.details = dict(details or {})
 
 
-def _collect_nodeids_by_file(nodeids: Sequence[str]) -> Dict[str, List[str]]:
-    grouped: Dict[str, List[str]] = {}
-    for nodeid in nodeids:
-        file_path = str(nodeid).split("::", 1)[0]
-        grouped.setdefault(file_path, []).append(str(nodeid))
-    return {path: grouped[path] for path in sorted(grouped)}
+def command_environment(env_overlay: Mapping[str, str]) -> Dict[str, str]:
+    """一步子命令实际拿到的环境：本进程环境叠加已规范化的 env_overlay；执行、receipt、续跑与缓存指纹共用。"""
+    environment = dict(os.environ)
+    environment.update(env_overlay)
+    return environment
 
 
 def _run_git_paths(repo_root: str, args: Sequence[str], *, strict: bool) -> List[str]:
@@ -103,33 +108,24 @@ def _has_glob_chars(value: str) -> bool:
     return any(char in value for char in "*?[")
 
 
-def _normalize_scope_path(path: str) -> str:
-    normalized = str(path or "")
-    while normalized.startswith("./"):
-        normalized = normalized[2:]
-    return normalized
-
-
 def _abs_for_scope_path(path: str, repo_root: str) -> str:
-    normalized = _normalize_scope_path(path)
-    if os.path.isabs(normalized):
-        return normalized
-    rel = normalized.replace("/", os.sep) if os.sep != "/" else normalized
+    if os.path.isabs(path):
+        return path
+    rel = path.replace("/", os.sep) if os.sep != "/" else path
     return os.path.join(real_repo_root(repo_root), rel)
 
 
 def _candidate_paths_for_scope(scope: str, repo_root: str, tracked: Set[str], untracked: Set[str]) -> Set[str]:
-    normalized_scope = _normalize_scope_path(scope)
-    if not normalized_scope:
+    if not scope:
         return set()
-    if not _has_glob_chars(normalized_scope):
-        return {normalized_scope}
+    if not _has_glob_chars(scope):
+        return {scope}
 
-    candidates = {path for path in set(tracked) | set(untracked) if fnmatch.fnmatch(path, normalized_scope)}
+    candidates = {path for path in set(tracked) | set(untracked) if scope_matches_path(path, scope)}
     root = real_repo_root(repo_root)
-    glob_pattern = normalized_scope if os.path.isabs(normalized_scope) else os.path.join(root, normalized_scope)
+    glob_pattern = scope if os.path.isabs(scope) else os.path.join(root, scope)
     if not is_within_repo(glob_pattern, root):
-        candidates.add(normalized_scope)
+        candidates.add(scope)
     filesystem_matches = glob.glob(glob_pattern, recursive=True)
     for abs_path in filesystem_matches:
         if os.path.isfile(abs_path) or os.path.isdir(abs_path) or os.path.islink(abs_path):
@@ -154,8 +150,7 @@ def _file_mode(path: str, kind: str) -> str:
     return f"{stat.S_IMODE(mode):06o}"
 
 
-def _fingerprint_one_file(rel_path: str, repo_root: str, tracked: Set[str], untracked: Set[str]) -> Dict[str, Any]:
-    normalized = _normalize_scope_path(rel_path)
+def _fingerprint_one_file(normalized: str, repo_root: str, tracked: Set[str], untracked: Set[str]) -> Dict[str, Any]:
     abs_path = _abs_for_scope_path(normalized, repo_root)
     if not os.path.islink(abs_path) and not is_within_repo(abs_path, repo_root):
         return {
@@ -510,9 +505,9 @@ def _pytest_plugin_distribution_versions(*, strict: bool = False) -> Any:
 def _runtime_fingerprint_value(
     key: str,
     *,
+    repo_root: str,
     strict: bool = False,
     environment: Optional[Mapping[str, str]] = None,
-    repo_root: Optional[str] = None,
 ) -> Any:
     if key == "python_executable_realpath":
         return os.path.realpath(sys.executable)
@@ -555,9 +550,9 @@ def _runtime_fingerprint_value(
 def fingerprint_environment(
     keys: Sequence[str],
     *,
+    repo_root: str,
     strict: bool = False,
     environment: Optional[Mapping[str, str]] = None,
-    repo_root: Optional[str] = None,
 ) -> Dict[str, Any]:
     unsupported = sorted(
         {str(key) for key in keys} - RUNTIME_FINGERPRINT_KEYS - PUBLIC_ENVIRONMENT_KEYS - PRIVATE_ENVIRONMENT_KEYS
@@ -591,166 +586,91 @@ def fingerprint_environment(
     }
 
 
-def _entry_file_scopes(entry: Mapping[str, Any]) -> List[str]:
-    scopes: List[str] = []
-    for key in ("input_file_scopes", "config_file_scopes", "tool_file_scopes", "dependency_file_scopes"):
-        scopes.extend(entry[key])
-    return list(dict.fromkeys(scopes))
+def _entry_file_scopes(entry: GateEntry) -> List[str]:
+    spec = entry.spec
+    return list(
+        dict.fromkeys(
+            (*spec.input_file_scopes, *spec.config_file_scopes, *spec.tool_file_scopes, *spec.dependency_file_scopes)
+        )
+    )
 
 
-def _entry_file_scopes_for_fingerprint(entry: Mapping[str, Any]) -> List[str]:
+def _entry_file_scopes_for_fingerprint(entry: GateEntry) -> List[str]:
     scopes = _entry_file_scopes(entry)
-    if entry["proof_kind"] == "required_regressions":
+    if entry.spec.proof_kind == "required_regressions":
         return [scope for scope in scopes if scope.replace("\\", "/") != _CURRENT_FULL_TEST_DEBT_REL]
     return scopes
 
 
-def _entry_output_result_files(entry: Mapping[str, Any]) -> List[str]:
-    return list(dict.fromkeys(item.replace("\\", "/") for item in entry["output_result_files"]))
-
-
 def _collect_nodeids_component(repo_root: str) -> Dict[str, Any]:
-    from tools.long_gate_collect import COLLECT_NODEIDS_REL
-
-    rel_path = COLLECT_NODEIDS_REL
-    abs_path = _abs_for_scope_path(rel_path, repo_root)
-    component: Dict[str, Any] = {
-        "path": rel_path,
-        "exists": os.path.isfile(abs_path),
-        "validated": False,
-        "schema_version": None,
-        "status": "",
-        "nodeids": [],
-        "nodeids_by_file": {},
-        "nodeid_count": None,
-        "error": "",
-    }
-    if not component["exists"]:
-        return component
-    try:
-        with open(abs_path, encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        component["error"] = str(exc)
-        return component
-    if not isinstance(payload, dict):
-        component["error"] = "collect_nodeids payload must be an object"
-        return component
-    component.update(
-        {
-            key: payload.get(key)
-            for key in (
-                "schema_version",
-                "status",
-                "nodeids",
-                "nodeids_by_file",
-                "nodeid_count",
-                "pytest_version",
-                "collect_stdout_content",
-                "collect_stdout_log_path",
-            )
+    """collect 收集结果整份进指纹；准入失败时只记缺失与理由。"""
+    admitted = admit_collect_nodeids(repo_root)
+    if isinstance(admitted, Rejection):
+        return {
+            "path": QUALITY_GATE_COLLECT_NODEIDS_REL,
+            "exists": admitted.cause is not DecisionCause.MISSING,
+            "error": admitted.reason,
         }
-    )
-    nodeids = payload.get("nodeids")
-    if component["schema_version"] != _EXPECTED_COLLECT_NODEIDS_SCHEMA_VERSION:
-        component["error"] = "collect_nodeids schema_version is invalid"
-    elif not isinstance(nodeids, list) or any(not isinstance(item, str) for item in nodeids):
-        component["error"] = "collect_nodeids nodeids must be a list of strings"
-    elif component["nodeid_count"] != len(nodeids):
-        component["error"] = "collect_nodeids nodeid_count does not match nodeids"
-    elif not content_equal(component["nodeids_by_file"], _collect_nodeids_by_file(nodeids)):
-        component["error"] = "collect_nodeids nodeids_by_file does not match nodeids"
-    elif not isinstance(payload.get("collect_stdout_content"), str):
-        component["error"] = "collect_nodeids collect_stdout_content is missing"
-    else:
-        from tools.quality_gate_shared import parse_pytest_collect_nodeids
-
-        if not content_equal(parse_pytest_collect_nodeids(payload["collect_stdout_content"]), nodeids):
-            component["error"] = "collect_nodeids stdout does not match nodeids"
-        else:
-            log_path = str(payload.get("collect_stdout_log_path") or "")
-            if log_path:
-                from tools.long_gate_paths import resolve_repo_path
-
-                try:
-                    log_abs = resolve_repo_path(repo_root, log_path, description="collect stdout log path")
-                    with open(log_abs, "rb") as handle:
-                        log_bytes = handle.read()
-                    if log_bytes != payload["collect_stdout_content"].encode("utf-8"):
-                        component["error"] = "collect_nodeids stdout log content changed"
-                except (OSError, ValueError) as exc:
-                    component["error"] = str(exc)
-            component["validated"] = not bool(component["error"])
-    return component
+    return {
+        "path": QUALITY_GATE_COLLECT_NODEIDS_REL,
+        "exists": True,
+        "error": "",
+        "nodeids": list(admitted.nodeids),
+        "collect_stdout_content": admitted.collect_stdout_content,
+        "collect_stdout_log_path": admitted.collect_stdout_log_path,
+        "pytest_version": admitted.pytest_version,
+    }
 
 
 def _required_full_test_debt_component(repo_root: str) -> Dict[str, Any]:
-    rel_path = _CURRENT_FULL_TEST_DEBT_REL
-    abs_path = _abs_for_scope_path(rel_path, repo_root)
-    component: Dict[str, Any] = {
-        "path": rel_path,
-        "exists": os.path.isfile(abs_path),
-        "validated": False,
-        "verification": None,
-        "error": "",
-    }
-    if not component["exists"]:
-        return component
-    from tools.verify_required_regressions_from_full_test_debt import (
-        RequiredRegressionProofError,
-        verify_required_regressions_from_payload,
-    )
+    from tools.verify_required_regressions_from_full_test_debt import verify_required_regressions_from_payload
 
+    rel_path = _CURRENT_FULL_TEST_DEBT_REL
     try:
-        with open(abs_path, encoding="utf-8") as handle:
-            payload = json.load(handle)
-        if not isinstance(payload, dict):
-            raise ValueError("current_full_test_debt payload is not an object")
-        verification = verify_required_regressions_from_payload(payload)
-    except (OSError, ValueError, RequiredRegressionProofError, QualityGateError) as exc:
-        component["error"] = str(exc)
-        return component
-    component.update({"validated": True, "verification": verification})
-    return component
+        payload = load_gate_json(_abs_for_scope_path(rel_path, repo_root))
+    except GateJsonError as exc:
+        return {"path": rel_path, "exists": not exc.missing, "error": str(exc)}
+    try:
+        verification = verify_required_regressions_from_payload(payload, repo_root=repo_root)
+    except (ValueError, QualityGateError) as exc:  # RequiredRegressionProofError 是 ValueError
+        return {"path": rel_path, "exists": True, "error": str(exc)}
+    return {"path": rel_path, "exists": True, "error": "", "verification": verification}
+
+
+def _existing_scope_paths(scopes: Sequence[str], repo_root: str, snapshot: FingerprintFileSnapshot) -> List[str]:
+    """只看存在性的输入：记现存路径清单，不读正文。"""
+    candidates: Set[str] = set().union(*(snapshot.scope_paths(scope) for scope in scopes))
+    return sorted(path for path in candidates if os.path.exists(_abs_for_scope_path(path, repo_root)))
 
 
 def fingerprint_entry(
-    entry: Mapping[str, Any],
+    entry: GateEntry,
     repo_root: str,
     *,
     strict: bool = False,
     file_snapshot: Optional[FingerprintFileSnapshot] = None,
 ) -> Dict[str, Any]:
-    command_payload = normalize_quality_gate_command(entry["command"])
-    env_overlay = command_payload["env_overlay"]
-    effective_environment = {str(key): str(value) for key, value in os.environ.items()}
-    effective_environment.update(env_overlay)
-    env_keys = list(entry["env_keys"])
+    snapshot = file_snapshot or FingerprintFileSnapshot(repo_root, strict=strict)
     components = {
-        "command": command_payload,
+        "command": entry.command,
         "files": fingerprint_files(
-            _entry_file_scopes_for_fingerprint(entry), repo_root, strict=strict, file_snapshot=file_snapshot
+            _entry_file_scopes_for_fingerprint(entry), repo_root, strict=strict, file_snapshot=snapshot
         ),
+        "existence": {"paths": _existing_scope_paths(entry.spec.existence_file_scopes, repo_root, snapshot)},
         "environment": fingerprint_environment(
-            env_keys,
+            entry.spec.env_keys,
             strict=strict,
-            environment=effective_environment,
+            environment=command_environment(entry.command["env_overlay"]),
             repo_root=repo_root,
         ),
-        "output_result_files": {
-            "paths": _entry_output_result_files(entry),
-        },
+        "output_result_files": {"paths": list(entry.spec.output_result_files)},
     }
-    proof_kind = entry["proof_kind"]
+    proof_kind = entry.spec.proof_kind
     if proof_kind == "full_test_debt":
         components["collect_nodeids"] = _collect_nodeids_component(repo_root)
     if proof_kind == "required_regressions":
         components["required_full_test_debt"] = _required_full_test_debt_component(repo_root)
-    payload = {
-        "schema_version": LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
-        "components": components,
-    }
-    return payload
+    return {"schema_version": LONG_GATE_FINGERPRINT_SCHEMA_VERSION, "components": components}
 
 
 def _append_files_diff(

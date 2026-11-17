@@ -16,11 +16,11 @@ import sys
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
+if __name__ == "__main__":  # 按文件路径运行时让仓库根下的 tools 包可导入
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tools.long_gate_schema import decode_nul_paths  # noqa: E402
+from tools.long_gate_paths import is_within_repo, resolve_repo_root
+from tools.long_gate_schema import decode_nul_paths
 
 FAST_STATIC_PRECHECK_BANNER = "FAST STATIC PRECHECK ONLY: not final ruff/pyright/full quality gate proof"
 NO_TARGETS_MESSAGE = "没有本次改动的 Python 文件需要快速静态预检"
@@ -64,7 +64,7 @@ class ChangedPythonFiles:
     sources: Dict[str, Tuple[str, ...]]
 
 
-def _run_git_paths(args: Sequence[str], repo_root: str = REPO_ROOT) -> List[str]:
+def _run_git_paths(args: Sequence[str], repo_root: str) -> List[str]:
     command = ["git", *list(args)]
     result = subprocess.run(
         command,
@@ -80,28 +80,28 @@ def _run_git_paths(args: Sequence[str], repo_root: str = REPO_ROOT) -> List[str]
     return decode_nul_paths(bytes(result.stdout or b""))
 
 
-def collect_staged_paths(repo_root: str = REPO_ROOT) -> List[str]:
+def collect_staged_paths(repo_root: str) -> List[str]:
     return _run_git_paths(
         ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--"],
         repo_root=repo_root,
     )
 
 
-def collect_unstaged_paths(repo_root: str = REPO_ROOT) -> List[str]:
+def collect_unstaged_paths(repo_root: str) -> List[str]:
     return _run_git_paths(
         ["diff", "--name-only", "--diff-filter=ACMR", "-z", "--"],
         repo_root=repo_root,
     )
 
 
-def collect_untracked_paths(repo_root: str = REPO_ROOT) -> List[str]:
+def collect_untracked_paths(repo_root: str) -> List[str]:
     return _run_git_paths(
         ["ls-files", "--others", "--exclude-standard", "-z", "--"],
         repo_root=repo_root,
     )
 
 
-def collect_base_ref_paths(base_ref: str, repo_root: str = REPO_ROOT) -> List[str]:
+def collect_base_ref_paths(base_ref: str, repo_root: str) -> List[str]:
     ref = str(base_ref or "").strip()
     if not ref:
         raise FastStaticPrecheckError("--base-ref 不能为空")
@@ -113,11 +113,7 @@ def collect_base_ref_paths(base_ref: str, repo_root: str = REPO_ROOT) -> List[st
 
 def _is_repo_local_file(rel_path: str, repo_root: str) -> bool:
     abs_path = os.path.join(repo_root, rel_path.replace("/", os.sep))
-    if not os.path.isfile(abs_path):
-        return False
-    root = os.path.normcase(os.path.realpath(repo_root))
-    real_path = os.path.normcase(os.path.realpath(abs_path))
-    return real_path == root or real_path.startswith(root + os.sep)
+    return os.path.isfile(abs_path) and is_within_repo(abs_path, repo_root)
 
 
 def _should_skip_path(rel_path: str) -> bool:
@@ -130,7 +126,7 @@ def _should_skip_path(rel_path: str) -> bool:
     return False
 
 
-def filter_python_targets(paths: Sequence[str], repo_root: str = REPO_ROOT) -> Tuple[str, ...]:
+def filter_python_targets(paths: Sequence[str], repo_root: str) -> Tuple[str, ...]:
     targets = []
     seen = set()
     for rel_path in paths:
@@ -155,7 +151,7 @@ def _record_sources(source_map: Dict[str, List[str]], paths: Sequence[str], sour
 
 
 def collect_changed_python_files(
-    repo_root: str = REPO_ROOT,
+    repo_root: str,
     *,
     include_staged: bool = True,
     include_unstaged: bool = True,
@@ -195,7 +191,7 @@ def _copyable_command(command: Sequence[str]) -> str:
     return " ".join(shlex.quote(str(part)) for part in list(command or []))
 
 
-def run_ruff(targets: Sequence[str], repo_root: str = REPO_ROOT) -> int:
+def run_ruff(targets: Sequence[str], repo_root: str) -> int:
     command = build_ruff_command(targets)
     print("[fast-static-precheck] ruff quick check:", _copyable_command(command), flush=True)
     return int(subprocess.call(command, cwd=repo_root, env=_precheck_env()))
@@ -238,10 +234,11 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
     base_ref = str(args.base_ref or "").strip()
+    repo_root = resolve_repo_root()
     _print_scope_notice(base_ref)
     try:
         changed = collect_changed_python_files(
-            REPO_ROOT,
+            repo_root,
             include_staged=not bool(args.no_staged),
             include_unstaged=not bool(args.no_unstaged),
             include_untracked=not bool(args.no_untracked),
@@ -259,7 +256,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(PYRIGHT_SKIP_MESSAGE, flush=True)
         return 0
 
-    returncode = run_ruff(changed.paths, REPO_ROOT)
+    returncode = run_ruff(changed.paths, repo_root)
     print(PYRIGHT_SKIP_MESSAGE, flush=True)
     if returncode != 0:
         print("[fast-static-precheck] failed: local ruff quick check failed.", file=sys.stderr, flush=True)
