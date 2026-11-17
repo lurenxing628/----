@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, FrozenSet, Optional, Sequence, Tuple
 
-from core.algorithm_contracts.sort_strategies import SortStrategy
+from core.algorithm_contracts.sort_strategies import WeightedParams
 from core.algorithms.greedy.dispatch.sgs_graph import graph_priority_key_map
 from core.algorithms.greedy.dispatch.sgs_priority_keys import ValidatedGraphPriorityKeys
+from core.models.enums import SortStrategy
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
     BASELINE_RANK_PREFIX,
     BATCH_WORKLOAD_BASIS,
@@ -15,14 +15,12 @@ from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GraphReadyWeightProfile,
     profile_payload,
 )
+from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession, decode_and_metrics
 
 from .candidate_payload import build_graph_ready_candidate_payload
 from .repair_decisions import RepairDecision, RepairParentPreparation, repair_decision_inputs
 from .v2_keys import v2_formula_specs, v2_priority_key_for_metric
 from .v2_ranks import metric_bonus, normalized_v2_metrics_by_op_id
-
-if TYPE_CHECKING:
-    from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
 
 def _profile_identity(profile: GraphReadyWeightProfile) -> Tuple[Any, ...]:
@@ -77,17 +75,11 @@ def evaluate_graph_ready_candidate(
     *,
     profile: GraphReadyWeightProfile,
     strategy: SortStrategy,
-    params: Dict[str, Any],
-    start_dt: datetime,
-    end_date: Optional[date],
+    params: Optional[WeightedParams],
     order: Sequence[str],
     dispatch_rule: str,
-    resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
-    optimizer_algo_stats: Optional[Dict[str, Any]],
-    readiness_gate_enabled: bool,
     version: int,
-    clock: Callable[[], float],
     repair: Optional[Tuple[RepairDecision, RepairParentPreparation]] = None,
     before_decode: Optional[Callable[[], None]] = None,
     decode_resume: Optional[Any] = None,
@@ -100,9 +92,10 @@ def evaluate_graph_ready_candidate(
     # 见 optimizer_candidate_comparison.candidate_runtime_ms 与 GRAPH_READY_SELECTION_TIEBREAKER)。
     # 必须在这里 per-candidate 计时,不能由调用方传"自优化开始的累计流逝时间"——
     # 累计值随 profile 评估序号单调递增,会把"偏好更快"悄悄变成"偏好更早评估的 profile"。
+    clock = decode_session.budget.clock
     t_candidate_begin = clock()
     # Repair and iterated-greedy stages pass a decision together with the decoded parent it was
-    # generated from (repair._repair_one_elite, _IteratedGreedySearch._decode); every other stage passes none.
+    # generated from (repair._repair_one_elite, IteratedGreedySearch._decode); every other stage passes none.
     repair_decision = repair[0] if repair is not None else None
     operation_resources = None
     if repair is None:
@@ -115,21 +108,18 @@ def evaluate_graph_ready_candidate(
         decode_kwargs["decode_resume"] = decode_resume
     if decode_checkpoints is not None:
         decode_kwargs["decode_checkpoints"] = decode_checkpoints
-    from core.services.scheduler.run.optimizer.shared_decode import decode_and_metrics
-
     full_profile_payload = profile_payload(profile, version=version)
     decoded = decode_and_metrics(
         decode_session=decode_session, objective_name=objective_name,
-        optimizer_algo_stats=optimizer_algo_stats,
         before_decode=before_decode,
         redecode_reason=redecode_reason,
         operation_resources=operation_resources,
-        strategy=strategy, strategy_params=_candidate_params(params, profile_dict=full_profile_payload), start_dt=start_dt,
-        end_date=end_date, batch_order_override=order,
+        strategy=strategy, strategy_params=params, graph_ready_profile=full_profile_payload,
+        batch_order_override=order,
         dispatch_mode="sgs", dispatch_rule=dispatch_rule,
-        readiness_gate_enabled=readiness_gate_enabled, graph_enabled=True,
+        graph_enabled=True,
         graph_score_enabled=True,
-        graph_priority_key_by_op_id=graph_priority_key_by_op_id, **decode_kwargs,
+        graph_priority_key_by_op_id=graph_priority_key_by_op_id, resource_pair_rank={}, **decode_kwargs,
     )
     runtime_ms = max(int((clock() - t_candidate_begin) * 1000), 0)
     candidate = build_graph_ready_candidate_payload(
@@ -137,14 +127,13 @@ def evaluate_graph_ready_candidate(
         decoded_order=decoded.decoded_batch_order,
         summ=decoded.summary,
         used_strat=decoded.used_strategy,
-        used_params=decoded.used_params,
+        params=params,
         metrics=decoded.metrics,
         profile=profile,
         order=order,
         dispatch_rule=dispatch_rule,
         objective_name=objective_name,
         algo_stats=decoded.algo_stats,
-        resource_pool=resource_pool,
         runtime_ms=runtime_ms,
         repair_decision=repair_decision,
         profile_dict=full_profile_payload,
@@ -203,8 +192,3 @@ def _profile_rank_cache(v2_common_rank_cache: Dict[str, Dict[int, float]],
 def _uses_v2_formula(profile: GraphReadyWeightProfile) -> bool:
     return profile.formula_version.startswith("graph_ready_v2")
 
-
-def _candidate_params(params: Dict[str, Any], *, profile_dict: Dict[str, Any]) -> Dict[str, Any]:
-    candidate_params = dict(params)
-    candidate_params["graph_ready_profile"] = profile_dict
-    return candidate_params

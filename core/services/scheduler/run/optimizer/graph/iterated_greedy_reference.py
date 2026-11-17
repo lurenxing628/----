@@ -16,8 +16,8 @@ from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphRead
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
 
 from .iterated_greedy_acceptance import PoolEntry
-from .iterated_greedy_contract import _BudgetExhausted
-from .iterated_greedy_moves import _parent_from_candidate
+from .iterated_greedy_contract import BudgetExhausted
+from .iterated_greedy_moves import parent_from_candidate
 
 
 def _sync_ig_parents(search: Any) -> None:
@@ -35,7 +35,7 @@ def seed_solution_pool(search: Any) -> None:
     sources = [(best, search.pool.prepare_parent(best))]
     sources.extend((elite["candidate"], elite["prepared_parent"]) for elite in search.pool.elites)
     for candidate, prepared in sources:
-        parent = _parent_from_candidate(candidate, prepared=prepared)
+        parent = parent_from_candidate(candidate, prepared=prepared)
         if parent is None:
             continue
         search.solution_pool.add(PoolEntry(order=parent.order, score=tuple(candidate["score"]), candidate=candidate,
@@ -64,9 +64,9 @@ def decode_reference(search: Any, order: Any, *, before: Dict[str, Any], referen
     """Record a real SGS reference decode, including the due-date starting proposal.
 
     ``capture_of`` names the known solution whose order is only re-captured (None for a new proposal)."""
-    observer = search.report_state.reference_capture_observer
-    started_at = search.clock() if observer is not None else None
     session = search.decode_session
+    clock = session.budget.clock
+    started_at = clock()
     before_actual = session.actual_decoder_calls
     decoded = None
     try:
@@ -76,11 +76,10 @@ def decode_reference(search: Any, order: Any, *, before: Dict[str, Any], referen
             raise search.last_decode_skip
         return decoded
     finally:
-        after_actual = session.actual_decoder_calls
-        if observer is not None and after_actual > before_actual:
-            observer(before=before, after=decoded.candidate if decoded is not None else None,
-                     started_at=started_at, finished_at=search.clock(), decoder_executed=True,
-                     reference_kind=reference_kind)
+        if session.actual_decoder_calls > before_actual:
+            search.report_state.reference_capture_observer(
+                before=before, after=decoded.candidate if decoded is not None else None,
+                started_at=started_at, finished_at=clock(), decoder_executed=True, reference_kind=reference_kind)
 
 
 def reference_for_iteration(search: Any) -> PoolEntry:
@@ -121,7 +120,7 @@ def restart_from_pool(search: Any, reference: PoolEntry) -> PoolEntry:
 def adopt_incumbent(search: Any, candidate: Dict[str, Any], profile: Optional[GraphReadyWeightProfile]) -> None:
     """Another stage improved the incumbent: base the walk on it, or keep the old walk when its capture fails."""
     search.best = candidate
-    parent = _parent_from_candidate(candidate, prepared=search.pool.prepare_parent(candidate))
+    parent = parent_from_candidate(candidate, prepared=search.pool.prepare_parent(candidate))
     if parent is None:
         _sync_ig_parents(search)
         return
@@ -132,7 +131,7 @@ def adopt_incumbent(search: Any, candidate: Dict[str, Any], profile: Optional[Gr
     try:
         search._require_budget()
         decoded = capture_reference(search, entry)
-    except (_BudgetExhausted, SharedSearchSkip):
+    except (BudgetExhausted, SharedSearchSkip):
         _roll_back(search, previous_parent, previous_profile, previous_reference)
         raise
     if decoded is None:

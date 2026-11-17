@@ -79,7 +79,7 @@ class RepairStage(SearchStage):
         return self.run.available()
 
     def unavailable_reason(self) -> Optional[str]:
-        if self.run.clock() >= self.run.repair_deadline:
+        if self.run.budget.shared.clock() >= self.run.budget.shared.deadline:
             return "time_budget"
         if self.run.report["repair_stop_reason"] in ("time_budget", "estimated_decode_cost"):
             return self.run.report["repair_stop_reason"]
@@ -109,8 +109,7 @@ class IteratedGreedyStage(SearchStage):
     def unavailable_reason(self) -> Optional[str]:
         if self.run.state.best is None:
             return "no_incumbent"
-        deadline = self.run.deadline if self.run.search is None else self.run.search.deadline
-        if self.run.clock() >= deadline:
+        if self.run.budget.clock() >= self.run.budget.deadline:
             return "time_budget"
         if self.run.stopped:
             return self.run.report["stop_reason"] or self.run.report["status"]

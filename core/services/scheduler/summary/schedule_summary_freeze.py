@@ -7,7 +7,7 @@ from core.models.batch_operation import BatchOperation
 from core.services.scheduler.contracts.schedule_summary_types import ScheduleResultStatus
 
 
-def _compute_completion_status(summary: ScheduleSummary) -> str:
+def compute_completion_status(summary: ScheduleSummary) -> str:
     if summary.success:
         result_status = ScheduleResultStatus.SUCCESS
     elif summary.scheduled_ops > 0:
@@ -17,7 +17,7 @@ def _compute_completion_status(summary: ScheduleSummary) -> str:
     return result_status.value
 
 
-def _frozen_batch_ids(operations: List[BatchOperation], *, frozen_op_ids: Set[int]) -> List[str]:
+def collect_frozen_batch_ids(operations: List[BatchOperation], *, frozen_op_ids: Set[int]) -> List[str]:
     if not frozen_op_ids:
         return []
     return sorted(
@@ -29,7 +29,7 @@ def _frozen_batch_ids(operations: List[BatchOperation], *, frozen_op_ids: Set[in
     )
 
 
-def _freeze_meta_dict(freeze_meta: Dict[str, Any]) -> Dict[str, Any]:
+def freeze_meta_dict(freeze_meta: Dict[str, Any]) -> Dict[str, Any]:
     applied = bool(freeze_meta["freeze_applied"])
     return {
         "enabled": bool(freeze_meta["freeze_enabled"]),

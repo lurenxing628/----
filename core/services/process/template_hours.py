@@ -1,6 +1,7 @@
 """Current template hours: stable identity, existing revision and caller transaction."""
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.process.workflow_state import reset_part_confirmations_from
 from data.repositories.workbench_process_hours_repo import WorkbenchProcessHoursRepository
 
 
@@ -14,6 +15,10 @@ class ProcessTemplateHours:
         if not self.conn.in_transaction:
             raise RuntimeError("模板工时修订必须在调用方写事务中执行。")
         changes = {key: value for key, value in values.items() if current[key] != value}
-        if changes and self.repo.update_operation_hours(
-                current["id"], changes, ref=current["ref"], revision=current["revision"]) != 1:
+        if not changes:
+            return
+        if self.repo.update_operation_hours(
+            current["id"], changes, ref=current["ref"], revision=current["revision"]
+        ) != 1:
             raise WorkbenchCommandRejected("stale_write", "模板工序在保存前已变化，请重新核对。")
+        reset_part_confirmations_from(self.conn, current["part_no"], "hours")

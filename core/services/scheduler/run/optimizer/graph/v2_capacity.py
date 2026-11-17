@@ -5,29 +5,49 @@ from datetime import datetime, timedelta
 from fractions import Fraction
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from core.algorithm_contracts.operator_eligibility import qualified_operators
 from core.algorithm_contracts.resource_occupancy import PreparedSeedApplication
+from core.algorithm_contracts.resource_pool import ResourcePool
 from core.algorithm_contracts.value_domains import INTERNAL
 
 _RESIDUAL_CAPACITY_MAX_WINDOW_DAYS = 30
+_ResourceKey = Tuple[Optional[str], Optional[str], str]
 
 
 class FixedResourceBlockingFacts:
-    """Fixed blocking spans owned by one captured feature input, across its windows."""
+    """Fixed blocking spans and resource candidates owned by one captured feature input, across its windows."""
 
     def __init__(self, *, downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-                 seed_results_by_resource_id: Dict[str, Dict[str, List[Tuple[datetime, datetime]]]]) -> None:
+                 seed_results_by_resource_id: Dict[str, Dict[str, List[Tuple[datetime, datetime]]]],
+                 resource_pool: ResourcePool) -> None:
         self._downtime_map = downtime_map
         self._seed_results = seed_results_by_resource_id
+        self.resource_pool = resource_pool
         self._pairs: Dict[Tuple[str, Optional[str]], List[Tuple[datetime, datetime]]] = {}
         self._window_capacities: Dict[Tuple[str, Optional[str], Any, datetime, datetime], Tuple[float, float, float]] = {}
         self._calendar_windows: Dict[Tuple[Optional[str], Any, datetime, datetime], Fraction] = {}
-        self._pool_view: Optional[Tuple[Optional[Dict[str, Any]], _ResourcePoolView]] = None
+        self._machine_operators: Dict[_ResourceKey, Tuple[Tuple[str, Tuple[str, ...]], ...]] = {}
 
-    def pool_view(self, resource_pool: Optional[Dict[str, Any]]) -> _ResourcePoolView:
-        if self._pool_view is None or self._pool_view[0] is not resource_pool:
-            self._pool_view = (resource_pool, _ResourcePoolView(resource_pool))
-        return self._pool_view[1]
+    def machine_operators(self, op: Any, *, machine_ids: Tuple[str, ...]) -> Tuple[Tuple[str, Tuple[str, ...]], ...]:
+        """Each candidate machine with the operators that could staff ``op`` on it; a machine that needs an
+        automatically chosen operator and has none drops out."""
+        key = (op.machine_id, op.operator_id, op.op_type_id)
+        if key not in self._machine_operators:
+            pool = self.resource_pool
+            fixed_operator = op.operator_id
+            requires_auto_operator = not fixed_operator and (bool(op.machine_id) or op.op_type_id in pool.machines_by_op_type)
+            fixed_operator_ids = pool.qualified_operators((fixed_operator,), op.op_type_id) if fixed_operator else None
+            pairs: List[Tuple[str, Tuple[str, ...]]] = []
+            for machine_id in machine_ids:
+                operator_ids = (
+                    fixed_operator_ids
+                    if fixed_operator_ids is not None
+                    else pool.qualified_operators(pool.operators_by_machine.get(machine_id, ()), op.op_type_id)
+                )
+                if requires_auto_operator and not operator_ids:
+                    continue
+                pairs.append((machine_id, operator_ids))
+            self._machine_operators[key] = tuple(pairs)
+        return self._machine_operators[key]
 
     def _resource_seeds(self, kind: str, resource_id: Optional[str]) -> List[Tuple[datetime, datetime]]:
         # seed_results_by_resource_id always holds both kinds, keyed only by non-empty ids.
@@ -86,7 +106,6 @@ def residual_capacity_for_operation(
     start_dt: datetime,
     window_end: datetime,
     calendar_service: Any,
-    resource_pool: Optional[Dict[str, Any]],
     prepared: FixedResourceBlockingFacts,
 ) -> Dict[str, float]:
     if op.source != INTERNAL:
@@ -98,9 +117,7 @@ def residual_capacity_for_operation(
             resource_candidate_machine_count=0,
             bottleneck_machine_count=0,
         )
-    pool = prepared.pool_view(resource_pool)
-    resource_key = (op.machine_id, op.operator_id, op.op_type_id)
-    machine_ids = pool.candidate_machine_ids(op, key=resource_key)
+    machine_ids = prepared.resource_pool.static_machine_candidates(op.machine_id, op.operator_id, op.op_type_id)
     if not machine_ids or window_end <= start_dt:
         return _capacity_payload(
             0.0,
@@ -112,7 +129,7 @@ def residual_capacity_for_operation(
         )
 
     priority = batch.priority
-    machine_operators = pool.machine_operators(op, machine_ids=machine_ids, key=resource_key)
+    machine_operators = prepared.machine_operators(op, machine_ids=machine_ids)
     effective_candidate_machine_count = len(machine_operators)
     candidates = [
         _machine_residual_capacity(
@@ -261,91 +278,6 @@ def _capacity_rank(item: Tuple[float, float, float]) -> Tuple[float, float, floa
     window_hours, blocked_hours, residual_hours = item
     ratio = float(residual_hours) / float(window_hours) if float(window_hours) > 0.0 else 0.0
     return (ratio, float(residual_hours), float(window_hours), -float(blocked_hours))
-
-
-def _requires_auto_operator(op: Any, *, pool: _ResourcePoolView) -> bool:
-    if op.source != INTERNAL:
-        return False
-    if op.operator_id:
-        return False
-    if op.machine_id:
-        return True
-    op_type_id = op.op_type_id
-    return bool(op_type_id and op_type_id in pool.machines_by_op_type)
-
-
-def _candidate_machine_ids(op: Any, *, pool: _ResourcePoolView) -> Tuple[str, ...]:
-    if op.source != INTERNAL:
-        return ()
-    fixed_machine = op.machine_id
-    fixed_operator = op.operator_id
-    op_type_id = op.op_type_id
-    if fixed_machine:
-        candidates = (fixed_machine,)
-    elif fixed_operator:
-        candidates = tuple(pool.machines_by_operator.get(fixed_operator, ()))
-    elif op_type_id and op_type_id in pool.machines_by_op_type:
-        return tuple(pool.machines_by_op_type[op_type_id])
-    else:
-        return ()
-    if op_type_id and op_type_id in pool.machines_by_op_type:
-        allowed = set(pool.machines_by_op_type[op_type_id])
-        return tuple(machine_id for machine_id in candidates if machine_id in allowed)
-    return candidates
-
-
-def _candidate_operator_ids(op: Any, *, machine_id: str, pool: _ResourcePoolView) -> Tuple[str, ...]:
-    return tuple(qualified_operators(
-        pool.resource_pool, pool.operators_by_machine.get(machine_id, ()), op.op_type_id,
-    ))
-
-
-class _ResourcePoolView:
-    def __init__(self, resource_pool: Optional[Dict[str, Any]]) -> None:
-        self.resource_pool = resource_pool
-        self.machines_by_op_type = {} if resource_pool is None else resource_pool["machines_by_op_type"]
-        self.operators_by_machine = {} if resource_pool is None else resource_pool["operators_by_machine"]
-        self.machines_by_operator = {} if resource_pool is None else resource_pool["machines_by_operator"]
-        self._candidate_machines: Dict[Tuple[Optional[str], Optional[str], Optional[str]], Tuple[str, ...]] = {}
-        self._machine_operators: Dict[
-            Tuple[Optional[str], Optional[str], Optional[str]],
-            Tuple[Tuple[str, Tuple[str, ...]], ...],
-        ] = {}
-
-    def candidate_machine_ids(
-        self, op: Any, *, key: Tuple[Optional[str], Optional[str], Optional[str]]
-    ) -> Tuple[str, ...]:
-        if key not in self._candidate_machines:
-            self._candidate_machines[key] = _candidate_machine_ids(op, pool=self)
-        return self._candidate_machines[key]
-
-    def machine_operators(
-        self,
-        op: Any,
-        *,
-        machine_ids: Tuple[str, ...],
-        key: Tuple[Optional[str], Optional[str], Optional[str]],
-    ) -> Tuple[Tuple[str, Tuple[str, ...]], ...]:
-        if key not in self._machine_operators:
-            requires_auto_operator = _requires_auto_operator(op, pool=self)
-            fixed_operator = key[1]
-            fixed_operator_ids = (
-                tuple(qualified_operators(self.resource_pool, [fixed_operator], op.op_type_id))
-                if fixed_operator
-                else None
-            )
-            pairs: List[Tuple[str, Tuple[str, ...]]] = []
-            for machine_id in machine_ids:
-                operator_ids = (
-                    fixed_operator_ids
-                    if fixed_operator_ids is not None
-                    else _candidate_operator_ids(op, machine_id=machine_id, pool=self)
-                )
-                if requires_auto_operator and not operator_ids:
-                    continue
-                pairs.append((machine_id, operator_ids))
-            self._machine_operators[key] = tuple(pairs)
-        return self._machine_operators[key]
 
 
 def _merge_segments(segments: Iterable[Tuple[datetime, datetime]]) -> List[Tuple[datetime, datetime]]:

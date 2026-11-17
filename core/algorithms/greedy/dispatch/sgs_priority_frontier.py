@@ -49,7 +49,7 @@ def make_priority_queue(graph, pruning):
     return PriorityReadyQueue(graph)
 
 
-def score_next_ready(queue, *, collect, score, blocked_batches, cache):
+def score_next_ready(queue, *, collect, score, blocked_batches):
     candidates = queue.head(blocked_batches) if queue is not None else None
     narrowed = candidates is not None
     if candidates is None:
@@ -57,11 +57,9 @@ def score_next_ready(queue, *, collect, score, blocked_batches, cache):
     if not candidates:
         return []
     scored = score(candidates)
-    if narrowed:
-        if not any(row.score.key[0] == 0.0 for row in scored):
-            queue.pop_penalized()
-            return score(collect())
-        cache.graph_candidates_pruned += max(len(queue.graph["ready_op_ids"]) - len(candidates), 0)
+    if narrowed and not any(row.score.key[0] == 0.0 for row in scored):
+        queue.pop_penalized()
+        return score(collect())
     return scored
 
 

@@ -1,12 +1,48 @@
 """Internal exact-work witness, deliberately not a public allow-zero flag."""
 
-import math
 from dataclasses import dataclass, fields
 from datetime import datetime
+from typing import Optional, Protocol
+
+from core.shared.strict_parse import is_stored_number
 
 from .types import ScheduleResult
 
 _RESULT_FIELDS = tuple(f.name for f in fields(ScheduleResult))
+
+
+def is_point_work(source, setup_hours, unit_hours, target_quantity):
+    """Internal work with zero setup and zero unit hours over a stored target quantity: a point event."""
+    return (
+        source == "internal"
+        and is_stored_number(setup_hours)
+        and is_stored_number(unit_hours)
+        and is_stored_number(target_quantity, integer=True)
+        and setup_hours == 0
+        and unit_hours == 0
+    )
+
+
+class ArrangementRow(Protocol):
+    """The arrangement a point witness compares: ScheduleResult rows and validated stored rows both carry it."""
+
+    @property
+    def op_id(self) -> int: ...
+
+    @property
+    def machine_id(self) -> Optional[str]: ...
+
+    @property
+    def operator_id(self) -> Optional[str]: ...
+
+    @property
+    def start_time(self) -> datetime: ...
+
+    @property
+    def end_time(self) -> datetime: ...
+
+    @property
+    def source(self) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -19,17 +55,13 @@ class SchedulePointEvidence:
     unit_hours: float
     quantity: int
 
-    def matches(self, row):
-        values = (self.setup_hours, self.unit_hours, self.quantity)
+    def matches(self, row: ArrangementRow):
         return (type(self.op_id) is int and self.op_id > 0
-                and type(self.quantity) is int and self.quantity >= 0
-                and all(type(value) in (int, float) and 0 <= value <= 9007199254740991
-                        and math.isfinite(value) for value in values)
-                and self.setup_hours == 0 and (self.unit_hours == 0 or self.quantity == 0)
+                and is_point_work(row.source, self.setup_hours, self.unit_hours, self.quantity)
                 and isinstance(self.at, datetime) and self.at.tzinfo is None
                 and all(type(key) is str and bool(key.strip())
                         for key in (self.machine_id, self.operator_id))
-                and row.source == "internal" and row.op_id == self.op_id
+                and row.op_id == self.op_id
                 and row.start_time == row.end_time == self.at
                 and row.machine_id == self.machine_id and row.operator_id == self.operator_id)
 

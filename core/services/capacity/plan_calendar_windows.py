@@ -10,13 +10,12 @@ from core.services.scheduler.calendar.engine import (
     IncompleteCalendarSnapshotError,
     overlay_overnight_tail_windows,
 )
-from core.shared.strict_json import clone_json
+from core.shared.local_datetime import row_interval
 
 from .plan_calendar_intervals import (
     HOUR_MICROSECONDS,
     IntervalIndex,
     hours,
-    instant,
     interval_microseconds,
     union,
     union_sorted,
@@ -116,43 +115,40 @@ def public_windows(windows, wired=None):
     return result
 
 
-def public_projection(projection: Dict[str, Any], wired=None, *, include_windows: bool = True) -> Dict[str, Any]:
+def public_global_projection(projection: Dict[str, Any], wired, *, include_windows: bool) -> Dict[str, Any]:
+    """The global calendar (``policy_projection``) as public: an available one with its wire windows."""
     result = dict(projection)
-    if "source" in result:
-        result["source"] = clone_json(result["source"])
-    if "issues" in result:
-        result["issues"] = clone_json(result["issues"])
-    if result["state"] != "available":
-        return result
-    if include_windows:
-        result["windows"] = public_windows(result["windows"], wired)
-        if "downtime_windows" in result:
-            result["downtime_windows"] = public_windows(result["downtime_windows"])
-    else:
-        result["windows"] = []
-        if "downtime_windows" in result:
-            result["downtime_windows"] = []
+    if result["state"] == "available":
+        result["windows"] = public_windows(result["windows"], wired) if include_windows else []
+    return result
+
+
+def public_resource_projection(projection: Dict[str, Any], wired, *, include_windows: bool) -> Dict[str, Any]:
+    """One resource's calendar as public: an available one (``apply_resource``) with its wire windows and downtime."""
+    result = dict(projection)
+    if result["state"] == "available":
+        if include_windows:
+            result.update(windows=public_windows(result["windows"], wired),
+                          downtime_windows=public_windows(result["downtime_windows"]))
+        else:
+            result.update(windows=[], downtime_windows=[])
     return result
 
 
 def public_archived_calendar(calendar: Dict[str, Any]) -> Dict[str, Any]:
     wired = {}
     days = [
-        {**public_projection(day, wired), "start": wire(day["start"]), "end": wire(day["end"])}
+        {**public_resource_projection(day, wired, include_windows=True),
+         "start": wire(day["start"]), "end": wire(day["end"])}
         for day in calendar["days"]
     ]
     known_windows = [window for day in days if day["state"] == "available" for window in day["windows"]]
-    result = {
+    return {
         **calendar,
         "days": days,
         "known_windows": known_windows,
         "windows": known_windows if calendar["windows"] is not None else None,
     }
-    if "source" in result:
-        result["source"] = clone_json(result["source"])
-    if "issues" in result:
-        result["issues"] = clone_json(result["issues"])
-    return result
 
 
 def available_intervals(projection, priority=None):
@@ -167,30 +163,18 @@ def available_intervals(projection, priority=None):
     )
 
 
-def resource_record_unavailable(raw, kind, basis) -> Optional[Dict[str, Any]]:
-    if raw is None:
-        return unavailable(basis, "resource_missing")
-    if raw["status"] not in (("active", "inactive", "maintain") if kind == "machine" else ("active", "inactive")):
-        return unavailable(basis, "resource_status_unknown")
-    return None
+def resource_record_unavailable(raw, basis) -> Optional[Dict[str, Any]]:
+    # 设备与人员的状态值域由表的 CHECK 保证，记录在就能投影。
+    return unavailable(basis, "resource_missing") if raw is None else None
 
 
-def apply_resource(base: Dict[str, Any], raw, kind, downtime_rows, start, end) -> Dict[str, Any]:
+def apply_resource(base: Dict[str, Any], raw, kind, intervals, start, end) -> Dict[str, Any]:
+    """``intervals`` are the machine's active downtime windows overlapping [start, end); an operator has none."""
     basis = "global_calendar_machine_availability" if kind == "machine" else "personal_or_operator_shift_calendar"
     result = dict(base, basis=basis, status=raw["status"])
     if result["state"] != "available":
         return result
-    downtime = []
-    for row in downtime_rows:
-        try:
-            low, high = instant(row["start_time"]), instant(row["end_time"])
-            if low >= high or row["status"] != "active":
-                raise ValueError("Invalid downtime")
-        except ValueError:
-            return unavailable(basis, "downtime_invalid")
-        if low < end and high > start:
-            downtime.append((max(start, low), min(end, high)))
-    downtime = union(downtime)
+    downtime = union((max(start, low), min(end, high)) for low, high in intervals)
     if not downtime:
         # A checked resource without intersecting downtime shares the policy's
         # read-only windows and capacity. State never mutates that base.
@@ -242,7 +226,7 @@ def project_resource_calendars(engine, facts, ids, first, last, start, end, *, g
 
     downtime = defaultdict(list)
     for row in facts["downtimes"]:
-        downtime[row["machine_id"]].append(row)
+        downtime[row["machine_id"]].append(row_interval(row))
     personal_operators = {row["operator_id"] for row in facts["personal"]}
     shift_bases = {}
     for kind in ("machine", "operator"):
@@ -250,7 +234,7 @@ def project_resource_calendars(engine, facts, ids, first, last, start, end, *, g
         records = {row[kind + "_id"]: row for row in facts[kind + "s"]}
         for key in ids.get(kind, ()):
             raw = records.get(key)
-            rejected = resource_record_unavailable(raw, kind, basis)
+            rejected = resource_record_unavailable(raw, basis)
             if rejected is not None:
                 yield kind, key, raw, rejected
                 continue

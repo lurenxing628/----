@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Iterable, List, Optional, Tuple, Union
 
-from .priority_constants import PRIORITY_RANK, PRIORITY_WEIGHT, normalize_priority
+from .priority_constants import PRIORITY_RANK, PRIORITY_WEIGHT
 
 
 class DispatchRule(Enum):
@@ -149,9 +149,8 @@ def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
     - primary：由 rule 决定；slack / CR 按优先级权重做保序缩放，ATC 本身带权重
     - tie-break：优先避免换型 -> 更高优先级 -> 更早交期 -> 更早开始 -> 更稳定批次顺序
     """
-    pr = normalize_priority(inp.priority, default="normal")
-    pr_rank = float(PRIORITY_RANK[pr])
-    w = float(PRIORITY_WEIGHT[pr])
+    pr_rank = float(PRIORITY_RANK[inp.priority])
+    w = float(PRIORITY_WEIGHT[inp.priority])
 
     slack_h, time_left_h = inp.slack_hours, inp.time_left_hours
 

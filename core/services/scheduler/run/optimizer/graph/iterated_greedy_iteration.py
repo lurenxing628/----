@@ -8,8 +8,8 @@ from typing import Any, Generator, Tuple
 
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
 
-from .iterated_greedy_contract import _BudgetExhausted
-from .iterated_greedy_moves import _insertion_positions, _park
+from .iterated_greedy_contract import BudgetExhausted
+from .iterated_greedy_moves import insertion_positions, park
 
 
 class IGIteration:
@@ -46,7 +46,7 @@ class IGIteration:
             if not idle and search.last_decode_skip is not None:
                 generator.record(improved=False, fully_solved=False, idle=False)
                 return
-        except (_BudgetExhausted, GeneratorExit):
+        except (BudgetExhausted, GeneratorExit):
             generator.record(improved=False, fully_solved=False, idle=False)
             raise
         report["iterations"] += 1
@@ -56,26 +56,26 @@ class IGIteration:
                          worse=entry is not None and entry.score > reference.score)
         search.idle_iterations = search.idle_iterations + 1 if report["decodes"] == before else 0
         if search.idle_iterations >= max(5, search.limits.stagnation_iterations * 2):
-            raise _BudgetExhausted("search_space_exhausted")
+            raise BudgetExhausted("search_space_exhausted")
         search.rejected_iterations = search.rejected_iterations + 1 if (
             report["decodes"] > before and search.scored_decodes == scored_before) else 0
         if search.rejected_iterations >= 3:
-            raise _BudgetExhausted("decoder_rejections")
+            raise BudgetExhausted("decoder_rejections")
         search.non_improving = 0 if search.improved_incumbent else search.non_improving + 1
         if entry is not None:
             search._accept_walk(entry, reference)
 
     def _repair(self, reference: Any, removed: Tuple[int, ...]) -> Generator[None, None, Tuple[int, ...]]:
         search, order = self.search, reference.order
-        working = _park(order, set(removed), successors=search.parent.successors)
+        working = park(order, set(removed), successors=search.parent.successors)
         pending = list(removed)
         search.rnd.shuffle(pending)
         anchors = {op_id: idx for idx, op_id in enumerate(order)}
         for op_id in pending:
             without = [item for item in working if item != op_id]
             best_position, best_score = None, None
-            for position in _insertion_positions(without, op_id, parent=search.parent, anchor=anchors[op_id],
-                                                 window=search.limits.insertion_window):
+            for position in insertion_positions(without, op_id, parent=search.parent, anchor=anchors[op_id],
+                                                window=search.limits.insertion_window):
                 search._require_budget()
                 before = search.report["decodes"]
                 scored = search._score_trial(tuple(without[:position] + [op_id] + without[position:]), reference)

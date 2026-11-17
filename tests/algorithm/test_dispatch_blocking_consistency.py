@@ -1,5 +1,5 @@
-"""回归测试：生产解码入口的失败阻断语义一致性——batch_order 模式下无效 batch_id 和缺资源工序都计入
-failed_ops（不被静默过滤）且失败即阻断同批后续工序，scheduled+failed==total；sgs 模式缺资源应抛 ValidationError(field=resource)
+"""回归测试：生产解码入口的失败阻断语义一致性——batch_order 模式下缺资源工序计入 failed_ops（不被静默过滤）
+且失败即阻断同批后续工序，scheduled+failed==total；sgs 模式缺资源应抛 ValidationError(field=resource)
 而非生成不可评分兜底 key。"""
 
 from dataclasses import dataclass
@@ -35,19 +35,15 @@ class _StubCalendarService:
 
 def _build_case():
     """
-    构造一个关键场景：
-    - 1 个“无效 batch_id”的工序：必须被计入 failed_ops（不能被静默过滤）
-    - 同一有效批次 2 道内部工序：
+    构造一个关键场景：同一批次 2 道内部工序：
       - 第 1 道工序缺失 machine_id/operator_id -> _schedule_internal 返回 (None, blocked=False)
       - 第 2 道工序资源齐全，本可排；但一旦“失败即阻断批次”，应被阻断不再排
     """
     batches = {"B001": make_batch(batch_id="B001")}
-    op_bad = make_algo_op(id=999, op_code="OP_BAD", batch_id="B_BAD", machine_id="M1", operator_id="O1",
-                          setup_hours=1.0, unit_hours=0.0)
     op1 = make_algo_op(id=1, batch_id="B001", setup_hours=1.0, unit_hours=0.0)
     op2 = make_algo_op(id=2, batch_id="B001", seq=2, machine_id="M1", operator_id="O1", setup_hours=1.0, unit_hours=0.0)
 
-    operations = [op_bad, op1, op2]
+    operations = [op1, op2]
     start_dt = datetime(2026, 1, 1, 8, 0, 0)
     return operations, batches, start_dt
 
@@ -73,9 +69,9 @@ def test_dispatch_blocking_consistency():
     # batch_order 仍走正式派工失败统计：失败即阻断该批次后续工序。
     results, summary, used_params = _run("batch_order")
     assert used_params.get("dispatch_mode") == "batch_order", f"dispatch_mode 解析异常：{used_params!r}"
-    assert summary.total_ops == 3, f"total_ops 应为 3，实际 {summary.total_ops}"
+    assert summary.total_ops == 2, f"total_ops 应为 2，实际 {summary.total_ops}"
     assert summary.scheduled_ops == 0, f"scheduled_ops 应为 0，实际 {summary.scheduled_ops}"
-    assert summary.failed_ops == 3, f"failed_ops 应为 3，实际 {summary.failed_ops}"
+    assert summary.failed_ops == 2, f"failed_ops 应为 2，实际 {summary.failed_ops}"
     assert summary.scheduled_ops + summary.failed_ops == summary.total_ops, "summary 统计不一致"
     assert len(results) == 0, f"不应产出排程结果，实际 results={len(results)}"
 
@@ -106,21 +102,6 @@ def test_batch_order_dispatch_exception_propagates_instead_of_recording_failure(
                           start_dt=datetime(2026, 1, 1, 8, 0, 0), dispatch_mode="batch_order", dispatch_rule="slack")
 
 
-def test_dispatch_sgs_missing_batch_records_structured_failure_detail() -> None:
-    from core.algorithms.greedy.scheduler import GreedyScheduler
-
-    op_bad = make_algo_op(id=999, op_code="OP_BAD", batch_id="B_BAD", machine_id="M1", operator_id="O1",
-                          setup_hours=1.0, unit_hours=0.0)
-    scheduler = GreedyScheduler(calendar_service=_StubCalendarService(), config_service=config_snapshot())
-    summary = production_decode(scheduler, operations=[op_bad], batches={}, start_dt=datetime(2026, 1, 1, 8, 0, 0),
-                                dispatch_mode="sgs", dispatch_rule="slack").summary
-
-    assert summary.scheduled_ops == 0
-    assert summary.failed_ops == 1
-    assert [item["code"] for item in summary.failure_details] == ["missing_batch"]
-    assert summary.failure_details[0]["op_code"] == "OP_BAD"
-
-
 def test_graph_blocked_ops_already_counted_by_batch_skip_do_not_duplicate_failure_details() -> None:
     from core.algorithms.greedy.dispatch.sgs_graph_failure import _record_graph_blocked_operations
 
@@ -148,13 +129,8 @@ def test_graph_blocked_ops_already_counted_by_batch_skip_do_not_duplicate_failur
 
 
 def test_dispatch_failures_record_structured_details_without_raw_error_duplication() -> None:
-    """回归：missing_batch / 图阻塞失败只写结构化 failure_details。"""
+    """回归：图阻塞失败只写结构化 failure_details。"""
     from core.algorithms.greedy.dispatch.sgs_graph_failure import _record_graph_blocked_operations
-
-    op = make_algo_op(id=1, batch_id="B001")
-    state = ScheduleRunState(base_time=datetime(2026, 1, 1, 8, 0, 0))
-    state.record_missing_batch(op, "B001")
-    assert [item["code"] for item in state.failure_details] == ["missing_batch"]
 
     failed_op = make_algo_op(id=1, batch_id="B001")
     blocked_op = make_algo_op(id=2, batch_id="B001", seq=2)

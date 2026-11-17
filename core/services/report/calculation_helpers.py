@@ -15,4 +15,4 @@ def overlap_seconds(a_start: datetime, a_end: datetime, b_start: datetime, b_end
 
 
 def is_internal_source(value: Any) -> bool:
-    return str(value or "").strip().lower() == SourceType.INTERNAL.value
+    return value == SourceType.INTERNAL.value

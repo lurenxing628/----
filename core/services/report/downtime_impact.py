@@ -4,14 +4,9 @@ from datetime import datetime
 from typing import Any, Dict, List, Mapping, Sequence, Tuple
 
 from core.services.capacity.plan_calendar_intervals import IntervalIndex
-from core.shared.degradation import DegradationCollector
-from core.shared.local_datetime import parse_local_datetime as parse_dt
+from core.shared.local_datetime import row_interval
 
 from .calculation_helpers import is_internal_source, overlap_seconds
-from .report_degradation import (
-    record_report_bad_time_row,
-    record_report_missing_machine_row,
-)
 
 DowntimeSegment = Tuple[datetime, datetime]
 ScheduleSegment = Tuple[datetime, datetime]
@@ -24,17 +19,16 @@ def compute_downtime_impact(
     schedule_rows: Sequence[Mapping[str, Any]],
     start_dt: datetime,
     end_dt_excl: datetime,
-    degradation_collector: DegradationCollector,
 ) -> List[Dict[str, Any]]:
-    by_machine_dt, machine_name = _index_downtime_rows(downtime_rows, degradation_collector=degradation_collector)
-    by_machine_sch = _index_schedule_rows(schedule_rows, degradation_collector=degradation_collector)
+    by_machine_dt, machine_name = _index_downtime_rows(downtime_rows)
+    by_machine_sch = _index_schedule_rows(schedule_rows)
 
     items = []
     for mc, dts in by_machine_dt.items():
         merged_intervals = _merge_downtime_intervals(dts)
         items.append(
             _build_downtime_impact_row(
-                mc, dts, merged_intervals, machine_name.get(mc), by_machine_sch.get(mc, ()), start_dt, end_dt_excl
+                mc, dts, merged_intervals, machine_name[mc], by_machine_sch.get(mc, ()), start_dt, end_dt_excl
             )
         )
     items.sort(key=lambda x: (-x["downtime_hours"], x["machine_id"]))
@@ -43,50 +37,26 @@ def compute_downtime_impact(
 
 def _index_downtime_rows(
     downtime_rows: List[Dict[str, Any]],
-    *,
-    degradation_collector: DegradationCollector,
 ) -> Tuple[Dict[str, List[DowntimeSegment]], Dict[str, Any]]:
+    """停机的设备号是 NOT NULL 外键，起止只读已保存的微秒。"""
     by_machine_dt: Dict[str, List[DowntimeSegment]] = {}
     machine_name: Dict[str, Any] = {}
     for r in downtime_rows:
-        raw_mc = r.get("machine_id")
-        if raw_mc is None or not str(raw_mc).strip():
-            # 空设备编号只能来自库外直写；与坏时间行同契约，丢弃必须降级留痕，不许静默少算停机工时。
-            record_report_missing_machine_row(degradation_collector, scope="report.downtime.downtime")
-            continue
-        mc = str(raw_mc)
-        s_dt = parse_dt(r.get("start_time"))
-        e_dt = parse_dt(r.get("end_time"))
-        if not s_dt or not e_dt or e_dt <= s_dt:
-            record_report_bad_time_row(degradation_collector, scope="report.downtime.downtime")
-            continue
-        by_machine_dt.setdefault(mc, []).append((s_dt, e_dt))
+        mc = r["machine_id"]
+        by_machine_dt.setdefault(mc, []).append(row_interval(r))
         if mc not in machine_name:
-            machine_name[mc] = r.get("machine_name")
+            machine_name[mc] = r["machine_name"]
     return by_machine_dt, machine_name
 
 
-def _index_schedule_rows(
-    schedule_rows: Sequence[Mapping[str, Any]],
-    *,
-    degradation_collector: DegradationCollector,
-) -> Dict[str, List[ScheduleSegment]]:
+def _index_schedule_rows(schedule_rows: Sequence[Mapping[str, Any]]) -> Dict[str, List[ScheduleSegment]]:
+    """本厂工序按设备分组；点事件不占设备时长，起止只读已保存的微秒。"""
     by_machine_sch: Dict[str, List[ScheduleSegment]] = {}
     for r in schedule_rows:
-        if not is_internal_source(r.get("source")):
+        mc = r["machine_id"]
+        if not is_internal_source(r["source"]) or mc is None or r["is_point_event"]:
             continue
-        raw_mc = r.get("machine_id")
-        if raw_mc is None or not str(raw_mc).strip():
-            continue
-        mc = str(raw_mc)
-        s_dt = parse_dt(r.get("start_time"))
-        e_dt = parse_dt(r.get("end_time"))
-        if not s_dt or not e_dt or e_dt < s_dt:
-            record_report_bad_time_row(degradation_collector, scope="report.downtime.schedule")
-            continue
-        if s_dt == e_dt:
-            continue
-        by_machine_sch.setdefault(mc, []).append((s_dt, e_dt))
+        by_machine_sch.setdefault(mc, []).append(row_interval(r))
     return by_machine_sch
 
 

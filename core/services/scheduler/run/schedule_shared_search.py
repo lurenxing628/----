@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from datetime import date, datetime
+from functools import partial
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Tuple
+
+from core.algorithm_contracts.resource_pool import ResourcePool
+from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
+from core.algorithms.evaluation_completion import prepare_evaluation_context
+from core.models.batch import Batch
+from core.models.objective import target_objectives_for
 
 from .optimizer.graph.ready import GraphStageBundle
 from .optimizer.graph.stages import IteratedGreedyStage, ProfileStage, RepairStage
@@ -14,6 +22,10 @@ from .optimizer.search_state import OptimizerSearchState
 from .optimizer.shared_archive import ArchiveObservation, CandidateArchiveRef, SharedScheduleArchive
 from .optimizer.shared_budget import SharedSearchBudget, SharedSearchSkip
 from .optimizer.shared_decode import SharedDecodeSession
+from .schedule_candidate_plan import search_origin
+
+if TYPE_CHECKING:
+    from core.algorithms.greedy.scheduler import GreedyScheduler
 
 
 @dataclass
@@ -25,7 +37,6 @@ class GoalView:
     graph_bundle: Optional[GraphStageBundle] = None
     local_stage: Optional[LocalSearchStage] = None
     entry_id: Optional[int] = None
-    evidence_revision: int = -1
     candidate: Optional[Dict[str, Any]] = None
     prepared: bool = False
     stage_index: int = 0
@@ -34,16 +45,18 @@ class GoalView:
 
 
 class SharedSearch:
-    """Own archive observations and refresh stable target views only at action boundaries."""
+    """Own archive observations and refresh stable target views only at action boundaries.
 
-    def __init__(self, *, archive: SharedScheduleArchive, clock: Callable[[], float], started_at: float,
-                 budget: SharedSearchBudget) -> None:
-        self.archive, self.clock, self.started_at = archive, clock, started_at
+    Elapsed times are the run budget's (``budget.clock`` since ``budget.started_at``).
+    """
+
+    def __init__(self, *, archive: SharedScheduleArchive, budget: SharedSearchBudget) -> None:
+        self.archive = archive
         self.budget = budget
-        # The decode session records events through this search, so its owner attaches it right after construction.
+        # The decode session records its events through this search: open_shared_search attaches it right after
+        # construction.
         self.decode_session: SharedDecodeSession
         self.views: Dict[str, GoalView] = {}
-        self.revisions: Dict[int, int] = {}
         self.phase = "preparation"
         self.search_objective = archive.primary_objective
         self.events: List[Dict[str, Any]] = []
@@ -53,7 +66,18 @@ class SharedSearch:
         self.initial_entry_id: Optional[int] = None
         self.first_complete_elapsed_ms: Optional[int] = None
         self.evidence_event_ids: Dict[int, int] = {}
-        self.trajectory_entries: Dict[str, Tuple[int, int]] = {}
+        self.trajectory_entries: Dict[str, int] = {}
+
+    def open_view(self, objective: str) -> GoalView:
+        """Register one target's stable view; its report observes into this search on the run budget's clock."""
+        report = OptimizationSearchReportState(
+            objective_name=objective, started_at=self.budget.started_at, candidate_clock=self.budget.clock,
+            candidate_observer=partial(self.observe, objective),
+            candidate_acceptance_observer=partial(self.accept, objective),
+            reference_capture_observer=partial(self.capture, objective),
+        )
+        view = self.views[objective] = GoalView(objective, OptimizerSearchState(), report)
+        return view
 
     def record_event(self, fact: Dict[str, Any]) -> int:
         event = {
@@ -62,51 +86,37 @@ class SharedSearch:
             "parent_entry_id": self.archive.current_entry(self.search_objective), **fact,
         }
         event["event_id"] = len(self.events) + 1
-        event.setdefault("elapsed_ms", max(int((self.clock() - self.started_at) * 1000), 0))
+        event.setdefault("elapsed_ms", max(int((self.budget.clock() - self.budget.started_at) * 1000), 0))
         self.events.append(event)
         return event["event_id"]
 
     def observe(self, objective: str, *, candidate: Dict[str, Any], origin: str,
                 verified: bool, elapsed_ms: int) -> None:
-        receipt = candidate.get("decode_receipt")
-        source = {
-            "search_objective": objective, "phase": self.phase, "origin": origin,
-            "dispatch_mode": candidate.get("dispatch_mode"), "dispatch_rule": candidate.get("dispatch_rule"),
-            "strategy": candidate["strategy"].value,
-            "repair_decision": candidate.get("repair_decision"),
-        }
-        if receipt is not None:
-            source.update(request_id=receipt["request_id"], source_event_ref=receipt.get("source_event_ref"),
-                          execution_kind=receipt["execution_kind"])
+        receipt = candidate["decode_receipt"]
+        source = search_origin(candidate, receipt, search_objective=objective, phase=self.phase, origin=origin)
         archive_ref: CandidateArchiveRef = candidate["archive_ref"]
         observed: Optional[ArchiveObservation] = archive_ref.take_observation()
         if observed is None:
-            if archive_ref.entry_id is None:
-                raise ValueError("A decoded candidate must receive its archive identity before reporting.")
             observed = ArchiveObservation(entry_id=archive_ref.entry_id, reused=True,
                                           reason=None if verified else "validation_unknown")
         entry_id = observed.entry_id
         retained = entry_id in self.archive
         if retained and verified:
             self.archive.finish_observation(observed, candidate, origin=source)
-        entry = self.archive.entry(entry_id) if retained and entry_id is not None else None
+        entry = self.archive.entry(entry_id) if retained else None
         strict_improvements = (list(observed.improved_objectives)
                                if entry is not None and entry.score_scope.is_complete else [])
-        if receipt is not None and retained:
+        if retained:
             self.decode_session.bind_observation(receipt, observed.entry_id, verified, candidate=candidate)
         event_source = {key: value for key, value in source.items() if key != "repair_decision"}
         event: Dict[str, Any] = dict(event_source, event_type="archive_observation", elapsed_ms=elapsed_ms,
                                     verified=verified, entry_id=observed.entry_id, reason=observed.reason,
                                     content_reused=observed.reused, restored=observed.restored,
-                                    evidence_updated=observed.evidence_updated,
                                     initialized_objectives=list(observed.initialized_objectives),
-                                    improved_objectives=strict_improvements)
-        if receipt is not None:
-            event["decode_receipt"] = dict(receipt)
-            event["request_id"] = receipt["request_id"]
+                                    improved_objectives=strict_improvements, decode_receipt=dict(receipt))
         event_id = self.record_event(event)
         event = self.events[-1]
-        if entry is not None and entry_id is not None and verified:
+        if entry is not None and verified:
             event["evaluations"] = {target: {"field_order": list(evaluation.field_order),
                                               "score": list(evaluation.score)}
                                     for target, evaluation in entry.evaluations.items()}
@@ -115,21 +125,15 @@ class SharedSearch:
                 event["partial_group_improved_objectives"] = list(observed.improved_objectives)
             if self.initial_entry_id is None:
                 self.initial_entry_id = entry_id
-            if entry_id not in self.evidence_event_ids or observed.evidence_updated or observed.restored:
+            if entry_id not in self.evidence_event_ids or observed.restored:
                 self.evidence_event_ids[entry_id] = event_id
-            if observed.evidence_updated:
-                self.revisions[entry_id] = self.revisions.get(entry_id, 0) + 1
-            archive_ref.evidence_revision = self.revisions.get(entry_id, 0)
             if entry.score_scope.is_complete and self.first_complete_elapsed_ms is None:
                 self.first_complete_elapsed_ms = elapsed_ms
             for target in self.archive.target_objectives:
                 selected_id = self.archive.selected_entry(target)
-                if selected_id is None:
+                if selected_id is None or self.trajectory_entries.get(target) == selected_id:
                     continue
-                selected_revision = self.revisions.get(selected_id, 0)
-                if self.trajectory_entries.get(target) == (selected_id, selected_revision):
-                    continue
-                self.trajectory_entries[target] = (selected_id, selected_revision)
+                self.trajectory_entries[target] = selected_id
                 selected = entry if selected_id == entry_id else self.archive.entry(selected_id)
                 evaluation = selected.evaluations[target]
                 self.trajectories[target].append({
@@ -158,8 +162,8 @@ class SharedSearch:
         bridge = {
             "search_objective": objective, "phase": self.phase, "before_entry_id": before_id,
             "after_entry_id": after_id, "elapsed_ms": max((finished_at - started_at) * 1000.0, 0.0),
-            "started_elapsed_ms": max(int((started_at - self.started_at) * 1000), 0),
-            "finished_elapsed_ms": max(int((finished_at - self.started_at) * 1000), 0),
+            "started_elapsed_ms": max(int((started_at - self.budget.started_at) * 1000), 0),
+            "finished_elapsed_ms": max(int((finished_at - self.budget.started_at) * 1000), 0),
             "same_arrangement": before_id == after_id if before_id is not None and after_id is not None else None,
             "decoder_executed": decoder_executed, "reference_kind": reference_kind,
         }
@@ -169,11 +173,10 @@ class SharedSearch:
 
     def sync(self, view: GoalView) -> None:
         entry_id = self.archive.selected_entry(view.objective)
-        revision = self.revisions.get(entry_id, 0) if entry_id is not None else -1
-        if entry_id is not None and (view.entry_id != entry_id or view.evidence_revision != revision):
+        if entry_id is not None and view.entry_id != entry_id:
             view.candidate = self.archive.view(entry_id, objective=view.objective)
-            view.candidate["archive_ref"] = CandidateArchiveRef(entry_id, evidence_revision=revision)
-            view.entry_id, view.evidence_revision = entry_id, revision
+            view.candidate["archive_ref"] = CandidateArchiveRef(entry_id)
+            view.entry_id = entry_id
         candidate = view.candidate
         if candidate is None or entry_id is None:
             return
@@ -185,16 +188,18 @@ class SharedSearch:
                 if isinstance(stage, IteratedGreedyStage) and stage.run.search is not None:
                     search = stage.run.search
                     incumbent = search.best
+                    # Its own improvement, observed as verified while retained (its decode receipt is bound to
+                    # the entry), already has the right reference context. Align only the comparison pointer;
+                    # a genuine new parent still uses pending_adoption.
                     if (incumbent is not None and incumbent["archive_ref"].entry_id == entry_id
-                            and incumbent["archive_ref"].evidence_revision == revision):
-                        # Its own improvement already has the right reference context. Align only
-                        # the comparison pointer; a genuine new parent still uses pending_adoption.
+                            and "observation_bound" in incumbent["decode_receipt"]):
                         search.best = candidate
         if view.local_stage is not None:
             view.local_stage.best = candidate
 
     def run_action(self, view: GoalView, stage: SearchStage, *, initial: bool = False) -> None:
-        started_at, before_events = self.clock(), len(self.events)
+        clock = self.budget.clock
+        started_at, before_events = clock(), len(self.events)
         before_complete = self.first_complete_elapsed_ms
         before_new, before_reused = self.decode_session.new_decisions, self.decode_session.reused_decisions
         self.search_objective, self.phase = view.objective, stage.name
@@ -212,7 +217,7 @@ class SharedSearch:
             finally:
                 self._refresh_active_entries()
             new_events = self.events[before_events:]
-        finished_at = self.clock()
+        finished_at = clock()
         view.stage_charged_seconds[id(stage)] = view.stage_charged_seconds.get(id(stage), 0.0) + max(
             finished_at - started_at, 0.001)
         skip_reason = skip_reason or next((event.get("reason") for event in reversed(new_events)
@@ -227,8 +232,8 @@ class SharedSearch:
         self.actions.append({
             "action_id": len(self.actions) + 1, "search_objective": view.objective,
             "phase": stage.name, "initial_construction": initial,
-            "started_elapsed_ms": max(int((started_at - self.started_at) * 1000), 0),
-            "finished_elapsed_ms": max(int((finished_at - self.started_at) * 1000), 0),
+            "started_elapsed_ms": max(int((started_at - self.budget.started_at) * 1000), 0),
+            "finished_elapsed_ms": max(int((finished_at - self.budget.started_at) * 1000), 0),
             "elapsed_ms": max((finished_at - started_at) * 1000.0, 0.0),
             "evaluation_count": sum(event.get("event_type") == "archive_observation" for event in new_events),
             "verified_evaluation_count": sum(event["verified"] and event.get("event_type") == "archive_observation"
@@ -286,4 +291,36 @@ class SharedSearch:
         self.archive.set_active_entries(active)
 
 
-__all__ = ["GoalView", "SharedSearch"]
+def open_shared_search(
+    *, objective_name: str, scheduler: GreedyScheduler, operations: List[OpForScheduleAlgo], batches: Dict[str, Batch],
+    required_hours_by_op_id: Mapping[int, float], seed_results: List[ScheduleResult],
+    downtime_map: Dict[str, List[Tuple[datetime, datetime]]], resource_pool: ResourcePool,
+    graph_ready_context: Optional[Dict[str, Any]], start_dt: datetime, end_date: date, readiness_gate_enabled: bool,
+    clock: Callable[[], float], started_at: float, deadline: float, configured_seconds: float,
+) -> SharedSearch:
+    """The shared search over one run input, with its archive, budget and decode session.
+
+    The run's static evaluation facts are prepared once: they name the archive's expected operations and batches
+    and score every decode. The run's start, window end and readiness gate enter the decode session once; the
+    clock, start and deadline belong to the budget. The decode session reports each decode to this search as an
+    event.
+    """
+    evaluation_context = prepare_evaluation_context(
+        batches=batches, expected_operations=operations, seed_results=seed_results,
+    )
+    targets = target_objectives_for(objective_name)
+    archive = SharedScheduleArchive(objective_name, targets, evaluation_context.batch_by_op_id,
+                                    evaluation_context.batch_ids)
+    budget = SharedSearchBudget(clock=clock, started_at=started_at, deadline=deadline,
+                                target_objectives=targets, configured_seconds=configured_seconds)
+    search = SharedSearch(archive=archive, budget=budget)
+    search.decode_session = SharedDecodeSession(
+        archive=archive, budget=budget, scheduler=scheduler, operations=operations, batches=batches,
+        required_hours_by_op_id=required_hours_by_op_id, seed_results=seed_results, downtime_map=downtime_map,
+        resource_pool=resource_pool, graph_ready_context=graph_ready_context, start_dt=start_dt, end_date=end_date,
+        readiness_gate_enabled=readiness_gate_enabled, event_sink=search.record_event,
+        evaluation_context=evaluation_context)
+    return search
+
+
+__all__ = ["GoalView", "SharedSearch", "open_shared_search"]

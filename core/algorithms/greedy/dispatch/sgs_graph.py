@@ -10,7 +10,7 @@ from core.errors import ValidationError
 from core.shared.strict_parse import finite_float, is_number
 
 from .sgs_priority_keys import ValidatedGraphPriorityKeys
-from .sgs_scoring import _collect_sgs_candidates
+from .sgs_scoring import collect_batch_head_candidates
 
 if TYPE_CHECKING:
     from core.algorithm_contracts.types import OpForScheduleAlgo
@@ -92,7 +92,7 @@ def _op_id_set(value: Any, *, field: str) -> FrozenSet[int]:
     return frozenset(value)
 
 
-def _prepare_graph_ready_state(
+def prepare_graph_ready_state(
     topology: PreparedGraphReadyTopology,
     context: Dict[str, Any],
     *,
@@ -236,7 +236,7 @@ def _validate_link_scope(*, link_map: Mapping[int, AbstractSet[int]], known_op_i
                 )
 
 
-def _collect_candidates(
+def collect_ready_candidates(
     *,
     graph_state: Optional[Dict[str, Any]],
     batch_ids: List[str],
@@ -245,7 +245,7 @@ def _collect_candidates(
     blocked_batches: set,
 ) -> List[Tuple[str, OpForScheduleAlgo]]:
     if graph_state is None:
-        return _collect_sgs_candidates(
+        return collect_batch_head_candidates(
             batch_ids_in_order=batch_ids,
             ops_by_batch=ops_by_batch,
             next_idx=next_idx,
@@ -267,7 +267,7 @@ def _collect_candidates(
     return [graph_state["op_by_id"][op_id] for op_id in ready_op_ids]
 
 
-def _ensure_graph_ready_complete(
+def ensure_graph_ready_complete(
     *, graph_state: Dict[str, Any], ops_by_batch: Dict[str, List[OpForScheduleAlgo]], blocked_batches: set,
 ) -> None:
     expected = set(graph_state["op_by_id"])

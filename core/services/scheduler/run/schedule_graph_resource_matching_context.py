@@ -46,7 +46,6 @@ def _resource_matching_status_projection(*, status: str, reason: str) -> Dict[st
 
 def build_graph_resource_matching_projection(
     *,
-    mode: str,
     is_dag: bool,
     nodes: List[Any],
     edges: List[Any],
@@ -68,7 +67,7 @@ def build_graph_resource_matching_projection(
     ready_nodes = build_first_wave_ready_nodes(
         nodes=nodes,
         edges=edges,
-        graph_ready_context=(graph_ready_context if mode == "on" else None),
+        graph_ready_context=graph_ready_context,
         op_id_sets=op_id_sets,
     )
     summary = summarize_operation_machine_matching(ready_nodes)

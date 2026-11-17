@@ -8,7 +8,7 @@ from datetime import date, datetime
 from typing import Any, Dict, FrozenSet, Iterable, Optional, Set, Tuple
 
 from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
-from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
+from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.models.batch import Batch
 
@@ -61,8 +61,7 @@ def prepare_evaluation_context(
     due_batches = []
     # Batch keys are database primary keys: non-empty and already trimmed.
     for bid, batch in batches.items():
-        priority = normalize_priority(batch.priority, default="normal")
-        weight = float(PRIORITY_WEIGHT[priority])
+        weight = float(PRIORITY_WEIGHT[batch.priority])
         priority_weights[bid] = weight
         due_date, due_datetime, due_text, due_invalid = _due_facts(batch.due_date)
         due_batches.append(PreparedBatchDue(

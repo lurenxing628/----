@@ -17,17 +17,17 @@ import pytest
 
 from core.algorithm_contracts.resource_occupancy import project_internal_occupancies
 from core.algorithm_contracts.schedule_point_evidence import PointSeedResult, SchedulePointEvidence
-from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_runtime.seed_results import with_seed_resource_segments
 from core.algorithms import evaluation_completion
-from core.algorithms.evaluation import compute_metrics, objective_score, prepare_evaluation_context
-from core.algorithms.evaluation_completion import UNKNOWN_OBJECTIVE_VALUE
+from core.algorithms.evaluation import compute_metrics, objective_score
+from core.algorithms.evaluation_completion import UNKNOWN_OBJECTIVE_VALUE, prepare_evaluation_context
 from core.algorithms.greedy.scheduler import GreedyScheduler
-from core.algorithms.greedy.seed import with_seed_resource_segments
+from core.models.enums import SortStrategy
 from core.models.objective import objective_metric_keys
 from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar as _ContinuousCalendar
-from tests._support.schedule_decode import config_snapshot, production_decode, production_session
+from tests._support.schedule_decode import config_snapshot, prepared_metrics, production_decode
 
 OBJECTIVES = ("min_overdue", "min_tardiness", "min_weighted_tardiness", "min_changeover")
 START = datetime(2026, 1, 1, 8)
@@ -56,7 +56,7 @@ OPERATIONS = [_op(1, "B1"), _op(2, "B2"), _op(3, "B3")]
 def _explained(*, b2_hours):
     """B1 fails with evidence; B2 completes ``b2_hours`` after the start; B3 completes on time."""
     results = [_result(2, "B2", hours=b2_hours), _result(3, "B3", hours=1)]
-    return compute_metrics(results, _batches(B1="critical", B2="normal", B3="urgent"), expected_operations=OPERATIONS,
+    return prepared_metrics(results, _batches(B1="critical", B2="normal", B3="urgent"), expected_operations=OPERATIONS,
                            seed_results=[], seed_occupancies_by_op_id={}, failure_details=[_failure(1, "B1")])
 
 
@@ -87,7 +87,7 @@ def test_equal_failed_ops_candidates_order_by_their_completed_batches_instead_of
 
 
 def test_explained_incompleteness_never_outranks_a_complete_candidate_behind_failed_ops():
-    complete = compute_metrics([_result(1, "B1", hours=1), _result(2, "B2", hours=90), _result(3, "B3", hours=1)],
+    complete = prepared_metrics([_result(1, "B1", hours=1), _result(2, "B2", hours=90), _result(3, "B3", hours=1)],
                                _batches(B1="critical", B2="normal", B3="urgent"), expected_operations=OPERATIONS,
                                seed_occupancies_by_op_id={}, failure_details=[])
     assert complete.completion.objective_defined
@@ -102,17 +102,17 @@ def test_explained_incompleteness_never_outranks_a_complete_candidate_behind_fai
 @pytest.mark.parametrize("objective", OBJECTIVES)
 def test_missing_operations_without_evidence_stay_unknown(objective):
     unknown = (UNKNOWN_OBJECTIVE_VALUE,) * len(objective_metric_keys(objective))
-    no_evidence = compute_metrics([_result(2, "B2", hours=1), _result(3, "B3", hours=1)], _batches(B1="normal", B2="normal", B3="normal"),
+    no_evidence = prepared_metrics([_result(2, "B2", hours=1), _result(3, "B3", hours=1)], _batches(B1="normal", B2="normal", B3="normal"),
                                   expected_operations=OPERATIONS, seed_results=[], seed_occupancies_by_op_id={}, failure_details=[])
     assert objective_score(objective, no_evidence) == unknown
     assert no_evidence.public_dict()["completion"]["objective_score_policy"] == "unknown_all_components"
     assert no_evidence.completion.components_known is False
-    partly = compute_metrics([_result(3, "B3", hours=1)], _batches(B1="normal", B2="normal", B3="normal"),
+    partly = prepared_metrics([_result(3, "B3", hours=1)], _batches(B1="normal", B2="normal", B3="normal"),
                              expected_operations=OPERATIONS, seed_results=[], seed_occupancies_by_op_id={},
                              failure_details=[_failure(1, "B1")])
     assert objective_score(objective, partly) == unknown
     assert partly.public_dict()["completion"]["objective_scope"] == "unknown"
-    unexpected = compute_metrics([_result(2, "B2", hours=1), _result(3, "B3", hours=1), _result(9, "B9", hours=1)],
+    unexpected = prepared_metrics([_result(2, "B2", hours=1), _result(3, "B3", hours=1), _result(9, "B9", hours=1)],
                                  _batches(B1="normal", B2="normal", B3="normal"),
                                  expected_operations=OPERATIONS, seed_results=[], seed_occupancies_by_op_id={},
                                  failure_details=[_failure(1, "B1")])
@@ -134,7 +134,7 @@ def test_real_scheduler_window_failure_is_explained_and_scores_behind_failed_ops
     )
     results, summary = decoded.results, decoded.summary
     assert summary.failed_ops == 1
-    metrics = compute_metrics(results, batches, expected_operations=operations, seed_results=[],
+    metrics = prepared_metrics(results, batches, expected_operations=operations, seed_results=[],
                               seed_occupancies_by_op_id={}, failure_details=summary.failure_details)
     assert metrics.completion.explained
     assert metrics.completion.incomplete_work_weight == 2.0
@@ -144,15 +144,15 @@ def test_real_scheduler_window_failure_is_explained_and_scores_behind_failed_ops
 
 @pytest.mark.parametrize("op_id", [0, -3])
 def test_seed_without_positive_operation_id_is_rejected_at_the_decode_entry(op_id):
-    """The evaluation context is built before the decode session, so seed normalization never sees such a seed."""
+    """The evaluation context is built before the decode session, so the native preparation never sees such a seed."""
     from core.algorithms.greedy import scheduler as scheduler_module
 
     scheduler = GreedyScheduler(calendar_service=_ContinuousCalendar(), config_service=config_snapshot())
-    with patch.object(scheduler_module, "normalize_seed_results") as normalize, \
+    with patch.object(scheduler_module, "prepare_native_schedule_inputs") as prepare, \
             pytest.raises(ValueError, match="positive operation ID"):
-        production_session(scheduler, operations=OPERATIONS, batches=_batches(B1="normal", B2="normal", B3="normal"),
-                           seed_results=[_result(op_id, "B9", hours=1)])
-    normalize.assert_not_called()
+        production_decode(scheduler, operations=OPERATIONS, batches=_batches(B1="normal", B2="normal", B3="normal"),
+                          seed_results=[_result(op_id, "B9", hours=1)], start_dt=START)
+    prepare.assert_not_called()
 
 
 def test_prepared_evaluation_keeps_completion_dynamic_and_prepares_static_facts_once():
@@ -169,24 +169,22 @@ def test_prepared_evaluation_keeps_completion_dynamic_and_prepares_static_facts_
         (item, item.public_dict())
         for results, details in scenarios
         for item in (
-            compute_metrics(
+            prepared_metrics(
                 results, batches, expected_operations=operations, seed_results=[seed],
                 seed_occupancies_by_op_id=seed_occupancies, failure_details=details,
             ),
         )
     ]
     with patch.object(evaluation_completion, "_prepare_expected_keys", wraps=evaluation_completion._prepare_expected_keys) as expected_keys, \
-            patch.object(evaluation_completion, "normalize_priority", wraps=evaluation_completion.normalize_priority) as priorities, \
             patch.object(evaluation_completion, "_parse_due_date_state", wraps=evaluation_completion._parse_due_date_state) as due_states, \
             patch.object(evaluation_completion, "due_exclusive", wraps=evaluation_completion.due_exclusive) as due_limits, \
             patch.object(evaluation_completion, "_failure_batches", wraps=evaluation_completion._failure_batches) as failure_batches:
         prepared = prepare_evaluation_context(batches=batches, expected_operations=operations, seed_results=[seed])
-        metrics = [compute_metrics(results, batches, expected_operations=operations,
-                                   seed_occupancies_by_op_id=seed_occupancies,
-                                   failure_details=details, prepared=prepared)
+        metrics = [compute_metrics(results, prepared=prepared, seed_occupancies_by_op_id=seed_occupancies,
+                                   failure_details=details)
                    for results, details in scenarios]
         assert [(item, item.public_dict()) for item in metrics] == expected_metrics
-        assert (expected_keys.call_count, priorities.call_count, due_states.call_count, due_limits.call_count) == (1, 3, 3, 3)
+        assert (expected_keys.call_count, due_states.call_count, due_limits.call_count) == (1, 3, 3)
         assert failure_batches.call_count == 2
     assert metrics[0].completion.objective_defined
     assert metrics[0].completion.expected_operation_count == 4

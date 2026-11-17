@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Tuple
 
+from core.models.enums import SortStrategy
 from core.models.objective import objective_choice_labels as _objective_choice_labels
 from core.models.schedule_config_runtime_coercion import (
     coerce_config_field as coerce_runtime_value,
@@ -27,10 +28,6 @@ class ConfigFieldSpec:
 
     def __post_init__(self):
         object.__setattr__(self, "runtime", runtime_field_spec(self.key))
-
-    @property
-    def field_type(self):
-        return self.runtime.field_type
 
     @property
     def default(self):
@@ -59,10 +56,10 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         label="排产策略",
         description="当前排序策略",
         choice_labels={
-            "priority_first": "优先级优先",
-            "due_date_first": "交期优先",
-            "weighted": "综合优先级和交期",
-            "fifo": "先进先出",
+            SortStrategy.PRIORITY_FIRST.value: "优先级优先",
+            SortStrategy.DUE_DATE_FIRST.value: "交期优先",
+            SortStrategy.WEIGHTED.value: "综合优先级和交期",
+            SortStrategy.FIFO.value: "先进先出",
         },
     ),
     ConfigFieldSpec(
@@ -84,12 +81,6 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         key="holiday_default_efficiency",
         label="假期工作效率",
         description="工作日历：假期工作效率（>0；假期安排工作且效率未填时使用）",
-    ),
-    ConfigFieldSpec(
-        key="enforce_ready_default",
-        label="默认启用齐套检查",
-        description="默认关闭。关闭时，齐套和齐套日期只作为显示信息；打开后，只要所选批次里有未齐套或部分齐套，本次排产会报错并停止；系统不会自动跳过这些批次继续排其它批次，齐套日期只对齐套批次作为最早开工日。",
-        choice_labels=_YES_NO_LABELS,
     ),
     ConfigFieldSpec(
         key="dispatch_mode",
@@ -115,17 +106,6 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         label="未指定设备或人员时，系统自动分配",
         description="自制工序没有填写设备或人员时，是否由系统自动补上",
         choice_labels=_YES_NO_LABELS,
-    ),
-    ConfigFieldSpec(
-        key="ortools_enabled",
-        label="深度优化",
-        description="只在精细计算时尝试多找一个更好的起点；需要本机已安装对应的深度优化组件",
-        choice_labels=_YES_NO_LABELS,
-    ),
-    ConfigFieldSpec(
-        key="ortools_time_limit_seconds",
-        label="深度优化尝试时间",
-        description="深度优化最多额外尝试多少秒；只在精细计算且深度优化开启时生效",
     ),
     ConfigFieldSpec(
         key="algo_mode",

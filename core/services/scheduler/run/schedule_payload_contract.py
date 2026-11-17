@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, fields
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union, cast
 
@@ -47,8 +47,6 @@ class ValidatedSchedulePayload:
     schedule_rows: List[ValidatedScheduleRow]
     scheduled_op_ids: Set[int]
     assigned_by_op_id: Dict[int, Dict[str, Any]]
-    out_of_scope_op_ids: List[int] = field(default_factory=list)
-    validation_errors: List[str] = field(default_factory=list)
 
 
 def _source_text(value: Any) -> str:
@@ -248,8 +246,6 @@ def build_validated_schedule_payload(
         schedule_rows=schedule_rows,
         scheduled_op_ids=scheduled_op_ids,
         assigned_by_op_id=assigned_by_op_id,
-        out_of_scope_op_ids=out_of_scope_op_ids,
-        validation_errors=validation_errors,
     )
 
 

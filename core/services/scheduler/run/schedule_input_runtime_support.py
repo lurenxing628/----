@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime
 from itertools import groupby
 from typing import Any, Dict, List, Mapping, Set, Tuple
@@ -47,39 +46,7 @@ def _resolve_algo_ops_to_schedule(
     return []
 
 
-def _load_runtime_resource_inputs(
-    *,
-    cfg: Any,
-    algo_ops: List[Any],
-    resource_pool_ops: List[Any],
-    start_dt_norm: datetime,
-    load_machine_downtimes_fn: Any,
-    build_resource_pool_fn: Any,
-    extend_downtime_map_for_resource_pool_fn: Any,
-) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Any]:
-    downtime_meta: Dict[str, Any] = {}
-    resource_pool_meta: Dict[str, Any] = {}
-    downtime_map = load_machine_downtimes_fn(
-        algo_ops=algo_ops,
-        start_dt=start_dt_norm,
-    )
-    resource_pool = build_resource_pool_fn(
-        cfg=cfg,
-        algo_ops=resource_pool_ops,
-        meta=resource_pool_meta,
-    )
-    downtime_map = extend_downtime_map_for_resource_pool_fn(
-        cfg=cfg,
-        resource_pool=resource_pool,
-        downtime_map=downtime_map,
-        start_dt=start_dt_norm,
-        meta=downtime_meta,
-    )
-    return downtime_meta, resource_pool_meta, downtime_map, resource_pool
-
-
 def prepare_runtime_seeds(
-    conn: sqlite3.Connection,
     *,
     run_label: str,
     operations: List[BatchOperation],
@@ -128,7 +95,7 @@ def prepare_runtime_seeds(
         raise_schedule_empty_result_fn=raise_schedule_empty_result_fn,
         derived_group_op_ids=derived_group_ids,
     )
-    validate_fixed_operator_qualifications_fn(conn, algo_ops_to_schedule)
+    validate_fixed_operator_qualifications_fn(algo_ops_to_schedule)
     return frozen_op_ids, seed_results, algo_ops_to_schedule, external_intervals
 
 

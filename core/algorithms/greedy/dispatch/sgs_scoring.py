@@ -9,6 +9,7 @@ from core.algorithm_contracts.dispatch_rules import (
     DispatchRuleSpec,
     build_dispatch_key,
 )
+from core.algorithm_contracts.resource_pool import ResourcePool
 from core.algorithm_runtime.auto_assign_contract import AUTO_ASSIGN_REASON_WINDOW_BLOCKED
 from core.algorithm_runtime.internal_slot import InternalSlotEstimate, estimate_internal_slot
 from core.algorithm_runtime.run_state import ScheduleRunState
@@ -82,7 +83,7 @@ def with_graph_priority_key(base_key: Tuple[float, ...], graph_key: Tuple[float,
     return base_key[:1] + graph_key + base_key[1:]
 
 
-def _collect_sgs_candidates(
+def collect_batch_head_candidates(
     *,
     batch_ids_in_order: List[str],
     ops_by_batch: Dict[str, List[OpForScheduleAlgo]],
@@ -98,7 +99,7 @@ def _collect_sgs_candidates(
     return candidates
 
 
-def _score_external_candidate(
+def score_external_candidate(
     *,
     ctx: Any,
     state: ScheduleRunState,
@@ -136,7 +137,7 @@ def _score_external_candidate(
     )
 
 
-def _score_internal_candidate(
+def score_internal_candidate(
     *,
     ctx: Any,
     state: ScheduleRunState,
@@ -147,8 +148,7 @@ def _score_internal_candidate(
     dispatch_rule: DispatchRuleSpec,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    auto_assign_enabled: bool,
-    resource_pool: Optional[Dict[str, Any]],
+    resource_pool: ResourcePool,
     avg_proc_hours: float,
     total_hours_by_op_id: Dict[int, float],
 ) -> SgsCandidateScore:
@@ -161,7 +161,6 @@ def _score_internal_candidate(
         batch=batch,
         end_dt_exclusive=end_dt_exclusive,
         machine_downtimes=machine_downtimes,
-        auto_assign_enabled=auto_assign_enabled,
         resource_pool=resource_pool,
     )
     if not resources.machine_id or not resources.operator_id:
@@ -264,13 +263,12 @@ def _scoring_resources(
     batch: Batch,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    auto_assign_enabled: bool,
-    resource_pool: Optional[Dict[str, Any]],
+    resource_pool: ResourcePool,
 ) -> _ScoringResources:
     machine_id, operator_id = op.machine_id, op.operator_id
     if machine_id and operator_id:
         return _ScoringResources(machine_id, operator_id, RESOURCE_REASON_FIXED, "")
-    if not auto_assign_enabled or resource_pool is None:
+    if not resource_pool.enabled:
         return _ScoringResources("", "", RESOURCE_REASON_MANUAL_MISSING, "")
     attempt = _auto_assign_attempt_for_scoring(
         ctx,
@@ -298,7 +296,7 @@ def _auto_assign_attempt_for_scoring(
     batch: Batch,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    resource_pool: Dict[str, Any],
+    resource_pool: ResourcePool,
 ):
     return ctx.auto_assign_internal_resources_attempt(
         op=op,

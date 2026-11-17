@@ -7,10 +7,9 @@ from typing import Any, DefaultDict, List, Mapping, Optional, Tuple, TypedDict
 from core.services.capacity.plan_calendar_intervals import union
 from core.services.capacity.plan_calendar_windows import available_intervals
 from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
-from core.shared.local_datetime import parse_local_datetime as parse_dt
+from core.shared.local_datetime import row_interval
 
 from .calculation_helpers import is_internal_source
-from .report_degradation import record_report_bad_time_row
 
 
 class _ResourceGroup(TypedDict):
@@ -34,24 +33,23 @@ def utilization_from_groups(groups, *, start_dt, end_dt_excl, calendars, degrada
     return result["machine"], result["operator"]
 
 
-def group_utilization_rows(schedule_rows, start, end, collector):
+def group_utilization_rows(schedule_rows, start, end):
     """Clip internal rows to the window and group their intervals per resource, then per operation."""
     groups: DefaultDict[Tuple[str, str], _ResourceGroup] = defaultdict(
         lambda: {"operations": defaultdict(list), "task_count": 0, "label": None})
     for row in schedule_rows:
-        interval = row_interval(row, start, end, collector)
+        interval = clipped_occupancy(row, start, end)
         if interval is None:
             continue
         for kind in ("machine", "operator"):
-            raw_key = row.get(kind + "_id")
-            if raw_key is None or not str(raw_key).strip():
+            key = row[kind + "_id"]
+            if key is None:
                 continue
-            key = str(raw_key)
             item = groups[kind, key]
             # Multiple fragments of one operation do not become simultaneous jobs.
             item["operations"][row["op_id"]].append(interval)
             item["task_count"] += 1
-            item["label"] = row.get(kind + "_name")
+            item["label"] = row[kind + "_name"]
     return groups
 
 
@@ -78,20 +76,13 @@ def utilization_availability_note(row: Mapping[str, Any]) -> str:
     return ""
 
 
-def row_interval(row, start, end, collector):
+def clipped_occupancy(row, start, end):
     """One internal row's positive occupancy clipped to [start, end); None when it occupies nothing there.
 
-    Other sources, point events and rows outside the window occupy nothing, nor do rows whose
-    times are unreadable or reversed. Resource calendars and occupancy both come from the one
-    grouping pass over these rows, so each bad row is reported to ``collector`` exactly once.
+    Other sources, point events and rows outside the window occupy nothing.
     """
-    if not is_internal_source(row.get("source")):
+    if not is_internal_source(row["source"]) or row["is_point_event"]:
         return None
-    low, high = parse_dt(row.get("start_time")), parse_dt(row.get("end_time"))
-    if not low or not high or high < low:
-        record_report_bad_time_row(collector, scope="report.utilization.schedule")
-        return None
-    if low == high:
-        return None
-    low, high = max(low, start), min(high, end)
+    row_start, row_end = row_interval(row)
+    low, high = max(row_start, start), min(row_end, end)
     return (low, high) if low < high else None

@@ -14,11 +14,12 @@ from datetime import date, datetime, timedelta
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from core.errors import ValidationError
+from core.shared.strict_parse import EXTERNAL_DAYS_MAX
 
 Window = Tuple[datetime, datetime]
 WindowResolver = Callable[[date], Sequence[Tuple[datetime, datetime]]]
-# Same magnitude bound as add_calendar_days: spans beyond a century are input errors, not schedules.
-MAX_SPAN_DAYS = 36500
+# Same century bound as an external cycle: spans beyond it are input errors, not schedules.
+MAX_SPAN_DAYS = EXTERNAL_DAYS_MAX
 _ONE_MICROSECOND = timedelta(microseconds=1)
 _MICROSECONDS_PER_HOUR = 3_600_000_000.0
 

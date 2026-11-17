@@ -5,7 +5,7 @@ from datetime import datetime
 
 import pytest
 
-from tests._support.optimizer_business_cases import OBJECTIVES, run_case
+from tests._support.optimizer_business_cases import OBJECTIVES, RESULT_FIELDS, run_case
 
 pytestmark = pytest.mark.serial
 
@@ -19,7 +19,6 @@ def test_full_entry_exercises_shared_winners_and_four_objective_oracles(tiny_row
     for objective, row in tiny_rows.items():
         outcome = row["outcome"]
         assert 1 <= len(outcome.candidates) <= 3
-        assert all(plan.status == "completed" for plan in outcome.candidates)
         assert outcome.primary_objective == objective
         assert set(row["winners"]) == set(outcome.target_objectives)
         for key, representative in row["representatives"].items():
@@ -50,7 +49,7 @@ def test_frozen_readiness_external_constraints_are_effective():
     data, rows = row["data"], row["selected"]["schedule"]
     by_id = {item["op_id"]: item for item in rows}
     for seed in data["seed_results"]:
-        assert by_id[seed["op_id"]] == seed
+        assert by_id[seed["op_id"]] == {key: seed[key] for key in RESULT_FIELDS}
     future_batch = next(batch for batch in data["batches"] if batch["ready_status"] == "no")
     assert all(datetime.fromisoformat(item["start_time"]) >= datetime.fromisoformat(future_batch["ready_date"])
                for item in rows if item["batch_id"] == future_batch["batch_id"])

@@ -33,13 +33,8 @@ def _candidate(key, *, sequence, overdue=2, weighted=10.0, tardiness=10.0):
     return CandidatePlan(
         sequence=sequence,
         candidate_key=key,
-        kind="baseline" if key == "baseline" else "critical_chain",
         label=key,
-        status="completed",
         score=(0.0,) + objective_score("min_overdue", metrics),
-        graph_critical_weight=0 if key == "baseline" else 500,
-        graph_impact_weight=0 if key == "baseline" else 10,
-        graph_downstream_weight=0 if key == "baseline" else 1,
         summary=ScheduleSummary(
             success=True,
             total_ops=2,
@@ -50,7 +45,6 @@ def _candidate(key, *, sequence, overdue=2, weighted=10.0, tardiness=10.0):
             duration_seconds=0.0,
         ),
         metrics=metrics,
-        generation_policy_version="unified_search_v1",
         origin={"origin": key},
         first_found_elapsed_ms=0,
         search_evidence_ref={"source_event_id": None},
@@ -79,15 +73,15 @@ def test_business_selection_maps_winners_and_scope_to_permanent_references():
         objective_winner_reasons=dict.fromkeys(targets, "score_components_unavailable"),
         objective_field_order=order, selected_score=(2.0,) + (float("inf"),) * (len(order[targets[0]]) - 1),
         scoring_scope=scope, reason_code="partial_scope_score_unavailable", evidence_state="partial")
-    unknown = _selection_references(new_selection, rows, identities={1: "1" * 48, 2: "2" * 48}, batch_refs={"B1": "3" * 48})
+    unknown = _selection_references(new_selection, rows)
     assert unknown["selected_candidate_ref"] == refs[graph.candidate_key]
     assert unknown["objective_winners"] == dict.fromkeys(targets)
     assert unknown["objective_winner_reasons"] == dict.fromkeys(targets, "score_components_unavailable")
     assert unknown["selected_score"] == [2.0] + [None] * (len(order[targets[0]]) - 1)
     assert unknown["objective_field_order"] == order
-    assert unknown["scoring_scope"] == {"scheduled_operation_refs": ["1" * 48, "2" * 48], "complete_batch_refs": ["3" * 48],
+    assert unknown["scoring_scope"] == {"scheduled_operation_count": 2, "complete_batch_count": 1,
         "objective_scope": "unknown", "components_known": False, "is_complete": False}
-    basis = selection_basis({"selection": unknown}, rows)
+    basis = selection_basis(unknown, rows)
     assert basis["selected_candidate_ref"] == refs[graph.candidate_key]
     assert basis["evidence_state"] == "partial" and basis["scoring_scope"] == unknown["scoring_scope"]
     assert selection_roles(rows[1], basis) == ["recommended"]
@@ -100,6 +94,6 @@ def test_business_selection_maps_winners_and_scope_to_permanent_references():
                     for index, target in enumerate(targets)}, objective_winner_reasons=dict.fromkeys(targets),
                     selected_score=graph.score, scoring_scope={**scope, "components_known": True},
                     reason_code="primary_objective_best_in_completed_scope")
-    mapped = _selection_references(known, rows, identities={1: "1" * 48, 2: "2" * 48}, batch_refs={"B1": "3" * 48})
+    mapped = _selection_references(known, rows)
     assert mapped["objective_winners"] == {target: rows[index]["candidate_ref"] for index, target in enumerate(targets)}
     assert mapped["selected_score"] == list(graph.score) and mapped["objective_field_order"] == order

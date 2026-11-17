@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from io import BytesIO
 
 import openpyxl
@@ -11,8 +12,9 @@ from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.services.report.date_range_limits import ensure_report_date_range_within_limit
 from core.services.report.exporters.xlsx import export_execution_review_xlsx
-from core.services.workbench.plan.read_context import PlanReadContext
 from tests.workbench.execution_ledger_support import LedgerCase, current_database
+from tests.workbench.plan_catalog_support import update_schedule_rows
+from web.runtime_host import install_wall_clock
 
 
 class _ReviewLedgerCase(LedgerCase):
@@ -24,7 +26,8 @@ def _ledger_fixture(tmp_path):
     conn = current_database(tmp_path / "plan-vs-actual-review.sqlite")
     with TransactionManager(conn).transaction():
         conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
-        conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")
+        conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('M1','Lathe')")
+        conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M1','T1')")
         conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O1','Operator')")
         conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('O1','M1')")
         conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('P1','Part')")
@@ -64,15 +67,17 @@ def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_ca
 
     case = ledger_case
     case.conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('B2','P1',10)")
-    case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M3','Other batch lathe','T1')")
+    case.conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('M3','Other batch lathe')")
+    case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M3','T1')")
     others = [case.op('CROSS-' + str(index), batch='B2', seq=index) for index in (1, 2)]
     case.plan(2, [case.op_id] + others, end='2026-09-10 00:00:00')
-    case.conn.execute("UPDATE Schedule SET machine_id='M3' WHERE version=2 AND op_id<>?", (case.op_id,))
-    case.conn.execute("UPDATE Schedule SET end_time='2026-09-09T23:59:59.123456' WHERE version=2 AND op_id=?", (case.op_id,))
+    update_schedule_rows(case.conn, 2, where="op_id <> ?", params=(case.op_id,), machine_id='M3')
+    update_schedule_rows(case.conn, 2, where="op_id = ?", params=(case.op_id,), end_time='2026-09-09T23:59:59.123456')
     case.conn.commit()
-    monkeypatch.setattr(plan_queries, 'MAX_PLAN_TASKS', 2)
-    monkeypatch.setattr(report_facts, 'MAX_REPORT_OPERATIONS', 2)
+    monkeypatch.setattr(plan_queries, 'MAX_WINDOW_OPERATIONS', 2)
+    monkeypatch.setattr(report_facts, 'MAX_WINDOW_OPERATIONS', 2)
     app = Flask('bounded-finish-report')
+    install_wall_clock(app, datetime.now)
     app.config.update(TESTING=True, SECRET_KEY='bounded-finish-test')
     bp = Blueprint('bounded_finish_report', __name__)
     register_report_routes(bp)
@@ -122,7 +127,8 @@ def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_ca
     case.conn.commit()
     stale_choices = client.get(url + '/export', query_string=export_scope)
     assert stale_choices.status_code == 409 and stale_choices.get_json()['error']['code'] == 'snapshot_stale'
-    case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M2','Historical lathe','T1')")
+    case.conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('M2','Historical lathe')")
+    case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M2','T1')")
     case.conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('O1','M2')")
     case.conn.commit()
     historical_ref = case.ref('machine', 'M2')
@@ -146,12 +152,12 @@ def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_ca
     export_scope['snapshot_ref'] = client.get(url, query_string=dates).get_json()['meta']['snapshot_ref']
     reader = plan_queries.WorkbenchPlanQueryService(case.conn)
     with reader.read_snapshot() as context:
-        _, selected, _ = context.selected(case.plan_ref(2))
+        selected, _ = context.selected(case.plan_ref(2))
         assert selected.can_view
         with pytest.raises(WorkbenchCommandRejected) as rejection:
             reader.workspace(context, PlanReadScope(case.plan_ref(2)))
     assert rejection.value.code == 'query_too_large'
-    case.conn.execute("UPDATE Schedule SET end_time='2026-09-09 23:59:59.234567' WHERE version=2 AND op_id=?", (case.op_id,))
+    update_schedule_rows(case.conn, 2, where="op_id = ?", params=(case.op_id,), end_time='2026-09-09 23:59:59.234567')
     case.conn.commit()
     stale = client.get(url + '/export', query_string=export_scope)
     assert stale.status_code == 409 and stale.get_json()['error']['code'] == 'snapshot_stale'
@@ -170,6 +176,7 @@ def test_workbench_report_restores_second_page_once_and_keeps_export_binding(led
     others = [case.op('R18-' + str(index), seq=index) for index in range(2, 12)]
     case.plan(2, [case.op_id] + others)
     app = Flask('direct-report-page')
+    install_wall_clock(app, datetime.now)
     app.config.update(TESTING=True, SECRET_KEY='temporary-direct-report-page')
     bp = Blueprint('direct_report_page', __name__)
     register_report_routes(bp)
@@ -242,9 +249,9 @@ def test_workbench_report_restores_second_page_once_and_keeps_export_binding(led
 
     for index, operation_id in enumerate(others, 2):
         machine_id = 'R18-CATALOG-' + str(index)
-        case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES (?,?,'T1')",
-                          (machine_id, 'Catalog machine ' + str(index)))
-        case.conn.execute('UPDATE Schedule SET machine_id=? WHERE version=2 AND op_id=?', (machine_id, operation_id))
+        case.conn.execute("INSERT INTO Machines(machine_id,name) VALUES (?,?)", (machine_id, 'Catalog machine ' + str(index)))
+        case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES (?,'T1')", (machine_id,))
+        update_schedule_rows(case.conn, 2, where="op_id = ?", params=(operation_id,), machine_id=machine_id, sync_history=False)
     case.conn.commit()
     catalog_calls, catalog_read = [], reports_catalog.catalog_facts
 
@@ -374,21 +381,35 @@ def test_standalone_execution_xlsx_stream_keeps_canonical_headers():
         workbook.close()
 
 
-def test_operation_detail_validates_sibling_report_chains_without_projecting_sibling_dtos(ledger_case, monkeypatch):
+def test_report_workspace_uses_lightweight_ledger_while_detail_and_records_export_load_target_history(
+    ledger_case, monkeypatch
+):
+    import csv
+    import json
+    from io import StringIO
+
     from flask import Blueprint, Flask, g
 
     from core.models.workbench_execution import ExecutionProjection
-    from web.routes.workbench import reports as report_routes
+    from core.services.execution import projection as exec_projection
+    from core.services.workbench.report import facts as report_facts
     from web.routes.workbench.reports import register_report_routes
 
     case = ledger_case
     other_op_id = case.op("OP2", seq=2)
     case.plan(2, [case.op_id, other_op_id])
-    case.command("create", case.task(2, other_op_id), case.values(5))
+    created = case.command("create", case.task(2, other_op_id), case.values(5, remark="initial"))["data"]["rows"][0]
+    first_report = case.report_projection(created["report_ref"])
+    case.command(
+        "correct",
+        first_report.report_ref,
+        {"original_revision_ref": first_report.revision_ref, "reason": "复核数量", "completed_quantity": 6},
+    )
 
-    app = Flask("sibling-report-chain-detail")
-    app.config.update(TESTING=True, SECRET_KEY="sibling-report-chain-test")
-    bp = Blueprint("sibling_report_chain_detail", __name__)
+    app = Flask("lightweight-report-review")
+    install_wall_clock(app, datetime.now)
+    app.config.update(TESTING=True, SECRET_KEY="lightweight-report-review-test")
+    bp = Blueprint("lightweight_report_review", __name__)
     register_report_routes(bp)
     app.register_blueprint(bp)
 
@@ -397,16 +418,53 @@ def test_operation_detail_validates_sibling_report_chains_without_projecting_sib
         g.db = case.conn
 
     client, url = app.test_client(), "/api/workbench/v1/analytics"
-    listing = client.get(url)
+    history_calls, orig_build_history = [], exec_projection.build_correction_history
+
+    def counted_history(rows, *args, **kwargs):
+        history_calls.append(len(rows))
+        return orig_build_history(rows, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(exec_projection, "build_correction_history", counted_history)
+        listing = client.get(url)
+        records_listing = client.get(url, query_string={"topic": "records"})
     assert listing.status_code == 200, listing.get_json()
-    listing_data = listing.get_json()
-    token = listing_data["meta"]["snapshot_ref"]
+    assert records_listing.status_code == 200, records_listing.get_json()
+    assert history_calls == []
+    assert records_listing.get_json()["data"]["rows"][0]["revision_count"] == 2
+    assert records_listing.get_json()["data"]["rows"][0]["completed_quantity"] == 6
+
+    token = listing.get_json()["meta"]["snapshot_ref"]
+    with monkeypatch.context() as patch:
+        patch.setattr(exec_projection, "build_correction_history", counted_history)
+        delivery_export = client.get(
+            url + "/export", query_string={"topic": "delivery", "format": "csv", "snapshot_ref": token}
+        )
+    assert delivery_export.status_code == 200
+    assert history_calls == []
+
+    with monkeypatch.context() as patch:
+        patch.setattr(exec_projection, "build_correction_history", counted_history)
+        records_export = client.get(
+            url + "/export", query_string={"topic": "records", "format": "csv", "snapshot_ref": token}
+        )
+    assert records_export.status_code == 200
+    assert history_calls == [2]
+    exported_rows = list(csv.DictReader(StringIO(records_export.data.decode("utf-8-sig"))))
+    assert len(exported_rows) == 1
+    exported_history = json.loads(exported_rows[0]["完整更正记录"])
+    assert len(exported_history) == 2 and exported_history[1]["reason"] == "复核数量"
+
     healthy_ref = case.conn.execute(
         "SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
         (str(case.op_id),),
     ).fetchone()[0]
-    detail_url = f"{url}/operations/{healthy_ref}"
+    other_ref = case.conn.execute(
+        "SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
+        (str(other_op_id),),
+    ).fetchone()[0]
 
+    history_calls.clear()
     to_dict_calls, orig_to_dict = [], ExecutionProjection.to_dict
 
     def counted_to_dict(self):
@@ -414,46 +472,122 @@ def test_operation_detail_validates_sibling_report_chains_without_projecting_sib
         return orig_to_dict(self)
 
     with monkeypatch.context() as patch:
+        patch.setattr(exec_projection, "build_correction_history", counted_history)
         patch.setattr(ExecutionProjection, "to_dict", counted_to_dict)
-        healthy_detail = client.get(detail_url, query_string={"snapshot_ref": token})
+        healthy_detail = client.get(f"{url}/operations/{healthy_ref}", query_string={"snapshot_ref": token})
     assert healthy_detail.status_code == 200, healthy_detail.get_json()
     assert to_dict_calls == [healthy_ref]
+    assert history_calls == []
 
-    rev1 = case.conn.execute(
-        "SELECT * FROM WorkbenchProductionReportRevisions WHERE sequence=1"
-    ).fetchone()
-    case.conn.execute(
-        """INSERT INTO WorkbenchProductionReportRevisions(
-            revision_ref, report_ref, sequence, previous_revision_ref, action,
-            values_json, reason, local_operator, declared_operator, recorded_at, request_key
-        ) VALUES (?, ?, 2, NULL, 'correct', ?, 'corrupted chain', ?, ?, ?, ?)""",
-        (
-            "f" * 48,
-            rev1["report_ref"],
-            rev1["values_json"],
-            rev1["local_operator"],
-            rev1["declared_operator"],
-            rev1["recorded_at"],
-            rev1["request_key"],
-        ),
+    other_detail = client.get(f"{url}/operations/{other_ref}", query_string={"snapshot_ref": token})
+    assert other_detail.status_code == 200, other_detail.get_json()
+    assert len(other_detail.get_json()["data"]["detail"]["records"][0]["correction_history"]) == 2
+
+    with monkeypatch.context() as patch:
+        patch.setattr(report_facts, "MAX_WINDOW_REPORTS", 1)
+        too_many_list = client.get(url)
+        too_many_detail = client.get(f"{url}/operations/{healthy_ref}", query_string={"snapshot_ref": token})
+    assert too_many_list.status_code == 413 and too_many_list.get_json()["error"]["code"] == "query_too_large"
+    assert too_many_detail.status_code == 413 and too_many_detail.get_json()["error"]["code"] == "query_too_large"
+
+
+def test_unassigned_resource_never_collides_with_literal_none_resource_id_and_external_boundary_holds(ledger_case):
+    from flask import Blueprint, Flask, g
+
+    from tests.workbench.execution_ledger_support import END, START, publish_official_plan
+    from web.routes.workbench.reports import register_report_routes
+
+    case = ledger_case
+    case.conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('None','Literal None Machine')")
+    case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('None','T1')")
+    case.conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('None','Literal None Operator')")
+    case.conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('None','None')")
+    case.conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('B2','P1',10), ('B3','P1',10)")
+    unassigned_op_id = case.op("OP-UNASSIGNED", batch="B2", seq=1)
+    ext_op_id = case.conn.execute(
+        """INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_name,source,setup_hours,unit_hours,ext_days)
+           VALUES ('OP-EXT','B3',1,'电镀','external',NULL,NULL,2)"""
+    ).lastrowid
+    publish_official_plan(
+        case.conn,
+        2,
+        [
+            {"op_id": case.op_id, "machine_id": "None", "operator_id": "None", "start_time": START, "end_time": END},
+            {"op_id": unassigned_op_id, "machine_id": None, "operator_id": None, "start_time": START, "end_time": END},
+            {"op_id": ext_op_id, "machine_id": None, "operator_id": None, "start_time": START, "end_time": END},
+        ],
     )
     case.conn.commit()
 
-    issued_tokens = []
-    orig_bind = report_routes.bind_read_snapshot
+    case.command(
+        "create",
+        case.task(2, case.op_id),
+        case.values(
+            10,
+            actual_machine_ref=case.ref("machine", "None"),
+            actual_operator_ref=case.ref("operator", "None"),
+        ),
+    )
+    case.command(
+        "create",
+        case.task(2, ext_op_id),
+        {
+            "actual_start": START,
+            "actual_end": END,
+            "completed_quantity": 10,
+            "effective_processing_hours": 2.0,
+            "actual_machine_ref": None,
+            "actual_operator_ref": None,
+            "remark": "外协回厂",
+        },
+    )
 
-    def capture_bind(*args, **kwargs):
-        result = orig_bind(*args, **kwargs)
-        issued_tokens.append(result["snapshot_ref"])
-        return result
+    app = Flask("none-collision-and-external-boundary")
+    install_wall_clock(app, datetime.now)
+    app.config.update(TESTING=True, SECRET_KEY="none-collision-test")
+    bp = Blueprint("none_collision_and_external_boundary", __name__)
+    register_report_routes(bp)
+    app.register_blueprint(bp)
 
-    with monkeypatch.context() as patch:
-        patch.setattr(report_routes, "bind_read_snapshot", capture_bind)
-        broken_list = client.get(url)
-    assert broken_list.status_code == 500
-    assert broken_list.get_json()["error"]["code"] == "storage_failure"
-    assert len(issued_tokens) == 1
+    @app.before_request
+    def database():
+        g.db = case.conn
 
-    broken_detail = client.get(detail_url, query_string={"snapshot_ref": issued_tokens[0]})
-    assert broken_detail.status_code == 500
-    assert broken_detail.get_json()["error"]["code"] == "storage_failure"
+    client, url = app.test_client(), "/api/workbench/v1/analytics"
+    delivery = client.get(url).get_json()["data"]
+    assert delivery["summary"]["operations"] == 3
+    assert delivery["summary"]["production_reports"] == 2
+    # 汇总工时含外协报工（1.5 + 2.0）；资源工时只算自制工序，外协不进设备人员行。
+    assert (delivery["summary"]["effective_processing_hours"], delivery["summary"]["unknown_hour_events"]) == (3.5, 0)
+    assert [(row["resource_label"], row["effective_processing_hours"]) for row in delivery["resources"]["machines"]] == [
+        ("Literal None Machine", 1.5)
+    ]
+    by_op_label = {row["operation_label"]: row for row in delivery["rows"]}
+    assert by_op_label["OP1 / Turning"]["machine_label"] == "Literal None Machine"
+    assert by_op_label["OP1 / Turning"]["operator_label"] == "Literal None Operator"
+    assert by_op_label["OP-UNASSIGNED / Turning"]["machine_ref"] is None
+    assert by_op_label["OP-UNASSIGNED / Turning"]["machine_label"] == "未填写"
+    assert by_op_label["OP-UNASSIGNED / Turning"]["operator_ref"] is None
+    assert by_op_label["OP-UNASSIGNED / Turning"]["operator_label"] == "未填写"
+    assert by_op_label["OP-EXT / 电镀"]["operation_source"] == "external"
+    assert by_op_label["OP-EXT / 电镀"]["machine_ref"] is None
+    assert by_op_label["OP-EXT / 电镀"]["machine_label"] == "未填写"
+
+    for topic in ("records", "quality"):
+        topic_data = client.get(url, query_string={"topic": topic}).get_json()["data"]
+        assert topic_data["summary"]["operations"] == 3
+        assert topic_data["summary"]["production_reports"] == 2
+
+    machines_data = client.get(url, query_string={"topic": "machines"}).get_json()["data"]
+    assert [(r["resource_label"], r["production_reports"]) for r in machines_data["rows"]] == [
+        ("Literal None Machine", 1)
+    ]
+    people_data = client.get(url, query_string={"topic": "people"}).get_json()["data"]
+    assert [(r["resource_label"], r["production_reports"]) for r in people_data["rows"]] == [
+        ("Literal None Operator", 1)
+    ]
+
+    unassigned_filtered = client.get(
+        url, query_string={"resource_type": "machine", "resource_ref": "unassigned"}
+    ).get_json()["data"]
+    assert [row["operation_label"] for row in unassigned_filtered["rows"]] == ["OP-UNASSIGNED / Turning"]

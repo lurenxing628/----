@@ -8,60 +8,50 @@ from core.services.scheduler.contracts.schedule_summary_types import (
     SummaryBuildContext,
 )
 
-from .schedule_summary_assembly import _build_result_summary_obj
+from .schedule_summary_assembly import build_result_summary_obj
 from .schedule_summary_degradation import (
-    _compute_resource_pool_state,
-    _hard_constraints,
-    _summary_degradation_state,
+    hard_constraint_names,
+    summary_degradation_state,
 )
 from .schedule_summary_freeze import (
-    _compute_completion_status,
-    _freeze_meta_dict,
-    _frozen_batch_ids,
+    collect_frozen_batch_ids,
+    compute_completion_status,
+    freeze_meta_dict,
 )
 from .summary_runtime_state import (
-    _build_fallback_state,
-    _build_runtime_state,
-    _build_summary_warnings,
-    _merge_fallback_warnings,
+    build_runtime_state,
+    build_summary_warnings,
+    counter_dict,
 )
 
 __all__ = ["build_result_summary"]
 
 
 def build_result_summary(*, ctx: SummaryBuildContext) -> Dict[str, Any]:
-    runtime_state = _build_runtime_state(
+    runtime_state = build_runtime_state(
         batches=ctx.batches,
         summary=ctx.summary,
         best_metrics=ctx.best_metrics,
     )
-    completion_status = _compute_completion_status(ctx.summary)
+    completion_status = compute_completion_status(ctx.summary)
+    # From the prepared run input (ctx.t0) to this summary, on the same wall clock (time.monotonic).
     time_cost_ms = max(int((time.monotonic() - float(ctx.t0)) * 1000), 0)
-    frozen_batch_ids = _frozen_batch_ids(ctx.operations, frozen_op_ids=ctx.frozen_op_ids)
-    warnings = _build_summary_warnings(summary=ctx.summary, runtime_state=runtime_state)
-    freeze_state = _freeze_meta_dict(ctx.freeze_meta)
-    resource_pool_enabled, resource_pool_attempted = _compute_resource_pool_state(
-        ctx.cfg, resource_pool_meta=ctx.resource_pool_meta
-    )
-    hard_constraints = _hard_constraints(freeze_applied=bool(freeze_state.get("freeze_applied")))
-    fallback_state = _build_fallback_state(ctx.algo_stats)
-    warnings = _merge_fallback_warnings(warnings, fallback_state)
-    summary_degradation = _summary_degradation_state(
+    frozen_batch_ids = collect_frozen_batch_ids(ctx.operations, frozen_op_ids=ctx.frozen_op_ids)
+    warnings = build_summary_warnings(summary=ctx.summary, runtime_state=runtime_state)
+    freeze_state = freeze_meta_dict(ctx.freeze_meta)
+    hard_constraints = hard_constraint_names(freeze_applied=bool(freeze_state.get("freeze_applied")))
+    summary_degradation = summary_degradation_state(
         invalid_due_count=runtime_state.invalid_due_count,
         invalid_due_batch_ids_sample=runtime_state.invalid_due_batch_ids_sample,
-        ortools_warmstart_failed_count=fallback_state.ortools_warmstart_failed_count,
     )
     algorithm_state = AlgorithmSummaryState(
         ctx=ctx,
         hard_constraints=hard_constraints,
         freeze_state=freeze_state,
         frozen_batch_ids=frozen_batch_ids,
-        resource_pool_meta=ctx.resource_pool_meta,
-        resource_pool_enabled=resource_pool_enabled,
-        resource_pool_attempted=resource_pool_attempted,
-        fallback_state=fallback_state,
+        fallback_counts=counter_dict(ctx.algo_stats.get("fallback_counts")),
     )
-    result_summary_obj = _build_result_summary_obj(
+    result_summary_obj = build_result_summary_obj(
         ctx=ctx,
         runtime_state=runtime_state,
         warnings=warnings,

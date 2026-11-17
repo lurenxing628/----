@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set
 
 import pytest
 
+from core.algorithm_contracts.resource_pool import ResourcePool
 from core.algorithm_contracts.types import ScheduleResult
 from core.errors import ValidationError
 from core.models.batch_operation import BatchOperation
@@ -224,24 +225,28 @@ def _seed_common(conn: sqlite3.Connection, rows: Iterable[tuple]) -> None:
 
 
 def test_schedule_schema_rejects_duplicate_version_op_rows() -> None:
+    from tests.workbench.plan_catalog_support import ensure_history_head, insert_schedule_row
+
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     _load_schema(conn)
     try:
         _seed_common(conn, [(1, "internal", "missing", None, None)])
-        conn.execute(
-            "INSERT INTO Schedule (op_id, machine_id, operator_id, start_time, end_time, lock_status, version) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (1, "MC_A", "OP_A", "2026-01-01 08:00:00", "2026-01-01 09:00:00", "unlocked", 21),
+        ensure_history_head(conn, 21)
+        ensure_history_head(conn, 22)
+        insert_schedule_row(
+            conn, 21, 1, "2026-01-01T08:00:00", "2026-01-01T09:00:00",
+            machine_id="MC_A", operator_id="OP_A", lock_status="unlocked",
         )
         with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                "INSERT INTO Schedule (op_id, machine_id, operator_id, start_time, end_time, lock_status, version) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (1, "MC_B", "OP_B", "2026-01-01 10:00:00", "2026-01-01 11:00:00", "unlocked", 21),
+            insert_schedule_row(
+                conn, 21, 1, "2026-01-01T10:00:00", "2026-01-01T11:00:00",
+                machine_id="MC_B", operator_id="OP_B", lock_status="unlocked",
             )
-        conn.execute(
-            "INSERT INTO Schedule (op_id, machine_id, operator_id, start_time, end_time, lock_status, version) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (1, "MC_B", "OP_B", "2026-01-01 10:00:00", "2026-01-01 11:00:00", "unlocked", 22),
+        insert_schedule_row(
+            conn, 22, 1, "2026-01-01T10:00:00", "2026-01-01T11:00:00",
+            machine_id="MC_B", operator_id="OP_B", lock_status="unlocked",
         )
     finally:
         conn.close()
@@ -252,7 +257,6 @@ def test_whitespace_padded_resource_identities_stay_distinct_from_trimmed_siblin
 
     from core.algorithm_contracts.ordering import clean_resource_id
     from core.algorithm_contracts.schedule_point_evidence import SchedulePointEvidence
-    from core.algorithms.evaluation import compute_metrics
     from core.algorithms.greedy.auto_assign import prepare_resource_candidates
     from core.errors import AppError
     from core.models.operation_execution_scope import EXECUTION_STATUS_COMPLETED
@@ -275,6 +279,7 @@ def test_whitespace_padded_resource_identities_stay_distinct_from_trimmed_siblin
     from core.services.workbench.facts.zero_duration import PointEventError, estimate_point_event
     from core.services.workbench.run.compute_validation import validate_candidate
     from tests._support.algo_operations import make_algo_op, make_batch
+    from tests._support.schedule_decode import prepared_metrics
 
     # 1. clean_resource_id / id_policy / OperationGraphNode / 点事件见证均保留 " M1 " 且将纯空白视作未分配
     assert clean_resource_id(" M1 ") == " M1 "
@@ -381,7 +386,6 @@ def test_whitespace_padded_resource_identities_stay_distinct_from_trimmed_siblin
 
     with pytest.raises(AppError) as conflict_exc:
         prepare_runtime_seeds(
-            sqlite3.connect(":memory:"),
             run_label="排产",
             operations=[op],
             algo_ops=[make_algo_op(id=1, op_code="B001_01", batch_id="B001", seq=1)],
@@ -453,7 +457,7 @@ def test_whitespace_padded_resource_identities_stay_distinct_from_trimmed_siblin
     # 两道 60 分钟工序共享 2 台候选设备 (" M1 ", "M1")，每台分摊 60 分钟 = 1.0h，折扣 sqrt(2)
     assert graph_summary.node_metrics["op:1"]["bottleneck_machine_score"] == round(1.0 / (2.0 ** 0.5), 6)
 
-    eval_metrics = compute_metrics(
+    eval_metrics = prepared_metrics(
         [
             _result(1, machine_id=" M1 ", operator_id=" O1 ", start_offset=0, end_offset=1),
             _result(2, machine_id="M1", operator_id="O1", start_offset=0, end_offset=1),
@@ -485,15 +489,15 @@ def test_whitespace_padded_resource_identities_stay_distinct_from_trimmed_siblin
     resource_facts = CapturedResourceFacts(
         {
             "Machines": [
-                {"machine_id": " M1 ", "name": "PaddedM", "op_type_id": "OT_A", "category": None, "status": "active", "remark": None, "team_id": None, "created_at": None, "updated_at": None},
+                {"machine_id": " M1 ", "name": "PaddedM", "category": None, "status": "active", "remark": None, "team_id": None, "created_at": None, "updated_at": None},
             ],
-            "MachineOpTypes": [],
+            "MachineOpTypes": [{"machine_id": " M1 ", "op_type_id": "OT_A"}],
             "Operators": [
                 {"operator_id": "O1", "name": "Op1", "status": "active", "remark": None, "team_id": None},
                 {"operator_id": "O2", "name": "Op2", "status": "active", "remark": None, "team_id": None},
             ],
             "OperatorMachine": [
-                {"operator_id": "O1", "machine_id": " M1 ", "skill_level": "high", "is_primary": "yes"},
+                {"operator_id": "O1", "machine_id": " M1 ", "skill_level": "expert", "is_primary": "yes"},
                 {"operator_id": "O2", "machine_id": " M1 ", "skill_level": "normal", "is_primary": "no"},
             ],
             "WorkbenchOperatorProfiles": [
@@ -502,19 +506,19 @@ def test_whitespace_padded_resource_identities_stay_distinct_from_trimmed_siblin
             ],
             "OpTypes": [{"op_type_id": "OT_A", "name": "A", "category": "internal"}],
             "OperatorSkill": [
-                {"operator_id": "O1", "op_type_id": "OT_A", "skill_level": "high", "is_primary": "yes"},
+                {"operator_id": "O1", "op_type_id": "OT_A", "skill_level": "expert", "is_primary": "yes"},
                 {"operator_id": "O2", "op_type_id": "OT_A", "skill_level": "normal", "is_primary": "no"},
             ],
         }
     )
     pool = build_resource_pool(
-        cfg=SimpleNamespace(auto_assign_enabled="yes"),
+        cfg=SimpleNamespace(auto_assign_enabled=True),
         algo_ops=[open_op],
         resource_facts=resource_facts,
     )
-    assert pool is not None
-    assert pool["machines_by_op_type"]["OT_A"] == [" M1 "]
-    assert pool["operators_by_machine"] == {" M1 ": ["O1", "O2"]}
+    assert pool.enabled
+    assert pool.machines_by_op_type["OT_A"] == (" M1 ",)
+    assert pool.operators_by_machine == {" M1 ": ("O1", "O2")}
     assert prepare_resource_candidates(open_op, pool).pairs == ((" M1 ", "O1"), (" M1 ", "O2"))
 
     picked = pick_resource_pair(pool)
@@ -525,17 +529,16 @@ def test_whitespace_padded_resource_identities_stay_distinct_from_trimmed_siblin
 
 def test_canonical_batch_identities_flow_through_prepare_decode_evaluate_and_due_risk() -> None:
     from core.algorithm_contracts.ordering import normalize_batch_order_override
+    from core.algorithm_runtime.seed_results import seed_external_group_key, with_seed_external_group_metadata
     from core.algorithms.greedy.scheduler import GreedyScheduler
-    from core.algorithms.greedy.seed import seed_external_group_key, with_seed_external_group_metadata
-    from core.services.scheduler.run.optimizer.shared_decode import decode_and_metrics
     from core.services.scheduler.summary.due_risk_items import (
-        _build_overdue_items,
+        build_overdue_items,
         incomplete_batch_ids_from_failure_details,
         incomplete_batches_payload,
     )
     from tests._support.algo_operations import make_algo_op, make_batch
     from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar
-    from tests._support.schedule_decode import config_snapshot, production_decode_in_session
+    from tests._support.schedule_decode import config_snapshot, decode_in_session, production_decode_in_session
 
     batches = {
         "B001": make_batch(batch_id="B001", due_date="2026-01-01"),
@@ -606,15 +609,10 @@ def test_canonical_batch_identities_flow_through_prepare_decode_evaluate_and_due
     assert evaluation.metrics.overdue_count == 1
 
     with pytest.raises(ValidationError) as session_override_exc:
-        decode_and_metrics(
-            decode_session=session,
-            objective_name="min_overdue",
-            start_dt=start_dt,
-            batch_order_override=[" B001 "],
-        )
+        decode_in_session(session, batch_order_override=[" B001 "])
     assert session_override_exc.value.field == "batch_order_override"
 
-    overdue_items, near_due_items = _build_overdue_items(
+    overdue_items, near_due_items = build_overdue_items(
         batches=batches,
         finish_by_batch=evaluation.metrics._finish_by_batch,
         incomplete_batch_ids=set(),
@@ -661,12 +659,13 @@ def test_sgs_window_blocked_auto_assign_reuses_scoring_verdict_without_second_pr
 
     monkeypatch.setattr(run_context_module, "auto_assign_internal_resources_attempt", record_attempt)
 
-    pool = {
-        "machines_by_op_type": {"OT_FAST": ["M_FAST"], "OT_SLOW": ["M_SLOW1", "M_SLOW2"]},
-        "operators_by_machine": {"M_FAST": ["O_FAST"], "M_SLOW1": ["O_SLOW"], "M_SLOW2": ["O_SLOW"]},
-        "machines_by_operator": {"O_FAST": ["M_FAST"], "O_SLOW": ["M_SLOW1", "M_SLOW2"]},
-        "pair_rank": {},
-    }
+    pool = ResourcePool(
+        enabled=True,
+        machines_by_op_type={"OT_FAST": ("M_FAST",), "OT_SLOW": ("M_SLOW1", "M_SLOW2")},
+        operators_by_machine={"M_FAST": ("O_FAST",), "M_SLOW1": ("O_SLOW",), "M_SLOW2": ("O_SLOW",)},
+        machines_by_operator={"O_FAST": ("M_FAST",), "O_SLOW": ("M_SLOW1", "M_SLOW2")},
+        pair_rank={}, operator_skills=None,
+    )
     batches = {
         "B_OK": make_batch(batch_id="B_OK", due_date="2026-01-05"),
         "B_BLOCKED": make_batch(batch_id="B_BLOCKED", due_date="2026-01-03"),

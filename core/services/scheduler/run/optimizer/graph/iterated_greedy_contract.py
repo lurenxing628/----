@@ -19,7 +19,7 @@ IG_DECODE_FORMULA_VERSION = "graph_ready_v2_objective_features_v2"
 IG_GENERATORS = ("time_window", "resource_window", "tardy_random")
 
 
-class _BudgetExhausted(RuntimeError):
+class BudgetExhausted(RuntimeError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason

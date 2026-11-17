@@ -4,26 +4,13 @@ from dataclasses import replace
 from datetime import datetime
 from typing import Set
 
+from core.models.hours import stored_hours
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution import ExecutionProjection, ProductionReport
 from core.models.workbench_execution_input import closed_write_context, public_ref, reject
 
 from .quality import classify_quality, gap, operation_target
 from .totals import quantity_consistency, report_totals
-
-
-def is_point_work(source, setup_hours, unit_hours, target_quantity):
-    values = (setup_hours, unit_hours, target_quantity)
-    return (
-        source == "internal"
-        and type(target_quantity) is int
-        and all(
-            type(value) in (int, float) and 0 <= value <= 9007199254740991
-            for value in values
-        )
-        and setup_hours == 0
-        and (unit_hours == 0 or target_quantity == 0)
-    )
 
 
 def projection_resource_refs(projection: ExecutionProjection) -> Set[str]:
@@ -166,7 +153,37 @@ def _validated_report_dto(history, *, corrections):
         **{key: latest[key] for key in ("report_ref", "report_no", "operation_ref", "recorded_against_task_ref",
                                         "recorded_against_plan_ref", "source", "recorded_at",
                                         "revision_ref", "local_operator", "declared_operator")},
-        **latest["values"], correction_history=corrections, write_context=closed_write_context())
+        **latest["values"],
+        correction_history=corrections,
+        write_context=closed_write_context(),
+        revision_count=len(history),
+    )
+
+
+def active_report_dto(row) -> ProductionReport:
+    hours = row["effective_processing_hours"]
+    return ProductionReport(
+        report_ref=row["report_ref"],
+        report_no=row["report_no"],
+        operation_ref=row["operation_ref"],
+        recorded_against_task_ref=row["recorded_against_task_ref"],
+        recorded_against_plan_ref=row["recorded_against_plan_ref"],
+        source=row["source"],
+        actual_start=row["actual_start"],
+        actual_end=row["actual_end"],
+        completed_quantity=row["completed_quantity"],
+        effective_processing_hours=None if hours is None else stored_hours(hours),
+        actual_machine_ref=row["actual_machine_ref"],
+        actual_operator_ref=row["actual_operator_ref"],
+        remark=row["remark"],
+        recorded_at=row["recorded_at"],
+        correction_history=[],
+        write_context=closed_write_context(),
+        revision_ref=row["current_revision_ref"],
+        local_operator=row["current_local_operator"],
+        declared_operator=row["current_declared_operator"],
+        revision_count=row["revision_count"],
+    )
 
 
 def report_dto(history, *, operation_ref, report_ref, include_history: bool = True):

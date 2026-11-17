@@ -5,14 +5,20 @@ from datetime import date, datetime
 from typing import Any, Callable, Optional, Tuple
 
 from core.errors import ValidationError
-from core.models.enums import BatchPriority, ReadyStatus
+from core.models.enums import (
+    BATCH_PRIORITY_LABELS,
+    BATCH_PRIORITY_VALUES,
+    READY_STATUS_LABELS,
+    READY_STATUS_VALUES,
+    BatchPriority,
+    ReadyStatus,
+)
 from core.services.common.normalize import normalize_text
 from core.shared.strict_parse import parse_required_int
 
 # 导入只认导出和模板下拉写出的中文；空格子按默认值处理。
-_PRIORITY_LABELS = {"普通": BatchPriority.NORMAL.value, "急件": BatchPriority.URGENT.value,
-                    "特急": BatchPriority.CRITICAL.value}
-_READY_LABELS = {"齐套": ReadyStatus.YES.value, "未齐套": ReadyStatus.NO.value, "部分齐套": ReadyStatus.PARTIAL.value}
+_PRIORITY_LABELS = {BATCH_PRIORITY_LABELS[value]: value for value in BATCH_PRIORITY_VALUES}
+_READY_LABELS = {READY_STATUS_LABELS[value]: value for value in READY_STATUS_VALUES}
 
 
 def _label_code(value: Any, labels: dict, default: str) -> Optional[str]:
@@ -69,11 +75,11 @@ def get_batch_row_validate_and_normalize(
 
         row["优先级"] = _label_code(row.get("优先级"), _PRIORITY_LABELS, BatchPriority.NORMAL.value)
         if row["优先级"] is None:
-            return "“优先级”不合法，只能填写：普通 / 急件 / 特急。"
+            return "“优先级”不合法，只能填写：" + " / ".join(_PRIORITY_LABELS) + "。"
 
         row["维护齐套标记"] = _label_code(row.get("维护齐套标记"), _READY_LABELS, ReadyStatus.YES.value)
         if row["维护齐套标记"] is None:
-            return "“维护齐套标记”不合法，只能填写：齐套 / 未齐套 / 部分齐套。"
+            return "“维护齐套标记”不合法，只能填写：" + " / ".join(_READY_LABELS) + "。"
 
         ready_value, error = _normalize_batch_date_cell(row.get("齐套日期"), field_label="齐套日期")
         if error:

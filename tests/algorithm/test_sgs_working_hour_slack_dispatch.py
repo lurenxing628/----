@@ -17,9 +17,9 @@ from datetime import date, datetime, timedelta
 import pytest
 
 from core.algorithm_contracts.date_parsers import due_exclusive
-from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithms.greedy.dispatch.sgs_due_span import FAR_DUE_LOOKAHEAD, due_span_inputs, working_hour_span
 from core.algorithms.greedy.scheduler import GreedyScheduler
+from core.models.enums import SortStrategy
 from core.services.scheduler.calendar.working_hours import WorkingHoursPrefix
 from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar

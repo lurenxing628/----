@@ -1,14 +1,9 @@
 from __future__ import annotations
 
 import math
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
-
-from core.errors import ValidationError
-from core.models.scheduler_degradation_messages import FREEZE_WINDOW_DEGRADED_MESSAGE
-from core.shared.local_datetime import format_local_datetime as fmt_dt
 
 from .freeze_window_prefixes import (
     group_seed_operations_by_batch,
@@ -32,15 +27,9 @@ _FREEZE_DISABLED_NO_FREEZABLE_PREFIX = "no_freezable_prefix"
 
 
 @dataclass(frozen=True)
-class _LoadedScheduleMapOutcome:
-    schedule_map: Dict[int, Dict[str, Any]]
-    invalid_row_count: int
-
-
-@dataclass(frozen=True)
 class _FreezeSeedScope:
-    start_str: str
-    freeze_end_str: str
+    read_start: datetime
+    read_end: datetime
     seed_operations_by_batch: Dict[str, List[Any]]
     op_by_id: Dict[int, Any]
     op_ids_all: List[int]
@@ -62,45 +51,8 @@ def _set_freeze_disabled(meta: Dict[str, Any], reason: str) -> None:
     meta["freeze_disabled_reason"] = reason
 
 
-def _freeze_unavailable() -> ValidationError:
-    # 上一版计划的存储数据或冻结配置读不出来：整次拒绝，不降级成部分冻结。
-    return ValidationError(FREEZE_WINDOW_DEGRADED_MESSAGE, field="freeze_window")
-
-
 def _set_freeze_applied(meta: Dict[str, Any], frozen_op_ids: Set[int]) -> None:
     meta["freeze_applied"] = bool(frozen_op_ids)
-
-
-def _load_schedule_map(
-    *,
-    prev_version: int,
-    op_ids: List[int],
-    start_str: str,
-    freeze_end_str: str,
-    schedule_rows_reader: Any,
-) -> _LoadedScheduleMapOutcome:
-    schedule_map: Dict[int, Dict[str, Any]] = {}
-    invalid_row_count = 0
-    duplicate_op_ids: Set[int] = set()
-    rows = schedule_rows_reader(
-        version=int(prev_version),
-        op_ids=op_ids,
-        start_time=start_str,
-        end_time=freeze_end_str,
-    )
-    # The reader returns only rows whose op_id is one of ``op_ids`` (input_points.read_point_freeze_rows).
-    for row in rows:
-        oid = row["op_id"]
-        if oid in schedule_map or oid in duplicate_op_ids:
-            duplicate_op_ids.add(oid)
-            schedule_map.pop(oid, None)
-            invalid_row_count += 1
-            continue
-        schedule_map[oid] = row
-    return _LoadedScheduleMapOutcome(
-        schedule_map=schedule_map,
-        invalid_row_count=invalid_row_count,
-    )
 
 
 def _empty_freeze_seed_result(freeze_meta: Dict[str, Any]) -> Tuple[Set[int], List[Dict[str, Any]]]:
@@ -148,8 +100,8 @@ def _prepare_freeze_seed_scope(
         return None
 
     return _FreezeSeedScope(
-        start_str=fmt_dt(start_dt),
-        freeze_end_str=fmt_dt(freeze_end),
+        read_start=start_dt,
+        read_end=freeze_end,
         seed_operations_by_batch=seed_operations_by_batch,
         op_by_id=op_by_id,
         op_ids_all=op_ids_all,
@@ -164,26 +116,19 @@ def _load_previous_schedule_for_freeze(
     prev_version: int,
     freeze_meta: Dict[str, Any],
     schedule_rows_reader: Any,
-) -> Optional[_LoadedScheduleMapOutcome]:
-    try:
-        load_outcome = _load_schedule_map(
-            prev_version=int(prev_version),
-            op_ids=scope.op_ids_all,
-            start_str=scope.start_str,
-            freeze_end_str=scope.freeze_end_str,
-            schedule_rows_reader=schedule_rows_reader,
-        )
-    except (sqlite3.Error, ValueError) as exc:
-        raise _freeze_unavailable() from exc
-
-    if load_outcome.invalid_row_count > 0:
-        raise _freeze_unavailable()
-
-    if not load_outcome.schedule_map:
+) -> Optional[Dict[int, Dict[str, Any]]]:
+    """{工序: 上一版排程行}：读取器只返回 op_ids 里的工序在这一版的行，同一版同一工序只有一行（Schedule(version, op_id) 唯一）。"""
+    rows = schedule_rows_reader(
+        version=prev_version,
+        op_ids=scope.op_ids_all,
+        start_time=scope.read_start,
+        end_time=scope.read_end,
+    )
+    schedule_map = {row["op_id"]: row for row in rows}
+    if not schedule_map:
         _set_freeze_disabled(freeze_meta, _FREEZE_DISABLED_NO_PREVIOUS_SCHEDULE_ROWS)
         return None
-
-    return load_outcome
+    return schedule_map
 
 
 def _apply_freeze_prefixes(
@@ -206,9 +151,8 @@ def _apply_freeze_prefixes(
             freeze_meta.setdefault("freeze_skipped_batch_ids", []).append(bid)
             continue
 
-        if _cache_seed_for_prefix(prefix=prefix, schedule_map=schedule_map, op_by_id=scope.op_by_id,
-                                  seed_tmp=seed_tmp, point_validator=point_validator):
-            raise _freeze_unavailable()
+        _cache_seed_for_prefix(prefix=prefix, schedule_map=schedule_map, op_by_id=scope.op_by_id,
+                               seed_tmp=seed_tmp, point_validator=point_validator)
 
         for oid in prefix:
             frozen_op_ids.add(int(oid))
@@ -244,7 +188,7 @@ def build_freeze_window_seed(
     schedule_rows_reader: Any,
     hold_window: Optional[Tuple[datetime, datetime]] = None,
 ) -> Tuple[Set[int], List[Dict[str, Any]]]:
-    """上一版计划读不出来或冻结前缀有坏行时抛 ValidationError(field="freeze_window")，不降级成部分冻结。
+    """上一版计划在不重排时段里要原样保留的原安排；零工时原安排的依据由 point_validator 核对，对不上即拒绝。
 
     前道原安排不在窗口里的批次不冻结、记进 meta["freeze_skipped_batch_ids"]。
     hold_window=(开始, 结束) 时：和这段时间重叠的原安排保留，同批次排在前面的
@@ -262,19 +206,19 @@ def build_freeze_window_seed(
     if scope is None:
         return _empty_freeze_seed_result(freeze_meta)
 
-    load_outcome = _load_previous_schedule_for_freeze(
+    schedule_map = _load_previous_schedule_for_freeze(
         scope=scope,
         prev_version=int(prev_version),
         freeze_meta=freeze_meta,
         schedule_rows_reader=schedule_rows_reader,
     )
-    if load_outcome is None:
+    if schedule_map is None:
         return _empty_freeze_seed_result(freeze_meta)
 
     seed_tmp: Dict[int, Dict[str, Any]] = {}
     frozen_op_ids = _apply_freeze_prefixes(
         scope=scope,
-        schedule_map=load_outcome.schedule_map,
+        schedule_map=schedule_map,
         seed_tmp=seed_tmp,
         freeze_meta=freeze_meta,
         point_validator=point_validator,

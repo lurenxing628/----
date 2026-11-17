@@ -17,7 +17,6 @@ from core.models.calendar_periods import (
     encode_periods,
 )
 from core.models.enums import BatchPriority, CalendarDayType, YesNo
-from core.shared.strict_parse import finite_float, is_non_finite_number
 
 from . import checkpoint_certificate
 from .day_policy import DayPolicy, priority_class
@@ -26,11 +25,7 @@ from .operator_shift import OperatorShiftCalendar
 from .period_offsets import offset_hours, period_offsets
 from .working_hours import WorkingHoursPrefix
 
-# add_calendar_days 的业务量级上界：100 年（365 天 × 100）。
-# 依据：外协周期按自然日计，业务上不可能超过百年量级；而 datetime + timedelta 在
-# 约 291 万天（datetime.max）处会抛裸 OverflowError，isfinite/非负守卫拦不住有限
-# 正巨值（如录入笔误 9999999），故与既有 NaN/Inf/负数守卫对称地补一条量级上界。
-MAX_CALENDAR_DAYS = 36500.0
+_DATE_LIMIT_MESSAGE = "已到可表示日期上限，没有后续可排产时间。"
 _NORMAL_PRIORITY = BatchPriority.NORMAL.value
 _ONE_MICROSECOND = timedelta(microseconds=1)
 _MICROSECONDS_PER_HOUR = 3_600_000_000
@@ -105,7 +100,7 @@ _EMPTY_CALENDAR_INPUTS = CalendarInputs()
 
 
 class IncompleteCalendarSnapshotError(ValidationError):
-    def __init__(self, missing_fact: str, policy_date: str, operator_id: Optional[str] = None):
+    def __init__(self, missing_fact: str, policy_date: str, operator_id: Optional[str]):
         self.missing_fact = missing_fact
         self.policy_date = policy_date
         self.operator_id = operator_id
@@ -224,12 +219,6 @@ class CalendarEngine:
         return self._default_facts
 
     def decoded_periods_for_json(self, periods_json: str) -> List[Dict[str, Any]]:
-        if not isinstance(periods_json, str):
-            raise ValidationError(
-                "工作日历里的工作时段读不出来或者填得不对，请到工作日历重新设置。",
-                field="periods_json",
-                details={"reason": "invalid_calendar_shift", "field": "periods_json"},
-            )
         if periods_json not in self._decoded_periods:
             self._decoded_periods[periods_json] = decode_periods(periods_json)
         return self._decoded_periods[periods_json]
@@ -344,7 +333,7 @@ class CalendarEngine:
             _period_offsets=offsets,
         )
 
-    def policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
+    def policy_for_datetime(self, dt: datetime, operator_id: Optional[str]) -> DayPolicy:
         """
         获取某时刻所属的 DayPolicy（支持跨午夜班次）。
 
@@ -368,10 +357,10 @@ class CalendarEngine:
 
         return p_today
 
-    def get_efficiency(self, dt: datetime, operator_id: Optional[str] = None) -> float:
+    def get_efficiency(self, dt: datetime, operator_id: Optional[str]) -> float:
         return self.policy_for_datetime(dt, operator_id=operator_id).efficiency
 
-    def certified_slot_window(self, dt: datetime, *, priority=None, operator_id=None):
+    def certified_slot_window(self, dt: datetime, *, priority: str, operator_id: Optional[str]):
         """Constant native policy span."""
         policy = self.policy_for_datetime(dt, operator_id=operator_id)
         if policy.date_str != dt.date().isoformat() or not policy.is_priority_allowed(priority):
@@ -385,7 +374,7 @@ class CalendarEngine:
         return start, end
 
     def capacity_fraction_between(
-        self, start: datetime, end: datetime, *, priority=None, operator_id=None,
+        self, start: datetime, end: datetime, *, priority: str, operator_id: Optional[str],
     ) -> Fraction:
         """Efficiency-weighted exact rational capacity over the same disjoint pieces used by scheduling."""
         day, num, den = start.date(), 0, 1
@@ -428,9 +417,7 @@ class CalendarEngine:
         cache[day] = result
         return result
 
-    def adjust_to_working_time(
-        self, dt: datetime, priority: Optional[str] = None, operator_id: Optional[str] = None,
-    ) -> datetime:
+    def adjust_to_working_time(self, dt: datetime, *, priority: str, operator_id: Optional[str]) -> datetime:
         """Advance to the earliest allowed segment, including today's later shift."""
         cur = dt
         for _ in range(3660):
@@ -438,7 +425,7 @@ class CalendarEngine:
                 if cur < end:
                     return max(cur, start)
             if cur.date() == date.max:
-                raise BusinessError(ErrorCode.CALENDAR_ERROR, "已到可表示日期上限，没有后续可排产时间。")
+                raise BusinessError(ErrorCode.CALENDAR_ERROR, _DATE_LIMIT_MESSAGE)
             cur = datetime.combine(cur.date() + timedelta(days=1), time.min)
         raise BusinessError(ErrorCode.CALENDAR_ERROR, "工作日历计算异常：循环次数过多，请检查日历配置。")
 
@@ -446,22 +433,20 @@ class CalendarEngine:
         self,
         start: datetime,
         hours: float,
-        priority: Optional[str] = None,
-        operator_id: Optional[str] = None,
+        *,
+        priority: str,
+        operator_id: Optional[str],
     ) -> datetime:
-        """消耗有效加工工时；每个实际工作班段按其自己的效率折算。"""
-        if hours is None:
-            raise ValidationError("缺少工时参数", field="hours")
-        total = finite_float(hours)
-        if total is None:
-            raise ValidationError("工时必须是有限数字" if is_non_finite_number(hours) else "工时必须是数字", field="hours")
-        if total < 0:
-            raise ValidationError("工时不能为负数", field="hours")
-        if total == 0:
+        """消耗有效加工工时；每个实际工作班段按其自己的效率折算。
+
+        ``hours`` 是调用方由唯一工时公式算好的非负有限值。零工时是点事件：只落到最早可排产时刻，
+        不进下面的推进（推进至少走 1 微秒）。
+        """
+        if hours == 0:
             return self.adjust_to_working_time(start, priority=priority, operator_id=operator_id)
 
         cur = self.adjust_to_working_time(start, priority=priority, operator_id=operator_id)
-        rem_n, rem_d = total.as_integer_ratio()
+        rem_n, rem_d = hours.as_integer_ratio()
         rem_n *= _MICROSECONDS_PER_HOUR
 
         for _ in range(36600):
@@ -481,7 +466,7 @@ class CalendarEngine:
 
         raise BusinessError(ErrorCode.CALENDAR_ERROR, "工作日历计算异常：循环次数过多，请检查日历配置。")
 
-    def _allowed_segments(self, day: date, *, priority: Optional[str], operator_id: Optional[str]) -> tuple:
+    def _allowed_segments(self, day: date, *, priority: str, operator_id: Optional[str]) -> tuple:
         return tuple((start, end) for start, end, policy in self._effective_segments(day, operator_id)
                      if policy.is_priority_allowed(priority))
 
@@ -489,8 +474,9 @@ class CalendarEngine:
         self,
         start: datetime,
         end: datetime,
-        priority: Optional[str] = None,
-        operator_id: Optional[str] = None,
+        *,
+        priority: str,
+        operator_id: Optional[str],
     ) -> float:
         """
         start 到 end 之间允许该优先级排产的工作小时数（end 早于 start 时为负）。
@@ -509,22 +495,17 @@ class CalendarEngine:
     def add_calendar_days(self, start: datetime, days: Optional[float]) -> datetime:
         """
         自然日累加（外协周期使用）：不受工作日历影响。
-        - days 支持小数
+        - days 支持小数；有值时由写入准入与表约束定在 (0, EXTERNAL_DAYS_MAX] 天（strict_parse.is_external_days），
+          存储副本由各自读边界按同一原语准入，这里直接使用
         - 采用复核、排产检查按工序原值传周期，未单独设置周期的外协工序会传 None，这里按缺少周期拒绝。
         """
         if days is None:
             raise ValidationError("缺少周期参数", field="days")
-        d = finite_float(days)
-        if d is None:
-            raise ValidationError("周期必须是有限数字" if is_non_finite_number(days) else "周期必须是数字", field="days")
-        if d < 0:
-            raise ValidationError("周期不能为负数", field="days")
-        if d > MAX_CALENDAR_DAYS:
-            raise ValidationError(
-                f"外协周期天数超出合理范围（不能超过 {int(MAX_CALENDAR_DAYS)} 天）",
-                field="days",
-            )
-        return start + timedelta(days=d)
+        span = timedelta(days=days)
+        if span > datetime.max - start:
+            # 与 adjust_to_working_time 同口径：越过可表示日期上限就没有回厂时刻。
+            raise BusinessError(ErrorCode.CALENDAR_ERROR, _DATE_LIMIT_MESSAGE)
+        return start + span
 
 
 # Subclasses that only change how calendar rows are resolved keep the engine's pure timing surface.

@@ -28,7 +28,7 @@ class LargeGeneratorRotation(GeneratorRotation):
 class BudgetStagnation:
     def __init__(self, search: LargeIteratedGreedySearch):
         self.search = search
-        self.last_progress = search.clock()
+        self.last_progress = search.budget.clock()
         self.improvements = search.report["improvements"]
         self.explore_next = False
 
@@ -37,12 +37,12 @@ class BudgetStagnation:
         reference = search.reference
         if reference is None:
             raise RuntimeError("Iterated greedy iteration started without a reference solution.")
-        now = search.clock()
+        now = search.budget.clock()
         if search.non_improving == 0 or search.report["improvements"] != self.improvements:
             self.last_progress = now
             self.improvements = search.report["improvements"]
         threshold = min(search.limits.stagnation_iterations, 2)
-        duration = max(search.deadline - search.started, 0.0)
+        duration = max(search.budget.deadline - search.started, 0.0)
         waited = now - self.last_progress
         trigger = 0.15 * duration
         if search.non_improving < threshold or waited < trigger:

@@ -5,22 +5,19 @@ from typing import Any, Callable, Dict, List, Optional
 from core.errors import ValidationError
 from core.models.calendar import OperatorCalendar, WorkCalendar
 from core.models.calendar_periods import (
+    decode_periods,
     encode_periods,
-    load_stored_periods,
     normalize_periods,
 )
-from core.models.enums import CalendarDayType, YesNo
+from core.models.enums import CALENDAR_DAY_TYPE_STORED_VALUES, YESNO_VALUES, CalendarDayType, YesNo
 from core.services.common.datetime_normalize import normalize_date
-from core.services.common.normalization_matrix import (
-    normalize_calendar_day_type_value,
-    normalize_yes_no_narrow_value,
-)
 from core.services.common.normalize import normalize_text
 from core.services.scheduler.config.config_field_spec import coerce_config_field
 from core.shared.strict_parse import parse_optional_float
-from data.repositories import CalendarRepository, OperatorCalendarRepository
 from data.repositories.calendar_defaults_repo import CalendarDefaultsRepository
+from data.repositories.calendar_repo import CalendarRepository
 from data.repositories.config_repo import ConfigRepository
+from data.repositories.operator_calendar_repo import OperatorCalendarRepository
 
 from .defaults import default_periods_from_row
 
@@ -49,6 +46,7 @@ class CalendarAdmin:
 
     说明：
     - 仅负责 WorkCalendar / OperatorCalendar 的读写与输入标准化
+    - 类型与许可只收存储代号（workday/holiday、yes/no）；界面和文件的叫法由各自入口先翻成代号
     - 不承载排产引擎的“时间推进”逻辑（见 calendar_engine.py）
     """
 
@@ -83,24 +81,21 @@ class CalendarAdmin:
 
     @staticmethod
     def _validate_day_type(value: Any) -> str:
-        try:
-            normalized = normalize_calendar_day_type_value(
-                value,
-                default=CalendarDayType.WORKDAY.value,
-            )
-        except ValueError as exc:
-            raise ValidationError("“类型”不正确，请选择：工作日 / 假期。", field="类型") from exc
-        return normalized
+        """省略按工作日；给了就只能是存储的两种类型，周末按假期存。"""
+        if value is None:
+            return CalendarDayType.WORKDAY.value
+        if value not in CALENDAR_DAY_TYPE_STORED_VALUES:
+            raise ValidationError("“类型”不正确，请选择：工作日 / 假期。", field="类型")
+        return value
 
     @staticmethod
     def _normalize_yesno(value: Any, field: str) -> str:
-        try:
-            return normalize_yes_no_narrow_value(value, default=YesNo.YES.value)
-        except ValueError as e:
-            raise ValidationError(
-                f"“{field}”不正确，请选择：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。",
-                field=field,
-            ) from e
+        """省略按允许；给了就只能是 yes / no。"""
+        if value is None:
+            return YesNo.YES.value
+        if value not in YESNO_VALUES:
+            raise ValidationError(f"“{field}”不正确，请选择：是 / 否。", field=field)
+        return value
 
     def _normalize_calendar_common_fields(
         self,
@@ -127,8 +122,6 @@ class CalendarAdmin:
         rmk = normalize_text(remark)
         if periods is None:
             periods = context.workday_periods() if dt == CalendarDayType.WORKDAY.value else []
-        else:
-            periods = normalize_periods(periods)
         return {
             "date": d,
             "day_type": dt,
@@ -141,11 +134,11 @@ class CalendarAdmin:
 
     @staticmethod
     def _payload_periods(payload):
-        """Decode storage syntax; the common builder normalizes the periods once."""
+        """提交的时段按外部输入准入；只带已存时段文本的按存储读取。两条入口各规范化一次，都没给返回 None。"""
         if "periods" in payload:
-            return payload["periods"]
+            return normalize_periods(payload["periods"])
         raw = payload.get("periods_json")
-        return None if raw is None else load_stored_periods(raw)
+        return None if raw is None else decode_periods(raw)
 
     def build_work_calendar_from_payload(
         self,

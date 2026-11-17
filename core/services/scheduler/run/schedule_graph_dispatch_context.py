@@ -44,7 +44,7 @@ def graph_dispatch_mode_override(public: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def graph_ready_public_fields(*, mode: str, is_dag: bool, graph_block_on_cycle: str) -> Dict[str, Any]:
+def graph_ready_public_fields(*, mode: str, is_dag: bool, graph_block_on_cycle: bool) -> Dict[str, Any]:
     if mode != "on":
         return {}
     if is_dag:
@@ -54,7 +54,7 @@ def graph_ready_public_fields(*, mode: str, is_dag: bool, graph_block_on_cycle: 
             "graph_enhancement_disabled_reason": None,
             "ready_queue_enabled": True,
         }
-    if graph_block_on_cycle == "no":
+    if not graph_block_on_cycle:
         return graph_cycle_disabled_public_fields()
     return {
         "graph_enhancement_allowed": False,

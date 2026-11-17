@@ -10,11 +10,10 @@ from core.services.capacity.resource_utilization_metrics import METRIC_VERSION
 from core.services.common.plan_query import SchedulePlanQueryService, SchedulePlanResolution
 from core.shared.degradation import DegradationCollector
 from core.shared.stored_dates import stored_day
-from data.repositories import MachineDowntimeRepository
+from data.repositories.machine_downtime_repo import MachineDowntimeRepository
 
 from .date_range_limits import ensure_report_date_range_within_limit
 from .downtime_impact import compute_downtime_impact
-from .report_degradation import report_degradation_payload
 from .utilization import group_utilization_rows, utilization_from_groups
 from .utilization_calendars import resource_calendars_for_ids, resource_ids_from_groups
 
@@ -36,10 +35,9 @@ class ReportEngine:
             version=resolution.version,
         )
 
-    def _list_plan_rows_between(self, resolution, start_time, end_time):
+    def _list_plan_rows_between(self, resolution, start: datetime, end: datetime):
         return self.plan_query_service.list_plan_detail_rows_between_for_resolution(
-            version=resolution.version,
-            start_time=start_time, end_time=end_time,
+            version=resolution.version, start=start, end=end,
         )
 
 
@@ -86,13 +84,11 @@ class ReportEngine:
 
         start_dt = datetime(sd.year, sd.month, sd.day, 0, 0, 0)
         end_dt_excl = datetime(ed.year, ed.month, ed.day, 0, 0, 0) + timedelta(days=1)
-        start_s = start_dt.strftime("%Y-%m-%d %H:%M:%S")
-        end_s = end_dt_excl.strftime("%Y-%m-%d %H:%M:%S")
 
-        schedule_rows = self._list_plan_rows_between(resolution, start_s, end_s)
+        schedule_rows = self._list_plan_rows_between(resolution, start_dt, end_dt_excl)
 
         degradation_collector = DegradationCollector()
-        groups = group_utilization_rows(schedule_rows, start_dt, end_dt_excl, degradation_collector)
+        groups = group_utilization_rows(schedule_rows, start_dt, end_dt_excl)
         calendars = resource_calendars_for_ids(self.conn, resource_ids_from_groups(groups), start_dt, end_dt_excl)
         machine_rows, operator_rows = utilization_from_groups(
             groups,
@@ -101,7 +97,6 @@ class ReportEngine:
             calendars=calendars,
             degradation_collector=degradation_collector,
         )
-        degradation = report_degradation_payload(degradation_collector)
 
         return {
             "version": resolution.version,
@@ -111,7 +106,8 @@ class ReportEngine:
             "metric_source": "planned",
             "machines": machine_rows,
             "operators": operator_rows,
-            **degradation,
+            # 利用率计算只登记“资源容量算不出来”这一种降级。
+            "report_degraded": bool(degradation_collector),
         }
 
     def downtime_impact(
@@ -124,25 +120,19 @@ class ReportEngine:
 
         start_dt = datetime(sd.year, sd.month, sd.day, 0, 0, 0)
         end_dt_excl = datetime(ed.year, ed.month, ed.day, 0, 0, 0) + timedelta(days=1)
-        start_s = start_dt.strftime("%Y-%m-%d %H:%M:%S")
-        end_s = end_dt_excl.strftime("%Y-%m-%d %H:%M:%S")
 
-        downtime_rows = self.machine_downtime_repo.list_active_overlaps_with_machine_names(start_s, end_s)
-        sch_rows = self._list_plan_rows_between(resolution, start_s, end_s)
-        degradation_collector = DegradationCollector()
+        downtime_rows = self.machine_downtime_repo.list_active_overlaps_with_machine_names(start_dt, end_dt_excl)
+        sch_rows = self._list_plan_rows_between(resolution, start_dt, end_dt_excl)
         machines = compute_downtime_impact(
             downtime_rows=downtime_rows,
             schedule_rows=sch_rows,
             start_dt=start_dt,
             end_dt_excl=end_dt_excl,
-            degradation_collector=degradation_collector,
         )
-        degradation = report_degradation_payload(degradation_collector)
 
         return {
             "version": resolution.version,
             "start_date": sd.isoformat(),
             "end_date": ed.isoformat(),
             "machines": machines,
-            **degradation,
         }

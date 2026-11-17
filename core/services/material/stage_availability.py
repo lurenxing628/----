@@ -8,11 +8,11 @@ from decimal import ROUND_FLOOR, Decimal
 from core.models.batch_external_context import context_group_key
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.shared.stored_dates import stored_day
-from core.shared.strict_parse import is_exact_non_negative_number
+from core.shared.strict_parse import is_stored_number
 
 
 def quantity(value, *, positive=False):
-    if not is_exact_non_negative_number(value, positive=positive):
+    if not is_stored_number(value, positive=positive):
         raise WorkbenchCommandRejected("material_unknown", "物料需求量或到料量无效，请先核对物料需求。")
     return Decimal(str(value))
 
@@ -31,42 +31,191 @@ def covers_quantity(available, required):
     return required - available <= max(abs(available), abs(required)) * Decimal(str(sys.float_info.epsilon)) * 2
 
 
+def _requirement_state(available, required, problems, marked):
+    """One requirement is ready when it has no problem, covers its need and is reviewed or marked ready."""
+    return {"available": available, "required": required, "problems": problems,
+            "ready": not problems and covers_quantity(available, required) and marked}
+
+
 def arrival_day(value):
     if stored_day(value) is None:
         raise WorkbenchCommandRejected("material_unknown", "到料日期无效，请先核对物料需求。")
     return value
 
 
-class MaterialAvailability:
-    """Derived facts for one captured, read-only tables collection.
+class MaterialReadiness:
+    """Readiness and release dates of one captured, read-only set of requirements, reviews and arrivals.
 
-    Callers create a new instance after material or operation facts change.
-    Preparations stay lazy so later-stage arrivals are checked when consumed.
+    Callers create a new instance after material facts change. Preparations stay lazy so
+    later-stage arrivals are checked only when consumed.
     """
 
-    def __init__(self, tables):
-        self.reviews = {row["requirement_id"]: row["batch_quantity"] for row in tables.get("BatchMaterialReviews", [])}
+    def __init__(self, *, requirements, reviews, arrivals):
+        self.reviews = {row["requirement_id"]: row["batch_quantity"] for row in reviews}
         self.requirements = defaultdict(list)
         self.arrivals = defaultdict(list)
-        self.stages = {row["requirement_id"]: row["operation_id"] for row in tables.get("BatchMaterialStages", [])}
-        self.operations = {row["id"]: row for row in tables.get("BatchOperations", [])}
-        self.operations_by_batch = defaultdict(list)
-        self.contexts = {row["operation_id"]: row for row in tables.get("BatchExternalContexts", [])}
         self._amounts = {}
         self._arrival_data = {}
         self._release_dates = {}
+        self._review_checks = set()
+        self._readiness = {}
+        for row in requirements:
+            self.requirements[row["batch_id"]].append(row)
+        for row in arrivals:
+            self.arrivals[row["requirement_id"]].append(row)
+
+    @classmethod
+    def from_tables(cls, tables):
+        return cls(requirements=tables["BatchMaterials"], reviews=tables["BatchMaterialReviews"],
+                   arrivals=tables["BatchMaterialArrivals"])
+
+    def amount(self, requirement, field, *, positive=False):
+        key = requirement["id"], field
+        if key not in self._amounts:
+            self._amounts[key] = quantity(requirement[field], positive=positive)
+        return self._amounts[key]
+
+    def _prepared_arrivals(self, requirement):
+        requirement_id = requirement["id"]
+        if requirement_id not in self._arrival_data:
+            entries = sorted((arrival_day(row["arrival_date"]), quantity(row["quantity"], positive=True))
+                             for row in self.arrivals[requirement_id])
+            prefix = [Decimal(0)]
+            for _day, amount in entries:
+                prefix.append(prefix[-1] + amount)
+            self._arrival_data[requirement_id] = entries, [day for day, _amount in entries], prefix
+        return self._arrival_data[requirement_id]
+
+    def available(self, requirement, day):
+        available = self.amount(requirement, "available_qty")
+        _entries, days, prefix = self._prepared_arrivals(requirement)
+        return available + prefix[bisect_right(days, day)]
+
+    def release(self, requirement):
+        requirement_id = requirement["id"]
+        if requirement_id not in self._release_dates:
+            self._release_dates[requirement_id] = self._release(requirement)
+        return self._release_dates[requirement_id]
+
+    def _release(self, requirement):
+        needed = self.amount(requirement, "required_qty", positive=True)
+        available = self.amount(requirement, "available_qty")
+        if covers_quantity(available, needed):
+            return "1900-01-01" if requirement["id"] in self.reviews or requirement["ready_status"] == "yes" else None
+        entries, _days, _prefix = self._prepared_arrivals(requirement)
+        for day, amount in entries:
+            available += amount
+            if covers_quantity(available, needed):
+                return day
+        return None
+
+    def verify_review(self, batch, *, required=False):
+        key = batch["batch_id"], batch["quantity"], required
+        if key in self._review_checks:
+            return
+        for row in self.requirements[batch["batch_id"]]:
+            reviewed = self.reviews.get(row["id"])
+            captured = row["id"] in self.reviews
+            if (captured and reviewed != batch["quantity"]) or (required and not captured):
+                raise WorkbenchCommandRejected("material_review_required", "批次数量或用料口径尚未核对，请在物料需求中核对并保存后再排产或拆批。")
+        self._review_checks.add(key)
+
+    def readiness_state(self, batch, day):
+        diagnosis = self.readiness_diagnostics(batch, day)
+        problems = diagnosis["batch_problems"] + [problem for row in diagnosis["requirements"].values()
+                                                   for problem in row["problems"]]
+        return diagnosis["status"], problems
+
+    def readiness_diagnostics(self, batch, day):
+        """Keep requirement defects separate from shared batch evidence.
+
+        This is a display/preflight assessment, independent of the lazy release
+        checks: inspecting a later requirement must not block an earlier stage.
+        Unreviewed requirements retain the original batch readiness mark, but an
+        invalid quantity makes effective readiness unknown for every raw mark.
+        """
+        key = batch["batch_id"], batch["quantity"], batch["ready_status"], day
+        if key in self._readiness:
+            return self._readiness[key]
+        rows = self.requirements[batch["batch_id"]]
+        reviewed = any(row["id"] in self.reviews for row in rows)
+        batch_problems = []
+        if reviewed:
+            try:
+                self.verify_review(batch)
+            except WorkbenchCommandRejected as exc:
+                batch_problems.append({"code": exc.code, "message": str(exc)})
+        requirements = {}
+        for row in rows:
+            row_reviewed = row["id"] in self.reviews
+            available, required, problems = self._stored_amounts(row)
+            if row_reviewed and available is not None:
+                try:
+                    available = self.available(row, day)
+                except WorkbenchCommandRejected as exc:
+                    available = None
+                    problems.append({"code": exc.code, "message": str(exc), "field": "arrivals"})
+            requirements[row["id"]] = _requirement_state(
+                available, required, problems, row_reviewed or row["ready_status"] == "yes")
+        if batch_problems or any(item["problems"] for item in requirements.values()):
+            status = None
+        elif not reviewed and (batch["ready_status"] != "yes" or not rows):
+            status = batch["ready_status"]
+        elif all(item["ready"] for item in requirements.values()):
+            status = "yes"
+        else:
+            status = "partial" if any(item["available"] > 0 for item in requirements.values()) else "no"
+        result = {"status": status, "batch_problems": batch_problems, "requirements": requirements}
+        self._readiness[key] = result
+        return result
+
+    def unreviewed_requirements(self, batch):
+        """Requirement states of a batch none of whose rows is reviewed.
+
+        Without a review only the stored amounts and readiness marks count, so no arrival day enters.
+        """
+        result = {}
+        for row in self.requirements[batch["batch_id"]]:
+            available, required, problems = self._stored_amounts(row)
+            result[row["id"]] = _requirement_state(available, required, problems, row["ready_status"] == "yes")
+        return result
+
+    def _stored_amounts(self, row):
+        """A requirement's stored available and required quantities; an unreadable one is None with its problem."""
+        amounts, problems = {}, []
+        for field, positive in (("required_qty", True), ("available_qty", False)):
+            try:
+                amounts[field] = self.amount(row, field, positive=positive)
+            except WorkbenchCommandRejected as exc:
+                amounts[field] = None
+                problems.append({"code": exc.code, "message": str(exc), "field": field})
+        return amounts["available_qty"], amounts["required_qty"], problems
+
+
+class MaterialRelease:
+    """Stage-aware release on one readiness index: which requirements an operation waits for.
+
+    Use operations come from the material stages; a merged external group's members share
+    their group's sequence span.
+    """
+
+    def __init__(self, readiness, *, stages, operations, contexts):
+        self.readiness = readiness
+        self.stages = {row["requirement_id"]: row["operation_id"] for row in stages}
+        self.operations = {row["id"]: row for row in operations}
+        self.operations_by_batch = defaultdict(list)
+        self.contexts = {row["operation_id"]: row for row in contexts}
         self._use_sequences = {}
         self._group_sequences = {}
-        self._review_checks = set()
         self._strict_releases = {}
         self._stage_releases = {}
-        self._readiness = {}
         for row in self.operations.values():
             self.operations_by_batch[row["batch_id"]].append(row)
-        for row in tables.get("BatchMaterials", []):
-            self.requirements[row["batch_id"]].append(row)
-        for row in tables.get("BatchMaterialArrivals", []):
-            self.arrivals[row["requirement_id"]].append(row)
+
+    @classmethod
+    def from_tables(cls, readiness, tables):
+        return cls(readiness, stages=tables["BatchMaterialStages"], operations=tables["BatchOperations"],
+                   contexts=tables["BatchExternalContexts"])
 
     def use_sequence(self, requirement):
         requirement_id = requirement["id"]
@@ -103,115 +252,8 @@ class MaterialAvailability:
             return lows[keys[op_id]]
         return op["seq"]
 
-    def _amount(self, requirement, field, *, positive=False):
-        key = requirement["id"], field
-        if key not in self._amounts:
-            self._amounts[key] = quantity(requirement[field], positive=positive)
-        return self._amounts[key]
-
-    def _prepared_arrivals(self, requirement):
-        requirement_id = requirement["id"]
-        if requirement_id not in self._arrival_data:
-            entries = sorted((arrival_day(row["arrival_date"]), quantity(row["quantity"], positive=True))
-                             for row in self.arrivals[requirement_id])
-            prefix = [Decimal(0)]
-            for _day, amount in entries:
-                prefix.append(prefix[-1] + amount)
-            self._arrival_data[requirement_id] = entries, [day for day, _amount in entries], prefix
-        return self._arrival_data[requirement_id]
-
-    def available(self, requirement, day):
-        available = self._amount(requirement, "available_qty")
-        _entries, days, prefix = self._prepared_arrivals(requirement)
-        return available + prefix[bisect_right(days, day)]
-
-    def release(self, requirement):
-        requirement_id = requirement["id"]
-        if requirement_id not in self._release_dates:
-            self._release_dates[requirement_id] = self._release(requirement)
-        return self._release_dates[requirement_id]
-
-    def _release(self, requirement):
-        needed = self._amount(requirement, "required_qty", positive=True)
-        available = self._amount(requirement, "available_qty")
-        if covers_quantity(available, needed):
-            return "1900-01-01" if requirement["id"] in self.reviews or requirement["ready_status"] == "yes" else None
-        entries, _days, _prefix = self._prepared_arrivals(requirement)
-        for day, amount in entries:
-            available += amount
-            if covers_quantity(available, needed):
-                return day
-        return None
-
-    def verify_review(self, batch, *, required=False):
-        key = batch["batch_id"], batch["quantity"], required
-        if key in self._review_checks:
-            return
-        for row in self.requirements[batch["batch_id"]]:
-            reviewed = self.reviews.get(row["id"])
-            captured = row["id"] in self.reviews
-            if (captured and (reviewed is None or reviewed != batch["quantity"])) or (required and not captured):
-                raise WorkbenchCommandRejected("material_review_required", "批次数量或用料口径尚未核对，请在物料需求中核对并保存后再排产或拆批。")
-        self._review_checks.add(key)
-
-    def readiness_state(self, batch, day):
-        diagnosis = self.readiness_diagnostics(batch, day)
-        problems = diagnosis["batch_problems"] + [problem for row in diagnosis["requirements"].values()
-                                                   for problem in row["problems"]]
-        return diagnosis["status"], problems
-
-    def readiness_diagnostics(self, batch, day):
-        """Keep requirement defects separate from shared batch evidence.
-
-        This is a display/preflight assessment, independent of the lazy release
-        checks: inspecting a later requirement must not block an earlier stage.
-        Unreviewed requirements retain the original batch readiness mark, but an
-        invalid quantity makes effective readiness unknown for every raw mark.
-        """
-        key = batch["batch_id"], batch["quantity"], batch["ready_status"], day
-        if key in self._readiness:
-            return self._readiness[key]
-        rows = self.requirements[batch["batch_id"]]
-        reviewed = any(row["id"] in self.reviews for row in rows)
-        batch_problems = []
-        if reviewed:
-            try:
-                self.verify_review(batch)
-            except WorkbenchCommandRejected as exc:
-                batch_problems.append({"code": exc.code, "message": str(exc)})
-        requirements = {}
-        for row in rows:
-            row_reviewed = row["id"] in self.reviews
-            amounts, problems = {}, []
-            for field, positive in (("required_qty", True), ("available_qty", False)):
-                try:
-                    amounts[field] = self._amount(row, field, positive=positive)
-                except WorkbenchCommandRejected as exc:
-                    amounts[field] = None
-                    problems.append({"code": exc.code, "message": str(exc), "field": field})
-            available, required = amounts["available_qty"], amounts["required_qty"]
-            if row_reviewed and available is not None:
-                try:
-                    available = self.available(row, day)
-                except WorkbenchCommandRejected as exc:
-                    available = None
-                    problems.append({"code": exc.code, "message": str(exc), "field": "arrivals"})
-            requirements[row["id"]] = {"available": available, "required": required, "problems": problems,
-                "ready": not problems and covers_quantity(available, required) and (row_reviewed or row["ready_status"] == "yes")}
-        if batch_problems or any(item["problems"] for item in requirements.values()):
-            status = None
-        elif not reviewed and (batch["ready_status"] != "yes" or not rows):
-            status = batch["ready_status"]
-        elif all(item["ready"] for item in requirements.values()):
-            status = "yes"
-        else:
-            status = "partial" if any(item["available"] > 0 for item in requirements.values()) else "no"
-        result = {"status": status, "batch_problems": batch_problems, "requirements": requirements}
-        self._readiness[key] = result
-        return result
-
     def operation_release(self, batch, operation, strategy):
-        self.verify_review(batch)
+        self.readiness.verify_review(batch)
         batch_id = batch["batch_id"]
         if strategy == "stage":
             op_id = operation.get("id")
@@ -222,39 +264,40 @@ class MaterialAvailability:
                 seq = highs.get((operation.get("piece_id"), keys[op_id]), seq)
             return self._stage_release(batch_id, seq)
         if batch_id not in self._strict_releases:
-            rows = self.requirements[batch_id]
+            rows = self.readiness.requirements[batch_id]
             for row in rows:
                 self.use_sequence(row)
             result = "1900-01-01"
             for row in rows:
-                day = self.release(row)
+                day = self.readiness.release(row)
                 result = None if result is None or day is None else max(result, day)
             self._strict_releases[batch_id] = result
         return self._strict_releases[batch_id]
 
     def _stage_release(self, batch_id, sequence):
         if batch_id not in self._stage_releases:
-            ordered = sorted(((self.use_sequence(row), row) for row in self.requirements[batch_id]),
+            ordered = sorted(((self.use_sequence(row), row) for row in self.readiness.requirements[batch_id]),
                              key=lambda item: item[0])
             self._stage_releases[batch_id] = ([row for _seq, row in ordered],
                                              [seq for seq, _row in ordered], ["1900-01-01"])
         rows, sequences, prefix = self._stage_releases[batch_id]
         count = bisect_right(sequences, sequence)
         for index in range(len(prefix) - 1, count):
-            day = self.release(rows[index])
+            day = self.readiness.release(rows[index])
             previous = prefix[-1]
             prefix.append(None if previous is None or day is None else max(previous, day))
         return prefix[count]
 
     def splittable_quantity(self, batch, day):
-        self.verify_review(batch, required=True)
-        rows = self.requirements[batch["batch_id"]]
+        readiness = self.readiness
+        readiness.verify_review(batch, required=True)
+        rows = readiness.requirements[batch["batch_id"]]
         if not rows:
             raise WorkbenchCommandRejected("material_requirements_missing", "请先登记物料需求，再预览可开工数量。")
         total = quantity(batch["quantity"], positive=True)
         for row in rows:
             self.use_sequence(row)
-        amounts = [(self.available(row, day), self._amount(row, "required_qty", positive=True)) for row in rows]
+        amounts = [(readiness.available(row, day), readiness.amount(row, "required_qty", positive=True)) for row in rows]
         maximum = min(available * total / required for available, required in amounts)
         count = min(int(total), int(maximum.to_integral_value(rounding=ROUND_FLOOR)))
         if count < total and all(covers_quantity(available, required * (count + 1) / total)

@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any, List, Optional
 
 from .iterated_greedy_acceptance import PoolEntry
-from .iterated_greedy_contract import _BudgetExhausted
+from .iterated_greedy_contract import BudgetExhausted
 from .iterated_greedy_reference import activate_entry, capture_reference, decode_reference, seed_solution_pool
 
 
@@ -26,7 +26,7 @@ def start_reference(search: Any) -> None:
         if reference is not None:
             break
     else:
-        raise _BudgetExhausted("parent_order_rejected")
+        raise BudgetExhausted("parent_order_rejected")
     search.reference = reference
     search.solution_pool.refresh(reference)
 
@@ -48,8 +48,7 @@ def _due_date_reference(search: Any, source: Any) -> Optional[PoolEntry]:
 
     order = build_due_date_seed(parent=search.parent, candidate=source, metrics=search.metrics,
                                 topology=search.decode_session.native_preparation.graph_topology(),
-                                start_dt=search.start_dt,
-                                clock=search.clock, deadline=search.deadline)
+                                start_dt=search.start_dt, budget=search.budget)
     if order is None:
         return None
     entry = decode_reference(search, order, before=source, reference_kind="due_date_seed")

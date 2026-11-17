@@ -1,58 +1,45 @@
-"""One standard-work formula shared by input accounting and internal slots."""
+"""The one standard-work formula; the run's internal slots consume what it yields, never recompute it."""
 
-import math
-from typing import Any, Optional, Tuple
+from typing import Optional, Tuple
 
 from core.algorithm_contracts.operation_effort import OperationEffort
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.models.batch import Batch
 from core.models.enums import MergeMode, OperationQuantityBasis, OperationSetupState, SourceType
-from core.shared.strict_parse import finite_float, is_non_finite_number
 
 from .piece_input import operation_quantity
 
 
-def _coerce_hours_value(raw_value: Any, *, field: str) -> float:
-    number = finite_float(raw_value)
-    if number is not None and number >= 0:
-        return number
-    if isinstance(raw_value, bool):
-        raise ValueError(f"工时字段不能是布尔值：{field}={raw_value!r}")
-    if number is None and not is_non_finite_number(raw_value):
-        raise ValueError(f"工时字段不合法：{field}={raw_value!r}")
-    raise ValueError(f"工时字段必须是非负有限数字：{field}={raw_value!r}")
+def _requirement_parts_for_quantity(op: OpForScheduleAlgo, quantity: int) -> Tuple[float, float, float]:
+    """(setup, processing, required) standard hours.
 
-
-def _requirement_parts_for_quantity(op: OpForScheduleAlgo, quantity_raw: Any) -> Tuple[float, float, float, float]:
-    setup_raw, unit_raw = op.setup_hours, op.unit_hours
-    setup = _coerce_hours_value(setup_raw, field="setup_hours")
-    unit = _coerce_hours_value(unit_raw, field="unit_hours")
-    quantity = _coerce_hours_value(quantity_raw, field="quantity")
-    processing = unit * quantity
-    required = setup + processing
-    if not math.isfinite(required) or required < 0:
-        raise ValueError("工时总量不合法："
-                         f"setup_hours={setup_raw!r} unit_hours={unit_raw!r} quantity={quantity_raw!r} total_hours_base={required!r}")
-    return setup, processing, required, quantity
-
-
-def internal_requirement_parts(op: OpForScheduleAlgo, batch: Batch) -> Tuple[float, float, float, float]:
-    """Consume the dispatcher's already operation-local quantity unchanged."""
-    return _requirement_parts_for_quantity(op, batch.quantity)
+    Every input is a stored number already admitted at its read boundary (0..2**53-1), so the
+    product and sum are finite and non-negative. ``float()`` is the representation the slot walk
+    and the saved requirement ledger both use (a stored integer setup reads as ``2.0``).
+    """
+    setup = float(op.setup_hours)
+    processing = float(op.unit_hours) * float(quantity)
+    return setup, processing, setup + processing
 
 
 def _quantity_basis(op: OpForScheduleAlgo) -> str:
     return OperationQuantityBasis.BATCH.value if op.piece_id is None else OperationQuantityBasis.PIECE.value
 
 
+def internal_required_hours(op: OpForScheduleAlgo, batch: Batch) -> float:
+    """An internal operation's required standard hours, as ``internal_operation_effort`` gives them."""
+    return _requirement_parts_for_quantity(op, operation_quantity(op, batch))[2]
+
+
 def internal_operation_effort(
     op: OpForScheduleAlgo, batch: Batch, *, remaining_quantity: Optional[int] = None,
 ) -> OperationEffort:
     """Apply the same piece quantity rule used by the actual dispatcher."""
-    setup, processing, required, quantity = _requirement_parts_for_quantity(op, operation_quantity(op, batch))
+    quantity = operation_quantity(op, batch)
+    setup, processing, required = _requirement_parts_for_quantity(op, quantity)
     return OperationEffort(
         op_id=op.id, batch_id=op.batch_id, piece_id=op.piece_id,
-        source=SourceType.INTERNAL.value, target_quantity=int(quantity) if quantity.is_integer() else quantity,
+        source=SourceType.INTERNAL.value, target_quantity=quantity,
         remaining_quantity=remaining_quantity,
         setup_standard_hours=setup, processing_standard_hours=processing, required_standard_hours=required,
         setup_state=OperationSetupState.PENDING.value, quantity_basis=_quantity_basis(op),

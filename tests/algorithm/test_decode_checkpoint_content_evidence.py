@@ -6,33 +6,40 @@ from dataclasses import replace
 from datetime import timedelta
 from time import perf_counter
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
-from core.algorithm_contracts.sort_strategies import SortStrategy
+from core.algorithm_contracts.resource_pool import DISABLED_RESOURCE_POOL, ResourcePool
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
+from core.algorithm_runtime.owned_timeline import OwnedSegments
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy import schedule_preparation as native_preparation
 from core.algorithms.greedy.dispatch.sgs_checkpoint import DecodeCheckpointRequest, decode_output_contents
 from core.algorithms.greedy.dispatch.sgs_checkpoint_tail import DecodeTailReuse
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.errors import ValidationError
-from core.models.objective import target_objectives_for
+from core.models.enums import SortStrategy
 from core.services.scheduler.calendar import checkpoint_certificate
 from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.scheduler.run.optimizer.graph import iterated_greedy as ig_module
 from core.services.scheduler.run.optimizer.graph.iterated_greedy_checkpoints import CheckpointStore
 from core.services.scheduler.run.optimizer.graph_ready_profiles import resolve_v2_profiles
-from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
-from core.services.scheduler.run.optimizer.shared_archive import CandidateArchiveRef, SharedScheduleArchive
-from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
-from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession, decode_and_metrics
+from core.services.scheduler.run.optimizer.shared_archive import CandidateArchiveRef
+from core.services.scheduler.run.schedule_shared_search import open_shared_search
 from core.services.workbench.facts.calendar_inputs import calendar_inputs_from_capture
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.busy_block_case import BASE, at, native_calendar
-from tests._support.schedule_decode import config_snapshot, production_decode
+from tests._support.schedule_decode import (
+    NO_END_DATE,
+    config_snapshot,
+    decode_in_session,
+    production_decode,
+    required_hours_by_op_id,
+    unbounded_search_budget,
+)
+from tests._support.shared_schedule_archive import detached_report
 
 
 def _saturated_case(batch_count=30, ops_per_batch=3):
@@ -113,37 +120,29 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
 
         # A completed request owns no checkpoint sink: a cached resumed result is verified,
         # while an explicit fresh capture still performs a real full decode.
-        owned = dict(case, machine_downtimes={}, resource_pool=None, batch_order_override=list(case["batches"]))
-        archive = SharedScheduleArchive("min_overdue", target_objectives_for("min_overdue"),
-                                        [op.id for op in owned["operations"]] + [99],
-                                        set(owned["batches"]) | {"FROZEN"})
-        started = perf_counter()
-        budget = SharedSearchBudget(clock=perf_counter, started_at=started, deadline=started + 10,
-                                    target_objectives=archive.target_objectives, configured_seconds=10)
-        session = SharedDecodeSession(archive=archive, budget=budget, scheduler=scheduler,
-                                      operations=owned["operations"], batches=owned["batches"],
-                                      seed_results=owned["seed_results"], downtime_map=owned["machine_downtimes"],
-                                      resource_pool=None, graph_ready_context=owned["graph_ready_context"],
-                                      clock=perf_counter, started_at=started, deadline=started + 10)
+        owned = dict(case, machine_downtimes={}, resource_pool=DISABLED_RESOURCE_POOL, batch_order_override=list(case["batches"]))
+
+        def new_session(decoder):
+            begin = perf_counter()
+            return open_shared_search(
+                objective_name="min_overdue", scheduler=decoder, operations=owned["operations"],
+                batches=owned["batches"],
+                required_hours_by_op_id=required_hours_by_op_id(owned["operations"], owned["batches"]),
+                seed_results=owned["seed_results"], downtime_map=owned["machine_downtimes"], resource_pool=DISABLED_RESOURCE_POOL,
+                graph_ready_context=owned["graph_ready_context"], start_dt=owned["start_dt"], end_date=NO_END_DATE,
+                readiness_gate_enabled=False, clock=perf_counter, started_at=begin, deadline=begin + 10,
+                configured_seconds=10).decode_session
+
+        session = new_session(scheduler)
+        archive = session.archive
 
         def decode(*, owner=session, decoder=scheduler, **extra):
             changes = dict(owned, **extra)
             context = changes.pop("graph_ready_context")
-            for name in ("operations", "batches", "seed_results", "machine_downtimes", "resource_pool"):
+            for name in ("operations", "batches", "start_dt", "seed_results", "machine_downtimes", "resource_pool"):
                 changes.pop(name, None)
-            return decode_and_metrics(decode_session=owner, objective_name="min_overdue",
-                                      graph_enabled=True, graph_score_enabled=context["score_enabled"],
-                                      graph_priority_key_by_op_id=context["graph_priority_key_by_op_id"], **changes)
-
-        def new_session(decoder):
-            begin = perf_counter()
-            next_budget = SharedSearchBudget(clock=perf_counter, started_at=begin, deadline=begin + 10,
-                                             target_objectives=archive.target_objectives, configured_seconds=10)
-            return SharedDecodeSession(archive=archive, budget=next_budget, scheduler=decoder,
-                                       operations=owned["operations"], batches=owned["batches"],
-                                       seed_results=owned["seed_results"], downtime_map=owned["machine_downtimes"],
-                                       resource_pool=None, graph_ready_context=owned["graph_ready_context"],
-                                       clock=perf_counter, started_at=begin, deadline=begin + 10)
+            return decode_in_session(owner, graph_enabled=True, graph_score_enabled=context["score_enabled"],
+                                     graph_priority_key_by_op_id=context["graph_priority_key_by_op_id"], **changes)
 
         def observe(decoded, elapsed):
             candidate = dict(results=decoded.results, summary=decoded.summary, metrics=decoded.metrics,
@@ -161,11 +160,11 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
                              wraps=native_preparation.checkpoint_calendar_signature) as certificate, \
                 patch.object(checkpoint_certificate, "calendar_checkpoint_signature",
                              wraps=checkpoint_certificate.calendar_checkpoint_signature) as signature_builder, \
-                patch.object(native_preparation, "input_value", wraps=native_preparation.input_value) as input_encoding:
+                patch.object(native_preparation, "input_value", wraps=native_preparation.input_value) as input_encoding, \
+                patch.object(scheduler, "schedule_prepared", wraps=scheduler.schedule_prepared) as native_decodes:
             def calendar_encodings():
                 return sum(call.kwargs.get("field") == "calendar_signature" for call in input_encoding.call_args_list)
             first_capture = []
-            before_calls = scheduler._decode_invocations
             ordinary = decode()
             entry_id = observe(ordinary, 1)
             assert certificate.call_count == calendar_encodings() == signature_builder.call_count == 0
@@ -183,7 +182,7 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
             assert reused.receipt["execution_kind"] == "decision_reused" and reused.receipt["verified"]
             assert reused.receipt["actual_decoder_calls"] == 0 and not cached_sink
             assert reused.results == original.results and reused.metrics == original.metrics
-            assert metrics.call_count == 2 and scheduler._decode_invocations == before_calls + 2
+            assert metrics.call_count == native_decodes.call_count == 2
             trial_context = dict(owned["graph_ready_context"])
             priority = dict(trial_context["graph_priority_key_by_op_id"])
             priority[4] = priority[2]
@@ -201,7 +200,7 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
             assert len(recaptured_sink) == 2 and metrics.call_count == 4
             assert observe(recaptured, 9) == entry_id
             assert archive.entry(entry_id).first_found_elapsed_ms == first_found
-            assert session.actual_decoder_calls == scheduler._decode_invocations - before_calls == 4
+            assert session.actual_decoder_calls == native_decodes.call_count == 4
             assert session.new_decisions == session.reused_decisions == 1
             assert certificate.call_count == calendar_encodings() == signature_builder.call_count == 1
             assert all(item.signature[9] is component for item in recaptured_sink)
@@ -217,7 +216,7 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
 def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(monkeypatch):
     from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar
 
-    search = object.__new__(ig_module._IteratedGreedySearch)
+    search = object.__new__(ig_module.IteratedGreedySearch)
     profile = next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "balanced")
     search.profile = ig_module.ig_decode_profile(profile)
     search.parent = SimpleNamespace(batch_order=("B1",), order=(1,), inherited=(), prepared=None)
@@ -226,21 +225,18 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
     search.checkpoints = CheckpointStore(1)
     monkeypatch.setattr(search.checkpoints, "best_for", lambda *args, **kwargs: SimpleNamespace(position=1))
     search.solution_pool = SimpleNamespace(size=3)
-    search.clock = lambda: 0.0
-    oracle_targets = target_objectives_for("min_overdue")
-    oracle_archive = SharedScheduleArchive("min_overdue", oracle_targets, (), {})
-    oracle_budget = SharedSearchBudget(clock=search.clock, started_at=0.0, deadline=10.0,
-                                       target_objectives=oracle_targets, configured_seconds=10)
     oracle_scheduler = GreedyScheduler(calendar_service=ContinuousCalendar(), config_service=config_snapshot())
-    search.decode_session = SharedDecodeSession(
-        archive=oracle_archive, budget=oracle_budget, scheduler=oracle_scheduler, operations=[], batches={},
-        seed_results=[], downtime_map={}, resource_pool=None, clock=search.clock, started_at=0.0, deadline=10.0,
-    )
+    search.decode_session = open_shared_search(
+        objective_name="min_overdue", scheduler=oracle_scheduler, operations=[], batches={},
+        required_hours_by_op_id={}, seed_results=[], downtime_map={}, resource_pool=DISABLED_RESOURCE_POOL, graph_ready_context=None,
+        start_dt=BASE, end_date=NO_END_DATE, readiness_gate_enabled=False, clock=lambda: 0.0, started_at=0.0,
+        deadline=10.0, configured_seconds=10).decode_session
+    search.budget = search.decode_session.budget
     search.limits = SimpleNamespace(max_decodes=100)
     search.report = {"objective_name": "min_overdue", "decodes": 0}
     search.incumbent = SimpleNamespace(
         best={"score": (0.0,)}, observe_trial=lambda candidate: None,
-        report_state=OptimizationSearchReportState(objective_name="min_overdue", started_at=0.0))
+        report_state=detached_report("min_overdue"))
     accepted, evaluations = [], []
     search._consider_for_incumbent = lambda candidate, *, capture_of: accepted.append(candidate)
     template = {"results": [], "summary": ScheduleSummary(True, 0, 0, 0, [], [], 0.0), "score": (10.0,)}
@@ -313,7 +309,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         IteratedGreedyLimits,
         new_iterated_greedy_report,
     )
-    from core.services.scheduler.run.optimizer.graph.iterated_greedy_moves import _parent_from_candidate
+    from core.services.scheduler.run.optimizer.graph.iterated_greedy_moves import parent_from_candidate
     from core.services.scheduler.run.optimizer.graph.repair import EliteRepairPool
     from core.services.scheduler.run.optimizer.graph.repair_contract import EliteRepairLimits
     from core.services.scheduler.run.optimizer.graph.repair_decisions import (
@@ -323,13 +319,12 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
     )
     from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
     from core.services.scheduler.run.optimizer.graph.v2_ranks import build_v2_common_rank_cache
-    from core.services.scheduler.run.optimizer.search_state import OptimizerSearchState
-    from core.services.scheduler.run.schedule_shared_search import GoalView, SharedSearch
 
-    def native_search(calendar, *, clock=perf_counter, after_schedule=None):
+    def native_search(calendar):
+        clock = perf_counter
         case = _saturated_case(batch_count=2, ops_per_batch=2)
         operations, batches, context = case["operations"], case["batches"], case["graph_ready_context"]
-        case.update(seed_results=[], machine_downtimes={}, resource_pool=None,
+        case.update(seed_results=[], machine_downtimes={}, resource_pool=DISABLED_RESOURCE_POOL,
                     batch_order_override=list(batches), dispatch_rule="slack")
         nodes = [OperationGraphNode(node_id=str(op.id), batch_id=op.batch_id, op_code=op.op_code,
                                     seq=op.seq,
@@ -342,60 +337,38 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         context["node_metrics_by_op_id"] = {int(key): value for key, value in node_metrics.items()}
         scheduler = GreedyScheduler(calendar_service=calendar, config_service=config_snapshot(auto_assign_enabled="no"))
         started = clock()
-        archive = SharedScheduleArchive("min_overdue", target_objectives_for("min_overdue"),
-                                        (op.id for op in operations), batches)
-        budget = SharedSearchBudget(clock=clock, started_at=started, deadline=started + 10,
-                                    target_objectives=archive.target_objectives, configured_seconds=10)
-        owner = SharedSearch(archive=archive, clock=clock, started_at=started, budget=budget)
-        if after_schedule is not None:
-            native_decode = scheduler.schedule_prepared
-
-            def observed_decode(prepared_inputs, **changes):
-                try:
-                    return native_decode(prepared_inputs, **changes)
-                finally:
-                    after_schedule(changes)
-
-            monkeypatch.setattr(scheduler, "schedule_prepared", observed_decode)
-
-        session = SharedDecodeSession(archive=archive, budget=budget, scheduler=scheduler, operations=operations,
-                                      batches=batches, seed_results=case["seed_results"],
-                                      downtime_map=case["machine_downtimes"], resource_pool=None,
-                                      graph_ready_context=context,
-                                      clock=clock, started_at=started, deadline=started + 10,
-                                      event_sink=owner.record_event)
-        owner.decode_session = session
+        native_decodes = Mock(wraps=scheduler.schedule_prepared)
+        monkeypatch.setattr(scheduler, "schedule_prepared", native_decodes)
+        owner = open_shared_search(
+            objective_name="min_overdue", scheduler=scheduler, operations=operations, batches=batches,
+            required_hours_by_op_id=required_hours_by_op_id(operations, batches), seed_results=case["seed_results"],
+            downtime_map=case["machine_downtimes"], resource_pool=DISABLED_RESOURCE_POOL, graph_ready_context=context,
+            start_dt=case["start_dt"], end_date=NO_END_DATE, readiness_gate_enabled=False, clock=clock,
+            started_at=started, deadline=started + 10, configured_seconds=10)
+        session = owner.decode_session
         metrics = enrich_graph_ready_v2_metrics(context["node_metrics_by_op_id"], operations=operations,
                                                 batches=batches, start_dt=case["start_dt"], calendar_service=calendar,
                                                 graph_ready_context=context, downtime_map={}, seed_results=[],
-                                                deadline=float("inf"), clock=lambda: 0.0,
+                                                budget=unbounded_search_budget(),
                                                 native_preparation=session.native_preparation)
         assert metrics is not None
         topology = session.native_preparation.graph_topology()
         features = PreparedDecisionFeatures(metrics, build_v2_common_rank_cache(metrics),
                                             schedulable_ids=topology.schedulable_ids)
-        report = OptimizationSearchReportState(
-            objective_name="min_overdue",
-            started_at=started, candidate_clock=clock,
-            candidate_observer=lambda **kw: owner.observe("min_overdue", **kw),
-            candidate_acceptance_observer=lambda **kw: owner.accept("min_overdue", **kw))
-        view = GoalView("min_overdue", OptimizerSearchState(), report)
-        owner.views["min_overdue"] = view
+        view = owner.open_view("min_overdue")
+        report = view.report
         decode_profile = ig_module.ig_decode_profile(profile)
 
         def evaluate(**kwargs):
             return evaluate_graph_ready_candidate(
-                prepared_decision_features=features,
-                strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=case["start_dt"],
-                end_date=None,
-                dispatch_rule="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=None,
-                readiness_gate_enabled=False, version=0, clock=clock, **kwargs)
+                prepared_decision_features=features, strategy=SortStrategy.PRIORITY_FIRST, params=None,
+                dispatch_rule="slack", objective_name="min_overdue", version=0, decode_session=session, **kwargs)
 
         # An explicit decision comes from a decoded parent; decode it outside the counted session and scheduler.
         plain = production_decode(GreedyScheduler(calendar_service=calendar,
                                                   config_service=config_snapshot(auto_assign_enabled="no")), **case)
         decision = RepairDecision(tuple(batches), tuple(op.id for op in operations))
-        source = evaluate(profile=decode_profile, order=list(decision.batch_order), decode_session=session,
+        source = evaluate(profile=decode_profile, order=list(decision.batch_order),
                           repair=(decision, prepare_repair_parent(
                               {"results": plain.results, "decoded_batch_order": plain.decoded_batch_order},
                               scope=prepare_repair_scope(
@@ -404,29 +377,25 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         report.mark_candidate_evaluated(source, origin="baseline")
         owner.sync(view)
         source = view.candidate
-        parent = _parent_from_candidate(source,
-                                        prepared=prepare_repair_parent(
-                                            source,
-                                            scope=prepare_repair_scope(
-                                                operations, topology,
-                                                resource_pairs_for=session.native_preparation.qualified_resource_pairs)))
+        parent = parent_from_candidate(source,
+                                       prepared=prepare_repair_parent(
+                                           source,
+                                           scope=prepare_repair_scope(
+                                               operations, topology,
+                                               resource_pairs_for=session.native_preparation.qualified_resource_pairs)))
         limits = IteratedGreedyLimits(due_date_seed=False, checkpoint_count=3, max_decodes=20)
-        pool = EliteRepairPool(limits=EliteRepairLimits(), objective_name="min_overdue",
-                                operations=operations, start_dt=case["start_dt"], seed=0,
-                                best=source, report_state=report,
-                                clock=clock, deadline=started + 10, decode_session=session,
-                                decision_features=features)
-        search = ig_module._IteratedGreedySearch(
+        pool = EliteRepairPool(limits=EliteRepairLimits(), objective_name="min_overdue", operations=operations,
+                               seed=0, best=source, report_state=report, decode_session=session,
+                               decision_features=features)
+        search = ig_module.IteratedGreedySearch(
             limits=limits, parent=parent, profile=decode_profile, pool=pool, evaluate=evaluate,
-            metrics_by_op_id=metrics, start_dt=case["start_dt"], seed=0, deadline=started + 10,
-            clock=clock, report_state=report,
-            report=new_iterated_greedy_report(objective_name="min_overdue"),
-            decode_session=session)
+            metrics_by_op_id=metrics, seed=0, report_state=report,
+            report=new_iterated_greedy_report(objective_name="min_overdue"), decode_session=session)
         search.best = source
-        return search, owner, session, scheduler
+        return search, owner, session, native_decodes
 
     with native_calendar() as calendar:
-        native, owner, session, scheduler = native_search(calendar)
+        native, owner, session, native_decodes = native_search(calendar)
         source_entry = native.best["archive_ref"].entry_id
         reference = native._decode_entry((1, 2, 3, 4), redecode_reason="capture_checkpoints")
         assert reference is not None and len(reference.checkpoints) == 3
@@ -450,7 +419,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         assert verified.candidate["decode_receipt"]["execution_kind"] == "validation_decode"
         assert verified.candidate["decode_receipt"]["observation_bound"]
         assert not native.pending_outputs
-        assert session.actual_decoder_calls == scheduler._decode_invocations == 4
+        assert session.actual_decoder_calls == native_decodes.call_count == 4
         assert session.new_decisions == 2 and owner.archive.entry(source_entry).first_found_elapsed_ms >= 0
 
         # Expired phase-local scores do not turn a known full result back into a trial.
@@ -508,50 +477,46 @@ def test_calendar_content_cache_does_not_reuse_rolled_back_transaction(schema_co
 
 
 def test_shared_preparation_reuses_seed_resource_hours_and_checkpoint_records():
-    from core.algorithm_runtime import internal_slot
     from core.algorithms.greedy import auto_assign
-    from core.algorithms.greedy import scheduler as scheduler_module
-    from core.algorithms.greedy import seed as seed_module
 
     case = _saturated_case(batch_count=2, ops_per_batch=2)
     operations, batches = case["operations"], case["batches"]
     seeds = [ScheduleResult(99, "SEED", "FROZEN", 1, "M1", "O1", at(-1), at())]
-    pool = {"machines_by_op_type": {}, "operators_by_machine": {}, "machines_by_operator": {}, "pair_rank": {}}
+    links = {"machines_by_op_type": {}, "operators_by_machine": {}, "machines_by_operator": {}}
     for op in operations:
-        pool["machines_by_op_type"].setdefault(op.op_type_id, []).append(op.machine_id)
-        pool["operators_by_machine"].setdefault(op.machine_id, []).append(op.operator_id)
-        pool["machines_by_operator"].setdefault(op.operator_id, []).append(op.machine_id)
-    targets = target_objectives_for("min_overdue")
-    archive = SharedScheduleArchive("min_overdue", targets, [99] + [op.id for op in operations], set(batches) | {"FROZEN"})
-    budget = SharedSearchBudget(clock=lambda: 0.0, started_at=0.0, deadline=100.0,
-                               target_objectives=targets, configured_seconds=100)
+        links["machines_by_op_type"].setdefault(op.op_type_id, []).append(op.machine_id)
+        links["operators_by_machine"].setdefault(op.machine_id, []).append(op.operator_id)
+        links["machines_by_operator"].setdefault(op.operator_id, []).append(op.machine_id)
+    pool = ResourcePool(enabled=True, pair_rank={}, operator_skills=None, **{
+        name: {key: tuple(values) for key, values in mapping.items()} for name, mapping in links.items()})
     with native_calendar() as calendar, \
-            patch.object(scheduler_module, "normalize_seed_results", wraps=seed_module.normalize_seed_results) as normalize, \
             patch.object(auto_assign, "prepare_resource_candidates", wraps=auto_assign.prepare_resource_candidates) as qualify, \
-            patch.object(internal_slot, "validate_internal_hours", wraps=internal_slot.validate_internal_hours) as hours, \
             patch.object(native_preparation, "input_record", wraps=native_preparation.input_record) as records:
         scheduler = GreedyScheduler(calendar_service=calendar, config_service=config_snapshot(auto_assign_enabled="no"))
-        session = SharedDecodeSession(
-            archive=archive, budget=budget, scheduler=scheduler, operations=operations, batches=batches,
-            seed_results=seeds, downtime_map={}, resource_pool=pool, graph_ready_context=case["graph_ready_context"],
-            clock=lambda: 0.0, started_at=0.0, deadline=100.0,
-        )
-        changes = dict(objective_name="min_overdue", strategy=SortStrategy.FIFO, strategy_params={},
-                       start_dt=case["start_dt"], dispatch_mode="sgs", graph_enabled=True, graph_score_enabled=True,
+        hours = required_hours_by_op_id(operations, batches)
+        session = open_shared_search(
+            objective_name="min_overdue", scheduler=scheduler, operations=operations, batches=batches,
+            required_hours_by_op_id=hours, seed_results=seeds, downtime_map={}, resource_pool=pool,
+            graph_ready_context=case["graph_ready_context"], start_dt=case["start_dt"], end_date=NO_END_DATE,
+            readiness_gate_enabled=False, clock=lambda: 0.0, started_at=0.0, deadline=100.0,
+            configured_seconds=100).decode_session
+        # The session takes the run input's standard hours as they are; no decode recomputes them.
+        assert session.native_preparation.total_hours_by_op_id == hours
+        changes = dict(objective_name="min_overdue", strategy=SortStrategy.FIFO, strategy_params=None,
+                       dispatch_mode="sgs", graph_enabled=True, graph_score_enabled=True,
                        batch_order_override=list(batches),
                        graph_priority_key_by_op_id=case["graph_ready_context"]["graph_priority_key_by_op_id"])
-        first = decode_and_metrics(decode_session=session, dispatch_rule="slack",
-                                   decode_checkpoints=DecodeCheckpointRequest([1], lambda item: None), **changes)
-        prepared_counts = qualify.call_count, hours.call_count, records.call_count
+        first = decode_in_session(session, dispatch_rule="slack",
+                                  decode_checkpoints=DecodeCheckpointRequest([1], lambda item: None), **changes)
+        prepared_counts = qualify.call_count, records.call_count
         assert prepared_counts[0] > 0
-        assert prepared_counts[1:] == (len(operations), len(operations) + len(batches))
-        second = decode_and_metrics(decode_session=session, dispatch_rule="cr",
-                                    decode_checkpoints=DecodeCheckpointRequest([1], lambda item: None), **changes)
+        assert prepared_counts[1] == len(operations) + len(batches)
+        second = decode_in_session(session, dispatch_rule="cr",
+                                   decode_checkpoints=DecodeCheckpointRequest([1], lambda item: None), **changes)
         assert session.actual_decoder_calls == 2
-        assert (qualify.call_count, hours.call_count, records.call_count) == prepared_counts
-        assert normalize.call_count == 1
+        assert (qualify.call_count, records.call_count) == prepared_counts
         assert first.used_params["dispatch_rule"] == "slack" and second.used_params["dispatch_rule"] == "cr"
-        reused = decode_and_metrics(decode_session=session, dispatch_rule="cr", **changes)
+        reused = decode_in_session(session, dispatch_rule="cr", **changes)
         assert reused.receipt["execution_kind"] == "decision_reused" and session.actual_decoder_calls == 2
         assert reused.results is second.results
 
@@ -571,8 +536,36 @@ def test_resumed_decode_captures_carry_the_checkpoint_prefix_picks():
             (item.position, item.picked_op_ids, item.prefix_op_ids) for item in full_captures[1:]]
 
 
+def test_tail_reuse_after_swapped_independent_picks_replaces_type_rows_in_place():
+    case = _saturated_case(batch_count=3, ops_per_batch=1)
+    for batch in case["batches"].values():
+        batch.priority, batch.quantity = "normal", 1
+    for op in case["operations"]:
+        op.machine_id, op.operator_id, op.setup_hours, op.unit_hours = "M1", "O1", 1.0, 0.0
+        op.op_type_id = op.op_type_name = "T1"
+    case["graph_ready_context"]["graph_priority_key_by_op_id"] = {1: (1.0, 0.0), 2: (2.0, 0.0), 3: (3.0, 0.0)}
+    trial = deepcopy(case)
+    trial["graph_ready_context"]["graph_priority_key_by_op_id"] = {1: (2.0, 0.0), 2: (1.0, 0.0), 3: (3.0, 0.0)}
+    with native_calendar() as calendar:
+        scheduler = GreedyScheduler(calendar_service=calendar, config_service=config_snapshot(auto_assign_enabled="no"))
+        captured = []
+        reference = _decode(scheduler, case, decode_checkpoints=DecodeCheckpointRequest([2, 3], captured.append))
+        full_trial = _decode(scheduler, trial)
+        tail = DecodeTailReuse(captured)
+        with patch.object(OwnedSegments, "__setitem__", autospec=True, side_effect=OwnedSegments.__setitem__) as writes:
+            reused = _decode(scheduler, trial,
+                             decode_checkpoints=DecodeCheckpointRequest([2, 3], lambda item: None, tail_reuse=tail))
+    assert [row.op_id for row in reference[0]] == [1, 2, 3]
+    assert [row.op_id for row in full_trial[0]] == [2, 1, 3]
+    # After two swapped picks the state reconverges with the reference except for the op ids in
+    # the machine's type history; the installed tail replaces exactly those rows by index.
+    assert tail.reused_picks == 1 and tail.reason == "exact_state_reconvergence"
+    assert reused[0] == full_trial[0]
+    assert [(call.args[1], call.args[2][2]) for call in writes.call_args_list] == [(0, 2), (1, 1)]
+
+
 def test_seed_resource_segments_belong_to_the_checkpoint_signature():
-    from core.algorithms.greedy.seed import with_seed_resource_segments
+    from core.algorithm_runtime.seed_results import with_seed_resource_segments
 
     case = _saturated_case(batch_count=2, ops_per_batch=2)
     seed = ScheduleResult(99, "SEED", "FROZEN", 1, "M1", "O1", at(-2), at(), op_type_name="SAME LABEL", op_type_id="T0")
@@ -586,4 +579,46 @@ def test_seed_resource_segments_belong_to_the_checkpoint_signature():
         assert _decode(scheduler, seeded, decode_resume=captured[0])[0] == full[0]
         with pytest.raises(ValidationError) as caught:
             _decode(scheduler, moved, decode_resume=captured[0])
+        assert caught.value.details["reason"] == "decode_checkpoint_signature_mismatch"
+
+
+def test_pool_content_belongs_to_the_checkpoint_signature(schema_conn):
+    from core.services.scheduler import resource_pool_builder
+    from core.services.workbench.run.input_runtime import runtime_resource_inputs
+    from core.services.workbench.run.preflight_facts import PreflightFacts
+
+    conn = schema_conn
+    conn.executemany("INSERT INTO OpTypes(op_type_id, name) VALUES (?, ?)", [("T0", "T0"), ("T1", "T1")])
+    conn.executemany("INSERT INTO Machines(machine_id, name) VALUES (?, ?)", [("M1", "M1"), ("M2", "M2")])
+    conn.executemany("INSERT INTO MachineOpTypes(machine_id, op_type_id) VALUES (?, ?)",
+                     [("M1", "T0"), ("M1", "T1"), ("M2", "T1")])
+    conn.executemany("INSERT INTO Operators(operator_id, name) VALUES (?, ?)", [("O1", "O1"), ("O2", "O2")])
+    conn.executemany(
+        "INSERT INTO OperatorMachine(operator_id, machine_id, skill_level, is_primary) VALUES (?, ?, ?, ?)",
+        [("O1", "M1", "expert", "yes"), ("O2", "M1", "normal", "yes"), ("O2", "M2", "normal", "no")],
+    )
+    conn.commit()
+    case = _saturated_case(batch_count=2, ops_per_batch=2)
+    for op in case["operations"]:
+        op.machine_id = op.operator_id = None
+
+    def build_pool():
+        with PreflightFacts.open(conn) as facts:
+            return resource_pool_builder.build_resource_pool(
+                cfg=SimpleNamespace(auto_assign_enabled=True), algo_ops=case["operations"],
+                resource_facts=runtime_resource_inputs(facts).resources,
+            )
+
+    pool, rebuilt = build_pool(), build_pool()
+    assert rebuilt is not pool and rebuilt == pool
+    ranked = pool.with_pair_rank({("O2", "M1"): pool.rank("O2", "M1") + 1})
+    with native_calendar() as calendar:
+        scheduler = GreedyScheduler(calendar_service=calendar, config_service=config_snapshot(auto_assign_enabled="yes"))
+        captured = []
+        full = _decode(scheduler, dict(case, resource_pool=pool),
+                       decode_checkpoints=DecodeCheckpointRequest([2], captured.append))
+        # The same captured facts built again resume; one different pair rank is a different decode input.
+        assert _decode(scheduler, dict(case, resource_pool=rebuilt), decode_resume=captured[0])[0] == full[0]
+        with pytest.raises(ValidationError) as caught:
+            _decode(scheduler, dict(case, resource_pool=ranked), decode_resume=captured[0])
         assert caught.value.details["reason"] == "decode_checkpoint_signature_mismatch"

@@ -15,15 +15,14 @@ from .value_domains import EXTERNAL, INTERNAL
 @dataclass(frozen=True)
 class ChangeoverArrangement:
     machine_ref: Optional[str]
-    operation_ref: Optional[str]
-    row_ref: Optional[str]
+    operation_ref: str
+    row_ref: str
     type_ref: Optional[str]
     type_label: Optional[str]
-    start: Optional[datetime]
-    end: Optional[datetime]
+    start: datetime
+    end: datetime
     source: Optional[str]
     machine_label: Optional[str] = None
-    point_event: bool = False
     sort_key: Tuple[Any, ...] = ()
 
 
@@ -37,13 +36,9 @@ def type_transition(previous_type_ref, next_type_ref, previous_operation_ref, ne
 
 
 def _selected(row, start, end, operations):
-    if operations is not None and row.operation_ref is not None and row.operation_ref not in operations:
+    if operations is not None and row.operation_ref not in operations:
         return False
-    return row.start is None or (start is None or row.start >= start) and (end is None or row.start < end)
-
-
-def _timed(row):
-    return row.start is not None and row.end is not None and row.start < row.end
+    return (start is None or row.start >= start) and (end is None or row.start < end)
 
 
 def _problems(row):
@@ -51,16 +46,12 @@ def _problems(row):
     for field, value, code, message in (
         ("source", row.source == INTERNAL, "arrangement_source_unknown", "保存安排的内制来源缺项，切换顺序未知。"),
         ("machine_ref", row.machine_ref, "resource_identity_unknown", "保存安排缺少永久设备身份，切换顺序未知。"),
-        ("operation_ref", row.operation_ref, "operation_identity_unknown", "保存安排缺少永久工序身份，切换顺序未知。"),
-        ("row_ref", row.row_ref, "arrangement_identity_unknown", "保存安排缺少任务行身份，切换事件的定位资料缺项。"),
         ("type_ref", row.type_ref, "process_type_unknown", "保存安排缺少实际工种身份，切换次数保留已知小计。"),
-        ("task_time", _timed(row), "arrangement_time_unknown", "保存安排的有效时间缺项，切换顺序未知。"),
     ):
         if not value:
             result.append({"code": code, "message": message, "field": field,
-                           **{key: value for key, value in (("machine_ref", row.machine_ref),
-                                                            ("operation_ref", row.operation_ref), ("row_ref", row.row_ref))
-                              if value is not None}})
+                           **({"machine_ref": row.machine_ref} if row.machine_ref is not None else {}),
+                           "operation_ref": row.operation_ref, "row_ref": row.row_ref})
     return result
 
 
@@ -85,7 +76,7 @@ def _conflicts(ordered):
     """
     leaders, result = [], []
     for ordinal, row in ordered:
-        if row.source != INTERNAL or row.operation_ref is None:
+        if row.source != INTERNAL:
             continue
         others = [item for item in leaders if item[1].operation_ref != row.operation_ref]
         if others and others[0][1].end > row.start:
@@ -109,12 +100,13 @@ def project_changeover_events(arrangements, *, start=None, end=None, work_availa
     operations = set(next_operation_refs) if next_operation_refs is not None else None
     rows, machines, unplaced, problems = {}, {}, [], {}
     for row in arrangements:
-        if row.source == EXTERNAL or row.point_event and row.start is not None and row.start == row.end:
+        # External work and point events hold no machine time, so they never take part in a sequence.
+        if row.source == EXTERNAL or row.start == row.end:
             continue
         ordinal = len(rows)
         rows[ordinal] = row
         problems[ordinal] = _problems(row)
-        if row.machine_ref is not None and _timed(row):
+        if row.machine_ref is not None:
             machines.setdefault(row.machine_ref, []).append((ordinal, row))
         else:
             unplaced.append((ordinal, row))
@@ -140,7 +132,7 @@ def project_changeover_events(arrangements, *, start=None, end=None, work_availa
     blocked = set()
     for ordinal, row in unplaced:
         # A timed future row cannot precede any next.start inside this window.
-        if row.start is not None and end is not None and row.start >= end:
+        if end is not None and row.start >= end:
             continue
         selected_machine = row.machine_ref is None or row.machine_ref in machines_with_selected
         if _selected(row, start, end, operations) or selected_machine:
@@ -149,7 +141,7 @@ def project_changeover_events(arrangements, *, start=None, end=None, work_availa
     inconsistent = set()
     types = {}
     for row in rows.values():
-        if row.machine_ref is not None and row.operation_ref is not None and row.type_ref:
+        if row.machine_ref is not None and row.type_ref:
             key = row.machine_ref, row.operation_ref
             types.setdefault(key, set()).add(row.type_ref)
     for key, values in types.items():
@@ -191,7 +183,7 @@ def project_changeover_events(arrangements, *, start=None, end=None, work_availa
     affected = unknown | (conflicted & relevant)
     complete = not affected
     state = "complete" if complete else "partial" if machines else "unavailable"
-    unknown_geometry = any(item["field"] in ("source", "machine_ref", "operation_ref", "task_time")
+    unknown_geometry = any(item["field"] in ("source", "machine_ref")
                            for ordinal in unknown for item in problems[ordinal] if "field" in item)
     changed = len({event["machine_ref"] for event in events})
     return {"events": events, "count": len(events) if complete else None, "known_count": len(events),

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from typing import AbstractSet, Any, Dict, Iterable, List, Mapping, Optional, Tuple, cast
+from typing import AbstractSet, Iterable, List, Mapping, Optional, Tuple, cast
 
+from core.algorithm_contracts.resource_pool import ResourcePool
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_contracts.value_domains import INTERNAL, MERGED
-from core.algorithm_runtime.piece_input import external_group_key, operation_quantity
+from core.algorithm_runtime.operation_effort import internal_required_hours
+from core.algorithm_runtime.piece_input import external_group_key
 from core.models.batch import Batch
 
 from .id_policy import make_operation_node_id
@@ -15,32 +17,11 @@ def build_operation_nodes_from_rows(
     rows: Iterable[OpForScheduleAlgo],
     *,
     batches: Mapping[str, Batch],
-    resource_pool: Optional[Mapping[str, Any]] = None,
-    frozen_op_ids: AbstractSet[int] = frozenset(),
-    resource_preparation: Optional[GraphResourcePreparation] = None,
+    resource_pool: ResourcePool,
+    frozen_op_ids: AbstractSet[int],
 ) -> List[OperationGraphNode]:
-    nodes: List[OperationGraphNode] = []
-    pool = resource_preparation if resource_preparation is not None else GraphResourcePreparation(resource_pool)
-    for row in rows:
-        nodes.append(_build_operation_node(row, batches=batches, resource_pool=pool, frozen_op_ids=frozen_op_ids))
-    return nodes
-
-
-class GraphResourcePreparation:
-    """Resource candidates shared by equal work types and fixed assignments in one graph."""
-
-    def __init__(self, resource_pool: Optional[Mapping[str, Any]]) -> None:
-        self.machines_by_op_type = {} if resource_pool is None else resource_pool["machines_by_op_type"]
-        self.machines_by_operator = {} if resource_pool is None else resource_pool["machines_by_operator"]
-        self._candidates: Dict[Tuple[Optional[str], Optional[str], str], Tuple[str, ...]] = {}
-
-    def candidates_for(self, row: OpForScheduleAlgo) -> Tuple[str, ...]:
-        if row.source != INTERNAL:
-            return ()
-        key = (row.machine_id, row.operator_id, row.op_type_id)
-        if key not in self._candidates:
-            self._candidates[key] = _candidate_machine_ids(row, resource_pool=self)
-        return self._candidates[key]
+    return [_build_operation_node(row, batches=batches, resource_pool=resource_pool, frozen_op_ids=frozen_op_ids)
+            for row in rows]
 
 
 def _external_group_key(row: OpForScheduleAlgo) -> Optional[Tuple[str, ...]]:
@@ -53,7 +34,7 @@ def _build_operation_node(
     row: OpForScheduleAlgo,
     *,
     batches: Mapping[str, Batch],
-    resource_pool: GraphResourcePreparation,
+    resource_pool: ResourcePool,
     frozen_op_ids: AbstractSet[int],
 ) -> OperationGraphNode:
     # 算法工序由排产输入构建一次给出规范值（编号、文本、来源、工时、外协周期都已校验），批次同样来自读取边界；
@@ -68,7 +49,10 @@ def _build_operation_node(
         source=row.source,
         is_frozen=row.id in frozen_op_ids,
         machine_id=row.machine_id if row.source == INTERNAL else None,
-        candidate_machine_ids=resource_pool.candidates_for(row),
+        candidate_machine_ids=(
+            resource_pool.static_machine_candidates(row.machine_id, row.operator_id, row.op_type_id)
+            if row.source == INTERNAL else ()
+        ),
         external_group_key=_external_group_key(row),
         raw={"id": row.id},
     )
@@ -76,8 +60,8 @@ def _build_operation_node(
 
 def _operation_duration_minutes(row: OpForScheduleAlgo, batch: Batch) -> int:
     if row.source == INTERNAL:
-        qty = operation_quantity(row, batch)
-        return _round_minutes((row.setup_hours + row.unit_hours * qty) * 60)
+        # Every internal row, the run's retained and completed ones included, by the one standard-work formula.
+        return _round_minutes(internal_required_hours(row, batch) * 60)
     # 合并外协按整组周期；其余外协按本道周期。两者都由排产输入构建按冻结周期记录给成正数。
     if row.ext_merge_mode == MERGED:
         return _round_minutes(cast(float, row.ext_group_total_days) * 24 * 60)
@@ -88,22 +72,4 @@ def _round_minutes(value: float) -> int:
     return int(round(value))
 
 
-def _candidate_machine_ids(row: OpForScheduleAlgo, *, resource_pool: GraphResourcePreparation) -> Tuple[str, ...]:
-    fixed_machine = row.machine_id
-    fixed_operator = row.operator_id
-    op_type_id = row.op_type_id
-    if fixed_machine:
-        candidates = (fixed_machine,)
-    elif fixed_operator:
-        candidates = tuple(resource_pool.machines_by_operator.get(fixed_operator, ()))
-    elif op_type_id and op_type_id in resource_pool.machines_by_op_type:
-        return tuple(resource_pool.machines_by_op_type[op_type_id])
-    else:
-        return ()
-    if op_type_id and op_type_id in resource_pool.machines_by_op_type:
-        allowed = set(resource_pool.machines_by_op_type[op_type_id])
-        return tuple(machine_id for machine_id in candidates if machine_id in allowed)
-    return candidates
-
-
-__all__ = ["GraphResourcePreparation", "build_operation_nodes_from_rows"]
+__all__ = ["build_operation_nodes_from_rows"]

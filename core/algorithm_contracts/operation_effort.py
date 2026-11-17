@@ -10,11 +10,11 @@ RUNTIME_REQUIREMENT_BASIS = "runtime_requirement_v1"
 
 @dataclass(frozen=True)
 class OperationEffort:
-    op_id: Optional[int]
+    op_id: int
     batch_id: Optional[str]
     piece_id: Optional[str]
     source: str
-    target_quantity: Optional[float]
+    target_quantity: Optional[int]
     remaining_quantity: Optional[int]
     setup_standard_hours: Optional[float]
     processing_standard_hours: Optional[float]

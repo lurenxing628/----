@@ -15,9 +15,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, FrozenSet, Iterable, List, NoReturn, Optional, Sequence, Tuple
 
+from core.algorithm_contracts.resource_pool import ResourcePool
+from core.algorithm_contracts.schedule_point_evidence import point_seed_valid
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult, ScheduleSummary
 from core.algorithm_runtime.checkpoint_inputs import input_record, input_value
 from core.algorithm_runtime.run_state import ScheduleRunState
+from core.algorithm_runtime.seed_results import seed_external_group_key, seed_resource_segments
 from core.errors import ValidationError
 
 CHECKPOINT_FIELD = "decode_checkpoint"
@@ -193,11 +196,13 @@ def resume_graph_progress(checkpoint: DecodeCheckpoint, *, graph_state: Optional
 
 
 def decode_input_signature(*, operations: Sequence[OpForScheduleAlgo], batch_order: Dict[str, int], params: Any,
-                           resource_pool: Any, graph_ready_context: Any, readiness_gate_enabled: bool,
+                           resource_pool: ResourcePool, graph_ready_context: Any, readiness_gate_enabled: bool,
                            warnings: Sequence[str], prepared_inputs: Any) -> Tuple[Any, ...]:
     """Frozen decode inputs, except the graph priority keys a checkpoint reuse may change.
 
-    Batches, downtimes, seeds and the calendar are fixed by ``prepared_inputs`` and encoded once there.
+    Batches, downtimes, seeds and the calendar are fixed by ``prepared_inputs`` and encoded once there. The resource
+    pool is encoded by content once per pool object (``ResourcePool.fingerprint``): the run's pool is encoded once,
+    a new pool with the same content resumes, a pool with any different pair rank does not.
     """
     fixed = prepared_inputs.checkpoint_fixed_parts()
     operation_parts = fixed["operations"]
@@ -214,8 +219,7 @@ def decode_input_signature(*, operations: Sequence[OpForScheduleAlgo], batch_ord
                      params.end_dt_exclusive, params.strategy.value, params.auto_assign_enabled,
                      params.used_params), field="params"),
         fixed["downtimes"],
-        (fixed["resources"] if resource_pool is prepared_inputs.resource_pool
-         else input_value(resource_pool, field="resource_pool")),
+        resource_pool.fingerprint,
         fixed["seeds"],
         fixed["contexts"][context_key],
         readiness_gate_enabled,
@@ -225,9 +229,6 @@ def decode_input_signature(*, operations: Sequence[OpForScheduleAlgo], batch_ord
 
 
 def seed_signature(result: ScheduleResult) -> Any:
-    from core.algorithm_contracts.schedule_point_evidence import point_seed_valid
-
-    from ..seed import seed_external_group_key, seed_resource_segments
     fields = (result.op_id, result.op_code, result.batch_id, result.seq, result.machine_id, result.operator_id,
               result.start_time, result.end_time, result.source, result.op_type_name, result.op_type_id,
               result.seed_source, result.state_revision)

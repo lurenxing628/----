@@ -30,7 +30,7 @@ def _stored_snapshot(conn):
 @pytest.fixture()
 def config_store(tmp_path):
     test_db = tmp_path / "aps_config_field_spec.db"
-    ensure_schema(str(test_db), logger=None, schema_path=str(SCHEMA_PATH))
+    ensure_schema(str(test_db), logging.getLogger(__name__), schema_path=str(SCHEMA_PATH))
     conn = get_connection(str(test_db))
     try:
         bootstrap_schedule_config(conn, logger=_LOGGER)
@@ -43,14 +43,16 @@ def test_config_snapshot_matches_registered_fields_and_defaults(config_store) ->
     conn, repo, _database = config_store
     snap = _stored_snapshot(conn)
     assert snap.graph_analysis_mode == "on"
-    assert snap.graph_block_on_cycle == "no"
+    assert snap.graph_block_on_cycle is False
     assert snap.graph_critical_weight == 500
     assert snap.graph_impact_weight == 10
     assert snap.time_budget_seconds == 10
     assert repo.get_value("objective") == "min_overdue"
     runtime_keys = {spec.key for spec in list_runtime_config_fields()}
     page_keys = {spec.key for spec in list_config_fields()}
-    assert runtime_keys == page_keys == set(asdict(snap))
+    assert runtime_keys == page_keys
+    # The two admitted fields scheduling never reads stay out of the run snapshot.
+    assert set(asdict(snap)) == runtime_keys - {"ready_weight", "holiday_default_efficiency"}
 
 
 def test_bootstrap_preserves_saved_configuration_across_restart(config_store) -> None:

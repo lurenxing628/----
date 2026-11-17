@@ -6,7 +6,6 @@ row caps, ref syntax) lives here; the repository only reads what is stored.
 
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field, replace
-from datetime import datetime
 from sqlite3 import Connection
 from typing import Any, Callable, Dict, Optional
 
@@ -17,7 +16,7 @@ from data.repositories.execution_ledger_scope_repo import ExecutionLedgerScopeRe
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .projection import project_execution, report_dto, validate_history_chain
+from .projection import active_report_dto, project_execution, report_dto
 
 
 def _capped(read, refs, message):
@@ -29,6 +28,21 @@ def _capped(read, refs, message):
 
 def project_loaded_operation(facts, ref, *, include_history: bool = True):
     op = facts["operations"][ref]
+    active_loaded = facts.get("active_loaded")
+    if active_loaded is not None and ref in active_loaded:
+        if include_history:
+            raise RuntimeError("Full report history requires load(..., include_history=True).")
+        reports = [
+            active_report_dto(row)
+            for row in facts["active_reports"].get(ref, ())
+        ]
+        return project_execution(
+            op,
+            reports,
+            current_task=facts["current_tasks"].get(ref),
+            comparison_task=facts["comparison_tasks"].get(ref),
+            plan_identity=facts["plan"],
+        )
     voids = facts["voids"]
     histories = facts["reports"].get(ref, {})
     if set(facts["report_heads"].get(ref, ())) - set(histories):
@@ -77,7 +91,15 @@ class ExecutionLedgerReadScope:
     resources: Dict[str, Any] = field(default_factory=dict)
     comparison_plans: Dict[str, WorkbenchPlanLocator] = field(default_factory=dict)
     facts: Dict[str, Any] = field(
-        default_factory=lambda: {"loaded": set(), "reports": {}, "report_heads": {}, "voids": {}, "scope_tasks": {}}
+        default_factory=lambda: {
+            "loaded": set(),
+            "active_loaded": set(),
+            "active_reports": {},
+            "reports": {},
+            "report_heads": {},
+            "voids": {},
+            "scope_tasks": {},
+        }
     )
 
     @property
@@ -86,11 +108,9 @@ class ExecutionLedgerReadScope:
 
 
 class ExecutionLedgerReader:
-    def __init__(self, conn, *, current_plan_provider: Callable[[Connection], Optional[dict]],
-                 clock: Optional[Callable[[], datetime]] = None):
+    def __init__(self, conn, *, current_plan_provider: Callable[[Connection], Optional[dict]]):
         self.conn = conn
         self.current_plan_provider = current_plan_provider
-        self.clock = datetime.now if clock is None else clock
         self.repo = WorkbenchExecutionRepository(conn)
 
     # ---- judgement over repository facts ----
@@ -113,7 +133,7 @@ class ExecutionLedgerReader:
 
     def _operation_rows(self, scope: ExecutionLedgerReadScope, values):
         if len(values) > MAX_OPERATIONS:
-            reject("执行工序超过单次10000条读取上限。", "query_too_large", 413)
+            reject(f"执行工序超过单次{MAX_OPERATIONS}条读取上限。", "query_too_large", 413)
         stored = scope.operations
         missing = [ref for ref in values if ref not in stored]
         if missing:
@@ -130,12 +150,8 @@ class ExecutionLedgerReader:
         stored = scope.task_maps.setdefault(plan_ref, {})
         missing = [ref for ref in refs if ref not in stored]
         if missing:
-            result = {}
             rows = self.repo.cohort_task_rows(missing, plan_ref) if cohort else self.repo.task_rows(missing, plan_ref)
-            for row in rows:
-                if row["operation_ref"] in result:
-                    reject("同一份计划里这道工序出现了两条安排，系统没有继续读取，请联系维护人员核对数据。", "constraint_conflict", 409)
-                result[row["operation_ref"]] = row
+            result = {row["operation_ref"]: row for row in rows}
             stored.update((ref, result.get(ref)) for ref in missing)
         return {ref: stored[ref] for ref in refs if stored[ref] is not None}
 
@@ -167,15 +183,16 @@ class ExecutionLedgerReader:
                     schedule_id = task["schedule_id"]
                     stored[schedule_id] = []
                     operation = operations.get(operation_ref)
-                    if (operation is not None and operation["identity_active"] == 1
-                            and operation["id"] == task["op_id"] and task["identity_kind"] == "schedule_row"
-                            and task["identity_source_table"] == "schedule" and task["row_source_key"] == str(schedule_id)
-                            and task["owner_key"] == str(task["version"])):
+                    if (
+                        operation is not None
+                        and operation["identity_active"] == 1
+                        and operation["id"] == task["op_id"]
+                    ):
                         stored[schedule_id].append((
                             schedule_id, task["version"], task["op_id"], operation["batch_id"],
                             operation_ref, task["task_ref"], plan_ref, operation["source"],
                             task["start_time"], task["end_time"], task["machine_id"], task["operator_id"], task["lock_status"],
-                            operation["setup_hours"], operation["unit_hours"],
+                            operation["setup_hours"], operation["unit_hours"], task["start_us"], task["end_us"],
                         ))
         missing = sorted(wanted.difference(stored))
         if missing:
@@ -186,13 +203,17 @@ class ExecutionLedgerReader:
             for rows in found.values():
                 for row in rows:
                     tasks = scope.task_maps.setdefault(row[6], {})
-                    task = {"task_ref": row[5], "plan_ref": row[6], "operation_ref": row[4],
-                        "op_id": row[2], "version": row[1], "identity_kind": "schedule_row",
-                        "identity_source_table": "schedule", "row_source_key": str(row[0]),
-                        "owner_key": str(row[1]), "schedule_id": row[0],
-                        **dict(zip(("start_time", "end_time", "machine_id", "operator_id", "lock_status"), row[8:]))}
-                    if tasks.get(row[4]) is not None and tasks[row[4]]["task_ref"] != row[5]:
-                        reject("同一份计划里这道工序出现了两条安排，系统没有继续读取，请联系维护人员核对数据。", "constraint_conflict", 409)
+                    task = {
+                        "task_ref": row[5],
+                        "plan_ref": row[6],
+                        "operation_ref": row[4],
+                        "op_id": row[2],
+                        "version": row[1],
+                        "schedule_id": row[0],
+                        **dict(zip(("start_time", "end_time", "machine_id", "operator_id", "lock_status"), row[8:13])),
+                        "start_us": row[15],
+                        "end_us": row[16],
+                    }
                     tasks[row[4]] = task
         return [row for schedule_id in sorted(wanted) for row in stored[schedule_id]]
 
@@ -222,7 +243,15 @@ class ExecutionLedgerReader:
             scope.plan_read = True
         return scope.plan
 
-    def load(self, scope: ExecutionLedgerReadScope, operation_refs, *, comparison_plan_ref=None, _admitted_refs=False):
+    def load(
+        self,
+        scope: ExecutionLedgerReadScope,
+        operation_refs,
+        *,
+        comparison_plan_ref=None,
+        include_history: bool = True,
+        _admitted_refs=False,
+    ):
         """Private stored facts, not a public response or a second ledger."""
         operations = (
             self._operation_rows(scope, operation_refs)
@@ -235,6 +264,47 @@ class ExecutionLedgerReader:
             if comparison_plan_ref not in admitted:
                 admitted[comparison_plan_ref] = WorkbenchPlanIdentityRepository(self.conn).resolve_plan(comparison_plan_ref)
         stored = scope.facts
+        current_plan_ref = plan["plan_ref"] if plan else None
+        current_tasks = self.task_map(scope, operations, current_plan_ref)
+        comparison_tasks = (
+            current_tasks
+            if comparison_plan_ref is not None and comparison_plan_ref == current_plan_ref
+            else self.task_map(scope, operations, comparison_plan_ref)
+        )
+        if not include_history:
+            missing_active = [
+                ref for ref in operations if ref not in stored["active_loaded"] and ref not in stored["loaded"]
+            ]
+            if missing_active:
+                active, active_count = self.repo.active_reports(missing_active, MAX_FACT_ROWS)
+                if active_count > MAX_FACT_ROWS:
+                    reject("报工及更正历史超过读取上限，请缩小范围。", "query_too_large", 413)
+                stored["active_reports"].update(active)
+                stored["active_loaded"].update(missing_active)
+            active_loaded = {ref for ref in operations if ref in stored["active_loaded"] and ref not in stored["loaded"]}
+            active_reports = {ref: stored["active_reports"][ref] for ref in active_loaded if ref in stored["active_reports"]}
+            full_refs = [ref for ref in operations if ref not in active_loaded]
+            reports = {ref: stored["reports"][ref] for ref in full_refs if ref in stored["reports"]}
+            report_heads = {ref: stored["report_heads"][ref] for ref in full_refs if ref in stored["report_heads"]}
+            report_refs = {report_ref for group in reports.values() for report_ref in group}
+            voids = {ref: stored["voids"][ref] for ref in report_refs if ref in stored["voids"]}
+            orphan_count = sum(len(refs) for refs in report_heads.values()) - len(report_refs)
+            active_total = sum(len(rows) for rows in active_reports.values())
+            history_total = sum(len(rows) for group in reports.values() for rows in group.values()) + orphan_count
+            if active_total + history_total > MAX_FACT_ROWS or len(voids) > MAX_FACT_ROWS:
+                reject("报工及历史记录超过读取上限，请缩小范围。", "query_too_large", 413)
+            return {
+                "operations": operations,
+                "active_loaded": active_loaded,
+                "active_reports": active_reports,
+                "reports": reports,
+                "report_heads": report_heads,
+                "voids": voids,
+                "current_tasks": current_tasks,
+                "comparison_tasks": comparison_tasks,
+                "plan": plan,
+                "clock": scope.clock,
+            }
         missing = {ref: row for ref, row in operations.items() if ref not in stored["loaded"]}
         if missing:
             reports, report_heads, report_count = self.repo.reports(missing, MAX_FACT_ROWS)
@@ -253,18 +323,18 @@ class ExecutionLedgerReader:
         if (sum(len(rows) for group in reports.values() for rows in group.values()) + orphan_count > MAX_FACT_ROWS
                 or len(voids) > MAX_FACT_ROWS):
             reject("报工及历史记录超过读取上限，请缩小范围。", "query_too_large", 413)
-        current_plan_ref = plan["plan_ref"] if plan else None
-        current_tasks = self.task_map(scope, operations, current_plan_ref)
-        comparison_tasks = (
-            current_tasks
-            if comparison_plan_ref is not None and comparison_plan_ref == current_plan_ref
-            else self.task_map(scope, operations, comparison_plan_ref)
-        )
         return {"operations": operations, "reports": reports, "report_heads": report_heads, "voids": voids,
                 "current_tasks": current_tasks, "comparison_tasks": comparison_tasks, "plan": plan,
                 "clock": scope.clock}
 
-    def load_many(self, scope: ExecutionLedgerReadScope, operation_refs, *, comparison_plan_ref=None):
+    def load_many(
+        self,
+        scope: ExecutionLedgerReadScope,
+        operation_refs,
+        *,
+        comparison_plan_ref=None,
+        include_history: bool = True,
+    ):
         """Read a complete cohort in bounded batches under one ledger snapshot.
 
         The operation/fact limits apply to each repository read, not to a
@@ -274,27 +344,40 @@ class ExecutionLedgerReader:
         """
         refs = list(dict.fromkeys(public_ref(ref) for ref in operation_refs))
         if len(refs) <= MAX_OPERATIONS:
-            return self.load(scope, refs, comparison_plan_ref=comparison_plan_ref, _admitted_refs=True)
+            return self.load(
+                scope,
+                refs,
+                comparison_plan_ref=comparison_plan_ref,
+                include_history=include_history,
+                _admitted_refs=True,
+            )
         # A SQL parameter chunk otherwise scans the same plan again.
         # Keep only this cohort in the existing, request-local map;
         # operation and report facts still use their bounded loads.
         plan = self.current_plan(scope)
         for plan_ref in dict.fromkeys([plan["plan_ref"] if plan else None, comparison_plan_ref]):
             self.task_map(scope, refs, plan_ref, cohort=True)
-        result = self.load(scope, refs[:MAX_OPERATIONS], comparison_plan_ref=comparison_plan_ref, _admitted_refs=True)
+        result = self.load(
+            scope,
+            refs[:MAX_OPERATIONS],
+            comparison_plan_ref=comparison_plan_ref,
+            include_history=include_history,
+            _admitted_refs=True,
+        )
         for start in range(MAX_OPERATIONS, len(refs), MAX_OPERATIONS):
-            batch = self.load(scope, refs[start:start + MAX_OPERATIONS],
-                              comparison_plan_ref=comparison_plan_ref, _admitted_refs=True)
+            batch = self.load(
+                scope,
+                refs[start:start + MAX_OPERATIONS],
+                comparison_plan_ref=comparison_plan_ref,
+                include_history=include_history,
+                _admitted_refs=True,
+            )
             for key in ("operations", "reports", "report_heads", "voids", "current_tasks", "comparison_tasks"):
                 result[key].update(batch[key])
+            if not include_history:
+                result["active_loaded"].update(batch["active_loaded"])
+                result["active_reports"].update(batch["active_reports"])
         return result
-
-    def validate_operation_reports(self, facts, ref):
-        histories = facts["reports"].get(ref, {})
-        if set(facts["report_heads"].get(ref, ())) - set(histories):
-            reject("报工来源或更正记录损坏，请核对报工数据；仍不行请联系维护人员。", "storage_failure", 500)
-        for report_ref, rows in histories.items():
-            validate_history_chain(rows, operation_ref=ref, report_ref=report_ref)
 
     def project_operation(self, facts, ref, *, include_history: bool = True):
         return project_loaded_operation(facts, ref, include_history=include_history)
@@ -303,4 +386,4 @@ class ExecutionLedgerReader:
         return [self.project_operation(facts, ref, include_history=include_history) for ref in facts["operations"]]
 
     def project_operations(self, scope: ExecutionLedgerReadScope, operation_refs):
-        return self.project_loaded(self.load(scope, operation_refs))
+        return self.project_loaded(self.load_many(scope, operation_refs))

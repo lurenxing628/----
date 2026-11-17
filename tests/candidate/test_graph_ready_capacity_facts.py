@@ -5,14 +5,15 @@ from fractions import Fraction
 
 import pytest
 
-from core.algorithms.greedy.scheduler import GreedyScheduler
+from core.algorithm_contracts.resource_pool import ResourcePool
+from core.algorithms.greedy.scheduler import GreedyScheduler, prepare_native_schedule_inputs
 from core.services.scheduler.run.optimizer.graph import v2_capacity
 from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import BASELINE_ORDERING_FIELD
 from tests._support.algo_operations import make_algo_op, make_batch, make_schedule_result
 from tests._support.busy_block_case import BASE, day_row, native_calendar
 from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar
-from tests._support.schedule_decode import config_snapshot, production_session
+from tests._support.schedule_decode import config_snapshot, required_hours_by_op_id, unbounded_search_budget
 
 
 def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windows(monkeypatch):
@@ -40,8 +41,8 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
              make_schedule_result(op_id=92, batch_id="B0", source="internal", machine_id="M2", operator_id="O1",
                                   start_time=at(2), end_time=at(4))]
     downtime = {"M1": [(at(4), at(5))]}
-    pool = {"machines_by_op_type": {"OT1": ["M1"]}, "operators_by_machine": {"M1": ["O1"]},
-            "machines_by_operator": {}, "operator_skills": {"O1": ["OT1"]}}
+    pool = ResourcePool(enabled=True, machines_by_op_type={"OT1": ("M1",)}, operators_by_machine={"M1": ("O1",)},
+                        machines_by_operator={}, pair_rank={}, operator_skills={"O1": frozenset({"OT1"})})
     original_merge = v2_capacity._merge_segments
 
     def merge(values):
@@ -50,16 +51,18 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
 
     calendar = Calendar()
     scheduler = GreedyScheduler(calendar_service=calendar, config_service=config_snapshot())
-    preparation = production_session(scheduler, operations=operations, batches=batches, seed_results=seeds,
-                                     resource_pool=pool).native_preparation
+    preparation = prepare_native_schedule_inputs(
+        {}, scheduler=scheduler, operations=operations, batches=batches,
+        required_hours_by_op_id=required_hours_by_op_id(operations, batches), seed_results=seeds,
+        resource_pool=pool, graph_ready_context=None)
     with monkeypatch.context() as scoped:
         scoped.setattr(v2_capacity, "_merge_segments", merge)
         result = enrich_graph_ready_v2_metrics(
             {1: {"bottleneck_machine_score": 1}, 2: {"bottleneck_machine_score": 1}},
             operations=operations, batches=batches, start_dt=start, calendar_service=calendar, seed_results=seeds,
-            resource_pool=pool, downtime_map=downtime,
+            downtime_map=downtime,
             graph_ready_context={"predecessor_op_ids_by_op_id": {1: set(), 2: set()}},
-            deadline=float("inf"), clock=lambda: 0.0, native_preparation=preparation)
+            budget=unbounded_search_budget(), native_preparation=preparation)
     assert result is not None
 
     assert len(merges) == 1
@@ -72,7 +75,7 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
 
     resource_seeds = v2_capacity.seed_results_by_resource_id(preparation.seed_applications)
     prepared_blocking = v2_capacity.FixedResourceBlockingFacts(
-        downtime_map=downtime, seed_results_by_resource_id=resource_seeds
+        downtime_map=downtime, seed_results_by_resource_id=resource_seeds, resource_pool=pool,
     )
     windows = (
         (operations[0], start, at(16), (16, 4, 12)),
@@ -83,59 +86,50 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
         standalone = v2_capacity.residual_capacity_for_operation(
             op, batch=batches[op.batch_id], start_dt=window_start,
             window_end=window_end, calendar_service=calendar,
-            resource_pool=pool, prepared=prepared_blocking)
+            prepared=prepared_blocking)
         assert tuple(standalone[key] for key in fields) == expected
     changed = v2_capacity.residual_capacity_for_operation(
         operations[0], batch=batches["B1"], start_dt=start, window_end=at(16), calendar_service=calendar,
-        resource_pool=pool, prepared=v2_capacity.FixedResourceBlockingFacts(
-            downtime_map={}, seed_results_by_resource_id=resource_seeds))
+        prepared=v2_capacity.FixedResourceBlockingFacts(
+            downtime_map={}, seed_results_by_resource_id=resource_seeds, resource_pool=pool))
     assert changed["residual_capacity_blocked_hours"] == 3 and changed["residual_capacity_hours"] == 13
 
     no_due_batches = {"B1": make_batch(batch_id="B1", quantity=1, priority="normal", due_date=None, ready_date=None)}
-    no_due_preparation = production_session(scheduler, operations=[operations[0]], batches=no_due_batches,
-                                            seed_results=seeds, resource_pool=pool).native_preparation
+    no_due_preparation = prepare_native_schedule_inputs(
+        {}, scheduler=scheduler, operations=[operations[0]], batches=no_due_batches,
+        required_hours_by_op_id=required_hours_by_op_id([operations[0]], no_due_batches), seed_results=seeds,
+        resource_pool=pool, graph_ready_context=None)
     calls.clear()
     no_due_result = enrich_graph_ready_v2_metrics(
         {1: {"bottleneck_machine_score": 1}},
         operations=[operations[0]],
         batches=no_due_batches,
         start_dt=start, calendar_service=calendar, seed_results=seeds,
-        resource_pool=pool, downtime_map=downtime,
+        downtime_map=downtime,
         graph_ready_context={"predecessor_op_ids_by_op_id": {1: set()}},
-        deadline=float("inf"), clock=lambda: 0.0, native_preparation=no_due_preparation)
+        budget=unbounded_search_budget(), native_preparation=no_due_preparation)
     assert no_due_result is not None
     assert calls == []
     assert no_due_result[1]["bottleneck_due_gate"] == 0.0
     assert no_due_result[1][BASELINE_ORDERING_FIELD]["bottleneck_due_gate"] == 0.0
 
 
-def test_graph_resource_preparation_is_shared_by_full_and_per_operation_inputs(monkeypatch):
+def test_graph_nodes_take_static_machine_candidates_from_the_pool():
     from core.services.scheduler.graph import input_adapter
 
     rows = [make_algo_op(id=op_id, batch_id="B1", op_code="OP" + str(op_id), seq=op_id, source="internal",
                          setup_hours=0.0, unit_hours=1.0, op_type_id="T2" if op_id == 4 else "T1",
                          machine_id="M2" if op_id == 3 else None, operator_id=None) for op_id in range(1, 6)]
     batches = {"B1": make_batch(quantity=2)}
-    pool = {"machines_by_op_type": {"T1": ["M1", "M2"], "T2": ["M1"]},
-            "machines_by_operator": {},
-            "operators_by_machine": {"M1": ["O1"], "M2": ["O2"]},
-            "operator_skills": {"O1": ["T1"], "O2": ["T1"]}}
-    calls = {}
-    helper = input_adapter._candidate_machine_ids
+    pool = ResourcePool(enabled=True, machines_by_op_type={"T1": ("M1", "M2"), "T2": ("M1",)},
+                        machines_by_operator={},
+                        operators_by_machine={"M1": ("O1",), "M2": ("O2",)},
+                        pair_rank={}, operator_skills={"O1": frozenset({"T1"}), "O2": frozenset({"T1"})})
 
-    def counted(*args, **kwargs):
-        calls["_candidate_machine_ids"] = calls.get("_candidate_machine_ids", 0) + 1
-        return helper(*args, **kwargs)
-
-    monkeypatch.setattr(input_adapter, "_candidate_machine_ids", counted)
-
-    full = input_adapter.build_operation_nodes_from_rows(rows, batches=batches, resource_pool=pool)
-    assert calls == {"_candidate_machine_ids": 3}
-    calls.clear()
-    resources = input_adapter.GraphResourcePreparation(pool)
-    per_operation = [input_adapter.build_operation_nodes_from_rows([row], batches=batches,
-                     resource_preparation=resources)[0] for row in rows]
-    assert calls == {"_candidate_machine_ids": 3}
+    full = input_adapter.build_operation_nodes_from_rows(rows, batches=batches, resource_pool=pool,
+                                                         frozen_op_ids=frozenset())
+    per_operation = [input_adapter.build_operation_nodes_from_rows([row], batches=batches, resource_pool=pool,
+                                                                   frozen_op_ids=frozenset())[0] for row in rows]
     assert per_operation == full
     assert full[0].candidate_machine_ids == full[1].candidate_machine_ids == full[4].candidate_machine_ids == ("M1", "M2")
     assert full[2].candidate_machine_ids == ("M2",)
@@ -148,7 +142,7 @@ def test_multi_segment_seed_result_blocks_each_resource_only_during_its_segment(
         project_internal_occupancies,
     )
     from core.algorithm_contracts.types import ScheduleResult
-    from core.algorithms.greedy.seed import seed_resource_segments, with_seed_resource_segments
+    from core.algorithm_runtime.seed_results import seed_resource_segments, with_seed_resource_segments
 
     start = datetime(2026, 10, 14, 8)
     at = lambda hours: start + timedelta(hours=hours)
@@ -165,15 +159,17 @@ def test_multi_segment_seed_result_blocks_each_resource_only_during_its_segment(
         seed,
         project_internal_occupancies(seed, actual_segments=seed_resource_segments(seed) or ()),
     )
-    pool = {
-        "machines_by_op_type": {"OT1": ["M1", "M2"]},
-        "machines_by_operator": {},
-        "operators_by_machine": {"M1": ["O1"], "M2": ["O2"]},
-        "operator_skills": {"O1": ["OT1"], "O2": ["OT1"]},
-    }
+    pool = ResourcePool(
+        enabled=True,
+        machines_by_op_type={"OT1": ("M1", "M2")},
+        machines_by_operator={},
+        operators_by_machine={"M1": ("O1",), "M2": ("O2",)},
+        pair_rank={}, operator_skills={"O1": frozenset({"OT1"}), "O2": frozenset({"OT1"})},
+    )
     prepared = v2_capacity.FixedResourceBlockingFacts(
         downtime_map={},
         seed_results_by_resource_id=v2_capacity.seed_results_by_resource_id([seed_app]),
+        resource_pool=pool,
     )
     batch = make_batch(batch_id="B1", quantity=1, priority="normal", due_date="2026-10-14", ready_date=None)
     for machine_id, operator_id in (("M1", "O1"), ("M2", "O2")):
@@ -183,7 +179,7 @@ def test_multi_segment_seed_result_blocks_each_resource_only_during_its_segment(
         )
         cap = v2_capacity.residual_capacity_for_operation(
             op, batch=batch, start_dt=start, window_end=at(8),
-            calendar_service=ContinuousCalendar(), resource_pool=pool, prepared=prepared,
+            calendar_service=ContinuousCalendar(), prepared=prepared,
         )
         assert cap["residual_capacity_window_hours"] == 8.0
         assert cap["residual_capacity_blocked_hours"] == 2.0
@@ -198,12 +194,13 @@ def test_full_downtime_over_fractional_efficiency_days_yields_exact_zero_residua
     downtime = {
         "M1": [(BASE + timedelta(days=day), BASE + timedelta(days=day, hours=1)) for day in range(3)]
     }
-    pool = {
-        "machines_by_op_type": {"OT1": ["M1"]},
-        "machines_by_operator": {},
-        "operators_by_machine": {"M1": ["O1"]},
-        "operator_skills": {"O1": ["OT1"]},
-    }
+    pool = ResourcePool(
+        enabled=True,
+        machines_by_op_type={"OT1": ("M1",)},
+        machines_by_operator={},
+        operators_by_machine={"M1": ("O1",)},
+        pair_rank={}, operator_skills={"O1": frozenset({"OT1"})},
+    )
     op = make_algo_op(
         id=1, batch_id="B1", seq=1, source="internal", setup_hours=0.0, unit_hours=1.0,
         machine_id="M1", operator_id="O1", op_type_id="OT1", op_type_name="work",
@@ -212,12 +209,13 @@ def test_full_downtime_over_fractional_efficiency_days_yields_exact_zero_residua
     prepared = v2_capacity.FixedResourceBlockingFacts(
         downtime_map=downtime,
         seed_results_by_resource_id={"machine": {}, "operator": {}},
+        resource_pool=pool,
     )
     window_end = datetime(2026, 9, 11, 0, 0)
     with native_calendar(rows=rows) as calendar:
         cap = v2_capacity.residual_capacity_for_operation(
             op, batch=batch, start_dt=BASE, window_end=window_end,
-            calendar_service=calendar, resource_pool=pool, prepared=prepared,
+            calendar_service=calendar, prepared=prepared,
         )
     expected_hours = float(3 * Fraction(*(0.3).as_integer_ratio()))
     assert cap["residual_capacity_window_hours"] == expected_hours == pytest.approx(0.9)

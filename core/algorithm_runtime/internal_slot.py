@@ -1,19 +1,16 @@
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Any, NoReturn, Optional, Sequence, Tuple
+from typing import Any, Optional, Sequence, Tuple
 
 from core.algorithm_contracts.material_release import released_start
 from core.algorithm_contracts.types import OpForScheduleAlgo
-from core.errors import ValidationError
 from core.models.batch import Batch
-from core.shared.field_labels import display_field_label
 
 from .busy_block_skip import advance_busy_block
+from .calendar_timing_memo import TimingCalendar
 from .downtime import SegmentOverlapIndex
-from .operation_effort import internal_requirement_parts
 from .resource_quality import MachineTypeState, slot_changeover_penalty
 from .slot_overlap_reuse import SlotOverlapReuse
 
@@ -29,37 +26,6 @@ class InternalSlotEstimate:
     blocked_by_window: bool = False
     abort_after_hit: bool = False
     scan_span: Optional[Tuple[datetime, datetime]] = None
-
-
-def validate_internal_hours(op: OpForScheduleAlgo, batch: Batch) -> float:
-    return internal_requirement_parts(op, batch)[2]
-
-
-def require_internal_hours(op: OpForScheduleAlgo, batch: Batch) -> float:
-    """Total internal hours; invalid hours are reported as a field-level ValidationError."""
-    try:
-        return validate_internal_hours(op, batch)
-    except ValueError:
-        raise_internal_hours_validation(op, batch)
-
-
-def raise_internal_hours_validation(op: OpForScheduleAlgo, batch: Batch) -> NoReturn:
-    for field, raw_value in (("setup_hours", op.setup_hours), ("unit_hours", op.unit_hours), ("quantity", batch.quantity)):
-        if raw_value:
-            _raise_if_invalid_hours_number(field, raw_value)
-    raise ValidationError("工时总量不合法，请检查换型时间、单件工时和数量。", field="setup_hours")
-
-
-def _raise_if_invalid_hours_number(field: str, raw_value: Any) -> None:
-    label = display_field_label(field, fallback=field)
-    try:
-        parsed = float(raw_value)
-    except Exception as parse_exc:
-        raise ValidationError(f"“{label}”必须是数字", field=field) from parse_exc
-    if not math.isfinite(parsed):
-        raise ValidationError(f"“{label}”必须是有限数字", field=field)
-    if parsed < 0:
-        raise ValidationError(f"“{label}”必须大于等于 0", field=field)
 
 
 def _slot_segments(
@@ -98,7 +64,7 @@ def _max_shift_count(segment_groups: Tuple[SegmentOverlapIndex, ...]) -> int:
     return max(sum(len(index) for index in segment_groups) + 1, 10)
 
 
-def _adjust_slot_start(calendar: Any, start_time: datetime, *, priority: Any, operator_id: str) -> datetime:
+def _adjust_slot_start(calendar: TimingCalendar, start_time: datetime, *, priority: Any, operator_id: str) -> datetime:
     return calendar.adjust_to_working_time(start_time, priority=priority, operator_id=operator_id)
 
 
@@ -115,12 +81,12 @@ def _latest_overlap_shift_end(
     return latest
 
 
-def _shifted_start(calendar: Any, *, earliest: datetime, shift_to: datetime, priority: Any, operator_id: str) -> datetime:
+def _shifted_start(calendar: TimingCalendar, *, earliest: datetime, shift_to: datetime, priority: Any, operator_id: str) -> datetime:
     return _adjust_slot_start(calendar, max(earliest, shift_to), priority=priority, operator_id=operator_id)
 
 
 def _walk(
-    calendar: Any,
+    calendar: TimingCalendar,
     *,
     release: datetime,
     total_base: float,
@@ -177,7 +143,7 @@ def refresh_changeover_penalty(
 
 def estimate_internal_slot(
     *,
-    calendar: Any,
+    calendar: TimingCalendar,
     op: OpForScheduleAlgo,
     batch: Batch,
     machine_id: str,

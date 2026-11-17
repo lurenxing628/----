@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Sequence
+from random import Random
+from typing import Any, Dict, List, Sequence
 
 GRASP_ORIGIN = "grasp"
 IG_ORIGIN = "ig"
@@ -36,7 +37,6 @@ def build_grasp_ig_candidate_specs(
     version: int,
     candidate_construction: Dict[str, Any],
     dispatch_rule_cfg: str,
-    rng_factory: Callable[[int], Any],
 ) -> List[Dict[str, Any]]:
     grasp_limits = candidate_construction["grasp"]
     ig_limits = candidate_construction["iterated_greedy"]
@@ -47,7 +47,7 @@ def build_grasp_ig_candidate_specs(
     specs: List[Dict[str, Any]] = []
 
     for index in range(grasp_restarts):
-        rnd = rng_factory(int(version) + 1009 + index)
+        rnd = Random(int(version) + 1009 + index)
         specs.append(
             {
                 "origin": GRASP_ORIGIN,
@@ -58,7 +58,7 @@ def build_grasp_ig_candidate_specs(
         )
 
     for index in range(ig_restarts):
-        rnd = rng_factory(int(version) + 2003 + index)
+        rnd = Random(int(version) + 2003 + index)
         specs.append(
             {
                 "origin": IG_ORIGIN,

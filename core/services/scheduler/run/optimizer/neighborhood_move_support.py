@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from core.algorithm_contracts.changeover_events import type_transition
+from core.algorithm_contracts.resource_pool import ResourcePool
 from core.algorithms.evaluation_completion import PreparedBatchDue
 
 _UNSET = object()
@@ -169,17 +170,15 @@ def op_type(result: Any) -> str:
     return result.op_type_id or ""
 
 
-def pick_resource_pair(pool: Dict[str, Any]) -> Optional[Tuple[str, str, int]]:
-    operators_by_machine = pool["operators_by_machine"]
-    pair_rank = pool["pair_rank"]
+def pick_resource_pair(pool: ResourcePool) -> Optional[Tuple[str, str, int]]:
+    operators_by_machine = pool.operators_by_machine
     for machine_id in sorted(operators_by_machine, key=str):
         operators = operators_by_machine[machine_id]
         if len(operators) < 2:
             continue
         for operator_id in reversed(operators):
-            # 排名都是 build_resource_pool 算出的整数（邻域降级覆盖为 -1）；没有排名的人机对
-            # 与自动派工 auto_assign._pair_rank 同口径按 9999。
-            rank = pair_rank.get((operator_id, machine_id), 9999)
+            # 排名都是 build_resource_pool 算出的整数，邻域降级覆盖为 -1；没有排名的人机对与自动派工同口径（ResourcePool.rank）。
+            rank = pool.rank(operator_id, machine_id)
             if rank > -1:
                 return operator_id, machine_id, rank
     return None

@@ -52,46 +52,50 @@ def _missing_candidate_warning(node: OperationGraphNode) -> Dict[str, Any]:
 
 def _build_operation_machine_graph(
     ready_nodes: List[OperationGraphNode],
-) -> Tuple[Any, Set[str], Dict[str, Set[str]], Dict[str, int], Tuple[Dict[str, Any], ...]]:
+) -> Tuple[Any, Tuple[str, ...], Dict[str, Set[str]], Dict[str, int], Tuple[Dict[str, Any], ...]]:
+    # 匹配图节点用整数：工序按就绪次序编 0..n-1，设备按编号排序接在其后。Hopcroft-Karp 按集合次序遍历工序侧，
+    # 字符串节点的集合次序随 PYTHONHASHSEED 变化，存在多个最大匹配时选中哪一个会跨进程漂移；整数哈希与种子无关。
     nx = import_networkx()
+    operation_count = len(ready_nodes)
+    machine_ids = sorted({machine_id for node in ready_nodes for machine_id in node.candidate_machine_ids})
+    machine_index_by_id = {machine_id: operation_count + offset for offset, machine_id in enumerate(machine_ids)}
     graph = nx.Graph()
-    operation_node_ids: Set[str] = set()
+    graph.add_nodes_from(range(operation_count))
     candidate_machine_ids_by_operation: Dict[str, Set[str]] = {}
     machine_edge_counts: Dict[str, int] = {}
     warnings: List[Dict[str, Any]] = []
 
-    for node in ready_nodes:
-        operation_node_id = str(node.node_id)
-        operation_node_ids.add(operation_node_id)
-        graph.add_node(operation_node_id, bipartite=0)
-        machine_ids = set(node.candidate_machine_ids)
-        candidate_machine_ids_by_operation[operation_node_id] = machine_ids
-        if not machine_ids:
+    for operation_index, node in enumerate(ready_nodes):
+        operation_machine_ids = set(node.candidate_machine_ids)
+        candidate_machine_ids_by_operation[str(node.node_id)] = operation_machine_ids
+        if not operation_machine_ids:
             warnings.append(_missing_candidate_warning(node))
             continue
-        for machine_id in sorted(machine_ids):
-            machine_node_id = make_machine_node_id(machine_id)
-            graph.add_node(machine_node_id, bipartite=1)
-            graph.add_edge(operation_node_id, machine_node_id)
+        for machine_id in sorted(operation_machine_ids):
+            graph.add_edge(operation_index, machine_index_by_id[machine_id])
             machine_edge_counts[machine_id] = int(machine_edge_counts.get(machine_id, 0)) + 1
 
-    return graph, operation_node_ids, candidate_machine_ids_by_operation, machine_edge_counts, tuple(warnings)
+    machine_node_ids = tuple(make_machine_node_id(machine_id) for machine_id in machine_ids)
+    return graph, machine_node_ids, candidate_machine_ids_by_operation, machine_edge_counts, tuple(warnings)
 
 
 def _operation_matches(
     *,
-    raw_matching: Dict[Any, Any],
-    operation_node_ids: Set[str],
+    raw_matching: Dict[int, int],
+    ready_nodes: List[OperationGraphNode],
+    machine_node_ids: Tuple[str, ...],
 ) -> Tuple[OperationMachineMatch, ...]:
+    operation_count = len(ready_nodes)
     matches: List[OperationMachineMatch] = []
-    for operation_node_id in sorted(operation_node_ids):
-        machine_node_id = raw_matching.get(operation_node_id)
-        if machine_node_id is None:
+    for operation_index, node in enumerate(ready_nodes):
+        if operation_index not in raw_matching:
             continue
+        operation_node_id = str(node.node_id)
+        machine_node_id = machine_node_ids[raw_matching[operation_index] - operation_count]
         matches.append(
             OperationMachineMatch(
                 operation_node_id=operation_node_id,
-                machine_node_id=str(machine_node_id),
+                machine_node_id=machine_node_id,
                 operation_id=display_id(operation_node_id),
                 machine_id=display_id(machine_node_id),
             )
@@ -151,13 +155,13 @@ def summarize_operation_machine_matching(
 
     (
         graph,
-        operation_node_ids,
+        machine_node_ids,
         candidate_machine_ids_by_operation,
         machine_edge_counts,
         warnings,
     ) = _build_operation_machine_graph(nodes)
-    raw_matching = dict(import_networkx().bipartite.maximum_matching(graph, top_nodes=operation_node_ids))
-    matches = _operation_matches(raw_matching=raw_matching, operation_node_ids=operation_node_ids)
+    raw_matching = import_networkx().bipartite.maximum_matching(graph, top_nodes=range(len(nodes)))
+    matches = _operation_matches(raw_matching=raw_matching, ready_nodes=nodes, machine_node_ids=machine_node_ids)
     matched_operation_node_ids = {match.operation_node_id for match in matches}
     unmatched_ids = _unmatched_operation_ids(
         ready_nodes=nodes,

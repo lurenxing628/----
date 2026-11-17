@@ -1,44 +1,36 @@
 from __future__ import annotations
 
-from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Tuple
 
 from core.algorithms.evaluation import objective_score
 
 from .shared_decode import decode_and_metrics
 
 if TYPE_CHECKING:
+    from .local_search_state import StrategyState
     from .shared_decode import SharedDecodeSession
 
 
 def evaluate_local_search_candidate(
     *,
-    strategy: Any,
-    params: Dict[str, Any],
-    start_dt: datetime,
-    end_date: Optional[date],
+    inherited: StrategyState,
     order: List[str],
     dispatch_mode: str,
     dispatch_rule: str,
-    resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
-    optimizer_algo_stats: Optional[Dict[str, Any]],
-    readiness_gate_enabled: bool,
     decode_session: SharedDecodeSession,
-    resource_pair_rank: Dict[Tuple[str, str], int],
+    resource_pair_rank: Mapping[Tuple[str, str], int],
 ) -> Dict[str, Any]:
+    """Decode a move with the ``inherited`` candidate's strategy and weights and its own dispatch and pair-rank
+    overrides, graph scoring off; the candidate records exactly those parameters and no graph-ready profile."""
     decoded = decode_and_metrics(
         decode_session=decode_session,
         objective_name=objective_name,
-        optimizer_algo_stats=optimizer_algo_stats,
-        strategy=strategy,
-        strategy_params=params,
-        start_dt=start_dt,
-        end_date=end_date,
+        strategy=inherited.strategy,
+        strategy_params=inherited.params,
         batch_order_override=order,
         dispatch_mode=dispatch_mode,
         dispatch_rule=dispatch_rule,
-        readiness_gate_enabled=bool(readiness_gate_enabled),
         graph_enabled=False,
         graph_score_enabled=False,
         graph_priority_key_by_op_id=None,
@@ -50,16 +42,17 @@ def evaluate_local_search_candidate(
         "results": decoded.results,
         "summary": summary,
         "strategy": decoded.used_strategy,
-        "params": decoded.used_params,
+        "params": inherited.params,
+        "graph_ready_profile": None,
         "dispatch_mode": dispatch_mode,
         "dispatch_rule": dispatch_rule,
+        "repair_decision": None,
         "order": order,
         "decoded_batch_order": decoded.decoded_batch_order,
         "metrics": metrics,
         "score": (float(summary.failed_ops),) + objective_score(objective_name, metrics),
-        "resource_pool": resource_pool or {},
+        "resource_pair_rank": resource_pair_rank,
     }
-    candidate["resource_pair_rank"] = resource_pair_rank
     candidate["archive_ref"] = decoded.archive_ref()
     candidate["decode_receipt"] = decoded.receipt
     source_runtime = decoded.receipt["source_runtime_ms"]

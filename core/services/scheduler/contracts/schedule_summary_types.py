@@ -5,10 +5,10 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Protocol, Set, Tuple
 
-from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.models.batch import Batch
 from core.models.batch_operation import BatchOperation
+from core.models.enums import SortStrategy
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
 
@@ -37,7 +37,7 @@ class SummaryBuildContext:
     version: int
     normalized_batch_ids: List[str]
     start_dt: datetime
-    end_date: Optional[date]
+    end_date: date
     batches: Dict[str, Batch]
     operations: List[BatchOperation]
     results: List[ScheduleResult]
@@ -55,17 +55,14 @@ class SummaryBuildContext:
     freeze_meta: Dict[str, Any]
     missing_internal_resource_op_ids: Set[int]
     t0: float
-    downtime_meta: Dict[str, Any] = field(default_factory=dict)
-    resource_pool_meta: Optional[Dict[str, Any]] = None
-    readiness_gate_enabled: bool = False
-    algo_stats: Dict[str, Any] = field(default_factory=dict)
-    graph_analysis_public: Optional[Dict[str, Any]] = None
-    graph_analysis_diagnostics: Optional[Dict[str, Any]] = None
-    candidate_comparison_public: Optional[Dict[str, Any]] = None
-    execution_snapshot_revision: Optional[str] = None
-    execution_snapshot_op_ids: List[int] = field(default_factory=list)
-    execution_snapshot_op_count: int = 0
-    simulate: bool = False
+    readiness_gate_enabled: bool
+    algo_stats: Dict[str, Any]
+    graph_analysis_public: Optional[Dict[str, Any]]
+    graph_analysis_diagnostics: Optional[Dict[str, Any]]
+    candidate_comparison_public: Optional[Dict[str, Any]]
+    execution_snapshot_revision: Optional[str]
+    execution_snapshot_op_ids: List[int]
+    execution_snapshot_op_count: int
 
 
 @dataclass(frozen=True)
@@ -81,18 +78,9 @@ class RuntimeState:
 
 
 @dataclass(frozen=True)
-class FallbackState:
-    fallback_counts: Dict[str, int]
-    ortools_warmstart_failed_count: int
-
-
-@dataclass(frozen=True)
 class AlgorithmSummaryState:
     ctx: SummaryBuildContext
     hard_constraints: List[str]
     freeze_state: Dict[str, Any]
     frozen_batch_ids: List[str]
-    resource_pool_meta: Optional[Dict[str, Any]]
-    resource_pool_enabled: bool
-    resource_pool_attempted: bool
-    fallback_state: FallbackState
+    fallback_counts: Dict[str, int]

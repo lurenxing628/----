@@ -36,11 +36,9 @@ def ledger_read_snapshot(conn):
 
 def _scope_tasks(scope: ExecutionLedgerReadScope, scopes):
     by_identity = {}
-    rows = scope.reader.scope_task_rows(scope, sorted({item.schedule_id for item in scopes}))
+    rows = scope.reader.scope_task_rows(scope, [item.schedule_id for item in scopes])
     for row in rows:
         key = tuple(row[:4])
-        if key in by_identity:
-            raise _unavailable("execution_ledger_scope_ambiguous", op_id=row[2])
         setup_hours, unit_hours = row[13], row[14]
         by_identity[key] = {
             "operation_ref": row[4],
@@ -61,7 +59,7 @@ def _scope_tasks(scope: ExecutionLedgerReadScope, scopes):
 def _require_reported_operation_scopes(scope: ExecutionLedgerReadScope):
     row = scope.reader.reported_operation_without_schedule_row(scope)
     if row is not None:
-        raise _unavailable("execution_ledger_report_scope_missing", op_id=int(row[0]))
+        raise _unavailable("execution_ledger_report_scope_missing", op_id=row[0])
 
 
 def _supplied_projection_map(execution_projections, refs, plan):

@@ -169,6 +169,6 @@ def _scheduler() -> GreedyScheduler:
 def _default_config() -> ScheduleConfigSnapshot:
     return config_snapshot(
         sort_strategy="priority_first", dispatch_mode="sgs", dispatch_rule="slack", auto_assign_enabled="no",
-        objective=OBJECTIVE_NAME, algo_mode="greedy", time_budget_seconds=1, ortools_enabled="no",
+        objective=OBJECTIVE_NAME, algo_mode="greedy", time_budget_seconds=1,
         freeze_window_enabled="no", freeze_window_days=0,
     )

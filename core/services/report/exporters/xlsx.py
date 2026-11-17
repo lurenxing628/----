@@ -46,7 +46,7 @@ def _append_row(ws, values: List[Any]) -> None:
     ws.append([_xlsx_cell(v) for v in values])
 
 
-def _append_write_only_row(ws, values: List[Any], *, is_header: bool = False) -> None:
+def append_write_only_row(ws, values: List[Any], *, is_header: bool = False) -> None:
     from openpyxl.cell import WriteOnlyCell
 
     bold, header_alignment, body_alignment = _cell_styles()
@@ -145,7 +145,7 @@ def append_summary_row(ws, values: List[Any], *, write_only: bool) -> None:
             cell.alignment = body_alignment
         ws.append(cells)
     elif write_only:
-        _append_write_only_row(ws, values)
+        append_write_only_row(ws, values)
     else:
         _append_row(ws, values)
 
@@ -153,7 +153,7 @@ def append_summary_row(ws, values: List[Any], *, write_only: bool) -> None:
 def _append_summary_sheet(wb, summary_rows: List[List[Any]], *, write_only: bool) -> None:
     if write_only:
         ws = wb.create_sheet("查询摘要")
-        _append_write_only_row(ws, ["项目", "内容"], is_header=True)
+        append_write_only_row(ws, ["项目", "内容"], is_header=True)
         for row in summary_rows:
             append_summary_row(ws, row, write_only=True)
         return
@@ -187,11 +187,11 @@ def export_overdue_xlsx(
         _append_summary_sheet(wb, summary_rows, write_only=write_only)
         ws = wb.create_sheet("超期清单")
         if write_only:
-            _append_write_only_row(ws, _OVERDUE_HEADERS, is_header=True)
+            append_write_only_row(ws, _OVERDUE_HEADERS, is_header=True)
         else:
             ws.title = "超期清单"
             _append_row(ws, _OVERDUE_HEADERS)
-        append = _append_write_only_row if write_only else _append_row
+        append = append_write_only_row if write_only else _append_row
         for item in items:
             append(ws, [item["bucket_label"], item["batch_id"], item["part_no"],
                         item["part_name"], item["quantity"], item["due_date"],
@@ -231,7 +231,7 @@ def export_utilization_xlsx(
             header = labels + ["班表内占用(小时)", "任务数", "可用工时(小时)", "整窗占用率(%)",
                                "累计负荷(小时)", "重叠负荷(小时)", "班表外占用(小时)", "计算方式版本", "计算说明"]
             if write_only:
-                _append_write_only_row(sheet, header, is_header=True)
+                append_write_only_row(sheet, header, is_header=True)
             else:
                 _append_row(sheet, header)
             for row in rows:
@@ -240,7 +240,7 @@ def export_utilization_xlsx(
                           row["summed_load_hours"], row["overlap_hours"], row["outside_calendar_hours"],
                           row["metric_version"], utilization_availability_note(row)]
                 if write_only:
-                    _append_write_only_row(sheet, values)
+                    append_write_only_row(sheet, values)
                 else:
                     _append_row(sheet, values)
             if not write_only:
@@ -269,11 +269,11 @@ def export_downtime_impact_xlsx(
         ws = wb.create_sheet("停机影响")
         header = ["设备编号", "设备名称", "停机时长(小时)", "停机次数", "与排程重叠(小时)", "重叠次数"]
         if write_only:
-            _append_write_only_row(ws, header, is_header=True)
+            append_write_only_row(ws, header, is_header=True)
         else:
             ws.title = "停机影响"
             _append_row(ws, header)
-        append = _append_write_only_row if write_only else _append_row
+        append = append_write_only_row if write_only else _append_row
         for row in machines:
             append(ws, [row["machine_id"], row["machine_name"], row["downtime_hours"],
                         row["downtime_count"], row["schedule_overlap_hours"],
@@ -309,9 +309,9 @@ def export_execution_review_xlsx(
                 _append_row(ws, _execution_review_values(row))
             _format_sheet(ws)
         else:
-            _append_write_only_row(ws, _EXECUTION_REVIEW_HEADERS, is_header=True)
+            append_write_only_row(ws, _EXECUTION_REVIEW_HEADERS, is_header=True)
             for row in rows:
-                _append_write_only_row(ws, _execution_review_values(row))
+                append_write_only_row(ws, _execution_review_values(row))
 
         buf = _make_output_buffer(write_only=write_only)
         wb.save(buf)

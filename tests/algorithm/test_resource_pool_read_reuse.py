@@ -1,11 +1,12 @@
 """A pool build shares qualification facts and retains successfully read empty downtime."""
 
-from datetime import datetime
+from datetime import date, datetime
 from types import SimpleNamespace
 
 import pytest
 
-from core.errors import ValidationError
+from core.algorithm_contracts.resource_pool import ResourcePool
+from core.models.content import StoredJsonCorrupt
 from core.services.personnel.operator_qualification import OperatorQualificationService
 from core.services.scheduler import resource_pool_builder
 from core.services.workbench.run.input import prepare_solver_input
@@ -17,6 +18,7 @@ from core.services.workbench.run.input_runtime import (
 )
 from core.services.workbench.run.preflight import PreflightService
 from core.services.workbench.run.preflight_facts import PreflightFacts
+from core.shared.local_datetime import datetime_to_us
 from tests._support.algo_operations import make_algo_op
 from tests.workbench.run_compute_support import prepare_run_input
 from tests.workbench.run_compute_support import run_case as run_case_fixture  # noqa: F401
@@ -24,15 +26,19 @@ from tests.workbench.run_compute_support import run_case as run_case_fixture  # 
 START = datetime(2026, 10, 14, 8)
 
 
+def _insert_downtime(conn, machine_id, start, end):
+    conn.execute(
+        "INSERT INTO MachineDowntimes(machine_id, start_time, end_time, start_us, end_us, reason_code) "
+        "VALUES (?, ?, ?, ?, ?, 'maintenance')",
+        (machine_id, start.isoformat(sep=" "), end.isoformat(sep=" "), datetime_to_us(start), datetime_to_us(end)),
+    )
+
+
 def test_empty_downtime_is_read_once_when_extending_pool(schema_conn):
     conn = schema_conn
     conn.executemany("INSERT INTO Machines(machine_id, name) VALUES (?, ?)", [("M_A", "A"), ("M_B", "B")])
-    conn.execute(
-        "INSERT INTO MachineDowntimes(machine_id, start_time, end_time) VALUES ('M_B', ?, ?)",
-        ("2026-10-14 09:00:00", "2026-10-14 10:00:00"),
-    )
+    _insert_downtime(conn, "M_B", datetime(2026, 10, 14, 9), datetime(2026, 10, 14, 10))
     conn.commit()
-    meta = {}
     sql = []
     conn.set_trace_callback(sql.append)
     try:
@@ -45,18 +51,16 @@ def test_empty_downtime_is_read_once_when_extending_pool(schema_conn):
                 start_dt=START, downtimes=runtime.downtimes,
             )
             assert downtime == {"M_A": []}
-            pool = {"operators_by_machine": {"M_A": ["O1"], "M_B": ["O1"]}}
+            pool = ResourcePool(enabled=True, machines_by_op_type={}, operators_by_machine={"M_A": ("O1",), "M_B": ("O1",)},
+                                machines_by_operator={}, pair_rank={}, operator_skills=None)
             for _ in range(2):
                 assert resource_pool_builder.extend_downtime_map_for_resource_pool(
-                    cfg=SimpleNamespace(auto_assign_enabled="yes"), resource_pool=pool,
-                    downtime_map=downtime, start_dt=START, downtimes=runtime.downtimes,
-                    meta=meta,
+                    resource_pool=pool, downtime_map=downtime, start_dt=START, downtimes=runtime.downtimes,
                 ) is downtime
     finally:
         conn.set_trace_callback(None)
     assert sum(' FROM "MachineDowntimes" ' in statement for statement in sql) == 1
     assert downtime == {"M_A": [], "M_B": [(datetime(2026, 10, 14, 9), datetime(2026, 10, 14, 10))]}
-    assert meta == {"downtime_extend_attempted": True}
 
 
 @pytest.mark.parametrize(
@@ -84,7 +88,7 @@ def test_invalid_calendar_periods_reject_runtime_admission_without_polluting_cap
     conn.commit()
     with PreflightFacts.open(conn) as facts:
         assert runtime_resource_inputs(facts) is facts.capture.runtime_resources
-        policy = facts.calendar(frozenset({"O1"})).policy_for_datetime(datetime(2026, 10, 14, 9))
+        policy = facts.calendar(frozenset({"O1"})).policy_for_datetime(datetime(2026, 10, 14, 9), operator_id=None)
         assert policy.date_str == "2026-10-14"
 
     conn.execute(
@@ -95,8 +99,8 @@ def test_invalid_calendar_periods_reject_runtime_admission_without_polluting_cap
     )
     conn.commit()
     with PreflightFacts.open(conn) as facts:
-        with pytest.raises(ValidationError):
-            facts.calendar().policy_for_datetime(datetime(2026, 10, 14, 9))
+        with pytest.raises(StoredJsonCorrupt):
+            facts.calendar().policy_for_datetime(datetime(2026, 10, 14, 9), operator_id=None)
         assert facts.capture.decoded_periods == {}
 
 
@@ -125,8 +129,8 @@ def test_runtime_admission_and_calendar_engine_share_decoded_periods_once(schema
 
     with PreflightFacts.open(conn) as facts:
         runtime_resource_inputs(facts)
-        first_policy = facts.calendar().policy_for_datetime(datetime(2026, 10, 14, 9))
-        second_policy = facts.calendar().policy_for_datetime(datetime(2026, 10, 15, 9))
+        first_policy = facts.calendar().policy_for_datetime(datetime(2026, 10, 14, 9), operator_id=None)
+        second_policy = facts.calendar().policy_for_datetime(datetime(2026, 10, 15, 9), operator_id=None)
         assert first_policy.hours == 8.0
         assert second_policy.hours == 8.0
     assert decoded.count(shared_json) == 1
@@ -135,10 +139,7 @@ def test_runtime_admission_and_calendar_engine_share_decoded_periods_once(schema
 def test_padded_machine_downtime_stays_on_its_own_machine(schema_conn):
     conn = schema_conn
     conn.executemany("INSERT INTO Machines(machine_id, name) VALUES (?, ?)", [(" M1 ", "padded"), ("M1", "plain")])
-    conn.execute(
-        "INSERT INTO MachineDowntimes(machine_id, start_time, end_time) VALUES (' M1 ', ?, ?)",
-        ("2026-10-14 09:00:00", "2026-10-14 10:00:00"),
-    )
+    _insert_downtime(conn, " M1 ", datetime(2026, 10, 14, 9), datetime(2026, 10, 14, 10))
     conn.commit()
     padded, plain = ({"op_id": op_id, "op_code": "OP" + str(op_id), "batch_id": "B1", "seq": op_id,
                       "machine_id": mid, "operator_id": "O1", "start_time": START, "end_time": datetime(2026, 10, 14, 11),
@@ -156,11 +157,11 @@ def test_padded_machine_downtime_stays_on_its_own_machine(schema_conn):
 
 def _seed_multi_work_type_pool(conn):
     conn.executemany("INSERT INTO OpTypes(op_type_id, name) VALUES (?, ?)", [("OT_A", "A"), ("OT_B", "B")])
+    conn.executemany("INSERT INTO Machines(machine_id, name) VALUES (?, ?)", [("M_A", "multi"), ("M_B", "single")])
     conn.executemany(
-        "INSERT INTO Machines(machine_id, name, op_type_id) VALUES (?, ?, 'OT_A')",
-        [("M_A", "multi"), ("M_B", "single")],
+        "INSERT INTO MachineOpTypes(machine_id, op_type_id) VALUES (?, ?)",
+        [("M_A", "OT_A"), ("M_A", "OT_B"), ("M_B", "OT_A")],
     )
-    conn.execute("INSERT INTO MachineOpTypes(machine_id, op_type_id) VALUES ('M_A', 'OT_B')")
     conn.executemany(
         "INSERT INTO Operators(operator_id, name) VALUES (?, ?)",
         [("O_SKILLED", "skilled"), ("O_LEGACY", "legacy"), ("O_EMPTY", "empty")],
@@ -196,17 +197,16 @@ def test_multi_work_type_pool_loads_qualifications_once_and_keeps_selection(sche
     monkeypatch.setattr(OperatorQualificationService, "project_facts", staticmethod(project))
     sql = []
     conn.set_trace_callback(sql.append)
-    meta = {}
     try:
         with PreflightFacts.open(conn) as facts:
             resources = runtime_resource_inputs(facts).resources
-            resources.validate_fixed(conn, [make_algo_op(op_type_id="OT_B", machine_id="M_A", operator_id="O_SKILLED")])
+            resources.validate_fixed([make_algo_op(op_type_id="OT_B", machine_id="M_A", operator_id="O_SKILLED")])
             for _ in range(2):
                 pool = resource_pool_builder.build_resource_pool(
-                    cfg=SimpleNamespace(auto_assign_enabled="yes"),
+                    cfg=SimpleNamespace(auto_assign_enabled=True),
                     algo_ops=[make_algo_op(id=op_id, op_type_id=code)
                               for op_id, code in enumerate(("OT_A", "OT_B"), 1)],
-                    meta=meta, resource_facts=resources,
+                    resource_facts=resources,
                 )
     finally:
         conn.set_trace_callback(None)
@@ -214,37 +214,20 @@ def test_multi_work_type_pool_loads_qualifications_once_and_keeps_selection(sche
     for table in ("Operators", "OperatorMachine", "OperatorSkill", "WorkbenchOperatorProfiles"):
         assert sum(' FROM "' + table + '" ' in statement for statement in sql) == 1
     assert not any("FROM Operators AS o" in statement or "FROM OperatorSkill AS s" in statement for statement in sql)
-    assert pool == {
-        "machines_by_op_type": {"OT_A": ["M_A", "M_B"], "OT_B": ["M_A"]},
-        "operators_by_machine": {"M_A": ["O_SKILLED", "O_LEGACY"], "M_B": ["O_LEGACY"]},
-        "machines_by_operator": {"O_LEGACY": ["M_A", "M_B"], "O_SKILLED": ["M_A"]},
-        "pair_rank": {("O_LEGACY", "M_A"): 11, ("O_SKILLED", "M_A"): 0, ("O_LEGACY", "M_B"): 12},
-        "operator_skills": {"O_EMPTY": [], "O_LEGACY": None, "O_SKILLED": ["OT_B"]},
-    }
-    assert meta == {"resource_pool_attempted": True}
-
-
-def test_resource_pool_recognizes_chinese_primary_synonyms(schema_conn):
-    conn = schema_conn
-    _seed_multi_work_type_pool(conn)
-    conn.execute("UPDATE OperatorMachine SET is_primary='主操' WHERE operator_id='O_LEGACY' AND machine_id='M_A'")
-    conn.execute("UPDATE OperatorMachine SET is_primary='主' WHERE operator_id='O_LEGACY' AND machine_id='M_B'")
-    conn.commit()
-    with PreflightFacts.open(conn) as facts:
-        resources = runtime_resource_inputs(facts).resources
-        pool = resource_pool_builder.build_resource_pool(
-            cfg=SimpleNamespace(auto_assign_enabled="yes"),
-            algo_ops=[make_algo_op(id=op_id, op_type_id=code) for op_id, code in enumerate(("OT_A", "OT_B"), 1)],
-            resource_facts=resources,
-        )
-    assert pool is not None
-    assert pool["pair_rank"] == {("O_LEGACY", "M_A"): 1, ("O_SKILLED", "M_A"): 0, ("O_LEGACY", "M_B"): 2}
-    assert pool["operators_by_machine"] == {"M_A": ["O_SKILLED", "O_LEGACY"], "M_B": ["O_LEGACY"]}
+    assert pool == ResourcePool(
+        enabled=True,
+        machines_by_op_type={"OT_A": ("M_A", "M_B"), "OT_B": ("M_A",)},
+        operators_by_machine={"M_A": ("O_SKILLED", "O_LEGACY"), "M_B": ("O_LEGACY",)},
+        machines_by_operator={"O_LEGACY": ("M_A", "M_B"), "O_SKILLED": ("M_A",)},
+        pair_rank={("O_LEGACY", "M_A"): 11, ("O_SKILLED", "M_A"): 0, ("O_LEGACY", "M_B"): 12},
+        operator_skills={"O_EMPTY": frozenset(), "O_LEGACY": None, "O_SKILLED": frozenset({"OT_B"})},
+    )
 
 
 def test_padded_resource_identities_pass_preflight_and_candidate_input(run_case):
     conn = run_case.conn
-    conn.execute("INSERT INTO Machines(machine_id, name, op_type_id) VALUES (' M1 ', 'Padded lathe', 'T1')")
+    conn.execute("INSERT INTO Machines(machine_id, name) VALUES (' M1 ', 'Padded lathe')")
+    conn.execute("INSERT INTO MachineOpTypes(machine_id, op_type_id) VALUES (' M1 ', 'T1')")
     conn.execute("INSERT INTO Operators(operator_id, name) VALUES (' O1 ', 'Padded operator')")
     conn.execute("INSERT INTO OperatorMachine(operator_id, machine_id) VALUES (' O1 ', ' M1 ')")
     conn.execute("INSERT INTO WorkbenchOperatorProfiles(operator_id, skills_declared) VALUES (' O1 ', 1)")
@@ -254,7 +237,7 @@ def test_padded_resource_identities_pass_preflight_and_candidate_input(run_case)
     assert not conn.execute("PRAGMA foreign_key_check").fetchall()
 
     fixed_settings = run_case.settings("B1", missing_resource_policy="exclude")
-    preflight_fixed, _ = PreflightService(conn).evaluate(fixed_settings)
+    preflight_fixed, _ = PreflightService(conn).evaluate(fixed_settings, material_day=date.today().isoformat())
     assert preflight_fixed["counts"]["ready_tasks"] == 1
     assert preflight_fixed["counts"]["blocked_tasks"] == 0
     assert preflight_fixed["blockers"] == []
@@ -270,7 +253,7 @@ def test_padded_resource_identities_pass_preflight_and_candidate_input(run_case)
     conn.execute("UPDATE BatchOperations SET machine_id=NULL, operator_id=NULL WHERE id=?", (run_case.op_id,))
     conn.commit()
     auto_settings = run_case.settings("B1", missing_resource_policy="auto_assign")
-    preflight_auto, _ = PreflightService(conn).evaluate(auto_settings)
+    preflight_auto, _ = PreflightService(conn).evaluate(auto_settings, material_day=date.today().isoformat())
     assert preflight_auto["counts"]["auto_assign_required"] == 1
     assert preflight_auto["counts"]["eligible_tasks"] == 1
     assert preflight_auto["counts"]["blocked_tasks"] == 0
@@ -280,8 +263,8 @@ def test_padded_resource_identities_pass_preflight_and_candidate_input(run_case)
     prepared_auto = prepare_run_input(conn, auto_settings, run_case.projections("B1"))
     with conn:
         pool = prepare_solver_resources(prepared_auto, prepare_solver_input(prepared_auto)).resource_pool
-    assert pool is not None
-    assert " M1 " in pool["machines_by_op_type"]["T1"]
-    assert pool["operators_by_machine"][" M1 "] == [" O1 "]
-    assert pool["machines_by_operator"][" O1 "] == [" M1 "]
-    assert (" O1 ", " M1 ") in pool["pair_rank"]
+    assert pool.enabled
+    assert " M1 " in pool.machines_by_op_type["T1"]
+    assert pool.operators_by_machine[" M1 "] == (" O1 ",)
+    assert pool.machines_by_operator[" O1 "] == (" M1 ",)
+    assert (" O1 ", " M1 ") in pool.pair_rank

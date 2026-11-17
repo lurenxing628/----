@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, replace
-from typing import Any, Dict, FrozenSet, Iterable, Iterator, List, Mapping, Optional, Set, Tuple, cast
+from typing import Any, Dict, FrozenSet, Iterable, Iterator, List, Mapping, Optional, Set, Tuple
 
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithms.evaluation import objective_score
@@ -50,38 +50,28 @@ class ScheduleArchiveEntry:
 
 @dataclass(frozen=True)
 class ArchiveObservation:
-    entry_id: Optional[int] = None
+    entry_id: int
     reason: Optional[str] = None
     reused: bool = False
     restored: bool = False
     initialized_objectives: Tuple[str, ...] = ()
     improved_objectives: Tuple[str, ...] = ()
-    evidence_updated: bool = False
 
 
 @dataclass
 class CandidateArchiveRef:
     """A decoded candidate's place in the archive, carried by the candidate as ``archive_ref``.
 
-    ``entry_id`` is its content identity (an unverified trial keeps a temporary number, a payload the archive
-    cannot own has none). The decode's own observation is reported once (``take_observation``); later reports
-    of the same candidate reuse ``entry_id``. ``evidence_revision`` is the archive evidence revision the candidate
-    was last bound to by the shared search (None until then).
+    ``entry_id`` is its content identity (an unverified trial keeps a temporary number). The decode's own
+    observation is reported once (``take_observation``); later reports of the same candidate reuse ``entry_id``.
     """
 
-    entry_id: Optional[int]
+    entry_id: int
     observation: Optional[ArchiveObservation] = None
-    evidence_revision: Optional[int] = None
 
     def take_observation(self) -> Optional[ArchiveObservation]:
         observation, self.observation = self.observation, None
         return observation
-
-
-@dataclass(frozen=True)
-class PartialScheduleGroup:
-    entry_ids: Tuple[int, ...]
-    best_by_objective: Mapping[str, int]
 
 
 @dataclass
@@ -122,12 +112,11 @@ def decoded_batch_order(results: List[ScheduleResult]) -> Tuple[str, ...]:
 
 
 def _snapshot_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
-    # Fixed business seeds and input resource pools remain owned by the run input.
-    # All other containers belong to this completed decode, including its decisions. Search attempt
-    # records still hold the stored algo_stats and summary by reference (step_report_hooks, local search),
+    # Every container belongs to this completed decode, including its decisions; the run's resource pool is the
+    # decode session's and no candidate holds it (a candidate records only its pair-rank overrides). Search
+    # attempt records still hold the stored algo_stats and summary by reference (multi-start, local search),
     # so the public copy must not share them.
-    out = {key: value if key in ("resource_pool", "seed_results") else deepcopy(value)
-           for key, value in candidate.items() if key not in ("results", "summary", "metrics")}
+    out = {key: deepcopy(value) for key, value in candidate.items() if key not in ("results", "summary", "metrics")}
     out["results"] = [replace(result) for result in candidate["results"]]
     out["summary"] = deepcopy(candidate["summary"])
     metrics = candidate["metrics"]
@@ -173,28 +162,11 @@ class SharedScheduleArchive:
         self._next_entry_id = 1
 
     @property
-    def best_by_objective(self) -> Dict[str, int]:
-        return dict(self._best)
-
-    @property
     def improvement_counts(self) -> Dict[str, int]:
         return dict(self._improvements)
 
-    @property
-    def current_by_objective(self) -> Dict[str, Optional[int]]:
-        return dict(self._current)
-
-    @property
-    def starting_entries_by_objective(self) -> Dict[str, Tuple[int, ...]]:
-        return dict(self._starts)
-
     def __contains__(self, entry_id: object) -> bool:
         return entry_id in self._entries
-
-    @property
-    def partial_groups(self) -> Dict[PartialScopeKey, PartialScheduleGroup]:
-        return {key: PartialScheduleGroup(tuple(self._partial_entry_ids[key]), dict(best))
-                for key, best in self._partial.items()}
 
     def has_complete_best(self) -> bool:
         return bool(self._best)
@@ -251,10 +223,11 @@ class SharedScheduleArchive:
         return candidate
 
     def register_decode(self, candidate: Dict[str, Any], *, verified: bool, elapsed_ms: int) -> ArchiveObservation:
-        """Own a new verified decode; unknown trials retain only a temporary number."""
-        completion = candidate["metrics"].completion
-        if completion.expected_operation_count != len(self.expected_operation_ids):
-            return ArchiveObservation(reason="completion_scope_mismatch")
+        """Own a new verified decode; unknown trials retain only a temporary number.
+
+        The decode's metrics come from the run's evaluation context, whose expected operations are this
+        archive's (``open_shared_search``).
+        """
         key = schedule_content_key(candidate["results"])
         if not verified:
             identity = self._identities.get(key)
@@ -268,8 +241,8 @@ class SharedScheduleArchive:
     def finish_observation(self, observed: ArchiveObservation, candidate: Dict[str, Any], *,
                            origin: Dict[str, Any]) -> None:
         """Attach the selected stage evidence without registering or copying its rows again."""
-        stored = self._entries[cast(int, observed.entry_id)]
-        if not stored.evidence_origin or observed.evidence_updated or observed.restored:
+        stored = self._entries[observed.entry_id]
+        if not stored.evidence_origin or observed.restored:
             stored.evidence_origin = origin
             stored.payload.update({key: value for key, value in candidate.items()
                                    if key not in ("results", "summary", "metrics", "score", "archive_ref",
@@ -279,24 +252,9 @@ class SharedScheduleArchive:
                            content_key: ContentKey) -> ArchiveObservation:
         identity = self._identities.get(content_key)
         if identity is not None and identity.entry_id in self._entries:
-            stored = self._entries[identity.entry_id]
-            if stored.score_scope.is_complete:
-                return ArchiveObservation(entry_id=identity.entry_id, reused=True)
-            scope = self._score_scope(candidate)
-            if not self._evidence_can_upgrade(stored.score_scope, scope):
-                return ArchiveObservation(entry_id=identity.entry_id, reused=True)
-            evaluations = self._objective_evaluations(candidate)
-            payload = dict(candidate, results=stored.payload["results"],
-                           decoded_batch_order=stored.payload["decoded_batch_order"])
-            self._remove_partial_entry(stored, keep_empty_scope=not scope.is_complete)
-            stored.payload = payload
-            stored.score_scope = scope
-            stored.evaluations = evaluations
-            stored.evidence_origin = {}
-            initialized, improved = self._update_best(stored)
-            self._evict_unreferenced()
-            return ArchiveObservation(identity.entry_id, reused=True, evidence_updated=True,
-                                      initialized_objectives=initialized, improved_objectives=improved)
+            # One evaluation context scores every decode, so a content identity has one score scope:
+            # a repeated arrangement only reuses its entry.
+            return ArchiveObservation(entry_id=identity.entry_id, reused=True)
         scope = self._score_scope(candidate)
         evaluations = self._objective_evaluations(candidate)
         restored = identity is not None
@@ -319,11 +277,6 @@ class SharedScheduleArchive:
                 (candidate["summary"].failed_ops,) + objective_score(objective, candidate["metrics"]),
             ) for objective in self.target_objectives
         }
-
-    @staticmethod
-    def _evidence_can_upgrade(old: ScheduleScoreScope, new: ScheduleScoreScope) -> bool:
-        return ((not old.is_complete and new.is_complete)
-                or (old.group_key == new.group_key and not old.components_known and new.components_known))
 
     def accept_exploration(self, objective: str, entry_id: int) -> None:
         self._require_objective(objective)
@@ -451,16 +404,13 @@ class SharedScheduleArchive:
                     self._remove_partial_entry(stored)
                 surplus -= 1
 
-    def _remove_partial_entry(self, stored: _StoredSchedule, *, keep_empty_scope: bool = False) -> None:
+    def _remove_partial_entry(self, stored: _StoredSchedule) -> None:
         key = stored.score_scope.group_key
         members = self._partial_entry_ids[key]
         members.remove(stored.identity.entry_id)
         if not members:
-            if keep_empty_scope:
-                self._partial[key] = {}
-            else:
-                del self._partial[key]
-                del self._partial_entry_ids[key]
+            del self._partial[key]
+            del self._partial_entry_ids[key]
             return
         best: Dict[str, int] = {}
         for entry_id in members:
@@ -475,5 +425,5 @@ class SharedScheduleArchive:
         self._partial[key] = best
 
 
-__all__ = ["ArchiveObservation", "CandidateArchiveRef", "PartialScheduleGroup", "ScheduleArchiveEntry", "ScheduleEvaluation",
+__all__ = ["ArchiveObservation", "CandidateArchiveRef", "ScheduleArchiveEntry", "ScheduleEvaluation",
            "ScheduleScoreScope", "SharedScheduleArchive", "decoded_batch_order"]

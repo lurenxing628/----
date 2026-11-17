@@ -11,18 +11,25 @@ from .candidate_fingerprint import (
 
 @dataclass
 class OptimizationSearchReportState:
+    """One target view's search report; every evaluated candidate is reported to the shared search.
+
+    ``candidate_observer``, ``candidate_acceptance_observer`` and ``reference_capture_observer`` are that
+    search's observation entries for this target; ``candidate_clock`` is the run budget's clock and
+    ``started_at`` its start.
+    """
+
     objective_name: str
     started_at: float
+    candidate_observer: Callable[..., None] = field(repr=False, compare=False)
+    candidate_clock: Callable[[], float] = field(repr=False, compare=False)
+    candidate_acceptance_observer: Callable[..., None] = field(repr=False, compare=False)
+    reference_capture_observer: Callable[..., None] = field(repr=False, compare=False)
     initial_fingerprint: Optional[tuple] = None
     best_fingerprint: Optional[tuple] = None
     best_origin: Optional[str] = None
     candidate_fingerprints: Set[tuple] = field(default_factory=set)
     _best_candidate: Optional[Dict[str, Any]] = field(default=None, init=False, repr=False, compare=False)
     _best_identity: Optional[CandidateFingerprint] = field(default=None, init=False, repr=False, compare=False)
-    candidate_observer: Optional[Callable[..., None]] = field(default=None, repr=False, compare=False)
-    candidate_clock: Optional[Callable[[], float]] = field(default=None, repr=False, compare=False)
-    candidate_acceptance_observer: Optional[Callable[..., None]] = field(default=None, repr=False, compare=False)
-    reference_capture_observer: Optional[Callable[..., None]] = field(default=None, repr=False, compare=False)
 
     def fingerprint_identity(self, candidate: Dict[str, Any]) -> Optional[CandidateFingerprint]:
         """The retained best's stable identity; its comparison context is recomputed by the caller."""
@@ -41,10 +48,6 @@ class OptimizationSearchReportState:
             self.initial_fingerprint = identity.output_key
 
     def _observe_candidate(self, candidate: Dict[str, Any], *, origin: str, verified: bool) -> None:
-        if self.candidate_observer is None:
-            return
-        if self.candidate_clock is None:
-            raise ValueError("A shared candidate observer requires the common search clock.")
         elapsed_ms = max(int((self.candidate_clock() - self.started_at) * 1000), 0)
         self.candidate_observer(candidate=candidate, origin=origin, verified=verified, elapsed_ms=elapsed_ms)
 
@@ -90,8 +93,7 @@ class OptimizationSearchReportState:
         self.best_fingerprint = fingerprint.output_key
         self._best_candidate, self._best_identity = candidate, fingerprint
         self.best_origin = str(origin)
-        if self.candidate_acceptance_observer is not None:
-            self.candidate_acceptance_observer(candidate=candidate)
+        self.candidate_acceptance_observer(candidate=candidate)
 
     def mark_current_candidate_accepted(
         self,
@@ -101,8 +103,7 @@ class OptimizationSearchReportState:
         fingerprint: CandidateFingerprint,
     ) -> None:
         self._ensure_verified_fingerprint(candidate, origin=origin, fingerprint=fingerprint)
-        if self.candidate_acceptance_observer is not None:
-            self.candidate_acceptance_observer(candidate=candidate)
+        self.candidate_acceptance_observer(candidate=candidate)
 
     def _candidate_fingerprint(self, candidate: Dict[str, Any], *, seen: Set[tuple],
                                identity: Optional[CandidateFingerprint] = None) -> CandidateFingerprint:

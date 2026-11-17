@@ -10,12 +10,13 @@ import pytest
 
 from core.algorithm_contracts import date_parsers
 from core.algorithm_contracts.date_parsers import require_optional_date, require_optional_datetime
-from core.algorithm_contracts.sort_strategies import SortStrategy
+from core.algorithm_contracts.resource_pool import DISABLED_RESOURCE_POOL
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
-from core.algorithms.evaluation import ScheduleMetrics, compute_metrics
+from core.algorithms.evaluation import ScheduleMetrics
 from core.algorithms.evaluation_completion import BatchCompletion, due_display_text
-from core.algorithms.greedy.scheduler import GreedyScheduler
+from core.algorithms.greedy.scheduler import GreedyScheduler, prepare_native_schedule_inputs
 from core.errors import ValidationError
+from core.models.enums import SortStrategy
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.models.schedule_config_runtime_snapshot import snapshot_from_values
 from core.services.scheduler.contracts.schedule_summary_types import SummaryBuildContext
@@ -29,7 +30,7 @@ from core.services.scheduler.summary.due_risk_items import build_incomplete_batc
 from core.services.scheduler.summary.schedule_summary import build_result_summary
 from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar
-from tests._support.schedule_decode import config_snapshot, production_session
+from tests._support.schedule_decode import config_snapshot, prepared_metrics, required_hours_by_op_id
 
 
 def test_require_optional_date_and_datetime_enforce_zero_padded_local_iso() -> None:
@@ -97,7 +98,10 @@ def test_native_preparation_caches_due_dates_for_piece_batches_and_preserves_val
         "B2": make_batch(batch_id="B2", quantity=1, due_date="2026-05-20", created_at="2026-05-01 08:00:00"),
     }
     piece_op = make_algo_op(id=1, batch_id="B1", piece_id="P1", seq=10, machine_id="M1", operator_id="O1")
-    prep = production_session(scheduler, operations=[piece_op], batches=batches).native_preparation
+    prep = prepare_native_schedule_inputs(
+        {}, scheduler=scheduler, operations=[piece_op], batches=batches,
+        required_hours_by_op_id=required_hours_by_op_id([piece_op], batches), seed_results=[], resource_pool=DISABLED_RESOURCE_POOL,
+        graph_ready_context=None)
 
     piece_batch = prep.operation_batch(piece_op, batches["B1"])
     assert piece_batch is not batches["B1"] and piece_batch.quantity == 1
@@ -105,18 +109,18 @@ def test_native_preparation_caches_due_dates_for_piece_batches_and_preserves_val
     with patch.object(date_parsers, "parse_date", wraps=date_parsers.parse_date) as spy:
         assert prep.due_date_for_batch("B1") == date(2026, 5, 25)
         assert prep.due_date_for_batch("B1") == date(2026, 5, 25)
-        assert prep.batch_order(start_dt=datetime(2026, 5, 1, 8, 0), strategy=SortStrategy.FIFO) == ("B2", "B1")
+        assert prep.batch_order(start_dt=datetime(2026, 5, 1, 8, 0), strategy=SortStrategy.FIFO, weights=None) == ("B2", "B1")
     assert spy.call_count == 2
 
     invalid_batches = {"B_BAD": make_batch(batch_id="B_BAD", due_date="2026/05/20")}
-    bad_prep = production_session(
-        scheduler,
-        operations=[make_algo_op(id=2, batch_id="B_BAD", seq=10, machine_id="M1", operator_id="O1")],
-        batches=invalid_batches,
-    ).native_preparation
+    bad_ops = [make_algo_op(id=2, batch_id="B_BAD", seq=10, machine_id="M1", operator_id="O1")]
+    bad_prep = prepare_native_schedule_inputs(
+        {}, scheduler=scheduler, operations=bad_ops, batches=invalid_batches,
+        required_hours_by_op_id=required_hours_by_op_id(bad_ops, invalid_batches), seed_results=[],
+        resource_pool=DISABLED_RESOURCE_POOL, graph_ready_context=None)
     assert bad_prep.all_batch_due_dates_valid() is False
     with pytest.raises(ValidationError) as due_exc:
-        bad_prep.batch_order(start_dt=datetime(2026, 5, 1, 8, 0), strategy=SortStrategy.DUE_DATE_FIRST)
+        bad_prep.batch_order(start_dt=datetime(2026, 5, 1, 8, 0), strategy=SortStrategy.DUE_DATE_FIRST, weights=None)
     assert due_exc.value.field == "due_date"
 
 
@@ -177,7 +181,7 @@ def test_summary_warnings_are_pure_and_due_display_distinguishes_none_empty_and_
         make_algo_op(id=22, batch_id="B_NONE", seq=20),
         make_algo_op(id=3, batch_id="B_UNSCHED", seq=10),
     ]
-    metrics = compute_metrics(
+    metrics = prepared_metrics(
         results, batches, expected_operations=ops, seed_occupancies_by_op_id={}, failure_details=failures
     )
     original_warnings = ["基础提醒"]
@@ -194,31 +198,7 @@ def test_summary_warnings_are_pure_and_due_display_distinguishes_none_empty_and_
     cfg = snapshot_from_values(
         dict(default_snapshot_values(), freeze_window_enabled="no", auto_assign_enabled="no", freeze_window_days=0)
     )
-    with pytest.raises(TypeError):
-        SummaryBuildContext(  # type: ignore[call-arg]
-            cfg=cfg,
-            version=1,
-            normalized_batch_ids=list(batches),
-            start_dt=datetime(2026, 5, 20, 8, 0),
-            end_date=None,
-            batches=batches,
-            operations=[],
-            results=results,
-            summary=summary,
-            used_strategy=SortStrategy.PRIORITY_FIRST,
-            used_params={},
-            algo_mode="greedy",
-            objective_name="min_overdue",
-            time_budget_seconds=5,
-            best_score=(3.0,),
-            best_metrics=metrics,
-            frozen_op_ids=set(),
-            scheduled_op_ids={1, 2},
-            freeze_meta={"freeze_enabled": False, "freeze_days": 0, "freeze_state": "disabled", "freeze_applied": False},
-            missing_internal_resource_op_ids=set(),
-        )
-
-    ctx = SummaryBuildContext(
+    without_t0 = dict(
         cfg=cfg,
         version=1,
         normalized_batch_ids=list(batches),
@@ -239,8 +219,19 @@ def test_summary_warnings_are_pure_and_due_display_distinguishes_none_empty_and_
         scheduled_op_ids={1, 2},
         freeze_meta={"freeze_enabled": False, "freeze_days": 0, "freeze_state": "disabled", "freeze_applied": False},
         missing_internal_resource_op_ids=set(),
-        t0=time.monotonic() + 5.0,
+        readiness_gate_enabled=False,
+        algo_stats={},
+        graph_analysis_public=None,
+        graph_analysis_diagnostics=None,
+        candidate_comparison_public=None,
+        execution_snapshot_revision=None,
+        execution_snapshot_op_ids=[],
+        execution_snapshot_op_count=0,
     )
+    with pytest.raises(TypeError):
+        SummaryBuildContext(**without_t0)  # type: ignore[call-arg]
+
+    ctx = SummaryBuildContext(**without_t0, t0=time.monotonic() + 5.0)
     out = build_result_summary(ctx=ctx)
     assert summary.warnings == original_warnings
     assert out["end_date"] == "2026-05-30"
@@ -280,16 +271,10 @@ def test_candidate_metrics_summary_preserves_four_decimal_rounding_without_unifi
         candidate_key="cand_1",
         sequence=1,
         label="方案 1",
-        kind="primary",
-        status="complete",
-        generation_policy_version="unified_search_v1",
         algo_mode="improve",
         objective_name="min_overdue",
         time_budget_seconds=5,
         dispatch_mode="sgs",
-        graph_critical_weight=500,
-        graph_impact_weight=10,
-        graph_downstream_weight=1,
         results=[],
         summary=ScheduleSummary(
             success=True, total_ops=1, scheduled_ops=1, failed_ops=0, warnings=[], errors=[], duration_seconds=0.1
@@ -334,7 +319,6 @@ def test_candidate_metrics_summary_preserves_four_decimal_rounding_without_unifi
         evidence_state="verified",
     )
     outcome = CandidateComparisonOutcome(
-        generation_policy_version="unified_search_v1",
         primary_objective="min_overdue",
         target_objectives=["min_overdue"],
         candidates=[plan],

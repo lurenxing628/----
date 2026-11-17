@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from data.repositories import OperatorMachineRepository
+from data.repositories.operator_machine_repo import OperatorMachineRepository
 
 from .operator_machine_changes import prepare_operator_machine_changes
 
@@ -13,8 +13,8 @@ class OperatorMachineService:
         self.repo = OperatorMachineRepository(conn, logger=logger)
 
     @staticmethod
-    def prepare_changes(current_rows, requested, *, removed=(), primaries=None):
-        return prepare_operator_machine_changes(current_rows, requested, removed=removed, primaries=primaries)
+    def prepare_changes(current_rows, requested, *, removed=()):
+        return prepare_operator_machine_changes(current_rows, requested, removed=removed)
 
     def apply_changes(self, changes) -> None:
         if not self.conn.in_transaction:

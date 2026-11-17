@@ -8,12 +8,10 @@ from core.models.objective import best_score_schema, comparison_metric_key
 from core.services.scheduler.contracts.graph_public_summary import project_public_graph_analysis
 from core.services.scheduler.contracts.schedule_summary_types import (
     AlgorithmSummaryState,
-    FallbackState,
     RuntimeState,
     SummaryBuildContext,
 )
 from core.services.scheduler.run.auto_assign_resource_errors import auto_assign_failed_op_ids_from_failure_details
-from core.services.scheduler.run.schedule_candidate_summary import is_unified_generation
 from core.services.scheduler.run.schedule_persistence_errors import missing_internal_resource_samples
 from core.shared.local_datetime import format_local_datetime as fmt_dt
 
@@ -61,39 +59,23 @@ def _algo_freeze_window_dict(
     return freeze_window
 
 
-def _algo_resource_pool_dict(
-    *,
-    resource_pool_attempted: bool,
-    resource_pool_enabled: bool,
-) -> Dict[str, Any]:
+def _algo_resource_pool_dict(auto_assign_enabled: bool) -> Dict[str, Any]:
+    # build_resource_pool builds the run's pool exactly when automatic assignment is on.
     return {
-        "enabled": YesNo.YES.value if resource_pool_enabled else YesNo.NO.value,
-        "attempted": resource_pool_attempted if resource_pool_enabled else False,
+        "enabled": YesNo.YES.value if auto_assign_enabled else YesNo.NO.value,
+        "attempted": auto_assign_enabled,
     }
 
 
-def _apply_optional_algo_fields(algo: Dict[str, Any], state: AlgorithmSummaryState) -> None:
-    if state.resource_pool_enabled or (isinstance(state.resource_pool_meta, dict) and bool(state.resource_pool_meta)):
-        algo["resource_pool"] = _algo_resource_pool_dict(
-            resource_pool_attempted=state.resource_pool_attempted,
-            resource_pool_enabled=state.resource_pool_enabled,
-        )
-
-
-def _apply_fallback_algo_fields(algo: Dict[str, Any], fallback_state: FallbackState) -> None:
-    if fallback_state.fallback_counts:
-        algo["fallback_counts"] = fallback_state.fallback_counts
+def _apply_fallback_algo_fields(algo: Dict[str, Any], fallback_counts: Dict[str, int]) -> None:
+    if fallback_counts:
+        algo["fallback_counts"] = fallback_counts
 
 
 def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
     ctx = state.ctx
     comparison = ctx.candidate_comparison_public
-    unified = comparison is not None and is_unified_generation(comparison)
-    best_score = (
-        list(comparison["selection"]["selected_score"])
-        if unified and comparison is not None
-        else list(ctx.best_score)
-    )
+    best_score = list(comparison["selection"]["selected_score"]) if comparison is not None else list(ctx.best_score)
     metrics = ctx.best_metrics.public_dict()
     algo: Dict[str, Any] = {
         "mode": ctx.algo_mode,
@@ -105,24 +87,24 @@ def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
         "soft_objectives": [ctx.objective_name],
         "best_score_schema": best_score_schema(ctx.objective_name),
         "attempts": [],
-        # 停机扩展只在自动分配开启且资源池建成时由 extend_downtime_map_for_resource_pool 写入。
-        "downtime_avoid": {"extend_attempted": bool(ctx.downtime_meta.get("downtime_extend_attempted", False))},
+        # 自动分配开启时资源池建成，extend_downtime_map_for_resource_pool 把池内设备的停机并入。
+        "downtime_avoid": {"extend_attempted": ctx.cfg.auto_assign_enabled},
         "freeze_window": _algo_freeze_window_dict(state),
         "best_score": best_score,
     }
     if metrics:
         algo["metrics"] = metrics
-    if unified and comparison is not None:
-        for key in ("generation_policy_version", "primary_objective", "target_objectives"):
+    if comparison is not None:
+        for key in ("primary_objective", "target_objectives"):
             algo[key] = comparison[key]
     if ctx.graph_analysis_public is not None:
         graph_analysis = project_public_graph_analysis(ctx.graph_analysis_public)
         if graph_analysis:
             algo["graph_analysis"] = graph_analysis
-    if comparison:
+    if comparison is not None:
         algo["candidate_comparison"] = comparison
-    _apply_optional_algo_fields(algo, state)
-    _apply_fallback_algo_fields(algo, state.fallback_state)
+    algo["resource_pool"] = _algo_resource_pool_dict(ctx.cfg.auto_assign_enabled)
+    _apply_fallback_algo_fields(algo, state.fallback_counts)
     return algo
 
 
@@ -183,7 +165,7 @@ def _graph_enhancement_degraded(graph_analysis_public: Optional[Dict[str, Any]])
     )
 
 
-def _build_result_summary_obj(
+def build_result_summary_obj(
     *,
     ctx: SummaryBuildContext,
     runtime_state: RuntimeState,
@@ -216,7 +198,8 @@ def _build_result_summary_obj(
 
     result_summary = {
         "summary_schema_version": "1.2",
-        "is_simulation": ctx.simulate,
+        # Only a candidate computation builds this summary; adopting a plan writes its own official record.
+        "is_simulation": True,
         "completion_status": completion_status,
         "readiness": {"gate_enabled": ctx.readiness_gate_enabled},
         "version": ctx.version,
@@ -225,7 +208,7 @@ def _build_result_summary_obj(
         "algo": public_algo,
         "selected_batch_ids": list(ctx.normalized_batch_ids),
         "start_time": fmt_dt(ctx.start_dt),
-        "end_date": None if ctx.end_date is None else ctx.end_date.isoformat(),
+        "end_date": ctx.end_date.isoformat(),
         "invalid_due_count": runtime_state.invalid_due_count,
         "invalid_due_batch_ids_sample": runtime_state.invalid_due_batch_ids_sample,
         "unscheduled_batch_count": runtime_state.unscheduled_batch_count,

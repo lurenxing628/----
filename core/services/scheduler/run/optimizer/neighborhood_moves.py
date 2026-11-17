@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple
+from dataclasses import dataclass, field
+from typing import Any, List, Mapping, Optional, Set, Tuple
+
+from core.algorithm_contracts.resource_pool import ResourcePool
 
 from .neighborhood_move_support import LocalSearchResultFacts, pick_resource_pair
 
@@ -12,7 +14,6 @@ CHANGEOVER_BLOCK = "changeover_block"
 RESOURCE_ALTERNATIVE = "resource_alternative"
 TIME_WINDOW = "time_window"
 SGS_DISPATCH_RULE = "sgs_dispatch_rule"
-DEFAULT_SGS_DISPATCH_RULES: Tuple[str, ...] = ("slack", "cr", "atc")
 
 BUSINESS_NEIGHBORHOODS: Tuple[str, ...] = (
     CRITICAL_CHAIN,
@@ -32,7 +33,8 @@ class NeighborhoodMove:
     dispatch_mode: str = ""
     dispatch_rule: str = ""
     noop: bool = False
-    resource_pair_rank: Optional[Dict[Tuple[str, str], int]] = None
+    # Pair-rank overrides the move adds to the current candidate's; a move that changes no rank has none.
+    resource_pair_rank: Mapping[Tuple[str, str], int] = field(default_factory=dict)
 
 
 def noop_move(name: str, *, order: List[str]) -> NeighborhoodMove:
@@ -81,9 +83,7 @@ def changeover_block_move(order: List[str], result_facts: LocalSearchResultFacts
     return _order_move(CHANGEOVER_BLOCK, order, out)
 
 
-def resource_alternative_move(order: List[str], resource_pool: Optional[Dict[str, Any]]) -> NeighborhoodMove:
-    if not resource_pool:
-        return noop_move(RESOURCE_ALTERNATIVE, order=order)
+def resource_alternative_move(order: List[str], resource_pool: ResourcePool) -> NeighborhoodMove:
     picked = pick_resource_pair(resource_pool)
     if picked is None:
         return noop_move(RESOURCE_ALTERNATIVE, order=order)
@@ -180,7 +180,6 @@ __all__ = [
     "BUSINESS_NEIGHBORHOODS",
     "CHANGEOVER_BLOCK",
     "CRITICAL_CHAIN",
-    "DEFAULT_SGS_DISPATCH_RULES",
     "RESOURCE_ALTERNATIVE",
     "SGS_DISPATCH_RULE",
     "TARDY_WINDOW",

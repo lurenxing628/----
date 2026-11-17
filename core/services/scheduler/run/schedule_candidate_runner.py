@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from time import monotonic
 from typing import Optional, cast
 
+from core.algorithms.greedy.schedule_params import used_params_record
+from core.algorithms.greedy.scheduler import GreedyScheduler
+
+from .optimizer.graph.candidate_payload import public_graph_ready_profile
 from .optimizer.search_budget import SearchBudget, SearchBudgetExhausted
 from .optimizer.shared_process import numeric_score, score_scope_payload
-from .schedule_candidate_plan import CandidateComparisonOutcome, CandidatePlan
+from .schedule_candidate_plan import CandidateComparisonOutcome, CandidatePlan, plan_origin
 from .schedule_candidate_selection import BusinessObjectiveSelectionResult
 from .schedule_graph_report import (
     ScheduleGraphDispatchPreparation,
@@ -19,13 +22,14 @@ def run_candidate_comparison(
     solver_input: SolverInput,
     resources: SolverResources,
 ) -> CandidateComparisonOutcome:
-    """Publish the actual business representatives from one shared search archive."""
+    """Publish the actual business representatives from one shared search archive.
+
+    The request budget runs on the run's clock (``resources.clock``) from this call on.
+    """
     cfg = solver_input.config
     total_budget = float(cfg.time_budget_seconds)
-    started = monotonic()
-    deadline = started + total_budget
-    budget = SearchBudget(clock=monotonic, started_at=started, deadline=deadline,
-                          assigned_seconds=total_budget)
+    clock = resources.clock
+    budget = SearchBudget(clock=clock, deadline=clock() + total_budget, assigned_seconds=total_budget)
     preparation: Optional[ScheduleGraphDispatchPreparation] = None
 
     def graph_prepare():
@@ -36,10 +40,10 @@ def run_candidate_comparison(
         )
         return preparation
 
-    cal_svc = resources.calendar_engine
     shared = optimize_shared_schedule(
-        calendar_service=cal_svc, cfg=cfg,
+        scheduler=GreedyScheduler(calendar_service=resources.calendar_engine, config_service=cfg),
         algo_ops_to_schedule=solver_input.to_schedule, batches=solver_input.batches,
+        required_hours_by_op_id=solver_input.required_hours_by_op_id,
         start_dt=solver_input.start, end_date=solver_input.end_date,
         downtime_map=resources.downtime_map, seed_results=solver_input.seeds.seed_results,
         resource_pool=resources.resource_pool, version=resources.optimizer_seed_version,
@@ -81,8 +85,7 @@ def run_candidate_comparison(
     return CandidateComparisonOutcome(
         candidates=candidates, selection=selection,
         time_budget_reached=shared.process_facts["stop_reason"] == "time_budget",
-        run_time_budget_seconds=total_budget,
-        generation_policy_version="unified_search_v1", primary_objective=primary,
+        run_time_budget_seconds=total_budget, primary_objective=primary,
         target_objectives=list(targets), unified_process=shared.process_facts["unified_process"],
     )
 
@@ -95,19 +98,17 @@ def _business_representative(shared, entry, *, sequence, primary, targets, cfg, 
                        if scope["components_known"] else [])
     labels = {"min_overdue": "交期优先", "min_tardiness": "拖期更轻", "min_changeover": "切换更少",
               "min_weighted_tardiness": "加权拖期更轻"}
-    params = candidate["params"]
-    # 只在本处补一个键：浅拷一层，不改归档里的来源记录。
-    origin = dict(entry.evidence_origin)
-    profile = params.get("graph_ready_profile")
-    if profile is not None:
-        origin["graph_ready_profile"] = profile
-    weights = profile.get("effective_weights", {}) if isinstance(profile, dict) else {}
+    profile = candidate["graph_ready_profile"]
+    params = used_params_record(
+        strategy=candidate["strategy"], weights=candidate["params"],
+        graph_ready_profile=None if profile is None else public_graph_ready_profile(profile),
+        dispatch_mode=candidate["dispatch_mode"], dispatch_rule=candidate["dispatch_rule"],
+        auto_assign_enabled=cfg.auto_assign_enabled,
+    )
     return CandidatePlan(
-        sequence=sequence, candidate_key="business_" + str(sequence + 1), kind="business_objective",
+        sequence=sequence, candidate_key="business_" + str(sequence + 1),
         label=" · ".join(labels[target] for target in representatives) if representatives else "算法选中的部分结果",
-        status="completed", score=tuple(entry.evaluations[primary].score),
-        graph_critical_weight=weights.get("critical_weight"), graph_impact_weight=weights.get("impact_weight"),
-        graph_downstream_weight=weights.get("downstream_weight"),
+        score=tuple(entry.evaluations[primary].score),
         results=candidate["results"], summary=candidate["summary"], metrics=candidate["metrics"],
         graph_analysis_public=preparation.graph_analysis_public,
         graph_analysis_diagnostics=preparation.graph_analysis_diagnostics,
@@ -115,13 +116,12 @@ def _business_representative(shared, entry, *, sequence, primary, targets, cfg, 
         used_strategy=candidate["strategy"], used_params=params, best_order=candidate["order"],
         algo_mode=cfg.algo_mode, objective_name=primary,
         algo_stats=candidate["algo_stats"], time_budget_seconds=total_budget,
-        sort_strategy=candidate["strategy"].value,
-        dispatch_mode=params["dispatch_mode"], generation_policy_version="unified_search_v1",
+        dispatch_mode=candidate["dispatch_mode"],
         representative_objectives=representatives,
         evaluations={target: {"field_order": list(entry.evaluations[target].field_order),
             "score": numeric_score(entry.evaluations[target].score, components_known=scope["components_known"]),
             "scoring_scope": dict(scope)} for target in targets},
-        origin=origin, first_found_elapsed_ms=entry.first_found_elapsed_ms,
+        origin=plan_origin(entry.evidence_origin, params), first_found_elapsed_ms=entry.first_found_elapsed_ms,
         search_evidence_ref={"source_event_id": shared.process_facts["evidence_event_ids_by_entry"].get(entry.entry_id)},
     )
 

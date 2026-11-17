@@ -6,7 +6,6 @@ from .candidate_fingerprint import CandidateFingerprint
 
 CANDIDATE_ORIGIN_ORDER = (
     "baseline",
-    "ortools_warmstart",
     "multi_start",
     "grasp",
     "ig",

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, cast
+from random import Random
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, cast
 
 from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
 
@@ -10,15 +10,10 @@ from .local_search_limits import (
     derive_local_search_limits,
     local_search_stop_reason,
 )
-from .local_search_restart import RestartOutcome, _evaluate_restart_candidate, restart_after_stall
+from .local_search_restart import RestartOutcome, evaluate_restart_candidate, restart_after_stall
 from .local_search_round import LocalSearchRoundResult, run_local_search_candidate_round
-from .local_search_state import LocalSearchState, resolve_current_strategy_state
-from .neighborhood_moves import (
-    BUSINESS_NEIGHBORHOODS,
-    DEFAULT_SGS_DISPATCH_RULES,
-    SGS_DISPATCH_RULE,
-    pick_sgs_dispatch_rule,
-)
+from .local_search_state import LocalSearchState, StrategyState, resolve_current_strategy_state
+from .neighborhood_moves import SGS_DISPATCH_RULE, pick_sgs_dispatch_rule
 from .search_stage import SearchStage
 from .vns import VnsState
 
@@ -39,17 +34,16 @@ def _local_search_skip_reason(*, best: Optional[Dict[str, Any]]) -> Optional[str
 
 def _active_neighborhoods(
     *,
-    neighborhoods: Optional[Tuple[str, ...]],
+    neighborhoods: Tuple[str, ...],
     cur_dispatch_mode: str,
 ) -> Tuple[str, ...]:
-    configured = tuple(neighborhoods or BUSINESS_NEIGHBORHOODS)
-    return (SGS_DISPATCH_RULE,) if cur_dispatch_mode == "sgs" else configured
+    return (SGS_DISPATCH_RULE,) if cur_dispatch_mode == "sgs" else neighborhoods
 
 
-def _resolve_sgs_dispatch_rules(valid_dispatch_rules: Optional[List[str]], current_dispatch_rule: str) -> List[str]:
+def _resolve_sgs_dispatch_rules(valid_dispatch_rules: List[str], current_dispatch_rule: str) -> List[str]:
     # The rule neighborhood searches the registry rules plus the ATC k ladder; the
     # current rule may already be a ladder token adopted by an earlier phase.
-    out = list(dispatch_rule_search_pool(valid_dispatch_rules or DEFAULT_SGS_DISPATCH_RULES))
+    out = list(dispatch_rule_search_pool(valid_dispatch_rules))
     current = current_dispatch_rule.strip().lower()
     if current and current not in out:
         out.insert(0, current)
@@ -57,49 +51,43 @@ def _resolve_sgs_dispatch_rules(valid_dispatch_rules: Optional[List[str]], curre
 
 
 class _LocalSearchRun:
-    """One local search over the incumbent: the decode inputs shared by every round and restart."""
+    """One local search over the incumbent: the inputs shared by every round and restart."""
 
-    def __init__(self, **decode_inputs: Any) -> None:
-        self.valid_dispatch_rules: List[str] = decode_inputs.pop("valid_dispatch_rules")
-        self.inputs = decode_inputs
+    def __init__(self, *, rnd: Random, search_report_state: OptimizationSearchReportState, objective_name: str,
+                 valid_dispatch_rules: List[str], decode_session: SharedDecodeSession) -> None:
+        self.rnd = rnd
+        self.search_report_state = search_report_state
+        self.objective_name = objective_name
+        self.valid_dispatch_rules = valid_dispatch_rules
+        self.decode_session = decode_session
 
-    def round(self, *, local_state: LocalSearchState, vns_state: VnsState, strategy_state: Tuple[Any, Any, str, str],
+    def round(self, *, local_state: LocalSearchState, vns_state: VnsState, strategy_state: StrategyState,
               counters: LocalSearchCounters,
               tried_sgs_rules: Optional[Set[str]] = None) -> LocalSearchRoundResult:
-        cur_strat, cur_params, cur_dispatch_mode, cur_dispatch_rule = strategy_state
         valid_dispatch_rules = self.valid_dispatch_rules
-        if cur_dispatch_mode == "sgs" and tried_sgs_rules is not None:
+        if strategy_state.dispatch_mode == "sgs" and tried_sgs_rules is not None:
             picked = pick_sgs_dispatch_rule(
-                cur_dispatch_rule, valid_dispatch_rules, self.inputs["rnd"], tried_rules=tried_sgs_rules,
+                strategy_state.dispatch_rule, valid_dispatch_rules, self.rnd, tried_rules=tried_sgs_rules,
             )
             valid_dispatch_rules = [picked] if picked is not None else []
         return run_local_search_candidate_round(
-            local_state=local_state, vns_state=vns_state, cur_strat=cur_strat, cur_params=cur_params,
-            cur_dispatch_mode=cur_dispatch_mode, cur_dispatch_rule=cur_dispatch_rule,
-            no_improve=counters.no_improve,
-            valid_dispatch_rules=valid_dispatch_rules,
-            **self.inputs,
+            local_state=local_state, vns_state=vns_state, strategy_state=strategy_state,
+            rnd=self.rnd, search_report_state=self.search_report_state, no_improve=counters.no_improve,
+            objective_name=self.objective_name, valid_dispatch_rules=valid_dispatch_rules,
+            decode_session=self.decode_session,
         )
 
     def restart(self, *, local_state: LocalSearchState) -> RestartOutcome:
-        inputs = self.inputs
-
-        def _evaluate(shaken_order: List[str], strategy: Any, params: Dict[str, Any],
-                      dispatch_mode: str, dispatch_rule: str) -> Dict[str, Any]:
-            return _evaluate_restart_candidate(
-                shaken_order=shaken_order, local_state=local_state, strategy=strategy, params=params,
-                dispatch_mode=dispatch_mode, dispatch_rule=dispatch_rule,
-                start_dt=inputs["start_dt"], end_date=inputs["end_date"],
-                resource_pool=inputs["resource_pool"], objective_name=inputs["objective_name"],
-                optimizer_algo_stats=inputs["optimizer_algo_stats"],
-                readiness_gate_enabled=inputs["readiness_gate_enabled"],
-                search_report_state=inputs["search_report_state"],
-                decode_session=inputs["decode_session"],
+        def _evaluate(shaken_order: List[str], inherited: StrategyState) -> Dict[str, Any]:
+            return evaluate_restart_candidate(
+                shaken_order=shaken_order, local_state=local_state, inherited=inherited,
+                objective_name=self.objective_name, search_report_state=self.search_report_state,
+                decode_session=self.decode_session,
             )
 
         return restart_after_stall(
-            local_state=local_state, rnd=inputs["rnd"],
-            evaluate_shaken_order=_evaluate, decode_session=inputs["decode_session"],
+            local_state=local_state, rnd=self.rnd,
+            evaluate_shaken_order=_evaluate, decode_session=self.decode_session,
         )
 
 
@@ -113,24 +101,15 @@ class LocalSearchStage(SearchStage):
         *,
         best: Optional[Dict[str, Any]],
         version: int,
-        deadline: float,
-        start_dt: datetime,
-        end_date: Optional[date],
-        resource_pool: Optional[Dict[str, Any]],
         objective_name: str,
-        optimizer_algo_stats: Optional[Dict[str, Any]],
-        readiness_gate_enabled: bool,
-        clock: Callable[[], float],
-        rng_factory: Callable[[int], Any],
         search_report_state: OptimizationSearchReportState,
-        neighborhoods: Optional[Tuple[str, ...]] = None,
-        valid_dispatch_rules: Optional[List[str]] = None,
+        neighborhoods: Tuple[str, ...],
+        valid_dispatch_rules: List[str],
         decode_session: SharedDecodeSession,
     ) -> None:
         self._initial_best = best
         self.local_state: Optional[LocalSearchState] = None
-        self.clock = clock
-        self.deadline = deadline
+        self.budget = decode_session.budget
         self._neighborhoods = neighborhoods
         self._unaffordable_modes: Set[str] = set()
         self.stop_reason: Optional[str] = None
@@ -147,20 +126,17 @@ class LocalSearchStage(SearchStage):
         local_state = LocalSearchState.from_best(best, due_batches=decode_session.evaluation_context.due_batches)
         strategy_state = resolve_current_strategy_state(best)
         active_neighborhoods = _active_neighborhoods(
-            neighborhoods=neighborhoods, cur_dispatch_mode=strategy_state[2],
+            neighborhoods=neighborhoods, cur_dispatch_mode=strategy_state.dispatch_mode,
         )
         # Size limits once; each task measures only its own work after the queue resumes it.
         limits = derive_local_search_limits(neighborhood_count=len(active_neighborhoods))
         vns_state = VnsState(active_neighborhoods)
         counters = LocalSearchCounters()
         run = _LocalSearchRun(
-            rnd=rng_factory(int(version)),
+            rnd=Random(int(version)),
             search_report_state=search_report_state,
-            start_dt=start_dt,
-            end_date=end_date, resource_pool=resource_pool,
-            objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats,
-            readiness_gate_enabled=readiness_gate_enabled,
-            valid_dispatch_rules=_resolve_sgs_dispatch_rules(valid_dispatch_rules, strategy_state[3]),
+            objective_name=objective_name,
+            valid_dispatch_rules=_resolve_sgs_dispatch_rules(valid_dispatch_rules, strategy_state.dispatch_rule),
             decode_session=decode_session,
         )
         self.local_state = local_state
@@ -195,10 +171,11 @@ class LocalSearchStage(SearchStage):
     def _best_dispatch_mode(self, local_state: LocalSearchState) -> str:
         return str(local_state.best["dispatch_mode"])
 
-    def _sync_strategy_and_neighborhoods(self, strategy_state: Tuple[Any, Any, str, str]) -> None:
-        if strategy_state[2] != self.strategy_state[2]:
+    def _sync_strategy_and_neighborhoods(self, strategy_state: StrategyState) -> None:
+        if strategy_state.dispatch_mode != self.strategy_state.dispatch_mode:
             self.vns_state = VnsState(
-                _active_neighborhoods(neighborhoods=self._neighborhoods, cur_dispatch_mode=strategy_state[2]),
+                _active_neighborhoods(neighborhoods=self._neighborhoods,
+                                      cur_dispatch_mode=strategy_state.dispatch_mode),
             )
             self._current_stall_rounds = 0
             self._tried_sgs_rules.clear()
@@ -213,7 +190,7 @@ class LocalSearchStage(SearchStage):
             return
         if rejected_mode is not None:
             self._unaffordable_modes.add(rejected_mode)
-        cur_mode = self.strategy_state[2]
+        cur_mode = self.strategy_state.dispatch_mode
         best_mode = self._best_dispatch_mode(local_state)
         if cur_mode in self._unaffordable_modes and best_mode not in self._unaffordable_modes:
             self.pending_restart = True
@@ -225,7 +202,7 @@ class LocalSearchStage(SearchStage):
         if self.finished or self._skip_reason is not None or self.stop_reason is not None:
             return False
         self.stop_reason = local_search_stop_reason(
-            now_value=self.clock(), deadline=self.deadline,
+            now_value=self.budget.clock(), deadline=self.budget.deadline,
             decodes=self.rounds,
             decode_limit=self.limits.decode_limit,
             idle_rounds=self.counters.idle_rounds, idle_round_limit=self.limits.idle_round_limit,
@@ -252,9 +229,7 @@ class LocalSearchStage(SearchStage):
             self._tried_sgs_rules.clear()
             restart = self._run.restart(local_state=local_state)
             self.counters.record_round(decode_attempted=restart.decode_attempted)
-            self._sync_strategy_and_neighborhoods(
-                (restart.strategy, restart.params, restart.dispatch_mode, restart.dispatch_rule),
-            )
+            self._sync_strategy_and_neighborhoods(restart.strategy_state)
             self._handle_budget_skip(
                 local_state, stop_reason=restart.stop_reason, rejected_mode=restart.rejected_mode,
             )
@@ -281,7 +256,7 @@ class LocalSearchStage(SearchStage):
         )
         cycle_length = (
             max(len(self._run.valid_dispatch_rules) - 1, 1)
-            if self.strategy_state[2] == "sgs"
+            if self.strategy_state.dispatch_mode == "sgs"
             else len(self.vns_state.neighborhoods)
         )
         deterministic_cycle_exhausted = self._current_stall_rounds >= cycle_length

@@ -12,13 +12,14 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import chain, combinations
-from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Dict, FrozenSet, Iterator, List, Optional, Tuple, cast
 
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 
 if TYPE_CHECKING:
     from core.algorithms.greedy.dispatch.sgs_graph import PreparedGraphReadyTopology
+    from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
 
 _MAX_PROBES = 2048
 
@@ -39,32 +40,34 @@ class _Job:
 
 
 class _Budget:
-    def __init__(self, clock: Callable[[], float], deadline: float) -> None:
-        self.clock, self.deadline = clock, deadline
+    """The seed's time guard: it stops construction once the run budget (``shared``) has expired."""
+
+    def __init__(self, shared: SharedSearchBudget) -> None:
+        self.shared = shared
 
     def check(self) -> None:
-        if self.clock() >= self.deadline:
+        if self.shared.clock() >= self.shared.deadline:
             raise _ConstructionStopped("time_budget")
 
 
 def build_due_date_seed(*, parent: Any, candidate: Dict[str, Any], metrics: Dict[int, Dict[str, Any]],
                         topology: PreparedGraphReadyTopology, start_dt: datetime,
-                        clock: Callable[[], float], deadline: float) -> Optional[Tuple[int, ...]]:
+                        budget: SharedSearchBudget) -> Optional[Tuple[int, ...]]:
     """Return a complete op-id tuple only when its estimated key strictly beats the original.
 
     probes counts distinct proposed orders induced by deferred sets; the original estimate is
     not a probe. A best completed probe can survive a later budget stop.
     """
-    budget = _Budget(clock, deadline)
+    guard = _Budget(budget)
     search: Optional[_SeedSearch] = None
     try:
-        budget.check()
+        guard.check()
         _check_graph(topology)
         order = parent.order
-        jobs, offset = _observed_jobs(candidate, metrics, start_dt, budget)
-        budget.check()
-        search = _SeedSearch(jobs, offset, _estimate(order, jobs, offset), budget)
-        deferred = _moore_deferred(search.jobs_by_due, offset, budget)
+        jobs, offset = _observed_jobs(candidate, metrics, start_dt, guard)
+        guard.check()
+        search = _SeedSearch(jobs, offset, _estimate(order, jobs, offset), guard)
+        deferred = _moore_deferred(search.jobs_by_due, offset, guard)
         key = search.probe(deferred)
         if len(deferred) <= 2 and math.comb(len(jobs), len(deferred)) <= _MAX_PROBES:
             for chosen in combinations(sorted(jobs), len(deferred)):

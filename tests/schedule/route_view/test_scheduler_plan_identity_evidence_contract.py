@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.models.schedule_plan_identity import PlanIdentity
 from core.services.common.plan_query import SchedulePlanQueryService
 from tests._support.paths import REPO_ROOT
+from tests.workbench.plan_catalog_support import ensure_history_head, insert_schedule_row
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 VERSION = 7
@@ -15,11 +18,11 @@ VERSION = 7
 
 def _connect_fresh_schema(tmp_path):
     db_path = tmp_path / "aps.db"
-    ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH))
+    ensure_schema(str(db_path), logging.getLogger(__name__), schema_path=str(SCHEMA_PATH))
     return get_connection(str(db_path))
 
 
-def _seed_base(conn) -> None:
+def _seed_base(conn, *, v7_status: str = "success", seed_v7_rows: bool = True) -> None:
     conn.executescript(
         """
         INSERT INTO Machines(machine_id, name, status)
@@ -36,23 +39,26 @@ def _seed_base(conn) -> None:
 
         INSERT INTO BatchOperations(id, op_code, batch_id, piece_id, seq, op_type_name, source, status)
         VALUES (10, 'OP10', 'B1', 'piece-a', 10, '车削', 'internal', 'scheduled');
-
-        INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
-        VALUES
-          (70, 10, 'M-ADOPTED', 'O-ADOPTED', '2026-05-04 08:00:00', '2026-05-04 09:00:00', 'locked', 6),
-          (80, 10, 'M-ADOPTED', 'O-ADOPTED', '2026-05-05 08:00:00', '2026-05-05 09:00:00', 'unlocked', 7);
-
-        INSERT INTO ScheduleHistory(version, strategy, batch_count, op_count, result_status, result_summary, created_by)
-        VALUES
-          (6, 'greedy', 1, 1, 'success', '{}', 'pytest'),
-          (7, 'greedy', 1, 1, 'success', '{}', 'pytest');
         """
     )
+    ensure_history_head(conn, 6, strategy="greedy", schedule_time="2026-05-04T08:00:00", created_by="pytest")
+    insert_schedule_row(
+        conn, 6, 10, "2026-05-04T08:00:00", "2026-05-04T09:00:00",
+        schedule_id=70, machine_id="M-ADOPTED", operator_id="O-ADOPTED", lock_status="locked",
+    )
+    ensure_history_head(
+        conn, 7, strategy="greedy", schedule_time="2026-05-05T08:00:00", status=v7_status, created_by="pytest"
+    )
+    if seed_v7_rows:
+        insert_schedule_row(
+            conn, 7, 10, "2026-05-05T08:00:00", "2026-05-05T09:00:00",
+            schedule_id=80, machine_id="M-ADOPTED", operator_id="O-ADOPTED", lock_status="unlocked",
+        )
 
 
-def _seed_db(tmp_path):
+def _seed_db(tmp_path, *, v7_status: str = "success", seed_v7_rows: bool = True):
     conn = _connect_fresh_schema(tmp_path)
-    _seed_base(conn)
+    _seed_base(conn, v7_status=v7_status, seed_v7_rows=seed_v7_rows)
     conn.commit()
     return conn
 
@@ -86,20 +92,17 @@ def test_superseded_history_plan_cannot_write_feedback(tmp_path) -> None:
 
 
 @pytest.mark.parametrize(
-    "mutation",
+    ("v7_status", "seed_v7_rows"),
     [
-        pytest.param("UPDATE ScheduleHistory SET result_summary = '{\"is_simulation\": true}' WHERE version = 7", id="simulation"),
-        pytest.param("UPDATE ScheduleHistory SET result_summary = '{bad' WHERE version = 7", id="summary_malformed"),
-        pytest.param("UPDATE ScheduleHistory SET result_summary = NULL WHERE version = 7", id="summary_missing"),
-        pytest.param("UPDATE ScheduleHistory SET result_status = 'failed' WHERE version = 7", id="result_not_success"),
-        pytest.param("DELETE FROM Schedule WHERE version = 7", id="no_schedule_rows"),
+        pytest.param("failed", True, id="result_not_success"),
+        pytest.param("success", False, id="no_schedule_rows"),
     ],
 )
-def test_latest_plan_without_official_evidence_cannot_write_feedback(tmp_path, mutation: str) -> None:
-    conn = _seed_db(tmp_path)
+def test_latest_plan_without_official_evidence_cannot_write_feedback(
+    tmp_path, v7_status: str, seed_v7_rows: bool
+) -> None:
+    conn = _seed_db(tmp_path, v7_status=v7_status, seed_v7_rows=seed_v7_rows)
     try:
-        conn.execute(mutation)
-        conn.commit()
         assert _identity(conn, VERSION) == PlanIdentity(
             version=VERSION,
             is_current_executable_official_version=False,

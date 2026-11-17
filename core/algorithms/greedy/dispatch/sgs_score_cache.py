@@ -80,64 +80,43 @@ class SgsScoreCache:
         preparation: NativeSchedulePreparation,
         *,
         state: ScheduleRunState,
-        auto_assign_enabled: bool,
-        resource_pool: Any,
     ) -> SgsScoreCache:
         """Bind the native preparation's eligibility and certified calendar adapters for one SGS decode."""
         calendar = preparation.calendar
         native = native_timing_calendar(calendar)
         return cls(
             state,
-            auto_assign_enabled=auto_assign_enabled,
-            resource_pool=resource_pool,
             eligible_resources=preparation.eligible_auto_assign_resources,
             timing_calendar=calendar if native else None,
-            calendar_days=calendar.add_calendar_days if native else None,
             preparation=preparation,
         )
 
     def __init__(
-        self, state: ScheduleRunState, *, auto_assign_enabled: bool, resource_pool: Any,
-        eligible_resources: Callable[[Any], EligibleResources], timing_calendar: Any, calendar_days: Any,
+        self, state: ScheduleRunState, *,
+        eligible_resources: Callable[[Any], EligibleResources], timing_calendar: Any,
         preparation: NativeSchedulePreparation,
     ) -> None:
         self.state = state
-        self.calendar_days = calendar_days
         self.preparation = preparation
-        self.hits = 0
-        self.misses = 0
+        # Whether any key was reused during this decode; ``next_round`` reads it to retire reuse.
+        self._key_reused = False
         self._reuse_keys = True
         self._saw_auto = False
-        self.graph_candidates_pruned = 0
         self.eligible_resources: Optional[Callable[[Any], EligibleResources]] = (
-            eligible_resources if (auto_assign_enabled and isinstance(resource_pool, dict)) else None
+            eligible_resources if preparation.resource_pool.enabled else None
         )
         self.timing = MemoizedTimingCalendar(timing_calendar) if timing_calendar is not None else None
         self._shared_slots = SharedSlotEstimateCache()
         # Every timeline occupation performed inside this decode, per (timeline identity, resource): (seq, start, end).
         self._occupations: Dict[Tuple[int, str], list] = {}
         self._occupation_seq = 0
-        self.pair_revalidated = 0
         self._entries: Dict[int, _Entry] = {}
         # Per operation: False when it can never be cached (external, no native
         # pool), else its eligible auto-assign resources or None for fixed resources.
         self._eligible: Dict[Tuple[int, Optional[str], Optional[str]], Any] = {}
         self.round = 0
-        self.pair_hits = 0
-        self.pair_misses = 0
         # op identity -> (machine, operator) -> abort-free estimate with its witness; one probe pair reads only these cells.
         self._pairs: Dict[int, Dict[Tuple[str, str], _PairEntry]] = {}
-
-    def stats(self) -> Dict[str, int]:
-        timing = self.timing
-        return {
-            "hits": self.hits, "misses": self.misses, "pair_hits": self.pair_hits, "pair_misses": self.pair_misses,
-            "pair_revalidated": self.pair_revalidated,
-            "calendar_hits": timing.hits if timing is not None else 0, "calendar_misses": timing.misses if timing is not None else 0,
-            "shared_slot_hits": self._shared_slots.hits,
-            "shared_slot_misses": self._shared_slots.misses,
-            "key_cache_disabled": int(not self._reuse_keys), "graph_candidates_pruned": self.graph_candidates_pruned,
-        }
 
     def scoring_slot_estimate(
         self,
@@ -220,15 +199,12 @@ class SgsScoreCache:
         entry = pairs.get(pair)
         if entry is not None:
             if entry.witness == witness:
-                self.pair_hits += 1
                 return entry.estimate
             estimate = self._revalidated(entry, witness, op, machine_id, operator_id, machine_timeline, operator_timeline)
             if estimate is not None:
-                self.pair_revalidated += 1
                 entry.witness, entry.estimate, entry.seq = witness, estimate, self._occupation_seq
                 return estimate
         estimate = compute()
-        self.pair_misses += 1
         pairs[pair] = _PairEntry(witness, estimate, self._occupation_seq)
         return estimate
 
@@ -281,8 +257,9 @@ class SgsScoreCache:
         self.round += 1
         # Re-scoring remains exact. On a resource shared by every ready operation, repeatedly
         # proving that old keys are stale costs more than recomputing their cheap key suffixes.
+        # Both saturation signals accumulate over the whole decode.
         if self.timing is not None:
-            if self.round >= 8 and not self._saw_auto and self.hits == 0 and self._shared_slots.hits >= 256:
+            if self.round >= 8 and not self._saw_auto and not self._key_reused and self._shared_slots.hits >= 256:
                 self._reuse_keys = False
                 self._entries.clear()
                 self._pairs.clear()
@@ -297,10 +274,9 @@ class SgsScoreCache:
         entry = self._entries.get(id(op)) if witness is not None else None
         if (entry is not None and witness == entry.witness
                 and (entry.demand_revision is None or entry.demand_revision == self._demand_revision())):
-            self.hits += 1
+            self._key_reused = True
             return entry.score
         scored = score()
-        self.misses += 1
         if witness is None:
             return scored
         demand_revision = (

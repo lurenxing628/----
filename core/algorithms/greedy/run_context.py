@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+from core.algorithm_contracts.resource_pool import ResourcePool
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithm_runtime.auto_assign_contract import AutoAssignAttempt
@@ -72,8 +73,7 @@ class ScheduleRunContext:
         base_time: datetime,
         end_dt_exclusive: Optional[datetime],
         machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-        auto_assign_enabled: bool,
-        resource_pool: Optional[Dict[str, Any]],
+        resource_pool: ResourcePool,
         last_op_type_by_machine: MachineTypeState,
         machine_busy_hours: Dict[str, float],
         operator_busy_hours: Dict[str, float],
@@ -91,7 +91,6 @@ class ScheduleRunContext:
             base_time=base_time,
             end_dt_exclusive=end_dt_exclusive,
             machine_downtimes=machine_downtimes,
-            auto_assign_enabled=auto_assign_enabled,
             resource_pool=resource_pool,
             last_op_type_by_machine=last_op_type_by_machine,
             machine_busy_hours=machine_busy_hours,
@@ -113,7 +112,7 @@ class ScheduleRunContext:
         base_time: datetime,
         end_dt_exclusive: Optional[datetime],
         machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-        resource_pool: Dict[str, Any],
+        resource_pool: ResourcePool,
         last_op_type_by_machine: MachineTypeState,
         machine_busy_hours: Dict[str, float],
         operator_busy_hours: Dict[str, float],

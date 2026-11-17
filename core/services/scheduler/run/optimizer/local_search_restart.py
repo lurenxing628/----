@@ -3,27 +3,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from .local_search_candidate_eval import evaluate_local_search_candidate
 from .local_search_round import stamp_decode_runtime
-from .local_search_state import LocalSearchState, resolve_current_strategy_state
+from .local_search_state import LocalSearchState, StrategyState, resolve_current_strategy_state
 from .shared_budget import SharedSearchSkip
 
 if TYPE_CHECKING:
     from .search_report import OptimizationSearchReportState
     from .shared_decode import SharedDecodeSession
 
-ShakenOrderEvaluator = Callable[[List[str], Any, Dict[str, Any], str, str], Dict[str, Any]]
+ShakenOrderEvaluator = Callable[[List[str], StrategyState], Dict[str, Any]]
 
 
 @dataclass(frozen=True)
 class RestartOutcome:
-    strategy: Any
-    params: Dict[str, Any]
-    dispatch_mode: str
-    dispatch_rule: str
+    strategy_state: StrategyState
     decode_attempted: bool
     stop_reason: Optional[str] = None
     rejected_mode: Optional[str] = None
@@ -46,20 +42,12 @@ def _shake_order(order: List[str], rnd: Any) -> List[str]:
     return cur_order
 
 
-def _evaluate_restart_candidate(
+def evaluate_restart_candidate(
     *,
     shaken_order: List[str],
     local_state: LocalSearchState,
-    strategy: Any,
-    params: Dict[str, Any],
-    dispatch_mode: str,
-    dispatch_rule: str,
-    start_dt: datetime,
-    end_date: Optional[date],
-    resource_pool: Optional[Dict[str, Any]],
+    inherited: StrategyState,
     objective_name: str,
-    optimizer_algo_stats: Optional[Dict[str, Any]],
-    readiness_gate_enabled: bool,
     search_report_state: OptimizationSearchReportState,
     decode_session: SharedDecodeSession,
 ) -> Dict[str, Any]:
@@ -68,20 +56,14 @@ def _evaluate_restart_candidate(
     Evaluation failures propagate; common-session budget skips propagate to the caller with
     their request receipt.
     """
-    candidate_resource_pool = local_state.best.get("resource_pool") or resource_pool
     candidate = evaluate_local_search_candidate(
-        strategy=strategy,
-        params=params,
-        start_dt=start_dt,
-        end_date=end_date,
+        inherited=inherited,
         order=shaken_order,
-        dispatch_mode=dispatch_mode,
-        dispatch_rule=dispatch_rule,
-        resource_pool=candidate_resource_pool,
-        resource_pair_rank=local_state.best.get("resource_pair_rank") or {},
+        dispatch_mode=inherited.dispatch_mode,
+        dispatch_rule=inherited.dispatch_rule,
+        # A restart shakes the incumbent: it keeps best's pair-rank overrides, as it keeps best's strategy.
+        resource_pair_rank=local_state.best["resource_pair_rank"],
         objective_name=objective_name,
-        optimizer_algo_stats=optimizer_algo_stats,
-        readiness_gate_enabled=bool(readiness_gate_enabled),
         decode_session=decode_session,
     )
     stamp_decode_runtime(candidate)
@@ -103,32 +85,26 @@ def restart_after_stall(
     and records any skipped request.
     """
     shaken_order = _shake_order(local_state.best.get("order") or local_state.current_order, rnd)
-    best_strat, best_params, best_dispatch_mode, best_dispatch_rule = resolve_current_strategy_state(local_state.best)
+    best_state = resolve_current_strategy_state(local_state.best)
     stop_reason: Optional[str] = None
     rejected_mode: Optional[str] = None
     calls_before = decode_session.actual_decoder_calls
     try:
-        candidate = evaluate_shaken_order(
-            shaken_order, best_strat, best_params, best_dispatch_mode, best_dispatch_rule,
-        )
+        candidate = evaluate_shaken_order(shaken_order, best_state)
     except SharedSearchSkip as exc:
         if exc.reason in ("estimated_decode_cost", "time_budget"):
             stop_reason = exc.reason
             if stop_reason == "estimated_decode_cost":
-                rejected_mode = best_dispatch_mode
+                rejected_mode = best_state.dispatch_mode
     else:
         local_state.accept_current(candidate)
     decode_attempted = decode_session.actual_decoder_calls > calls_before
-    cur_strat, cur_params, cur_dispatch_mode, cur_dispatch_rule = resolve_current_strategy_state(local_state.current)
     return RestartOutcome(
-        strategy=cur_strat,
-        params=cur_params,
-        dispatch_mode=cur_dispatch_mode,
-        dispatch_rule=cur_dispatch_rule,
+        strategy_state=resolve_current_strategy_state(local_state.current),
         decode_attempted=decode_attempted,
         stop_reason=stop_reason,
         rejected_mode=rejected_mode,
     )
 
 
-__all__ = ["RestartOutcome", "ShakenOrderEvaluator", "restart_after_stall"]
+__all__ = ["RestartOutcome", "ShakenOrderEvaluator", "evaluate_restart_candidate", "restart_after_stall"]

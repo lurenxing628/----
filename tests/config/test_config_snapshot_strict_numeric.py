@@ -5,10 +5,7 @@ from __future__ import annotations
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.services.common.excel_validators import get_batch_row_validate_and_normalize
 from core.services.scheduler.config.config_snapshot import build_schedule_config_snapshot
-from core.shared.strict_parse import (
-    integer_value,
-    parse_required_int,
-)
+from core.shared.strict_parse import parse_required_int
 
 
 def _expect_validation(label, func, field, message_contains=None, forbidden_message_text=None):
@@ -40,6 +37,14 @@ def test_config_snapshot_strict_numeric() -> None:
         message_contains="优先级权重",
         forbidden_message_text="priority_weight",
     )
+    # A single out-of-range weight belongs to its config key; the message keeps the page label.
+    _expect_validation(
+        "strict.priority_weight.over_percent",
+        lambda: _build({**defaults, "priority_weight": "150"}),
+        "priority_weight",
+        message_contains="优先级权重",
+        forbidden_message_text="priority_weight",
+    )
     _expect_validation(
         "strict.dispatch_mode.blank",
         lambda: _build({**defaults, "dispatch_mode": "   "}),
@@ -53,8 +58,6 @@ def test_strict_integer_parse_keeps_integers_beyond_float_precision_exact() -> N
     assert parse_required_int(exact, field="工序编号") == exact
     assert parse_required_int(str(exact), field="工序编号") == exact
     assert parse_required_int(f"{exact}.0", field="工序编号") == exact
-    assert integer_value(f"{exact}.0") == exact
-    assert integer_value("1.0000000001") is None
     _expect_validation(
         "fractional.near_integer",
         lambda: parse_required_int("1.0000000001", field="工序编号"),

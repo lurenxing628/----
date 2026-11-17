@@ -1,11 +1,12 @@
 """Run-owned resource quality evidence."""
 from __future__ import annotations
 
-from bisect import bisect_left, insort
+from bisect import bisect_left, bisect_right
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, MutableSequence, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from core.algorithm_contracts.changeover_events import type_transition
+from core.algorithm_contracts.resource_pool import ResourcePool
 from core.algorithm_contracts.types import OpForScheduleAlgo
 
 from .owned_timeline import OwnedTypeEntries
@@ -22,8 +23,8 @@ class MachineTypeState(Dict[str, str]):
 
     def __init__(self) -> None:
         super().__init__()
-        # Rows live in run-owned ``OwnedTypeEntries`` (a MutableSequence, deliberately not a list subclass).
-        self._entries: Dict[str, MutableSequence[TypeEntry]] = {}
+        # Rows live in run-owned ``OwnedTypeEntries`` (deliberately not a list subclass).
+        self._entries: Dict[str, OwnedTypeEntries] = {}
         self.demand: Optional[ResourceDemand] = None
         # Lifecycle events already applied to ``demand``: ("complete", op_id) / ("block_batch", batch_id).
         # A decode resumed from a checkpoint rebuilds the demand for its own operation objects and
@@ -54,7 +55,9 @@ class MachineTypeState(Dict[str, str]):
     def record(self, machine_id: str, start: Optional[datetime], end: datetime, op_id: Optional[int], op_type: str) -> None:
         """Record a positive resource interval with its actual type identity."""
         if type(start) is datetime and type(end) is datetime and type(op_id) is int and op_id > 0 and end > start:
-            insort(self._entries.setdefault(machine_id, OwnedTypeEntries()), (start, end, op_id, op_type))
+            entries = self._entries.setdefault(machine_id, OwnedTypeEntries())
+            row = (start, end, op_id, op_type)
+            entries.insert(bisect_right(entries, row), row)
 
     def neighbor_witness(self, machine_id: str) -> Tuple[int, Optional[str]]:
         """O(1) change witness for one machine: recorded neighbor count plus the tail type."""
@@ -108,10 +111,10 @@ def prefer_resource_pair(
 
 
 def initialize_resource_quality(
-    state: ScheduleRunState, operations: Sequence[OpForScheduleAlgo], resource_pool: Optional[Mapping[str, Any]], *,
+    state: ScheduleRunState, operations: Sequence[OpForScheduleAlgo], resource_pool: ResourcePool, *,
     preparation: Any,
 ) -> None:
     # ``preparation`` is the greedy scheduler's NativeSchedulePreparation; the runtime layer must not import it.
-    if resource_pool is not None:
+    if resource_pool.enabled:
         claims = (preparation.resource_claim_for(op) for op in operations)
         state.last_op_type_by_machine.demand = ResourceDemand(claim for claim in claims if claim is not None)

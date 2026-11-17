@@ -4,6 +4,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple, cast
 
+from core.algorithm_contracts.resource_pool import ResourcePool
 from core.errors import ValidationError
 
 from .schedule_graph_dispatch_context import (
@@ -65,6 +66,7 @@ class ScheduleGraphDispatchPreparation:
 
 
 def _elapsed_ms(started: float) -> int:
+    """The graph analysis's own wall time: ``started`` is its time.monotonic() start (not the search budget clock)."""
     return max(int((time.monotonic() - float(started)) * 1000), 0)
 
 
@@ -72,13 +74,10 @@ def _prepare_piece_graph_for_dispatch(
     schedule_input: SolverInput,
     predecessors: Mapping[int, Sequence[int]],
     *,
-    resource_pool: Optional[Mapping[str, Any]],
+    resource_pool: ResourcePool,
 ) -> ScheduleGraphDispatchPreparation:
     from core.services.scheduler.graph.exporter import graph_summary_to_dict
-    from core.services.scheduler.graph.input_adapter import (
-        GraphResourcePreparation,
-        build_operation_nodes_from_rows,
-    )
+    from core.services.scheduler.graph.input_adapter import build_operation_nodes_from_rows
     from core.services.scheduler.graph.metrics import (
         build_node_metrics,
         get_critical_path,
@@ -90,11 +89,10 @@ def _prepare_piece_graph_for_dispatch(
 
     weights = _graph_score_weights(schedule_input.config)
     score_requested = _graph_score_requested(weights)
-    resources = GraphResourcePreparation(resource_pool)
     nodes = build_operation_nodes_from_rows(
         schedule_input.algo_ops,
         batches=schedule_input.batches,
-        resource_preparation=resources,
+        resource_pool=resource_pool,
         frozen_op_ids=schedule_input.seeds.frozen_op_ids,
     )
     by_id = {node.raw["id"]: node.node_id for node in nodes}
@@ -154,6 +152,7 @@ def _prepare_piece_graph_for_dispatch(
     context["piece_scope"] = True
     public, diagnostics = _project_graph_analysis_payload(
         mode="on",
+        graph_block_on_cycle=schedule_input.config.graph_block_on_cycle,
         payload=payload,
         elapsed_ms=0,
         scope=_graph_input_scope(schedule_input, nodes=nodes),
@@ -166,7 +165,7 @@ def _prepare_piece_graph_for_dispatch(
 def prepare_schedule_graph_for_dispatch(
     schedule_input: SolverInput,
     *,
-    resource_pool: Optional[Mapping[str, Any]] = None,
+    resource_pool: ResourcePool,
 ) -> ScheduleGraphDispatchPreparation:
     """为本次搜索构建一次图分析、派工和资源投影。"""
     predecessors = schedule_input.predecessors
@@ -209,8 +208,8 @@ def _build_schedule_graph_analysis_projection(
     schedule_input: SolverInput,
     *,
     mode: str,
-    graph_block_on_cycle: str,
-    resource_pool: Optional[Mapping[str, Any]],
+    graph_block_on_cycle: bool,
+    resource_pool: ResourcePool,
 ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
     from core.services.scheduler.graph.exporter import graph_summary_to_dict
@@ -293,7 +292,7 @@ def _cycle_error(diagnostics: Dict[str, Any]) -> ValidationError:
 def _enforce_graph_dispatch_policy(
     *,
     mode: str,
-    graph_block_on_cycle: str,
+    graph_block_on_cycle: bool,
     public: Dict[str, Any],
     diagnostics: Optional[Dict[str, Any]],
 ) -> None:
@@ -310,7 +309,7 @@ def _enforce_graph_dispatch_policy(
         )
     if public["is_dag"]:
         return
-    if graph_block_on_cycle == "yes":
+    if graph_block_on_cycle:
         # Only unavailable/error projections come without diagnostics, and they were rejected above.
         raise _cycle_error(cast(Dict[str, Any], diagnostics))
 
@@ -339,7 +338,7 @@ def _graph_error_projection(
 def _project_graph_analysis_payload(
     *,
     mode: str,
-    graph_block_on_cycle: str = "no",
+    graph_block_on_cycle: bool,
     payload: Dict[str, Any],
     elapsed_ms: int,
     scope: Dict[str, Any],

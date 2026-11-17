@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from .iterated_greedy_iteration import IGIteration
 from .iterated_greedy_joint import joint_orders, joint_removed
-from .iterated_greedy_moves import _insertion_positions, _park
+from .iterated_greedy_moves import insertion_positions, park
 from .iterated_greedy_screen import InsertionScreen
 
 if TYPE_CHECKING:
@@ -19,7 +19,7 @@ class NeighborhoodBudget:
 
     def can_try(self):
         """Check the deadline and decode cap before adding an insertion trial."""
-        return (self.search.clock() < self.search.deadline
+        return (self.search.budget.clock() < self.search.budget.deadline
                 and self.search.report["decodes"] < self.search.limits.max_decodes)
 
 
@@ -60,7 +60,7 @@ class LargeIGIteration(IGIteration):
         screen = InsertionScreen(search, reference)
         explore = search.diversification.consume_exploration()
         self.walk = None
-        working = _park(order, set(removed), successors=search.parent.successors)
+        working = park(order, set(removed), successors=search.parent.successors)
         pending = list(removed)
         search.rnd.shuffle(pending)
         self.pending_insertions = len(pending)
@@ -76,8 +76,8 @@ class LargeIGIteration(IGIteration):
     def _insert(self, screen, reference, working, op_id, explore, *, anchor):
         search = self.search
         without = [item for item in working if item != op_id]
-        positions = _insertion_positions(without, op_id, parent=search.parent, anchor=anchor,
-                                         window=search.limits.insertion_window, explore=explore)
+        positions = insertion_positions(without, op_id, parent=search.parent, anchor=anchor,
+                                        window=search.limits.insertion_window, explore=explore)
         queue, best_position, best_score = screen.ranked_positions(
             without, op_id, positions, anchor=anchor, diversify=explore)
         # A rejection or non-improvement can advance the bounded queue.

@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+from core.algorithm_contracts.resource_pool import ResourcePool
 from core.algorithm_runtime.piece_input import operation_dispatch_state
 from core.algorithm_runtime.run_state import ScheduleRunState
 
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
     from .sgs_scoring import SgsCandidateScore
 
 
-def _dispatch_selected(
+def dispatch_selected(
     ctx: Any,
     state: ScheduleRunState,
     op: OpForScheduleAlgo,
@@ -28,8 +29,7 @@ def _dispatch_selected(
     ops_by_batch: Dict[str, List[OpForScheduleAlgo]],
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    auto_assign_enabled: bool,
-    resource_pool: Optional[Dict[str, Any]],
+    resource_pool: ResourcePool,
     *,
     scored: SgsCandidateScore,
     graph_state: Optional[Dict[str, Any]] = None,
@@ -42,7 +42,6 @@ def _dispatch_selected(
         base_time=state.base_time,
         end_dt_exclusive=end_dt_exclusive,
         machine_downtimes=machine_downtimes,
-        auto_assign_enabled=auto_assign_enabled,
         resource_pool=resource_pool,
         scored=scored,
     )

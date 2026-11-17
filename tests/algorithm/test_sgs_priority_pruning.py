@@ -1,20 +1,24 @@
 """Ordinary SGS graph priority pruning and score-cache boundary contracts on the certified native calendar."""
 
+from contextlib import ExitStack, contextmanager
 from datetime import timedelta
 from typing import Any, Dict
 from unittest.mock import patch
 
 import pytest
 
+from core.algorithm_contracts.resource_pool import DISABLED_RESOURCE_POOL
+from core.algorithm_runtime.calendar_timing_memo import MemoizedTimingCalendar
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithms.greedy import scheduler as scheduler_module
-from core.algorithms.greedy.dispatch.sgs_graph import _prepare_graph_ready_state, graph_priority_key_map
+from core.algorithms.greedy.dispatch.sgs_graph import graph_priority_key_map, prepare_graph_ready_state
 from core.algorithms.greedy.dispatch.sgs_priority_pruning import GraphPriorityPruning
 from core.algorithms.greedy.dispatch.sgs_score_cache import SgsScoreCache
 from core.errors import ValidationError
+from core.services.scheduler.calendar.engine import CalendarEngine
 from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.busy_block_case import BASE, native_calendar
-from tests._support.schedule_decode import config_snapshot, production_decode_in_session, production_session
+from tests._support.schedule_decode import config_snapshot, production_decode_in_session, required_hours_by_op_id
 
 
 def _saturated_case(batch_count: int = 30, ops_per_batch: int = 3) -> Dict[str, Any]:
@@ -79,6 +83,18 @@ def _mixed_case(batch_count: int = 30) -> Dict[str, Any]:
     return case
 
 
+def _single_resource_case(batch_count: int = 48) -> Dict[str, Any]:
+    """Every ready operation waits for the same machine and operator: a saturated fixed-resource decode."""
+    batches = {f"B{index:03d}": make_batch(batch_id=f"B{index:03d}", priority="normal", quantity=1,
+                                           due_date=(BASE + timedelta(days=10)).date())
+               for index in range(batch_count)}
+    operations = [make_algo_op(id=index + 1, op_code=f"OP{index:03d}", batch_id=f"B{index:03d}",
+                               machine_id="M1", operator_id="O1", setup_hours=1.0, unit_hours=0.0,
+                               op_type_id="T1", op_type_name="T1")
+                  for index in range(batch_count)]
+    return dict(operations=operations, batches=batches, start_dt=BASE, dispatch_mode="sgs", dispatch_rule="slack")
+
+
 def _payload(rows, summary):
     fields = vars(summary).copy()
     fields.pop("duration_seconds")
@@ -97,7 +113,6 @@ class _FullScoringCache(SgsScoreCache):
         self.timing = None
 
     def resolve(self, op, batch_id, graph_state, score):
-        self.misses += 1
         return score()
 
     def scoring_slot_estimate(self, *, compute, **_inputs):
@@ -107,25 +122,39 @@ class _FullScoringCache(SgsScoreCache):
         return None
 
 
-_REUSE_COUNTERS = ("hits", "pair_hits", "pair_revalidated", "calendar_hits", "shared_slot_hits", "graph_candidates_pruned")
+_TIMING_METHODS = ("adjust_to_working_time", "add_effective_hours", "working_hours_between",
+                   "certified_slot_window", "get_efficiency")
+
+
+@contextmanager
+def _memo_answers():
+    """Count memoized timing calls answered without asking the native calendar."""
+    asked, answered = [0], [0]
+    with ExitStack() as stack:
+        for name in _TIMING_METHODS:
+            def ask(*args, _native=getattr(CalendarEngine, name), **kwargs):
+                asked[0] += 1
+                return _native(*args, **kwargs)
+
+            def memo(*args, _memoized=getattr(MemoizedTimingCalendar, name), **kwargs):
+                before = asked[0]
+                value = _memoized(*args, **kwargs)
+                answered[0] += asked[0] == before
+                return value
+
+            stack.enter_context(patch.object(CalendarEngine, name, autospec=True, side_effect=ask))
+            stack.enter_context(patch.object(MemoizedTimingCalendar, name, autospec=True, side_effect=memo))
+        yield answered
 
 
 def _decode(calendar, case, *, cache_type=SgsScoreCache):
-    created = []
-    build_cache = cache_type.for_preparation
-
-    def capture(*args, **kwargs):
-        cache = build_cache(*args, **kwargs)
-        created.append(cache)
-        return cache
-
-    with patch.object(SgsScoreCache, "for_preparation", side_effect=capture):
+    with patch.object(SgsScoreCache, "for_preparation", side_effect=cache_type.for_preparation):
         scheduler = scheduler_module.GreedyScheduler(
             calendar_service=calendar,
             config_service=config_snapshot(auto_assign_enabled="no"),
         )
         _session, decoded = production_decode_in_session(scheduler, **case)
-    return _payload(decoded.results, decoded.summary), created[-1].stats()
+    return _payload(decoded.results, decoded.summary)
 
 
 def _pruning(case, calendar):
@@ -133,16 +162,12 @@ def _pruning(case, calendar):
         calendar_service=calendar,
         config_service=config_snapshot(auto_assign_enabled="no"),
     )
-    session = production_session(
-        scheduler,
-        operations=case["operations"],
-        batches=case["batches"],
-        graph_ready_context=case["graph_ready_context"],
+    preparation = scheduler_module.prepare_native_schedule_inputs(
+        {}, scheduler=scheduler, operations=case["operations"], batches=case["batches"],
+        required_hours_by_op_id=required_hours_by_op_id(case["operations"], case["batches"]), seed_results=[],
+        resource_pool=DISABLED_RESOURCE_POOL, graph_ready_context=case["graph_ready_context"],
     )
-    preparation = session.native_preparation
-    cache = SgsScoreCache.for_preparation(
-        preparation, state=ScheduleRunState(base_time=BASE), auto_assign_enabled=False, resource_pool=None,
-    )
+    cache = SgsScoreCache.for_preparation(preparation, state=ScheduleRunState(base_time=BASE))
     ops_by_batch: Dict[str, list] = {}
     for op in case["operations"]:
         ops_by_batch.setdefault(op.batch_id, []).append(op)
@@ -151,7 +176,7 @@ def _pruning(case, calendar):
     context = case["graph_ready_context"]
     request = dict(context, score_enabled=True, graph_priority_key_by_op_id=graph_priority_key_map(
         context["graph_priority_key_by_op_id"], schedulable_ids=topology.schedulable_ids))
-    graph = _prepare_graph_ready_state(topology, request, ops_by_batch=ops_by_batch, skip_initial_frontier=False)
+    graph = prepare_graph_ready_state(topology, request, ops_by_batch=ops_by_batch, skip_initial_frontier=False)
     pruning = GraphPriorityPruning.for_cache(cache, graph)
     assert pruning is not None
     return pruning, graph
@@ -159,15 +184,43 @@ def _pruning(case, calendar):
 
 @pytest.mark.parametrize("case_builder", [_saturated_case, _mixed_case])
 def test_graph_decode_with_memo_and_pruning_matches_full_scoring(case_builder):
-    outputs = []
+    outputs, resolved, memo_answered = [], [], []
     for cache_type in (_FullScoringCache, SgsScoreCache):
-        with native_calendar() as calendar:
+        with native_calendar() as calendar, _memo_answers() as answered, \
+                patch.object(cache_type, "resolve", autospec=True, side_effect=cache_type.resolve) as resolve:
             outputs.append(_decode(calendar, case_builder(), cache_type=cache_type))
-    (expected, reference), (actual, production) = outputs
+        resolved.append(resolve.call_count)
+        memo_answered.append(answered[0])
+    expected, actual = outputs
     assert actual == expected
     assert actual[1]["failed_ops"] == 0 and actual[1]["scheduled_ops"] == 90
-    assert reference["misses"] > 0 and not any(reference[name] for name in _REUSE_COUNTERS)
-    assert production["calendar_hits"] > 0 and production["graph_candidates_pruned"] > 0
+    # The reference resolves every ready operation on the raw calendar; production prunes later
+    # graph-key groups and answers repeated timing questions from the memo.
+    assert 0 < resolved[1] < resolved[0]
+    assert memo_answered[0] == 0 and memo_answered[1] > 0
+
+
+def test_saturated_fixed_resources_retire_key_reuse_and_stay_exact():
+    retirements = []
+    advance = SgsScoreCache.next_round
+
+    def observed_round(cache):
+        reusing = cache._reuse_keys
+        advance(cache)
+        if reusing and not cache._reuse_keys:
+            retirements.append((cache.round, cache._shared_slots.hits))
+
+    outputs = []
+    for cache_type in (_FullScoringCache, SgsScoreCache):
+        with native_calendar() as calendar, \
+                patch.object(SgsScoreCache, "next_round", autospec=True, side_effect=observed_round):
+            outputs.append(_decode(calendar, _single_resource_case(), cache_type=cache_type))
+    assert outputs[0] == outputs[1]
+    assert outputs[1][1]["failed_ops"] == 0 and outputs[1][1]["scheduled_ops"] == 48
+    # No key is ever reused on one shared resource; shared-slot answers accumulated over the
+    # whole decode retire key reuse at the first eligible round, in production only.
+    assert [round_index for round_index, _hits in retirements] == [8]
+    assert retirements[0][1] >= 256
 
 
 def test_priority_pruning_selects_lowest_admitted_key_group_and_rejects_missing_keys_at_admission():
@@ -214,27 +267,6 @@ def test_priority_key_admission_keeps_nonfinite_input_error(invalid):
     assert exc.value.message == "图评分 key 不能包含 NaN 或 Inf。"
 
 
-@pytest.mark.parametrize("merged", [False, True])
-def test_out_of_range_external_duration_keeps_the_complete_path_and_the_calendar_error(merged):
-    case = _saturated_case(batch_count=3, ops_per_batch=1)
-    first = case["operations"][0]
-    first.source = "external"
-    if merged:
-        first.ext_merge_mode, first.ext_group_id, first.ext_group_total_days = "merged", "G", 36501.0
-    else:
-        first.ext_days = 36501.0
-    errors = []
-    for cache_type in (_FullScoringCache, SgsScoreCache):
-        with native_calendar() as calendar:
-            pruning, _ = _pruning(case, calendar)
-            assert not pruning.supported
-            with pytest.raises(ValidationError) as exc:
-                _decode(calendar, case, cache_type=cache_type)
-            errors.append((exc.value.field, str(exc.value)))
-    assert errors[0] == errors[1]
-    assert errors[0][0] == "days"
-
-
 def test_blocked_lowest_external_group_still_scores_the_other_ready_operations():
     case = _saturated_case(batch_count=2, ops_per_batch=1)
     external, internal = case["operations"]
@@ -247,8 +279,7 @@ def test_blocked_lowest_external_group_still_scores_the_other_ready_operations()
     outputs = []
     for cache_type in (_FullScoringCache, SgsScoreCache):
         with native_calendar() as calendar:
-            payload, _ = _decode(calendar, case, cache_type=cache_type)
-            outputs.append(payload)
+            outputs.append(_decode(calendar, case, cache_type=cache_type))
     assert outputs[0] == outputs[1]
     assert [row[0] for row in outputs[1][0]] == [internal.id]
     assert outputs[1][1]["failed_ops"] == 1

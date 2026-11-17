@@ -45,17 +45,16 @@ def compute_overdue_bucket_groups(
 
     scheduled: List[Dict[str, Any]] = []
     unscheduled: List[Dict[str, Any]] = []
-    invalid_time: List[Dict[str, Any]] = []
+    invalid_due: List[Dict[str, Any]] = []
 
     for row in rows:
         due_s = row["due_date"]
         if due_s is None:
             continue
         finish_s = row["finish_time"]
-        invalid_time_count = row.get("invalid_time_count", 0)
         due_d = parse_date(due_s)
         if due_d is None:
-            invalid_time.append(
+            invalid_due.append(
                 _overdue_item(
                     row,
                     bucket="due_date_invalid",
@@ -64,7 +63,6 @@ def compute_overdue_bucket_groups(
                     as_of_time=as_of,
                     due_date=due_s,
                     finish_time=finish_s,
-                    invalid_time_count=invalid_time_count,
                     invalid_due_count=1,
                     data_issue_message="批次交期写法不对，系统不能判断它是否超期，请先修正交期。",
                 )
@@ -90,24 +88,6 @@ def compute_overdue_bucket_groups(
             )
             continue
 
-        if invalid_time_count > 0:
-            if now_dt < due_excl:
-                continue
-            invalid_time.append(
-                _overdue_item(
-                    row,
-                    bucket="schedule_time_invalid",
-                    bucket_label="排程时间异常",
-                    is_scheduled=True,
-                    as_of_time=as_of,
-                    due_date=due_s,
-                    delay_sec=(now_dt - due_excl).total_seconds(),
-                    invalid_time_count=invalid_time_count,
-                    data_issue_message="有排程记录，但计划完成时间写法不对，不能当作未排程或准时完成。",
-                )
-            )
-            continue
-
         if now_dt < due_excl:
             continue
         unscheduled.append(
@@ -122,4 +102,4 @@ def compute_overdue_bucket_groups(
             )
         )
 
-    return scheduled, unscheduled, invalid_time
+    return scheduled, unscheduled, invalid_due

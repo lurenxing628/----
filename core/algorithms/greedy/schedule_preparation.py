@@ -5,12 +5,12 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple, Union
 
 from core.algorithm_contracts.date_parsers import require_optional_date, require_optional_datetime
 from core.algorithm_contracts.resource_occupancy import PreparedSeedApplication, ResourceOccupancy
-from core.algorithm_contracts.sort_strategies import BatchForSort, SortStrategy, StrategyFactory
+from core.algorithm_contracts.resource_pool import ResourcePool
+from core.algorithm_contracts.sort_strategies import BatchForSort, StrategyFactory, WeightedParams
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_runtime.checkpoint_calendar import (
     checkpoint_calendar_signature,
@@ -21,11 +21,12 @@ from core.algorithm_runtime.piece_input import operation_batch
 from core.algorithm_runtime.resource_demand import ResourceClaim
 from core.errors import ValidationError
 from core.models.batch import Batch
+from core.models.enums import SortStrategy
+
+from .dispatch.sgs_checkpoint import seed_signature
 
 if TYPE_CHECKING:
     from .dispatch.sgs_graph import PreparedGraphReadyTopology
-
-_NO_PLACED_GROUPS = MappingProxyType({})
 
 
 @dataclass
@@ -39,9 +40,7 @@ class NativeSchedulePreparation:
     seed_applications: Tuple[PreparedSeedApplication, ...]
     seed_occupancies_by_op_id: Mapping[int, Tuple[ResourceOccupancy, ...]]
     seed_external_group_cache: Dict[Any, Any]
-    seed_op_ids: Set[int]
-    unseeded_operations: List[OpForScheduleAlgo]
-    resource_pool: Any
+    resource_pool: ResourcePool
     graph_ready_context: Any
     warnings: Tuple[str, ...]
     algo_stats: Dict[str, Any]
@@ -69,9 +68,6 @@ class NativeSchedulePreparation:
     )
     _parsed_ready_starts: Optional[Dict[str, Optional[datetime]]] = field(
         default=None, init=False, repr=False
-    )
-    _certified_external_by_op_id: Dict[int, bool] = field(
-        default_factory=dict, init=False, repr=False
     )
     _calendar_signature: Any = field(init=False, repr=False, default=None)
     _checkpoint_parts: Any = field(init=False, repr=False, default=None)
@@ -149,40 +145,16 @@ class NativeSchedulePreparation:
         *,
         start_dt: Union[datetime, date],
         strategy: SortStrategy,
-        params: Optional[Dict[str, Any]] = None,
+        weights: Optional[WeightedParams],
     ) -> Tuple[str, ...]:
         base_date = start_dt.date() if isinstance(start_dt, datetime) else start_dt
-        raw_params = params or {}
-        normalized_params = (
-            (
-                float(raw_params.get("priority_weight", 0.4)),
-                float(raw_params.get("due_weight", 0.5)),
-            )
-            if strategy == SortStrategy.WEIGHTED
-            else ()
-        )
-        key = (strategy, base_date, normalized_params)
+        key = (strategy, base_date, weights)
         cached = self._batch_orders.get(key)
         if cached is None:
             sortable = self.batch_sort_inputs(strategy=strategy)
-            sorter = StrategyFactory.create(strategy, **raw_params)
+            sorter = StrategyFactory.create(strategy, weights)
             cached = tuple(item.batch_id for item in sorter.sort(sortable, base_date=base_date))
             self._batch_orders[key] = cached
-        return cached
-
-    def certified_external_operation(self, op: OpForScheduleAlgo) -> bool:
-        cached = self._certified_external_by_op_id.get(op.id)
-        if cached is not None:
-            return cached
-        from .dispatch.sgs_due_span import external_candidate_window
-
-        try:
-            external_candidate_window(self.calendar, _NO_PLACED_GROUPS, op=op, prev_end=datetime.min)
-        except (ValidationError, ValueError, OverflowError):
-            cached = False
-        else:
-            cached = True
-        self._certified_external_by_op_id[op.id] = cached
         return cached
 
     def operation_batch(self, op: OpForScheduleAlgo, batch: Batch) -> Batch:
@@ -212,10 +184,8 @@ class NativeSchedulePreparation:
             return self.resource_claims[token]
         claim = None
         op_id, batch_id, piece = op.id, op.batch_id, op.piece_id
-        # A zero-hour operation is a point event and claims no resource time. Only operations whose batch is
-        # missing lack prepared hours; dispatch retires them before any placement is compared.
-        point_event = self.total_hours_by_op_id.get(op_id) == 0.0
-        if not point_event and op.source == "internal":
+        # A zero-hour operation is a point event and claims no resource time.
+        if op.source == "internal" and self.total_hours_by_op_id[op_id] != 0.0:
             pairs = frozenset(self.qualified_resource_pairs(op))
             claim = ResourceClaim(token, op_id, batch_id, (batch_id, piece), pairs,
                                   Counter(mid for mid, _ in pairs), Counter(oid for _, oid in pairs))
@@ -244,15 +214,13 @@ class NativeSchedulePreparation:
     def checkpoint_fixed_parts(self) -> Dict[str, Any]:
         """Encode fixed checkpoint records lazily; ordinary full decodes never need them."""
         if self._checkpoint_parts is None:
-            from .dispatch.sgs_checkpoint import seed_signature
             self._checkpoint_parts = {
                 "operations": {
                     id(op): input_record(op, field="operations")
-                    for op in list(self.unseeded_operations) + self._variant_operations
+                    for op in list(self.operations) + self._variant_operations
                 },
                 "batches": tuple((key, input_record(batch, field="batches")) for key, batch in self.batches.items()),
                 "downtimes": input_value(self.normalized_machine_downtimes, field="machine_downtimes"),
-                "resources": input_value(self.resource_pool, field="resource_pool"),
                 "seeds": tuple(seed_signature(result) for result in self.seed_results),
                 "contexts": {},
             }

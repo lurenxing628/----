@@ -4,11 +4,13 @@ from __future__ import annotations
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from time import monotonic
 from typing import Any, Dict, List
 
 from core.algorithm_contracts.resource_occupancy import project_internal_occupancies
+from core.algorithm_contracts.resource_pool import DISABLED_RESOURCE_POOL, ResourcePool
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
-from core.algorithms.evaluation import compute_metrics, objective_score
+from core.algorithms.evaluation import objective_score
 from core.models.batch import Batch
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.models.schedule_config_runtime_snapshot import snapshot_from_values
@@ -32,6 +34,7 @@ from tests._support.optimizer_exact_oracle import (
     tie_chain_case,
 )
 from tests._support.paths import REPO_ROOT
+from tests._support.schedule_decode import NO_END_DATE, prepared_metrics, required_hours_by_op_id
 
 START = datetime(2026, 1, 5)
 RESULT_FIELDS = (
@@ -80,7 +83,7 @@ def _tiny_data(scenario):
              "unit_hours": item.duration_minutes / 60.0, "op_type_id": item.family, "op_type_name": item.family}
         )
     return {"batches": batches, "operations": operations, "calendar": _calendar(24),
-            "downtime": {}, "resource_pool": None, "seed_results": [], "readiness_gate_enabled": False,
+            "downtime": {}, "resource_pool": DISABLED_RESOURCE_POOL, "seed_results": [], "readiness_gate_enabled": False,
             "tiny_case": case}
 
 
@@ -106,12 +109,13 @@ def _resource_data(batch_count):
         "batches": batches, "operations": operations, "calendar": _calendar(8),
         "downtime": {"M0": [(START + timedelta(hours=8), START + timedelta(hours=13))],
                      "M1": [(START + timedelta(days=1, hours=10), START + timedelta(days=1, hours=14))]},
-        "resource_pool": {
-            "machines_by_op_type": {"TYPE0": ["M0", "M1", "M2"], "TYPE1": ["M0"]},
-            "operators_by_machine": {"M0": ["O0", "O1"], "M1": ["O1", "O2"], "M2": ["O0", "O2"]},
-            "machines_by_operator": {"O0": ["M0", "M2"], "O1": ["M0", "M1"], "O2": ["M1", "M2"]},
-            "pair_rank": {},
-        },
+        "resource_pool": ResourcePool(
+            enabled=True,
+            machines_by_op_type={"TYPE0": ("M0", "M1", "M2"), "TYPE1": ("M0",)},
+            operators_by_machine={"M0": ("O0", "O1"), "M1": ("O1", "O2"), "M2": ("O0", "O2")},
+            machines_by_operator={"O0": ("M0", "M2"), "O1": ("M0", "M1"), "O2": ("M1", "M2")},
+            pair_rank={}, operator_skills=None,
+        ),
         "seed_results": [], "readiness_gate_enabled": False,
     }
 
@@ -123,10 +127,11 @@ def fixture_data(scenario):
     if scenario == "frozen_ready_external":
         frozen = data["operations"][0]
         frozen.update(machine_id="M0", operator_id="O0")
+        # 种子带齐排产结果的全部痕迹字段；这条冻结种子一直不带工种与来源痕迹（None）。
         data["seed_results"] = [
             {"op_id": frozen["id"], "op_code": frozen["op_code"], "batch_id": frozen["batch_id"],
              "seq": frozen["seq"], "source": "internal", "machine_id": "M0", "operator_id": "O0",
-             "op_type_name": frozen["op_type_name"],
+             "op_type_name": frozen["op_type_name"], "op_type_id": None, "seed_source": None,
              "start_time": (START - timedelta(hours=frozen["setup_hours"] + frozen["unit_hours"])).isoformat(),
              "end_time": START.isoformat()}
         ]
@@ -153,7 +158,7 @@ def case_environment(data, objective, config=None):
         calendar_engine = CalendarEngine(calendar_inputs_from_capture(ProductionFactsCapture(conn)))
         values = default_snapshot_values()
         values.update(sort_strategy="fifo", dispatch_mode="sgs", dispatch_rule="slack", algo_mode="improve",
-                      time_budget_seconds=config["time_budget_seconds"], objective=objective, ortools_enabled="no",
+                      time_budget_seconds=config["time_budget_seconds"], objective=objective,
                       auto_assign_enabled="no" if "tiny_case" in data else "yes",
                       freeze_window_enabled="no", freeze_window_days=0)
         operations = [algo_operation_from_fixture(row) for row in data["operations"]]
@@ -174,23 +179,24 @@ def case_environment(data, objective, config=None):
             to_schedule=to_schedule,
             unscheduled_external_seed_by_op={},
         )
+        batches = {row["batch_id"]: Batch(part_no=row["batch_id"], **row) for row in data["batches"]}
         solver_input = SolverInput(
-            batches={row["batch_id"]: Batch(part_no=row["batch_id"], **row) for row in data["batches"]},
+            batches=batches,
             algo_ops=operations,
             to_schedule=to_schedule,
             config=snapshot_from_values(values),
             start=START,
-            end_date=None,
+            end_date=NO_END_DATE,
             readiness_gate_enabled=data["readiness_gate_enabled"],
             seeds=seed_preparation,
+            required_hours_by_op_id=required_hours_by_op_id(to_schedule, batches),
         )
         resources = SolverResources(
             calendar_engine=calendar_engine,
             downtime_map=data["downtime"],
             resource_pool=data["resource_pool"],
-            downtime_meta={},
-            resource_pool_meta={},
             optimizer_seed_version=config["seed"],
+            clock=monotonic,
         )
         yield solver_input, resources
     finally:
@@ -199,7 +205,7 @@ def case_environment(data, objective, config=None):
 
 def _payload(plan, env):
     seed_results = [ScheduleResult(**row) for row in env.seeds.seed_results]
-    metrics = compute_metrics(
+    metrics = prepared_metrics(
         plan.results, env.batches, expected_operations=env.to_schedule,
         seed_results=seed_results,
         seed_occupancies_by_op_id={row.op_id: project_internal_occupancies(row) for row in seed_results},
@@ -240,9 +246,9 @@ def _audit_plan(plan, env, resources, data):
         for field in ("machine_id", "operator_id"):
             if operation[field]:
                 assert getattr(row, field) == operation[field]
-        if resources.resource_pool:
-            assert row.machine_id in resources.resource_pool["machines_by_op_type"][operation["op_type_id"]]
-            assert row.operator_id in resources.resource_pool["operators_by_machine"][row.machine_id]
+        if resources.resource_pool.enabled:
+            assert row.machine_id in resources.resource_pool.machines_by_op_type[operation["op_type_id"]]
+            assert row.operator_id in resources.resource_pool.operators_by_machine[row.machine_id]
         assert not any(row.start_time < end and start < row.end_time
                        for start, end in resources.downtime_map.get(row.machine_id, []))
         assert calendar.adjust_to_working_time(row.start_time, priority=batch.priority,

@@ -224,7 +224,7 @@ def _build_downstream_critical_minutes_by_node(
 
 
 def _machine_ids_for_node(data: Dict[str, Any]) -> Tuple[str, ...]:
-    # Candidate ids are already compact text (OperationGraphNode.__post_init__).
+    # Candidate ids are the resource pool's machine ids (input_adapter via ResourcePool.static_machine_candidates).
     ids: List[str] = list(data["candidate_machine_ids"])
     raw_machine = data["machine_id"]
     machine_id = "" if raw_machine is None else str(raw_machine)

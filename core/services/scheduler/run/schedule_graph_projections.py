@@ -49,7 +49,6 @@ def build_graph_dispatch_projections(
         op_id_sets=op_id_sets,
     )
     resource_public, resource_diagnostics = build_graph_resource_matching_projection(
-        mode=mode,
         is_dag=is_dag,
         nodes=nodes,
         edges=edges,

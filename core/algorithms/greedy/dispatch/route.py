@@ -21,7 +21,6 @@ def dispatch_run(ctx, *, state, sorted_ops, batches, batch_order, params, machin
         end_dt_exclusive=params.end_dt_exclusive,
         machine_downtimes=machine_downtimes,
         state=state,
-        auto_assign_enabled=params.auto_assign_enabled,
         resource_pool=resource_pool,
     )
     if params.dispatch_mode_key != "sgs":

@@ -113,13 +113,6 @@ class ScheduleRunState:
         self.blocked_batches.add(batch_id)
         self.last_op_type_by_machine.block_batch(batch_id)
 
-    def record_missing_batch(self, op: OpForScheduleAlgo, batch_id: str) -> None:
-        self.failed_count += 1
-        # 失败的用户可见文案统一由结构化 failure_details + _structured_failure_message 单点渲染。
-        detail = self._failure_detail("missing_batch", op, batch_id=batch_id)
-        self.failure_details.append(detail)
-        self._retire_resource_demand(detail["op_id"], blocked_batch=batch_id)
-
     def record_skipped_after_batch_failure(self, op: OpForScheduleAlgo, batch_id: str) -> None:
         self.failed_count += 1
         detail = self._failure_detail(
@@ -154,10 +147,8 @@ class ScheduleRunState:
         self.failure_details.append(detail)
         self._retire_resource_demand(detail["op_id"])
 
-    def _retire_resource_demand(self, op_id: int, *, blocked_batch: str = "") -> None:
+    def _retire_resource_demand(self, op_id: int) -> None:
         self.last_op_type_by_machine.complete(op_id)
-        if blocked_batch:
-            self.last_op_type_by_machine.block_batch(blocked_batch)
 
     def _record_internal_usage(
         self,

@@ -1,23 +1,21 @@
-"""Personnel qualification shared by planning and editing, without scheduler imports."""
+"""Personnel qualification shared by planning and editing, without scheduler imports.
+
+Callers bring the facts their own read holds: the authorized operator/machine pairs and the
+qualifications ``project_facts`` interprets. Nothing here reads a connection.
+"""
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Protocol, Sequence, Set
+from typing import AbstractSet, Any, Dict, List, Optional, Sequence, Set, Tuple
 
-from core.errors import AppError, ValidationError
+from core.errors import ValidationError
 from core.models.resource_capabilities import supports_source
-from data.repositories.operator_machine_repo import OperatorMachineRepository
-from data.repositories.operator_qualification_repo import OperatorQualificationRepository
 
 
 class OperatorQualificationError(ValidationError):
     """Qualification failures must not fall back to an unfiltered resource pool."""
 
     details: Dict[str, Any]  # every raise site records the failure ``reason``
-
-
-class MachineAuthorizations(Protocol):
-    def exists(self, operator_id: str, machine_id: str) -> bool: ...
 
 
 def _invalid_facts(message: str) -> OperatorQualificationError:
@@ -32,8 +30,9 @@ def _identifier(value: Any) -> str:
     return value
 
 
-def require_machine_authorization(authorizations: MachineAuthorizations, operator_id: str, machine_id: Optional[str]) -> None:
-    if machine_id and not authorizations.exists(operator_id, machine_id):
+def require_machine_authorization(authorized_pairs: AbstractSet[Tuple[str, str]], operator_id: str,
+                                  machine_id: Optional[str]) -> None:
+    if machine_id and (operator_id, machine_id) not in authorized_pairs:
         raise OperatorQualificationError(
             f"人员“{operator_id}”未被配置为可操作设备“{machine_id}”。"
             "请先在【人员管理】或【设备管理】中维护人机关联后再排产。",
@@ -56,23 +55,19 @@ def require_explicit_auto_work_types(operations: Sequence[Any], rows: List[Dict[
             _identifier(op_type_id)
 
 
+def require_work_type_qualification(qualifications: Dict[str, Optional[Set[str]]], operator_id: str,
+                                    op_type_id: Optional[str]) -> None:
+    """``qualifications`` come from ``OperatorQualificationService.project_facts``, which already admitted the id."""
+    skills = qualifications[operator_id]
+    if skills is not None and op_type_id not in skills:
+        raise OperatorQualificationError(
+            f"人员“{operator_id}”未登记自制工种“{op_type_id or '未填写'}”的资格，不能分配；请核对技能登记。",
+            field="operator_qualification",
+            details={"reason": "operator_skill_not_qualified", "operator_id": operator_id, "op_type_id": op_type_id},
+        )
+
+
 class OperatorQualificationService:
-    def __init__(self, conn, logger=None, *, repo=None, authorizations=None):
-        self.repo = repo if repo is not None else OperatorQualificationRepository(conn, logger=logger)
-        self.authorizations = (authorizations if authorizations is not None
-                               else OperatorMachineRepository(conn, logger=logger))
-
-    def load(self, operator_ids: Sequence[str]) -> Dict[str, Optional[Set[str]]]:
-        ids = sorted({_identifier(value) for value in operator_ids})
-        return self._load_validated(ids)
-
-    def _load_validated(self, ids):
-        try:
-            profiles, skills = self.repo.read_skill_facts(ids)
-        except AppError as exc:
-            raise _invalid_facts("人员技能或登记资料无法读取，请检查数据库；本次不会退回旧授权名单排产。") from exc
-        return self._project_validated_facts(set(ids), profiles, skills)
-
     @staticmethod
     def project_facts(operator_ids: Sequence[str], profiles: List[Dict[str, Any]],
                       skills: List[Dict[str, Any]]) -> Dict[str, Optional[Set[str]]]:
@@ -118,16 +113,3 @@ class OperatorQualificationService:
             if skills is None or machine_capabilities[mid] & skills:
                 result.append(row)
         return result
-
-    def require(self, *, operator_id: str, op_type_id: Optional[str], machine_id: Optional[str],
-                qualifications: Optional[Dict[str, Optional[Set[str]]]] = None) -> None:
-        oid = _identifier(operator_id)
-        require_machine_authorization(self.authorizations, oid, machine_id)
-        facts = self._load_validated([oid]) if qualifications is None else qualifications
-        skills = facts[oid]
-        if skills is not None and op_type_id not in skills:
-            raise OperatorQualificationError(
-                f"人员“{oid}”未登记自制工种“{op_type_id or '未填写'}”的资格，不能分配；请核对技能登记。",
-                field="operator_qualification",
-                details={"reason": "operator_skill_not_qualified", "operator_id": oid, "op_type_id": op_type_id},
-            )

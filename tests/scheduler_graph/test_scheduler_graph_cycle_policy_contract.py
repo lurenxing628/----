@@ -4,21 +4,21 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timedelta
-from functools import partial
+from time import monotonic
 from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple
 
 import pytest
 
-from core.algorithm_contracts.sort_strategies import SortStrategy
+from core.algorithm_contracts.resource_pool import DISABLED_RESOURCE_POOL, ResourcePool
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.errors import ValidationError
 from core.models.batch import Batch
+from core.models.enums import SortStrategy
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.scheduler.run import schedule_candidate_runner
-from core.services.scheduler.run.optimizer.runtime import _default_runtime
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
 from core.services.scheduler.run.schedule_graph_report import prepare_schedule_graph_for_dispatch
 from core.services.scheduler.run.schedule_input_contracts import (
@@ -26,15 +26,15 @@ from core.services.scheduler.run.schedule_input_contracts import (
     SolverInput,
     SolverResources,
 )
-from core.services.scheduler.run.schedule_shared_optimizer import optimize_shared_schedule
 from tests._support.algo_operations import make_algo_op
+from tests._support.schedule_decode import NO_END_DATE, required_hours_by_op_id
 
 
 def _make_dt(hours: int) -> datetime:
     return datetime(2026, 1, 1, 8, 0, 0) + timedelta(hours=hours)
 
 
-def _schedule_input(mode: str, *, block_on_cycle: str) -> SolverInput:
+def _schedule_input(mode: str, *, block_on_cycle: bool) -> SolverInput:
     operation = dict(id=1, op_code="OP-B001-010", batch_id="B001", seq=10, op_type_name="车削")
     algo_ops = [make_algo_op(**operation)]
     seeds = SeedPreparation(
@@ -51,26 +51,22 @@ def _schedule_input(mode: str, *, block_on_cycle: str) -> SolverInput:
         to_schedule=list(algo_ops),
         unscheduled_external_seed_by_op={},
     )
+    batches = {"B001": Batch(batch_id="B001", part_no="P001", quantity=1, due_date="2026-01-02")}
     return SolverInput(
-        batches={"B001": Batch(batch_id="B001", part_no="P001", quantity=1, due_date="2026-01-02")},
+        batches=batches,
         algo_ops=algo_ops,
         to_schedule=list(algo_ops),
         config=ScheduleConfigSnapshot(
-            sort_strategy="priority_first",
+            sort_strategy=SortStrategy.PRIORITY_FIRST,
             priority_weight=0.4,
             due_weight=0.5,
-            ready_weight=0.1,
-            holiday_default_efficiency=1.0,
-            enforce_ready_default="no",
             dispatch_mode="batch_order",
             dispatch_rule="slack",
-            auto_assign_enabled="no",
-            ortools_enabled="no",
-            ortools_time_limit_seconds=5,
+            auto_assign_enabled=False,
             algo_mode="greedy",
             time_budget_seconds=5,
             objective="min_overdue",
-            freeze_window_enabled="no",
+            freeze_window_enabled=False,
             freeze_window_days=0,
             graph_analysis_mode=mode,
             graph_block_on_cycle=block_on_cycle,
@@ -78,9 +74,10 @@ def _schedule_input(mode: str, *, block_on_cycle: str) -> SolverInput:
             graph_impact_weight=10,
         ),
         start=datetime(2026, 1, 1, 8, 0, 0),
-        end_date=None,
+        end_date=NO_END_DATE,
         readiness_gate_enabled=True,
         seeds=seeds,
+        required_hours_by_op_id=required_hours_by_op_id(algo_ops, batches),
     )
 
 
@@ -88,10 +85,9 @@ def _solver_resources() -> SolverResources:
     return SolverResources(
         calendar_engine=CalendarEngine(),
         downtime_map={},
-        resource_pool={"machines_by_op_type": {}, "operators_by_machine": {}, "machines_by_operator": {}},
-        downtime_meta={},
-        resource_pool_meta={},
+        resource_pool=DISABLED_RESOURCE_POOL,
         optimizer_seed_version=6,
+        clock=monotonic,
     )
 
 
@@ -110,7 +106,7 @@ def _valid_result() -> ScheduleResult:
     )
 
 
-def _optimizer_outcome() -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
+def _optimizer_outcome() -> Tuple[List[ScheduleResult], ScheduleSummary]:
     return (
         [_valid_result()],
         ScheduleSummary(
@@ -122,8 +118,6 @@ def _optimizer_outcome() -> Tuple[List[ScheduleResult], ScheduleSummary, SortStr
             errors=[],
             duration_seconds=0.0,
         ),
-        SortStrategy.PRIORITY_FIRST,
-        {"dispatch": "fifo"},
     )
 
 
@@ -168,7 +162,7 @@ def _run_orchestrator_with_decoder(schedule_input: SolverInput, *, decode_fn: An
     preparation = None
     resources = _solver_resources()
 
-    def prepare_graph(inputs: SolverInput, *, resource_pool: Any = None) -> Any:
+    def prepare_graph(inputs: SolverInput, *, resource_pool: ResourcePool) -> Any:
         nonlocal preparation
         preparation = prepare_schedule_graph_for_dispatch(inputs, resource_pool=resource_pool)
         return preparation
@@ -178,16 +172,14 @@ def _run_orchestrator_with_decoder(schedule_input: SolverInput, *, decode_fn: An
             assert preparation is not None
             params = changes["params"]
             dispatch = {"dispatch_mode": params.dispatch_mode_key, "dispatch_rule": params.dispatch_rule_spec.token}
-            results, summary, used_strategy, used_params = decode_fn(
+            return decode_fn(
                 graph_ready_context=changes["graph_ready_context"], **dispatch,
                 graph_dispatch_mode_override=preparation.graph_dispatch_mode_override,
             )
-            return results, summary, used_strategy, dict(used_params, **dispatch)
 
     with pytest.MonkeyPatch.context() as runner_patch:
         runner_patch.setattr(schedule_candidate_runner, "prepare_schedule_graph_for_dispatch", prepare_graph)
-        runner_patch.setattr(schedule_candidate_runner, "optimize_shared_schedule", partial(
-            optimize_shared_schedule, _runtime=replace(_default_runtime(), scheduler_factory=ContractScheduler)))
+        runner_patch.setattr(schedule_candidate_runner, "GreedyScheduler", ContractScheduler)
         candidate_comparison = run_candidate_comparison(schedule_input, resources)
         adopted_plan = candidate_comparison.selection.selected_plan
         return SimpleNamespace(
@@ -210,7 +202,7 @@ def cycle_graph(monkeypatch: Any) -> None:
 
 def test_report_mode_cycle_only_reports_warning_and_keeps_scheduling(cycle_graph: None) -> None:
 
-    outcome = _run_orchestrator(_schedule_input("report", block_on_cycle="yes"))
+    outcome = _run_orchestrator(_schedule_input("report", block_on_cycle=True))
 
     graph_analysis = outcome.result_summary_obj["algo"]["graph_analysis"]
     assert graph_analysis["mode"] == "report"
@@ -225,7 +217,7 @@ def test_report_mode_cycle_only_reports_warning_and_keeps_scheduling(cycle_graph
 def test_on_mode_cycle_with_block_yes_stops_before_version_allocation(cycle_graph: None) -> None:
 
     with pytest.raises(ValidationError) as exc_info:
-        _run_orchestrator(_schedule_input("on", block_on_cycle="yes"))
+        _run_orchestrator(_schedule_input("on", block_on_cycle=True))
 
     assert exc_info.value.field == "schedule_graph_cycle"
     assert "工序图存在循环依赖" in exc_info.value.message
@@ -243,11 +235,11 @@ def test_on_mode_cycle_with_block_yes_stops_before_version_allocation(cycle_grap
 def test_on_mode_cycle_with_block_no_disables_graph_enhancement_and_keeps_old_sgs(cycle_graph: None) -> None:
     captured: Dict[str, Any] = {}
 
-    def _optimize(**kwargs: Any) -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
+    def _optimize(**kwargs: Any) -> Tuple[List[ScheduleResult], ScheduleSummary]:
         captured.update(kwargs)
         return _optimizer_outcome()
 
-    outcome = _run_orchestrator_with_decoder(_schedule_input("on", block_on_cycle="no"), decode_fn=_optimize)
+    outcome = _run_orchestrator_with_decoder(_schedule_input("on", block_on_cycle=False), decode_fn=_optimize)
 
     graph_analysis = outcome.result_summary_obj["algo"]["graph_analysis"]
     assert graph_analysis["effective_mode"] == "sgs_without_graph_ready_queue"
@@ -265,7 +257,7 @@ def test_on_mode_cycle_with_block_no_disables_graph_enhancement_and_keeps_old_sg
 
 
 def test_on_mode_improve_with_zero_score_weights_skips_graph_feature_prep_and_keeps_scheduling() -> None:
-    schedule_input = _schedule_input("on", block_on_cycle="yes")
+    schedule_input = _schedule_input("on", block_on_cycle=True)
     schedule_input = replace(
         schedule_input,
         config=replace(
@@ -323,7 +315,7 @@ def test_on_mode_known_graph_error_is_not_reported_as_cycle(
     monkeypatch.setattr(analysis_service, "ScheduleGraphAnalysisService", FailingGraphService)
 
     with pytest.raises(ValidationError) as exc_info:
-        _run_orchestrator(_schedule_input("on", block_on_cycle="yes"))
+        _run_orchestrator(_schedule_input("on", block_on_cycle=True))
 
     assert exc_info.value.field == reason
     assert exc_info.value.details == {
@@ -345,7 +337,7 @@ def test_unknown_graph_error_is_not_swallowed_before_scheduling(monkeypatch: Any
     monkeypatch.setattr(analysis_service, "ScheduleGraphAnalysisService", FailingGraphService)
 
     with pytest.raises(RuntimeError, match="boom"):
-        _run_orchestrator(_schedule_input("on", block_on_cycle="yes"))
+        _run_orchestrator(_schedule_input("on", block_on_cycle=True))
 
 
 def _analysis_graph(durations: List[Tuple[str, int]], edges: List[Tuple[str, str, int]]) -> Any:
@@ -473,7 +465,10 @@ def test_piece_sequences_chain_and_duplicate_check_stay_within_each_piece() -> N
                             source="internal", setup_hours=0.0, unit_hours=1.0)
 
     rows = [_row(1, "P1", 10), _row(2, "P2", 10), _row(3, "P1", 20), _row(4, "P2", 20), _row(5, "P2", 20)]
-    nodes = build_operation_nodes_from_rows(rows, batches={"B001": Batch(batch_id="B001", part_no="P001", quantity=1)})
+    nodes = build_operation_nodes_from_rows(
+        rows, batches={"B001": Batch(batch_id="B001", part_no="P001", quantity=1)},
+        resource_pool=DISABLED_RESOURCE_POOL, frozen_op_ids=frozenset(),
+    )
     assert [node.piece_id for node in nodes] == ["P1", "P2", "P1", "P2", "P2"]
 
     edges = build_linear_edges_by_batch(nodes)

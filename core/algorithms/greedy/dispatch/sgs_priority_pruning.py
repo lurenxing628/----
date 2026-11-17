@@ -28,12 +28,10 @@ class GraphPriorityPruning:
         return cls(
             graph_state,
             eligible_resources=cache.eligible_resources,
-            calendar_days=cache.calendar_days,
             preparation=cache.preparation,
         )
 
-    def __init__(self, graph_state, *, eligible_resources, calendar_days, preparation):
-        self._calendar_days = calendar_days
+    def __init__(self, graph_state, *, eligible_resources, preparation):
         self._preparation = preparation
         # True only when every schedulable operation names both resources; tail reuse requires it.
         self.fixed_resources = True
@@ -50,8 +48,8 @@ class GraphPriorityPruning:
     def _certify_operations(self, graph):
         for _op_id, (_batch_id, op) in graph["op_by_id"].items():
             if op.source == EXTERNAL:
-                if not self._certified_external(op):
-                    return False
+                # An admitted external cycle yields its natural-day window on the native calendar ``for_cache``
+                # requires; it names no resources, so the fixed-resource proof does not hold.
                 self.fixed_resources = False
                 continue
             fixed = self._certified_resources(op)
@@ -59,11 +57,6 @@ class GraphPriorityPruning:
                 return False
             self.fixed_resources = self.fixed_resources and fixed
         return True
-
-    def _certified_external(self, op):
-        if self._calendar_days is None:
-            return False
-        return self._preparation.certified_external_operation(op)
 
     def _certified_resources(self, op):
         """True for a fixed machine/operator pair, False for a certified auto-assign operation, None otherwise.

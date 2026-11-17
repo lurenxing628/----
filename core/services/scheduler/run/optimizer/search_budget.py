@@ -1,4 +1,4 @@
-"""One clock and outer request deadline for the shared optimizer."""
+"""The request budget the shared optimizer receives: the run's clock and outer deadline."""
 
 from __future__ import annotations
 
@@ -12,7 +12,9 @@ class SearchBudgetExhausted(RuntimeError):
 
 @dataclass(frozen=True)
 class SearchBudget:
+    """``clock`` is the run's monotonic clock (``SolverResources.clock``); the shared search budget owns it
+    once the search opens. ``deadline`` is read on that clock."""
+
     clock: Callable[[], float]
-    started_at: float
     deadline: float
     assigned_seconds: float

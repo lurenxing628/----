@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from functools import lru_cache
-from typing import Optional, Tuple
+from typing import Tuple
 
 from core.models.enums import BatchPriority, YesNo
 
@@ -14,15 +14,13 @@ _ALLOWED_FLAG = YesNo.YES.value
 _PRIORITY_CLASS = {_NORMAL_PRIORITY: _NORMAL_PRIORITY, "urgent": "urgent", "critical": "urgent"}
 
 
-def priority_class(priority: Optional[str]) -> str:
-    """Which day flag governs a priority: urgent and critical share allow_urgent, anything else is normal.
+def priority_class(priority: str) -> str:
+    """Which day flag governs a stored priority: urgent and critical share allow_urgent, normal has its own.
 
-    Workbench checks pass stored Batches rows unvalidated (stored_algo_inputs.stored_batch), so loose text
-    and None fold here once; the validated scheduler input takes the direct lookup.
+    Every caller passes a stored batch priority (Batches.priority / Schedule.batch_priority are NOT NULL CHECK
+    enum columns) or one of these literal values.
     """
-    if type(priority) is not str or priority not in _PRIORITY_CLASS:
-        priority = str(priority or _NORMAL_PRIORITY).strip().lower()
-    return _PRIORITY_CLASS.get(priority, _NORMAL_PRIORITY)
+    return _PRIORITY_CLASS[priority]
 
 
 @lru_cache(maxsize=4096)
@@ -72,7 +70,7 @@ class DayPolicy:
     def work_windows(self) -> tuple:
         return _dated_period_windows(self.date_str, self._period_offsets, self.hours)
 
-    def is_priority_allowed(self, priority: Optional[str]) -> bool:
+    def is_priority_allowed(self, priority: str) -> bool:
         flag = self.allow_urgent if priority_class(priority) == "urgent" else self.allow_normal
         return flag == _ALLOWED_FLAG
 

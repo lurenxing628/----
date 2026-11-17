@@ -41,13 +41,10 @@ def prefix_op_ids_for_anchors(operations: List[Any], anchors: Dict[Optional[str]
 
 def rows_in_window(start: datetime, end: datetime,
                    schedule_map: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
-    """和时段重叠的原安排（开工即完工的按时刻落在时段内）才决定一批要保留到第几道。
-
-    时刻读不出来的行也算进来，交给前缀校验按坏数据严格处理。
-    """
+    """和时段重叠的原安排（开工即完工的按时刻落在时段内）才决定一批要保留到第几道。"""
     result = {}
     for oid, row in schedule_map.items():
         begin, finish = row["_parsed_times"]
-        if not begin or not finish or begin < end and (finish > start or begin == finish >= start):
+        if begin < end and (finish > start or begin == finish >= start):
             result[oid] = row
     return result

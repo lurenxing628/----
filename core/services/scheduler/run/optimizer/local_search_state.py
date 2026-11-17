@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
+from core.algorithm_contracts.sort_strategies import WeightedParams
 from core.algorithms.evaluation_completion import PreparedBatchDue
+from core.models.enums import SortStrategy
 
 from .candidate_comparison import candidate_is_preferred
 from .candidate_fingerprint import CandidateFingerprint
@@ -15,8 +17,8 @@ class LocalSearchState:
     current: Dict[str, Any]
     best: Dict[str, Any]
     current_order: List[str]
-    current_resource_pool: Dict[str, Any]
-    current_resource_pair_rank: Dict[Tuple[str, str], int]
+    # Current's pair-rank overrides of the run's pool; a neighborhood move adds to them.
+    current_resource_pair_rank: Mapping[Tuple[str, str], int]
     due_batches: Tuple[PreparedBatchDue, ...]
     current_facts: LocalSearchResultFacts
     best_facts: LocalSearchResultFacts
@@ -32,9 +34,7 @@ class LocalSearchState:
             current=best,
             best=best,
             current_order=list(best["order"]),
-            # Every candidate carries the run's own pool normalized as ``resource_pool or {}``.
-            current_resource_pool=best["resource_pool"],
-            current_resource_pair_rank=best.get("resource_pair_rank") or {},
+            current_resource_pair_rank=best["resource_pair_rank"],
             due_batches=due_batches,
             current_facts=facts,
             best_facts=facts,
@@ -44,7 +44,6 @@ class LocalSearchState:
         self.current = candidate
         self.current_resource_pair_rank = candidate["resource_pair_rank"]
         self.current_order = list(candidate["order"])
-        self.current_resource_pool = candidate["resource_pool"]
         # Facts derive from the results alone (finish_by_batch included), so a restart that reuses
         # archived results with freshly computed metrics keeps the facts already built for them.
         results = candidate["results"]
@@ -96,15 +95,22 @@ def candidate_can_update_best(
     )
 
 
-def resolve_current_strategy_state(
-    source: Dict[str, Any],
-) -> Tuple[Any, Dict[str, Any], str, str]:
-    return (
-        source["strategy"],
-        dict(source["params"]),
-        str(source["dispatch_mode"]),
-        str(source["dispatch_rule"]),
-    )
+@dataclass(frozen=True)
+class StrategyState:
+    """The decode choices a local-search candidate takes over from the candidate it starts from.
+
+    A graph-ready profile is not one of them: local search decodes with graph scoring off, so a move
+    started from a graph-stage candidate records no profile.
+    """
+
+    strategy: SortStrategy
+    params: Optional[WeightedParams]
+    dispatch_mode: str
+    dispatch_rule: str
 
 
-__all__ = ["LocalSearchState", "candidate_can_update_best", "resolve_current_strategy_state"]
+def resolve_current_strategy_state(source: Dict[str, Any]) -> StrategyState:
+    return StrategyState(source["strategy"], source["params"], source["dispatch_mode"], source["dispatch_rule"])
+
+
+__all__ = ["LocalSearchState", "StrategyState", "candidate_can_update_best", "resolve_current_strategy_state"]

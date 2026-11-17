@@ -1,21 +1,20 @@
 """Multi-start construction and evaluation through the shared decode session."""
 from __future__ import annotations
 
-from datetime import date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Sequence, Set, Tuple, cast
 
 from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
-from core.algorithm_contracts.sort_strategies import SortStrategy
+from core.algorithm_contracts.sort_strategies import WeightedParams
 from core.algorithms.evaluation import objective_score
+from core.models.enums import SortStrategy
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
-from .config import weighted_strategy_params
+from .config import strategy_weights
 from .search_stage import SearchStage
 from .search_state import OptimizerSearchState
 from .shared_budget import SharedSearchSkip
 from .shared_decode import decode_and_metrics
-from .step_report_hooks import _record_multi_start_candidate
 
 if TYPE_CHECKING:
     from .search_report import OptimizationSearchReportState
@@ -31,60 +30,44 @@ def _dispatch_rules_for_mode(dispatch_mode: str, dispatch_rule_cfg: str, valid_d
     return [dispatch_rule_cfg] + [rule for rule in pool if rule != dispatch_rule_cfg]
 
 
-def _resolve_multi_start_strategy_params(
-    *,
-    strategy: SortStrategy,
-    cfg: ScheduleConfigSnapshot,
-) -> Dict[str, Any]:
-    if strategy != SortStrategy.WEIGHTED:
-        return {}
-    return weighted_strategy_params(cfg)
-
-
 def _evaluate_multi_start_candidate(
     *,
     strategy: SortStrategy,
-    params: Dict[str, Any],
-    start_dt: datetime,
-    end_date: Optional[date],
+    params: Optional[WeightedParams],
     order: Sequence[str],
     dispatch_mode: str,
     dispatch_rule: str,
-    resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
-    optimizer_algo_stats: Optional[Dict[str, Any]],
-    readiness_gate_enabled: bool,
     graph_ready_context: Optional[Any],
     decode_session: SharedDecodeSession,
 ) -> Dict[str, Any]:
     decoded = decode_and_metrics(
         decode_session=decode_session, objective_name=objective_name,
-        optimizer_algo_stats=optimizer_algo_stats,
         strategy=strategy,
         strategy_params=params,
-        start_dt=start_dt,
-        end_date=end_date,
         batch_order_override=order,
         dispatch_mode=dispatch_mode,
         dispatch_rule=dispatch_rule,
-        readiness_gate_enabled=bool(readiness_gate_enabled),
         graph_enabled=graph_ready_context is not None,
         graph_score_enabled=bool(graph_ready_context and graph_ready_context.get("score_enabled")),
         graph_priority_key_by_op_id=(graph_ready_context or {}).get("graph_priority_key_by_op_id"),
+        resource_pair_rank={},
     )
     candidate = {
         "results": decoded.results,
         "summary": decoded.summary,
         "strategy": decoded.used_strategy,
-        "params": decoded.used_params,
+        "params": params,
+        "graph_ready_profile": None,
         "dispatch_mode": dispatch_mode,
         "dispatch_rule": dispatch_rule,
+        "repair_decision": None,
         "order": order,
         "decoded_batch_order": decoded.decoded_batch_order,
         "metrics": decoded.metrics,
         "score": (float(decoded.summary.failed_ops),) + objective_score(objective_name, decoded.metrics),
         "algo_stats": decoded.algo_stats,
-        "resource_pool": resource_pool or {},
+        "resource_pair_rank": {},
     }
     candidate["archive_ref"] = decoded.archive_ref()
     candidate["decode_receipt"] = decoded.receipt
@@ -100,23 +83,21 @@ def _evaluate_multi_start_candidate(
 def _iter_multi_start_specs(
     *, keys: List[str], dispatch_modes: List[str], snapshot: ScheduleConfigSnapshot,
     deadline_reached: Callable[[], bool], rules_by_mode: Dict[str, List[str]],
-    build_order: Callable[[SortStrategy, Dict[str, Any]], Tuple[str, ...]],
-) -> Iterator[Tuple[str, str, SortStrategy, Dict[str, Any]]]:
-    strategy_cache: Dict[str, Tuple[SortStrategy, Dict[str, Any]]] = {}
+    build_order: Callable[[SortStrategy, Optional[WeightedParams]], Tuple[str, ...]],
+) -> Iterator[Tuple[str, str, SortStrategy, Optional[WeightedParams]]]:
+    strategy_cache: Dict[str, Tuple[SortStrategy, Optional[WeightedParams]]] = {}
     for dm in dispatch_modes:
         if deadline_reached():
             break
         dispatch_rules = rules_by_mode[dm]
         seen_orders: Set[Tuple[str, ...]] = set()
-        first_strategy: Optional[Tuple[SortStrategy, Dict[str, Any]]] = None
+        first_strategy: Optional[Tuple[SortStrategy, Optional[WeightedParams]]] = None
         for key in keys:
             if deadline_reached():
                 break
             if key not in strategy_cache:
                 strategy = SortStrategy(key)
-                strategy_cache[key] = (
-                    strategy, _resolve_multi_start_strategy_params(strategy=strategy, cfg=snapshot),
-                )
+                strategy_cache[key] = (strategy, strategy_weights(strategy, snapshot))
             strategy, params = strategy_cache[key]
             if first_strategy is None:
                 first_strategy = (strategy, params)
@@ -140,27 +121,21 @@ class MultiStartStage(SearchStage):
 
     def __init__(
         self, *, keys: List[str], dispatch_modes: List[str], dispatch_rule_cfg: str,
-        valid_dispatch_rules: List[str], start_dt: datetime, end_date: Optional[date],
-        cfg: ScheduleConfigSnapshot, resource_pool: Optional[Dict[str, Any]], objective_name: str, deadline: float,
-        build_order: Callable[[SortStrategy, Dict[str, Any]], Tuple[str, ...]],
-        optimizer_algo_stats: Optional[Dict[str, Any]] = None, readiness_gate_enabled: bool = False,
-        graph_ready_context: Optional[Any] = None,
-        clock: Callable[[], float],
+        valid_dispatch_rules: List[str], cfg: ScheduleConfigSnapshot, objective_name: str,
+        build_order: Callable[[SortStrategy, Optional[WeightedParams]], Tuple[str, ...]],
+        graph_ready_context: Optional[Any],
         search_report_state: OptimizationSearchReportState,
         state: OptimizerSearchState,
         decode_session: SharedDecodeSession,
     ) -> None:
         self.state = state
         self.build_order = build_order
-        self.now = clock
-        self.deadline = deadline
+        self.budget = decode_session.budget
         self.search_report_state = search_report_state
         self.decode_session = decode_session
         self.evaluate = partial(
-            _evaluate_multi_start_candidate, start_dt=start_dt, end_date=end_date,
-            resource_pool=resource_pool, objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats,
-            readiness_gate_enabled=bool(readiness_gate_enabled), graph_ready_context=graph_ready_context,
-            decode_session=decode_session,
+            _evaluate_multi_start_candidate, objective_name=objective_name,
+            graph_ready_context=graph_ready_context, decode_session=decode_session,
         )
         rules_by_mode = {
             dm: _dispatch_rules_for_mode(dm, dispatch_rule_cfg, valid_dispatch_rules)
@@ -171,13 +146,13 @@ class MultiStartStage(SearchStage):
             deadline_reached=self._deadline_reached, rules_by_mode=rules_by_mode, build_order=build_order,
         )
         self.index = 0
-        self._pending_spec: Optional[Tuple[str, str, SortStrategy, Dict[str, Any]]] = None
+        self._pending_spec: Optional[Tuple[str, str, SortStrategy, Optional[WeightedParams]]] = None
         self._unaffordable_modes: Set[str] = set()
         self._stop_reason: Optional[str] = None
         self.exhausted = False
 
     def _deadline_reached(self) -> bool:
-        return self.now() >= self.deadline
+        return self.budget.clock() >= self.budget.deadline
 
     def available(self) -> bool:
         if self.exhausted:
@@ -190,8 +165,7 @@ class MultiStartStage(SearchStage):
         return not self.exhausted
 
     def unavailable_reason(self) -> Optional[str]:
-        current = self.now()
-        if current >= self.deadline:
+        if self.budget.clock() >= self.budget.deadline:
             return "time_budget"
         if self.exhausted:
             return self._stop_reason or "specs_exhausted"
@@ -201,14 +175,14 @@ class MultiStartStage(SearchStage):
         if self.exhausted or (self._pending_spec is None and not self.available()):
             return
         dm, rule, strategy, params = cast(
-            Tuple[str, str, SortStrategy, Dict[str, Any]], self._pending_spec,
+            Tuple[str, str, SortStrategy, Optional[WeightedParams]], self._pending_spec,
         )
         self._pending_spec = None
         self.index += 1
         order = self.build_order(strategy, params)
         if self._deadline_reached():
             return
-        decode_started = self.now()
+        decode_started = self.budget.clock()
         try:
             candidate = self.evaluate(strategy=strategy, params=params, order=order, dispatch_mode=dm, dispatch_rule=rule)
         except SharedSearchSkip as exc:
@@ -220,10 +194,11 @@ class MultiStartStage(SearchStage):
                 self.exhausted = True
             return
         if candidate["decode_receipt"]["execution_kind"] != "decision_reused":
-            decode_runtime_ms = max((self.now() - decode_started) * 1000.0, 0.0)
+            decode_runtime_ms = max((self.budget.clock() - decode_started) * 1000.0, 0.0)
             candidate["initial_decode_runtime_ms"] = decode_runtime_ms
             candidate["runtime_ms"] = int(decode_runtime_ms)
-        self.state.best = _record_multi_start_candidate(
-            best=self.state.best, candidate=candidate,
-            search_report_state=self.search_report_state,
-        )
+        best = self.state.best
+        fingerprint = self.search_report_state.mark_candidate_evaluated(candidate, origin="multi_start")
+        if best is None or candidate["score"] < best["score"]:
+            self.search_report_state.mark_candidate_accepted(candidate, origin="multi_start", fingerprint=fingerprint)
+            self.state.best = candidate

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, Iterator, List, Optional, Sequence, Set, Tuple, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, Iterator, List, Optional, Sequence, Set, Tuple
 
 from core.services.scheduler.run.optimizer.candidate_comparison import candidate_is_preferred
 from core.services.scheduler.run.optimizer.candidate_fingerprint import (
@@ -12,8 +12,9 @@ from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GRAPH_READY_V2_REPAIRED_ORIGIN,
     GraphReadyWeightProfile,
 )
-from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
+from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget, SharedSearchSkip
 
+from .budget import GraphReadySearchBudget
 from .repair_contract import EliteRepairLimits, new_repair_report
 from .repair_decisions import (
     PreparedRepairScope,
@@ -23,14 +24,14 @@ from .repair_decisions import (
 )
 from .repair_portfolio import ParentRepairPortfolio, RepairPortfolio, build_repair_portfolio
 from .repair_rotation import (
-    _current_improvements,
-    _defer_to_improved_elites,
-    _fill_round_slots,
-    _fresh_pool_elites,
-    _pending_neighbors,
-    _prepare_next_repair_round,
-    _retain_pending_tail,
-    _with_unvisited_pool_elites,
+    defer_to_improved_elites,
+    fill_round_slots,
+    fresh_pool_elites,
+    improvements_over_best,
+    pending_neighbors,
+    prepare_next_repair_round,
+    retain_pending_tail,
+    with_unvisited_pool_elites,
 )
 
 if TYPE_CHECKING:
@@ -44,20 +45,16 @@ _ParentKey = Tuple[int, Tuple[str, ...]]
 class EliteRepairPool:
     """Bounded, decoded v2 elites; all graph outputs remain in the duplicate set."""
 
-    def __init__(self, *, limits: EliteRepairLimits, objective_name: str, operations: List[Any],
-                 start_dt: Any, seed: int,
+    def __init__(self, *, limits: EliteRepairLimits, objective_name: str, operations: List[Any], seed: int,
                  best: Optional[Dict[str, Any]], report_state: OptimizationSearchReportState,
-                 clock: Callable[[], float], deadline: float,
                  decode_session: SharedDecodeSession,
                  decision_features: Any) -> None:
         self.limits = limits
         self.objective_name = objective_name
         self.operations = operations
         self.decision_features = decision_features
-        self.start_dt = start_dt
         self.seed = seed
-        self.clock = clock
-        self.deadline = deadline
+        self.decode_session = decode_session
         preparation = decode_session.native_preparation
         self.scope: PreparedRepairScope = prepare_repair_scope(
             operations,
@@ -82,7 +79,7 @@ class EliteRepairPool:
 
     @staticmethod
     def _parent_key(candidate: Dict[str, Any]) -> _ParentKey:
-        return cast(int, candidate["archive_ref"].entry_id), candidate["decoded_batch_order"]
+        return candidate["archive_ref"].entry_id, candidate["decoded_batch_order"]
 
     def fingerprint(self, candidate: Dict[str, Any], parent: Any = None, *, identity: Any = None) -> Any:
         if identity is None:
@@ -106,7 +103,8 @@ class EliteRepairPool:
         elite_identity = (profile.feature_basis, fingerprint.output_key)
         if elite_identity in self.seen_elites:
             return
-        if self.clock() >= self.deadline:
+        budget = self.decode_session.budget
+        if budget.clock() >= budget.deadline:
             self.report["repair_stop_reason"] = "time_budget"
             return
         self.seen_elites.add(elite_identity)
@@ -158,7 +156,8 @@ class EliteRepairPool:
     def _build_variant(self, profile: GraphReadyWeightProfile, prepared_parent: RepairParentPreparation) -> RepairPortfolio:
         return build_repair_portfolio(
             operations=self.operations, metrics_by_op_id=self.decision_features.selected_metrics(profile),
-            start_dt=self.start_dt, seed=self.seed, objective_name=self.objective_name, prepared_parent=prepared_parent)
+            start_dt=self.decode_session.start_dt, seed=self.seed, objective_name=self.objective_name,
+            prepared_parent=prepared_parent)
 
     def add_basis_variant(self, elite: Dict[str, Any], profile: GraphReadyWeightProfile) -> None:
         neighborhood = elite["neighborhood"]
@@ -185,16 +184,16 @@ class EliteRepairPool:
 class EliteRepairRun:
     """Elite repair as a resumable search stage: one task is one evaluated neighbour."""
 
-    def __init__(self, pool: EliteRepairPool, *, state: Any, evaluate: Callable[..., Dict[str, Any]], budget: Any,
-                 deadline: float, clock: Callable[[], float], report_state: OptimizationSearchReportState) -> None:
+    def __init__(self, pool: EliteRepairPool, *, state: Any, evaluate: Callable[..., Dict[str, Any]],
+                 budget: GraphReadySearchBudget, report_state: OptimizationSearchReportState) -> None:
+        """``budget`` is the graph stages' stop reason; ``budget.shared`` is the run budget, the one clock and
+        deadline."""
         self.pool = pool
         self.state = state
         self.evaluate = evaluate
         self.budget = budget
-        self.clock = clock
         self.report_state = report_state
         self.report = pool.report
-        self.repair_deadline = deadline
         self.exhausted = False
         self.finished = False
         self._tasks: Optional[Generator[None, None, None]] = None
@@ -203,12 +202,12 @@ class EliteRepairRun:
         if self.report["repair_stop_reason"] in ("time_budget", "estimated_decode_cost"):
             return False
         if self.exhausted:
-            return (self.clock() < self.repair_deadline
+            return (self.budget.shared.clock() < self.budget.shared.deadline
                     and self.report["repair_rounds_completed"] < self.pool.limits.max_rounds
-                    and any(_pending_neighbors(elite) > 0 for elite in self.pool.elites))
+                    and any(pending_neighbors(elite) > 0 for elite in self.pool.elites))
         if self._tasks is None:
-            return bool(self.pool.elites) and self.clock() < self.repair_deadline
-        return self.clock() < self.repair_deadline
+            return bool(self.pool.elites) and self.budget.shared.clock() < self.budget.shared.deadline
+        return self.budget.shared.clock() < self.budget.shared.deadline
 
     def step(self) -> None:
         tasks = self._tasks
@@ -223,7 +222,7 @@ class EliteRepairRun:
         self.exhausted = False
         self.report["repair_stop_reason"] = None
         self._tasks = _repair_tasks(self.pool, state=self.state, evaluate=self.evaluate,
-                                    repair_deadline=self.repair_deadline, clock=self.clock,
+                                    budget=self.budget.shared,
                                     report_state=self.report_state,
                                     start_round=self.report["repair_rounds_completed"])
         return self._tasks
@@ -236,21 +235,21 @@ class EliteRepairRun:
         if self._tasks is not None:
             self._tasks.close()
             if report["repair_stop_reason"] is None:
-                report["repair_stop_reason"] = "time_budget" if self.clock() >= self.repair_deadline else "rotation_ended"
+                report["repair_stop_reason"] = "time_budget" if self.budget.shared.clock() >= self.budget.shared.deadline else "rotation_ended"
         elif self.pool.elites:
-            report["repair_stop_reason"] = "time_budget" if self.clock() >= self.repair_deadline else "rotation_ended"
+            report["repair_stop_reason"] = "time_budget" if self.budget.shared.clock() >= self.budget.shared.deadline else "rotation_ended"
 
 
 def _repair_tasks(pool: EliteRepairPool, *, state: Any, evaluate: Callable[..., Dict[str, Any]],
-                  repair_deadline: float, clock: Callable[[], float], report_state: OptimizationSearchReportState,
+                  budget: SharedSearchBudget, report_state: OptimizationSearchReportState,
                   start_round: int) -> Generator[None, None, None]:
     try:
         report = pool.report
-        elites = [elite for elite in pool.elites if _pending_neighbors(elite) > 0]
+        elites = [elite for elite in pool.elites if pending_neighbors(elite) > 0]
         queued_elites: List[Dict[str, Any]] = []
         for round_index in range(start_round, pool.limits.max_rounds):
             # New parents can use vacant slots in this round; overflow waits in the bounded queue.
-            elites, queued_elites = _with_unvisited_pool_elites(elites, queued_elites, pool)
+            elites, queued_elites = with_unvisited_pool_elites(elites, queued_elites, pool)
             improved_elites: List[Dict[str, Any]] = []
             deferred_elites: List[Dict[str, Any]] = []
             for elite_index, elite in enumerate(elites):
@@ -260,31 +259,31 @@ def _repair_tasks(pool: EliteRepairPool, *, state: Any, evaluate: Callable[..., 
                     active_groups=(elites, queued_elites, deferred_elites, improved_elites))
                 if report["repair_stop_reason"] in ("estimated_decode_cost", "time_budget"):
                     break
-                if _defer_to_improved_elites(pool, round_index, _current_improvements(improved_elites, state.best)):
-                    _retain_pending_tail(elite, deferred_elites)
+                if defer_to_improved_elites(pool, round_index, improvements_over_best(improved_elites, state.best)):
+                    retain_pending_tail(elite, deferred_elites)
                     deferred_elites.extend(elites[elite_index + 1:])
                     break
-                _retain_pending_tail(elite, deferred_elites)
-                _fill_round_slots(elites, queued_elites, deferred_elites, pool)
+                retain_pending_tail(elite, deferred_elites)
+                fill_round_slots(elites, queued_elites, deferred_elites, pool)
             if report["repair_stop_reason"] in ("estimated_decode_cost", "time_budget"):
                 break
-            deferred_elites.extend(_fresh_pool_elites(pool, elites, deferred_elites, queued_elites))
+            deferred_elites.extend(fresh_pool_elites(pool, elites, deferred_elites, queued_elites))
             deferred_elites.extend(queued_elites)
             # Give retained parents their first visit before resuming another tail;
             # sharing basis variants must not consume all slots on the first parent.
             deferred_elites.sort(key=lambda elite: bool(elite["decision_offset"]))
             report["repair_rounds_completed"] = round_index + 1
-            current_improvements = _current_improvements(improved_elites, state.best)
-            if clock() >= repair_deadline:
+            current_improvements = improvements_over_best(improved_elites, state.best)
+            if budget.clock() >= budget.deadline:
                 report["repair_stop_reason"] = "time_budget"
             elif not current_improvements and not deferred_elites:
                 report["repair_stop_reason"] = "no_improvement"
             elif round_index + 1 >= pool.limits.max_rounds:
                 report["repair_stop_reason"] = "max_rounds"
             else:
-                next_round = _prepare_next_repair_round(
+                next_round = prepare_next_repair_round(
                     pool, improved_elites=current_improvements, deferred_elites=deferred_elites,
-                    repair_deadline=repair_deadline, clock=clock)
+                    budget=budget)
                 if next_round is None:
                     report["repair_stop_reason"] = "time_budget"
                     break

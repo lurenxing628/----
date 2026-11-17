@@ -1,6 +1,7 @@
 """Execution target authority and explicit data-quality classification."""
 
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
+from core.shared.strict_parse import is_stored_number
 
 INVALID_CODES = frozenset(("quantity_exceeded", "operation_retired", "operation_source_invalid"))
 
@@ -14,7 +15,7 @@ def operation_target(operation):
     piece = operation.get("piece_id")
     basis = "piece" if piece is not None and piece != "" else "batch"
     raw = 1 if basis == "piece" else operation.get("batch_quantity")
-    target = raw if type(raw) is int and 0 <= raw <= (1 << 53) - 1 else None
+    target = raw if is_stored_number(raw, integer=True) else None
     if target is None:
         gaps.append(gap("target_quantity_unknown", "这道工序的目标数量缺失或无效，系统算不出剩余数量，请核对批次数量。"))
     if not operation.get("identity_active") or operation.get("id") is None:

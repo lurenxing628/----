@@ -4,7 +4,7 @@ The common decode session admits actual requests. The search keeps its bounded
 insertion queues, exact tail reuse and verified incumbents.
 """
 
-from .iterated_greedy import _IteratedGreedySearch
+from .iterated_greedy import IteratedGreedySearch
 from .iterated_greedy_diversify import BudgetStagnation, LargeGeneratorRotation
 from .iterated_greedy_iteration import IGIteration
 from .iterated_greedy_local import LargeIGIteration
@@ -14,14 +14,14 @@ LARGE_ORDER_MINIMUM = 128
 
 
 def search_type_for(parent):
-    return LargeIteratedGreedySearch if len(parent.order) >= LARGE_ORDER_MINIMUM else _IteratedGreedySearch
+    return LargeIteratedGreedySearch if len(parent.order) >= LARGE_ORDER_MINIMUM else IteratedGreedySearch
 
 
 def iteration_for(search):
     return LargeIGIteration(search) if isinstance(search, LargeIteratedGreedySearch) else IGIteration(search)
 
 
-class LargeIteratedGreedySearch(_IteratedGreedySearch):
+class LargeIteratedGreedySearch(IteratedGreedySearch):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.checkpoints = TailCheckpointStore(self.limits.checkpoint_count)

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
+from core.algorithm_contracts.resource_pool import ResourcePool
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.models.batch import Batch
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
@@ -37,10 +38,10 @@ class SeedPreparation:
 class SolverResources:
     calendar_engine: CalendarEngine
     downtime_map: Dict[str, List[Tuple[datetime, datetime]]]
-    resource_pool: Optional[Dict[str, Any]]
-    downtime_meta: Mapping[str, Any]
-    resource_pool_meta: Mapping[str, Any]
+    resource_pool: ResourcePool
     optimizer_seed_version: int
+    # The run's monotonic clock: the candidate comparison's budget runs on it (run_candidate_comparison).
+    clock: Callable[[], float]
 
 
 @dataclass(frozen=True)
@@ -50,8 +51,11 @@ class SolverInput:
     to_schedule: List[OpForScheduleAlgo]
     config: ScheduleConfigSnapshot
     start: datetime
-    end_date: Optional[date]
+    end_date: date
     readiness_gate_enabled: bool
     seeds: SeedPreparation
+    # Required standard hours of every internal operation this run schedules, taken from the run's
+    # operation efforts (the one standard-work formula); the decoder reads them, never recomputes them.
+    required_hours_by_op_id: Mapping[int, float]
     predecessors: Mapping[int, Sequence[int]] = field(default_factory=dict)
 

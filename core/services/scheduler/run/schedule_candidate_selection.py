@@ -21,13 +21,9 @@ class BusinessObjectiveSelectionResult:
     scoring_scope: Dict[str, Any]
     reason_code: str
     evidence_state: str
-    generation_policy_version: str = "unified_search_v1"
-    selection_policy_version: str = "business_objectives_v1"
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"generation_policy_version": self.generation_policy_version,
-                "selection_policy_version": self.selection_policy_version,
-                "primary_objective": self.primary_objective,
+        return {"primary_objective": self.primary_objective,
                 "target_objectives": list(self.target_objectives),
                 "selected_candidate_key": self.selected_candidate_key,
                 "objective_winners": dict(self.objective_winners),

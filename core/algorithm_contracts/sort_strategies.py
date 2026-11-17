@@ -1,25 +1,30 @@
-from __future__ import annotations
-
 """
 排序策略系统（Phase 7 / P7-01）。
 
 文档参考：开发文档.md -> 10. 排产算法 -> 10.1/10.2
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date, datetime
-from enum import Enum
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, cast
 
-from .priority_constants import PRIORITY_RANK, PRIORITY_SCORE, normalize_priority
+from core.models.enums import SortStrategy
+
+from .priority_constants import PRIORITY_RANK, PRIORITY_SCORE
 
 
-class SortStrategy(Enum):
-    PRIORITY_FIRST = "priority_first"
-    DUE_DATE_FIRST = "due_date_first"
-    WEIGHTED = "weighted"
-    FIFO = "fifo"
+@dataclass(frozen=True)
+class WeightedParams:
+    """The weighted strategy's two weights; every other strategy takes none."""
+
+    priority_weight: float
+    due_weight: float
+
+    def public_dict(self) -> Dict[str, float]:
+        return {"priority_weight": self.priority_weight, "due_weight": self.due_weight}
 
 
 @dataclass
@@ -49,8 +54,7 @@ class PriorityFirstStrategy(BaseSortStrategy):
 
     def sort(self, batches: Sequence[BatchForSort], *, base_date: date) -> List[BatchForSort]:
         def sort_key(batch: BatchForSort):
-            pr = normalize_priority(batch.priority, default="normal")
-            priority_rank = PRIORITY_RANK[pr]
+            priority_rank = PRIORITY_RANK[batch.priority]
             due_rank = batch.due_date if batch.due_date else date.max
             return (priority_rank, due_rank, batch.batch_id)
 
@@ -67,8 +71,7 @@ class DueDateFirstStrategy(BaseSortStrategy):
         def sort_key(batch: BatchForSort):
             has_due = 0 if batch.due_date else 1  # 无交期的排最后
             due_rank = batch.due_date if batch.due_date else date.max
-            pr = normalize_priority(batch.priority, default="normal")
-            priority_rank = PRIORITY_RANK[pr]
+            priority_rank = PRIORITY_RANK[batch.priority]
             return (has_due, due_rank, priority_rank, batch.batch_id)
 
         return sorted(batches, key=sort_key)
@@ -87,14 +90,13 @@ score = priority_weight×priority_score + due_weight×due_score
 - 齐套状态是否作为排产门槛，由本次排产的 readiness_gate_enabled 控制。
 """
 
-    def __init__(self, priority_weight: float = 0.4, due_weight: float = 0.5):
-        self.priority_weight = float(priority_weight)
-        self.due_weight = float(due_weight)
+    def __init__(self, weights: WeightedParams):
+        self.priority_weight = weights.priority_weight
+        self.due_weight = weights.due_weight
 
     def sort(self, batches: Sequence[BatchForSort], *, base_date: date) -> List[BatchForSort]:
         def calc_score(batch: BatchForSort) -> float:
-            pr = normalize_priority(batch.priority, default="normal")
-            priority_score = PRIORITY_SCORE[pr]
+            priority_score = PRIORITY_SCORE[batch.priority]
 
             if batch.due_date:
                 days_left = (batch.due_date - base_date).days
@@ -136,15 +138,8 @@ class StrategyFactory:
     }
 
     @classmethod
-    def create(cls, strategy: SortStrategy, **kwargs) -> BaseSortStrategy:
-        strategy_class = cls._strategies.get(strategy)
-        if not strategy_class:
-            raise ValueError(f"Unknown strategy: {strategy}")
-
+    def create(cls, strategy: SortStrategy, weights: Optional[WeightedParams]) -> BaseSortStrategy:
+        """``weights`` is set exactly for the weighted strategy (resolve_optimizer_config pairs them)."""
         if strategy == SortStrategy.WEIGHTED:
-            # V1.1：忽略 ready_weight（预留字段，不参与当前排序）
-            return strategy_class(
-                priority_weight=kwargs.get("priority_weight", 0.4),
-                due_weight=kwargs.get("due_weight", 0.5),
-            )
-        return strategy_class()
+            return WeightedStrategy(cast(WeightedParams, weights))
+        return cls._strategies[strategy]()

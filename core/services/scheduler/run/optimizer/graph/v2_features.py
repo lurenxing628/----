@@ -3,10 +3,10 @@ from __future__ import annotations
 import math
 import sys
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 
 from core.algorithm_contracts.date_parsers import due_exclusive
-from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
+from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_contracts.value_domains import EXTERNAL, MERGED
 from core.errors import ValidationError
@@ -27,6 +27,7 @@ from .workload import batch_ordering_workload_signals, build_work_buckets, opera
 
 if TYPE_CHECKING:
     from core.algorithms.greedy.schedule_preparation import NativeSchedulePreparation
+    from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
 
 _NO_DUE_DEADLINE_HOURS = 1_000_000_000.0
 _NO_DUE_CRITICAL_RATIO = math.inf
@@ -42,27 +43,24 @@ def enrich_graph_ready_v2_metrics(
     calendar_service: Any,
     downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
     seed_results: List[Any],
-    resource_pool: Optional[Dict[str, Any]] = None,
     graph_ready_context: Dict[str, Any],
-    deadline: float,
-    clock: Callable[[], float],
+    budget: SharedSearchBudget,
     native_preparation: NativeSchedulePreparation,
 ) -> Optional[Dict[int, Dict[str, Any]]]:
-    if clock() >= deadline:
+    if budget.clock() >= budget.deadline:
         return None
     inputs = dict(batches=batches, start_dt=start_dt, calendar_service=calendar_service,
-                  seed_results=seed_results, resource_pool=resource_pool,
-                  graph_ready_context=graph_ready_context)
+                  seed_results=seed_results, graph_ready_context=graph_ready_context)
     inputs["prepared"] = _prepare_common_features(
         metrics_by_op_id, operations=operations, batches=batches, start_dt=start_dt,
         downtime_map=downtime_map, native_preparation=native_preparation)
     out = _enrich_feature_basis(
-        feature_basis=SUCCESSOR_WORKLOAD_BASIS, deadline=deadline, clock=clock, **inputs
+        feature_basis=SUCCESSOR_WORKLOAD_BASIS, budget=budget, **inputs
     )
     if out is None:
         return None
     baseline = _enrich_feature_basis(
-        feature_basis=BATCH_WORKLOAD_BASIS, deadline=deadline, clock=clock, **inputs
+        feature_basis=BATCH_WORKLOAD_BASIS, budget=budget, **inputs
     )
     if baseline is None:
         return None
@@ -93,7 +91,7 @@ def _prepare_common_features(metrics, *, operations, batches, start_dt, downtime
             due_hours_by_batch[batch_id] = (
                 _NO_DUE_DEADLINE_HOURS if due is None else _deadline_hours(start_dt=start_dt, due_exclusive=due)
             )
-            priority_weight_by_batch[batch_id] = PRIORITY_WEIGHT[normalize_priority(batch.priority)]
+            priority_weight_by_batch[batch_id] = PRIORITY_WEIGHT[batch.priority]
     family_ids = sorted({op_by_id[op_id].op_type_id for op_id in metrics})
     family_ranks = {type_id: index for index, type_id in enumerate(family_ids)}
     processing_ranks = _processing_time_ranks(durations)
@@ -132,7 +130,8 @@ def _prepare_common_features(metrics, *, operations, batches, start_dt, downtime
         },
         "base_row_by_op_id": base_row_by_op_id,
         "resource_blocking": FixedResourceBlockingFacts(
-            downtime_map=downtime_map, seed_results_by_resource_id=resource_seeds),
+            downtime_map=downtime_map, seed_results_by_resource_id=resource_seeds,
+            resource_pool=native_preparation.resource_pool),
         "capacity_by_window": {},
         "work_buckets": build_work_buckets(op_by_id, durations),
         "ready_starts": ready_starts,
@@ -140,11 +139,10 @@ def _prepare_common_features(metrics, *, operations, batches, start_dt, downtime
 
 
 def _enrich_feature_basis(*, batches, start_dt, calendar_service,
-                          seed_results, resource_pool,
+                          seed_results,
                           graph_ready_context, feature_basis, prepared,
-                          deadline: float,
-                          clock: Callable[[], float]):
-    if clock() >= deadline:
+                          budget: SharedSearchBudget):
+    if budget.clock() >= budget.deadline:
         return None
     op_by_id, metrics_by_op_id, duration_by_op_id = prepared["operations"], prepared["metrics"], prepared["durations"]
     out: Dict[int, Dict[str, Any]] = {}
@@ -152,14 +150,14 @@ def _enrich_feature_basis(*, batches, start_dt, calendar_service,
         feature_basis, op_by_id, duration_by_op_id, batches=batches, start_dt=start_dt,
         graph_ready_context=graph_ready_context, seed_results=seed_results, calendar_service=calendar_service,
         work_buckets=prepared["work_buckets"], ready_starts=prepared["ready_starts"],
-        deadline=deadline, clock=clock)
+        budget=budget)
     if signals is None:
         return None
     remaining_by_op_id, ready_offset_hours_by_op_id = signals
     base_row_by_op_id = prepared["base_row_by_op_id"]
     capacity_by_window = prepared["capacity_by_window"]
     for op_id in metrics_by_op_id:
-        if clock() >= deadline:
+        if budget.clock() >= budget.deadline:
             return None
         remaining_hours = remaining_by_op_id[op_id]
         priority_weight = prepared["priority_weight_by_op_id"][op_id]
@@ -197,7 +195,6 @@ def _enrich_feature_basis(*, batches, start_dt, calendar_service,
                     start_dt=capacity_start_dt,
                     window_end=window_end,
                     calendar_service=calendar_service,
-                    resource_pool=resource_pool,
                     prepared=prepared["resource_blocking"],
                 )
             capacity = capacity_by_window[window_key]
@@ -246,26 +243,24 @@ def _ordering_deadline_hours(basis, start_dt, capacity_start_dt, due_exclusive):
 
 
 def _workload_signals(
-    basis, operations, durations, *, work_buckets,
-    deadline: float, clock: Callable[[], float], **kwargs,
+    basis, operations, durations, *, work_buckets, budget: SharedSearchBudget, **kwargs,
 ):
-    if clock() >= deadline:
+    if budget.clock() >= budget.deadline:
         return None
     if basis == BATCH_WORKLOAD_BASIS:
         return batch_ordering_workload_signals(operations, durations, work_buckets=work_buckets)
     if basis != SUCCESSOR_WORKLOAD_BASIS:
         raise ValidationError("GraphReady 候选特征语义不支持。", field="graph_ready_v2_features")
     return operation_workload_signals(
-        operations, work_buckets=work_buckets, deadline=deadline, clock=clock, **kwargs
+        operations, work_buckets=work_buckets, budget=budget, **kwargs
     )
 
 
 def _operation_hours(op: OpForScheduleAlgo, *, total_hours_by_op_id: Dict[int, float]) -> float:
     if op.source == EXTERNAL:
         return _external_operation_hours(op)
-    # 单一真相源：自制工序总工时由本次排产的原生准备（prepare_native_schedule_inputs）按
-    # internal_slot.require_internal_hours 为每道未落位自制工序算好一次（分件工序按件数量），
-    # 已保证有限且非负——quantity==0 合法（总量=setup）、总工时 0 合法，坏工时在那里按字段报错。
+    # 单一真相源：自制工序总工时是本次排产输入的标准工时（SolverInput.required_hours_by_op_id，
+    # 由唯一工时公式在输入准备时算好，分件工序按件数量），原生准备按未落位工序原样收下；总工时 0 合法。
     return total_hours_by_op_id[op.id]
 
 

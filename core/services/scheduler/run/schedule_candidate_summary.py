@@ -3,18 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 from .optimizer.shared_process import numeric_score
-from .schedule_candidate_plan import CandidateComparisonOutcome, CandidatePlan
+from .schedule_candidate_plan import BUSINESS_FIELDS, GRAPH_PROFILE_FIELD, CandidateComparisonOutcome, CandidatePlan
 
 if TYPE_CHECKING:
     from .schedule_candidate_selection import BusinessObjectiveSelectionResult
 
-UNIFIED_GENERATION_VERSION = "unified_search_v1"
 ROLE_RECOMMENDED = "recommended"
-
-
-def is_unified_generation(value: Any) -> bool:
-    """Identify the generation policy on stored/public summary dictionaries."""
-    return isinstance(value, dict) and value.get("generation_policy_version") == UNIFIED_GENERATION_VERSION
 
 
 def candidate_score_summary(candidate: CandidatePlan) -> List[Any]:
@@ -53,40 +47,19 @@ def candidate_roles_by_key(selection: BusinessObjectiveSelectionResult) -> Dict[
 
 
 def candidate_graph_enabled(candidate: CandidatePlan) -> bool:
-    return bool(candidate.origin.get("graph_ready_profile"))
-
-
-def _business_candidate_fields(candidate: CandidatePlan) -> Dict[str, Any]:
-    return {
-        "generation_policy_version": UNIFIED_GENERATION_VERSION,
-        "representative_objectives": candidate.representative_objectives,
-        "evaluations": candidate.evaluations,
-        "origin": candidate.origin,
-        "first_found_elapsed_ms": candidate.first_found_elapsed_ms,
-        "search_evidence_ref": candidate.search_evidence_ref,
-        "elapsed_seconds": {"value": None, "state": "not_applicable", "reason": "shared_run_time"},
-    }
+    return bool(candidate.origin.get(GRAPH_PROFILE_FIELD))
 
 
 def candidate_public_summary(candidate: CandidatePlan, *, roles: List[str]) -> Dict[str, Any]:
-    score = candidate_score_summary(candidate)
-    # health / elapsed_ms keep the saved public shape: business candidates have no
-    # critical-chain health record and share one run time (see elapsed_seconds below).
+    """One receipt-summary candidate: its own keys and the BUSINESS_FIELDS the stored artifact also carries."""
     return {
         "label": candidate.label,
-        "kind": candidate.kind,
-        "status": candidate.status,
-        "score": score,
+        "score": candidate_score_summary(candidate),
         "metrics": candidate_metrics_summary(candidate),
-        "health": None,
         "graph_enabled": candidate_graph_enabled(candidate),
-        "critical_weight": candidate.graph_critical_weight,
-        "impact_weight": candidate.graph_impact_weight,
-        "downstream_weight": candidate.graph_downstream_weight,
-        "elapsed_ms": None,
         "detail_saved": ROLE_RECOMMENDED not in roles,
         "roles": roles,
-        **_business_candidate_fields(candidate),
+        **{name: getattr(candidate, name) for name in BUSINESS_FIELDS},
         "adopted_dispatch_rule": candidate.used_params["dispatch_rule"],
     }
 
@@ -96,15 +69,10 @@ def candidate_comparison_public_summary(candidate_comparison: CandidateCompariso
     roles_by_key = candidate_roles_by_key(selection)
     candidates = candidate_comparison.candidates
     return {
-        "enabled": True,
-        "generation_policy_version": UNIFIED_GENERATION_VERSION,
         "primary_objective": candidate_comparison.primary_objective,
         "target_objectives": list(candidate_comparison.target_objectives),
-        "planned_candidate_count": len(candidates),
-        "completed_candidate_count": len(candidates),
         "time_budget_reached": candidate_comparison.time_budget_reached,
         "run_time_budget_seconds": candidate_comparison.run_time_budget_seconds,
-        "selection_policy_version": selection.selection_policy_version,
         "selection_reason_code": selection.reason_code,
         "selection": selection.to_dict(),
         "candidates": [candidate_public_summary(candidate, roles=roles_by_key.get(candidate.candidate_key, []))
@@ -119,5 +87,4 @@ __all__ = [
     "candidate_public_summary",
     "candidate_roles_by_key",
     "candidate_score_summary",
-    "is_unified_generation",
 ]

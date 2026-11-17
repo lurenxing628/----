@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 from core.algorithm_contracts.changeover_events import count_known_changeovers
 from core.algorithm_contracts.resource_occupancy import ResourceOccupancy, project_internal_occupancies
-from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
+from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithms.evaluation_completion import (
     UNKNOWN_OBJECTIVE_VALUE,
@@ -16,9 +16,7 @@ from core.algorithms.evaluation_completion import (
     PreparedBatchDue,
     PreparedEvaluationContext,
     collect_batch_completion,
-    prepare_evaluation_context,
 )
-from core.models.batch import Batch
 from core.models.objective import objective_metric_keys
 
 
@@ -119,34 +117,27 @@ class _UtilizationMetrics:
 
 def compute_metrics(
     results: List[ScheduleResult],
-    batches: Dict[str, Batch],
     *,
-    expected_operations: Iterable[OpForScheduleAlgo],
+    prepared: PreparedEvaluationContext,
     failure_details: Iterable[Dict[str, Any]],
     seed_occupancies_by_op_id: Mapping[int, Tuple[ResourceOccupancy, ...]],
-    seed_results: Iterable[ScheduleResult] = (),
-    prepared: Optional[PreparedEvaluationContext] = None,
 ) -> ScheduleMetrics:
-    """Use explicit run inputs to distinguish completion from a partial result.
+    """Use the run's prepared evaluation facts to distinguish completion from a partial result.
 
-    Every caller supplies expected_operations (possibly empty), directly or already
-    folded into a prepared context. Seeds are expected output identities, not extra
-    synthesized output records.
+    ``prepared`` holds the run's batches and expected operations, seeds included as expected output
+    identities (``prepare_evaluation_context``); the results stay dynamic.
     """
-    context = prepared if prepared is not None else prepare_evaluation_context(
-        batches=batches, expected_operations=expected_operations, seed_results=seed_results,
-    )
-    completion = collect_batch_completion(results, prepared=context, failure_details=failure_details)
+    completion = collect_batch_completion(results, prepared=prepared, failure_details=failure_details)
     result_state = _collect_result_metric_state(
         results,
         seed_occupancies_by_op_id=seed_occupancies_by_op_id,
     )
-    due_state = _compute_due_metrics(context, result_state.finish_by_batch, completion=completion)
+    due_state = _compute_due_metrics(prepared, result_state.finish_by_batch, completion=completion)
     utilization = _build_utilization_metrics(result_state)
     # Valid and empty due dates enter this map; invalid ones are omitted so due-risk items skip them.
     due_by_batch: Dict[str, Optional[date]] = {
         batch_due.batch_id: batch_due.due_date
-        for batch_due in context.due_batches
+        for batch_due in prepared.due_batches
         if not batch_due.due_invalid
     }
 

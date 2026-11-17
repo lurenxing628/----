@@ -1,10 +1,10 @@
 """Preserve actual execution across plan versions."""
 
+from core.algorithm_contracts.schedule_point_evidence import is_point_work
 from core.errors import AppError, ErrorCode
 from core.models.enums import SourceType
 from core.services.execution.projection import (
     actual_period,
-    is_point_work,
     report_segments,
 )
 

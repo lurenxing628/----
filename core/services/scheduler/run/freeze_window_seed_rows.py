@@ -10,8 +10,6 @@ def cache_seed_for_prefix(*, prefix, schedule_map, op_by_id, seed_tmp, point_val
     for oid in prefix:
         row = schedule_map[int(oid)]
         start, end = row["_parsed_times"]
-        if not start or not end or end < start:
-            return int(oid)
         seed = {"row": row, "start_time": start, "end_time": end}
         if start == end:
             op = op_by_id[int(oid)]
@@ -21,7 +19,6 @@ def cache_seed_for_prefix(*, prefix, schedule_map, op_by_id, seed_tmp, point_val
                                     start_time=start, end_time=end, source=op.source)
             seed["point_evidence"] = point_validator(parsed)
         seed_tmp[int(oid)] = seed
-    return 0
 
 
 def build_seed_results(frozen_op_ids: Set[int], *, op_by_id: Dict[int, Any],

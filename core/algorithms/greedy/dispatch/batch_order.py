@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+from core.algorithm_contracts.resource_pool import ResourcePool
 from core.algorithm_contracts.value_domains import EXTERNAL
 from core.algorithm_runtime.run_state import ScheduleRunState
 
@@ -22,8 +23,7 @@ def dispatch_batch_order(
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     state: ScheduleRunState,
-    auto_assign_enabled: bool,
-    resource_pool: Optional[Dict[str, Any]],
+    resource_pool: ResourcePool,
 ) -> None:
     for op in sorted_ops:
         _dispatch_one(
@@ -34,7 +34,6 @@ def dispatch_batch_order(
             base_time=base_time,
             end_dt_exclusive=end_dt_exclusive,
             machine_downtimes=machine_downtimes,
-            auto_assign_enabled=auto_assign_enabled,
             resource_pool=resource_pool,
         )
 
@@ -48,11 +47,11 @@ def _dispatch_one(
     base_time: datetime,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    auto_assign_enabled: bool,
-    resource_pool: Optional[Dict[str, Any]],
+    resource_pool: ResourcePool,
 ) -> None:
     batch_id = op.batch_id
-    if not _validate_batch(op=op, batch_id=batch_id, batches=batches, state=state):
+    if batch_id in state.blocked_batches:
+        state.record_skipped_after_batch_failure(op, batch_id)
         return
     result, failure = schedule_op(
         ctx,
@@ -62,7 +61,6 @@ def _dispatch_one(
         base_time=base_time,
         end_dt_exclusive=end_dt_exclusive,
         machine_downtimes=machine_downtimes,
-        auto_assign_enabled=auto_assign_enabled,
         resource_pool=resource_pool,
     )
     if result is not None:
@@ -75,16 +73,6 @@ def _dispatch_one(
         )
 
 
-def _validate_batch(*, op: OpForScheduleAlgo, batch_id: str, batches: Dict[str, Batch], state: ScheduleRunState) -> bool:
-    if batch_id not in batches:
-        state.record_missing_batch(op, batch_id)
-        return False
-    if batch_id in state.blocked_batches:
-        state.record_skipped_after_batch_failure(op, batch_id)
-        return False
-    return True
-
-
 def schedule_op(
     ctx: Any,
     *,
@@ -94,8 +82,7 @@ def schedule_op(
     base_time: datetime,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    auto_assign_enabled: bool,
-    resource_pool: Optional[Dict[str, Any]],
+    resource_pool: ResourcePool,
     scored: Optional[SgsCandidateScore] = None,
 ):
     if op.source == EXTERNAL:
@@ -116,7 +103,6 @@ def schedule_op(
         base_time=base_time,
         end_dt_exclusive=end_dt_exclusive,
         machine_downtimes=machine_downtimes,
-        auto_assign_enabled=auto_assign_enabled,
         resource_pool=resource_pool,
         last_op_type_by_machine=state.last_op_type_by_machine,
         machine_busy_hours=state.machine_busy_hours,

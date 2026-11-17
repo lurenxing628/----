@@ -7,7 +7,6 @@ from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_contracts.value_domains import INTERNAL, MERGED
 from core.errors import ValidationError
 from core.models.batch_operation import BatchOperation
-from core.shared.strict_parse import parse_required_float
 
 from .schedule_template_lookup import FrozenExternalContext
 
@@ -24,15 +23,15 @@ _EMPTY_EXTERNAL_CONTEXT = _ExternalMergeContext()
 
 
 def _external_days(raw_value: Optional[float]) -> float:
-    try:
-        return parse_required_float(raw_value, field="外协周期", min_value=0.0, min_inclusive=False)
-    except ValidationError as exc:
-        raise ValidationError(exc.message, field="ext_days") from exc
+    # A set cycle is held in (0, EXTERNAL_DAYS_MAX] days by the table CHECK; only an unset one is refused here.
+    if raw_value is None:
+        raise ValidationError("“外协周期”不能为空", field="ext_days")
+    return raw_value
 
 
 def _build_external_merge_context(facts: FrozenExternalContext, op: BatchOperation) -> _ExternalMergeContext:
     merge_mode = facts.row["merge_mode"]
-    # The preparation-time context_problem check already proved a merged total is a finite positive native number.
+    # The preparation-time context_problem check already proved a merged total is set; its range is the table's.
     total_days = float(facts.row["total_days"]) if merge_mode == MERGED else None
     ext_days = None if merge_mode == MERGED else _external_days(op.ext_days)
 
@@ -86,7 +85,7 @@ def build_algo_operations(
     - 本层只消费调用方传入的 `reschedulable_operations`，不再自行扩散状态语义；
     - 来源只会是 internal/external：读取边界 operation_model 已按算法值域校验过，本层不再归一化；
     - 外协工序的冻结周期记录由输入准备阶段一次核对后经 `external_contexts` 传入，本层不回库；
-    - 自制工序工时已由读取边界 `operation_model` 保证为非负有限原生数字，这里直接转为 `float`；单独外协周期只有严格口径：填得不对抛 ValidationError，不按默认值兜底。
+    - 自制工序工时已由读取边界 `operation_model` 保证为非负有限原生数字，这里直接转为 `float`；单独外协周期的值域由表约束保证，没设周期抛 ValidationError，不按默认值兜底。
     """
     algo_ops: List[OpForScheduleAlgo] = []
     for op in reschedulable_operations:

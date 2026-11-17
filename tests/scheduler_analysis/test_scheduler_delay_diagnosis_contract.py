@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-import pytest
+import logging
+from datetime import datetime
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.common.plan_query import SchedulePlanQueryService
 from tests._support.paths import REPO_ROOT
+from tests.workbench.plan_catalog_support import ensure_history_head, insert_schedule_rows
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 VERSION = 11
@@ -15,7 +17,7 @@ AS_OF_TIME = "2026-05-05 12:00:00"
 
 def _connect(tmp_path):
     db_path = tmp_path / "aps.db"
-    ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH))
+    ensure_schema(str(db_path), logging.getLogger(__name__), schema_path=str(SCHEMA_PATH))
     return get_connection(str(db_path))
 
 
@@ -72,23 +74,34 @@ def _seed_base(conn) -> None:
 
         INSERT INTO ScheduleVersionSeq(version) VALUES (11);
 
-        INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
-        VALUES
-          (110, 10, 'M1', 'O1', '2026-05-04 08:00:00', '2026-05-04 09:00:00', 'unlocked', 11),
-          (120, 20, 'M1', 'O1', '2026-05-04 10:00:00', '2026-05-04 11:00:00', 'unlocked', 11),
-          (140, 40, 'M2', 'O2', '2026-05-04 08:00:00', '2026-05-04 09:00:00', 'unlocked', 11);
-
         INSERT INTO BatchMaterials(batch_id, material_id, required_qty, available_qty, ready_status)
         VALUES
           ('B_SCHEDULED', 'MAT1', 10, 0, 'no'),
-          ('B_SCHEDULED', 'MAT2', 5, 1, NULL);
+          ('B_SCHEDULED', 'MAT2', 5, 1, 'partial');
 
-        INSERT INTO MachineDowntimes(machine_id, start_time, end_time, reason_code, status)
-        VALUES ('M1', '2026-05-04 10:30:00', '2026-05-04 12:00:00', 'maintenance', 'active');
-
-        INSERT INTO ScheduleHistory(version, strategy, batch_count, op_count, result_status, result_summary, created_by)
-        VALUES (11, 'priority_first', 3, 4, 'success', '{}', 'pytest');
+        INSERT INTO MachineDowntimes(machine_id, start_time, end_time, start_us, end_us, reason_code, status)
+        VALUES ('M1', '2026-05-04 10:30:00', '2026-05-04 12:00:00', 1777890600000000, 1777896000000000,
+                'maintenance', 'active');
         """
+    )
+    ensure_history_head(
+        conn,
+        11,
+        strategy="priority_first",
+        schedule_time="2026-05-04T08:00:00",
+        created_by="pytest",
+    )
+    insert_schedule_rows(
+        conn,
+        11,
+        [
+            {"id": 110, "op_id": 10, "machine_id": "M1", "operator_id": "O1",
+             "start_time": "2026-05-04T08:00:00", "end_time": "2026-05-04T09:00:00", "lock_status": "unlocked"},
+            {"id": 120, "op_id": 20, "machine_id": "M1", "operator_id": "O1",
+             "start_time": "2026-05-04T10:00:00", "end_time": "2026-05-04T11:00:00", "lock_status": "unlocked"},
+            {"id": 140, "op_id": 40, "machine_id": "M2", "operator_id": "O2",
+             "start_time": "2026-05-04T08:00:00", "end_time": "2026-05-04T09:00:00", "lock_status": "unlocked"},
+        ],
     )
 
 
@@ -111,15 +124,14 @@ def test_overdue_official_source_remains_strict(tmp_path):
         before = _snapshot(conn)
         resolution = query.resolve_existing_plan(VERSION)
         rows = _overdue_rows(query, resolution)
-        assert next(row for row in rows if row['batch_id'] == 'B_SCHEDULED')['finish_time'] == '2026-05-04 11:00:00'
+        finish = next(row for row in rows if row['batch_id'] == 'B_SCHEDULED')['finish_time']
+        assert datetime.fromisoformat(finish) == datetime(2026, 5, 4, 11, 0)
         assert _snapshot(conn) == before
     finally:
         conn.close()
 
 
 def test_overdue_allow_points_recognizes_zero_duration_point_event_batches(tmp_path):
-    from datetime import datetime
-
     from core.services.common.overdue_calculations import compute_overdue_bucket_groups
 
     conn = _seed_db(tmp_path)
@@ -136,13 +148,19 @@ def test_overdue_allow_points_recognizes_zero_duration_point_event_batches(tmp_p
               (50, 'OP-PP-10', 'B_PURE_POINT', 'piece-pp', 10, '检验', 'internal', 'scheduled'),
               (60, 'OP-TP-10', 'B_TAIL_POINT', 'piece-tp', 10, '车削', 'internal', 'scheduled'),
               (70, 'OP-TP-20', 'B_TAIL_POINT', 'piece-tp', 20, '终检', 'internal', 'scheduled');
-
-            INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
-            VALUES
-              (150, 50, 'M1', 'O1', '2026-05-04 12:00:00', '2026-05-04 12:00:00', 'unlocked', 11),
-              (160, 60, 'M1', 'O1', '2026-05-04 08:00:00', '2026-05-04 09:00:00', 'unlocked', 11),
-              (170, 70, 'M1', 'O1', '2026-05-04 15:30:00', '2026-05-04 15:30:00', 'unlocked', 11);
             """
+        )
+        insert_schedule_rows(
+            conn,
+            11,
+            [
+                {"id": 150, "op_id": 50, "machine_id": "M1", "operator_id": "O1",
+                 "start_time": "2026-05-04T12:00:00", "end_time": "2026-05-04T12:00:00", "lock_status": "unlocked"},
+                {"id": 160, "op_id": 60, "machine_id": "M1", "operator_id": "O1",
+                 "start_time": "2026-05-04T08:00:00", "end_time": "2026-05-04T09:00:00", "lock_status": "unlocked"},
+                {"id": 170, "op_id": 70, "machine_id": "M1", "operator_id": "O1",
+                 "start_time": "2026-05-04T15:30:00", "end_time": "2026-05-04T15:30:00", "lock_status": "unlocked"},
+            ],
         )
         conn.commit()
         query = SchedulePlanQueryService(conn)
@@ -151,10 +169,8 @@ def test_overdue_allow_points_recognizes_zero_duration_point_event_batches(tmp_p
             version=resolution.version,
         )
         by_batch = {row["batch_id"]: row for row in rows}
-        assert by_batch["B_PURE_POINT"]["finish_time"] == "2026-05-04 12:00:00"
-        assert by_batch["B_PURE_POINT"]["invalid_time_count"] == 0
-        assert by_batch["B_TAIL_POINT"]["finish_time"] == "2026-05-04 15:30:00"
-        assert by_batch["B_TAIL_POINT"]["invalid_time_count"] == 0
+        assert datetime.fromisoformat(by_batch["B_PURE_POINT"]["finish_time"]) == datetime(2026, 5, 4, 12, 0)
+        assert datetime.fromisoformat(by_batch["B_TAIL_POINT"]["finish_time"]) == datetime(2026, 5, 4, 15, 30)
 
         scheduled, unscheduled, invalid = compute_overdue_bucket_groups(
             rows, now_dt=datetime.fromisoformat(AS_OF_TIME)

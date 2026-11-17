@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+from core.algorithm_contracts.resource_pool import ResourcePool
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithm_runtime.algo_stats import increment_counter
@@ -10,6 +11,7 @@ from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
     AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
 )
+from core.algorithm_runtime.calendar_timing_memo import TimingCalendar
 from core.algorithm_runtime.downtime import occupy_resource
 from core.algorithm_runtime.internal_slot import InternalSlotEstimate, estimate_internal_slot
 from core.algorithm_runtime.resource_quality import MachineTypeState
@@ -23,7 +25,7 @@ if TYPE_CHECKING:
 
 def schedule_internal_operation(
     *,
-    calendar: Any,
+    calendar: TimingCalendar,
     algo_stats: Any,
     auto_assign_resources: Any,
     op: OpForScheduleAlgo,
@@ -34,8 +36,7 @@ def schedule_internal_operation(
     base_time: datetime,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    auto_assign_enabled: bool,
-    resource_pool: Optional[Dict[str, Any]],
+    resource_pool: ResourcePool,
     last_op_type_by_machine: MachineTypeState,
     machine_busy_hours: Dict[str, float],
     operator_busy_hours: Dict[str, float],
@@ -56,7 +57,6 @@ def schedule_internal_operation(
         base_time=base_time,
         end_dt_exclusive=end_dt_exclusive,
         machine_downtimes=machine_downtimes,
-        auto_assign_enabled=auto_assign_enabled,
         resource_pool=resource_pool,
         last_op_type_by_machine=last_op_type_by_machine,
         machine_busy_hours=machine_busy_hours,
@@ -106,8 +106,7 @@ def _resolve_internal_resources(
     base_time: datetime,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    auto_assign_enabled: bool,
-    resource_pool: Optional[Dict[str, Any]],
+    resource_pool: ResourcePool,
     last_op_type_by_machine: MachineTypeState,
     machine_busy_hours: Dict[str, float],
     operator_busy_hours: Dict[str, float],
@@ -117,7 +116,7 @@ def _resolve_internal_resources(
     machine_id, operator_id = op.machine_id, op.operator_id
     if machine_id and operator_id:
         return machine_id, operator_id, (scored.estimate if scored is not None else None), None
-    if not auto_assign_enabled or resource_pool is None:
+    if not resource_pool.enabled:
         increment_counter(algo_stats, "internal_missing_resource_without_auto_assign_count")
         return "", "", None, {"code": "missing_internal_resource", "source": INTERNAL}
 
@@ -165,7 +164,7 @@ def _auto_assign_failure_detail(*, reason: str) -> Dict[str, Any]:
 
 def _estimate_internal(
     *,
-    calendar: Any,
+    calendar: TimingCalendar,
     op: OpForScheduleAlgo,
     batch: Batch,
     bid: str,

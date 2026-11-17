@@ -10,9 +10,12 @@ from itertools import islice
 from types import SimpleNamespace
 from typing import Any, Dict
 
-from core.algorithm_contracts.sort_strategies import SortStrategy
+from core.algorithm_contracts.resource_pool import DISABLED_RESOURCE_POOL, ResourcePool
 from core.algorithm_contracts.types import ScheduleResult
-from core.algorithms.evaluation import compute_metrics, prepare_evaluation_context
+from core.algorithms.evaluation import compute_metrics
+from core.algorithms.evaluation_completion import prepare_evaluation_context
+from core.algorithms.greedy.scheduler import prepare_native_schedule_inputs
+from core.models.enums import SortStrategy
 from core.services.scheduler.run.optimizer.candidate_fingerprint import (
     build_candidate_fingerprint,
     schedule_content_key,
@@ -21,13 +24,13 @@ from core.services.scheduler.run.optimizer.graph.candidates import (
     PreparedDecisionFeatures,
     evaluate_graph_ready_candidate,
 )
-from core.services.scheduler.run.optimizer.graph.iterated_greedy import _IteratedGreedySearch
+from core.services.scheduler.run.optimizer.graph.iterated_greedy import IteratedGreedySearch
 from core.services.scheduler.run.optimizer.graph.iterated_greedy_contract import (
     IteratedGreedyLimits,
     ig_decode_profile,
     new_iterated_greedy_report,
 )
-from core.services.scheduler.run.optimizer.graph.iterated_greedy_moves import _parent_from_candidate
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_moves import parent_from_candidate
 from core.services.scheduler.run.optimizer.graph.repair import EliteRepairPool
 from core.services.scheduler.run.optimizer.graph.repair_contract import EliteRepairLimits
 from core.services.scheduler.run.optimizer.graph.repair_decisions import (
@@ -49,8 +52,9 @@ from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
     SUCCESSOR_WORKLOAD_BASIS,
 )
 from core.services.scheduler.run.optimizer.graph_ready_profiles import resolve_v2_profiles
-from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.shared_archive import CandidateArchiveRef
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
+from core.services.scheduler.run.schedule_shared_search import open_shared_search
 from tests._support.algo_operations import make_batch, make_schedule_result
 from tests._support.optimizer_graph_ready_benchmark import (
     BASE_BATCH_ORDER,
@@ -61,7 +65,13 @@ from tests._support.optimizer_graph_ready_benchmark import (
     graph_ready_benchmark_context,
     graph_ready_benchmark_operations,
 )
-from tests._support.schedule_decode import production_session
+from tests._support.schedule_decode import (
+    NO_END_DATE,
+    prepared_metrics,
+    required_hours_by_op_id,
+    unbounded_search_budget,
+)
+from tests._support.shared_schedule_archive import detached_report
 
 
 def test_fixed_decision_features_admit_effective_profiles_once_and_preserve_raw_errors(monkeypatch):
@@ -70,12 +80,14 @@ def test_fixed_decision_features_admit_effective_profiles_once_and_preserve_raw_
 
     operations, batches = graph_ready_benchmark_operations(), graph_ready_benchmark_batches()
     context = graph_ready_benchmark_context()
-    preparation = production_session(_scheduler(), operations=operations, batches=batches,
-                                     graph_ready_context=context).native_preparation
+    preparation = prepare_native_schedule_inputs(
+        {}, scheduler=_scheduler(), operations=operations, batches=batches,
+        required_hours_by_op_id=required_hours_by_op_id(operations, batches), seed_results=[], resource_pool=DISABLED_RESOURCE_POOL,
+        graph_ready_context=context)
     metrics = enrich_graph_ready_v2_metrics(
         context["node_metrics_by_op_id"], operations=operations, batches=batches,
         start_dt=START_DT, graph_ready_context=context, calendar_service=ContinuousCalendar(),
-        downtime_map={}, seed_results=[], deadline=float("inf"), clock=lambda: 0.0,
+        downtime_map={}, seed_results=[], budget=unbounded_search_budget(),
         native_preparation=preparation,
     )
     assert metrics is not None
@@ -109,11 +121,7 @@ def test_fixed_decision_features_admit_effective_profiles_once_and_preserve_raw_
 
 
 def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downtime(monkeypatch):
-    from core.models.objective import target_objectives_for
     from core.services.scheduler.run.optimizer.graph import candidates
-    from core.services.scheduler.run.optimizer.shared_archive import SharedScheduleArchive
-    from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
-    from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
     operations, batches = graph_ready_benchmark_operations(), graph_ready_benchmark_batches()
     operations[2].machine_id = operations[2].operator_id = None
@@ -124,20 +132,21 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
     context["fixed_op_ids"] = {99}
     context["predecessor_op_ids_by_op_id"].update({99: set(), 1: {99}, 2: {1}})
     context["successor_op_ids_by_op_id"].update({99: {1}, 1: {2}})
-    pool = {"machines_by_op_type": {"OT-BENCH": ["MC-BENCH", "MC-ALT"]},
-            "machines_by_operator": {},
-            "operators_by_machine": {"MC-BENCH": ["OP-BENCH"], "MC-ALT": ["OP-ALT"]},
-            "pair_rank": {}}
+    pool = ResourcePool(enabled=True, machines_by_op_type={"OT-BENCH": ("MC-BENCH", "MC-ALT")},
+                        machines_by_operator={},
+                        operators_by_machine={"MC-BENCH": ("OP-BENCH",), "MC-ALT": ("OP-ALT",)},
+                        pair_rank={}, operator_skills=None)
     downtime = {"MC-ALT": [(START_DT, START_DT + timedelta(hours=4))]}
     original = deepcopy((operations, context, pool, seed))
-    preparation = production_session(_scheduler(), operations=operations, batches=batches, seed_results=[seed],
-                                     machine_downtimes=downtime, resource_pool=pool,
-                                     graph_ready_context=context).native_preparation
+    preparation = prepare_native_schedule_inputs(
+        downtime, scheduler=_scheduler(), operations=operations, batches=batches,
+        required_hours_by_op_id=required_hours_by_op_id(operations, batches), seed_results=[seed],
+        resource_pool=pool, graph_ready_context=context)
     metrics = enrich_graph_ready_v2_metrics(
         context["node_metrics_by_op_id"], operations=operations, batches=batches,
-        start_dt=START_DT, seed_results=[seed], resource_pool=pool, downtime_map=downtime,
+        start_dt=START_DT, seed_results=[seed], downtime_map=downtime,
         graph_ready_context=context, calendar_service=ContinuousCalendar(),
-        deadline=float("inf"), clock=lambda: 0.0, native_preparation=preparation,
+        budget=unbounded_search_budget(), native_preparation=preparation,
     )
     assert metrics is not None
     features = PreparedDecisionFeatures(metrics, build_v2_common_rank_cache(metrics), schedulable_ids=frozenset(metrics))
@@ -146,24 +155,18 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
     profile = replace(base_profile, candidate_origin="graph_ready_v2_repaired", candidate_policy="elite_repair")
 
     sessions, seed_results = [], [seed]
-    targets = target_objectives_for("min_overdue")
-    archive = SharedScheduleArchive("min_overdue", targets, [op.id for op in operations] + [seed.op_id], batches)
 
     def run(decoder_operations, *, decode_profile, order, repair=None):
-        scheduler = _scheduler()
-        budget = SharedSearchBudget(clock=lambda: 0.0, started_at=0.0, deadline=10.0,
-                                    target_objectives=targets, configured_seconds=10)
-        session = SharedDecodeSession(
-            archive=archive, budget=budget, scheduler=scheduler, operations=decoder_operations, batches=batches,
-            seed_results=seed_results, downtime_map=downtime, resource_pool=pool, graph_ready_context=context,
-            clock=lambda: 0.0, started_at=0.0, deadline=10.0,
-        )
+        session = open_shared_search(
+            objective_name="min_overdue", scheduler=_scheduler(), operations=decoder_operations, batches=batches,
+            required_hours_by_op_id=required_hours_by_op_id(decoder_operations, batches), seed_results=seed_results,
+            downtime_map=downtime, resource_pool=pool, graph_ready_context=context, start_dt=START_DT,
+            end_date=NO_END_DATE, readiness_gate_enabled=False, clock=lambda: 0.0, started_at=0.0, deadline=10.0,
+            configured_seconds=10).decode_session
         sessions.append(session)
         return evaluate_graph_ready_candidate(
-            profile=decode_profile, strategy=SortStrategy.PRIORITY_FIRST, params={},
-            start_dt=START_DT, end_date=None, order=order,
-            dispatch_rule="slack", resource_pool=pool, objective_name="min_overdue", optimizer_algo_stats=None,
-            readiness_gate_enabled=False, version=0, clock=lambda: 0.0,
+            profile=decode_profile, strategy=SortStrategy.PRIORITY_FIRST, params=None, order=order,
+            dispatch_rule="slack", objective_name="min_overdue", version=0,
             repair=repair, decode_session=session, prepared_decision_features=features,
         )
 
@@ -218,7 +221,7 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
         stale_parent,
         scope=prepare_repair_scope(mutable_operations, topology, resource_pairs_for=pairs_for),
     )
-    parent = _parent_from_candidate(stale_parent, prepared=stale_prepared)
+    parent = parent_from_candidate(stale_parent, prepared=stale_prepared)
     assert parent is not None and parent.inherited == inherited
     assert parent.order.index(1) < parent.order.index(2)
     portfolio = build_repair_portfolio(
@@ -261,9 +264,7 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
                         and item.formula_version.startswith("graph_ready_v2"))
         elite_pool = EliteRepairPool(
             limits=EliteRepairLimits(), objective_name="min_overdue", operations=mutable_operations,
-            start_dt=START_DT, seed=0, best=stale_parent,
-            report_state=OptimizationSearchReportState(objective_name="min_overdue", started_at=0.0),
-            clock=lambda: 0.0, deadline=10.0, decode_session=sessions[-1],
+            seed=0, best=stale_parent, report_state=detached_report("min_overdue"), decode_session=sessions[-1],
             decision_features=features,
         )
         elite = elite_pool.make_elite(stale_parent, successor)
@@ -273,16 +274,10 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
         assert len(elite["neighborhood"].variants) == 2
         other_elite = elite_pool.make_elite(dict(stale_parent), successor)
         assert other_elite["prepared_parent"] is prepared_parent
-        rebuilt_wrapper = dict(
-            stale_parent,
-            archive_ref=SimpleNamespace(
-                entry_id=stale_parent["archive_ref"].entry_id,
-                evidence_revision=stale_parent["archive_ref"].evidence_revision,
-            ),
-        )
+        rebuilt_wrapper = dict(stale_parent, archive_ref=CandidateArchiveRef(stale_parent["archive_ref"].entry_id))
         assert elite_pool.prepare_parent(rebuilt_wrapper) is prepared_parent
         # The iterated-greedy start pool builds an elite's parent from the elite's own preparation.
-        ig_parent = _parent_from_candidate(stale_parent, prepared=elite["prepared_parent"])
+        ig_parent = parent_from_candidate(stale_parent, prepared=elite["prepared_parent"])
         assert ig_parent is not None
         assert ig_parent.predecessors is prepared_parent.predecessors
         assert ig_parent.successors is prepared_parent.successors
@@ -326,12 +321,8 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
 
 
 def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypatch):
-    from core.models.objective import target_objectives_for
     from core.services.scheduler.run.optimizer import neighborhood_move_support, neighborhood_moves
     from core.services.scheduler.run.optimizer.graph import operation_neighbors
-    from core.services.scheduler.run.optimizer.shared_archive import SharedScheduleArchive
-    from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
-    from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
     order = tuple("B" + str(index) for index in range(10))
     batches = RepairNeighborhood(order, tuple(("adjacent_swap", index, index + 1) for index in range(9)))
@@ -362,25 +353,20 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
     # The real elite visit also stops before expanding an unconsumed ninth move.
     from core.services.scheduler.run.optimizer.graph import repair
 
-    targets = target_objectives_for("min_overdue")
-    archive = SharedScheduleArchive("min_overdue", targets, (), {})
-    budget = SharedSearchBudget(clock=lambda: 0.0, started_at=0.0, deadline=10.0,
-                                target_objectives=targets, configured_seconds=10)
     empty_graph = {"enabled": True, "schedulable_op_ids": set(), "fixed_op_ids": set(), "sort_key_by_op_id": {},
                    "predecessor_op_ids_by_op_id": {}, "successor_op_ids_by_op_id": {}}
-    session = SharedDecodeSession(
-        archive=archive, budget=budget, scheduler=_scheduler(), operations=[], batches={},
-        seed_results=[], downtime_map={}, resource_pool=None, graph_ready_context=empty_graph,
-        clock=lambda: 0.0, started_at=0.0, deadline=10.0,
-    )
-    visit_report = OptimizationSearchReportState(objective_name="min_overdue", started_at=0.0)
+    session = open_shared_search(
+        objective_name="min_overdue", scheduler=_scheduler(), operations=[], batches={}, required_hours_by_op_id={},
+        seed_results=[], downtime_map={}, resource_pool=DISABLED_RESOURCE_POOL, graph_ready_context=empty_graph, start_dt=START_DT,
+        end_date=NO_END_DATE, readiness_gate_enabled=False, clock=lambda: 0.0, started_at=0.0, deadline=10.0,
+        configured_seconds=10).decode_session
+    visit_report = detached_report("min_overdue")
     visit_pool = EliteRepairPool(
         limits=EliteRepairLimits(), objective_name="min_overdue", operations=[],
-        start_dt=START_DT, seed=0, best=None, report_state=visit_report,
-        clock=lambda: 0.0, deadline=10.0, decode_session=session,
+        seed=0, best=None, report_state=visit_report, decode_session=session,
         decision_features=PreparedDecisionFeatures({}, build_v2_common_rank_cache({}), schedulable_ids=frozenset()),
     )
-    visit_candidate = {"archive_ref": SimpleNamespace(entry_id=1, evidence_revision=None), "results": [],
+    visit_candidate = {"archive_ref": CandidateArchiveRef(1), "results": [],
                        "decoded_batch_order": ()}
     elite = {"neighborhood": parent, "candidate": visit_candidate, "prepared_parent": None, "decision_offset": 0,
              "stream_offsets": {}}
@@ -465,7 +451,7 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
         ("BA", date(2025, 12, 31), datetime(2026, 1, 1)), ("BB", date(2026, 1, 1), datetime(2026, 1, 2)),
         ("BC", None, None)]
     eval_metrics = compute_metrics(
-        results, batch_map, expected_operations=[], failure_details=(),
+        results, failure_details=(),
         seed_occupancies_by_op_id={}, prepared=evaluation_context,
     )
     result_facts = neighborhood_move_support.LocalSearchResultFacts(
@@ -487,8 +473,7 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
 
     # LocalSearchState shares facts on identical results and switches whenever the results change.
     best_candidate = {
-        "results": results, "metrics": eval_metrics, "order": ["BC", "BB", "BA"],
-        "resource_pool": {}, "resource_pair_rank": {},
+        "results": results, "metrics": eval_metrics, "order": ["BC", "BB", "BA"], "resource_pair_rank": {},
     }
     state = LocalSearchState.from_best(best_candidate, due_batches=due_batches)
     assert state.current_facts is state.best_facts
@@ -497,7 +482,7 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
 
     alt_results = results[:3]
     alt_metrics = compute_metrics(
-        alt_results, batch_map, expected_operations=[], failure_details=(),
+        alt_results, failure_details=(),
         seed_occupancies_by_op_id={}, prepared=evaluation_context,
     )
     alt_candidate = dict(best_candidate, results=alt_results, metrics=alt_metrics, order=["BA", "BC", "BB"])
@@ -513,7 +498,7 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
     assert state.current_facts is kept_current_facts
     # A restart reuses archived results with freshly computed metrics; their facts are kept.
     recomputed_metrics = compute_metrics(
-        alt_results, batch_map, expected_operations=[], failure_details=(),
+        alt_results, failure_details=(),
         seed_occupancies_by_op_id={}, prepared=evaluation_context,
     )
     state.accept_current(dict(alt_candidate, metrics=recomputed_metrics))
@@ -568,7 +553,7 @@ def test_optimizer_changeover_signals_follow_type_identity_and_skip_point_events
                               start_time=begin, end_time=begin + hours * hour)
 
     def changeover_pair(rows):
-        metrics = compute_metrics(
+        metrics = prepared_metrics(
             rows, {}, expected_operations=[], failure_details=(), seed_occupancies_by_op_id={},
         )
         return LocalSearchResultFacts(
@@ -587,7 +572,7 @@ def test_optimizer_changeover_signals_follow_type_identity_and_skip_point_events
 
     # An empty-batch seed on the bottleneck machine is a safe no-op.
     unbatched = [row(1, "TA", "A", 0, batch=" "), row(2, "TA", "A", 1, batch=" ")]
-    unbatched_metrics = compute_metrics(
+    unbatched_metrics = prepared_metrics(
         unbatched, {}, expected_operations=[], failure_details=(), seed_occupancies_by_op_id={},
     )
     move = neighborhood_moves.bottleneck_machine_move(
@@ -638,12 +623,14 @@ def test_graph_ready_type_group_rank_follows_type_identity_not_label():
     operations[1].op_type_id, operations[1].op_type_name = "OT-B", "SAME"
     operations[2].op_type_name = "RELABELLED"
     context = graph_ready_benchmark_context()
-    preparation = production_session(_scheduler(), operations=operations, batches=batches,
-                                     graph_ready_context=context).native_preparation
+    preparation = prepare_native_schedule_inputs(
+        {}, scheduler=_scheduler(), operations=operations, batches=batches,
+        required_hours_by_op_id=required_hours_by_op_id(operations, batches), seed_results=[], resource_pool=DISABLED_RESOURCE_POOL,
+        graph_ready_context=context)
     metrics = enrich_graph_ready_v2_metrics(
         context["node_metrics_by_op_id"], operations=operations, batches=batches,
         start_dt=START_DT, graph_ready_context=context, calendar_service=ContinuousCalendar(),
-        downtime_map={}, seed_results=[], deadline=float("inf"), clock=lambda: 0.0,
+        downtime_map={}, seed_results=[], budget=unbounded_search_budget(),
         native_preparation=preparation,
     )
     assert metrics is not None
@@ -654,52 +641,43 @@ def test_graph_ready_type_group_rank_follows_type_identity_not_label():
 
 def _same_content_decodes():
     """Separate resources make every priority order decode one schedule, enumerated in its own pick order."""
-    from core.models.objective import target_objectives_for
     from core.services.scheduler.run.optimizer.multi_start import _evaluate_multi_start_candidate
-    from core.services.scheduler.run.optimizer.shared_archive import SharedScheduleArchive
-    from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
-    from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
     operations, batches = graph_ready_benchmark_operations(), graph_ready_benchmark_batches()
     context = graph_ready_benchmark_context()
     for op in operations:
         op.machine_id, op.operator_id = f"M-{op.id}", f"O-{op.id}"
-    targets = target_objectives_for("min_overdue")
-    archive = SharedScheduleArchive("min_overdue", targets, [op.id for op in operations], batches)
-    session = SharedDecodeSession(
-        archive=archive, budget=SharedSearchBudget(clock=lambda: 0.0, started_at=0.0, deadline=10.0,
-                                                   target_objectives=targets, configured_seconds=10),
-        scheduler=_scheduler(), operations=operations, batches=batches, seed_results=[], downtime_map={},
-        resource_pool=None, graph_ready_context=context, clock=lambda: 0.0, started_at=0.0, deadline=10.0,
-    )
+    session = open_shared_search(
+        objective_name="min_overdue", scheduler=_scheduler(), operations=operations, batches=batches,
+        required_hours_by_op_id=required_hours_by_op_id(operations, batches), seed_results=[], downtime_map={},
+        resource_pool=DISABLED_RESOURCE_POOL, graph_ready_context=context, start_dt=START_DT, end_date=NO_END_DATE,
+        readiness_gate_enabled=False, clock=lambda: 0.0, started_at=0.0, deadline=10.0,
+        configured_seconds=10).decode_session
+    archive = session.archive
     metrics = enrich_graph_ready_v2_metrics(
         context["node_metrics_by_op_id"], operations=operations, batches=batches, start_dt=START_DT,
-        seed_results=[], resource_pool=None, downtime_map={}, graph_ready_context=context,
-        calendar_service=ContinuousCalendar(), deadline=float("inf"), clock=lambda: 0.0,
+        seed_results=[], downtime_map={}, graph_ready_context=context,
+        calendar_service=ContinuousCalendar(), budget=unbounded_search_budget(),
         native_preparation=session.native_preparation,
     )
     assert metrics is not None
     features = PreparedDecisionFeatures(metrics, build_v2_common_rank_cache(metrics),
                                         schedulable_ids=session.native_preparation.graph_topology().schedulable_ids)
     plain = _evaluate_multi_start_candidate(
-        strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=START_DT, end_date=None,
-        order=list(reversed(batches)), dispatch_mode="batch_order", dispatch_rule="slack", resource_pool=None,
-        objective_name="min_overdue", optimizer_algo_stats=None, readiness_gate_enabled=False,
+        strategy=SortStrategy.PRIORITY_FIRST, params=None, order=list(reversed(batches)),
+        dispatch_mode="batch_order", dispatch_rule="slack", objective_name="min_overdue",
         graph_ready_context=None, decode_session=session,
     )
-    report = OptimizationSearchReportState(objective_name="min_overdue", started_at=0.0)
+    report = detached_report("min_overdue")
     pool = EliteRepairPool(
-        limits=EliteRepairLimits(), objective_name="min_overdue", operations=operations, start_dt=START_DT,
-        seed=0, best=plain, report_state=report, clock=lambda: 0.0, deadline=10.0,
-        decode_session=session, decision_features=features,
+        limits=EliteRepairLimits(), objective_name="min_overdue", operations=operations, seed=0, best=plain,
+        report_state=report, decode_session=session, decision_features=features,
     )
     profile = next(item for item in resolve_v2_profiles(seed=0, objective_name="min_overdue")
                    if item.slug == "v2_successor_edd")
     evaluate = partial(
-        evaluate_graph_ready_candidate, strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=START_DT,
-        end_date=None, dispatch_rule="slack", resource_pool=None, objective_name="min_overdue",
-        optimizer_algo_stats=None, readiness_gate_enabled=False, version=0, clock=lambda: 0.0,
-        prepared_decision_features=features,
+        evaluate_graph_ready_candidate, strategy=SortStrategy.PRIORITY_FIRST, params=None, dispatch_rule="slack",
+        objective_name="min_overdue", version=0, prepared_decision_features=features, decode_session=session,
     )
     return SimpleNamespace(archive=archive, session=session, batches=batches, context=context, metrics=metrics,
                            plain=plain, report=report, pool=pool, profile=profile, evaluate=evaluate)
@@ -708,7 +686,7 @@ def _same_content_decodes():
 def test_same_content_parents_share_one_preparation_whatever_their_enumeration_order():
     case = _same_content_decodes()
     plain, pool = case.plain, case.pool
-    graph = case.evaluate(profile=case.profile, order=list(case.batches), decode_session=case.session)
+    graph = case.evaluate(profile=case.profile, order=list(case.batches))
     # One content identity reached by an ordinary and a graph decode, each in its own native enumeration.
     assert schedule_content_key(plain["results"]) == schedule_content_key(graph["results"])
     assert plain["archive_ref"].entry_id is not None
@@ -728,13 +706,12 @@ def test_full_validation_keeps_its_own_enumeration_when_its_content_is_archived(
     case = _same_content_decodes()
     plain, archive = case.plain, case.archive
     entry_id = plain["archive_ref"].entry_id
-    parent = _parent_from_candidate(plain, prepared=case.pool.prepare_parent(plain))
+    parent = parent_from_candidate(plain, prepared=case.pool.prepare_parent(plain))
     assert parent is not None
-    search = _IteratedGreedySearch(
+    search = IteratedGreedySearch(
         limits=IteratedGreedyLimits(due_date_seed=False, checkpoint_count=3, max_decodes=20), parent=parent,
         profile=ig_decode_profile(case.profile), pool=case.pool, evaluate=case.evaluate,
-        metrics_by_op_id=case.metrics, start_dt=START_DT, seed=0, deadline=10.0, clock=lambda: 0.0,
-        report_state=case.report, report=new_iterated_greedy_report(objective_name="min_overdue"),
+        metrics_by_op_id=case.metrics, seed=0, report_state=case.report, report=new_iterated_greedy_report(objective_name="min_overdue"),
         decode_session=case.session,
     )
     search.best = plain
@@ -831,22 +808,24 @@ def test_zero_duration_features_and_effective_efficiency_preserve_ig_priority_we
         "graph_priority_key_by_op_id": {op_id: (float(op_id),) for op_id in op_ids},
         "node_metrics_by_op_id": node_metrics,
     }
-    pool = {
-        "machines_by_op_type": {"OT-1": [f"M-{idx}" for idx in (1, 2, 3, 4, 6)]},
-        "machines_by_operator": {},
-        "operators_by_machine": {f"M-{idx}": [f"O-{idx}"] for idx in (1, 2, 3, 4, 6)},
-        "pair_rank": {},
-    }
+    pool = ResourcePool(
+        enabled=True,
+        machines_by_op_type={"OT-1": tuple(f"M-{idx}" for idx in (1, 2, 3, 4, 6))},
+        machines_by_operator={},
+        operators_by_machine={f"M-{idx}": (f"O-{idx}",) for idx in (1, 2, 3, 4, 6)},
+        pair_rank={}, operator_skills=None,
+    )
     calendar = HalfEfficiencyCalendar()
     scheduler = GreedyScheduler(calendar_service=calendar, config_service=_default_config())
-    preparation = production_session(
-        scheduler, operations=operations, batches=batches, resource_pool=pool, graph_ready_context=context,
-    ).native_preparation
+    preparation = prepare_native_schedule_inputs(
+        {}, scheduler=scheduler, operations=operations, batches=batches,
+        required_hours_by_op_id=required_hours_by_op_id(operations, batches), seed_results=[], resource_pool=pool,
+        graph_ready_context=context)
     with caplog.at_level(logging.WARNING):
         metrics = enrich_graph_ready_v2_metrics(
             node_metrics, operations=operations, batches=batches, start_dt=start,
-            calendar_service=calendar, downtime_map={}, seed_results=[], resource_pool=pool,
-            graph_ready_context=context, deadline=float("inf"), clock=lambda: 0.0,
+            calendar_service=calendar, downtime_map={}, seed_results=[],
+            graph_ready_context=context, budget=unbounded_search_budget(),
             native_preparation=preparation,
         )
     assert metrics is not None
@@ -877,7 +856,7 @@ def test_zero_duration_features_and_effective_efficiency_preserve_ig_priority_we
     # Decoded wall-clock span under 0.5 efficiency is 4h on op 4, while op 3 has zero duration and zero pressure.
     decoded = production_decode(
         scheduler, operations=operations, batches=batches, start_dt=start,
-        strategy=SortStrategy.PRIORITY_FIRST, strategy_params={}, dispatch_mode="sgs", dispatch_rule="slack",
+        strategy=SortStrategy.PRIORITY_FIRST, strategy_params=None, dispatch_mode="sgs", dispatch_rule="slack",
         resource_pool=pool, graph_ready_context=dict(context, score_enabled=True),
     )
     order = (1, 2, 3, 4, 5, 6)

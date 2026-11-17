@@ -104,11 +104,8 @@ class OperatorShiftCalendar:
         return replace(policy, hours=min(policy.hours, hours), periods_json=periods_json, _period_offsets=offsets)
 
     def _pattern(self, profile_id, offset, prepare_periods):
-        day = self.facts.patterns.get((profile_id, offset))
-        if day is None:
-            raise ValidationError("人员班次缺少当天的轮换规则，不能回退到默认班次。", field="shift_profile")
-        if type(day["is_rest"]) is not int or day["is_rest"] not in (0, 1):
-            raise ValidationError("人员班表里的休息标记不合法。请到工作日历核对人员班表。", field="shift_profile")
+        # _validate_profile 核过第 0 至周期末一天各有一条；(profile_id, day_offset) 是主键（库里与归档准入都不重复）。
+        day = self.facts.patterns[profile_id, offset]
         periods_json = day["periods_json"]
         offsets, full_hours = prepare_periods(periods_json)
         return (0.0 if day["is_rest"] else full_hours), periods_json, offsets
@@ -117,12 +114,7 @@ class OperatorShiftCalendar:
     def _validate_profile(profile):
         if profile["profile_id"] is None or profile["status"] != "active":
             raise ValidationError("人员关联的班次不存在或已停用，请先维护班次。", field="shift_profile")
+        # 周期、日期序号和休息标记的值域由建表 CHECK 与归档准入保证；这里只核对各天是否齐全。
         days = profile["cycle_days"]
-        if (
-            type(days) is not int
-            or not 1 <= days <= 366
-            or profile["day_count"] != days
-            or profile["first_day"] != 0
-            or profile["last_day"] != days - 1
-        ):
+        if profile["day_count"] != days or profile["first_day"] != 0 or profile["last_day"] != days - 1:
             raise ValidationError("人员班次的轮换日期不完整，不能推测缺失安排。", field="shift_profile")

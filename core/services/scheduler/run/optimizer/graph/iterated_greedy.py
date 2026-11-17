@@ -11,7 +11,7 @@ decode is also an improve-only candidate for the incumbent. The stage retains it
 decode caps while the common decode session owns admission, actual costs and shared request reuse.
 
 The parent order is the parent's decoded start-time operation order with its explicit resource overrides
-(``_parent_from_candidate``); re-decoding it under the IG context may reproduce the parent or drift, and that
+(``parent_from_candidate``); re-decoding it under the IG context may reproduce the parent or drift, and that
 drift is search freedom (2026-09-18: pick-sequence identities and pinned resources measured worse). Reference
 captures are accounted as captures (reproduced or divergent), not as rejected or improving search decodes.
 """
@@ -40,14 +40,14 @@ from .iterated_greedy_acceptance import (
 )
 from .iterated_greedy_checkpoints import CheckpointStore
 from .iterated_greedy_contract import (
+    BudgetExhausted,
     IteratedGreedyLimits,
-    _BudgetExhausted,
     ig_decode_profile,
 )
 from .iterated_greedy_features import entry_features
 from .iterated_greedy_incumbent import IGIncumbentTracker
 from .iterated_greedy_incumbent import feasible_candidate as _feasible
-from .iterated_greedy_moves import _Parent
+from .iterated_greedy_moves import IGParent
 from .iterated_greedy_neighborhoods import GeneratorRotation, build_generators
 from .iterated_greedy_reference import adopt_incumbent, reference_for_iteration
 from .iterated_greedy_start import start_reference
@@ -59,15 +59,13 @@ if TYPE_CHECKING:
 # Pending output contents share one complete decode's row budget and a bounded LRU.
 _PENDING_OUTPUT_CACHE_SIZE = 32
 _STOP_BY_BUDGET = ("time_budget", "decode_budget", "decode_would_overrun", "estimated_decode_cost")
-# Helpers reachable through this module for existing callers and tests.
-__all__ = ["_IteratedGreedySearch", "_BudgetExhausted", "_Parent"]
+__all__ = ["IteratedGreedySearch"]
 
 
-class _IteratedGreedySearch:
-    def __init__(self, *, limits: IteratedGreedyLimits, parent: _Parent, profile: GraphReadyWeightProfile, pool: Any,
-                 evaluate: Callable[..., Dict[str, Any]], metrics_by_op_id: Dict[int, Dict[str, Any]], start_dt: Any,
-                 seed: int, deadline: float, clock: Callable[[], float], report_state: OptimizationSearchReportState,
-                 report: Dict[str, Any],
+class IteratedGreedySearch:
+    def __init__(self, *, limits: IteratedGreedyLimits, parent: IGParent, profile: GraphReadyWeightProfile, pool: Any,
+                 evaluate: Callable[..., Dict[str, Any]], metrics_by_op_id: Dict[int, Dict[str, Any]],
+                 seed: int, report_state: OptimizationSearchReportState, report: Dict[str, Any],
                  decode_session: SharedDecodeSession) -> None:
         self.limits = limits
         self.parent = parent
@@ -77,10 +75,10 @@ class _IteratedGreedySearch:
         self.decode_session = decode_session
         self.last_decode_skip: Optional[SharedSearchSkip] = None
         self.metrics = metrics_by_op_id
-        self.start_dt = start_dt
+        # The run's start and its budget clock and deadline are the session's.
+        self.start_dt = decode_session.start_dt
         self.seed = int(seed)
-        self.deadline = deadline
-        self.clock = clock
+        self.budget = decode_session.budget
         self.report_state = report_state
         self.report = report
         self.rnd = random.Random(self.seed * 7919 + 17)
@@ -105,7 +103,7 @@ class _IteratedGreedySearch:
         self.idle_iterations = 0
         self.rejected_iterations = 0
         self.improved_incumbent = False
-        self.started = clock()
+        self.started = self.budget.clock()
 
     @property
     def best(self) -> Optional[Dict[str, Any]]:
@@ -131,7 +129,7 @@ class _IteratedGreedySearch:
         """Another stage improved the incumbent: base the walk on it, as OR-Tools LNS bases on the shared best."""
         adopt_incumbent(self, candidate, profile)
 
-    def _set_parent(self, parent: _Parent, profile: GraphReadyWeightProfile) -> None:
+    def _set_parent(self, parent: IGParent, profile: GraphReadyWeightProfile) -> None:
         effective = ig_decode_profile(profile)
         before = (self.parent.batch_order, self.parent.inherited, profile_identity(self.profile))
         after = (parent.batch_order, parent.inherited, profile_identity(effective))
@@ -151,7 +149,7 @@ class _IteratedGreedySearch:
         if entry.score <= reference.score:
             accepted = True
         else:
-            progress = (self.clock() - self.started) / max(self.deadline - self.started, 1e-9)
+            progress = (self.budget.clock() - self.started) / max(self.budget.deadline - self.started, 1e-9)
             temperature = self.cooling.temperature(self.scale.value, progress)
             secondary = self.cooling.temperature(self.scale.secondary, progress)
             accepted = sa_accept(entry.score, reference.score, temperature=temperature, u=self.rnd.random(),
@@ -160,11 +158,11 @@ class _IteratedGreedySearch:
             self.reference = entry
 
     def _require_budget(self) -> None:
-        now = self.clock()
-        if now >= self.deadline:
-            raise _BudgetExhausted("time_budget")
+        now = self.budget.clock()
+        if now >= self.budget.deadline:
+            raise BudgetExhausted("time_budget")
         if self.report["decodes"] >= self.limits.max_decodes:
-            raise _BudgetExhausted("decode_budget")
+            raise BudgetExhausted("decode_budget")
 
     def _record_local_reuse(self, execution_kind: str, candidate: Optional[Dict[str, Any]] = None) -> None:
         """Describe local trial/reference reuse without inventing a decoder call or archive improvement.
@@ -189,10 +187,9 @@ class _IteratedGreedySearch:
             return known
         resume = self.checkpoints.best_for(reference.checkpoints, base_order=reference.order, trial_order=order)
         if resume is not None:
-            budget = self.decode_session.budget
+            budget = self.budget
             if (self.report["decodes"] + 1 >= self.limits.max_decodes
-                    or (budget is not None
-                        and not budget.can_afford_decode("sgs_resume", reserve_full=True)
+                    or (not budget.can_afford_decode("sgs_resume", reserve_full=True)
                         and budget.can_afford_decode("sgs_full"))):
                 resume = None
         try:
@@ -200,7 +197,7 @@ class _IteratedGreedySearch:
         except SharedSearchSkip as exc:
             self.last_decode_skip = exc
             if exc.reason == "estimated_decode_cost":
-                raise _BudgetExhausted(exc.reason) from exc
+                raise BudgetExhausted(exc.reason) from exc
             return None
         score = tuple(candidate["score"])
         feasible = _feasible(candidate)
@@ -248,7 +245,7 @@ class _IteratedGreedySearch:
             self.last_decode_skip = exc
             if exc.reason == "estimated_decode_cost":
                 # This required full reconstruction cannot become affordable as run time decreases.
-                raise _BudgetExhausted(exc.reason) from exc
+                raise BudgetExhausted(exc.reason) from exc
             return None
         feasible = _feasible(candidate)
         score = tuple(candidate["score"])
@@ -296,7 +293,7 @@ class _IteratedGreedySearch:
                 checkpoints: Optional[Any] = None, redecode_reason: Optional[str] = None,
                 capture_of: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         decision = RepairDecision(self.parent.batch_order, order, self.parent.inherited)
-        decode_kwargs: Dict[str, Any] = {"decode_session": self.decode_session, "redecode_reason": redecode_reason}
+        decode_kwargs: Dict[str, Any] = {"redecode_reason": redecode_reason}
         if resume is not None:
             decode_kwargs["decode_resume"] = resume
         if checkpoints is not None:

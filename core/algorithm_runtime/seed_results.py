@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import fields
-from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from core.algorithm_contracts.schedule_point_evidence import PointSeedResult
 from core.algorithm_contracts.types import ScheduleResult
-from core.algorithm_runtime.algo_stats import increment_counter
 
 _RESULT_FIELDS = tuple(f.name for f in fields(ScheduleResult))
 
@@ -55,56 +54,3 @@ def seed_result_for_output(result: ScheduleResult) -> ScheduleResult:
     if isinstance(result, (_SeedScheduleResult, PointSeedResult)):
         return ScheduleResult(**{name: getattr(result, name) for name in _RESULT_FIELDS})
     return result
-
-
-def normalize_seed_results(
-    *,
-    seed_results: List[ScheduleResult],
-    algo_stats: Dict[str, Any],
-) -> Tuple[List[ScheduleResult], Set[int], List[str]]:
-    """Keep the first seed of each operation ID.
-
-    Every seed already carries a positive operation ID: the evaluation context built before the
-    decode session rejects seeds without one (``evaluation_completion._result_key``).
-    """
-    seed_op_ids: Set[int] = set()
-    normalized: List[ScheduleResult] = []
-    dup_samples: List[str] = []
-    dropped_dup = 0
-    for seed_result in seed_results:
-        oid = seed_result.op_id
-        if oid in seed_op_ids:
-            dropped_dup += 1
-            if len(dup_samples) < 5:
-                dup_samples.append(str(oid))
-            continue
-        seed_op_ids.add(oid)
-        normalized.append(seed_result)
-    increment_counter(algo_stats, "seed_duplicate_dropped_count", dropped_dup)
-    return normalized, seed_op_ids, _seed_warnings(dropped_dup, dup_samples)
-
-
-def identity_int(value: Any) -> int:
-    if value is None or isinstance(value, bool):
-        return 0
-    if isinstance(value, int):
-        return int(value)
-    if isinstance(value, float):
-        return int(value) if value.is_integer() else 0
-    text = str(value).strip()
-    if not text:
-        return 0
-    digits = text[1:] if text[:1] in {"+", "-"} else text
-    if not digits.isdecimal():
-        return 0
-    return int(text)
-
-
-def _seed_warnings(dropped_dup: int, dup_samples: List[str]) -> List[str]:
-    if not dropped_dup:
-        return []
-    sample = ", ".join(dup_samples)
-    return [
-        f"沿用旧排产结果时发现 {dropped_dup} 条重复工序编号的记录，已按工序编号去重（保留首条）"
-        f"{('（示例工序编号：' + sample + '）') if sample else ''}。"
-    ]

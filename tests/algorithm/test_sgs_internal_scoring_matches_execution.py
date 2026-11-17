@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from unittest import mock
 
+from core.algorithm_contracts.resource_pool import ResourcePool
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_runtime.downtime import occupy_resource
 from core.algorithm_runtime.owned_timeline import (
@@ -141,14 +142,13 @@ def test_graph_priority_key_keeps_score_penalty_as_first_sort_component():
     assert unpenalized_low_graph < penalized_high_graph
 
 
-def test_sgs_native_order_keeps_seq_id_ties_and_missing_batch_with_raw_downtime():
+def test_sgs_native_order_keeps_seq_id_ties_with_raw_downtime():
     start = datetime(2026, 1, 1, 8)
     operations = [
         make_algo_op(id=op_id, op_code="OP" + str(op_id), batch_id=batch_id, seq=seq,
                      source="internal", machine_id=" M1 ", operator_id="O1", setup_hours=1.0,
                      unit_hours=0.0, op_type_id="OT1", op_type_name="cut")
-        for op_id, batch_id, seq in ((4, "B_A", 2), (3, "B_A", 1), (1, "B_B", 1),
-                                     (2, "B_A", 1), (5, "MISSING", 1))
+        for op_id, batch_id, seq in ((4, "B_A", 2), (3, "B_A", 1), (1, "B_B", 1), (2, "B_A", 1))
     ]
     downtime = {" M1 ": [(start + timedelta(hours=3), start + timedelta(hours=4)),
                         (start + timedelta(hours=1), start + timedelta(hours=2))]}
@@ -167,9 +167,8 @@ def test_sgs_native_order_keeps_seq_id_ties_and_missing_batch_with_raw_downtime(
         (start + timedelta(hours=4), start + timedelta(hours=5)),
         (start + timedelta(hours=5), start + timedelta(hours=6)),
     ]
-    assert (summary.total_ops, summary.scheduled_ops, summary.failed_ops) == (5, 4, 1)
-    assert summary.failure_details == [{"op_id": 5, "op_code": "OP5", "batch_id": "MISSING",
-                                        "seq": 1, "code": "missing_batch"}]
+    assert (summary.total_ops, summary.scheduled_ops, summary.failed_ops) == (4, 4, 0)
+    assert summary.failure_details == []
 
 
 def test_zero_hour_operation_is_a_point_event_that_busy_time_neither_shifts_nor_records():
@@ -188,7 +187,7 @@ def test_zero_hour_operation_is_a_point_event_that_busy_time_neither_shifts_nor_
     session, decoded = production_decode_in_session(
         scheduler, operations=[point_op, timed_op], batches=batches, seed_results=[busy], start_dt=start,
         dispatch_mode="sgs", dispatch_rule="slack", batch_order_override=["B_P", "B_T"],
-        machine_downtimes={"M1": [(start, start + timedelta(hours=3))]}, resource_pool={},
+        machine_downtimes={"M1": [(start, start + timedelta(hours=3))]},
     )
     rows = {row.op_id: row for row in decoded.results}
 
@@ -320,12 +319,13 @@ def test_sgs_explicit_handoff_avoids_same_round_rescan_and_preserves_window_bloc
     assert scoring_est.call_count == 2
     assert placement_est.call_count == 0
 
-    pool = {
-        "machines_by_op_type": {"OT1": ["M1", "M2"]},
-        "operators_by_machine": {"M1": ["O1"], "M2": ["O1"]},
-        "machines_by_operator": {"O1": ["M1", "M2"]},
-        "pair_rank": {},
-    }
+    pool = ResourcePool(
+        enabled=True,
+        machines_by_op_type={"OT1": ("M1", "M2")},
+        operators_by_machine={"M1": ("O1",), "M2": ("O1",)},
+        machines_by_operator={"O1": ("M1", "M2")},
+        pair_rank={}, operator_skills=None,
+    )
     auto_op = make_algo_op(id=10, op_code="OP_AUTO", batch_id="B_A", machine_id=None, operator_id=None,
                            setup_hours=2.0, unit_hours=0.0, op_type_id="OT1", op_type_name="车削")
     auto_scheduler = GreedyScheduler(calendar_service=_Calendar(), config_service=config_snapshot(auto_assign_enabled="yes"))

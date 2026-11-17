@@ -12,8 +12,9 @@ if REPO_ROOT not in sys.path:
 
 import core.algorithms.greedy.dispatch.route as greedy_route_module
 import core.algorithms.greedy.scheduler as greedy_scheduler_module
-from core.algorithm_contracts.sort_strategies import SortStrategy
+from core.algorithm_contracts.sort_strategies import WeightedParams
 from core.algorithms.greedy.scheduler import GreedyScheduler
+from core.models.enums import SortStrategy
 from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.schedule_decode import config_snapshot, production_decode
 
@@ -37,9 +38,9 @@ class _SpySorter:
 def test_greedy_scheduler_passes_start_dt_date_to_sorter(monkeypatch):
     captured = {}
 
-    def _fake_create(cls, strategy, **kwargs):
+    def _fake_create(cls, strategy, weights):
         captured["strategy"] = strategy
-        captured["kwargs"] = kwargs
+        captured["weights"] = weights
         return _SpySorter(captured)
 
     monkeypatch.setattr(greedy_scheduler_module.StrategyFactory, "create", classmethod(_fake_create))
@@ -52,11 +53,12 @@ def test_greedy_scheduler_passes_start_dt_date_to_sorter(monkeypatch):
         operations=[],
         batches={},
         strategy=SortStrategy.WEIGHTED,
-        strategy_params={"priority_weight": 0.4, "due_weight": 0.5},
+        strategy_params=WeightedParams(priority_weight=0.4, due_weight=0.5),
         start_dt=start_dt,
     )
 
     assert captured["strategy"] == SortStrategy.WEIGHTED
+    assert captured["weights"] == WeightedParams(priority_weight=0.4, due_weight=0.5)
     assert captured["base_date"] == start_dt.date()
 
 
@@ -83,7 +85,7 @@ def test_greedy_scheduler_weighted_order_uses_start_dt_base_date(monkeypatch):
         operations=operations,
         batches=batches,
         strategy=SortStrategy.WEIGHTED,
-        strategy_params={"priority_weight": 0.0, "due_weight": 1.0},
+        strategy_params=WeightedParams(priority_weight=0.0, due_weight=1.0),
         start_dt=start_dt,
     )
 

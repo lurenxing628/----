@@ -1,9 +1,14 @@
 """工作台实际计算保留 report/on 图分析、冻结种子及排程结果。"""
 
+import json
+import os
+import subprocess
+import sys
 from dataclasses import asdict
 
 import pytest
 
+from tests._support.paths import REPO_ROOT_STR
 from tests.workbench.run_compute_support import compute_run, unchanged
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
 
@@ -60,6 +65,7 @@ def test_graph_modes_preserve_current_candidate_contract(run_case, frozen):
 def test_merged_external_deduplicates_duration_and_external_never_consumes_internal_capacity():
     from datetime import datetime
 
+    from core.algorithm_contracts.resource_pool import ResourcePool
     from core.algorithm_contracts.types import OpForScheduleAlgo
     from core.models.batch import Batch
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
@@ -68,9 +74,6 @@ def test_merged_external_deduplicates_duration_and_external_never_consumes_inter
     from core.services.scheduler.graph.resource_matching import summarize_operation_machine_matching
     from core.services.scheduler.run.optimizer.graph.v2_capacity import (
         FixedResourceBlockingFacts,
-        _candidate_machine_ids,
-        _requires_auto_operator,
-        _ResourcePoolView,
         residual_capacity_for_operation,
     )
 
@@ -134,15 +137,19 @@ def test_merged_external_deduplicates_duration_and_external_never_consumes_inter
         ),
     ]
     batch = Batch(batch_id="B1", part_no="P1", quantity=1, due_date="2026-09-20")
-    pool_dict = {
-        "machines_by_op_type": {"T1": ["M1"]},
-        "operators_by_machine": {"M1": ["O1"]},
-        "machines_by_operator": {"O1": ["M1"]},
-    }
+    pool = ResourcePool(
+        enabled=True,
+        machines_by_op_type={"T1": ("M1",)},
+        operators_by_machine={"M1": ("O1",)},
+        machines_by_operator={"O1": ("M1",)},
+        pair_rank={},
+        operator_skills=None,
+    )
     nodes = build_operation_nodes_from_rows(
         rows,
         batches={"B1": batch},
-        resource_pool=pool_dict,
+        resource_pool=pool,
+        frozen_op_ids=frozenset(),
     )
     by_id = {n.node_id: n for n in nodes}
     assert by_id["op:1"].machine_id is None and by_id["op:1"].candidate_machine_ids == ()
@@ -159,21 +166,66 @@ def test_merged_external_deduplicates_duration_and_external_never_consumes_inter
     assert analysis.critical_path_minutes == 2940
     assert analysis.node_metrics["op:1"]["downstream_critical_minutes"] == 2940
 
-    pool_view = _ResourcePoolView(pool_dict)
-    ext_op = rows[0]
-    assert _requires_auto_operator(ext_op, pool=pool_view) is False
-    assert _candidate_machine_ids(ext_op, pool=pool_view) == ()
-    prepared = FixedResourceBlockingFacts(downtime_map={}, seed_results_by_resource_id={"machine": {}, "operator": {}})
+    prepared = FixedResourceBlockingFacts(
+        downtime_map={}, seed_results_by_resource_id={"machine": {}, "operator": {}}, resource_pool=pool,
+    )
     cap = residual_capacity_for_operation(
-        ext_op,
+        rows[0],
         batch=batch,
         start_dt=datetime(2026, 9, 9, 8),
         window_end=datetime(2026, 9, 20),
         calendar_service=None,
-        resource_pool=pool_dict,
         prepared=prepared,
     )
     assert cap["residual_capacity_pressure"] == 0.0 and cap["candidate_machine_count"] == 0
+
+
+_RESOURCE_MATCHING_DIAGNOSTICS_SCRIPT = """
+import json
+
+from core.models.batch import Batch
+from core.services.scheduler.graph.input_adapter import build_operation_nodes_from_rows
+from core.services.scheduler.graph.precedence_builder import build_linear_edges_by_batch
+from core.services.scheduler.run.schedule_graph_resource_matching_context import (
+    build_graph_resource_matching_projection,
+)
+from tests._support.optimizer_business_cases import algo_operation_from_fixture, fixture_data
+
+data = fixture_data("shift_pool")
+operations = [algo_operation_from_fixture(row) for row in data["operations"]]
+batches = {row["batch_id"]: Batch(part_no=row["batch_id"], **row) for row in data["batches"]}
+nodes = build_operation_nodes_from_rows(
+    operations, batches=batches, resource_pool=data["resource_pool"], frozen_op_ids=frozenset(),
+)
+_public, diagnostics = build_graph_resource_matching_projection(
+    is_dag=True,
+    nodes=nodes,
+    edges=build_linear_edges_by_batch(nodes),
+    graph_ready_context=None,
+    op_id_sets=({op.id for op in operations}, set()),
+)
+print(json.dumps(diagnostics))
+"""
+
+
+def test_resource_matching_diagnostics_do_not_depend_on_hash_seed():
+    # 首波 12 道工序：6 道争 M0/M1/M2，6 道只能上 M0，最大匹配不唯一；换字符串哈希种子也必须选中同一组匹配。
+    outputs = [
+        subprocess.run(
+            [sys.executable, "-c", _RESOURCE_MATCHING_DIAGNOSTICS_SCRIPT],
+            cwd=REPO_ROOT_STR,
+            env=dict(os.environ, PYTHONHASHSEED=seed),
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        ).stdout
+        for seed in ("0", "1")
+    ]
+    assert outputs[0] == outputs[1]
+    diagnostics = json.loads(outputs[0])
+    assert diagnostics["matches_count"] == 3
+    assert diagnostics["unmatched_operation_count"] == 9
 
 
 def test_piece_run_with_zero_graph_weights_disables_score_without_missing_node_metrics(run_case):
@@ -198,6 +250,7 @@ def test_piece_run_with_zero_graph_weights_disables_score_without_missing_node_m
 
 
 def test_piece_merged_external_groups_preserve_piece_identity_and_prune_completed_groups():
+    from core.algorithm_contracts.resource_pool import DISABLED_RESOURCE_POOL
     from core.algorithm_contracts.types import OpForScheduleAlgo
     from core.models.batch import Batch
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
@@ -270,7 +323,9 @@ def test_piece_merged_external_groups_preserve_piece_identity_and_prune_complete
         edges.append(OperationGraphEdge(f"op:{branch_tails[1]}", f"op:{join_id}"))
         prev_join = join_id
 
-    nodes = build_operation_nodes_from_rows(rows, batches={"B1": batch})
+    nodes = build_operation_nodes_from_rows(
+        rows, batches={"B1": batch}, resource_pool=DISABLED_RESOURCE_POOL, frozen_op_ids=frozenset(),
+    )
     assert len(nodes) == 80
     assert nodes[0].external_group_key == ("B1", "G0", "P1")
     assert nodes[2].external_group_key == ("B1", "G0", "P2")

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, List
 
+from core.algorithm_contracts.resource_pool import ResourcePool
 from core.errors import ValidationError
 
 from .neighborhood_move_support import LocalSearchResultFacts
@@ -40,7 +41,7 @@ def build_neighborhood_move(
     name: str,
     *,
     order: List[str],
-    resource_pool: Optional[Dict[str, Any]],
+    resource_pool: ResourcePool,
     rnd: Any,
     current_dispatch_rule: str = "",
     valid_dispatch_rules: List[str],

@@ -125,16 +125,18 @@ def test_summary_identity_labels_preserve_raw_formula_prefix_and_strip_control_c
     assert rows[3] == ("筛选范围", "'=not-an-identity")
 
 
-def _openpyxl_temp_files() -> set:
-    temp_dir = tempfile.gettempdir()
-    return {
-        os.path.join(temp_dir, name)
-        for name in os.listdir(temp_dir)
-        if name.startswith("openpyxl.")
-    }
+@pytest.fixture
+def openpyxl_temp_dir(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    """openpyxl 的临时文件建在 tempfile 的默认目录；改到本用例独占目录，并行时只核对自己的文件。"""
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    return tmp_path
 
 
-def test_write_only_xlsx_rejection_cleans_up_openpyxl_temp_files() -> None:
+def _openpyxl_temp_files(directory) -> set:
+    return {name for name in os.listdir(directory) if name.startswith("openpyxl.")}
+
+
+def test_write_only_xlsx_rejection_cleans_up_openpyxl_temp_files(openpyxl_temp_dir) -> None:
     overlong_cell = "x" * (XLSX_MAX_CELL_CHARS + 1)
     overdue_item = {
         "bucket_label": "已超期",
@@ -148,19 +150,18 @@ def test_write_only_xlsx_rejection_cleans_up_openpyxl_temp_files() -> None:
         "delay_days": 1,
         "delay_hours": 10.0,
     }
-    before_files = _openpyxl_temp_files()
     before_tracked = set(ALL_TEMP_FILES)
 
     with pytest.raises(WorkbenchCommandRejected) as exc_info:
         export_overdue_xlsx([overdue_item], summary_rows=[["计划编号", "P1"]], write_only=True)
 
     assert exc_info.value.code == "export_too_large"
-    assert _openpyxl_temp_files() - before_files == set()
+    assert _openpyxl_temp_files(openpyxl_temp_dir) == set()
     assert set(ALL_TEMP_FILES) - before_tracked == set()
 
 
 def test_write_only_xlsx_save_oserror_is_not_masked_by_cleanup_and_leaves_no_temp_files(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, openpyxl_temp_dir
 ) -> None:
     overdue_item = {
         "bucket_label": "已超期",
@@ -179,18 +180,17 @@ def test_write_only_xlsx_save_oserror_is_not_masked_by_cleanup_and_leaves_no_tem
         raise OSError("simulated disk full")
 
     monkeypatch.setattr(zipfile.ZipFile, "write", fail_archive_write)
-    before_files = _openpyxl_temp_files()
     before_tracked = set(ALL_TEMP_FILES)
 
     with pytest.raises(OSError, match="simulated disk full"):
         export_overdue_xlsx([overdue_item], summary_rows=[["计划编号", "P1"]], write_only=True)
 
-    assert _openpyxl_temp_files() - before_files == set()
+    assert _openpyxl_temp_files(openpyxl_temp_dir) == set()
     assert set(ALL_TEMP_FILES) - before_tracked == set()
 
 
 def test_write_only_xlsx_first_sheet_cleanup_failure_neither_masks_rejection_nor_skips_later_sheets(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, openpyxl_temp_dir
 ) -> None:
     overlong_cell = "x" * (XLSX_MAX_CELL_CHARS + 1)
     overdue_item = {
@@ -215,7 +215,6 @@ def test_write_only_xlsx_first_sheet_cleanup_failure_neither_masks_rejection_nor
         orig_cleanup(self)
 
     monkeypatch.setattr(WorksheetWriter, "cleanup", flaky_cleanup)
-    before_files = _openpyxl_temp_files()
     before_tracked = set(ALL_TEMP_FILES)
     try:
         with pytest.raises(WorkbenchCommandRejected) as exc_info:
@@ -232,12 +231,12 @@ def test_write_only_xlsx_first_sheet_cleanup_failure_neither_masks_rejection_nor
             if os.path.exists(writer.out):
                 orig_cleanup(writer)
 
-    assert _openpyxl_temp_files() - before_files == set()
+    assert _openpyxl_temp_files(openpyxl_temp_dir) == set()
     assert set(ALL_TEMP_FILES) - before_tracked == set()
 
 
 def test_write_only_xlsx_writer_close_oserror_still_cleans_up_temp_files_and_preserves_rejection(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, openpyxl_temp_dir
 ) -> None:
     overlong_cell = "x" * (XLSX_MAX_CELL_CHARS + 1)
     overdue_item = {
@@ -261,7 +260,6 @@ def test_write_only_xlsx_writer_close_oserror_still_cleans_up_temp_files_and_pre
         raise OSError("simulated disk full on XML flush")
 
     monkeypatch.setattr(WorksheetWriter, "close", fail_close_on_xml_flush)
-    before_files = _openpyxl_temp_files()
     before_tracked = set(ALL_TEMP_FILES)
 
     with pytest.raises(WorkbenchCommandRejected) as exc_info:
@@ -271,7 +269,9 @@ def test_write_only_xlsx_writer_close_oserror_still_cleans_up_temp_files_and_pre
     assert exc_info.value.status == 413
     assert len(closed_writers) == 2
     for writer in closed_writers:
+        # 临时文件确实建在独占目录里，四条用例对这个目录的“无残留”核对才不是空转。
+        assert os.path.dirname(writer.out) == str(openpyxl_temp_dir)
         assert not os.path.exists(writer.out)
         assert writer.out not in ALL_TEMP_FILES
-    assert _openpyxl_temp_files() - before_files == set()
+    assert _openpyxl_temp_files(openpyxl_temp_dir) == set()
     assert set(ALL_TEMP_FILES) - before_tracked == set()

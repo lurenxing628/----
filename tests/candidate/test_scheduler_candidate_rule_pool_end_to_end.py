@@ -1,11 +1,11 @@
 """完整规则池与实际共享规则动作保留真实采用来源。"""
 
 import itertools
+from dataclasses import replace
 
 import pytest
 
 from core.services.scheduler.config.config_field_spec import choices_for
-from core.services.scheduler.run import schedule_candidate_runner
 from core.services.scheduler.run.optimizer.multi_start import _dispatch_rules_for_mode
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
 from core.services.scheduler.run.schedule_candidate_summary import (
@@ -22,9 +22,8 @@ def _compare(scenario, objective="min_overdue"):
     config = {"seed": 0, "time_budget_seconds": 20}
     ticks = itertools.count(0.0, 0.01)
     data = fixture_data(scenario)
-    with case_environment(data, objective, config) as (solver_input, resources), pytest.MonkeyPatch.context() as runner_patch:
-        runner_patch.setattr(schedule_candidate_runner, "monotonic", lambda: next(ticks))
-        return run_candidate_comparison(solver_input, resources)
+    with case_environment(data, objective, config) as (solver_input, resources):
+        return run_candidate_comparison(solver_input, replace(resources, clock=lambda: next(ticks)))
 
 
 @pytest.fixture(scope="module")
@@ -74,7 +73,6 @@ def test_complete_rule_pool_and_actual_shared_rule_actions(shift_pool_outcome, r
 def test_adopted_rule_and_origin_match_the_actual_shared_source(shift_pool_outcome):
     events = {event["event_id"]: event for event in shift_pool_outcome.unified_process["events"]}
     for plan in shift_pool_outcome.candidates:
-        assert plan.status == "completed"
         assert plan.dispatch_mode == "sgs"
         adopted_rule = plan.used_params["dispatch_rule"]
         assert adopted_rule in RULE_POOL

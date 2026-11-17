@@ -10,7 +10,7 @@ from .repair_decisions import RepairParentPreparation
 
 
 @dataclass(frozen=True)
-class _Parent:
+class IGParent:
     order: Tuple[int, ...]
     batch_order: Tuple[str, ...]
     inherited: Tuple[Tuple[int, str, str], ...]
@@ -25,7 +25,7 @@ class _Parent:
         return self.prepared.successors
 
 
-def _parent_from_candidate(candidate: Dict[str, Any], *, prepared: RepairParentPreparation) -> Optional[_Parent]:
+def parent_from_candidate(candidate: Dict[str, Any], *, prepared: RepairParentPreparation) -> Optional[IGParent]:
     """``prepared`` is the candidate's parent preparation (EliteRepairPool.prepare_parent).
 
     A decoded order exists only when every mutable operation has a decoded row; each such row names its
@@ -36,10 +36,10 @@ def _parent_from_candidate(candidate: Dict[str, Any], *, prepared: RepairParentP
     if not prepared.operation_order:
         return None
     batch_order = tuple(batch for batch in prepared.decoded_batch_order if batch in prepared.mutable_batch_ids)
-    return _Parent(prepared.operation_order, batch_order, prepared.inherited_resources, prepared)
+    return IGParent(prepared.operation_order, batch_order, prepared.inherited_resources, prepared)
 
 
-def _park(order: Tuple[int, ...], removed: Set[int], *, successors: Dict[int, Set[int]]) -> List[int]:
+def park(order: Tuple[int, ...], removed: Set[int], *, successors: Dict[int, Set[int]]) -> List[int]:
     """Kept operations keep their order; removed ones are parked at their latest feasible rank.
 
     Removed operations are inserted successors-first (reverse topological order), so an
@@ -57,8 +57,8 @@ def _latest_rank(working: List[int], *, successors: Set[int]) -> int:
     return next((position for position, item in enumerate(working) if item in successors), len(working))
 
 
-def _insertion_positions(without: List[int], op_id: int, *, parent: _Parent, anchor: int, window: int,
-                         explore: bool = False) -> List[int]:
+def insertion_positions(without: List[int], op_id: int, *, parent: IGParent, anchor: int, window: int,
+                        explore: bool = False) -> List[int]:
     """Ranks between the last predecessor and the first successor, nearest to the old rank first."""
     index = {item: position for position, item in enumerate(without)}
     low = max((index[item] + 1 for item in parent.predecessors[op_id] if item in index), default=0)
@@ -89,4 +89,4 @@ def _extend_insertion_probes(positions: List[int], *, low: int, high: int, centr
         distance = distance * 2 if double_distance else distance + 1
 
 
-__all__ = ["_Parent", "_insertion_positions", "_latest_rank", "_parent_from_candidate", "_park"]
+__all__ = ["IGParent", "insertion_positions", "parent_from_candidate", "park"]

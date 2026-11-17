@@ -2,7 +2,7 @@
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
-from core.services.common.bounded_plan_query import PagePlanQueryService
+from core.services.common.plan_query import SchedulePlanQueryService
 from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
@@ -17,7 +17,7 @@ def current_execution_plan(conn):
         plan_ref = refs.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
     except WorkbenchPlanReferenceError as exc:
         raise WorkbenchCommandRejected("execution_ledger_unavailable", "当前正式计划永久身份不可用，不能改指其他计划。") from exc
-    resolution = PagePlanQueryService(repo, version).resolve_plan(version)
+    resolution = SchedulePlanQueryService(conn, repo=repo).resolve_plan(version)
     identity = resolution.plan_identity
     writable = bool(identity.can_write_feedback)
     return {"plan_ref": plan_ref, "version": version, "kind": "official", "display_name": "当前正式计划",

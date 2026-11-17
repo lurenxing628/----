@@ -4,11 +4,14 @@ from __future__ import annotations
 import heapq
 import math
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, NoReturn, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, NoReturn, Optional, Set, Tuple
 
 from core.algorithm_contracts.value_domains import EXTERNAL, MERGED
 from core.algorithm_runtime.piece_input import external_group_key
 from core.errors import ValidationError
+
+if TYPE_CHECKING:
+    from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
 
 
 def operation_workload_signals(
@@ -16,7 +19,7 @@ def operation_workload_signals(
     start_dt: datetime, graph_ready_context: Any,
     seed_results: List[Any], calendar_service: Any, work_buckets: Any,
     ready_starts: Dict[str, Optional[datetime]],
-    deadline: float, clock: Callable[[], float],
+    budget: SharedSearchBudget,
 ) -> Optional[Tuple[Dict[int, float], Dict[int, float]]]:
     """Count each reachable work bucket once; release follows longest predecessor path.
 
@@ -24,19 +27,19 @@ def operation_workload_signals(
     predecessors with seed evidence use their completion; other fixed work is
     already completed under the graph dispatch contract.
     """
-    if clock() >= deadline:
+    if budget.clock() >= budget.deadline:
         return None
     buckets, members, work = work_buckets
     links, release = _bucket_releases(
         operations, buckets, graph_ready_context["predecessor_op_ids_by_op_id"],
         start_dt, seed_results, ready_starts,
     )
-    if clock() >= deadline:
+    if budget.clock() >= budget.deadline:
         return None
     ordered = _topological_order(links)
     if not _advance_releases(
         operations, batches, members, work, links, release, ordered, calendar_service,
-        deadline=deadline, clock=clock,
+        budget=budget,
     ):
         return None
     burden = _remaining_burdens(work, links, ordered)
@@ -107,12 +110,12 @@ def _bucket_releases(
 
 def _advance_releases(
     operations, batches, members, work, links, release, ordered, calendar_service,
-    *, deadline: float, clock: Callable[[], float],
+    *, budget: SharedSearchBudget,
 ) -> bool:
     for bucket in ordered:
         if not links[bucket]:
             continue
-        if clock() >= deadline:
+        if budget.clock() >= budget.deadline:
             return False
         op = operations[members[bucket][0]]
         finish = _gross_finish(op, batches[str(op.batch_id)], release[bucket], work[bucket], calendar_service)

@@ -1,15 +1,14 @@
-"""Run-owned segment sequences with a complete public mutation protocol."""
+"""Run-owned segment sequences: each write (sorted insert, row replacement) advances a revision."""
 
 from __future__ import annotations
 
-from collections.abc import MutableSequence
 from datetime import datetime
 from typing import Any, Dict, List, Tuple, cast
 
 Segment = Tuple[datetime, datetime]
 
 
-class OwnedSegments(MutableSequence):
+class OwnedSegments:
     """No list inheritance: list.__setitem__ cannot bypass the revision counter."""
 
     def __init__(self, values=()):
@@ -27,57 +26,24 @@ class OwnedSegments(MutableSequence):
         return iter(self._values)
 
     def __setitem__(self, index, value):
-        try:
-            self._values[index] = value
-        finally:
-            self._revision += 1
-
-    def __delitem__(self, index):
-        try:
-            del self._values[index]
-        finally:
-            self._revision += 1
-
-    def insert(self, index, value):
-        try:
-            self._values.insert(index, value)
-        finally:
-            self._revision += 1
-
-    def sort(self, *, key=None, reverse=False):
-        try:
-            self._values.sort(key=key, reverse=reverse)
-        finally:
-            self._revision += 1
-
-    def reverse(self):
-        self._values.reverse()
+        self._values[index] = value
         self._revision += 1
 
-    def __imul__(self, count):
-        try:
-            self._values *= count
-        finally:
-            self._revision += 1
-        return self
-
-    def copy(self):
-        return self._values.copy()
+    def insert(self, index, value):
+        self._values.insert(index, value)
+        self._revision += 1
 
     def __eq__(self, other):
         if isinstance(other, OwnedSegments):
             return self._values == other._values
-        return self._values == other
-
-    def __repr__(self):
-        return repr(self._values)
+        return NotImplemented
 
     def certificate(self):
         return self._identity, self._revision
 
 
 class OwnedTypeEntries(OwnedSegments):
-    """The same mutation protocol for actual (start, end, op_id, type) rows."""
+    """The same owned sequence for actual (start, end, op_id, type) rows."""
 
 
 class OwnedTimeline(Dict[str, List[Segment]]):
@@ -92,10 +58,6 @@ class OwnedTimeline(Dict[str, List[Segment]]):
         if key not in self:
             self[key] = default
         return self[key]
-
-    def update(self, *args: Any, **kwargs: Any) -> None:
-        for key, value in dict(*args, **kwargs).items():
-            self[key] = value
 
     def clone(self) -> OwnedTimeline:
         """Independent copy with one segment-list allocation per resource and fresh owner identities."""

@@ -6,8 +6,9 @@ from typing import Optional
 
 import pytest
 
+from core.algorithm_contracts.resource_pool import ResourcePool
 from tests._support.algo_operations import make_algo_op, make_batch
-from tests._support.schedule_decode import config_snapshot, production_decode
+from tests._support.schedule_decode import config_snapshot, production_decode, required_hours_by_op_id
 
 
 @dataclass
@@ -45,12 +46,13 @@ def test_auto_assign_fixed_operator_respects_op_type() -> None:
     )
 
     # machines_by_operator 含一个“错误工种”的设备 M_BAD，以及正确设备 M_OK
-    resource_pool = {
-        "machines_by_op_type": {"OT_OK": ["M_OK"]},
-        "operators_by_machine": {"M_OK": ["O1"], "M_BAD": ["O1"]},
-        "machines_by_operator": {"O1": ["M_BAD", "M_OK"]},
-        "pair_rank": {},
-    }
+    resource_pool = ResourcePool(
+        enabled=True,
+        machines_by_op_type={"OT_OK": ("M_OK",)},
+        operators_by_machine={"M_OK": ("O1",), "M_BAD": ("O1",)},
+        machines_by_operator={"O1": ("M_BAD", "M_OK")},
+        pair_rank={}, operator_skills=None,
+    )
 
     sched = GreedyScheduler(calendar_service=_StubCalendarService(), config_service=config_snapshot(auto_assign_enabled="yes"))
     decoded = production_decode(
@@ -88,11 +90,13 @@ def test_auto_assign_keeps_machine_hours_qualification_failure_order(failure):
 
     op = make_algo_op(id=1, batch_id="B1", op_type_id="T1", setup_hours=2.0, unit_hours=0.0)
     batch = make_batch(batch_id="B1", quantity=1)
-    pool = {"machines_by_op_type": {"T1": [] if failure == "machine" else ["M1"]},
-            "operators_by_machine": {"M1": ["O1"]}, "machines_by_operator": {},
-            "operator_skills": {"O1": []}, "pair_rank": {}}
+    pool = ResourcePool(enabled=True, machines_by_op_type={"T1": () if failure == "machine" else ("M1",)},
+                        operators_by_machine={"M1": ("O1",)}, machines_by_operator={},
+                        pair_rank={}, operator_skills={"O1": frozenset()})
     scheduler = GreedyScheduler(calendar_service=_StubCalendarService(), config_service=config_snapshot(auto_assign_enabled="yes"))
-    preparation = prepare_native_schedule_inputs({}, scheduler=scheduler, operations=[op], batches={"B1": batch},
+    batches = {"B1": batch}
+    preparation = prepare_native_schedule_inputs({}, scheduler=scheduler, operations=[op], batches=batches,
+                                                 required_hours_by_op_id=required_hours_by_op_id([op], batches),
                                                  seed_results=[], resource_pool=pool, graph_ready_context=None)
     stats = make_algo_stats()
     attempt = auto_assign_internal_resources_attempt(

@@ -39,8 +39,7 @@ def incomplete_batch_ids_from_failure_details(
     """
     incomplete: Set[str] = set()
     for detail in failure_details:
-        # Failure details always carry a non-empty batch_id (run_state._failure_detail; archived
-        # details are validated by delivery_completeness._batch_details).
+        # Failure details always carry a non-empty batch_id (run_state._failure_detail).
         batch_id = detail["batch_id"]
         if batch_id in finish_by_batch:
             incomplete.add(batch_id)
@@ -136,7 +135,7 @@ def incomplete_batches_payload(
     return {"count": len(incomplete_batch_ids), "items": items}
 
 
-def _build_overdue_items(
+def build_overdue_items(
     *,
     batches: Dict[str, Any],
     finish_by_batch: Dict[str, datetime],
@@ -178,8 +177,8 @@ def _build_overdue_items(
 
 
 __all__ = [
-    "_build_overdue_items",
     "build_incomplete_batch_items",
+    "build_overdue_items",
     "incomplete_batch_ids_from_failure_details",
     "incomplete_batches_payload",
     "NEAR_DUE_WINDOW_DAYS",

@@ -1,5 +1,7 @@
 """Fresh application startup makes the first real run independent of old config pages."""
 
+from datetime import datetime
+
 import pytest
 
 from core.errors import ValidationError
@@ -33,11 +35,12 @@ def test_fresh_application_first_real_worker_run_needs_no_config_page(db_env):
     try:
         assert conn.execute("SELECT COUNT(*) FROM ScheduleConfig").fetchone()[0] == 0
         app = create_application()
-        assert _stored_snapshot(conn).sort_strategy == get_field_spec("sort_strategy").default
+        assert _stored_snapshot(conn).sort_strategy.value == get_field_spec("sort_strategy").default
         assert conn.execute("SELECT COUNT(*) FROM ScheduleConfig").fetchone()[0] == len(list_config_fields())
         initialized = config_rows(conn)
         conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
-        conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")
+        conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('M1','Lathe')")
+        conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M1','T1')")
         conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O1','Operator')")
         conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('O1','M1')")
         conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('P1','Part')")
@@ -47,7 +50,7 @@ def test_fresh_application_first_real_worker_run_needs_no_config_page(db_env):
         conn.commit()
         with app.app_context():
             accepted = case.accept(settings=case.settings(hold_window=None))
-            outcome = WorkbenchRunWorker(conn).execute(accepted["run_ref"])
+            outcome = WorkbenchRunWorker(conn, clock=datetime.now).execute(accepted["run_ref"])
         assert outcome["state"] == "complete" and outcome["result_persisted"] is True
         assert outcome["candidates"]
         assert conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateTasks").fetchone()[0] > 0

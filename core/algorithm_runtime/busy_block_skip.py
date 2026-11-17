@@ -1,6 +1,6 @@
 """Skip only fully occupied time inside a certified constant native work window."""
 
-from .calendar_timing_memo import MemoizedTimingCalendar, native_timing_calendar
+from .calendar_timing_memo import MemoizedTimingCalendar, TimingCalendar, native_timing_calendar
 
 
 def _native_union_end(segment_groups, start, limit):
@@ -17,14 +17,14 @@ def _native_union_end(segment_groups, start, limit):
     return cursor
 
 
-def _certified_window(calendar, earliest, priority, operator_id):
+def _certified_window(calendar: TimingCalendar, earliest, priority, operator_id):
     """Only native calendars, directly or behind the decode memo, certify constant work windows."""
     if not (isinstance(calendar, MemoizedTimingCalendar) or native_timing_calendar(calendar)):
         return None
     return calendar.certified_slot_window(earliest, priority=priority, operator_id=operator_id)
 
 
-def advance_busy_block(calendar, *, earliest, shift_to, segment_groups, total_base, priority, operator_id, abort_after):
+def advance_busy_block(calendar: TimingCalendar, *, earliest, shift_to, segment_groups, total_base, priority, operator_id, abort_after):
     if total_base <= 0 or abort_after is not None:
         return shift_to
     window = _certified_window(calendar, earliest, priority, operator_id)

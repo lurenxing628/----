@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from .candidate_fingerprint import score_strictly_better
 from .local_search_candidate_eval import evaluate_local_search_candidate
-from .local_search_state import LocalSearchState, candidate_can_update_best
+from .local_search_state import LocalSearchState, StrategyState, candidate_can_update_best
 from .neighborhood_registry import build_neighborhood_move
 from .shared_budget import SharedSearchSkip
 from .vns import VnsState
@@ -74,59 +73,40 @@ def run_local_search_candidate_round(
     *,
     local_state: LocalSearchState,
     vns_state: VnsState,
-    cur_strat: Any,
-    cur_params: Dict[str, Any],
-    cur_dispatch_mode: str,
-    cur_dispatch_rule: str,
+    strategy_state: StrategyState,
     rnd: Any,
     search_report_state: OptimizationSearchReportState,
     no_improve: int,
-    start_dt: datetime,
-    end_date: Optional[date],
-    resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
-    optimizer_algo_stats: Optional[Dict[str, Any]],
-    readiness_gate_enabled: bool,
     valid_dispatch_rules: List[str],
     decode_session: SharedDecodeSession,
 ) -> LocalSearchRoundResult:
     move = build_neighborhood_move(
         vns_state.current_neighborhood(),
         order=local_state.current_order,
-        resource_pool=local_state.current_resource_pool or resource_pool,
+        resource_pool=decode_session.native_preparation.resource_pool.with_pair_rank(
+            local_state.current_resource_pair_rank),
         rnd=rnd,
-        current_dispatch_rule=cur_dispatch_rule,
+        current_dispatch_rule=strategy_state.dispatch_rule,
         valid_dispatch_rules=valid_dispatch_rules,
         result_facts=local_state.current_facts,
     )
     if move.noop:
         return LocalSearchRoundResult(no_improve + 1, False)
     cand_order = list(move.batch_order or local_state.current_order)
-    candidate_resource_pool = local_state.current_resource_pool or resource_pool
-    candidate_pair_rank = local_state.current_resource_pair_rank
-    if move.resource_pair_rank:
-        candidate_pair_rank = dict(candidate_pair_rank)
-        candidate_pair_rank.update(move.resource_pair_rank)
-        ranks = dict((candidate_resource_pool or {}).get("pair_rank") or {})
-        ranks.update(move.resource_pair_rank)
-        candidate_resource_pool = dict(candidate_resource_pool or {}, pair_rank=ranks)
-    candidate_mode = str(move.dispatch_mode or cur_dispatch_mode)
-    candidate_rule = str(move.dispatch_rule or cur_dispatch_rule)
+    # The move's overrides apply on top of current's.
+    candidate_pair_rank = {**local_state.current_resource_pair_rank, **move.resource_pair_rank}
+    candidate_mode = str(move.dispatch_mode or strategy_state.dispatch_mode)
+    candidate_rule = str(move.dispatch_rule or strategy_state.dispatch_rule)
     calls_before = decode_session.actual_decoder_calls
     try:
         candidate = evaluate_local_search_candidate(
-            strategy=cur_strat,
-            params=cur_params,
-            start_dt=start_dt,
-            end_date=end_date,
+            inherited=strategy_state,
             order=cand_order,
             dispatch_mode=candidate_mode,
             dispatch_rule=candidate_rule,
-            resource_pool=candidate_resource_pool,
             resource_pair_rank=candidate_pair_rank,
             objective_name=objective_name,
-            optimizer_algo_stats=optimizer_algo_stats,
-            readiness_gate_enabled=bool(readiness_gate_enabled),
             decode_session=decode_session,
         )
     except SharedSearchSkip as exc:
