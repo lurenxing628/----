@@ -45,7 +45,6 @@ python -m PyInstaller --noconfirm --clean --onedir --windowed ^
   --add-data "templates;templates" ^
   --add-data "static;static" ^
   --add-data "templates_excel;templates_excel" ^
-  --add-data "plugins;plugins" ^
   --add-data "vendor\wheels;vendor\wheels" ^
   --add-data "schema.sql;." ^
   --hidden-import networkx ^
