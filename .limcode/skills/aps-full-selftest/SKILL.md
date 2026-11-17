@@ -27,7 +27,7 @@ python .limcode/skills/aps-full-selftest/scripts/run_full_selftest.py
 
 ## 验证层级与完成
 
-启动前先确认当前工作区干净，再直接调用共同完整门禁 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache --no-resume`（同 HEAD、干净工作区及仍匹配输入/环境/日志/输出的 long-gate v2 成功结果由共同门禁直接复用，缺证据或变化时由共同门禁实际重跑，禁用断点续跑跳过），并核验产出的 `evidence/QualityGate/v4/quality_gate_manifest.json`（`schema_version == 4`、`status == "passed"`、`head_sha` 一致且运行前后工作区干净）；工作区非干净或门禁失败时不运行后续 pytest。
+启动前先确认当前工作区干净，再直接调用共同完整门禁 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache --no-resume`（同 HEAD、干净工作区及仍匹配输入/环境/日志/输出的 long-gate 成功结果由共同门禁直接复用，缺证据或变化时由共同门禁实际重跑，禁用断点续跑跳过），并核验产出的 `evidence/QualityGate/v4/quality_gate_manifest.json`（`schema_version` 等于 `tools/quality_gate_shared.py` 的 `QUALITY_GATE_PROOF_SCHEMA_VERSION`、`status == "passed"`、`head_sha` 一致且运行前后工作区干净）；工作区非干净或门禁失败时不运行后续 pytest。
 
 本 runner 是专项全量自测，不等于统一质量门禁。日常快检、完整门禁、最终 clean proof 与快速静态预检以 [开发文档/README.md](../../../开发文档/README.md) 为准；不要为了自测结论自动叠跑所有模式，也不能用自测 PASS 替代要求的最终门禁。
 

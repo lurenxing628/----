@@ -133,7 +133,7 @@ python .codestable/tools/validate-yaml.py --dir {目录} --require status --excl
 
 关键口径：
 
-- `--strict` 校验当前 quality-gate 边界，即 `tools.quality_gate_operations.architecture_silent_scan_entries()` 与 `开发文档/技术债务治理台账.md` 的 active ledger IDs 是否一致。
+- `--strict` 用 `tools.quality_gate_operations.architecture_silent_scan_entries(repo_root, collect_quality_rule_files(repo_root))`（`tools/quality_gate_scan.py` 里 `repo_root` 取 `ctx.repo_root`）的扫描结果与 `开发文档/技术债务治理台账.md` 静默回退的非 `fixed` 条目按 `(path, symbol, except_ordinal)` 逐键比较：身份集合、处理器内容（`handler_signature`/`handler_context`）与 `fallback_kind` 都要一致。`scripts/sync_debt_ledger.py check` 与 `refresh --mode refresh-auto-fields` 共用同一个范围视图函数，各自只决定扫描哪些文件。
 - `--strict` 成功时无输出；漂移或台账格式错误会向 stderr 打印 `ERROR:` 并以退出码 `2` 失败。
 - `--strict --json` 当前用于生成 `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_scan_json.log`。
 - 2026-05-22 静默回退收口证据统一放在 `evidence/QualityGate/silent_fallback_inventory_acceptance/`，索引见 `.codestable/compound/2026-05-20-explore-current-silent-fallback-inventory.md`。
@@ -157,3 +157,32 @@ python .codestable/tools/validate-yaml.py --dir {目录} --require status --excl
 - Node 依次从 `WORKBENCH_NODE`、`PATH`、Codex 宿主自带运行时定位；这些检查不需要浏览器运行时。
 - 前端契约随普通套件执行，无需额外打开环境开关或单独轮转抽样。
 - 工作台界面变更仍可按任务需要做现场浏览器检查，旧通道不再作为自动化门禁。
+
+## 5. scan_constant_arguments.py
+
+只读审计扫描，找两类线索：一是有默认值的形参，生产与宿主工具代码里的调用都没传，或都传同一个字面量；二是模块级空容器，生产与宿主工具代码对它只有不改写、不传出的读取。它不进门禁，也没有基线，结果只作人工复核的输入。
+
+```bash
+# 按定义文件分组的文本报告：每条给出定义行、全部调用点或读取点，以及测试偏差
+.venv/bin/python -m tools.scan_constant_arguments
+
+# 同样的结论输出为 JSON，另带默认值原文和取值来源，便于脚本复核
+.venv/bin/python -m tools.scan_constant_arguments --json
+
+# 扫描另一个检出目录，例如 HEAD 的临时 worktree
+.venv/bin/python -m tools.scan_constant_arguments --repo-root <path>
+```
+
+关键口径：
+
+- 事实只取自 `tools/dead_code_usage` 的公开引用索引 `build_reference_index` 及其实参绑定，扫描器自己不另做解析或绑定。全仓一次约 20 秒，`.venv` 的 Python 3.8 即可运行。
+- 结论只看生产与宿主工具角色的引用（角色定义见 `tools/path_roles.py`）。测试引用不影响结论；与结论不符的测试引用列为“只有测试传了别的值”或“只有测试改写或传出”。
+- 索引是欠近似，不可判定的情形一律不报，包括：
+  - 有同名的未解析属性访问；
+  - 有逃逸或隐式使用；
+  - 调用处用了 `*` / `**`，或绑定对不上；
+  - 没有来自别处的调用或读取；
+  - 方法名在多个类里都有定义；
+  - dunder 名与 lambda。
+- 非常量名的 `getattr`、`globals()`、星号导入和字符串里的代码，扫描器都看不见。动手前要按调用方逐条复核。
+- 2026-11-15 在当前仓库跑出的结果见 `.codestable/audits/2026-11-15-deferred-backlog-root-causes/pipeline/batch-2/evidence/constant_arguments_scan.md`。

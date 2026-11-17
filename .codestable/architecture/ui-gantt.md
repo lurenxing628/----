@@ -21,11 +21,11 @@ tags: [scheduler, gantt, frontend, readonly, canvas, point, execution]
 | 计划甘特 | `PlanGantt.jsx`、`PlanGanttModel.js`、`PlanGanttCanvas.jsx` | `PlanAPI.js` / `PlanContract.js`，`/api/workbench/v1/plans/<plan_ref>/workspace` |
 | 同次候选甘特 | `RunCandidateGantt.jsx`、`RunCandidateModel.js`、`RunBaselineModel.js` | 当前运行的已保存候选及明确选择的比较基准 |
 | 试调甘特 | `TrialGantt.jsx` | 试调工作区的当前安排与其自身原安排 |
-| 实际甘特 | `ActualGanttWorkspace.jsx`、`ActualGanttModel.js`、`ActualGanttCanvas.jsx` | `ActualGanttAPI.js` / `ActualGanttContract.js`，`/api/workbench/v1/actual-gantt` |
+| 实际甘特 | `ActualGanttWorkspace.jsx`、`ActualGanttModel.js`、`ActualGanttCanvas.jsx` | `ActualGanttAPI.js` / `ActualGanttContract.js`，`POST /api/workbench/v1/actual-gantt`（范围含批次列表放请求体） |
 
 所有前端文件位于 `frontend/workbench/app/`，采用显式 ESM 模块（`import/export`），由 `scripts/workbench/build.py`（配合 `compile.cjs`）经宿主固定版本 `esbuild` 离线打包进入 `static/workbench/`（旧 `build-order.json` 手工脚本顺序拼接与 `window.*` 业务全局导出已退役）。实际图形来自当前领域响应，计划、已保存候选、试调和正式采用来源各自持永久引用。
 
-后端 `WorkbenchPlanQueryService` 通过本次读取上下文共享所选计划、任务、资源和基准来源（报表读取经 `WorkbenchReportFacts.read_snapshot()` 传入并复用单一流式 `PlanMetadataRepository` 上下文）。内部 `execution_workspace` 提供现场、链路和报表继续加工所需的计划事实；完整响应在真实 HTTP 出口编码和计量。实际甘特由 `ActualGanttService` 组合计划与共同执行台账投影，现场状态、已报工和更正沿真实事件读取，缺失与未知值分别保留。
+后端 `WorkbenchPlanQueryService` 通过本次读取上下文共享所选计划、任务、资源和基准来源（报表读取经 `WorkbenchReportFacts.read_snapshot()` 传入并复用单一流式 `PlanMetadataRepository` 上下文）。读取上下文还共享 `ScheduleHistory` 文档：`PlanReadContext.history_documents(version)` 按版本缓存一份 `core/services/workbench/facts/history_documents.HistoryDocuments`，每份文档首次读取时解码一次，用不到的文档不解码；任务分页（`schedule_page`）只投影整数微秒，不预先构造日期区间。现场、报表和实际甘特各按自己的范围直接读取计划任务：现场经 `WorkbenchFieldQueryRepository` 在 SQL 里按范围计数和分页，报表经 `WorkbenchReportFactsRepository.plan_rows` 读取所选正式计划的工序，实际甘特用读取上下文的 `scoped_rows` 与 `projected_tasks` 取范围内任务；完整响应在真实 HTTP 出口编码和计量。实际甘特由 `ActualGanttService` 组合计划与共同执行台账投影，现场状态、已报工和更正沿真实事件读取，缺失与未知值分别保留。
 
 ## 2. 准备、选择和布局
 
@@ -39,7 +39,7 @@ tags: [scheduler, gantt, frontend, readonly, canvas, point, execution]
 
 `PlanGantt` 用分开的 `useMemo` 表达以上依赖，hover 和滚动不会触发固定数据准备。总览条的固定区间与点列表按数据准备，直方图几何在实际宽度变化时重建。
 
-实际甘特的 `prepare(data, asOf)` 一次准备工序、报工 marks、搜索文本、时间轴和任务索引；`groupPrepared` 建立当前视角的分组；`layoutPrepared` 根据搜索、偏差条件、选中集合和折叠状态生成可见汇总、行位置及任务/报工定位。宽度经 `ActualGanttWindow` 转为显示几何，不重新解析报工事实。固定原始 marks 和本次可见 marks 分别承担事实与显示职责。
+实际甘特的 `prepare(data, asOf)` 一次准备工序、报工 marks、搜索文本、时间轴和任务索引；`groupPrepared` 建立当前视角的分组；`layoutPrepared` 根据搜索、偏差条件、选中集合和折叠状态生成可见汇总、行位置及任务/报工定位。宽度经 `ActualGanttWindow` 转为显示几何，不重新解析报工事实。固定原始 marks 和本次可见 marks 分别承担事实与显示职责。分组工时只对本地可见集合精确合计：后端给每条报工增加规范十进制串 `effective_processing_hours_exact`，`ActualGanttContract` 一次准入为 `shared/hours.js` 的精确量；`groupPrepared` 按成员求和，`selectPrepared` 合并可见成员，口径与后端 `core/models/hours.py` 的 `HourTotals` 一致。展示数字只在行摘要处转换一次。
 
 候选及比较基线同样使用 `prepare → groupPrepared → selectPrepared → layoutPrepared`。工作区持有固定准备，query 只筛已准备成员并更新可见汇总；轨道号和重叠标记来自完整分组，搜索后保留这份分组事实。基线开关复用 retainedResult。候选 Lane 已接共同 `useCanvasPaint`，可见集由父层计算一次。实际甘特的默认视口、缩放与定位直接消费准备好的 range/task/report 索引。
 
@@ -60,7 +60,7 @@ tags: [scheduler, gantt, frontend, readonly, canvas, point, execution]
 
 - 时间轴使用工厂本地墙钟字段，与浏览器时区和夏令时分离；业务时间文本保留秒和原有小数精度，轴标签只负责显示。
 - 合法零工时工序显示为点标记，不放大成占用区间，不消耗设备或人员容量。`PointGanttModel.prepareTracks/layoutTracks` 统一轨道与最小命中区域，Canvas 和 DOM 标记沿同一规则。
-- 当前安排与原安排各有来源。试调比较自己的原安排；计划采用来源和候选的比较基准由后端明确投影。
+- 当前安排与原安排各有来源。试调比较自己的原安排；计划采用来源和候选的比较基准由后端明确投影。候选的原安排对照每道工序只有一个 `baseline_segment`（`core/models/workbench_run_baseline.py`），没有原安排时为 null。
 - 实际甘特以真实报工、旧事件和更正后的共同台账表达开工、完工、未知数量和未知工时。计划结束与现场实际结束保持各自字段和含义，零工时计划也需真实执行事实才能显示实际完工。
 - 缩放、打印和跨宽度恢复保持时间中心与可见时长；实际甘特保留服务端的 `axis_span/as_of`，显示窗口由 `ActualGanttWindow` 管理。
 

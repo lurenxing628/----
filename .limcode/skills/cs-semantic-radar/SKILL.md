@@ -51,7 +51,7 @@ cs-semantic-radar 补这块。核心不是"自动改代码"，是建一套**长�
 ## 两条工具铁律（读 drift 结果前必看，已被血泪验证）
 
 1. **drift 的 AVS「Architecture Violation」≠ 本项目分层违规**。drift AVS 是 Martin 不稳定度耦合指标（`A.py -> B.py`），不是有向越层；本项目分层违规必须以本轮 AST 分层检查为准，不能沿用历史“零违规”结论。别把 AVS 数量直接当作越层数量。
-2. **drift 的 MDS「Exact duplicates」里有真护栏**。它会把 `normalization_matrix._merge_aliases ↔ boolean_normalize`（=审计 §90 LB-B1 承重双实现）标成"删重复"——而删它撞分层红线。**drift 结果必须过 Agent 语义法医，不能直接采信"删重复"。**
+2. **drift 的 MDS「Exact duplicates」里有真护栏**。它会把承重双实现（同一规则在分层两侧各留一份、删掉一份就撞分层红线，历史例子见审计 §90 LB-B1）标成"删重复"。**drift 结果必须过 Agent 语义法医，不能直接采信"删重复"。**
 
 ---
 

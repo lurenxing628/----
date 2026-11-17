@@ -14,7 +14,7 @@ implements: []
 
 # 排产调度模块架构现状
 
-本文以 2026-11-10 全局架构收敛（`A0`～`A5`）落地代码为准（持久存储 Schema v45 与归档 JSON 零变更）。前期单次准备重构背景见[单次准备方案及执行记录](../refactors/2026-10-15-single-pass-workflow/single-pass-workflow-refactor-design.md)，全局收敛裁决见[全局架构收敛路线图](../roadmap/aps-architecture-consolidation/aps-architecture-consolidation-roadmap.md)；文末专题段落保留各次交付时的历史口径。
+本文以全局架构收敛与源头自足化落地代码为准（`CURRENT_SCHEMA_VERSION = 50`）。前期单次准备重构背景见[单次准备方案及执行记录](../refactors/2026-10-15-single-pass-workflow/single-pass-workflow-refactor-design.md)，全局收敛裁决见[全局架构收敛路线图](../roadmap/aps-architecture-consolidation/aps-architecture-consolidation-roadmap.md)；文末专题段落保留各次交付时的历史口径。
 
 ## 1. 入口与职责
 
@@ -54,32 +54,36 @@ implements: []
 1. **预检与受理共享业务准备**：`workbench/run/input.py` 在单次快照内构造不可变的 `PreparedBusinessInput`（完整持有 `algo_ops`、执行保护、`SeedPreparation` 含 `to_schedule` 与人员资格准入、`piece_scope` + `predecessors`、`dispositions`、`latest_plan_rows`、`operation_efforts`，取代旧九元位置元组）；预检公开 DTO 投影与内部评估行从源头分离（无原地 `pop` 删字段），受理复用同一准备核心并仅按需增量补齐上版正式计划未选工序投影，在事务内捕获输入、执行事实与当时正式计划。
 2. **单一缓存日历引擎与求解资源装配**：`WorkbenchRunWorker` 在私有计算副本中创建 `ProductionFactsCapture`；事实复核与 `compute.py:compute_candidate_run` 共用这一份捕获。`CalendarFacts.calendar()` 从已读班次行原地去重提取 `shift_profiles`，实时事实与归档表分别经 `calendar_inputs_from_facts` 与 `calendar_inputs_from_archive_tables` 构建 `CalendarInputs`；`input_runtime.py` 汇总操作工集合向 `business.facts.calendar(operator_ids)` 取得单一缓存 `CalendarEngine`，并随 `SolverResources.calendar_engine` 下传给 `compute.py` 与 `schedule_candidate_runner.py` 全链路复用（不再重复实例化 `CalendarEngine`）。
 3. **共享搜索与候选验证**：`compute.py` 直接调用 `run_candidate_comparison` 执行一次 `optimize_shared_schedule`；候选结果经 `evaluate_schedule_constraints` 完成安排约束验证，选中结果、校验 payload 和对象摘要沿同一计算链交接。
-4. **候选发布**：worker 的结果准备构造实际保存文本和 `decision-read-v1` 读模型；完成事务重新取得当时事实，再保存候选与终态。保存推荐、当前查看和比较基准各有自己的身份。
+4. **候选发布**：worker 的结果准备构造实际保存文本和决策读模型（`facts/decision_read_model.py` 的 `build_decision_read_models`）；完成事务重新取得当时事实，再保存候选与终态。终态由 `run/terminal.py` 在调用方（`worker.py` 完成或失败事务、`worker_recovery.py` 恢复外层事务）的同一事务内协调：仓储 `workbench_run_repo.py` 只写回执与作业终态 SQL，随后写决策历史条目（`history_entries/writer.py:record_run_finished`，消费结果准备交出的 `PreparedRunResult.result_body`），任一步失败一起回滚。保存推荐、当前查看和比较基准各有自己的身份。
 5. **正式采用单次验证落库**：候选正式采用（`run/candidate_adoption.py`）与试调正式采用（`trial/adoption.py`，由 `trial/adoption_validation.py:validate_trial_adoption` 在同一快照事务内顺序执行 `validator.evaluate_saved(check_baseline=False)` 与 `ScheduleValidationOutcome` 单次验证并返回 `TrialAdoptionEvidence`）在写事务中核对来源、当前执行事实、安排约束与版本，直接经 `plan/official_persistence.py` 原子写入正式计划和命令回执。
+
+**负载上限两档（排产侧）**：常量只在 `core/models/workbench_load_limits.py` 定义。单次自动排产按所选批次展开后的工序数把关，上限 `MAX_SOLVE_OPERATIONS` 为 10000。`run/preflight.py` 取到工序列表后、投影之前判断一次，排产检查、授权预览和受理都走这一处；超限返回 422 `invalid_input`，`fields=batch_refs`，提示带实际工序数和上限。这条规则不在 `prepare_business_input` 里，所以试调采用不受影响，试调和看图按单窗档 `MAX_WINDOW_OPERATIONS`（20000）。所选批次数上限是 `MAX_WINDOW_BATCHES`（20000）。候选任务行、受理时存下的上一版正式计划行和受理决策基线，读取上限都是 `MAX_RUN_RECORD_TASKS`（40000）。读取侧见[工作台外壳](workbench-shell.md)。
 
 `ProductionFactsCapture` 的作用域是一份事务快照，`latest_plan_rows` 等派生索引也归它拥有。`PreflightFacts`、`PreparedBusinessInput`、`BatchFacts`、`GenerationFacts`、`DecisionSource` 分别复用本次操作已取得的行、永久引用、解码表和共同来源；新请求、新事务或真实写入后的事实由对应入口重新取得。
 
 ## 4. 一次搜索的固定准备与结果所有权
 
-- `NativeSchedulePreparation` 归本次搜索所有，准备固定工序、批次、种子、停机、基础资源、图拓扑和断点固定编码。`GreedyScheduler.schedule` 的独立原始输入入口准备一次；共享会话直接调用共同准备后的核心。
-- `SharedDecodeSession` 在创建时选定实际解码器及输入适配，请求只表达批序、派工规则、图开关和优先级、资源覆盖或偏好、允许变化的参数。已解析参数连同 warnings 直接交解码；开始时间由每次解码请求显式传入（会话不持有起点，Round 22 删除了 `param_fallbacks` 与 `datetime.now()` 兜底）。
+- `NativeSchedulePreparation` 归本次搜索所有，准备固定工序、批次、种子、停机、基础资源、图拓扑和断点固定编码。共享解码会话创建时经 `prepare_native_schedule_inputs` 准备一次，每次解码调用 `GreedyScheduler.schedule_prepared`；种子与待排工序已由运行输入分开（`prepare_runtime_seeds`），准备直接使用待排工序。
+- 共享搜索只由 `schedule_shared_search.py:open_shared_search` 装配：评价事实（`prepare_evaluation_context`）准备一次，档案、预算、搜索与解码会话共用；生产优化器和测试解码辅助走同一入口。
+- `SharedDecodeSession` 是一次优化运行的作用域：`open_shared_search` 创建它时从运行输入一次装入开始时间、排程窗口终点和齐套门控，并选定实际解码器及输入适配；请求只表达批序、派工规则、图开关和优先级、资源覆盖或偏好、允许变化的参数。已解析参数直接交解码（Round 22 删除了 `param_fallbacks` 与 `datetime.now()` 兜底）。MultiStart、LocalSearch、GRASP/IG 与图阶段只收会话，加按视图变化的目标、报告和版本；旧 `decode_common` 参数袋已删除。
 - 静态资格和资源组合共同准备，动态占用、换型、需求退休和排槽仍随搜索运行态实时计算。`RepairParentPreparation` 供 repair 与 IG 共用；内部合法覆盖只复制被修改的工序。
+- 自动分配资源是一个冻结值 `ResourcePool`（`core/algorithm_contracts/resource_pool.py`）：`build_resource_pool` 从本次捕获事实构建一次，未启用自动分配时为 `DISABLED_RESOURCE_POOL`。静态设备候选（`static_machine_candidates`）与人员资格（`qualified_operators`）只有这一份规则，自动分配、图节点和 v2 余量特征共用；静态候选按（固定设备, 固定人员, 工种）组合在池内只算一次，同组合共享同一个 tuple，工种设备过滤用集合；它不读 rank，`with_pair_rank` 派生的池与原池共用这份记录，相等比较和 `fingerprint` 都不含它。未排名的人机对按 9999 排在最后。会话只经 `native_preparation.resource_pool` 读池；候选和 `LocalSearchState` 只记 pair-rank 增量（普通邻域在 current 的增量上叠加，重启取 best 的增量），解码时由 `with_pair_rank` 现算。是否自动分配也由池决定：解码链只读 `ResourcePool.enabled`，`used_params` 的 `auto_assign_enabled` 由同一个池派生。断点签名取 `ResourcePool.fingerprint`：同内容的新池照常续排，任一 rank 不同就不复用旧证书。
 - 图准备和图特征各在实际搜索作用域内生成一次。旧多候选 `core_cache`、缓存 factory、候选侧重复拓扑匹配和缓存专用深拷贝已经删除。
-- `SharedScheduleArchive.register_decode` 在真实解码出口取得安排身份，计算一次内容 key 并接管已验证 payload；已登记安排复用 `entry_id`，完成性证据升级仍沿原 revision 处理。
+- `SharedScheduleArchive.register_decode` 在真实解码出口取得安排身份，计算一次内容 key 并接管已验证 payload；已登记安排复用 `entry_id`，同一安排的证据不在原条目上升级（内部 revision 链已删除）。
 - 未验证 checkpoint trial 只查询已有安排身份；未命中时从同一编号器取得临时编号，随后释放 key，不进入档案、best 或已验证 seen。trial 的实际结果由原 IG 待验证路径短暂持有，正式采用前继续完整验证。
 - 内部阶段、请求命中和目标同步使用 `archive.view`，共享档案的 results、metrics 和原摘要；目标 score、请求 warnings 和阶段决策属于各自的小视图。`materialize` 只在最终 `CandidatePlan` 发布出口赋予外部结果独立所有权。
 - 报告只比较 `entry_id + objective + 完成性摘要 + metric/score`，保留同安排不同评价的真实差异。旧结果扫描和另一份结果身份投影已经退出。
 - 多来源由已有 events 保存；`origins`、`_record_origin` 和报告反向驱动内容登记的旧入口已删除。档案只持选中 `evidence_origin`，事件通过 entry/request/event 编号串联，最终发布时复制选中证据。
 
-`OptimizerRuntime` 保留 scheduler_factory、clock、rng_factory、run_ortools_warmstart 四项实际依赖。共同预算记录真实解码成本、复用、跳过和目标机会。MultiStart、LocalSearch、GRASP/IG 与图 Profile/Repair/IG 继续执行真实算法；普通 SGS、分件 DAG、合法点工序、种子和完整验证各自保留原业务语义。
+运行钟只有一处来源：`prepare_solver_resources` 把 `time.monotonic` 装入 `SolverResources.clock`，`run_candidate_comparison` 用它建请求预算，共享搜索打开后一切预算计时都读 `SharedSearchBudget.clock`。预算钟和截止时间只归 `SharedSearchBudget`：图特征准备、Profile/Repair、IG 与交期种子都拿这一个预算对象判截止，`GraphReadySearchBudget` 与种子的时间守卫只持有它的引用，各自只保存停止原因。解码器由运行入口直接构造并传入 `optimize_shared_schedule`；各阶段在构造处按 version 及 1009、2003 等种子序列直接建 `Random`，原 `OptimizerRuntime` 及其工厂透传已删除。输入准备到摘要的 `time_cost_ms` 和图分析耗时各自用 `time.monotonic` 计起止，不与预算钟相减。共同预算记录真实解码成本、复用、跳过和目标机会。MultiStart、LocalSearch、GRASP/IG 与图 Profile/Repair/IG 继续执行真实算法；普通 SGS、分件 DAG、合法点工序、种子和完整验证各自保留原业务语义。
 
 ## 5. 保存结果与真实出口
 
-新运行发布 1—3 份实际业务代表，各目标 winner 可以指向同一永久候选；部分结果按真实完成集合表达。`WorkbenchRunCandidateTasks` 拥有安排正文，`GenerationFacts` 提供共同解码表；`decision-read-v1` 在受理、完成事务和明确迁移中构建，查询直接消费保存投影。旧 balanced/health/权重、复用、失败和跳过记录按其保存版本解释。
+新运行发布 1—3 份实际业务代表，各目标 winner 可以指向同一永久候选；部分结果按真实完成集合表达。`WorkbenchRunCandidateTasks` 拥有安排正文，`GenerationFacts` 提供共同解码表；决策读模型在受理与完成事务中构建，表内不存版本列，查询直接消费保存投影。
 
-摘要对象在计算内交接，持久化文本在实际保存边界生成并直接落库。Web 的 `json_response` 对最终信封编码 UTF-8，并发送同一份字节；大小限制也针对实际产物。内部 `execution_workspace` 的 HTTP 大小预演已删除。归档读取消费保存证据，公式与内容确认由原落档、采用和迁移边界负责。
+摘要对象在计算内交接，持久化文本在实际保存边界生成并直接落库。Web 的 `json_response` 对最终信封编码 UTF-8，并发送同一份字节；大小限制也针对实际产物。现场、报表和实际甘特按各自范围直接读取计划任务（现场在 SQL 里分页），不再先组装整份内部执行工作区。归档读取消费保存证据，公式与内容确认由原落档、采用和迁移边界负责。
 
-当前 Schema 为 45：v41/v42 的保存读模型和原生业务目标候选继续保留，v43/v44 增加 `WorkbenchSourceRevisions` 与单遍效率索引，v45 把日历时间事实统一为非空工作时段列 `periods_json`（已删除 `shift_start/shift_end/shift_hours`，开始、结束、工时一律现算；零工时日包络窗口固定为当天零点）、补齐 `PartOperations(ext_group_id)` 索引并收敛永久身份触发器。归档事实严格按当前 `schema / columns / tables / revisions` 契约核验，历史兼容投影已删除。普通启动检查结构，低版本非空库拒绝启动、不执行历史增量升级迁移；新库与恢复边界执行完整数据合同。
+当前 `CURRENT_SCHEMA_VERSION = 50`：v41/v42 保存读模型与原生业务目标候选、v43/v44 `WorkbenchSourceRevisions` 与单遍效率索引、v45 日历 `periods_json` 唯一时间事实继续保留，v46–v49 完成 `ScheduleHistory/Schedule`、运行批次/工序/候选任务、决策分页与按需资源读模型、历史目录 `WorkbenchHistoryEntries`、工序执行聚合 `OperationExecutionStates`、统一五分类看板表、工艺内联确认列、精简模板血缘与外协登记表的全面结构化自足，v50 把存储枚举值域统一由 `core/models/enums.py` 生成 `CHECK`、设备工种只存 `MachineOpTypes`、停机起止以 `start_us/end_us` 为唯一事实且原因必填、报工有效工时只存一列精确十进制文本、读模型表不存版本列。运行与试调采用紧凑关联范围归档与 `permanent_rows_v1` 紧凑方案头；生产事实归档只有 `columns / tables / revisions` 一种形状，读取时由 `validate_production_archive` 准入一次。全新无业务表空库单次执行 `schema.sql`（内置 `SchemaVersion(1, 50)` 种子）一步到位初始化（`full_data=True` 恢复模式拒绝空库冒充）；普通启动检查结构，低版本非空库拒绝启动、不执行历史增量升级迁移；备份恢复边界执行完整数据合同。
 
 ## 6. 相关入口与历史演进
 
@@ -94,8 +98,8 @@ implements: []
 
 ### 2026-10-13 同次候选决策入口
 
-- `schedule_candidate_selection.py` 保存选择规则版本、实际 balanced 容差与所选分数；`WorkbenchRunResultRepository.prepare_run_result` 在分配永久候选引用后，将推荐、原始分数最佳候选和算法健康基准一次映射到运行收据。同次查看基准由查询选择，两组身份分别负责计算解释与当前差值。
-- `core/services/workbench/run/decision.py` 在一个 SQLite 只读快照中读取运行、候选全集、归档和任务；`GenerationFacts` 共同解析 JSON、Schema 与永久身份。查询消费归档事实，当前业务资料修改由正式采用预检处理。
+- `schedule_candidate_selection.py` 的 `BusinessObjectiveSelectionResult` 保存主目标、同时探索的目标、各目标胜出候选及理由、比较字段顺序与所选分数；`run/result_preparation.py` 在分配永久候选引用后，由 `_selection_references` 把推荐与各目标胜出候选一次映射为永久引用写入运行收据。同次查看基准由查询选择，两组身份分别负责计算解释与当前差值。
+- `core/services/workbench/run/decision.py` 在一个 SQLite 只读快照中读取运行、候选全集、归档和任务；`GenerationFacts` 共同解析 JSON、Schema 与永久身份。归档内的关系（工序、所属批次与零件、资源、永久引用）只经 `GenerationFacts.operation`／`related`／`entity_ref` 读取；受理事务保留了这些关系的闭包，缺一项即存档损坏（`candidate_artifact_invalid`），不记缺口、不降级。查询消费归档事实，当前业务资料修改由正式采用预检处理。
 - `decision_metrics.py` 统一总览指标目录及覆盖/差值入口。应排、搜索与全链交付分别核对，待料暂缓单列。资源指标使用第 3 阶段共同班表口径；保存算法统计保留独立来源与范围。
 - `decision_selection.py` 从保存收据给出固定选择依据，旧收据用原候选键映射为永久引用。`decision_export.py` 将同一查询结果与目录写为 CSV/XLSX；总览快照直接保存范围和身份字段。
 - 实施与实际验证记录：`../features/2026-10-13-decision-comparison-loop/`。本节只更新相关链路，前文历史规模和算法治理记录保留各自时间口径。
@@ -104,14 +108,14 @@ implements: []
 
 - `plan/delivery_projection.py` 为共同批次投影、汇总与成对差值入口。搜索覆盖、可排工序覆盖与全链交付独立；合法待料后道为 `deferred`，普通漏排为 `incomplete`，缺事实为 `unknown`。`due_state` 区分合法交期、`9999-12-31` 未指定和缺失/非法交期。完整且合法交期才有已知拖期；全未指定为 `not_applicable`，拖期为 null。已知小计与未知覆盖同时返回，保留微秒时间精度。
 - `due_eligible_count`、`excluded_due_count`、`invalid_due_count` 分别计指定、未指定和无效交期，合计全部批次；`due_evaluation_count` 为指定加无效，等于已知加未知数量。工艺完成状态与交期风险分别表达。候选、正式计划、值班台、试调、候选分析及导出均提供自己的保存事实并消费共同规则；算法保存的原分数与采用事务保持原职责。
-- `DecisionSource` 在一个只读 SQLite 快照中持有归档、候选及任务。正式基准由 `facts/decision_baseline.py` 从受理归档选择每道工序在受理版本及以前的最后正式安排，保留多段任务与来源绑定。`decision_baseline_source.py` 只解析归档绑定的不可变候选/试调来源，恢复零工时实际工作、合法待料和原资源身份；缺项按具体来源表达。当前 Schedule、设备、人员和工艺修改不参与冻结比较。原受理归档保持原样，显式历史版本 API 继续使用其指定版本范围。
-- `candidate_comparison.py` 与 `candidate_analysis.py` 的当前正式比较使用同一共同基准；缺正式基准时其完成性和差值保持未知。`decision_reference.py` 按本次选批和工序限制正式比较范围，双方实际工作集合一致时才比较跨度/切换；交付收益另按共同完成批次计算，并单列全范围未知覆盖。
-- `decision_impact.py` 投影逐批和逐工序变化、资源变化、保存工艺的标准工时依据与甘特钻取身份；`decision_queries.py` 共用筛选、稳定排序和 20/50 分页。明细快照绑定共同范围、基准和筛选，翻页不改变快照。`decision_workspace.py` 提供正式基准只读甘特；`decision_export.py` 复用同一投影输出总览、批次、工序和完整比较。当前指标目录版本为 `decision-preparation-v4`。
+- `DecisionSource` 在一个只读 SQLite 快照中持有归档、候选及任务。正式基准由 `facts/decision_baseline.py` 直接从紧凑关联范围归档的自足 `Schedule / ScheduleHistory` 解析每道工序在受理版本及以前的最后正式安排（每道工序一行，`idx_schedule_version_op_unique`），保留来源绑定、零工时实际工作、合法待料和原资源身份；缺项按具体来源表达。`ScheduleHistory` 的 JSON 文档与在线读取共用 `core/services/workbench/facts/history_documents.py` 的 `HistoryDocuments` 严格解码（`read_stored_json`），延后工序清单的元素按正整数准入；工时账在这里经 `saved_operation_efforts` 一次准入，读出“工序永久编号（`operation_ref`）→ 已准入条目”映射，来源没有工时账时存 NULL、读出 None，条目损坏按存储损坏报错。每侧的工序安排由 `facts/decision_read_models.py` 的 `by_operation` 收成“工序 → 那一行安排”（`DecisionSource.operation_arrangements`），工序侧读模型的 `arrangement_json` 只存单个 `segment`（另带区间与资源比较标记）；某侧有没有安排只由 `DecisionSource.arrangement_available` 判断，准备、换型与完成度共用。当前 Schedule、设备、人员和工艺修改不参与冻结比较。原受理归档保持原样，显式历史版本 API 继续使用其指定版本范围。
+- `candidate_comparison.py` 与 `candidate_analysis.py` 的当前正式比较使用同一共同基准；缺正式基准时其完成性和差值保持未知。按受理时正式计划比较时，正式一侧的指标与覆盖直接读受理时保存的 `official.core_metrics` / `coverage`（`run/decision.py` 的 `_reference_metrics`）；交付收益另按共同完成批次计算，并单列全范围未知覆盖。
+- 逐批、逐工序变化由 `data/repositories/workbench_run_repo.py` 的 `_OP_CMP_CTE`（批次再接 `_BATCH_CMP_TAIL`）在 SQL 里比较，`decision_queries.py` 在同一 SQL 上做筛选、稳定排序和 20/50 分页；`decision_impact.py` 只负责逐工序差值、安排视图与甘特下钻。明细快照绑定共同范围、基准和筛选，翻页不改变快照。`decision_workspace.py` 提供正式基准只读甘特；`decision_export.py` 复用同一投影输出总览、批次、工序和完整比较。当前指标目录版本为 `decision-preparation-v4`。
 - 第 2 阶段实施、真实边界运行、浏览器与导出证据见 `../features/2026-10-13-decision-delivery-impact/`。主对话独立验收已通过；实际准备需求分解见下面第4阶段共同需求入口。
 
 ### 2026-10-13 共同资源投影与资源影响
 
-- `facts/archived_calendar.py` 将保存的全局日历、停机、个人日历、轮班、资源状态、Schema 版本和永久身份适配为逐自然日容量，复用领域日历规则。运行与试调保存全表，默认规则和例外均从自己的保存事实解释；当前资料不回填历史。未知日独立保留，休息、禁排或停机扣尽为真实 0；夜班包含前日尾段。
+- `facts/archived_calendar.py` 将保存的全局日历、停机、个人日历、轮班、资源状态、Schema 版本和永久身份适配为逐自然日容量，复用领域日历规则。运行与试调保存全表，默认规则和例外均从自己的保存事实解释；当前资料不回填历史。未知日独立保留，休息、禁排或停机扣尽为真实 0；夜班包含前日尾段。`global_summary` 把一段窗口的全局日历按同样的逐自然日投影汇总成可用、部分可用或不可用，看板的全局日历状态取它。
 - `resource_intervals.py` 按永久资源和工序建立索引；`resource_projection.py` 复用 `ResourceUtilizationMetrics` 计算班表内区间并集占用、独立工序合并后的累计需求、班外占用、重叠、日峰及冲突身份。点事件无资源占用。`resource_summary.py` 按固定资源集合汇总，容量加权占用率和 CV 纳入正容量空闲 0；均值为零时 CV 不适用。缺安排与已知空安排区分，独立容量事实保留。
 - `DecisionSource` 的 `resource_view=selected_batches|full_candidate` 决定本次选批贡献或候选完整安排；共同资源集合为同次全部候选与基准所涉永久资源并集。窗口为工厂本地左闭右开，默认起日00:00至截止日次日00:00，所有候选共享。正式工序覆盖由 `official_scope_coverage.py` 与采用预检共用；候选缺少的正式安排、普通未排和合法待料分别展示。
 - `decision_resources.py` 一次构建各候选和基准索引、完整整窗汇总，资源表／热力图／单资源逐日按显示范围生成。资源行支持20/50分页，热力图支持7/14/31天；40k资源日作为分块计算预算，整窗保留全部事实。快照绑定视角、窗口、固定集合和业务筛选，显示页码不改变事实身份。
@@ -120,7 +124,7 @@ implements: []
 
 ### 2026-10-13 共同工序需求与工种切换
 
-- `algorithm_runtime/operation_effort.py` 的 `internal_requirement_parts` 是实际排槽及需求账的共同标准公式；`OperationEffort` 保存准备、加工、总需求、实际量依据、准备状态与种子角色。`piece_input.operation_batch` 决定分件自身量或共同批量，外协周期／合并组独立于内制标准小时。
+- `algorithm_runtime/operation_effort.py` 的 `internal_operation_effort` 是唯一标准工时公式（换型 + 单件 × 操作量，只做 `float()` 与乘加，输入已在读边界准入）；`OperationEffort` 保存准备、加工、总需求、实际量依据、准备状态与种子角色。`prepare_solver_input` 从需求账取新排自制工序的总需求成 `SolverInput.required_hours_by_op_id`，经候选运行器、共享优化器、解码会话显式传到原生准备，排槽直接按工序索引，不再重算。`piece_input.operation_batch` 决定分件自身量或共同批量，外协周期／合并组独立于内制标准小时。
 - `scheduler/run/operation_effort.py` 在真实执行保护、冻结与种子分离后构造需求账。新排使用真正排槽量，保留种子从其最后正式采用来源读取原分解；原需求目标保持原值，本次AJ目标及剩余量独立记录。执行中、完成和旧档缺项各有状态，现行安排和执行保护继续生效。
 - `run/input_effort.py` 验证原需求与永久工序对应；`WorkbenchRunResultRepository` 在完成事务中一次保存带永久引用的收据需求账，所有同次候选根据自身实际安排判定归属。试调新排槽也保存共同分解，原样／执行／完成安排保留来源；正式比较按每道工序最后采用的不可变候选或试调读取。
 - `facts/operation_effort_evidence.py`、`preparation_projection.py` 区分保存runtime与归档工序标准。`DecisionPreparation` 的待执行、新排、普通未排和合法暂缓汇总覆盖整次受理，保留／执行／完成另列；新排范围不同的差值保持中性，缺小时返回缺项和已知小计。查询、工序／甘特详情和导出消费相同账。
@@ -129,7 +133,7 @@ implements: []
 
 ### 2026-10-13 选择解释与推荐取舍
 
-- 原选择器和健康计分处分别保存 `candidate-selection-evidence-v1`、`candidate-health-evidence-v1`。实际目标完整score、目标／全score并列、baseline／sequence裁决、balanced四项实际检查及真正覆盖标记、健康原数和原阈值在原完成事务中映射为永久候选引用。选择规则版本保持 `candidate-selection-v1`，原求解和健康结果沿用。
+- 原选择器和健康计分处分别保存 `candidate-selection-evidence-v1`、`candidate-health-evidence-v1`。实际目标完整score、目标／全score并列、baseline／sequence裁决、balanced四项实际检查及真正覆盖标记、健康原数和原阈值在原完成事务中映射为永久候选引用。选择规则版本保持 `candidate-selection-v1`，原求解和健康结果沿用。（现行：这两份证据、健康计分、balanced 检查与选择规则版本都已删除，选择结果只保存 `BusinessObjectiveSelectionResult` 的各项，见上文同次候选决策入口一节。）
 - `facts/completion_scope.py` 统一精确完成、普通未完整、合法暂缓和未知批次集合，分别保留实际剩余工序、原runtime需求／归档标准／本次AJ目标。`facts/common_completed_delivery.py` 是共同完成批次交集的交付差值入口，复用原交付算术；整次受理未知摘要继续保留。
 - `DecisionCompletion` 在请求内缓存归档交付、完成集合与剩余需求，候选按 exact 完成批次集合分组。概览返回数量、最多3个样例支撑及完整明细入口，完整身份和工序需求用于同一请求的分行导出。
 - `decision_completion_queries` 按独立候选anchor读取完整受理批次并分页筛选完成／未完整／普通缺排／待料／未知；当前查看和基准继续保留原scope。每批剩余需求复用同一共同事实，准备明细及导出以 `work_scope=remaining` 筛选真实未安排工序，组内各候选保留独立剩余需求。
@@ -158,10 +162,11 @@ implements: []
 ### 2026-10-14 历史事件、保存来源与同条件指标
 
 - `core/models/workbench_decision_history.py` 统一`decision-history-v1`的查询、条目身份和快照范围。`web/routes/workbench/decision_history.py`注册历史读取与CSV/XLSX导出两个GET入口，沿已有只读预算、响应及快照绑定协议；历史页和文件各消费同一服务。
+- 历史页读取不按目录总量拒绝。CSV/XLSX 导出按筛选出的条数设上限 `MAX_HISTORY_EXPORT_ROWS`（100000，`core/models/workbench_decision_history.py`），在读快照内取到筛选总数后、读条目前判断；超出时返回 `history_capacity_exceeded`（413），整次不开始下载，提示缩小日期或状态范围。
 - `history/export.py`的文件格式2独立于历史查询版本：CSV/XLSX共用指标值、范围引用、指标覆盖引用三类长表行，引用按条目编号、指标键和字段关联，逐成员保留原顺序、集合数量及null/空数组差异。主分区记录数随共同生成器实际消费累计，含引用和占位行；XLSX说明附表不计入响应记录数。单元格字符与工作表行数校验保持原职责，导出不再把整组永久编号合并成任意长文本格。
-- `history/catalog.py:read_history_catalog`只组织四类事件：运行、候选正式采用、试调正式采用、旧正式版本。运行以保存推荐为默认结果，缺推荐保留缺项；采用以真实回执和采用来源为准。同run多次采用分别保留事件，运行仍计一次；已有现代采用回执覆盖的旧版本只保留采用事件，原历史行和出处继续存在。发生时间保留原工厂本地、UTC回执和旧保存时间的各自依据。展示序号按完整未筛选运行目录的发生时间及永久引用确定；查询、分页、选择和导出共同读取此标签，永久事件身份继续沿原引用。
-- `history/reading.py:HistoryReader`在调用方的只读快照内恢复并核对原run／candidate／scenario，按来源缓存归档、候选和决策投影；多个采用事件共用恢复结果，事件身份和结果身份独立。`history/conditions_source.py:ConditionSource`将运行接收归档、试调原草稿／保存场景、旧摘要适配为带保存位置的事实，保留真实空集合及缺表／列／来源的差异。
-- `history/conditions.py:compare_history_conditions`按永久实体和实际字段比较八类事实：排产范围、批次交期与数量、工序标准需求、物料与外协、有效日历与停机、资源与人员资格、报工与正式原安排、不重排窗口与成员。结果为相同、变化或未知，双方保留是否保存、原值、具体出处；归档保存时间和编号标明出处，目录统计计数独立显示，真实成员及生产字段（含实际报工时段）承担一致性判断。算法参数独立为实验维度，优化目标另行判断；旧缺项、已知0、False、合法null和明确空集合保持各自含义。
-- `history/metrics.py:project_history_metrics`复用共同交付、资源、需求、切换及决策投影，算法保存统计和旧摘要保留自己的版本、范围与来源。资源缺省窗口由`history/metric_window.py:history_window`从保存来源的排产起点起固定7天，可统一调整窗口天数或指定所有来源共用的绝对窗口；缺起点或起点读不出为窗口未知。实际起止、资源成员、占用分子和容量分母随条目返回。`history/metric_gate.py:gate_history_metric`依次核对生产条件、目标、指标充分性、单位／版本、范围、真实覆盖成员和资源窗／容量分母，成立时才提供同条件改善。
+- `history_entries/catalog.py:read_history_entries_page`只组织四类事件：运行、候选正式采用、试调正式采用、旧正式版本。运行以保存推荐为默认结果，缺推荐保留缺项；采用以真实回执和采用来源为准。同run多次采用分别保留事件，运行仍计一次；已有现代采用回执覆盖的旧版本只保留采用事件，原历史行和出处继续存在。发生时间保留原工厂本地、UTC回执和旧保存时间的各自依据。展示序号按完整未筛选运行目录的发生时间及永久引用确定；查询、分页、选择和导出共同读取此标签，永久事件身份继续沿原引用。
+- `history/reading.py:HistoryReader`在调用方的只读快照内恢复并核对原run／candidate／scenario，按来源缓存归档、候选和决策投影；多个采用事件共用恢复结果，事件身份和结果身份独立。`history_entries/conditions_source.py:ConditionSource`将运行接收归档、试调原草稿／保存场景、旧摘要适配为带保存位置的事实，保留真实空集合及缺表／列／来源的差异。
+- `history_entries/conditions.py:analyze_prepared_history_conditions`按永久实体和实际字段比较八类事实：排产范围、批次交期与数量、工序标准需求、物料与外协、有效日历与停机、资源与人员资格、报工与正式原安排、不重排窗口与成员。结果为相同、变化或未知，双方保留是否保存、原值、具体出处；归档保存时间和编号标明出处，目录统计计数独立显示，真实成员及生产字段（含实际报工时段）承担一致性判断；已保存试调的不重排冻结成员读保存记录里的 `frozen_operation_refs`（保存时取验证器认定的冻结集合，`trial/service.py` 的 `prepare`；读取由 `core/models/workbench_trial_scenario_archive.py` 的 `scenario_snapshot` 按形状准入；保存任务在唯一绑定处 `facts/trial_scenario_archive.py:bind_scenario_rows`（查看与采用共用）按永久行的 `source_row_ref` 绑回本草稿的来源行，工序、安排与原始工作只由那一行持有（保存后被 `wb_trial_closed_rows` 锁定），绑定行另记 `draft_row_ref/draft_task_ref` 指明来自哪条草稿行；载荷只存保存时的执行状态与保护判定，绑定之后再核冻结成员是本方案真实工序的子集）。算法参数独立为实验维度，优化目标另行判断；旧缺项、已知0、False、合法null和明确空集合保持各自含义。
+- `history/metrics.py:project_history_metrics`复用共同交付、资源、需求、切换及决策投影，算法保存统计和旧摘要保留自己的版本、范围与来源。资源缺省窗口由`history_entries/metric_window.py:history_window`从保存来源的排产起点起固定7天，可统一调整窗口天数或指定所有来源共用的绝对窗口；缺起点或起点读不出为窗口未知。实际起止、资源成员、占用分子和容量分母随条目返回。`history/metric_gate.py:gate_history_metric`依次核对生产条件、目标、指标充分性、单位／版本、范围、真实覆盖成员和资源窗／容量分母，成立时才提供同条件改善。
 - `history/queries.py`统一排序、20／50分页、过滤外选中条目及明确基准。`projection.py`生成当前页走势、范围变化标记、连接判断与成对结论；未知或口径不一致保留断点和观测原数。查询及导出共享请求内来源缓存与条件对照，分页不另建事实来源。`export.py:read_history_export/write_history_export`读取筛选全集与完整成对字段，CSV输出一个分区，XLSX追加指标口径、比较范围和数据缺项；批次总量同时保留数值、已知小计、真实覆盖成员、单位、版本和保存出处，数量缺项进入同一缺项表；原数、空值、类型和出处随文件保留。
 - 设计依据：[历史走势与同条件对照](../features/2026-10-14-decision-history-trends/decision-history-trends-design.md)。本节记录新增只读职责，求解、接收、保存归档、试调及正式采用继续沿原事务入口。

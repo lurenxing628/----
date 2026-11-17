@@ -83,18 +83,20 @@ description: 检查 APS 代码基线、结构分区和历史决定水位。询�
 2. callgraph：
    - `.codestable/checkup/scripts/callgraph_extract.py`
 3. import cycles：
-   - `python3 -m tools.scan_import_cycles --json --fail-on-new-cycle`
+   - `.venv/bin/python -m tools.scan_import_cycles --json --fail-on-new-cycle`
 4. dead-code quick：
-   - `python3 tools/scan_dead_code_islands.py --mode quick`
+   - `.venv/bin/python -m tools.scan_dead_code_islands --mode quick --fail-on-new`
+
+第 3、4 项与门禁用同一个 `.venv`：死代码规则用 `importlib` 读已安装库的真实继承链，结果随解释器环境变化。
 
 先把输出写到临时目录，比较后仅在本轮授权包含基线维护时更新 `.codestable/checkup/latest/`；不得覆盖尚未纳入本轮的在途修改。
 
 最高优先级红线：
 
 - codemap `layering.json` 非空：标红并定位，不自动改代码。
-- import cycle 出现基线外新增硬环：标红。
+- import cycle 四类环（硬加载期目录环、硬加载期文件环、延迟目录环、运行时文件环）出现基线外新增环、新增成员或圈内新增锁定边，或未解析动态导入增加：标红。
 - 脚本 parse error：基线失败，不能继续包装成“已体检”。
-- dead-code 出现新增项：先用调用、运行时或测试证据核验；不准直接删，也不准无脑刷新。
+- dead-code 出现新增项：先用调用、运行时或测试证据核验；不准直接删。误报回扫描器规则修，`--refresh` 默认拒绝新增条目，不靠刷新消掉报出项。
 
 ## Phase 2：核对机器结果可信边界
 
@@ -102,7 +104,7 @@ description: 检查 APS 代码基线、结构分区和历史决定水位。询�
 - 模块 import 图不等于函数调用图；两者要交叉看。
 - `dup_bodies` 可能是协议样板，不等于应该合并。
 - callgraph 的 ambiguous 边和动态未消解点不能当精确调用事实。
-- dead-code quick 对 dataclass 回调、属性读取、鸭子接口和重导出会误报。
+- dead-code quick 的报出项是静态结论：MRO 派发、dataclass 初始化链、协议成员与外部框架回调已按规则建模，反射、动态属性名与未建模的外部消费仍会漏连边。
 
 对任何准备进入体检结论的候选，都要补真实 `file:line` 证据。
 
@@ -148,7 +150,7 @@ description: 检查 APS 代码基线、结构分区和历史决定水位。询�
 
 - **代码基线与决定水位线分离。**
 - **脏工作树不冒充 clean HEAD。**
-- **分层违规和新增硬环是最高优先级。**
+- **分层违规和循环依赖四类环的新增是最高优先级。**
 - **dead-code 先验证，后删除或受控刷新。**
 - **历史样本只做对比，不冒充现状。**
 - **体检只出发现和文档，不顺手改业务代码。**
@@ -160,7 +162,7 @@ description: 检查 APS 代码基线、结构分区和历史决定水位。询�
 
 - [ ] 已说明扫描的是 clean commit 还是在途工作树
 - [ ] codemap / callgraph / import cycles / dead-code 均有实际结果
-- [ ] 分层违规、解析错误、新增硬环和 dead-code 新项均明确报告
+- [ ] 分层违规、解析错误、循环依赖四类环的新增和 dead-code 新项均明确报告
 - [ ] 变更分区有证据化复查，未覆盖范围已写明
 - [ ] 决定 watermark 只在完整考古后推进
 - [ ] 体检报告已写入 `.codestable/audits/`

@@ -19,7 +19,7 @@ core/services/workbench/<domain>/（轻量修订指纹核验、PreparedBusinessI
   ├─→ core/services/scheduler/（SolverInput/SolverResources、CalendarEngine、CalendarAdmin）
   │     ↓
   │   core/algorithms/ → core/algorithm_runtime/ → core/algorithm_contracts/
-  └─→ data/repositories/ → SQLite DB（CURRENT_SCHEMA_VERSION = 45）
+  └─→ data/repositories/ → SQLite DB（CURRENT_SCHEMA_VERSION = 50）
         ↑
       core/infrastructure/（连接、事务、Schema 契约、备份与安全文件边界）
 ```
@@ -30,7 +30,7 @@ core/services/workbench/<domain>/（轻量修订指纹核验、PreparedBusinessI
 - **Service 层**（`core/services/workbench/` 与 `core/services/scheduler/` 等）：
   - 工作台业务簇单向依赖（其间 `workbench/trial -> workbench/run` 单向共享 `candidate_adoption_constraints.py`、`schedule_occupancy_constraints.py` 与 `schedule_row_constraints.py` 公开原语，正式计划占用约束在 `plan/occupancy_constraints.py`，分件试调范围位于 `trial/piece_scope.py`），**禁止**包间循环依赖，**禁止**导入 `flask.request`、`flask.session` 或任何 Web 层对象。
   - 预检与受理在 `core/services/workbench/run/input.py` 共享 `PreparedBusinessInput`；排产求解编排层 `core/services/scheduler/` 通过 `SolverInput` / `SolverResources` 消费单一无连接 `CalendarEngine(CalendarInputs)`，管理端日历规范化走 `CalendarAdmin`（已退役的 `CalendarService`、`ScheduleService`、`BatchService`、`GanttService`、`ExternalGroupService`、`schedule_orchestrator.py`、`schedule_execution_persistence_guard.py` 均不再保留）。
-- **Repository 层**（`data/repositories/*.py`）只负责参数化 SQL 查询与持久化（可继承 `BaseRepository` 或直接持有连接，按真实契约返回存储行映射字典/元组或具名模型，不强制统一继承 `BaseRepository` 或套用 `from_row`），**禁止**导入/抛出领域拒绝策略（`WorkbenchCommandRejected`、`reject` 等）或把函数形参当表名拼接 SQL。
+- **Repository 层**（`data/repositories/*.py`）只负责参数化 SQL 查询与持久化（可继承 `BaseRepository` 或直接持有连接，按真实契约返回存储行映射字典/元组或具名模型，不强制统一继承 `BaseRepository` 或套用 `from_row`），**禁止**导入 `core.services`（含函数体内导入；需要服务协调的终态、历史写入放在服务层，如 `run/terminal.py`），**禁止**导入/抛出领域拒绝策略（`WorkbenchCommandRejected`、`reject` 等）或把函数形参当表名拼接 SQL。
 - **前端模块层**（`frontend/workbench/app/`）：100% 显式 ESM `import/export`，样式统一收口于 `frontend/workbench/app/styles/` 并按 `styles/index.css` 显式顺序登记，静态字体与图标位于 `frontend/workbench/app/assets/`，由 `scripts/workbench/build.py`（配合 `compile.cjs`）经宿主固定版本 `esbuild` 离线打包至 `static/workbench/`（含 `static/workbench/app/assets/`；已退役的 `frontend/workbench/prototype/` 与 `static/workbench/prototype/` 已清理）；**禁止**新增业务 `window.*` 全局导出，**禁止**在前端 `Contract` 中对本机受控 DTO 重复手写分页算术、字段表白名单或 SQL 排序重验。
 - **Template 层**（`templates/`）仅承载工作台壳页、说明书与错误/恢复页渲染，**禁止**在模板中编写业务逻辑。
 
@@ -38,7 +38,7 @@ core/services/workbench/<domain>/（轻量修订指纹核验、PreparedBusinessI
 
 - **Route 文件**（`web/routes/workbench/*.py`）：HTTP 准入校验、读写上下文绑定（`bind_read_snapshot` / `issue_write_context`）→ 调用 Service → 构造统一 JSON/文件响应。不做业务判断。
 - **Service 与工作台事实文件**（`core/services/**/*.py`）：业务规则裁决、轻量修订指纹核验（`snapshot_token` / `WorkbenchSourceRevisions`）、按用途经 `core/services/workbench/facts/` 与各子域显式事实作用域（`batch/scope.py:BatchFactScope`、`process/scope.py:ProcessFactScope`、`resource/scope.py:ResourceFactScope`、`execution/field_workspace_scope.py`、`execution/actual_gantt_scope.py`、`trial/piece_scope.py`）获取完整关系闭包并单向传参、事务与命令回执协调（`TransactionManager` / `WorkbenchCommandService`）。
-- **Repository 文件**（`data/repositories/*.py`）：可直接持有连接或继承 `BaseRepository`，执行参数化 SQL 并返回存储行或具名模型，不做业务裁决，不强制经 `data/repositories/__init__.py` 包根重导出或强加无用的 `from_row` 转换壳。
+- **Repository 文件**（`data/repositories/*.py`）：可直接持有连接或继承 `BaseRepository`，执行参数化 SQL 并返回存储行或具名模型，不做业务裁决，不强加无用的 `from_row` 转换壳；包根 `data/repositories/__init__.py` 不重导出，调用方按模块导入。
 - **Model 与输入合同文件**（`core/models/*.py`）：区分存储行映射/跨领域受控数据结构（`@dataclass` / `Protocol`，仅真实存储边界行转换使用 `from_row`）与外部 HTTP/文件进入领域用例的纯输入准入合同（在入口一次性完成类型、范围与字段准入，不伪装为数据库行映射模型）；不访问数据库，不包含事务协调。
 
 ## 分层禁止模式
@@ -47,15 +47,15 @@ core/services/workbench/<domain>/（轻量修订指纹核验、PreparedBusinessI
 - Service 层禁止出现 `from flask import request`、`request.form`、`request.args`。
 - 禁止跨模块导入单下划线私有符号（由 `tools/scan_private_imports.py` 阻断）；拆模块共享原语必须改为公开命名。
 - 禁止往实例上动态塞 `self._snapshot` 等临时私有属性偷渡状态（`try/finally` 置空）、用 `dict` 子类夹带仓储偷跑 SQL，或对内部受控结构写 `getattr`/`hasattr` 反射探测与 `.get()` 静默兜底（由 `tools/scan_over_defense.py` 阻断）。
-- 禁止新增全局可变状态（模块级可变 `dict`/`list`，受控只读缓存与线程锁除外；全局缓存公开出口须做唯一一次隔离拷贝）。
+- **可变容器所有权**：请求、事务或快照内解码出的对象归该作用域，作用域内直接共享引用，不做防御拷贝。请求内缓存（`PlanReadContext`、`CandidateStore` 与 `DecisionSource` 的已读记录和 `cached_property`、`GenerationFacts.base_operation_labels` 的标签基底、`HistoryReader` 的读取缓存）的消费者只读；要原地改写的一方在改写点拷一次，只拷要改的那部分。公开 DTO 与存档投影直接序列化，不为“调用方可能会改”预先拷贝。比调用方活得久的共享对象（模块常量、优化会话的 `SharedScheduleArchive`）在公开出口隔离一次。禁止新增全局可变状态（模块级可变 `dict`/`list`，受控只读缓存与线程锁除外）。
 
-> 文件大小、函数复杂度、静默吞异常与 6 个边界/孤岛扫描器规则见 `code-quality-gate.mdc`。
+> 文件大小、函数复杂度、静默回退台账与五个共用棘轮、循环依赖扫描器规则见 `code-quality-gate.mdc`。
 
 ## 高内聚低耦合原则
 
 - 每个类/模块只做一件事；Service 之间可单向调用但禁止循环依赖（由 `tools/scan_import_cycles.py` 阻断）。
 - 数据在层间传递使用明确类型（不可变 dataclass、显式事实作用域、具名参数），禁止传整个 `request` 或多元素位置元组。
-- 配置值通过 `ScheduleConfig`（20 项运行配置快照）/ `SystemConfig` 管理，不硬编码。
+- 配置值通过 `ScheduleConfig`（17 项运行配置快照）/ `SystemConfig` 管理，不硬编码。
 - 发现多重职责或无关模块被牵连时检查依赖；按真实职责决定拆分，不仅依据方法数量。
 
 ## 新增模块检查单
@@ -63,7 +63,7 @@ core/services/workbench/<domain>/（轻量修订指纹核验、PreparedBusinessI
 新增任何 Route / Service / Repository / 前端模块时必须：
 1. 遵循已有职责子包与命名模式（如 `core/services/workbench/<domain>/`、`xxx_repo.py`、`web/routes/workbench/`、`frontend/workbench/app/`）。
 2. Route 通过 `web/routes/workbench/registration.py` 及 `app.py:create_app()` 应用工厂注册；前端样式按级联顺序显式登记到 `frontend/workbench/app/styles/index.css`。
-3. Repository 只封装参数化 SQL 访问（继承 `BaseRepository` 或直接持有连接），按模块显式导入，不强制在 `data/repositories/__init__.py` 中重导出。
+3. Repository 只封装参数化 SQL 访问（继承 `BaseRepository` 或直接持有连接），调用方按模块显式导入（`from data.repositories.<x>_repo import <X>`），包根 `data/repositories/__init__.py` 不重导出。
 4. 新增或调整任何非 `/static` 的 `GET/POST` 路由，必须同步登记到 `开发文档/系统速查表.md`（由 `tests/gate_meta/check_quickref_vs_routes.py` 校验）。
 
 ## Schema 变更协议
@@ -73,7 +73,7 @@ core/services/workbench/<domain>/（轻量修订指纹核验、PreparedBusinessI
 2. 运行 `python -m tools.generate_schema_sql --write` 导出更新 `schema.sql`，并通过 `--check` 确认一致。
 3. 更新 `开发文档/开发文档.md` 中的数据模型章节。
 4. 更新 `开发文档/系统速查表.md` 中的 DB 字段字典。
-5. 若涉及枚举值变更，更新速查表中的枚举清单，并全局搜索所有引用点确认兼容。
+5. 若涉及枚举值变更，改 `core/models/enums.py` 的值域（DDL 的 CHECK 片段由它生成，不手写字面量），更新速查表中的枚举清单，并全局搜索所有引用点确认兼容。
 
 ## 安全底线
 
@@ -94,8 +94,8 @@ core/services/workbench/<domain>/（轻量修订指纹核验、PreparedBusinessI
 
 ## 枚举与状态常量
 
-状态值必须在 `core/models/enums.py` 定义为 `str, Enum`，业务代码引用枚举成员（`BatchStatus.PENDING`），禁止裸字符串。新增枚举：`enums.py` → 速查表 → 业务代码。
+状态值必须在 `core/models/enums.py` 定义为 `str, Enum`，业务代码引用枚举成员（`BatchStatus.PENDING`），禁止裸字符串。存储枚举的值域元组、中文叫法、业务顺序与 DDL 的 `CHECK` 片段（`enum_check` / `nullable_enum_check`，以及存储整数列的 `time_us_check` / `nullable_time_us_check` / `count_check`）都只在这里定义一份；存储只收规范值，导入文件里的中文叫法在各文件的解析处翻成规范值（叫法表取自 `enums.py` 或对应的 `core/models/workbench_*_file.py`）。新增枚举：`enums.py` → 速查表 → 业务代码。
 
 ## 关键技术选型（变更前必须创建 ADR）
 
-Python 3.8 | Flask 2.3.3 | SQLite（Schema v45） | openpyxl 3.0.10（pandas 可通过 TabularBackend 可选插件引入） | React 18.3.1（宿主 esbuild 离线编译 ESM，目标 Chrome 109） | PyInstaller 4.10
+Python 3.8 | Flask 2.3.3 | SQLite（Schema v50） | openpyxl 3.0.10（表格文件读写只用 openpyxl） | React 18.3.1（宿主 esbuild 离线编译 ESM，目标 Chrome 109） | PyInstaller 4.10

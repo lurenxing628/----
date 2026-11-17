@@ -183,7 +183,7 @@
 
 1. Python 语法验收：对本 roadmap 改动过的 Python 文件运行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77`。该命令会用 `git diff --name-only d4589d77 -- '*.py'` 收集仍存在的 Python 文件，再调用 `tools/scan_py38plus_syntax.py`。
 2. CodeStable YAML 验收：运行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items`。
-3. 离线静态资源验收：运行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py`。它会扫描模板、静态资源和 `docs/aps_frontend_workbench_mockup.html`，阻止外链脚本、样式、字体、图片和 CDN。
+3. 离线静态资源验收：运行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py`。它扫描随包交付的 `templates/` 与 `static/`（来源 `build_win7_onedir.bat` 的 `--add-data`），阻止外链脚本、样式、字体、图片和 CDN。
 4. Chrome 109 人工验收：在交付浏览器环境打开首页、排产优化分析、超期清单、资源排班、计划和现场实际、甘特图模拟预览，检查页面能打开、按钮和筛选能操作、导出能下载、长文字不遮挡。
 5. Win7 x64 人工验收：在目标系统或同等离线环境里启动打包后的应用，确认不需要联网、不需要目标机安装 Python，页面静态资源从本地加载。
 6. 长门禁：工作区干净时运行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。如果有无关 dirty worktree，只能用 `--allow-dirty-worktree` 做本地反馈，不能当 clean proof。

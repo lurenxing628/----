@@ -50,7 +50,7 @@ CHECKUP_CALLGRAPH="$TMP/_baseline/callgraph" \
   "$HOST_PY" .codestable/checkup/scripts/callgraph_extract.py
 
 "$APS_PY" -m tools.scan_import_cycles --json --fail-on-new-cycle
-"$APS_PY" tools/scan_dead_code_islands.py --mode quick
+"$APS_PY" -m tools.scan_dead_code_islands --mode quick --fail-on-new
 ```
 
 先比较临时产物：
@@ -58,8 +58,8 @@ CHECKUP_CALLGRAPH="$TMP/_baseline/callgraph" \
 - 脚本退出码是否正常。
 - parse errors 是否为空。
 - `layering.json` 是否为空。
-- import cycles 是否出现基线外新增硬环。
-- dead-code 是否出现新增项。
+- import cycles 四类环（硬加载期目录环、硬加载期文件环、延迟目录环、运行时文件环）是否出现基线外新增环、新增成员或圈内新增锁定边，未解析动态导入是否增加。
+- dead-code 是否出现新增项或失效项（`--fail-on-new` 退出码 1）。
 
 只有核验完才把临时输出复制到 `.codestable/checkup/latest/` 并更新 `baseline.json`。
 
@@ -70,15 +70,18 @@ CHECKUP_CALLGRAPH="$TMP/_baseline/callgraph" \
 | codemap | `python3 .codestable/checkup/scripts/codemap_extract.py` | `latest/codemap/` | parse errors 为空、分层违规 0 或已标红 |
 | dynamic refs | `python3 .codestable/checkup/scripts/dynamic_refs.py` | `latest/codemap/dynamic_refs.json`、`orphan_refined.json` | 只产候选，不直接裁死代码 |
 | callgraph | `python3 .codestable/checkup/scripts/callgraph_extract.py` | `latest/callgraph/` | parse errors 为空；模糊边明确保留 |
-| import cycles | `python3 -m tools.scan_import_cycles --json --fail-on-new-cycle` | 基线文件不自动改 | 无基线外新增硬环 |
-| dead-code | `python3 tools/scan_dead_code_islands.py --mode quick` | 基线文件不自动改 | 无新增，或新增已逐项核验 |
+| import cycles | `.venv/bin/python -m tools.scan_import_cycles --json --fail-on-new-cycle` | 基线文件不自动改 | 退出码 0：四类环无基线外新增环、新增成员或圈内新增锁定边，未解析动态导入不增加 |
+| dead-code | `.venv/bin/python -m tools.scan_dead_code_islands --mode quick --fail-on-new` | 基线文件不自动改 | 退出码 0（无新增、无失效），或新增已逐项核验 |
+
+import cycles 与 dead-code 两项用门禁同一个 `.venv`：死代码规则用 `importlib` 读已安装库的真实继承链，结果随解释器环境变化；其余三项是宿主脚本，照常用宿主 Python。
 
 ### 受控刷新规则
 
-- import cycle：只有明确接受当前硬环集合时才用 `--update-baseline`。
-- dead-code：项目 pre-push 使用 quick，刷新也必须用 `--mode quick --refresh`。
+- 两类基线刷新都默认拒绝增长；`--allow-growth` 同一语义：人工逐条核对增长后，按当前扫描整份重写基线，不读旧基线（扫描范围或基线格式变化时也用它受控重建）。
+- import cycle：刷新用 `--update-baseline`（含测试档另加 `--include-tests`，两档基线分开）。增长指新增环、新增成员、圈内新增锁定边或未解析动态导入增加；硬加载期两类环锁全部圈内边，延迟目录环与运行时文件环只锁圈内函数体内导入与条件导入边。扫描范围按 `tools/path_roles.py`：默认是生产与宿主工具代码，测试角色（`tests/`、`tools/host_tests/`）只进含测试档。
+- dead-code：日常门禁与完整门禁都用 quick；刷新只用 `--mode quick --refresh`，默认拒绝新增条目，逐条核对后才加 `--allow-growth`。条目分 `suspect_dead`（没有任何引用）与 `test_only`（只有测试代码引用，测试指 `tests/` 与 `tools/host_tests/`）。
 - dead-code 新项先做调用、运行时或测试核验；dataclass `__post_init__`、属性读取、鸭子接口、反射和重导出是已知误报源。
-- precise 模式不能拿来覆盖 quick 基线；运行前还需要新鲜 SCIP 索引。
+- precise 模式只出报告，不读写基线（带 `--fail-on-new` 或 `--refresh` 会直接报参数错误）；运行前要求工作区干净、SCIP 索引是当前 HEAD。
 
 ## 4. 14 个固定分区
 

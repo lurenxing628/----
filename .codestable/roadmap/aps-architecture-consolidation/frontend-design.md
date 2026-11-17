@@ -93,7 +93,7 @@ Node 原生无法直接 `import` `.jsx` 源码，且现有契约测试依赖沙�
 - 应用入口为 `app/shell/main.jsx`，首屏主题入口为 `app/theme.js`；其余生产 JS 均由这两个入口的静态 `import` 图解析获得。禁止远端 URL import、Node 内置模块混入浏览器产物或动态包搜索。
 - 一次性删除 [`scripts/workbench/build-order.json`](../../../scripts/workbench/build-order.json) 的 JS `live / foundation / bootstrap` 顺序清单。
 - 样式由唯一 `styles/index.css` 按确定的级联顺序导入 tokens、基础控件、布局和领域样式；复用现有本地 CSS 资源校验与打包流程（[`build.py:210`](../../../scripts/workbench/build.py#L210)）。
-- **静态产物硬契约**：严格保持 `asset-manifest.json` 的 `schema_version=1`、`target=chrome109`，以及本地字体、tokens、inline CSS、logo、React/ReactDOM vendor 与 Lucide `LICENSE` 的离线自包含闭包（[`web/routes/workbench/assets.py:14`](../../../web/routes/workbench/assets.py#L14)、[`tests/app_runtime/test_frontend_offline_static_assets.py:145`](../../../tests/app_runtime/test_frontend_offline_static_assets.py#L145)）。`node_modules` 与 `esbuild` 二进制仅留在构建宿主，严禁进入 Win7 离线交付包。
+- **静态产物硬契约**：严格保持 `asset-manifest.json` 的 `schema_version=1`、`target=chrome109`，以及本地字体、tokens、inline CSS、logo、React/ReactDOM vendor 与 Lucide `LICENSE` 的离线自包含闭包（[`web/routes/workbench/assets.py:14`](../../../web/routes/workbench/assets.py#L14)、[`tests/app_runtime/test_frontend_offline_static_assets.py:102`](../../../tests/app_runtime/test_frontend_offline_static_assets.py#L102)）。`node_modules` 与 `esbuild` 二进制仅留在构建宿主，严禁进入 Win7 离线交付包。
 
 ## 6. 剥离受控 DTO 事后重复重验，守住 5 类真实边界
 
@@ -215,7 +215,7 @@ Node 原生无法直接 `import` `.jsx` 源码，且现有契约测试依赖沙�
 
 ## 14. 验收与完成条件
 
-- **构建与静态资产硬契约**：生产双入口由固定版本 `esbuild` 离线打包成功，任意缺 import / 缺命名导出在构建期直接报错失败；`asset-manifest.json` 保持 `schema_version=1`、`target=chrome109`，本地字体/tokens/inline CSS/logo/Lucide LICENSE 离线闭包完整通过 [`test_frontend_offline_static_assets.py:145`](../../../tests/app_runtime/test_frontend_offline_static_assets.py#L145)，Win7 运行包不含 Node 或 `esbuild` 二进制。
+- **构建与静态资产硬契约**：生产双入口由固定版本 `esbuild` 离线打包成功，任意缺 import / 缺命名导出在构建期直接报错失败；`asset-manifest.json` 保持 `schema_version=1`、`target=chrome109`，本地字体/tokens/inline CSS/logo/Lucide LICENSE 离线闭包完整通过 [`test_frontend_offline_static_assets.py:102`](../../../tests/app_runtime/test_frontend_offline_static_assets.py#L102)，Win7 运行包不含 Node 或 `esbuild` 二进制。
 - **Node `vm.Context` 契约宿主**：21 项 Node 契约测试（[`test_ui_refinement_node_contracts.py:13`](../../../tests/workbench/test_ui_refinement_node_contracts.py#L13)）与甘特 VM 宿主（[`gantt_current_runtime.cjs:7`](../../../tests/_support/gantt_current_runtime.cjs#L7)）全部通过 `esbuild + vm.createContext` 沙箱执行真实生产 ESM/JSX 源码，沙箱存储/网络/锁隔离与 Hook/替身注入正常工作。
 - **DTO 减负与 5 类真实边界**：25 个 `*Contract.js / *API.js` 的 `Reflect.ownKeys` 键白名单、分页算术重验、2 万行基线 diff 重算、全图闭包与 SQL 排序重验全部清零；`PlanGanttModel` 正确展开紧凑 `after` 引用，业务分流、`bindResponse` 身份绑定、外部用户输入归一化（`input`）与本机存储反序列化校验（`validIntent`）全部通过验证。
 - **`prototype/` 断联与原生 `Table`**：`ds-projection.cjs` 与 AST 切片删除；`shared/ui/Table.jsx` 原生渲染 `<caption>`、`<th scope="col">` 并保留列宽拖拽手柄、百分比列宽、右对齐、自定义单元格与横向滚动，`ReportEvidence.jsx` 无 `useLayoutEffect` DOM 修补。

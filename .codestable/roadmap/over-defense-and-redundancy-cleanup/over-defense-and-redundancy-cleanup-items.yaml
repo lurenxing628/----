@@ -1,0 +1,105 @@
+roadmap: over-defense-and-redundancy-cleanup
+created: 2026-11-12
+updated: 2026-11-17
+start_condition: 已满足（2026-11-15）：读取收口重构（2026-11-12-source-truth-read-consolidation）Block 6 已完成、那条线已停手；尚未提交，第1批以 refs/backups/deferred-backlog-1-start（958d93b6）为基准
+items:
+  # 2026-11-15 起的现行条目：按事实链分批，根因与证据见 .codestable/audits/2026-11-15-deferred-backlog-root-causes/
+  - slug: deferred-backlog-rebaseline
+    description: 第0批 开工准备：当前工作区重测信号与各基线、重核在册项（分片10）、记账放行全量对账（分片09）、收齐54项裁决、把仓库外三份延后清单收进审计目录
+    depends_on: []
+    status: done
+    feature: null
+    minimal_loop: false
+    notes: 2026-11-15 完成；新基数在审计 evidence/rebaseline-20261115/；over_defense --fail-on-new 报出接手回归 H1（7 个只剩测试调用的生产函数），转第1批；3 个只剩 __pycache__ 的目录已删（不在 git 里）
+  - slug: deferred-backlog-true-defects
+    description: 第1批 真缺陷与接手回归：R04 全部工时写入口统一值域（报工、模板表单与导入）、R05 版本号宽转换、R06 插件 ID、R10 预检时区、R30 通用校验文案、状态列排序分裂、齐套 null 文案、工序号 0 搜索、dirty --resume 环境比对、H1 只剩测试调用的生产函数
+    depends_on: [deferred-backlog-rebaseline]
+    status: done
+    feature: null
+    minimal_loop: true
+    notes: 2026-11-15 开工，裁决单与过程记录在审计目录 pipeline/batch-1/（不另建 feature 目录）；候选图权重字段移到第3批步骤5随 v50 删除；采用快照 gaps 经内存探针 gap_count=0 撤回，死路径转第5批步骤2；R04/R05 直接用第3批要推广的值域函数，不返工。2026-11-15 完成（备份 refs/backups/deferred-backlog-1-done，f93e78dc）：9 条真缺陷与 H1 已修，R04 扩大到供应商默认周期，H1 另删 2 个同类包装；86 个测试文件 746 passed，scan_over_defense --fail-on-new 通过，死代码孤岛 98→97；未跑日常门禁与全量门禁；转入后续批次 12 条，见审计 execution-plan.md 第1批“处置结果”
+  - slug: deferred-backlog-governance
+    description: 第2批 治理口径：死代码扫描隐式入口与 suspect_dead 棘轮、鸭子接口声明 Protocol、台账 broad_io_boundary 与 cleanup_then_reraise 分类、__all__ 禁下划线名、恒默认参数审计扫描、attention 两条约定、待修池推迟口径、复审放行口径（D2-4）、延迟目录环与运行时文件环进基线（D2-3）
+    depends_on: [deferred-backlog-rebaseline]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 对应治理元根源 M；后续各批靠它度量与防回潮
+  - slug: gate-and-host-tool-chain
+    description: 第7批（推荐第4个执行） 门禁与宿主工具链：门禁内部记录定型、磁盘 JSON 一次准入、复用协议合一、仓库根单一来源并删 _safe_relpath、scope 语义一处、测试只读交付面、退役 verify_decision_workbench.py、宿主工具自我不信任清理
+    depends_on: [deferred-backlog-governance]
+    status: in-progress
+    feature: null
+    minimal_loop: false
+    notes: 产品侧最终门禁仍受 Python 3.8 与 Windows 约束；验证要在未改动的产品代码上前后对比 receipt 与 explain 输出。2026-11-15 开工，裁决单在审计目录 pipeline/batch-7/（不另建 feature 目录）；步骤 7 已完成：verify_decision_workbench.py 已删除，两个测试用到的导出 oracle 迁到 tests/workbench/decision_export_oracle_support.py
+  - slug: persisted-facts-contract
+    description: 第3批 持久层事实契约：枚举与值域一处定义加 DDL CHECK、唯一存储 JSON/整数/数值读取、工时与时间单一表示、归档列集断言与单一读者、显式档案序列化、读侧改直取并删伪多版本未知机制、设备工种单存储、连接工厂版本断言
+    depends_on: [deferred-backlog-true-defects, deferred-backlog-governance]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 根源 R1；Block 6 的 Schema 单一初始化已落地；本批升 CURRENT_SCHEMA_VERSION 到 50（D3-1/D3-4/D3-6/D3-7/D3-9 与候选图权重字段同一个 v50），现有 v49 开发库与样例库重建；改准入前先用只读探针证明样例库归档列集等于当前声明
+  - slug: scheduler-input-config-chain
+    description: 第4批 排产输入与配置链：配置快照类型化、排产准入产物定型与工时规则合一、运行作用域对象替代 42 处透传、伪可选清理、生产同形测试构造器、删观测计数器、OR-Tools 整链去留、OwnedSegments 收窄
+    depends_on: [persisted-facts-contract]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 根源 R2/R4/R6；排产金标逐位，改派工语义先提交再重生成质量矩阵基线
+  - slug: workbench-projection-read-model-chain
+    description: 第5批 工作台投影与读模型链：准备包定型、每个投影一份类型化输入、读模型单路径、表格列定义一份、资源池定型、多形态分型、缺席与拷贝所有权、parse_ref/wire_int 一份、公开 DTO 单一结构、路由层共享 helper
+    depends_on: [persisted-facts-contract]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 根源 R2/R3/R6；official_changed 删除前先做纯内存等价探针；DTO 变化同步跑 UI Node 契约
+  - slug: frontend-contract-chain
+    description: 第6批 前端契约链：contract kit、Contract 产出定型对象、同一概念一种形状（return_to 信封）、镜像兜底回收、保留上一结果的查询 hook、具名状态测试缝与 transport 层打桩、顶层别名 codemod 后删沙箱 default 代理
+    depends_on: [workbench-projection-read-model-chain]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 根源 R2/R3/R4/R5；验收按源头机制，不再用“净减 70%”；删形参后扫 main.js 未绑定标识符
+  - slug: module-boundary-contraction
+    description: 第8批 模块边界与收缩：私有名按簇正名、延迟 import 环下沉（history 包按 D8-4 拆分、仓储不再调服务）、约 15 项真死代码与重导出桶删除、日志底座合一（Block 6 只迁了 fallback_log）、静默回退台账收窄、治理漂移文档同步、批量键集参数收口
+    depends_on: [scheduler-input-config-chain, frontend-contract-chain, gate-and-host-tool-chain]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 根源 R5；纯改名用 AST 比对导入名集合，不对改动文件跑 ruff --fix F401
+  # 2026-11-12 原版条目：按信号类型切分，2026-11-15 由上面的按根源条目取代
+  - slug: retire-heavy-scripts-and-gate-bloat
+    description: C1 第一刀：退役 4,186 行 verify_decision_workbench.py 并剥离门禁/缓存工具内部受控结构重复兜底与镜像路径匹配器
+    depends_on: []
+    status: dropped
+    feature: null
+    minimal_loop: false
+    notes: 2026-11-15 由 gate-and-host-tool-chain 取代；原判据“4 个工具 .get() 降 60%”经抽样可达（约 71%），但不能拿 quality_gate_ledger.py 的一次性准入凑数；原“_safe_relpath 绝不删”经分片 04 核为可删，见裁决 D7-1；脚本已于 2026-11-15 由 gate-and-host-tool-chain 步骤 7 退役（D7-4）
+  - slug: core-controlled-structure-direct-access
+    description: C2 第二刀：分域清理 core/ 内部受控结构 .get() 装不熟、=None 伪可选回退链与只读链路防御性浅拷贝
+    depends_on: [retire-heavy-scripts-and-gate-bloat]
+    status: dropped
+    feature: null
+    minimal_loop: false
+    notes: 2026-11-15 由 persisted-facts-contract、scheduler-input-config-chain、workbench-projection-read-model-chain 取代；抽样 232 处显示 3,202 处信号里可删约 27%–40%，主因是归档形状未钉死与内部 dict 无类型，不是逐条删 .get()
+  - slug: dead-code-islands-and-barrel-removal
+    description: C3 第三刀：精确核实清退 100 个死代码孤岛，移除 data/repositories/__init__.py 动态重导出桶文件与空目录
+    depends_on: [core-controlled-structure-direct-access]
+    status: dropped
+    feature: null
+    minimal_loop: false
+    notes: 2026-11-15 由 deferred-backlog-governance（扫描器口径）与 module-boundary-contraction（删除）取代；孤岛现为 98 项，其中 81 项是误报；空目录实为 3 个且都不在 git 里，已于 2026-11-15 第0批删除；重导出桶已于 2026-11-17 由 module-boundary-contraction 删除（第8批 8-3a：data/repositories/__init__.py 的 __getattr__ 桶与 6 个导入点，包根不再重导出）
+  - slug: bootstrap-fallbacks-and-module-boundaries
+    description: C4 第四刀：收紧 web/bootstrap/ 43 条宽泛异常台账与 5 条测试债务，消解 71 处跨模块私有导入与 7 个运行时文件环
+    depends_on: [dead-code-islands-and-barrel-removal]
+    status: dropped
+    feature: null
+    minimal_loop: false
+    notes: 2026-11-15 由 deferred-backlog-governance 与 module-boundary-contraction 取代；5 条测试债务已于 10-15～10-27 全部退役，43 条静默回退里 26 条应保留
+  - slug: frontend-view-defenses-and-minor-polish
+    description: C5 第五刀：清理前端视图/Model 256 处习惯性兜底并收口组件细分、旧夹具补齐等延后微瑕疵
+    depends_on: [retire-heavy-scripts-and-gate-bloat]
+    status: dropped
+    feature: null
+    minimal_loop: false
+    notes: 2026-11-15 由 frontend-contract-chain 取代；264 处全量定类后可删加可迁只有约 23 处（8.7%），“净减 70%”的前提不成立

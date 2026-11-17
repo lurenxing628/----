@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import subprocess
 import sys
@@ -9,12 +8,13 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+if __name__ == "__main__":
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
+from tools.long_gate_paths import resolve_repo_root
+from tools.long_gate_records import GateJsonError, gate_schema_matches, load_gate_json
 from tools.quality_gate_shared import QUALITY_GATE_MANIFEST_REL, QUALITY_GATE_PROOF_SCHEMA_VERSION
 
 TIMEOUT_EXIT_CODE = 124
@@ -55,8 +55,8 @@ def _git_status_lines(repo_root: Path) -> List[str]:
     return [line.rstrip() for line in str(proc.stdout or "").splitlines() if line.strip()]
 
 
-def _manifest_failure_details(manifest: object) -> str:
-    if not isinstance(manifest, dict):
+def _manifest_failure_details(manifest: Optional[Mapping[str, Any]]) -> str:
+    if manifest is None:
         return ""
     details = []
     for field in ("failure_kind", "failure_message"):
@@ -66,10 +66,8 @@ def _manifest_failure_details(manifest: object) -> str:
     return "; ".join(details)
 
 
-def _verify_bound_manifest(manifest: object, *, head_sha: str) -> Optional[str]:
-    if not isinstance(manifest, dict):
-        return "UNBOUND: quality gate manifest 顶层不是对象"
-    if manifest.get("schema_version") != QUALITY_GATE_PROOF_SCHEMA_VERSION:
+def _verify_bound_manifest(manifest: Mapping[str, Any], *, head_sha: str) -> Optional[str]:
+    if not gate_schema_matches(manifest, QUALITY_GATE_PROOF_SCHEMA_VERSION):
         return f"UNBOUND: quality gate schema_version={manifest.get('schema_version')!r}"
     if manifest.get("status") != "passed":
         return f"UNBOUND: quality gate status={manifest.get('status') or 'unknown'}"
@@ -84,12 +82,13 @@ def _verify_bound_manifest(manifest: object, *, head_sha: str) -> Optional[str]:
     return None
 
 
-def _read_manifest(manifest_path: Path) -> Tuple[Optional[object], Optional[str]]:
-    if not manifest_path.is_file():
-        return None, "UNBOUND: quality gate manifest 缺失"
+def _read_manifest(manifest_path: Path) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """门禁 manifest 走门禁证据 JSON 的唯一读入；返回 (manifest, 读取失败理由)，两者恰有一个为 None。"""
     try:
-        return json.loads(manifest_path.read_text(encoding="utf-8")), None
-    except (OSError, json.JSONDecodeError) as exc:
+        return load_gate_json(str(manifest_path)), None
+    except GateJsonError as exc:
+        if exc.missing:
+            return None, "UNBOUND: quality gate manifest 缺失"
         return None, f"UNBOUND: quality gate manifest 读取失败：{exc}"
 
 
@@ -127,7 +126,7 @@ def _quality_gate_binding_status(
         _write_text(log_path, f"[COMMAND] {' '.join(cmd)}\n{output}\n[BINDING] {note}\n")
         return StepResult("quality_gate_binding", cmd, exit_code, duration_s, [manifest_rel], log_rel, False, note)
 
-    error = read_error or _verify_bound_manifest(manifest, head_sha=head_sha)
+    error = read_error if manifest is None else _verify_bound_manifest(manifest, head_sha=head_sha)
     if error is None and _git_status_lines(repo_root):
         error = "UNBOUND: 完整质量门禁运行后工作区不干净"
     if error is not None:
@@ -289,7 +288,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--step-timeout", type=int, default=900, help="pytest 超时秒数（默认 900；<=0 不设超时）")
     args = parser.parse_args(list(argv) if argv is not None else None)
     ok, _results, report_rel = run_full_selftest(
-        repo_root=REPO_ROOT, fail_fast=bool(args.fail_fast),
+        repo_root=Path(resolve_repo_root()), fail_fast=bool(args.fail_fast),
         step_timeout_s=int(args.step_timeout) if args.step_timeout > 0 else None,
     )
     print(report_rel)

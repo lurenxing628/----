@@ -60,7 +60,7 @@ related_roadmap: aps-architecture-consolidation
 | 已准备事实 | 事实作用域（Fact Scope）/归档受理入口 | 一个事务快照或一个不可变归档对象 | 同源共享，不在每个下游重新校验/解码整份内容 |
 | 对外DTO | 查询/命令发布出口 | 一次响应或持久读模型 | 只做对外合同要求的格式与字段映射 |
 
-Repository 可直接持有连接并返回行或具名数据，不强制继承 `BaseRepository` 或统一经包根重导出。`WorkbenchRunRepository` 现已这样工作。[`workbench_run_repo.py:31`](../../../data/repositories/workbench_run_repo.py#L31)。
+Repository 可直接持有连接并返回行或具名数据，不强制继承 `BaseRepository`；包根 `data/repositories/__init__.py` 不重导出，调用方按模块导入。`WorkbenchRunRepository` 现已这样工作。[`workbench_run_repo.py:31`](../../../data/repositories/workbench_run_repo.py#L31)。
 
 输入校验属于纯合同，业务决策属于用例；不能为了满足“Model只含from_row/to_dict”把纯准入塞进事务协调。需要更新的现行指导见 [架构不变量:29](../../../.limcode/rules/architecture-invariants.mdc#L29)，而不是给当前代码补空壳继承。
 

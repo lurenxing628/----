@@ -14,12 +14,13 @@
 
 | 子包 | 内容 | 规模 |
 |---|---|---|
-| 根（不分包） | 4 个跨簇协调件：`commands.py`（命令事务框架）、`command_prefetch.py`（命令事务外有界预取）、`messages.py`（共享文案）谁都能用，自己不依赖任何簇；`decision_file_export.py`（排产决策对比与历史导出的共享组装）只供路由调用，在导出子进程里按需调用 `run`、`history` 的导出 | 4 |
+| 根（不分包） | 4 个跨簇协调件：`commands.py`（命令事务框架）、`command_prefetch.py`（命令事务外有界预取）、`messages.py`（共享文案）谁都能用，自己不依赖任何簇；`decision_file_export.py`（排产决策对比与历史 XLSX 的 spawn 编码边界）只供路由调用，路由交入自己的写文件函数，它只依赖 `core.models` | 4 |
 | `facts/` | 只读事实与叶子助手：零工时/点事件、排产前检查、候选存档读取（值/事实/投影/任务/存储/存档/基线核对）、试调方案存档、执行投影、计划序列化、系统日志读取与脱敏、表格与文件编解码 | 30 |
 | `plan/` | 正式计划：基线、点证据、采纳基线核对、交期、占用、日历、导出、查询 | 22 |
 | `execution/` | 执行侧：执行台账读取器、现场工作台、报工、实际甘特 | 16 |
 | `run/` | 排产：输入、计算、作业、候选、候选采用、候选对比、排产前检查入口、计件采用 | 41 |
-| `history/` | 排产决策历史：目录、条件、指标、投影、读取、查询与导出 | 10 |
+| `history_entries/` | 决策历史条目：写入、条件摘要与目录原语 | 5 |
+| `history/` | 排产决策历史：比较、指标、投影、读取、查询与导出 | 6 |
 | `trial/` | 试调方案 | 18 |
 | `report/` | 报表与 review 投影 | 11 |
 | `dashboard/` | 看板 | 12 |
@@ -44,13 +45,14 @@
 | resource | facts, process |
 | calibration | facts, process, execution, plan |
 | batch | facts, process, resource, calibration, execution, plan |
-| run | facts, plan, execution |
-| history | facts, run, trial |
-| trial | facts, plan, execution, run |
+| history_entries | facts |
+| run | facts, plan, execution, history_entries |
+| history | facts, run, trial, history_entries |
+| trial | facts, plan, execution, run, history_entries |
 | report | facts, plan, execution, run, trial |
 | dashboard | facts, plan, execution, run, trial, report, outsourcing |
 
-结果侧链条：`facts ← plan ← execution ← run ← trial ← report ← dashboard`，`history` 挂在 `run`、`trial` 之上，没有簇依赖它。主数据侧：`facts ← process ← resource`，`batch` 与 `calibration` 在其上。两侧只在 `batch → execution`、`calibration → execution/plan` 处相接，方向单一。
+结果侧链条：`facts ← plan ← execution ← run ← trial ← report ← dashboard`，`history` 挂在 `run`、`trial` 之上，没有簇依赖它；`history_entries` 只依赖 `facts`，`run`、`trial`、`history` 写入或读取历史条目时都依赖它。主数据侧：`facts ← process ← resource`，`batch` 与 `calibration` 在其上。两侧只在 `batch → execution`、`calibration → execution/plan` 处相接，方向单一。
 
 ## 3. 五对双向依赖与解法
 
@@ -271,7 +273,7 @@ python3 -m tools.scan_import_cycles --fail-on-new-cycle
 | `dashboard_candidate_comparison` | run | `run/candidate_comparison.py` |
 | `dashboard_candidate_metrics` | run | `run/candidate_metrics.py` |
 | `piece_adoption` | run | `run/piece_adoption.py` |
-| `piece_adoption_execution` | run | `run/piece_adoption_execution.py` |
+| `piece_adoption_execution` | run | `run/piece_adoption_execution.py`（已并入 `run/input_execution.py`） |
 | `piece_adoption_facts` | run | `run/piece_adoption_facts.py` |
 | `piece_adoption_trial` | run | `run/piece_adoption_trial.py` |
 | `preflight` | run | `run/preflight.py` |

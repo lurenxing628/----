@@ -13,8 +13,7 @@
 - **排产调度**：批次管理、批次工序补充、候选排产与方案对比、正式采用、手动试调、齐套约束、工作时段日历与排产运行参数配置。
 - **结果查看**：资源排班中心、甘特图、周计划、排产优化分析、排产历史。
 - **报表中心**：逾期、资源利用率、停机影响等报表，并支持导出。
-- **系统管理**：健康检查、系统概况、备份/恢复、操作与运行日志、排产历史、插件状态查看。
-- **可选增强**：`plugins/` 中提供 pandas Excel 后端与 OR-Tools 探测插件，默认关闭；OR-Tools 不是 Win7 交付必选依赖。
+- **系统管理**：健康检查、系统概况、备份/恢复、操作与运行日志、排产历史。
 
 ## 快速启动
 
@@ -60,7 +59,7 @@ py -3.8 -m venv .venv
 .venv\Scripts\python scripts/run_daily_quality_gate.py
 ```
 
-它会先看本次改了哪些文件：只改 README、开发文档或 CodeStable 记录时，只做本地产物拦截和一小组重点冒烟测试；改了 Python 文件时，对还存在的改动文件跑 `ruff check` 及三个快速边界棘轮扫描器（`scan_sql_boundary`、`scan_private_imports`、`scan_dead_path_literals`），并把受影响的测试文件（含 21 项工作台 Node `vm.Context` UI 契约）与重点冒烟用例合成一次 pytest；公共配置、门禁工具配置或改动范围无法判断时，使用全仓静态检查和保留的业务回归。日常门禁不再另跑全仓收集检查，也不重复执行已经包含在目标文件里的重点用例。
+它会先看本次改了哪些文件：只改 README、开发文档或 CodeStable 记录时，只做本地产物拦截和一小组重点冒烟测试；改了 Python 文件时，对还存在的改动文件跑 `ruff check`，并把受影响的测试文件（含 21 项工作台 Node `vm.Context` UI 契约）与重点冒烟用例合成一次 pytest；公共配置、门禁工具配置或改动范围无法判断时，使用全仓静态检查和保留的业务回归。有 Python 改动（含删除的文件）或要全量跑 `ruff check` 时，七个扫描器全跑：五个共用棘轮（`scan_sql_boundary`、`scan_private_imports`、`scan_dead_path_literals`、`scan_over_defense`、`scan_dead_code_islands`）加循环依赖扫描器 `scan_import_cycles` 的生产、含测试两档；没有 Python 改动时，改动文件落在哪个扫描器规格声明的范围（它读取的输入、它的基线、工具与依赖，以及只看是否存在的路径）里就跑哪个，例如只改前端 JS 或模板会跑 `scan_over_defense`，改动 `docs/`、`开发文档/`、`frontend/` 等顶层目录下带路径扩展名的文件（含增删）会跑 `scan_dead_path_literals`，只改某个扫描器的基线会跑该扫描器，与所有扫描器范围都无关的文档不触发，细节见 `开发文档/README.md` 的“质量治理入口”。日常门禁不再另跑全仓收集检查，也不重复执行已经包含在目标文件里的重点用例。
 
 请注意：这条命令只用来尽快挡住明显问题，**不是最终 clean proof**。它不声明 full-test-debt proof，也不声明干净工作区证明。`.pre-commit-config.yaml` 的 pre-push hook 现在默认调用这条快门禁，所以日常推送不会每次都被完整 full-test-debt 执行拖住。
 
@@ -104,12 +103,12 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 - `.venv\Scripts\python scripts\run_quality_gate.py --fast-precheck` 只对本次改动相关的 Python 文件跑局部 ruff，用来提前提醒明显问题。它不是 `ruff_check_full`，也不是 `pyright_gate_full` / `pyright_tools_full`，不能当成完整质量门禁、clean proof 或 long gate proof。
 - 上面这些常用定向命令只适合定位问题，不能当成最终 clean proof。最终 clean proof 需要在干净工作区跑完整质量门禁，并且门禁结束后工作区仍然干净。
 - 质量门禁里的 full pytest 收口检查由 `.venv\Scripts\python tools/check_full_test_debt.py` 完成，它会对照治理台账确认没有新的未登记失败。
-- 单独运行 `.venv\Scripts\python tools/check_full_test_debt.py` 只会在 `evidence/QualityGate/v4/` 下生成本次 full-test-debt 的 current/summary 证明，不会写 `evidence/QualityGate/long_gate/` 下的 long gate success cache。也就是说，它能帮你定位 full-test-debt 本身是否通过，但不会让下一次完整门禁自动复用 long gate 缓存。
-- 长耗时门禁缓存需要显式传 `.venv\Scripts\python scripts/run_quality_gate.py --long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`quickref_vs_routes`、`import_cycles_production` 和 `import_cycles_with_tests`。
+- 单独运行 `.venv\Scripts\python tools/check_full_test_debt.py` 只会在 `evidence/QualityGate/v4/` 下生成本次 full-test-debt 的 current/summary 证明（payload 当前为 schema 3，取消了 `importable` / `importable_blockers` 字段，旧 v2 payload 首次明确失效、重跑生成），不会写 `evidence/QualityGate/long_gate/` 下的 long gate success cache。也就是说，它能帮你定位 full-test-debt 本身是否通过，但不会让下一次完整门禁自动复用 long gate 缓存。
+- 长耗时门禁缓存需要显式传 `.venv\Scripts\python scripts/run_quality_gate.py --long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`quickref_vs_routes`、`import_cycles_production`、`import_cycles_with_tests`、`sql_boundary`、`private_imports`、`over_defense` 和 `dead_code_islands`。
 - 要预热最终完整门禁会用到的 long gate 缓存，请跑完整门禁链：`.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。这条命令成功后，才会留下 long gate success cache。
 - `.github/workflows/quality.yml` 当前只通过 `workflow_dispatch` 手动触发。GitHub Actions 在完整门禁前先按 `scripts/workbench/esbuild-manifest.json` 缓存并校验安装固定版本宿主 `esbuild`，再恢复 long gate cache，成功后按 workflow 条件保存；当前实际保存入口也是手动运行。restore/save 使用同一 `quality-long-gate-v2` key，由系统、Python 3.8、`github.ref`、既有提交号 `github.sha`、`github.run_id` 和 `github.run_attempt` 定位；restore-prefix 使用同一系统、Python 和 ref。运输范围收口为 `evidence/QualityGate/long_gate/`、`evidence/QualityGate/v4/` 与 `evidence/QualityGate/collect_nodeids.v2.json`。恢复后的运行产物仍由仓库内完整内容和真实环境判断是否可复用。
-- 当前 shared proof/receipt 使用 schema 4，manifest、专项 proof、receipts 和日志写入 `evidence/QualityGate/v4/`；long gate cache 使用版本 2，成功/失败结果分别为 `<entry>.v2.success.json` / `<entry>.v2.failure.json`。命中前比较完整 command、源码原字节、登记内容、公开环境、工具 metadata、runner/tooling 源内容、stdout/stderr 日志、输出 proof、schema 和 repo identity；shared v4 以 `run_id`、`command_index`、路径和完整 receipt JSON 绑定本次执行。原字节用可逆 Base64 保存，结构内容用规范 JSON 比较。缺证据或内容变化就重跑对应命令；实际失败继续失败，已登记测试债务继续受台账约束。
-- `--long-gate-cache-explain` 只打印“会不会复用”的判断，不执行门禁，也不能当作通过证明。summary counts 只告诉你本轮执行、复用、失败、planned、disabled 各有多少条，也不是通过证明。CI 日志里看到 cache hit，也只能说明旧运行产物被拿回来参与校验，不能当成这次门禁已经通过。
+- 当前 shared proof/receipt 使用 schema 5，manifest、专项 proof、receipts 和日志写入 `evidence/QualityGate/v4/`（目录名不随 schema 变）；long gate cache 记录使用 schema 3，成功/失败结果文件名仍为 `<entry>.v2.success.json` / `<entry>.v2.failure.json`。这些门禁证据 JSON 统一由 `tools/long_gate_records.py` 读入并做结构准入，`NaN`/`Infinity` 与溢出数字一律拒绝。命中前比较完整 command、源码原字节、登记内容、公开环境、工具 metadata、runner/tooling 源内容、stdout/stderr 日志、输出 proof、schema 和 repo identity；receipt 以 `run_id`、`command_index`、路径和完整 receipt JSON 绑定本次执行。`--allow-dirty-worktree` 续跑时按命令序号逐步复用：上次失败步骤之前、已校验通过的步骤直接复用，`reuse_policy=none` 的探针步骤每次照常执行，失败步骤及之后照常执行，续跑期间不读写 long gate cache。原字节用可逆 Base64 保存，结构内容用规范 JSON 比较。缺证据或内容变化就重跑对应命令；实际失败继续失败，已登记测试债务继续受台账约束。
+- `--long-gate-cache-explain` 只打印“会不会复用”的判断，不执行门禁，也不能当作通过证明。summary counts 只告诉你本轮执行、复用、失败、disabled 各有多少条，也不是通过证明。CI 日志里看到 cache hit，也只能说明旧运行产物被拿回来参与校验，不能当成这次门禁已经通过。
 - CI 和最终 clean gate 的要求不降低。最终 clean proof 仍要在干净工作区跑 `.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`，并且门禁结束后 `git status --short` 仍然没有输出。
 - 去掉 `--long-gate-cache` 或加 `--no-long-gate-cache` 只适合维护者强制全量重跑或排查缓存问题；对外收口、PR 和 CI 的最终证明仍按 `--require-clean-worktree --long-gate-cache` 或 `tools\git_hook_checks.py run-final-quality-gate` 口径写。
 - `requirements.txt` 是程序运行依赖，`requirements-dev.txt` 是本地检查和托管门禁依赖，`requirements-optimizer-lite-win7.txt` 是图分析/候选方案增强需要的轻量优化依赖；新环境三份都要装。
@@ -128,13 +127,12 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 
 ## 关键目录
 
-- `core/`：核心领域、算法、基础设施、服务与插件运行框架。
+- `core/`：核心领域、算法、基础设施与服务。
 - `data/`：数据访问层。
 - `web/`：Flask 单一宿主启动（`web/bootstrap/`）、工作台路由与通用命令回执（`web/routes/workbench/`）及说明书注册表（`web/viewmodels/`）。
 - `frontend/workbench/`：工作台前端显式 ESM 源码（`app/`，含 `app/styles/index.css` 显式级联样式集与 `app/assets/` 本地字体图标；已退役的 `prototype/` 目录已清理）及固定版本 React `18.3.1` vendor，由 `scripts/workbench/build.py`（配合 `compile.cjs`）经宿主固定版本 `esbuild` 离线构建至 `static/workbench/`（含 `static/workbench/app/assets/`）。
 - `templates/`、`static/`：工作台与说明书/错误恢复模板及本地离线静态资源。
 - `templates_excel/`：运行时的 Excel 模板目录，随包不再附带示例文件；业务表模板由工作台按表描述现生成。
-- `plugins/`：自研插件目录，当前插件默认关闭。
 - `tests/`：精简后的业务回归，按业务目录放置标准 `test_*.py` 用例；`tests/gate_meta/` 只保留速查表检查工具。
 - `开发文档/`：开发说明、系统速查表、页面与接口清单、设计资料。
 - `AGENTS.md`：AI 协作约定、CodeStable 分流规则和 APS 硬约束。
@@ -153,12 +151,9 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 | `开发文档/面板与接口清单.md` | 2026-09-18 已退役经典多页 HTML 面板、路由、按钮与文案历史对照记录（现行工作台见 `开发文档.md`、`系统速查表.md` 与 `static/docs/scheduler_manual.md`） |
 | `installer/README_WIN7_INSTALLER.md` | Win7 双包构建、安装、卸载、强制清理与启动排障 |
 | `DELIVERY_WIN7.md` | Win7 绿色便携版构建、使用、升级、数据迁移和 PowerShell 5.1 约定 |
-| `ORTOOLS_WIN7_SPIKE.md` | OR-Tools 在 Win7 / Python 3.8 离线环境下的可行性结论 |
-| `plugins/README.md` | 自研插件约定与当前插件清单 |
 
 ## Win7 / Python 3.8 兼容边界
 
 - 当前目标仍是 Win7 x64 离线场景，因此依赖升级、语法升级与打包方案都要优先服从 Python 3.8 与 Win7 兼容性。
 - 目标机不要求安装 Python；源码开发与打包机仍使用 Python 3.8。
 - 页面不依赖外部脚本或样式，静态资源应随应用本地交付。
-- OR-Tools 只作为可选增强和现场探测能力；缺失时不影响主流程。
