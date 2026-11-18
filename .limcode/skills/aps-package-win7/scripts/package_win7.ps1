@@ -1,4 +1,3 @@
-#Requires -Version 5.1
 # APS Win7 packaging pipeline:
 # default -> build self-contained portable ZIP, no Inno Setup required
 # -Installer -> build the previous main + browser runtime installers
@@ -12,6 +11,8 @@
 #
 # NOTE (Windows PowerShell 5.1):
 # Keep this script ASCII-only to avoid ParserError when saved as UTF-8 without BOM.
+# The version guard below is the first statement and must keep parsing under PowerShell 2.0,
+# so an older host reports a readable error and exit code 2 instead of a silent success.
 
 param(
     [switch]$Installer,
@@ -19,6 +20,12 @@ param(
     [switch]$ChromeOnly,
     [switch]$Legacy
 )
+
+if ($PSVersionTable.PSVersion -lt [Version]"5.1") {
+    [Console]::Error.WriteLine("[package_win7] ERROR: Windows PowerShell 5.1 or newer is required; this host runs " + $PSVersionTable.PSVersion + ".")
+    $global:LASTEXITCODE = 2
+    exit 2
+}
 
 $ErrorActionPreference = "Stop"
 # Console/native-process encoding is separate from the .ps1 source encoding.
@@ -32,17 +39,17 @@ $env:PYTHONIOENCODING = "utf-8"
 function Resolve-RepoRoot {
     # This script lives in: <repo>/.limcode/skills/aps-package-win7/scripts/package_win7.ps1
     # So repo root is 4 levels up from $PSScriptRoot.
-    return (Resolve-Path (Join-Path $PSScriptRoot "../../../..")).Path
+    return (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "../../../..")).Path
 }
 
 function Test-PathOrThrow([string]$path, [string]$message) {
-    if (-not (Test-Path $path)) {
+    if (-not (Test-Path -LiteralPath $path)) {
         throw $message
     }
 }
 
 function Invoke-CmdBat([string]$bat) {
-    cmd /c $bat
+    & $env:ComSpec /d /e:on /v:off /c $bat
     if ($LASTEXITCODE -ne 0) {
         throw "$bat failed (exit=$LASTEXITCODE)"
     }
@@ -63,13 +70,13 @@ function Get-FreePort([int[]]$candidates) {
 }
 
 function Remove-PathWithRetry([string]$path) {
-    if (-not (Test-Path $path)) {
+    if (-not (Test-Path -LiteralPath $path)) {
         return
     }
 
     for ($i = 0; $i -lt 3; $i++) {
         try {
-            Remove-Item $path -Recurse -Force
+            Remove-Item -LiteralPath $path -Recurse -Force
             return
         } catch {
             if ($i -ge 2) {
@@ -88,22 +95,22 @@ function Remove-DistRuntimeArtifacts([string]$distDir) {
     )
 
     foreach ($path in $runtimeDirs) {
-        if (Test-Path $path) {
+        if (Test-Path -LiteralPath $path) {
             Remove-PathWithRetry $path
         }
     }
 
     $rootPatterns = @("*.maintenance.lock", "*.rollback_tmp", "*.db-wal", "*.db-shm", "*.db-journal")
     foreach ($pattern in $rootPatterns) {
-        Get-ChildItem -Path $distDir -Filter $pattern -File -ErrorAction SilentlyContinue | ForEach-Object {
-            Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -LiteralPath $distDir -Filter $pattern -File -ErrorAction SilentlyContinue | ForEach-Object {
+            Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
         }
     }
 }
 
 function Resolve-DistDir {
     foreach ($d in (Get-ChildItem dist -Directory -ErrorAction SilentlyContinue)) {
-        $hasExe = Get-ChildItem $d.FullName -Filter *.exe -File -ErrorAction SilentlyContinue | Select-Object -First 1
+        $hasExe = Get-ChildItem -LiteralPath $d.FullName -Filter *.exe -File -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($hasExe) {
             return $d.FullName
         }
@@ -112,34 +119,68 @@ function Resolve-DistDir {
     throw "dist output directory not found."
 }
 
-function Resolve-Iscc([string]$repoRoot) {
-    $resolver = Join-Path $repoRoot "tools\resolve_iscc.ps1"
-    $resolved = & $resolver
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($resolved)) {
-        throw "ISCC.exe not found or invalid ISCC_EXE/INNO_HOME. Install Inno Setup 6 or set ISCC_EXE/INNO_HOME."
+function Resolve-Iscc {
+    # An explicit ISCC_EXE or INNO_HOME must be valid; only without them are the default folders and PATH searched.
+    if (-not [string]::IsNullOrWhiteSpace($env:ISCC_EXE)) {
+        $explicitIscc = $env:ISCC_EXE.Trim()
+        if (-not (Test-Path -LiteralPath $explicitIscc -PathType Leaf)) {
+            throw ("ISCC_EXE points to a missing file: `"" + $explicitIscc + "`"")
+        }
+        return (Resolve-Path -LiteralPath $explicitIscc).Path
     }
-    return $resolved.Trim()
+
+    if (-not [string]::IsNullOrWhiteSpace($env:INNO_HOME)) {
+        $innoCandidate = Join-Path $env:INNO_HOME.Trim() "ISCC.exe"
+        if (-not (Test-Path -LiteralPath $innoCandidate -PathType Leaf)) {
+            throw ("INNO_HOME does not contain ISCC.exe: `"" + $innoCandidate + "`"")
+        }
+        return (Resolve-Path -LiteralPath $innoCandidate).Path
+    }
+
+    $defaultCandidates = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $defaultCandidates += (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe")
+    }
+    $pf86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
+    if (-not [string]::IsNullOrWhiteSpace($pf86)) {
+        $defaultCandidates += (Join-Path $pf86 "Inno Setup 6\ISCC.exe")
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:ProgramFiles)) {
+        $defaultCandidates += (Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe")
+    }
+    foreach ($candidate in $defaultCandidates) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    $pathCommand = Get-Command "ISCC.exe" -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($pathCommand) {
+        return $pathCommand.Path
+    }
+
+    throw "ISCC.exe not found. Install Inno Setup 6 or set ISCC_EXE/INNO_HOME."
 }
 
 function Test-DistExeStartup([string]$distDir) {
-    $exe = (Get-ChildItem $distDir -Filter *.exe -File | Select-Object -First 1).FullName
+    $exe = (Get-ChildItem -LiteralPath $distDir -Filter *.exe -File | Select-Object -First 1).FullName
     if (-not $exe) {
         throw "Main exe not found in $distDir."
     }
 
-    python validate_dist_exe.py "$exe"
+    & $pythonExe validate_dist_exe.py "$exe"
     if ($LASTEXITCODE -ne 0) {
         throw "validate_dist_exe.py failed (exit=$LASTEXITCODE)."
     }
 }
 
-function Resolve-PythonExe {
-    $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
-    if ($pythonCmd) {
-        return $pythonCmd.Source
+function Resolve-PythonExe([string]$repoRoot) {
+    # The isolated build venv carries the staged JSON1 SQLite and is the only build interpreter.
+    $venvPython = Join-Path $repoRoot ".venv-win7-build\Scripts\python.exe"
+    if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
+        throw "Build venv python not found: $venvPython. Run setup_win7_build.bat first."
     }
-
-    throw "python.exe not found in PATH."
+    return $venvPython
 }
 
 function Wait-HttpReady([string]$url, [int]$timeoutSeconds) {
@@ -275,11 +316,11 @@ function Stop-ProcessTreeByIdsBestEffort([int[]]$targetIds) {
 }
 
 function Get-ChromeIdsByExecutablePath([string]$chromeExe) {
-    if ($null -eq $chromeExe -or $chromeExe.Trim().Length -eq 0 -or -not (Test-Path $chromeExe)) {
+    if ($null -eq $chromeExe -or $chromeExe.Trim().Length -eq 0 -or -not (Test-Path -LiteralPath $chromeExe)) {
         return @()
     }
 
-    $targetExe = (Resolve-Path $chromeExe).Path.ToLowerInvariant()
+    $targetExe = (Resolve-Path -LiteralPath $chromeExe).Path.ToLowerInvariant()
     $items = $null
     if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
         try {
@@ -340,7 +381,6 @@ function Stop-LegacyDistChromeBestEffort {
 function Invoke-ChromeRuntimeSmoke([string]$chromeExe, [string]$label) {
     Test-PathOrThrow $chromeExe "Missing Chrome executable for smoke: $chromeExe"
 
-    $pythonExe = Resolve-PythonExe
     # Exercise non-ASCII paths and spaces in every real Windows browser smoke.
     $unicodeProbe = -join ([char[]](25490, 20135))
     $smokeRoot = Join-Path $env:TEMP ("aps chrome smoke " + $unicodeProbe + " " + [guid]::NewGuid().ToString("N"))
@@ -357,9 +397,9 @@ function Invoke-ChromeRuntimeSmoke([string]$chromeExe, [string]$label) {
     try {
         New-Item -ItemType Directory -Path $siteDir -Force | Out-Null
         New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
-        Set-Content -Path (Join-Path $siteDir "index.html") -Value "<html><body>aps chrome smoke</body></html>" -Encoding ASCII
+        Set-Content -LiteralPath (Join-Path $siteDir "index.html") -Value "<html><body>aps chrome smoke</body></html>" -Encoding ASCII
 
-        $marker = (Resolve-Path $profileDir).Path
+        $marker = (Resolve-Path -LiteralPath $profileDir).Path
         $serverArgs = '-m http.server {0} --bind 127.0.0.1 --directory "{1}"' -f $port, $siteDir
         $serverProc = Start-Process -FilePath $pythonExe -ArgumentList $serverArgs -WorkingDirectory $siteDir -PassThru -WindowStyle Hidden
         if (-not (Wait-HttpReady $url 15)) {
@@ -415,7 +455,7 @@ function Invoke-ChromeRuntimeSmoke([string]$chromeExe, [string]$label) {
 }
 
 function Initialize-OfflineChrome109([string]$chromeExe) {
-    if (Test-Path $chromeExe) {
+    if (Test-Path -LiteralPath $chromeExe -PathType Leaf) {
         return
     }
 
@@ -431,9 +471,9 @@ function Initialize-OfflineChrome109([string]$chromeExe) {
     Remove-PathWithRetry $tmp
     New-Item -ItemType Directory -Path $tmp | Out-Null
 
-    Expand-Archive -Path $zip.FullName -DestinationPath $tmp -Force
+    Expand-Archive -LiteralPath $zip.FullName -DestinationPath $tmp -Force
 
-    $found = Get-ChildItem -Path $tmp -Recurse -Filter "chrome.exe" -File -ErrorAction SilentlyContinue |
+    $found = Get-ChildItem -LiteralPath $tmp -Recurse -Filter "chrome.exe" -File -ErrorAction SilentlyContinue |
         Select-Object -First 1
 
     if (-not $found) {
@@ -443,10 +483,9 @@ function Initialize-OfflineChrome109([string]$chromeExe) {
     $srcDir = $found.Directory.FullName
     $dstDir = Split-Path $chromeExe -Parent
     Remove-PathWithRetry $dstDir
-    New-Item -ItemType Directory -Path $dstDir | Out-Null
-    Copy-Item -Recurse -Force (Join-Path $srcDir "*") $dstDir
+    Copy-Item -LiteralPath $srcDir -Destination $dstDir -Recurse -Force
 
-    if (-not (Test-Path $chromeExe)) {
+    if (-not (Test-Path -LiteralPath $chromeExe -PathType Leaf)) {
         throw "Failed to prepare offline Chrome109 at: $chromeExe"
     }
 
@@ -485,8 +524,10 @@ function New-ChromeRuntimePayload([string]$sourceDir, [string]$payloadDir) {
         "/XF"
     ) + $removedHelpers
 
+    # Robocopy reports successful copies as 1-7. Interpret its native exit code here.
+    $PSNativeCommandUseErrorActionPreference = $false
     & robocopy @robocopyArgs | Out-Null
-    if ($LASTEXITCODE -gt 7) {
+    if ($LASTEXITCODE -lt 0 -or $LASTEXITCODE -gt 7) {
         throw "robocopy chrome runtime payload failed (exit=$LASTEXITCODE)."
     }
 
@@ -497,11 +538,11 @@ function New-ChromeRuntimePayload([string]$sourceDir, [string]$payloadDir) {
     foreach ($locale in $keptLocales) {
         $localeSource = Join-Path $sourceLocales $locale
         Test-PathOrThrow $localeSource "Missing locale file: $localeSource"
-        Copy-Item -Force $localeSource -Destination (Join-Path $payloadLocales $locale)
+        Copy-Item -Force -LiteralPath $localeSource -Destination (Join-Path $payloadLocales $locale)
     }
 
     Test-PathOrThrow (Join-Path $payloadDir "chrome.exe") "Trimmed chrome runtime payload is missing chrome.exe."
-    $payloadBytes = (Get-ChildItem $payloadDir -Recurse -File | Measure-Object Length -Sum).Sum
+    $payloadBytes = (Get-ChildItem -LiteralPath $payloadDir -Recurse -File | Measure-Object Length -Sum).Sum
     Write-Host ("Prepared trimmed Chrome runtime payload: " + $payloadDir + " (" + $payloadBytes + " bytes)")
 }
 
@@ -520,22 +561,20 @@ function Invoke-MainPackageBuild([string]$iscc) {
 function Invoke-PortablePackageBuild {
     $chrome = "tools\Chrome.109.0.5414.120.x64\chrome.exe"
     Initialize-OfflineChrome109 $chrome
-    Test-PathOrThrow $chrome "Missing offline Chrome109 before portable build."
 
     Invoke-CmdBat "build_win7_onedir.bat"
     $distDir = Resolve-DistDir
     $browserDir = Join-Path $distDir "tools\chrome109"
     New-Item -ItemType Directory -Path (Split-Path $browserDir -Parent) -Force | Out-Null
     New-ChromeRuntimePayload (Split-Path $chrome -Parent) $browserDir
-    python scripts/portable_release.py prepare "$distDir"
+    & $pythonExe scripts/portable_release.py prepare "$distDir"
     if ($LASTEXITCODE -ne 0) { throw "Portable payload preparation failed." }
 
     Test-DistExeStartup $distDir
     Invoke-ChromeRuntimeSmoke (Join-Path $browserDir "chrome.exe") "portable browser"
-    # Only the fresh build's validation state is removed. No installed data is touched.
-    Remove-PathWithRetry (Join-Path $distDir "user-data")
+    # validate_dist_exe cleans its own probe. The archive rejects any subsequent user data.
     $output = "dist\APS_Portable_Win7_x64.zip"
-    python scripts/portable_release.py archive "$distDir" "$output"
+    & $pythonExe scripts/portable_release.py archive "$distDir" "$output"
     if ($LASTEXITCODE -ne 0) { throw "Portable archive validation failed." }
     Write-Host ("DONE: " + $output)
 }
@@ -543,11 +582,10 @@ function Invoke-PortablePackageBuild {
 function Invoke-ChromeRuntimeBuild([string]$iscc) {
     $chrome = "tools\Chrome.109.0.5414.120.x64\chrome.exe"
     Initialize-OfflineChrome109 $chrome
-    Test-PathOrThrow $chrome "Missing $chrome. Provide offline Chrome109 at tools\\Chrome.109.0.5414.120.x64\\chrome.exe or tools\\ungoogled-chromium_109*.zip"
     $payloadDir = "build\chrome109_runtime_payload"
     New-ChromeRuntimePayload (Split-Path $chrome -Parent) $payloadDir
     Invoke-ChromeRuntimeSmoke (Join-Path $payloadDir "chrome.exe") "chrome runtime payload"
-    $runtimeArg = "/DRuntimeDir=$((Resolve-Path $payloadDir).Path)"
+    $runtimeArg = "/DRuntimeDir=$((Resolve-Path -LiteralPath $payloadDir).Path)"
 
     & $iscc $runtimeArg "installer\aps_win7_chrome.iss"
     if ($LASTEXITCODE -ne 0) {
@@ -558,7 +596,6 @@ function Invoke-ChromeRuntimeBuild([string]$iscc) {
 function Invoke-LegacyPackageBuild([string]$iscc) {
     $chrome = "tools\Chrome.109.0.5414.120.x64\chrome.exe"
     Initialize-OfflineChrome109 $chrome
-    Test-PathOrThrow $chrome "Missing $chrome. Provide offline Chrome109 at tools\\Chrome.109.0.5414.120.x64\\chrome.exe or tools\\ungoogled-chromium_109*.zip"
 
     Stop-LegacyDistChromeBestEffort
 
@@ -576,49 +613,61 @@ function Invoke-LegacyPackageBuild([string]$iscc) {
     }
 }
 
-if ($MainOnly -and $ChromeOnly) {
-    throw "MainOnly and ChromeOnly cannot be used together."
-}
-
-if ($Legacy -and ($Installer -or $MainOnly -or $ChromeOnly)) {
-    throw "Legacy cannot be combined with Installer, MainOnly or ChromeOnly."
-}
-
-$buildMain = -not $ChromeOnly
-$buildChrome = -not $MainOnly
-$repoRoot = Resolve-RepoRoot
-Push-Location $repoRoot
 try {
-    if (-not ($Installer -or $MainOnly -or $ChromeOnly -or $Legacy)) {
-        Invoke-PortablePackageBuild
-        return
+    if ($MainOnly -and $ChromeOnly) {
+        throw "MainOnly and ChromeOnly cannot be used together."
     }
 
-    $iscc = Resolve-Iscc $repoRoot
-    $outputs = New-Object System.Collections.Generic.List[string]
-
-    if ($Legacy) {
-        Invoke-LegacyPackageBuild $iscc
-        $outputs.Add("installer\output\APS_Legacy_Full_Setup.exe") | Out-Null
-        Write-Host ("DONE: " + ($outputs -join ", ") + "  (legacy fallback)")
-        Write-Host "VALIDATED: dist exe cold start OK (isolated validate_dist_exe.py runtime)"
-        return
+    if ($Legacy -and ($Installer -or $MainOnly -or $ChromeOnly)) {
+        throw "Legacy cannot be combined with Installer, MainOnly or ChromeOnly."
     }
 
-    if ($buildMain) {
-        Invoke-MainPackageBuild $iscc
-        $outputs.Add("installer\output\APS_Main_Setup.exe") | Out-Null
-    }
+    $buildMain = -not $ChromeOnly
+    $buildChrome = -not $MainOnly
+    $repoRoot = Resolve-RepoRoot
+    $pythonExe = Resolve-PythonExe $repoRoot
+    $originalPath = $env:PATH
+    $originalPythonHome = $env:PYTHONHOME
+    Push-Location -LiteralPath $repoRoot
+    try {
+        $env:PATH = (Split-Path $pythonExe -Parent) + [IO.Path]::PathSeparator + $originalPath
+        $env:PYTHONHOME = $null
+        if (-not ($Installer -or $MainOnly -or $ChromeOnly -or $Legacy)) {
+            Invoke-PortablePackageBuild
+        } else {
+            $iscc = Resolve-Iscc
+            $outputs = New-Object System.Collections.Generic.List[string]
+            if ($Legacy) {
+                Invoke-LegacyPackageBuild $iscc
+                $outputs.Add("installer\output\APS_Legacy_Full_Setup.exe") | Out-Null
+                Write-Host ("DONE: " + ($outputs -join ", ") + "  (legacy fallback)")
+                Write-Host "VALIDATED: dist exe cold start OK (isolated validate_dist_exe.py runtime)"
+            } else {
+                if ($buildMain) {
+                    Invoke-MainPackageBuild $iscc
+                    $outputs.Add("installer\output\APS_Main_Setup.exe") | Out-Null
+                }
 
-    if ($buildChrome) {
-        Invoke-ChromeRuntimeBuild $iscc
-        $outputs.Add("installer\output\APS_Chrome109_Runtime.exe") | Out-Null
-    }
+                if ($buildChrome) {
+                    Invoke-ChromeRuntimeBuild $iscc
+                    $outputs.Add("installer\output\APS_Chrome109_Runtime.exe") | Out-Null
+                }
 
-    Write-Host ("DONE: " + ($outputs -join ", "))
-    if ($buildMain) {
-        Write-Host "VALIDATED: dist exe cold start OK (isolated validate_dist_exe.py runtime)"
+                Write-Host ("DONE: " + ($outputs -join ", "))
+                if ($buildMain) {
+                    Write-Host "VALIDATED: dist exe cold start OK (isolated validate_dist_exe.py runtime)"
+                }
+            }
+        }
+    } finally {
+        $env:PYTHONHOME = $originalPythonHome
+        $env:PATH = $originalPath
+        Pop-Location
     }
-} finally {
-    Pop-Location
+    $global:LASTEXITCODE = 0
+    exit 0
+} catch {
+    [Console]::Error.WriteLine("[package_win7] ERROR: " + $_.Exception.Message)
+    $global:LASTEXITCODE = 1
+    exit 1
 }

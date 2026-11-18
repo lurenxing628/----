@@ -1349,7 +1349,6 @@ def build_quality_gate_check_specs(
             tool_file_scopes=(
                 "tools/test_registry*.py",
                 "tools/generate_schema_sql.py",
-                "tools/resolve_iscc.ps1",
                 "tools/wufenchang_demo/**/*.py",
                 *_ESBUILD_GATE_SCOPES,
             ),

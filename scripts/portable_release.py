@@ -3,10 +3,16 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import List
+from typing import Iterable, List
+
+if __name__ == "__main__":
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from core.infrastructure.safe_files import open_fixed_file_for_write_binary
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MARKER = "aps-portable.txt"
@@ -14,8 +20,9 @@ LAUNCHER = "启动_排产系统_Chrome.bat"
 README = "README_PORTABLE.txt"
 ACCEPTANCE = "WIN7_ACCEPTANCE.txt"
 ARCHIVE_ROOT = "APS_Portable"
+SQLITE_BINARIES = ("_sqlite3.pyd", "sqlite3.dll")
 REQUIRED_FILES = (
-    "排产系统.exe", "python38.dll", "base_library.zip", "schema.sql", "aps-launcher.ps1",
+    "排产系统.exe", "python38.dll", *SQLITE_BINARIES, "base_library.zip", "schema.sql", LAUNCHER, "aps-launcher.ps1",
     "static/workbench/app/workbench.css", "static/workbench/app/main.js",
     "tools/chrome109/chrome.exe", "tools/chrome109/locales/zh-CN.pak",
     "tools/chrome109/locales/en-US.pak",
@@ -23,12 +30,16 @@ REQUIRED_FILES = (
 RUNTIME_ROOTS = {"user-data", "db", "logs", "backups", "chrome109_profile"}
 
 
+def require_payload_files(dist_dir: Path, names: Iterable[str]) -> None:
+    for relative in names:
+        target = dist_dir / relative
+        if target.is_symlink() or not target.is_file() or target.stat().st_size == 0:
+            raise ValueError("Missing or empty portable payload: " + relative)
+
+
 def payload_files(dist_dir: Path) -> List[Path]:
     """Reject incomplete packages and runtime state instead of silently filtering it."""
-    for relative in REQUIRED_FILES:
-        target = dist_dir / relative
-        if not target.is_file() or target.stat().st_size == 0:
-            raise ValueError("Missing or empty portable payload: " + relative)
+    require_payload_files(dist_dir, REQUIRED_FILES)
     files = []
     for path in sorted(dist_dir.rglob("*")):
         relative = path.relative_to(dist_dir)
@@ -47,15 +58,18 @@ def payload_files(dist_dir: Path) -> List[Path]:
 
 
 def prepare_portable_directory(dist_dir: Path) -> None:
-    payload_files(dist_dir)
-    target = dist_dir / LAUNCHER
-    if not target.is_file() or target.stat().st_size == 0:
-        raise ValueError("Missing or empty built launcher: " + LAUNCHER)
-    # Win7 Notepad needs a BOM to recognize the Chinese readme reliably.
-    for name in (README, ACCEPTANCE):
-        text = (REPO_ROOT / "assets" / name).read_text(encoding="utf-8")
-        (dist_dir / name).write_text(text, encoding="utf-8-sig")
-    (dist_dir / MARKER).write_text("APS portable directory, format 1. Do not remove this file.\n", encoding="ascii")
+    """Add the portable instructions and marker; the whole tree is checked once when it is archived."""
+    require_payload_files(dist_dir, REQUIRED_FILES)
+    # Win7 Notepad needs UTF-8 BOM and CRLF line endings to display the Chinese readme reliably.
+    contents = {
+        name: (REPO_ROOT / "assets" / name).read_text(encoding="utf-8").replace("\n", "\r\n").encode("utf-8-sig")
+        for name in (README, ACCEPTANCE)
+    }
+    contents[MARKER] = b"APS portable directory, format 1. Do not remove this file.\n"
+    for name, data in contents.items():
+        # The fixed-file primitive refuses symlinks, hard links and non-regular files before writing.
+        with open_fixed_file_for_write_binary(dist_dir / name, append=False) as stream:
+            stream.write(data)
 
 
 def write_portable_archive(dist_dir: Path, output: Path) -> None:
@@ -64,7 +78,7 @@ def write_portable_archive(dist_dir: Path, output: Path) -> None:
     if dist_dir == output or dist_dir in output.parents:
         raise ValueError("ZIP output must be outside the portable payload directory")
     files = payload_files(dist_dir)
-    for name in (MARKER, LAUNCHER, README, ACCEPTANCE):
+    for name in (MARKER, README, ACCEPTANCE):
         if not (dist_dir / name).is_file() or (dist_dir / name).stat().st_size == 0:
             raise ValueError("Portable directory is not prepared: " + name)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -87,11 +101,13 @@ def write_portable_archive(dist_dir: Path, output: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("prepare", "archive"))
+    parser.add_argument("action", choices=("check-sqlite", "prepare", "archive"))
     parser.add_argument("dist_dir", type=Path)
     parser.add_argument("output", nargs="?", type=Path)
     args = parser.parse_args()
-    if args.action == "prepare":
+    if args.action == "check-sqlite":
+        require_payload_files(args.dist_dir, SQLITE_BINARIES)
+    elif args.action == "prepare":
         prepare_portable_directory(args.dist_dir)
     else:
         if args.output is None:

@@ -7,12 +7,13 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Iterator
 
-from core.infrastructure.sqlite_udf import DETECT_TYPES, configure_connection
+from core.infrastructure.sqlite_udf import DETECT_TYPES, configure_connection, ensure_sqlite_runtime
 
 
 @contextmanager
 def open_readonly_immutable(path: str) -> Iterator[sqlite3.Connection]:
-    """只读、不可变方式打开调用方独占的库副本；打开后的配置与产品读写连接一致。"""
+    """只读、不可变方式打开调用方独占的库副本；打开前的能力核验与打开后的配置都与产品读写连接一致。"""
+    ensure_sqlite_runtime()
     uri = Path(path).absolute().as_uri() + "?mode=ro&immutable=1"
     with closing(sqlite3.connect(uri, uri=True, detect_types=DETECT_TYPES)) as conn:
         configure_connection(conn)

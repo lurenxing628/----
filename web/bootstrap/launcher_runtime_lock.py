@@ -45,6 +45,10 @@ class RuntimeLockError(RuntimeError):
     pass
 
 
+class ReusableRuntimeInstance(RuntimeLockError):
+    """当前壳目录已有同账户、同程序、同数据库的活动实例，启动器可等待它就绪。"""
+
+
 @contextmanager
 def runtime_lock_mutation_guard(lock_path: str) -> Iterator[None]:
     """立即取得短期排他权；固定 guard 文件保留供所有后续调用使用。"""
@@ -170,28 +174,33 @@ def _create_new_runtime_lock(lock_path: str, payload: Dict[str, Any]) -> bool:
 
 def _raise_if_runtime_lock_active(
     existing: Dict[str, Any],
-    owner_s: str,
+    requested: Dict[str, Any],
     *,
     db_label: str = "",
 ) -> None:
     if not is_runtime_lock_active(existing, local_probe_only=True):
         return
-    existing_owner = str(existing.get("owner") or "").strip()
+    existing_owner = existing.get("owner") or ""
+    if not existing_owner:
+        raise RuntimeLockError("已有实例持有运行锁，账户归属不明，请确认该实例已退出后再试。")
+    same_owner = os.path.normcase(existing_owner) == os.path.normcase(requested["owner"])
     if db_label:
-        if existing_owner and existing_owner != owner_s:
+        if not same_owner:
             raise RuntimeLockError(
                 f"数据库（{db_label}）当前正由 {existing_owner} 的实例使用，请等待其退出后再试。",
             ) from None
         raise RuntimeLockError(
             f"数据库（{db_label}）已被当前账户的另一实例使用，请直接使用现有窗口，不要重复启动。",
         ) from None
-    if existing_owner and existing_owner != owner_s:
+    if not same_owner:
         raise RuntimeLockError(
             f"系统当前正由 {existing_owner} 使用，请等待其退出后再试。",
         ) from None
-    raise RuntimeLockError(
-        "系统已在当前账户运行，请直接使用现有窗口，不要重复启动。",
-    ) from None
+    if normalize_runtime_db_path(existing.get("exe_path")) != normalize_runtime_db_path(requested["exe_path"]):
+        raise RuntimeLockError("同一运行目录的活动锁不属于本程序，请检查启动目录。")
+    if normalize_runtime_db_path(existing.get("db_path")) != requested["db_path"]:
+        raise RuntimeLockError("同一运行目录的活动锁未匹配本次数据库，请检查数据目录。")
+    raise ReusableRuntimeInstance("系统已在当前账户运行，请直接使用现有窗口，不要重复启动。")
 
 
 def lock_identity_fields(payload: Dict[str, Any]) -> Tuple[str, str, str, str, str]:
@@ -216,7 +225,6 @@ def lock_process_identity_fields(payload: Dict[str, Any]) -> Tuple[str, str, str
 def _acquire_lock_file(
     lock_path: str,
     payload: Dict[str, Any],
-    owner_s: str,
     *,
     state_dir: str,
     db_label: str = "",
@@ -226,7 +234,7 @@ def _acquire_lock_file(
         if existing_result.status != LOCK_STATUS_MISSING:
             if not existing_result.ok:
                 _raise_uncertain_runtime_lock(existing_result)
-            _raise_if_runtime_lock_active(cast(Dict[str, Any], existing_result.payload), owner_s, db_label=db_label)
+            _raise_if_runtime_lock_active(cast(Dict[str, Any], existing_result.payload), payload, db_label=db_label)
             try:
                 remove_fixed_file(lock_path)
             except OSError as exc:
@@ -244,7 +252,6 @@ def _acquire_db_scope_lock(database: str, *, owner_s: str, exe_path_s: str) -> D
     acquired = _acquire_lock_file(
         lock_path,
         payload,
-        owner_s,
         state_dir=lock_dir,
         db_label=database,
     )
@@ -298,7 +305,7 @@ def acquire_runtime_lock(
     # 与运行期所有权证明（RunRuntimeLockProof）按同一归一路径找锁。
     database = normalize_runtime_db_path(db_path)
     payload = _runtime_lock_payload(owner, exe_path_s, database)
-    acquired = _acquire_lock_file(lock_path, payload, owner, state_dir=state_dir)
+    acquired = _acquire_lock_file(lock_path, payload, state_dir=state_dir)
     acquired["state_dir"] = state_dir
     acquired["path"] = lock_path
     # B03 锁命名空间与被保护资源绑定（方案乙）：壳锁位置不动（bat/stop 读取端合同不破），

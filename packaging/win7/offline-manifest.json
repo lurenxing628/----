@@ -193,6 +193,14 @@
       "url": "https://github.com/ungoogled-software/ungoogled-chromium-windows/releases/download/109.0.5414.120-1.1/ungoogled-chromium_109.0.5414.120-1.1_windows_x64.zip",
       "size": 116550704,
       "source": "https://raw.githubusercontent.com/ungoogled-software/ungoogled-chromium-binaries/master/config/platforms/windows/64bit/109.0.5414.120-1.ini"
+    },
+    {
+      "name": "SQLite DLL",
+      "version": "3.35.5",
+      "path": "tools/sqlite-dll-win64-x64-3350500.zip",
+      "url": "https://www.sqlite.org/2021/sqlite-dll-win64-x64-3350500.zip",
+      "size": 900912,
+      "source": "https://www.sqlite.org/2021/sqlite-dll-win64-x64-3350500.zip"
     }
   ]
 }

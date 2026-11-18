@@ -195,6 +195,24 @@ $contract = Read-ApsJson ([IO.File]::ReadAllText((Join-Path $env:APS_TEST_ROOT '
 $context = @{ db = $contract.db_path; owner = $contract.owner; exe = [IO.Path]::GetFullPath((Join-Path $env:APS_TEST_ROOT 'aps.exe')) }
 $script:runtime = @{ contract = $contract; hostName = $contract.host; port = $contract.port; lockState = 'active';
     lock = @{ pid = [string]$contract.pid; owner = $contract.owner; db_path = $contract.db_path; exe_path = $context.exe } }
+# The real parser trims a padded owner and leaves a blank DB field incomplete, never another account or a crash.
+$lockDir = Join-Path $env:APS_TEST_ROOT 'lock-parse'
+[void][IO.Directory]::CreateDirectory($lockDir)
+$lockFiles = @{ lock = (Join-Path $lockDir 'aps_runtime.lock'); contract = (Join-Path $lockDir 'aps_runtime.json');
+    hostFile = (Join-Path $lockDir 'aps_host.txt'); portFile = (Join-Path $lockDir 'aps_port.txt');
+    log = (Join-Path $lockDir 'launcher.log'); clock = [Diagnostics.Stopwatch]::StartNew();
+    db = $context.db; owner = $context.owner; exe = $context.exe }
+$self = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+[IO.File]::WriteAllText($lockFiles.lock, ('pid=' + $PID + "`r`nowner=  " + $contract.owner + "  `r`ndb_path=   `r`nexe_path=" + $self + "`r`n"))
+$parsed = Read-ApsRuntime $lockFiles
+if ($parsed.lockState -ne 'active') { throw 'Live lock owner was not recognized' }
+$state = Test-ApsActiveLock $context $parsed
+if ($state.state + ':' + $state.reason -ne 'uncertain:lock_fields_incomplete') { throw ('Blank lock field judged as ' + $state.state + ':' + $state.reason) }
+# A live PID whose lock names an unreadable executable stays unknown: no active verdict, no crash.
+[IO.File]::WriteAllText($lockFiles.lock, ('pid=' + $PID + "`r`nowner=" + $contract.owner + "`r`ndb_path=" + $contract.db_path +
+    "`r`n" + 'exe_path=bad' + [char]0 + 'aps.exe' + "`r`n"))
+$state = Get-ApsExistingState $lockFiles $null
+if ($state.state + ':' + $state.reason -ne 'uncertain:lock_query_unknown') { throw ('Unreadable live lock executable judged as ' + $state.state + ':' + $state.reason) }
 function Read-ApsRuntime($Context) { return $script:runtime }
 if ((Get-ApsExistingState $context $null).state -ne 'ready') { throw 'Healthy reuse failed' }
 $script:runtime.lock.pid = '67890'
@@ -204,11 +222,20 @@ if ((Get-ApsExistingState $context $null).state -ne 'other') { throw 'Other owne
 $script:runtime.lock.owner = $contract.owner
 $script:runtime.lock.db_path = 'another.db'
 if ((Get-ApsExistingState $context $null).reason -ne 'lock_database_unproven') { throw 'Wrong DB accepted' }
+$script:runtime.lock.db_path = ''
+if ((Get-ApsExistingState $context $null).reason -ne 'lock_fields_incomplete') { throw 'Half-written lock judged as another DB' }
+$script:runtime.lock.db_path = 'bad' + [char]0 + 'path.db'
+$state = Get-ApsExistingState $context $null
+if ($state.state + ':' + $state.reason -ne 'blocked:lock_database_unproven') { throw 'Unreadable lock DB path was not blocked' }
 $script:runtime.lock.db_path = $contract.db_path
+$script:runtime.lock.exe_path = [IO.Path]::GetFullPath((Join-Path $env:APS_TEST_ROOT 'other-aps.exe'))
+$state = Get-ApsExistingState $context $null
+if ($state.state + ':' + $state.reason -ne 'blocked:lock_executable_unproven') { throw 'Another lock executable was not blocked' }
+$script:runtime.lock.exe_path = $context.exe
 $script:runtime.lockState = 'unknown'
 if ((Get-ApsExistingState $context $null).state -ne 'ready') { throw 'Valid health proof not reused' }
 $script:runtime.contract = $null
-if ((Get-ApsExistingState $context $null).state -ne 'blocked') { throw 'Unknown lock allowed a spawn' }
+if ((Get-ApsExistingState $context $null).state -ne 'uncertain') { throw 'Unknown lock allowed a spawn' }
 $script:runtime.lockState = 'absent'
 if ((Get-ApsExistingState $context $null).reason -ne 'healthy_without_owner_proof') { throw 'Presence accepted as proof' }
 $script:runtime.contract = $contract
@@ -233,10 +260,20 @@ function Get-ApsExistingState($Context, $Budget) {
 }
 if ((Wait-ApsReady $context $null 2000).state -ne 'ready') { throw 'Duplicate-start error defeated healthy owner' }
 if ([IO.File]::ReadAllText($context.errorFile) -ne 'duplicate start') { throw 'Owner error was changed' }
-function Get-ApsExistingState($Context, $Budget) { Start-Sleep -Milliseconds 150; return @{ state = 'absent' } }
+$script:probes = 0
+if ((Wait-ApsReady $context $null).state -ne 'ready') { throw 'Two-argument wait lost its default deadline' }
+function Get-ApsExistingState($Context, $Budget) { Start-Sleep -Milliseconds 150; return @{ state = 'starting' } }
 $timer = [Diagnostics.Stopwatch]::StartNew()
 if ((Wait-ApsReady $context $null 100).state -ne 'timeout') { throw 'Probe duration ignored' }
-if ($timer.ElapsedMilliseconds -gt 1000) { throw 'Wait counted iterations rather than elapsed time' }
+if ($timer.ElapsedMilliseconds -ge 1000) { throw 'Wait counted iterations rather than elapsed time' }
+# A final verdict sampled by a probe that crossed the deadline is still reported, never as timeout.
+$child = @{ HasExited = $true; ExitCode = 14 }
+function Get-ApsExistingState($Context, $Budget) {
+    Start-Sleep -Milliseconds 80
+    return @{ state = 'uncertain'; reason = 'healthy_without_owner_proof' }
+}
+$state = Wait-ApsReady $context ([IO.File]::GetLastWriteTimeUtc($context.errorFile)) 50 $child
+if ($state.state + ':' + $state.reason -ne 'failed:app_process_exited_14') { throw ('Exit 14 across the deadline judged as ' + $state.state + ':' + $state.reason) }
 function Get-ApsExistingState($Context, $Budget) { return @{ state = 'absent' } }
 if ((Wait-ApsReady $context $null 1000).state -ne 'failed') { throw 'Current launch error ignored' }
 'OK'
@@ -244,7 +281,176 @@ if ((Wait-ApsReady $context $null 1000).state -ne 'failed') { throw 'Current lau
     assert "OK" in rows
 
 
-@pytest.mark.parametrize("reuse", [False, True])
+def _unused_local_port():
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def test_restart_over_old_contract_reaches_new_instance_with_one_get_per_round(run_ps, tmp_path, health_server):
+    """Win7 实测时序：旧快照（无活跃锁 + 旧契约）遇上新后台的健康响应。
+
+    端口未监听时一轮只发一次 GET；新后台在 GET 途中发布锁和契约时，同一份响应对照刷新后的快照判定 ready，
+    不再停在 healthy_without_owner_proof，也不追加第二次 GET。
+    """
+    fresh = health_server["contract"]
+    _write_contract(tmp_path, fresh)
+    old = dict(fresh, pid=fresh["pid"] + 1, instance_id="instance-before-restart")
+    (tmp_path / "old-closed.json").write_text(json.dumps(dict(old, port=_unused_local_port())), encoding="utf-8")
+    (tmp_path / "old-live.json").write_text(json.dumps(old), encoding="utf-8")
+    (tmp_path / "launcher-logs").mkdir()
+    rows = run_ps(r'''
+$logs = Join-Path $env:APS_TEST_ROOT 'launcher-logs'
+$fresh = Read-ApsJson ([IO.File]::ReadAllText((Join-Path $env:APS_TEST_ROOT 'contract.json')))
+$appExe = [Diagnostics.Process]::GetProcessById([int]$fresh.pid).MainModule.FileName
+$context = @{ db = $fresh.db_path; owner = $fresh.owner; exe = $appExe;
+    log = (Join-Path $logs 'launcher.log'); clock = [Diagnostics.Stopwatch]::StartNew();
+    lock = (Join-Path $logs 'aps_runtime.lock'); contract = (Join-Path $logs 'aps_runtime.json');
+    hostFile = (Join-Path $logs 'aps_host.txt'); portFile = (Join-Path $logs 'aps_port.txt');
+    errorFile = (Join-Path $logs 'aps_launch_error.txt') }
+function Set-TestFile([string]$Path, [string]$Text) { [IO.File]::WriteAllText($Path, $Text, (New-Object Text.UTF8Encoding($false))) }
+function Copy-TestContract([string]$Name) { [IO.File]::Copy((Join-Path $env:APS_TEST_ROOT $Name), $context.contract, $true) }
+$script:realReadHealth = ${function:Read-ApsHealth}
+$script:healthReads = 0
+$script:publishDuringGet = $false
+function Read-ApsHealth($Runtime, $Budget) {
+    $script:healthReads++
+    if ($script:publishDuringGet) {
+        $script:publishDuringGet = $false
+        Set-TestFile $context.lock ((('pid=' + $fresh.pid), ('owner=' + $fresh.owner), ('db_path=' + $context.db),
+            ('exe_path=' + $context.exe)) -join "`n")
+        Copy-TestContract 'contract.json'
+    }
+    return (& $script:realReadHealth $Runtime $Budget)
+}
+$script:realExistingState = ${function:Get-ApsExistingState}
+$script:rounds = 0
+function Get-ApsExistingState($Context, $Budget) { $script:rounds++; return (& $script:realExistingState $Context $Budget) }
+
+Copy-TestContract 'old-closed.json'
+$closed = Read-ApsJson ([IO.File]::ReadAllText($context.contract))
+Set-TestFile $context.hostFile $closed.host
+Set-TestFile $context.portFile ([string]$closed.port)
+$state = Get-ApsExistingState $context $null
+'CLOSED=' + $state.state + ':' + $state.reason + ' reads=' + $script:healthReads
+
+Copy-TestContract 'old-live.json'
+Set-TestFile $context.portFile ([string]$fresh.port)
+$script:healthReads = 0
+$script:rounds = 0
+$script:publishDuringGet = $true
+$state = Wait-ApsReady $context $null 5000
+'RESTART=' + $state.state + ':' + $state.port + ' rounds=' + $script:rounds + ' reads=' + $script:healthReads
+# A writer still holding the newly published lock must not prevent the launcher from reading it on Windows.
+$writer = [IO.File]::Open($context.lock, [IO.FileMode]::Open, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
+try {
+    $context.exe = Join-Path $env:APS_TEST_ROOT 'different-app.exe'
+    $state = Get-ApsExistingState $context $null
+    'WRONG_EXE=' + $state.state + ':' + $state.reason
+} finally { $writer.Dispose() }
+''')
+    assert "CLOSED=absent:no_active_instance reads=1" in rows
+    assert f"RESTART=ready:{fresh['port']} rounds=1 reads=1" in rows
+    assert "WRONG_EXE=blocked:lock_executable_unproven" in rows
+    log = (tmp_path / "launcher-logs" / "launcher.log").read_text(encoding="utf-8")
+    assert "readiness=ready:" in log and "healthy_without_owner_proof" not in log
+
+
+def test_wait_polls_through_publication_races_until_ready(run_ps, tmp_path):
+    """就绪等待：uncertain 与 starting 只记日志继续轮询，并发败选者的错误文件不提前判失败。"""
+    races = ["uncertain:healthy_without_owner_proof", "uncertain:lock_query_unknown",
+             "starting:lock_active_health_identity_failed", "starting:lock_contract_pid_mismatch",
+             "uncertain:lock_owner_missing", "uncertain:lock_fields_incomplete"]
+    rows = run_ps(r'''
+$context = @{ log = (Join-Path $env:APS_TEST_ROOT 'launcher.log'); clock = [Diagnostics.Stopwatch]::StartNew();
+    errorFile = (Join-Path $env:APS_TEST_ROOT 'aps_launch_error.txt') }
+[IO.File]::WriteAllText($context.errorFile, 'concurrent duplicate start')
+$script:sequence = @($env:APS_TEST_RACES.Split(',')) + 'ready:'
+$script:probes = 0
+function Get-ApsExistingState($Context, $Budget) {
+    $parts = $script:sequence[$script:probes].Split(':')
+    $script:probes++
+    return @{ state = $parts[0]; reason = $parts[1] }
+}
+function Start-Sleep([int]$Milliseconds) { }
+$state = Wait-ApsReady $context $null 5000
+'STATE=' + $state.state + ' probes=' + $script:probes
+''', APS_TEST_RACES=",".join(races))
+    assert f"STATE=ready probes={len(races) + 1}" in rows
+    log = (tmp_path / "launcher.log").read_text(encoding="utf-8")
+    assert re.findall(r"readiness=(\S+)", log) == races + ["ready:"]
+
+
+def test_wait_stops_on_final_states_and_judges_spawned_child_by_exit_code(run_ps, tmp_path):
+    """异账户、异库与异程序锁立即返回；真实子进程退出码 13（锁竞争败选）在 starting/uncertain 下继续等胜者，
+    其他退出码（14 启动失败）只在 starting 下继续等，absent/uncertain 下立即失败。"""
+    rows = run_ps(r'''
+$context = @{ log = (Join-Path $env:APS_TEST_ROOT 'launcher.log'); clock = [Diagnostics.Stopwatch]::StartNew();
+    errorFile = (Join-Path $env:APS_TEST_ROOT 'aps_launch_error.txt') }
+$shell = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+function Start-ExitedChild([int]$Code) {
+    $child = $null
+    $output = Start-ApsProcess $shell ('-NoProfile -NonInteractive -Command "exit ' + $Code + '"') $env:APS_TEST_ROOT ([ref]$child)
+    if ($null -ne $output) { throw 'Start-ApsProcess wrote to the pipeline' }
+    if (-not $child.WaitForExit(15000)) { throw 'Test child did not exit' }
+    return $child
+}
+$output = Start-ApsProcess $shell '-NoProfile -NonInteractive -Command "exit 0"' $env:APS_TEST_ROOT
+if ($null -ne $output) { throw 'Start-ApsProcess without a handle wrote to the pipeline' }
+$script:states = @()
+$script:probes = 0
+function Get-ApsExistingState($Context, $Budget) {
+    $parts = $script:states[[Math]::Min($script:probes, $script:states.Count - 1)].Split(':')
+    $script:probes++
+    return @{ state = $parts[0]; reason = $parts[1] }
+}
+function Start-Sleep([int]$Milliseconds) { }
+function Show-Wait([string]$Name, [string]$States, $IgnoredErrorTime, $Child) {
+    $script:states = $States.Split(',')
+    $script:probes = 0
+    $state = Wait-ApsReady $context $IgnoredErrorTime 5000 $Child
+    $Name + '=' + $state.state + ':' + $state.reason + '@' + $script:probes
+}
+Show-Wait 'OTHER' 'other:lock_owner_mismatch,ready:' $null $null
+Show-Wait 'DATABASE' 'blocked:lock_database_unproven,ready:' $null $null
+Show-Wait 'EXECUTABLE' 'blocked:lock_executable_unproven,ready:' $null $null
+$lost = Start-ExitedChild 13
+$lockFailed = Start-ExitedChild 12
+$failed = Start-ExitedChild 14
+$beforeError = [IO.File]::GetLastWriteTimeUtc($context.errorFile)
+[IO.File]::WriteAllText($context.errorFile, 'runtime lock is held by another instance')
+Show-Wait 'LOST13' 'starting:lock_active_health_pending,starting:lock_contract_pid_mismatch,ready:' $beforeError $lost
+Show-Wait 'UNCERTAIN13' 'uncertain:lock_query_unknown,uncertain:healthy_without_owner_proof,ready:' $beforeError $lost
+Show-Wait 'GONE13' 'absent:no_active_instance' $beforeError $lost
+Show-Wait 'LOCK12' 'absent:no_active_instance' $beforeError $lockFailed
+Show-Wait 'FAILED14' 'absent:no_active_instance,ready:' $beforeError $failed
+Show-Wait 'EXITED14' 'absent:no_active_instance,ready:' ([IO.File]::GetLastWriteTimeUtc($context.errorFile)) $failed
+Show-Wait 'UNCERTAIN14' 'uncertain:lock_query_unknown,ready:' $beforeError $failed
+Show-Wait 'WINNER14' 'starting:lock_active_health_pending,starting:lock_contract_pid_mismatch,ready:' $beforeError $failed
+Show-Wait 'RUNNING' 'absent:no_active_instance,absent:no_active_instance,ready:' $beforeError ([Diagnostics.Process]::GetCurrentProcess())
+$lost.Dispose()
+$lockFailed.Dispose()
+$failed.Dispose()
+''')
+    assert {row.split("=", 1)[0]: row.split("=", 1)[1] for row in rows if "=" in row} == {
+        "OTHER": "other:lock_owner_mismatch@1",
+        "DATABASE": "blocked:lock_database_unproven@1",
+        "EXECUTABLE": "blocked:lock_executable_unproven@1",
+        "LOST13": "ready:@3",
+        "UNCERTAIN13": "ready:@3",
+        "GONE13": "failed:reusable_owner_no_longer_present@1",
+        "LOCK12": "failed:lock_acquisition_failed@1",
+        "FAILED14": "failed:see_utf8_launch_error_file@1",
+        "EXITED14": "failed:app_process_exited_14@1",
+        "UNCERTAIN14": "failed:see_utf8_launch_error_file@1",
+        "WINNER14": "ready:@3",
+        "RUNNING": "ready:@3",
+    }
+
+
+@pytest.mark.parametrize("reuse", [False, True, "publishing"])
 def test_first_launch_and_reopen_preserve_portable_paths_and_owner_files(run_ps, tmp_path, health_server, reuse):
     app = tmp_path / "便携 ! APS"
     app.mkdir()
@@ -257,8 +463,13 @@ def test_first_launch_and_reopen_preserve_portable_paths_and_owner_files(run_ps,
     logs.mkdir(parents=True)
     contract = health_server["configure"](app / "user-data" / "db" / "aps.db")
     _write_contract(tmp_path, contract)
-    if reuse:
-        _write_contract(tmp_path, contract)
+    if reuse == "publishing":
+        (logs / "aps_runtime.json").write_text(json.dumps(dict(contract, instance_id="old-instance")), encoding="utf-8")
+        (logs / "aps_runtime.lock").write_text(
+            f"pid={contract['pid']}\nowner={contract['owner']}\ndb_path={contract['db_path']}\nexe_path={app / 'aps.exe'}\n",
+            encoding="utf-8",
+        )
+    elif reuse:
         shutil.copyfile(str(tmp_path / "contract.json"), str(logs / "aps_runtime.json"))
     error = logs / "aps_launch_error.txt"
     error.write_text("historical failure", encoding="utf-8")
@@ -272,7 +483,15 @@ function Start-ApsProcess([string]$Executable, [string]$Arguments, [string]$Dire
         [IO.File]::WriteAllText((Join-Path $env:APS_LOG_DIR 'aps_launch_error.txt'), 'concurrent duplicate start')
     } else { $script:browserArguments = $Arguments }
 }
-function Start-Sleep([int]$Milliseconds) { }
+if ($env:APS_TEST_PUBLISHING) {
+    # The HTTP fixture stands in for the frozen process, whose executable is empty in this test.
+    function Get-ApsLockProcessState($ProcessId, $Executable) { return 'active' }
+}
+function Start-Sleep([int]$Milliseconds) {
+    if ($env:APS_TEST_PUBLISHING) {
+        [IO.File]::Copy((Join-Path $env:APS_TEST_ROOT 'contract.json'), (Join-Path $env:APS_LOG_DIR 'aps_runtime.json'), $true)
+    }
+}
 $launchClock = [Diagnostics.Stopwatch]::StartNew()
 $launchStarted = [DateTime]::UtcNow
 [Threading.Thread]::Sleep(25)
@@ -283,12 +502,15 @@ $profile = Join-Path $env:APS_TEST_APP 'user-data\chrome109_profile'
 if (-not $script:browserArguments.Contains('--user-data-dir="' + $profile + '"')) { throw 'Browser profile argument changed' }
 if ($env:APS_DB_PATH -ne (Join-Path $env:APS_TEST_APP 'user-data\db\aps.db')) { throw 'Portable DB override was not applied' }
 ''', APS_TEST_APP=str(app), USERNAME="operator", USERDOMAIN="LOCAL", APS_DB_PATH="must-not-use.db",
-        APS_START_CMD_LOCAL_TIME="test CMD local timestamp")
+        APS_START_CMD_LOCAL_TIME="test CMD local timestamp", APS_TEST_PUBLISHING="1" if reuse == "publishing" else "")
     assert "CODE=0" in rows
     assert "SPAWNS=" + str(1 if reuse else 2) in rows
     assert error.read_text() == ("historical failure" if reuse else "concurrent duplicate start")
     log = (logs / "launcher.log").read_text(encoding="utf-8")
     assert "便携 ! APS" in log and "launcher_complete" in log
+    if reuse == "publishing":
+        assert "existing_instance=starting:lock_active_health_identity_failed" in log
+        assert "app_start_required=1" not in log
     assert 'cmd_started_local="test CMD local timestamp"' in log
     assert 'ps_started_utc="' in log and "ps_pid=" in log
     assert int(re.search(r"launcher_invoked_ms=(\d+)", log).group(1)) >= 25
@@ -301,6 +523,31 @@ if ($env:APS_DB_PATH -ne (Join-Path $env:APS_TEST_APP 'user-data\db\aps.db')) { 
     phases.extend(["health_ready", "chrome_cmd=", "chrome_started spawn_ms=", "launcher_complete"])
     assert [log.index(phase) for phase in phases] == sorted(log.index(phase) for phase in phases)
     assert all(int(value) >= 0 for value in re.findall(r"(?:context|chrome_find|profile|probe|spawn|wait)_ms=(\d+)", log))
+
+
+def test_static_probe_of_healthy_instance_without_owner_proof_stops_with_exit_9(run_ps, tmp_path, health_server):
+    """启动前探测：无活跃锁、旧契约对不上健康身份时归为 uncertain，不拉起后台、不开浏览器，退出码 9。"""
+    app = tmp_path / "APS"
+    app.mkdir()
+    (app / "aps-portable.txt").write_text("portable")
+    (app / "aps.exe").write_bytes(b"test application")
+    chrome = app / "tools" / "chrome109" / "chrome.exe"
+    chrome.parent.mkdir(parents=True)
+    chrome.write_bytes(b"test browser")
+    logs = app / "user-data" / "logs"
+    logs.mkdir(parents=True)
+    contract = health_server["configure"](app / "user-data" / "db" / "aps.db")
+    (logs / "aps_runtime.json").write_text(json.dumps(dict(contract, instance_id="old-instance")), encoding="utf-8")
+    rows = run_ps(r'''
+$script:spawned = 0
+function Start-ApsProcess([string]$Executable, [string]$Arguments, [string]$Directory) { $script:spawned++ }
+'CODE=' + (Invoke-ApsLauncher $env:APS_TEST_APP)
+'SPAWNS=' + $script:spawned
+''', APS_TEST_APP=str(app), USERNAME="operator", USERDOMAIN="LOCAL")
+    assert "CODE=9" in rows and "SPAWNS=0" in rows
+    log = (logs / "launcher.log").read_text(encoding="utf-8")
+    assert "existing_instance=uncertain:healthy_without_owner_proof" in log
+    assert "app_start_required=1" not in log
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Native Windows direct process creation")

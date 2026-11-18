@@ -1,4 +1,4 @@
-"""每个产品 SQLite 连接共用的配置：最低库版本、DATE 转换器、打开后配置与确定性 SQL 函数。
+"""每个产品 SQLite 连接共用的配置：最低库版本、JSON1 能力、DATE 转换器、打开后配置与确定性 SQL 函数。
 
 打开方式（读写文件、只读归档、内存库）由各连接工厂自己决定；打开之后的配置只走 `configure_connection`。
 """
@@ -6,8 +6,9 @@
 from __future__ import annotations
 
 import sqlite3
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from contextvars import ContextVar
+from functools import lru_cache
 from typing import Any, Iterator, Optional, Tuple
 
 from core.models.content import StoredJsonCorrupt, read_stored_json
@@ -15,13 +16,40 @@ from core.models.workbench_preflight import SCHEDULING_PREFERENCES_ACTION
 from core.shared.stored_dates import stored_day
 from core.shared.text_keys import text_key
 
-# 门槛取发布运行时（Python 3.8.10 自带）的 3.35.5，产品 SQL 只按这个版本的语法写（如 NULLS LAST、UPSERT）。
-# 库版本是进程常量，导入时断言一次，不在每个连接上重查。
+# 门槛取发布运行时（Python 3.8.10）的 3.35.5，产品 SQL 只按这个版本的语法写（如 NULLS LAST、UPSERT）。
+# 库版本是进程常量，导入时断言一次，不在每个连接上重查；断言不开连接、不碰磁盘，停机等不触库的入口照常可用。
 _MINIMUM_SQLITE_VERSION = (3, 35, 5)
 if sqlite3.sqlite_version_info < _MINIMUM_SQLITE_VERSION:
     raise RuntimeError(
         f"当前 SQLite 版本 {sqlite3.sqlite_version} 低于本程序要求的 3.35.5，请使用随程序发布的运行环境启动。"
     )
+
+# JSON1 是 SQLite 的编译选项，版本达标不代表可用：仓储用 json_each 展开编号集合，历史触发器用 json_extract / json_set。
+_JSON1_PROBE_SQL = (
+    "SELECT (SELECT value FROM json_each('[7]')), "
+    "json_extract('{\"a\":2}', '$.a'), "
+    "json_set('{}', '$.k', 3)"
+)
+_JSON1_PROBE_ROW = (7, 2, '{"k":3}')
+
+
+@lru_cache(maxsize=1)
+def ensure_sqlite_runtime() -> None:
+    """在内存库上实跑产品依赖的三个 JSON1 函数；缺函数或结果不符时抛 RuntimeError。
+
+    产品连接边界在本进程首次触库前、构建预检在冻结前都走这一个探针：成功结果缓存，失败不缓存、下次照样拒绝。
+    只管 JSON1 能力：最低版本门槛由本模块导入时的断言独占，调用方导入本模块即已通过。
+    """
+    try:
+        with closing(sqlite3.connect(":memory:")) as conn:
+            row = conn.execute(_JSON1_PROBE_SQL).fetchone()
+    except sqlite3.Error as exc:
+        raise RuntimeError(
+            f"当前 SQLite（{sqlite3.sqlite_version}）缺少本程序必需的 JSON1 函数支持（{exc}），请使用随程序发布的运行环境启动。"
+        ) from exc
+    if row != _JSON1_PROBE_ROW:
+        raise RuntimeError(f"当前 SQLite（{sqlite3.sqlite_version}）JSON1 能力探针返回异常结果：{row!r}。")
+
 
 DETECT_TYPES = sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
 
@@ -114,6 +142,7 @@ __all__ = [
     "SQL_TEXT_SORT_KEY_FUNCTION",
     "casefold_for_sql",
     "configure_connection",
+    "ensure_sqlite_runtime",
     "receipt_revision_category",
     "remember_receipt_outcome",
     "text_sort_key_for_sql",

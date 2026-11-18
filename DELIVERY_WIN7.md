@@ -50,9 +50,9 @@ APS_Portable/
 
 先用 Python 3.8 或以上版本执行 `python scripts/prepare_win7_offline.py download`，再执行 `python scripts/prepare_win7_offline.py verify`。支持在 Windows / macOS / Linux 准备材料，下载不会安装或执行第三方程序。
 
-文件保存到 `offline/win7/`，包括 Python 3.8.10 x64 离线安装器、22 个运行及打包 wheel、ungoogled-chromium 109.0.5414.120-1.1 x64 ZIP。下载器通过 HTTPS 获取，校验清单相对路径和输出目录边界，逐文件检查普通文件、符号链接状态及清单记录的大小；已有文件通过检查后直接复用，检查失败时停止并保留原文件。完整版本、路径和来源见 [`packaging/win7/offline-manifest.json`](packaging/win7/offline-manifest.json)。
+文件保存到 `offline/win7/`，包括 Python 3.8.10 x64 离线安装器、22 个运行及打包 wheel、ungoogled-chromium 109.0.5414.120-1.1 x64 ZIP，以及 SQLite 官方 3.35.5 x64 DLL 包 `sqlite-dll-win64-x64-3350500.zip`。下载器通过 HTTPS 获取，校验清单相对路径和输出目录边界，逐文件检查普通文件、符号链接状态及清单记录的大小；已有文件通过检查后直接复用，检查失败时停止并保留原文件。完整版本、路径和来源见 [`packaging/win7/offline-manifest.json`](packaging/win7/offline-manifest.json)。
 
-来源：[Python 官方发行页](https://www.python.org/downloads/release/python-3810/)、[PyInstaller 4.10 / PyPI](https://pypi.org/project/pyinstaller/4.10/)、[Chromium 发布仓库](https://github.com/ungoogled-software/ungoogled-chromium-windows/releases/tag/109.0.5414.120-1.1)。运行依赖沿用当前项目版本，完整构建依赖固定在 `requirements-win7-build.txt`，仍须经 Win7 冷启动验收。
+来源：[Python 官方发行页](https://www.python.org/downloads/release/python-3810/)、[PyInstaller 4.10 / PyPI](https://pypi.org/project/pyinstaller/4.10/)、[Chromium 发布仓库](https://github.com/ungoogled-software/ungoogled-chromium-windows/releases/tag/109.0.5414.120-1.1)、[SQLite 3.35.5 官方下载](https://www.sqlite.org/2021/sqlite-dll-win64-x64-3350500.zip)。运行依赖沿用当前项目版本，完整构建依赖固定在 `requirements-win7-build.txt`，仍须经 Win7 冷启动验收。
 
 将源码和整个 `offline/win7/` 一起带到现场，保持目录关系。大型第三方文件不进 Git；只拿 GitHub 源码不能离线打包。**这些是构建材料，不是已经完成的便携 EXE。**
 
@@ -64,14 +64,17 @@ APS_Portable/
 setup_win7_build.bat
 ```
 
-该命令核验全部材料，创建 `.venv-win7-build`，离线安装锁定依赖，执行 `pip check`，把已核验浏览器 ZIP 放到 `tools/`。绿色构建入口会自动激活此环境。不要往这里安装 `requirements-dev.txt`；开发检查继续使用原有 `.venv`。
+该命令核验全部材料，创建 `.venv-win7-build`，离线安装锁定依赖，执行 `prepare_win7_offline.py stage-sqlite` 装配 SQLite，再跑构建预检和 `pip check`，最后把已核验浏览器 ZIP 放到 `tools/`。绿色构建、onedir 与安装版入口都按绝对路径使用此环境的 `python.exe`。不要往这里安装 `requirements-dev.txt`；开发检查继续使用原有 `.venv`。
 
-手工维护时的安装命令：`python -m pip install --no-index --find-links offline\win7\wheels -r requirements-win7-build.txt`。
+**SQLite 必须带 JSON1。** 产品 SQL 用 `json_each` 展开编号集合，历史触发器用 `json_extract` / `json_set`；Python 3.8.10 Windows 安装器自带的 SQLite 版本虽是 3.35.5，却没有编译 JSON1。`stage-sqlite` 把官方 DLL 包里的 `sqlite3.dll` 与基础解释器的 `_sqlite3.pyd` 复制到 `.venv-win7-build\DLLs\`，并写入 `_win7_sqlite.pth` 让该目录排在 `sys.path` 最前；PyInstaller 因此把这对文件冻结进成品。不安装、不替换系统或基础 Python 的任何文件。
+
+手工维护时的安装命令：`".venv-win7-build\Scripts\python.exe" -m pip install --no-index --find-links offline\win7\wheels -r requirements-win7-build.txt`。
 
 - 浏览器源目录：`tools\Chrome.109.0.5414.120.x64\chrome.exe`，或离线 `tools\ungoogled-chromium_109*.zip`。
 - 默认图分析需要 `networkx==3.1`；`build_win7_onedir.bat` 会从 `vendor/wheels` 离线安装并核对版本。
 - 不需要 Inno Setup、注册表写入或安装器权限配置。
-- 构建预检核对 Win7 SP1、Python 3.8 x64 和全部锁定依赖，不符合时在清理 `build/dist` 前停止。
+- 构建预检核对 Win7 SP1、Python 3.8 x64 和全部锁定依赖，在内存库实跑三个 JSON1 函数（期望 `(7, 2, '{"k":3}')`），并核对当前解释器确是隔离构建环境、`_sqlite3.pyd` 与进程实际加载的 `sqlite3.dll` 都来自该环境的 `DLLs\`；不符合时在清理 `build/dist` 前停止。onedir 完成后再确认 `dist\排产系统\` 里有 `sqlite3.dll` 和 `_sqlite3.pyd`。
+- 程序每个进程首次打开数据库前也跑同一 JSON1 探针，缺失时直接拒绝启动服务，不会先建出空库文件。
 - 静态资源已经提交，打包不要求 Node.js。已有浏览器源目录优先于 ZIP；验证固定材料时请使用新的源码目录。
 
 仓库根目录执行：
@@ -80,11 +83,13 @@ setup_win7_build.bat
 build_win7_portable.bat
 ```
 
-激活 `.venv-win7-build` 后的等价命令：
+在 Windows PowerShell 5.1 里的等价命令（脚本只使用 `.venv-win7-build\Scripts\python.exe`，缺失时提示先运行 `setup_win7_build.bat` 并返回 1）：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1
 ```
+
+`build_win7_portable.bat` 不接受参数，向调用方原样返回脚本退出码：成功为 0，构建失败为 1，PowerShell 低于 5.1 时打印原因并返回 2（例如 Win7 自带的 2.0）。判断本次是否出包看退出码和当次生成的 ZIP，不能只看目录里有没有同名旧文件。
 
 流程会核对工具链和浏览器源，重新生成 `build/`、`dist/` 中的构建产物，复制裁剪后的 Chrome109、启动器、使用说明和便携标记，执行主程序冷启动及浏览器最小冒烟，然后清理**本次新构建的测试数据**，最后生成 ZIP 并检查完整性。不要把生产数据保存在仓库的构建目录里。
 
@@ -96,10 +101,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-
 
 微软说明：Windows PowerShell 可能把无 BOM 的非 ASCII 脚本按旧 ANSI 代码页解析；5.1 的文件编码默认值也不统一。[字符编码文档](https://learn.microsoft.com/zh-cn/powershell/module/microsoft.powershell.core/about/about_character_encoding?view=powershell-7.5)
 
-- 打包 `.ps1` 保持纯 ASCII，并使用 `#Requires -Version 5.1`。不使用 `utf8NoBOM` 编码参数、PowerShell 7 语法或要求升级到 7 的回退方案。
+- 打包脚本 `package_win7.ps1` 保持纯 ASCII 与 LF，ISCC 解析也在其中完成。它不写 `#Requires`：PowerShell 2.0 遇到 `#Requires -Version 5.1` 会拒绝执行脚本体，而调用方曾因此收到 0。现在入口第一句用 2.0 也能解析的写法检查 `$PSVersionTable.PSVersion`，低于 5.1 时写出原因并返回 2；BAT 用 `-Command` 包装调用，脚本解析失败也返回非零。不使用 `utf8NoBOM` 编码参数、PowerShell 7 语法或要求升级到 7 的回退方案。
 - 控制台、PowerShell 原生命令管道与 Python 输出显式设置 UTF-8；设置作用于本次进程，不改机器或账户的全局配置。
 - 启动 `.bat` 保持 ASCII 内容与 CRLF，关闭延迟展开；`aps-launcher.ps1` 保持 ASCII 源码并兼容 Windows PowerShell 2.0，中文路径与 UTF-8 日志在同一 PowerShell 进程内处理。中文使用说明在出包时写成 UTF-8 带 BOM，供 Win7 记事本读取。
-- `.gitattributes` 为启动和构建 BAT 固定 `text eol=crlf`，为打包 PS1 固定 `text eol=lf`，避免 Windows 的 `core.autocrlf` 改变各自的换行约定；不更改用户全局 Git 设置。[Git 换行属性文档](https://git-scm.com/docs/gitattributes)
+- `.gitattributes` 为启动和构建 BAT（含 `setup_win7_build.bat`、`build_win7_installer.bat`）固定 `text eol=crlf`，为打包与启动器 PS1 固定 `text eol=lf`，避免 Windows 的 `core.autocrlf` 改变各自的换行约定；不更改用户全局 Git 设置。[Git 换行属性文档](https://git-scm.com/docs/gitattributes)
 - 浏览器验收对路径参数显式加双引号，并在含中文、空格的临时目录里执行。微软说明 `Start-Process` 会把参数数组拼为字符串，外层字符串引号不会自动传给子进程。[Start-Process 5.1 文档](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/start-process?view=powershell-5.1)
 
 5.1 是本次现场基线，不能仅凭“Win7”推断版本；微软将其作为 WMF 5.1 更新提供给 Win7。[微软 WMF 5.1 发布说明](https://devblogs.microsoft.com/powershell/windows-management-framework-wmf-5-1-released/)
@@ -113,10 +118,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-
 
 ## 验收与排障
 
-- `validate_dist_exe.py` 核对实际数据库路径、运行时身份、HTTP 页面与静态载荷；绿色版应生成 `user-data/logs/` 和 `user-data/db/aps.db`。
+- `validate_dist_exe.py` 核对实际数据库路径、运行时身份、HTTP 页面与静态载荷，并实读一次值班台接口 `GET /api/workbench/v1/dashboard`：要求 200、分析无错误、六类分类计数齐全。页面壳 200 不能证明仓储查询可用，缺 JSON1 时就是壳正常、数据区读取失败。绿色版应生成 `user-data/logs/` 和 `user-data/db/aps.db`。
 - 浏览器最小冒烟只证明 APS 专用浏览器可以拉起并短时存活；不能代替目标机完整使用验收。
 - Win7 / PowerShell 5.1 现场还须验证：中文＋空格目录解压、双击启动、再次启动、正常退出、备份恢复、关闭后整目录搬迁、存在旧安装记录及切换账户后的路径隔离。
-- 监听端口改由运行时预绑定后发布实际端口，Win7 上尚未复测：须验证默认端口被占用时自动换端口、运行契约与实际监听一致、`launcher.log` 能读懂原因；完整条件及 Windows 专属自动化用例见 `开发文档/技术债务治理台账.md` 的 `risk:launcher-bind-host-port-win7`。未执行前不算通过。
+- 2026-11-18 修复版已在 Win7 SP1 x64 验证：5000 被占用时改用 5705，两个并发 BAT 复用同一后台，放回旧契约后新实例正常打开 Chrome。复测其它版本时，核对实际监听、运行契约和启动日志；Windows 专属自动化及其余边界见 `开发文档/技术债务治理台账.md` 的 `risk:launcher-bind-host-port-win7`。[本轮原生报告](.codestable/issues/2026-11-18-win7-native-acceptance-repair/evidence/修复版验收报告.md)
 - 启动失败先看 `user-data/logs/launcher.log`，再看同目录 `aps_launch_error.txt`；不要通过删除运行锁来强行开启第二个实例。
 - macOS 上的路径、打包合同、静态编码测试不等于 Windows EXE 或 PowerShell 5.1 真机通过。
 
@@ -127,5 +132,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-
 打包人员提供源码提交号和打包日志。交付前解压 ZIP，核对 `APS_Portable/` 目录及必需文件，确认包内包含完整程序和 Chrome109，且业务数据库、日志、备份及浏览器用户数据留在包外。源码版本用 `git rev-parse HEAD` 记录；源码归档使用提供方附带的提交号。
 
 失败时保留时间、截图、复现步骤、脱敏输入及错误日志片段。不要将整个 `user-data`、业务备份或含密钥的日志目录提交到公开 GitHub。
+
+`build_win7_installer.bat` 是 `package_win7.ps1 -MainOnly` 的薄入口：先解析 ISCC（解析失败时不碰既有 `dist`），再构建 onedir，用同一构建解释器跑 `validate_dist_exe.py` 冷启校验并清理校验留下的运行痕迹，最后编译 `APS_Main_Setup.exe`。退出码与 `build_win7_portable.bat` 一致：成功为 0，构建失败为 1，PowerShell 低于 5.1 或带了多余参数时返回 2；不弹记事本、不暂停等待。
 
 原双安装包仅保留为维护入口：`package_win7.ps1 -Installer`；`-MainOnly`、`-ChromeOnly`、`-Legacy` 继续显式可用，详见 [历史安装版说明](installer/README_WIN7_INSTALLER.md)。

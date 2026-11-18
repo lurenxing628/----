@@ -351,7 +351,7 @@ def _make_real_lock_deps(tmp_path: Path, events: List[str], *, prelaunch_log_dir
 
 def test_app_main_rejects_second_instance_on_db_conflict_before_create_app(tmp_path: Path, monkeypatch) -> None:
     """入口级合同：模拟锁命名空间分叉（不同锁目录）+ APS_DB_PATH 指向同一 DB，
-    第二实例必须在 create_app（触库副作用）之前以 rc=13 被拒，且不残留自己的壳锁。"""
+    第二实例无法复用另一个目录的壳，必须在 create_app 之前报错并回收自己的壳锁。"""
     monkeypatch.delenv("APS_HOST", raising=False)
     monkeypatch.delenv("APS_PORT", raising=False)
     db = tmp_path / "shared" / "db" / "aps.db"
@@ -375,12 +375,41 @@ def test_app_main_rejects_second_instance_on_db_conflict_before_create_app(tmp_p
 
     rc = entrypoint_mod.app_main(anchor_file=str(inst2_dir / "app.py"), argv=[], deps=deps)
 
-    assert rc == 13, "同库第二实例必须以锁失败返回码退出"
+    assert rc == 12
+    assert "数据库" in (tmp_path / "inst2-prelaunch" / "launcher.log").read_text(encoding="utf-8")
     assert "create_app" not in events, "被拒的第二实例绝不许执行 create_app（含迁移/退出备份注册）"
     assert not (inst2_dir / "logs" / "aps_runtime.lock").exists(), "第二实例的壳锁必须回滚"
     assert f"pid={os.getpid()}" in Path(db_scope_lock_path(str(db))).read_text(encoding="utf-8")
 
     lock_mod.release_runtime_lock(str(logs1), expected_payload=first)
+
+
+@pytest.mark.parametrize("conflict", ["same_instance", "different_owner", "different_executable", "different_database", "broken_lock"])
+def test_lock_exit_code_and_shared_error_ownership(tmp_path: Path, monkeypatch, conflict: str) -> None:
+    runtime_dir = tmp_path / "app"
+    logs = runtime_dir / "logs"
+    db = tmp_path / "shared" / "aps.db"
+    winner = _acquire(runtime_dir, logs, db)
+    error_file = logs / "aps_launch_error.txt"
+    error_file.write_text("winner diagnostic", encoding="utf-8")
+    events: List[str] = []
+    deps = replace(
+        _make_real_lock_deps(tmp_path, events, prelaunch_log_dir=logs),
+        clear_launch_error=contracts_mod.clear_launch_error,
+        current_runtime_owner=lambda: "other-account" if conflict == "different_owner" else _OWNER,
+    )
+    monkeypatch.setenv("APS_DB_PATH", str(tmp_path / "different.db" if conflict == "different_database" else db))
+    if conflict == "different_executable":
+        monkeypatch.setattr(sys, "executable", str(tmp_path / "another" / "aps.exe"))
+    if conflict == "broken_lock":
+        (logs / "aps_runtime.lock").write_text("pid=bad\n", encoding="utf-8")
+    try:
+        rc = entrypoint_mod.app_main(anchor_file=str(runtime_dir / "app.py"), argv=[], deps=deps)
+        assert rc == (13 if conflict == "same_instance" else 12)
+        assert error_file.read_text(encoding="utf-8") == "winner diagnostic"
+        assert "create_app" not in events
+    finally:
+        lock_mod.release_runtime_lock(str(logs), expected_payload=winner)
 
 
 def test_quality_gate_runtime_probe_does_not_let_stale_contract_mask_active_lock_or_endpoint(monkeypatch) -> None:
@@ -479,11 +508,11 @@ def test_reloader_parent_process_only_supervises_without_runtime_side_effects(tm
 
 
 @pytest.mark.usefixtures("restore_signal_handlers")
-def test_reloader_second_child_lock_conflict_exits_13_before_create_app_and_parent_propagates_13(
+def test_reloader_propagates_second_child_database_lock_failure_before_create_app(
     tmp_path: Path, monkeypatch
 ) -> None:
     """U15-2: 第二实例开发重载父进程拉起子进程（WERKZEUG_RUN_MAIN=true），
-    子进程在 create_app 前因锁冲突以 rc=13 退出，父进程原样返回 13。"""
+    子进程在 create_app 前因其他壳目录占用数据库而退出，父进程原样返回锁失败状态。"""
     import werkzeug._reloader as reloader_mod
 
     db = tmp_path / "shared" / "db" / "aps.db"
@@ -524,8 +553,8 @@ def test_reloader_second_child_lock_conflict_exits_13_before_create_app_and_pare
     monkeypatch.setitem(reloader_mod.reloader_loops, "auto", _LoopReloader)
     try:
         rc = entrypoint_mod.app_main(anchor_file=str(inst2_dir / "app.py"), argv=[], deps=deps)
-        assert rc == 13
-        assert child_attempts == [13]
+        assert rc == 12
+        assert child_attempts == [12]
         assert "create_app" not in events
     finally:
         lock_mod.release_runtime_lock(str(logs1), expected_payload=first)

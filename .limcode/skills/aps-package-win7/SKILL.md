@@ -10,7 +10,7 @@ description: 按明确的 APS Win7 打包或交付验收请求，构建含主程
 - 一键打包：`build_win7_portable.bat`，或 `powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1`
 - 默认产物：
   - `dist/APS_Portable_Win7_x64.zip`
-- 维护原双安装包时显式传 `-Installer`；`-MainOnly` / `-ChromeOnly` 继续可用。
+- 维护原双安装包时显式传 `-Installer`；`-MainOnly` / `-ChromeOnly` 继续可用，`build_win7_installer.bat` 就是 `-MainOnly` 的薄入口。
 - 内部 legacy 回退：`powershell -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1 -Legacy`
   - 产物：`installer/output/APS_Legacy_Full_Setup.exe`
 
@@ -20,12 +20,14 @@ description: 按明确的 APS Win7 打包或交付验收请求，构建含主程
 
 ## 硬性前置条件（必须检查）
 
-- 主程序前置：Win7 SP1 x64、Python 3.8 x64、PyInstaller 4.10、Windows PowerShell 5.1；构建依赖使用 `requirements-win7-build.txt` 单独锁定，不安装 `requirements-dev.txt`。联网准备机执行 `python scripts/prepare_win7_offline.py download`，将 `offline/win7/` 和源码一起带到现场，执行 `setup_win7_build.bat`。
+- 主程序前置：Win7 SP1 x64、Python 3.8 x64、PyInstaller 4.10、Windows PowerShell 5.1；构建依赖使用 `requirements-win7-build.txt` 单独锁定，不安装 `requirements-dev.txt`。联网准备机执行 `python scripts/prepare_win7_offline.py download`（离线材料含 SQLite 官方 3.35.5 x64 DLL 包），将 `offline/win7/` 和源码一起带到现场，执行 `setup_win7_build.bat`。
+- SQLite 必须带 JSON1：Python 3.8.10 Windows 安装器自带的 SQLite 缺 JSON1。`setup_win7_build.bat` 用 `prepare_win7_offline.py stage-sqlite` 把官方 `sqlite3.dll` 与基础 `_sqlite3.pyd` 装进 `.venv-win7-build\DLLs\`；`check_win7_build.py` 实跑 `json_each` / `json_extract` / `json_set`，并核对构建解释器是该隔离环境、两个 SQLite 二进制都从它加载。构建入口一律按绝对路径使用 `.venv-win7-build\Scripts\python.exe`。
 - 默认便携版无需 Inno Setup；仅显式安装版模式需要 Inno Setup 6（`ISCC.exe`）或环境变量 `ISCC_EXE` / `INNO_HOME`。
 - 便携版 / 浏览器运行时包 / legacy 全量包前置：
   - 优先：`tools/Chrome.109.0.5414.120.x64/chrome.exe` 已存在
   - 或：`tools/ungoogled-chromium_109*.zip` 已存在（`scripts/package_win7.ps1` 会自动解压并整理到上述路径）
-- Windows PowerShell 5.1 编码：`scripts/package_win7.ps1` 保持 **ASCII-only**；控制台和原生命令输出明确指定 UTF-8，含空格参数显式带引号。禁止用升级 PowerShell 7 解决本项目兼容问题。
+- Windows PowerShell 5.1 编码：`scripts/package_win7.ps1` 保持 **ASCII-only** 与 LF；控制台和原生命令输出明确指定 UTF-8，含空格参数显式带引号。禁止用升级 PowerShell 7 解决本项目兼容问题。
+- 版本守卫：脚本不写 `#Requires`，入口第一句用 PowerShell 2.0 也能解析的写法检查 `$PSVersionTable.PSVersion`，低于 5.1 时写 stderr 并返回 2；`build_win7_portable.bat` 与 `build_win7_installer.bat` 都用 `-Command` 包装透传真实退出码。验收以退出码和当次生成的 ZIP 为准。
 
 ## 工作流（给 Agent 的执行指引）
 
@@ -38,7 +40,7 @@ description: 按明确的 APS Win7 打包或交付验收请求，构建含主程
 
 - 构建 `onedir`
 - 在 `dist` 中加入启动器、裁剪后的 Chrome109、`aps-portable.txt` 和带 BOM 的中文使用说明、`WIN7_ACCEPTANCE.txt` 实机验收表。
-- 运行 `validate_dist_exe.py`，确认数据库和日志都在当前便携目录的 `user-data/`。
+- 运行 `validate_dist_exe.py`，确认数据库和日志都在当前便携目录的 `user-data/`，并实读一次值班台接口。
 - 在含中文、空格路径的临时目录执行浏览器最小冒烟。
 - 仅清理本次新构建的测试数据，调用 `scripts/portable_release.py archive` 生成 ZIP 并检查完整性；拒绝夹带业务库、日志、备份或浏览器配置。
 - 没有 Windows 真机证据时，只能报告实际完成的静态或局部验证，不能写 EXE / PowerShell 5.1 已通过。
@@ -59,8 +61,8 @@ description: 按明确的 APS Win7 打包或交付验收请求，构建含主程
 
 ### 4) 冷启动验收（强制）
 
-- 运行：`python validate_dist_exe.py "<dist 下主 exe 路径>"`
-- 目标：能启动 + 关键页面 200
+- 运行：`.venv-win7-build\Scripts\python.exe validate_dist_exe.py "<dist 下主 exe 路径>"`
+- 目标：能启动 + 关键页面 200 + `GET /api/workbench/v1/dashboard` 真实读出业务数据（分析无错误、六类分类齐全）
 - 备注：该验收只验证主程序，不依赖浏览器进程
 
 ## 额外资料

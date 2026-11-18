@@ -3,14 +3,14 @@ rem Legacy/internal only: stage offline Chrome109 into dist\...\tools\chrome109
 rem Used for self-contained dist delivery and legacy full installer fallback.
 rem Requires: robocopy (built-in on Win7)
 
-setlocal EnableExtensions
+setlocal EnableExtensions DisableDelayedExpansion
+set "ERRORLEVEL="
 set "EXIT_CODE=0"
 
 pushd "%~dp0" >nul 2>&1
 if not %errorlevel%==0 (
   echo [stage] pushd failed.
-  set "EXIT_CODE=1"
-  goto :cleanup
+  endlocal & exit /b 1
 )
 
 set "SRC=%CD%\tools\Chrome.109.0.5414.120.x64"
@@ -33,12 +33,12 @@ if not defined DIST_ROOT (
 
 set "DST=%DIST_ROOT%\tools\chrome109"
 
-echo [stage] repo: %CD%
-echo [stage] src : %SRC%
-echo [stage] dst : %DST%
+echo [stage] repo: "%CD%"
+echo [stage] src : "%SRC%"
+echo [stage] dst : "%DST%"
 
 if not exist "%SRC%\chrome.exe" (
-  echo [stage] chrome.exe not found: %SRC%\chrome.exe
+  echo [stage] chrome.exe not found: "%SRC%\chrome.exe"
   set "EXIT_CODE=3"
   goto :cleanup
 )
@@ -56,20 +56,19 @@ robocopy "%SRC%" "%DST%" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /NFL /NDL /NJH /NJS /
 set "ROBO_RC=%ERRORLEVEL%"
 
 rem robocopy: 0-7 = success; >=8 = failure
-if %ROBO_RC% GEQ 8 (
-  echo [stage] robocopy failed exit=%ROBO_RC%
-  set "EXIT_CODE=%ROBO_RC%"
-  goto :cleanup
-)
-
+if %ROBO_RC% LSS 0 goto :copy_failed
+if %ROBO_RC% GEQ 8 goto :copy_failed
 if not exist "%DST%\chrome.exe" (
-  echo [stage] chrome.exe missing after copy: %DST%\chrome.exe
+  echo [stage] chrome.exe missing after copy: "%DST%\chrome.exe"
   set "EXIT_CODE=4"
   goto :cleanup
 )
-
 echo [stage] done.
-set "EXIT_CODE=0"
+goto :cleanup
+
+:copy_failed
+echo [stage] robocopy failed exit=%ROBO_RC%
+set "EXIT_CODE=%ROBO_RC%"
 
 :cleanup
 popd >nul 2>&1

@@ -480,7 +480,7 @@ class LongGateContentTests(unittest.TestCase):
                     "scripts/workbench/esbuild-manifest.json",
                     "vendor/node_modules/esbuild/package.json",
                     "tools/generate_schema_sql.py",
-                    "tools/resolve_iscc.ps1",
+                    ".limcode/skills/aps-package-win7/scripts/package_win7.ps1",
                     "tools/wufenchang_demo/blueprint.py",
                     "packaging/win7/offline-manifest.json",
                 )

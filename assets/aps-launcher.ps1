@@ -46,6 +46,11 @@ function Get-ApsRegistryValue([string]$Key, [string]$Name) {
     return ([string]$value).Replace('"', '')
 }
 
+function Resolve-ApsNormalizedPath([string]$Path) {
+    # Lock, contract, health and context paths are compared case-insensitively in this one form.
+    return [IO.Path]::GetFullPath($Path.Trim())
+}
+
 function New-ApsContext([string]$Directory, [Diagnostics.Stopwatch]$Clock) {
     if ($null -eq $Clock) { $Clock = [Diagnostics.Stopwatch]::StartNew() }
     $directory = [IO.Path]::GetFullPath($Directory)
@@ -76,12 +81,12 @@ function New-ApsContext([string]$Directory, [Diagnostics.Stopwatch]$Clock) {
         [IO.Path]::GetFileName($_) -notmatch '^(unins.*|chrome)\.exe$'
     })
     $exe = ''
-    if ($executables.Count) { $exe = $executables[0] }
+    if ($executables.Count) { $exe = Resolve-ApsNormalizedPath $executables[0] }
     $profile = Join-Path $directory 'chrome109_profile'
     if ($env:LOCALAPPDATA) { $profile = Join-Path $env:LOCALAPPDATA 'APS\Chrome109Profile' }
     if ($portable) { $profile = Join-Path $data 'chrome109_profile' }
     return @{ directory = $directory; portable = $portable; exe = $exe; owner = $owner;
-        db = [IO.Path]::GetFullPath($env:APS_DB_PATH).ToLowerInvariant(); profile = $profile;
+        db = (Resolve-ApsNormalizedPath $env:APS_DB_PATH); profile = $profile;
         log = (Join-Path $env:APS_LOG_DIR 'launcher.log'); clock = $Clock;
         lock = (Join-Path $env:APS_LOG_DIR 'aps_runtime.lock');
         contract = (Join-Path $env:APS_LOG_DIR 'aps_runtime.json');
@@ -119,51 +124,92 @@ function Find-ApsChrome($Context) {
     throw 'Chrome runtime not found. Install APS_Chrome109_Runtime.exe or set APS_CHROME_EXE.'
 }
 
+function Read-ApsStateText([string]$Path) {
+    # Observe the backend's files without preventing it from writing, replacing or deleting them.
+    $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+    try { $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, $share) }
+    catch [IO.FileNotFoundException] { return $null }
+    catch [IO.DirectoryNotFoundException] { return $null }
+    try {
+        $reader = New-Object IO.StreamReader($stream, [Text.Encoding]::UTF8)
+        try { return $reader.ReadToEnd() } finally { $reader.Close() }
+    } finally { $stream.Dispose() }
+}
+
+function Read-ApsOptionalTrimmedText($Context, [string]$Path, [string]$Label) {
+    try { return ([string](Read-ApsStateText $Path)).Trim() }
+    catch { Write-ApsLog $Context ($Label + '_read_failed=' + $_.Exception.Message); return '' }
+}
+
 function Read-ApsRuntime($Context) {
     $result = @{ lock = $null; lockState = 'absent'; contract = $null; hostName = ''; port = 0 }
-    if ([IO.File]::Exists($Context.lock)) {
-        try {
+    try {
+        $lockText = Read-ApsStateText $Context.lock
+        if ($null -ne $lockText) {
             $lock = @{}
-            foreach ($line in [IO.File]::ReadAllLines($Context.lock, [Text.Encoding]::UTF8)) {
+            # Same key=value protocol as the backend reader: keys and values are trimmed once here.
+            foreach ($line in ($lockText -split '\r?\n')) {
                 $index = $line.IndexOf('=')
-                if ($index -ge 0) { $lock[$line.Substring(0, $index)] = $line.Substring($index + 1) }
+                if ($index -lt 0) { continue }
+                $key = $line.Substring(0, $index).Trim()
+                if ($key) { $lock[$key] = $line.Substring($index + 1).Trim() }
             }
             $result.lock = $lock
-            $result.lockState = Get-ApsLockProcessState $lock.pid $Context.exe
-        } catch { $result.lockState = 'unknown' }
-    }
-    if ([IO.File]::Exists($Context.contract)) {
-        try { $result.contract = Read-ApsJson ([IO.File]::ReadAllText($Context.contract, [Text.Encoding]::UTF8)) }
-        catch { Write-ApsLog $Context ('contract_read_failed=' + $_.Exception.Message) }
-    }
+            $normalizedExe = $lock.exe_path
+            $result.lockState = Get-ApsLockProcessState $lock.pid $lock.exe_path ([ref]$normalizedExe)
+            $lock.exe_path = $normalizedExe
+        }
+    } catch { $result.lockState = 'unknown' }
+    try {
+        $contractText = Read-ApsStateText $Context.contract
+        if ($contractText) { $result.contract = Read-ApsJson $contractText }
+    } catch { Write-ApsLog $Context ('contract_read_failed=' + $_.Exception.Message) }
     $result.hostName = [string](Get-ApsValue $result.contract 'host')
     $contractPort = 0
     [void][int]::TryParse([string](Get-ApsValue $result.contract 'port'), [ref]$contractPort)
     $result.port = $contractPort
-    if ([IO.File]::Exists($Context.hostFile)) {
-        $value = [IO.File]::ReadAllText($Context.hostFile, [Text.Encoding]::UTF8).Trim()
-        if ($value) { $result.hostName = $value }
-    }
-    if ([IO.File]::Exists($Context.portFile)) {
-        $value = [IO.File]::ReadAllText($Context.portFile, [Text.Encoding]::UTF8).Trim()
-        $number = 0
-        if ([int]::TryParse($value, [ref]$number)) { $result.port = $number }
-    }
+    $value = Read-ApsOptionalTrimmedText $Context $Context.hostFile 'host_file'
+    if ($value) { $result.hostName = $value }
+    $value = Read-ApsOptionalTrimmedText $Context $Context.portFile 'port_file'
+    $number = 0
+    if ([int]::TryParse($value, [ref]$number)) { $result.port = $number }
     return $result
 }
 
-function Get-ApsLockProcessState([string]$ProcessId, [string]$Executable) {
+function Test-ApsActiveLock($Context, $Runtime) {
+    # A live lock decides ownership before any health proof. Half-written fields are uncertain;
+    # another or unreadable database path in the lock file is blocked, and so is another executable.
+    # An active lock carries the executable path its process check already normalized.
+    if ($Runtime.lockState -ne 'active') { return $null }
+    $lock = $Runtime.lock
+    if (-not $lock.owner) { return @{ state = 'uncertain'; reason = 'lock_owner_missing' } }
+    if ($lock.owner -ine $Context.owner) { return @{ state = 'other'; reason = 'lock_owner_mismatch' } }
+    if (-not $lock.db_path) { return @{ state = 'uncertain'; reason = 'lock_fields_incomplete' } }
+    try { $lockDatabase = Resolve-ApsNormalizedPath $lock.db_path }
+    catch { return @{ state = 'blocked'; reason = 'lock_database_unproven' } }
+    if ($lockDatabase -ine $Context.db) { return @{ state = 'blocked'; reason = 'lock_database_unproven' } }
+    if ($lock.exe_path -ine $Context.exe) { return @{ state = 'blocked'; reason = 'lock_executable_unproven' } }
+    return $null
+}
+
+function Get-ApsLockProcessState([string]$ProcessId, [string]$Executable, [ref]$NormalizedExecutable) {
+    # An active verdict hands back the normalized executable path; [ref] stays without a default.
     $number = 0
     if (-not [int]::TryParse($ProcessId, [ref]$number) -or $number -le 0) { return 'unknown' }
-    $process = $null
-    try {
-        $process = [Diagnostics.Process]::GetProcessById($number)
-        if ($process.HasExited) { return 'absent' }
-        if ($process.ProcessName -ine [IO.Path]::GetFileNameWithoutExtension($Executable)) { return 'absent' }
-        return 'active'
-    } catch [ArgumentException] { return 'absent' }
+    try { $process = [Diagnostics.Process]::GetProcessById($number) }
+    catch [ArgumentException] { return 'absent' }
     catch { return 'unknown' }
-    finally { if ($null -ne $process) { $process.Dispose() } }
+    try {
+        if ($process.HasExited) { return 'absent' }
+        if (-not $Executable) { return 'unknown' }
+        $actual = $process.MainModule.FileName
+        if (-not $actual) { return 'unknown' }
+        $normalized = Resolve-ApsNormalizedPath $Executable
+        if ((Resolve-ApsNormalizedPath $actual) -ine $normalized) { return 'absent' }
+        if ($null -ne $NormalizedExecutable) { $NormalizedExecutable.Value = $normalized }
+        return 'active'
+    } catch { return 'unknown' }
+    finally { $process.Dispose() }
 }
 
 function Get-ApsRemainingMs($Budget) {
@@ -196,7 +242,10 @@ function Read-ApsHealth($Runtime, $Budget) {
         if ($remaining -le 0) { throw 'Readiness deadline reached.' }
         if ($stream.CanTimeout) { $stream.ReadTimeout = $remaining }
         $reader = New-Object IO.StreamReader($stream, [Text.Encoding]::UTF8)
-        return @{ status = [int]$response.StatusCode; body = (Read-ApsJson $reader.ReadToEnd()) }
+        $health = @{ status = [int]$response.StatusCode; body = (Read-ApsJson $reader.ReadToEnd()) }
+        # Every later judgement of this response reuses the one payload verdict.
+        $health.valid = Test-ApsHealthPayload $health
+        return $health
     } finally {
         if ($null -ne $reader) { $reader.Close() }
         if ($null -ne $response) { $response.Close() }
@@ -204,7 +253,6 @@ function Read-ApsHealth($Runtime, $Budget) {
 }
 
 function Test-ApsHealthPayload($Response) {
-    if ($null -eq $Response) { return $false }
     $health = $Response.body
     $healthVersion = 0
     if (-not [int]::TryParse([string](Get-ApsValue $health 'contract_version'), [ref]$healthVersion) -or $healthVersion -ne 1 -or
@@ -217,8 +265,9 @@ function Test-ApsHealthPayload($Response) {
     return ($Response.status -eq 200 -and $status -ceq 'ok')
 }
 
-function Test-ApsHealth($Context, $Runtime, $Budget, [ref]$HealthResponse = $null) {
+function Test-ApsHealth($Context, $Runtime, $Budget, [ref]$HealthResponse, [ref]$HealthAttempted) {
     # Codes match the former launcher: 0 ready, 1 pending, 2 invalid, 3 recovery, 4 other owner.
+    # [ref] parameters stay without defaults: PowerShell rejects a $null default when the caller omits them.
     $contract = $Runtime.contract
     if ($null -eq $contract) { return 1 }
     $contractPid = 0L; $port = 0; $version = 0
@@ -231,13 +280,11 @@ function Test-ApsHealth($Context, $Runtime, $Budget, [ref]$HealthResponse = $nul
     $instanceId = [string](Get-ApsValue $contract 'instance_id')
     if (-not $owner -or -not $hostName -or -not $database -or -not $instanceId -or
         $Runtime.hostName -ine $hostName -or $Runtime.port -ne $port) { return 2 }
-    try {
-        $database = [IO.Path]::GetFullPath($database.Trim()).ToLowerInvariant()
-        $expectedDatabase = [IO.Path]::GetFullPath([string]$Context.db).ToLowerInvariant()
-    } catch { return 2 }
-    if ($database -cne $expectedDatabase) { return 2 }
+    try { $database = Resolve-ApsNormalizedPath $database } catch { return 2 }
+    if ($database -ine $Context.db) { return 2 }
     $response = if ($null -ne $HealthResponse) { $HealthResponse.Value } else { $null }
     if ($null -eq $response) {
+        if ($null -ne $HealthAttempted) { $HealthAttempted.Value = $true }
         try {
             $response = Read-ApsHealth $Runtime $Budget
             if ($null -ne $HealthResponse) { $HealthResponse.Value = $response }
@@ -245,72 +292,100 @@ function Test-ApsHealth($Context, $Runtime, $Budget, [ref]$HealthResponse = $nul
         catch [ArgumentException] { return 2 }
         catch { return 1 }
     }
-    if (-not (Test-ApsHealthPayload $response)) { return 2 }
+    if (-not $response.valid) { return 2 }
     $health = $response.body
     $healthPid = 0L
     if (-not [long]::TryParse([string](Get-ApsValue $health 'pid'), [ref]$healthPid) -or $healthPid -ne $contractPid) { return 2 }
     $recovery = $response.status -eq 503
     $healthDatabase = [string](Get-ApsValue $health 'db_path')
     if (-not $healthDatabase) { return 2 }
-    try { $healthDatabase = [IO.Path]::GetFullPath($healthDatabase.Trim()).ToLowerInvariant() }
-    catch { return 2 }
-    if ((Get-ApsValue $health 'owner') -ine $owner -or $healthDatabase -cne $database -or
+    try { $healthDatabase = Resolve-ApsNormalizedPath $healthDatabase } catch { return 2 }
+    if ((Get-ApsValue $health 'owner') -ine $owner -or $healthDatabase -ine $database -or
         (Get-ApsValue $health 'instance_id') -cne $instanceId) { return 2 }
     if ($owner -ine $Context.owner) { return 4 }
     if ($recovery) { return 3 }
     return 0
 }
 
-function Get-ApsExistingState($Context, $Budget) {
-    $runtime = Read-ApsRuntime $Context
-    $active = $runtime.lockState -eq 'active'
-    if ($active) {
-        $lock = $runtime.lock
-        if (-not $lock.owner) { return @{ state = 'blocked'; reason = 'lock_owner_missing' } }
-        if ($lock.owner -ine $Context.owner) { return @{ state = 'other'; reason = 'lock_owner_mismatch' } }
-        if ($lock.db_path -cne $Context.db) { return @{ state = 'blocked'; reason = 'lock_database_unproven' } }
-        if (-not $lock.exe_path -or [IO.Path]::GetFullPath($lock.exe_path) -ine $Context.exe) {
-            return @{ state = 'blocked'; reason = 'lock_executable_unproven' }
+function Get-ApsSnapshotState($Runtime, [int]$Code, $HealthResponse) {
+    # One snapshot of lock, contract and endpoint judged against one health response.
+    $active = $Runtime.lockState -eq 'active'
+    if ($Code -eq 4) { return @{ state = 'other'; reason = 'health_owner_mismatch' } }
+    if ($Code -eq 0 -or $Code -eq 3) {
+        if ($active -and [string]$Runtime.lock.pid -ne [string](Get-ApsValue $Runtime.contract 'pid')) {
+            return @{ state = 'starting'; reason = 'lock_contract_pid_mismatch' }
         }
-    }
-    $healthResponse = $null
-    $code = Test-ApsHealth $Context $runtime $Budget ([ref]$healthResponse)
-    if ($code -eq 4) { return @{ state = 'other'; reason = 'health_owner_mismatch' } }
-    if ($code -eq 0 -or $code -eq 3) {
-        if ($active -and [string]$runtime.lock.pid -ne [string](Get-ApsValue $runtime.contract 'pid')) {
-            return @{ state = 'blocked'; reason = 'lock_contract_pid_mismatch' }
-        }
-        return @{ state = 'ready'; recovery = ($code -eq 3); hostName = $runtime.hostName; port = $runtime.port }
+        return @{ state = 'ready'; recovery = ($Code -eq 3); hostName = $Runtime.hostName; port = $Runtime.port }
     }
     if ($active) {
-        if ($code -eq 2) { return @{ state = 'blocked'; reason = 'lock_active_health_identity_failed' } }
+        if ($Code -eq 2) { return @{ state = 'starting'; reason = 'lock_active_health_identity_failed' } }
         return @{ state = 'starting'; reason = 'lock_active_health_pending' }
     }
-    if ($runtime.lockState -eq 'unknown') { return @{ state = 'blocked'; reason = 'lock_query_unknown' } }
-    # Presence alone blocks another spawn; it can never authorize reuse.
-    if ($runtime.hostName -and $runtime.port -gt 0 -and $runtime.port -le 65535) {
-        if ($null -eq $healthResponse) {
-            try { $healthResponse = Read-ApsHealth $runtime $Budget }
-            catch { Write-ApsLog $Context ('app_presence_pending=' + $_.Exception.Message) }
-        }
-        if (Test-ApsHealthPayload $healthResponse) {
-            return @{ state = 'blocked'; reason = 'healthy_without_owner_proof' }
-        }
+    if ($Runtime.lockState -eq 'unknown') { return @{ state = 'uncertain'; reason = 'lock_query_unknown' } }
+    # Presence alone prevents another spawn; it can never authorize reuse.
+    if ($null -ne $HealthResponse -and $HealthResponse.valid) {
+        return @{ state = 'uncertain'; reason = 'healthy_without_owner_proof' }
     }
     return @{ state = 'absent'; reason = 'no_active_instance' }
 }
 
-function Wait-ApsReady($Context, $IgnoredErrorTime, [int]$TimeoutMs = 45000) {
+function Get-ApsExistingState($Context, $Budget) {
+    $runtime = Read-ApsRuntime $Context
+    $lockState = Test-ApsActiveLock $Context $runtime
+    if ($null -ne $lockState) { return $lockState }
+    $healthResponse = $null
+    $healthAttempted = $false
+    $code = Test-ApsHealth $Context $runtime $Budget ([ref]$healthResponse) ([ref]$healthAttempted)
+    # At most one GET per round: an endpoint that refused or timed out is not asked again.
+    if (-not $healthAttempted -and $runtime.lockState -eq 'absent' -and $runtime.hostName -and
+        $runtime.port -gt 0 -and $runtime.port -le 65535) {
+        try { $healthResponse = Read-ApsHealth $runtime $Budget }
+        catch { Write-ApsLog $Context ('app_presence_pending=' + $_.Exception.Message) }
+    }
+    $state = Get-ApsSnapshotState $runtime $code $healthResponse
+    if ($state.state -eq 'ready' -or $state.state -eq 'other' -or $null -eq $healthResponse -or -not $healthResponse.valid) {
+        return $state
+    }
+    # The files were read before the GET; a new owner may have published its lock and contract while the
+    # GET was in flight. Judge the same response once more against a fresh file snapshot, without a new GET.
+    $refreshed = Read-ApsRuntime $Context
+    $lockState = Test-ApsActiveLock $Context $refreshed
+    if ($null -ne $lockState) { return $lockState }
+    if ($refreshed.hostName -ine $runtime.hostName -or $refreshed.port -ne $runtime.port) { return $state }
+    $code = Test-ApsHealth $Context $refreshed $Budget ([ref]$healthResponse)
+    return Get-ApsSnapshotState $refreshed $code $healthResponse
+}
+
+function Wait-ApsReady($Context, $IgnoredErrorTime, [int]$TimeoutMs = 45000, $SpawnedProcess) {
     $budget = @{ clock = [Diagnostics.Stopwatch]::StartNew(); limit = $TimeoutMs }
     $previous = ''
     while ((Get-ApsRemainingMs $budget) -gt 0) {
+        # Sample exit and error signals before the probe, so the probe result can explain them.
+        $childExited = ($null -ne $SpawnedProcess) -and $SpawnedProcess.HasExited
+        $errorUpdated = [IO.File]::Exists($Context.errorFile) -and
+            ([IO.File]::GetLastWriteTimeUtc($Context.errorFile) -ne $IgnoredErrorTime)
         $state = Get-ApsExistingState $Context $budget
         $description = $state.state + ':' + $state.reason
         if ($description -ne $previous) { Write-ApsLog $Context ('readiness=' + $description); $previous = $description }
-        if ($budget.clock.ElapsedMilliseconds -ge $budget.limit) { break }
-        if (@('ready', 'blocked', 'other') -contains $state.state) { return $state }
-        if ($state.state -ne 'starting' -and [IO.File]::Exists($Context.errorFile) -and
-            [IO.File]::GetLastWriteTimeUtc($Context.errorFile) -ne $IgnoredErrorTime) {
+        # This round's sampled verdict is judged even when the probe crossed the deadline; only a
+        # non-final round waits, and the loop condition then ends an exhausted budget as timeout.
+        # Ready, other account and proven other database or executable are final; uncertain is a publication race.
+        if ($state.state -eq 'ready' -or $state.state -eq 'other' -or $state.state -eq 'blocked') { return $state }
+        if ($null -ne $SpawnedProcess) {
+            if ($childExited) {
+                # A child that never owned the lock records its diagnostics in launcher.log.
+                $exitCode = $SpawnedProcess.ExitCode
+                if ($exitCode -eq 12) { return @{ state = 'failed'; reason = 'lock_acquisition_failed' } }
+                if ($exitCode -eq 13) {
+                    # 13 proves a winner of this owner, executable and DB held the lock; wait while it can publish.
+                    if ($state.state -eq 'absent') { return @{ state = 'failed'; reason = 'reusable_owner_no_longer_present' } }
+                } elseif ($state.state -ne 'starting') {
+                    # Without a live lock of this identity nothing can still become ready for this launch.
+                    if ($errorUpdated) { return @{ state = 'failed'; reason = 'see_utf8_launch_error_file' } }
+                    return @{ state = 'failed'; reason = ('app_process_exited_' + $exitCode) }
+                }
+            }
+        } elseif ($state.state -eq 'absent' -and $errorUpdated) {
             return @{ state = 'failed'; reason = 'see_utf8_launch_error_file' }
         }
         $remaining = Get-ApsRemainingMs $budget
@@ -319,7 +394,7 @@ function Wait-ApsReady($Context, $IgnoredErrorTime, [int]$TimeoutMs = 45000) {
     return @{ state = 'timeout'; reason = 'readiness_deadline' }
 }
 
-function Start-ApsProcess([string]$Executable, [string]$Arguments, [string]$Directory) {
+function Start-ApsProcess([string]$Executable, [string]$Arguments, [string]$Directory, [ref]$ProcessOut) {
     $info = New-Object Diagnostics.ProcessStartInfo
     $info.FileName = [IO.Path]::GetFullPath($Executable)
     $info.Arguments = $Arguments
@@ -327,7 +402,9 @@ function Start-ApsProcess([string]$Executable, [string]$Arguments, [string]$Dire
     else { $info.WorkingDirectory = [IO.Directory]::GetCurrentDirectory() }
     $info.UseShellExecute = $false
     $process = [Diagnostics.Process]::Start($info)
-    if ($null -ne $process) { $process.Dispose() }
+    # The caller that asks for the handle owns its disposal; nothing is written to the pipeline.
+    if ($null -ne $ProcessOut) { $ProcessOut.Value = $process }
+    else { $process.Dispose() }
 }
 
 function Invoke-ApsLauncher([string]$Directory, [Diagnostics.Stopwatch]$LaunchClock,
@@ -375,30 +452,42 @@ function Invoke-ApsLauncher([string]$Directory, [Diagnostics.Stopwatch]$LaunchCl
             ' probe_ms=' + ($context.clock.ElapsedMilliseconds - $phaseMs))
         if ($state.state -eq 'absent' -or $state.state -eq 'starting') {
             $ignoredErrorTime = $null
-            if ($state.state -eq 'absent') {
-                # The owner clears its own signals. Never erase a concurrent owner's files.
-                $ignoredErrorTime = [IO.File]::GetLastWriteTimeUtc($context.errorFile)
-                Write-Host '[launcher] Starting app...'
-                Write-ApsLog $context 'app_start_required=1'
+            $spawnedProcess = $null
+            try {
+                if ($state.state -eq 'absent') {
+                    # The owner clears its own signals. Never erase a concurrent owner's files.
+                    $ignoredErrorTime = [IO.File]::GetLastWriteTimeUtc($context.errorFile)
+                    Write-Host '[launcher] Starting app...'
+                    Write-ApsLog $context 'app_start_required=1'
+                    $phaseMs = $context.clock.ElapsedMilliseconds
+                    try { Start-ApsProcess $context.exe '' $context.directory ([ref]$spawnedProcess) }
+                    catch { Write-ApsLog $context ('app_spawn_failed=' + $_.Exception.Message); return 6 }
+                    Write-ApsLog $context ('app_spawned spawn_ms=' + ($context.clock.ElapsedMilliseconds - $phaseMs))
+                }
+                Write-Host '[launcher] Waiting for app readiness (up to 45s)...'
+                Write-ApsLog $context 'wait_begin'
                 $phaseMs = $context.clock.ElapsedMilliseconds
-                try { Start-ApsProcess $context.exe '' $context.directory }
-                catch { Write-ApsLog $context ('app_spawn_failed=' + $_.Exception.Message); return 6 }
-                Write-ApsLog $context ('app_spawned spawn_ms=' + ($context.clock.ElapsedMilliseconds - $phaseMs))
+                $state = Wait-ApsReady $context $ignoredErrorTime -SpawnedProcess $spawnedProcess
+                Write-ApsLog $context ('wait_end state=' + $state.state +
+                    ' wait_ms=' + ($context.clock.ElapsedMilliseconds - $phaseMs))
+            } finally {
+                if ($null -ne $spawnedProcess) { $spawnedProcess.Dispose() }
             }
-            Write-Host '[launcher] Waiting for app readiness (up to 45s)...'
-            Write-ApsLog $context 'wait_begin'
-            $phaseMs = $context.clock.ElapsedMilliseconds
-            $state = Wait-ApsReady $context $ignoredErrorTime
-            Write-ApsLog $context ('wait_end state=' + $state.state +
-                ' wait_ms=' + ($context.clock.ElapsedMilliseconds - $phaseMs))
         }
         if ($state.state -ne 'ready') {
             Write-ApsLog $context ('launch_stopped=' + $state.state + ':' + $state.reason)
             switch ($state.state) {
                 'other' { Write-Host '[launcher] APS is currently in use by another account.'; return 8 }
-                'blocked' { Write-Host '[launcher] Existing instance ownership is uncertain; startup is blocked.'; return 9 }
+                { $_ -eq 'blocked' -or $_ -eq 'uncertain' } {
+                    Write-Host '[launcher] Existing instance ownership is uncertain or blocked; startup is stopped.'
+                    return 9
+                }
                 'timeout' { Write-Host '[launcher] App did not become ready within 45 seconds.'; return 3 }
-                default { Write-Host ('[launcher] App startup failed. Check: ' + $context.errorFile); return 6 }
+                default {
+                    $diagnostic = if ($state.reason -eq 'see_utf8_launch_error_file') { $context.errorFile } else { $context.log }
+                    Write-Host ('[launcher] App startup failed. Check: ' + $diagnostic)
+                    return 6
+                }
             }
         }
         $url = 'http://{0}:{1}/' -f $state.hostName, $state.port

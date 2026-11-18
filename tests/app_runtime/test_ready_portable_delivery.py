@@ -1,5 +1,6 @@
 """Verify ready-to-run ZIP parts, exclusive byte limits, and pure-payload boundaries."""
 import os
+import re
 import sqlite3
 import zipfile
 
@@ -102,9 +103,14 @@ def test_oversized_single_file_and_limit_above_80mb_never_publish_a_delivery(tmp
 
 
 def test_ready_delivery_reuses_runtime_rejections_and_requires_prepared_entries(tmp_path):
-    cases = ("user-data", "assets/nested/history.DB", "tools/chrome109/User Data/Default/Preferences",
-             "missing-marker", "empty-launcher")
-    for index, name in enumerate(cases):
+    cases = (
+        ("user-data", "runtime/user data"),
+        ("assets/nested/history.DB", "runtime/user data"),
+        ("tools/chrome109/User Data/Default/Preferences", "runtime/user data"),
+        ("missing-marker", "Portable directory is not prepared: " + re.escape(portable_release.MARKER)),
+        ("empty-launcher", "Missing or empty portable payload: " + re.escape(portable_release.LAUNCHER)),
+    )
+    for index, (name, message) in enumerate(cases):
         case = tmp_path / str(index)
         case.mkdir()
         payload, database, readme = ready_inputs(case)
@@ -119,7 +125,6 @@ def test_ready_delivery_reuses_runtime_rejections_and_requires_prepared_entries(
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(b"existing runtime state")
         output = case / "delivery"
-        message = "runtime/user data" if index < 3 else "prepared|launcher"
         with pytest.raises(ValueError, match=message):
             ready_portable_delivery.write_ready_portable_delivery(payload, database, readme, output)
         assert not output.exists()

@@ -145,6 +145,7 @@ _WORKBENCH_TESTS = (
 _RUNTIME_TESTS = (
     *QUALITY_GATE_STARTUP_REGRESSION_ARGS,
     'tests/app_runtime/test_codex_hook_authorization.py',
+    'tests/app_runtime/test_win7_installer_contracts.py',
     'tests/web_pages/test_system_health_route.py',
     'tests/web_pages/test_system_runtime_logs_page.py',
 )
@@ -285,11 +286,14 @@ REQUIRED_REGRESSION_GROUPS: Tuple[RegistryGroup, ...] = (
             'installer/**/*',
             'packaging/win7/**/*',
             'build_win7*.bat',
+            'setup_win7_build.bat',
+            'stage_chrome109_to_dist.bat',
+            'validate_dist_exe.py',
             'templates/**/*.html',
             'static/**/*',
         ),
         env_keys=('APS_HOST', 'APS_PORT', 'APS_SHARED_DATA_ROOT', 'APS_STATIC_VERSION', 'WERKZEUG_RUN_MAIN', 'APS_TEST_POWERSHELL', 'PATH', 'powershell_executable_realpath', 'powershell_version'),
-        tool_file_scopes=('tools/resolve_iscc.ps1',),
+        tool_file_scopes=('.limcode/skills/aps-package-win7/scripts/package_win7.ps1',),
         dependency_file_scopes=('vendor/wheels/*.whl',),
     ),
     _group(

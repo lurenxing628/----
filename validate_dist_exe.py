@@ -9,6 +9,7 @@
   - 运行时 host/port 文件可生成并可解析
   - 健康检查接口可访问（GET /system/health）
   - 当前工作台入口、各视图的 HTML 引导与本地脚本/样式引用正确
+  - 值班台接口真实读出业务数据（GET /api/workbench/v1/dashboard，空库也走完仓储 SQL 与 JSON1 展开）
   - 已下线的旧页面入口返回 404（不再挂载旧路由）
   - static 关键载荷已打进包且可通过 HTTP 取到非空内容
     （static 缺失时运行时只降级警告、页面照常 200，必须在验收层直接断言）
@@ -35,13 +36,13 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-from core.infrastructure.safe_files import read_fixed_text
+from core.infrastructure.safe_files import read_fixed_text, write_fixed_text
+from core.models.workbench_dashboard import CATEGORIES as _DASHBOARD_CATEGORIES
+from web.bootstrap.launcher_observability import LAUNCHER_LOG_FILE
 
 _EXPECTED_CONTRACT_VERSION = 1
 
 # static 验收锚点：新工作台入口从实际 manifest 加载的核心样式与主脚本（B14）。
-# tests/app_runtime/test_validate_dist_static_payload.py 对账：锚点必须真实存在于
-# 仓库 static/、列入 manifest 且由实际入口模板加载，不能保留已退役的旧资源。
 _STATIC_BUNDLE_ANCHORS = (
     "static/workbench/app/workbench.css",
     "static/workbench/app/theme.js",
@@ -154,6 +155,25 @@ def _assert_workbench_page(base_url: str, path: str, view: str) -> None:
         raise RuntimeError(f"工作台 HTML 未引用关键脚本或样式：{missing}")
 
 
+def _assert_workbench_dashboard_api(base_url: str, timeout: float = 5.0) -> None:
+    """值班台数据区要真正读库：页面壳 200 不代表仓储查询可用（Win7 缺 JSON1 时壳正常、数据区读取失败）。"""
+    path = "/api/workbench/v1/dashboard"
+    url = base_url + path
+    status, body, final_url = _http_get_page(url, timeout=timeout)
+    if status != 200 or final_url != url:
+        raise RuntimeError(f"值班台数据读取失败：GET {path} -> {status}，请核对响应状态和最终地址。")
+    payload = json.loads(body)
+    if not isinstance(payload, dict) or payload.get("ok") is not True or payload.get("schema_version") != 1:
+        raise RuntimeError(f"值班台接口响应外壳不正确：{path}")
+    data = payload.get("data")
+    if not isinstance(data, dict) or "analysis_error" not in data or data["analysis_error"] is not None:
+        raise RuntimeError(f"值班台分析没有正常读取：{path}")
+    categories = data.get("categories")
+    if not isinstance(categories, dict) or not set(_DASHBOARD_CATEGORIES).issubset(categories.keys()):
+        raise RuntimeError(f"值班台分类计数不完整：{path}")
+    print(f"[validate] GET {path} -> 200")
+
+
 def _assert_retired_page(base_url: str, path: str) -> None:
     status, _body, final_url = _http_get_page(base_url + path)
     print(f"[validate] GET {path} -> {status} (expected 404)")
@@ -223,6 +243,28 @@ def _assert_process_running(p: subprocess.Popen, context: str) -> None:
     exit_code = p.poll()
     if exit_code is not None:
         raise RuntimeError(f"进程提前退出（exit_code={exit_code}），{context}")
+
+
+def _preserve_startup_error(log_dir: str) -> None:
+    """隔离目录清理前，只保留 launcher 记录的第一条启动错误，构建输出仅公开文件位置。"""
+    try:
+        lines = read_fixed_text(os.path.join(log_dir, LAUNCHER_LOG_FILE)).splitlines()
+    except FileNotFoundError:
+        return
+    except (OSError, UnicodeError) as exc:
+        print(f"[validate] 无法读取本次启动诊断：{exc}")
+        return
+    for line in lines:
+        if " [ERROR] " in line:
+            # 固定单槽：每次失败覆写同一文件，不在临时目录堆积随机名诊断。
+            diagnostic_path = os.path.join(tempfile.gettempdir(), "aps-validate-startup-error.log")
+            try:
+                write_fixed_text(diagnostic_path, line + "\n", append=False)
+            except OSError as exc:
+                print(f"[validate] 无法保存本次启动诊断：{exc}")
+            else:
+                print(f"[validate] 本次启动首错已保存：{diagnostic_path}")
+            break
 
 
 def _wait_for_runtime_contract(log_dir: str, p: subprocess.Popen, timeout_s: float = 20.0) -> Tuple[str, int, str]:
@@ -423,6 +465,7 @@ def main() -> int:
 
         _assert_workbench_page(base, "/", "dashboard")
         _assert_workbench_page(base, "/workbench", "dashboard")
+        _assert_workbench_dashboard_api(base, timeout=5.0)
         for view in _WORKBENCH_VIEWS:
             _assert_workbench_page(base, "/workbench?view=" + view, view)
         _assert_workbench_page(base, "/workbench/trial", "trial")
@@ -453,6 +496,8 @@ def main() -> int:
             exit_code = 0
     except Exception as e:
         print(f"[validate] 验收失败：{e}")
+        if p is not None and p.poll() is not None:
+            _preserve_startup_error(log_dir)
         exit_code = 5
     finally:
         child_alive = False
@@ -493,7 +538,7 @@ def main() -> int:
                     else:
                         print(f"[validate] 警告：临时隔离目录清理失败：{cleanup_e}")
     if exit_code == 0:
-        print("[validate] 验收通过：exe 冷启动、运行时契约、工作台 HTML 引导、旧入口退役与 static 关键载荷均正常。")
+        print("[validate] 验收通过：exe 冷启动、运行时契约、工作台 HTML 引导、值班台数据读取、旧入口退役与 static 关键载荷均正常。")
     return exit_code
 
 

@@ -14,7 +14,7 @@
 - **Windows 7 x64（建议 SP1）**
 - **Python 3.8.x x64**
 - **PyInstaller 4.10**（必须严格 4.10，不是任意 4.x）
-- **离线 Python 依赖已安装完整**：按 `DELIVERY_WIN7.md` 准备离线材料，使用独立构建环境安装 `requirements-win7-build.txt`；不要混入 `requirements-dev.txt`。当前图分析默认开启，锁定清单包含 `networkx==3.1`，打包脚本还会核对仓库附带的 NetworkX wheel。显式安装版命令需先激活 `.venv-win7-build`。
+- **离线 Python 依赖已安装完整**：按 `DELIVERY_WIN7.md` 准备离线材料，使用独立构建环境安装 `requirements-win7-build.txt`；不要混入 `requirements-dev.txt`。当前图分析默认开启，锁定清单包含 `networkx==3.1`，打包脚本还会核对仓库附带的 NetworkX wheel。安装版命令同样只按绝对路径使用 `.venv-win7-build\Scripts\python.exe`，不需要手工激活。
 - **Inno Setup 6.x（Unicode）**：需要 `ISCC.exe`
 - 浏览器运行时包 / legacy 全量包额外需要以下之一：
   - `tools\Chrome.109.0.5414.120.x64\chrome.exe`
@@ -23,7 +23,7 @@
 离线安装依赖示例：
 
 ```bat
-python -m pip install --no-index --find-links offline\win7\wheels -r requirements-win7-build.txt
+".venv-win7-build\Scripts\python.exe" -m pip install --no-index --find-links offline\win7\wheels -r requirements-win7-build.txt
 ```
 
 ## 目录约定
@@ -92,10 +92,9 @@ set INNO_HOME=C:\Program Files (x86)\Inno Setup 6
 
 ```bat
 build_win7_installer.bat
-python validate_dist_exe.py "dist\排产系统\排产系统.exe"
 ```
 
-> 说明：`build_win7_installer.bat` 只覆盖主程序包生成，不执行浏览器运行时最小冒烟，也不是正式双包交付的完整验收入口。
+> 说明：`build_win7_installer.bat` 委托 `package_win7.ps1 -MainOnly`，已包含 `validate_dist_exe.py` 冷启校验与运行痕迹清理；它只覆盖主程序包生成，不执行浏览器运行时最小冒烟，也不是正式双包交付的完整验收入口。
 
 产物：
 
@@ -260,7 +259,7 @@ ISCC.exe installer\aps_win7_legacy.iss
 
 至少完成以下检查：
 
-1. 在打包机执行 `python validate_dist_exe.py "dist\排产系统\排产系统.exe"`
+1. 在打包机执行 `.venv-win7-build\Scripts\python.exe validate_dist_exe.py "dist\排产系统\排产系统.exe"`（`build_win7_installer.bat` 已自动执行这一步）
 2. 在目标机上以管理员身份安装 `APS_Chrome109_Runtime.exe` 与 `APS_Main_Setup.exe`
 3. 切换到域账户后，确认开始菜单或桌面可见 **“排产系统”**，点击后能打开系统首页
 4. 检查共享数据目录 `C:\ProgramData\APS\shared-data\` 下的 `db/ logs/ backups/ templates_excel/` 已建立并可写

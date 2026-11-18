@@ -4,7 +4,11 @@
 /build_win7_portable.bat text eol=crlf
 /setup_win7_build.bat text eol=crlf
 /build_win7_onedir.bat text eol=crlf
+/build_win7_installer.bat text eol=crlf
+/stage_chrome109_to_dist.bat text eol=crlf
+# ASCII PowerShell sources keep LF so Windows core.autocrlf cannot rewrite them.
 /.limcode/skills/aps-package-win7/scripts/package_win7.ps1 text eol=lf
+/assets/*.ps1 text eol=lf
 
 # Offline manifests hash source and published bytes; keep text deterministic.
 # text=auto retains binary fonts/images without newline conversion.

@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
-from core.infrastructure.sqlite_udf import DETECT_TYPES, configure_connection
+from core.infrastructure.sqlite_udf import DETECT_TYPES, configure_connection, ensure_sqlite_runtime
 
 from .database_bootstrap import build_schema_exec_script
 from .migration_state import (
@@ -46,7 +46,10 @@ def _ensure_sqlite_db_target_ready(db_path: str) -> None:
 def get_connection(db_path: str) -> sqlite3.Connection:
     """
     获取产品读写连接（每请求一个连接，避免跨线程问题）；文件库只按固定文件目标以读写方式打开。
+
+    首次触库前先核验 SQLite 能力，缺 JSON1 时在创建库文件之前拒绝，不留空库文件。
     """
+    ensure_sqlite_runtime()
     is_memory_db = db_path.strip() == ":memory:"
     connect_target = db_path
     if not is_memory_db:

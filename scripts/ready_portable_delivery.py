@@ -35,10 +35,9 @@ def write_archive(output: Path, files: Sequence[PayloadFile], maximum_bytes: int
 def delivery_files(payload: Path, database: Path) -> List[PayloadFile]:
     """Keep the existing pure-program boundary; only the named database crosses it."""
     files = payload_files(payload)
-    for name in (MARKER, LAUNCHER):
-        path = payload / name
-        if not path.is_file() or path.stat().st_size == 0:
-            raise ValueError("Portable directory is not prepared: " + name)
+    marker = payload / MARKER
+    if not marker.is_file() or marker.stat().st_size == 0:
+        raise ValueError("Portable directory is not prepared: " + MARKER)
     if (payload / "sample-context").exists():
         raise ValueError("Portable payload contains a sample context")
     if not database.is_file() or database.stat().st_size == 0:

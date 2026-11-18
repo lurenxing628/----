@@ -35,7 +35,7 @@ from .launcher_paths import (
     resolve_prelaunch_log_dir,
     resolve_runtime_db_path,
 )
-from .launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
+from .launcher_runtime_lock import ReusableRuntimeInstance, acquire_runtime_lock, release_runtime_lock
 from .launcher_stop import stop_runtime_from_dir
 from .paths import runtime_base_dir
 from .runtime_server import prepare_runtime_server
@@ -185,10 +185,7 @@ def app_main(
     lock_scope_target = prelaunch_log_dir if is_frozen else runtime_dir
     lock_scope_log_dir = prelaunch_log_dir if is_frozen else None
     runtime_owner = deps.current_runtime_owner()
-    deps.clear_launch_error(prelaunch_log_dir)
-
     # 双开防线：运行时锁必须先于 create_app 的一切共享库副作用（ensure_schema 迁移、退出备份注册）。
-    # 锁被占的第二实例在触库前即退出（rc=13）——不会在运行实例底下迁移 schema，也不会挂上退出备份。
     runtime_lock_state: Dict[str, Any] = {}
     rc = _acquire_runtime_lock_before_app(
         deps,
@@ -204,6 +201,7 @@ def app_main(
 
     app = None
     try:
+        deps.clear_launch_error(prelaunch_log_dir)
         try:
             app = deps.create_app()
         except Exception as e:
@@ -380,7 +378,7 @@ def _acquire_runtime_lock_before_app(
 ) -> Optional[int]:
     # 副作用时序：acquire_lock → create_app（迁移/退出备份注册）→ 发布并保存契约身份；停机清理全部由
     # app_main / _serve_created_app 的 finally 承担。锁必须是第一个共享资源副作用（双开防线）。
-    # 返回 None=成功继续；13=锁失败。此时 app 尚未创建，观测通道只有启动错误文件与 launcher.log（logger=None）。
+    # 13 只允许启动器等待当前壳目录的同一实例。拿锁前本进程没有发布共享启动错误的所有权。
     # B03：壳锁命名空间锚定日志目录（bat/stop 读取端合同），与 DB 的 env 锚点（APS_DB_PATH/shared-data root）
     # 可被分叉——同库双开的真互斥由 acquire_runtime_lock(db_path=...) 在 DB 同路径追加的 db-scope 锁承担；
     # db 路径解析必须与 factory._apply_runtime_config 同源（resolve_runtime_db_path，合同测试锁定）。
@@ -393,12 +391,11 @@ def _acquire_runtime_lock_before_app(
             exe_path=sys.executable,
             db_path=runtime_db_path,
         )
-    except Exception as e:
-        write_launch_error(
-            None, "获取运行时锁失败：%s", e, state_dir=prelaunch_log_dir, runtime_dir=runtime_dir,
-            public_message=PUBLIC_LAUNCH_ERROR_MESSAGE,
-        )
+    except ReusableRuntimeInstance:
         return 13
+    except Exception as e:
+        launcher_log_warning(None, "获取运行时锁失败：%s", e, state_dir=prelaunch_log_dir, runtime_dir=runtime_dir)
+        return 12
     runtime_lock_state["payload"] = acquired
     return None
 
