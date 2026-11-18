@@ -1,10 +1,9 @@
 """Frontend pending store CAS serialization and terminal state recovery across component remounts."""
 
 import json
-import subprocess
 from pathlib import Path
 
-from tests._support.node_runtime_support import node_runtime
+from tests._support.node_runtime_support import run_node
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -33,19 +32,7 @@ function createLockManager() {
 
 def _run_node(script: str) -> dict:
     wrapped = f"'use strict';\n{LOCK_MANAGER}\n(async () => {{\n{script}\n}})().catch(err => {{ console.error(err); process.exit(1); }});"
-    # 以纯解释方式运行（--jitless）。跨页锁用例要建几十个 vm 隔离页，Node v24.15（darwin-arm64）的 V8 编译器在这种负载下
-    # 会随源码排布偶发段错误（返回码 -11），属于运行时崩溃，不是被测逻辑出错。2026-11-17 实测：
-    # - 默认参数：串行 5/12 失败；
-    # - 只关 Maglev（--no-maglev）：串行 0/12，6 路并发仍有 1/24 失败；
-    # - --jitless：6 路并发 0/24。
-    result = subprocess.run(
-        [node_runtime(), "--jitless", "-e", wrapped],
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
+    result = run_node(["-"], input=wrapped, cwd=ROOT)
     return json.loads(result.stdout.strip().splitlines()[-1])
 
 

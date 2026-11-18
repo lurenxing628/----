@@ -1,7 +1,6 @@
 """Display identities preserve exact values, file positions and saved read state."""
 
 import json
-import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -23,7 +22,7 @@ from core.services.workbench.master.overview_graph import MasterOverviewGraph
 from core.services.workbench.process.table import ProcessTable, process_table_cells
 from core.services.workbench.system.maintenance_records import _event
 from core.shared.strict_json import canonical_json
-from tests._support.node_runtime_support import node_runtime
+from tests._support.node_runtime_support import run_node
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -42,9 +41,7 @@ for(const file of compile({sources:files.map(name=>({path:name,code:fs.readFileS
 const raw=data=>({ok:true,schema_version:1,meta:{source:'production',time_basis:'factory_local',snapshot_ref:'snapshot',
   request_ref:'request',as_of:'2026-10-13T08:00:00'},warnings:[],data});
 """
-    result = subprocess.run([node_runtime(), "-e", bootstrap + "{\n" + program + "\n}"], input=json.dumps(data),
-                            text=True, capture_output=True, cwd=str(ROOT), timeout=30)
-    assert result.returncode == 0, result.stdout + result.stderr
+    run_node(["-e", bootstrap + "{\n" + program + "\n}"], input=json.dumps(data), cwd=ROOT)
 
 
 def test_exact_issue_and_cell_keys_filter_and_restore_the_same_business_values():

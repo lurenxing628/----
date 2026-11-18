@@ -1,10 +1,9 @@
 """Dashboard navigation contexts are accepted by each destination's real frontend protocol."""
 
 import json
-import subprocess
 from pathlib import Path
 
-from tests._support.node_runtime_support import node_runtime
+from tests._support.node_runtime_support import run_node
 from tests.workbench.dashboard_support import api
 from tests.workbench.dashboard_support import dashboard_case as dashboard_case  # noqa: F401
 
@@ -43,9 +42,11 @@ contexts.forEach(value => APSPlanNavigation.accept(value));
 
 def frontend_data(response):
     assert response.status_code == 200, response.get_json()
-    result = subprocess.run([node_runtime(), "-e", FRONTEND_READ], input=json.dumps(response.get_json()), text=True,
-        encoding="utf-8", capture_output=True, cwd=str(Path(__file__).resolve().parents[2]), timeout=30)
-    assert result.returncode == 0, result.stdout + result.stderr
+    result = run_node(
+        ["-e", FRONTEND_READ],
+        input=json.dumps(response.get_json()),
+        cwd=Path(__file__).resolve().parents[2],
+    )
     return json.loads(result.stdout)
 
 
@@ -69,9 +70,7 @@ def test_risk_navigation_uses_destination_protocols(dashboard_case):
     ]
     # The formal plan gantt context has one receiver: every produced context is accepted by the real APSPlanNavigation.accept.
     contexts = [n["context"] for row in data["items"] for n in row["navigation"] if n["view"] == "gantt"]
-    accepted = subprocess.run([node_runtime(), "-e", PLAN_ACCEPT], input=json.dumps(contexts), text=True, encoding="utf-8",
-                              capture_output=True, cwd=str(Path(__file__).resolve().parents[2]), timeout=30)
-    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+    run_node(["-e", PLAN_ACCEPT], input=json.dumps(contexts), cwd=Path(__file__).resolve().parents[2])
     # The focus identities are the ones the formal plan workspace itself reads for the same plan.
     reader = WorkbenchPlanQueryService(dashboard_case.conn)
     with reader.read_snapshot() as context:

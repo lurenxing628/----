@@ -19,12 +19,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
+from scripts.workbench.node_runtime import NodeRuntimeError, SelectedNodeRuntime, anchor_node_env
 from tools.long_gate_fingerprint import (
     _git_executable_realpath,
     _git_version,
     _powershell_executable_realpath,
     _powershell_version,
-    _resolve_node_executable,
+    resolve_cached_esbuild_platform,
+    resolve_cached_node_runtime,
 )
 from tools.long_gate_schema import (
     PRIVATE_ENVIRONMENT_KEYS,
@@ -56,9 +58,11 @@ DAILY_GATE_TOOL_PATHS = (
     "conftest.py",
     "tests/conftest.py",
     "scripts/run_daily_quality_gate.py",
+    "scripts/workbench/node_runtime.py",
     "tools/daily_gate_scope.py",
     "tools/git_hook_cache.py",
     "tools/git_hook_checks.py",
+    "tools/long_gate_fingerprint.py",
     "tools/test_registry.py",
     "tools/test_registry_data.py",
 )
@@ -352,7 +356,7 @@ def run_staged_ruff(repo_root: Path, executable: str) -> int:
         _export_index_to_temp(repo_root, temp_root)
         command = [executable, "-m", "ruff", "check", "--force-exclude", "--", *list(targets)]
         print("[git-hook-cache] staged ruff:", " ".join(command), flush=True)
-        returncode = subprocess.call(command, cwd=str(temp_root), env=_hook_env())
+        returncode = subprocess.call(command, cwd=str(temp_root), env=hook_env())
         if int(returncode) == 0 and key_payload is not None and path is not None:
             _write_pass_cache(
                 path,
@@ -364,8 +368,8 @@ def run_staged_ruff(repo_root: Path, executable: str) -> int:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def _hook_env() -> Dict[str, str]:
-    env = os.environ.copy()
+def hook_env() -> Dict[str, str]:
+    env = anchor_node_env(os.environ)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
@@ -423,11 +427,10 @@ def _collect_in_process_pytest_plugins() -> List[Dict[str, Any]]:
     return [rows[key] for key in sorted(rows)]
 
 
-def _pytest_plugin_versions(repo_root: Path, executable: str, env: Optional[Mapping[str, str]] = None) -> List[Dict[str, Any]]:
-    effective_env = dict(_hook_env() if env is None else env)
+def _pytest_plugin_versions(repo_root: Path, executable: str, env: Mapping[str, str]) -> List[Dict[str, Any]]:
     abspath = os.path.abspath(str(executable or sys.executable))
     realpath = os.path.realpath(abspath)
-    pythonpath = str(effective_env.get("PYTHONPATH") or "")
+    pythonpath = str(env.get("PYTHONPATH") or "")
     cache_key = (os.path.normcase(abspath), os.path.normcase(realpath), pythonpath)
     cached = _PYTEST_PLUGIN_VERSIONS_CACHE.get(cache_key)
     if cached is not None:
@@ -442,7 +445,7 @@ def _pytest_plugin_versions(repo_root: Path, executable: str, env: Optional[Mapp
     completed = subprocess.run(
         [abspath, "-c", _PYTEST_PLUGIN_PROBE_CODE],
         cwd=str(repo_root),
-        env=effective_env,
+        env=dict(env),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -462,39 +465,45 @@ def _pytest_plugin_versions(repo_root: Path, executable: str, env: Optional[Mapp
     return rows
 
 
-def _daily_pytest_environment(env: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
-    effective_env = _hook_env() if env is None else env
-    private_keys = sorted(key for key in PRIVATE_ENVIRONMENT_KEYS if private_environment_value(effective_env, key))
+def _daily_pytest_environment(env: Mapping[str, str]) -> Tuple[Dict[str, Any], Optional[SelectedNodeRuntime]]:
+    private_keys = sorted(key for key in PRIVATE_ENVIRONMENT_KEYS if private_environment_value(env, key))
     if private_keys:
         raise HookCacheError(
             "private environment values remain in memory; hook cache unavailable: " + ", ".join(private_keys)
         )
-    values: Dict[str, Any] = {key: effective_env.get(key) for key in DAILY_GATE_ENV_KEYS}
+    values: Dict[str, Any] = {key: env.get(key) for key in DAILY_GATE_ENV_KEYS}
     values["platform"] = platform.platform()
-    values["git_executable_realpath"] = _git_executable_realpath(environment=effective_env)
-    values["git_version"] = _git_version(strict=False, environment=effective_env)
-    node_path, node_version = _resolve_node_executable(effective_env)
-    values["node_executable_realpath"] = node_path or node_version
-    values["node_version"] = node_version
-    values["powershell_executable_realpath"] = _powershell_executable_realpath(environment=effective_env)
-    values["powershell_version"] = _powershell_version(strict=False, environment=effective_env)
-    return values
+    values["git_executable_realpath"] = _git_executable_realpath(environment=env)
+    values["git_version"] = _git_version(strict=False, environment=env)
+    node_rt: Optional[SelectedNodeRuntime] = None
+    try:
+        node_rt = resolve_cached_node_runtime(env)
+    except NodeRuntimeError as exc:
+        node_version = "__missing_node__:" + exc.configured_node if exc.configured_node is not None else "__missing_node__"
+        values["node_executable_realpath"] = node_version
+        values["node_version"] = node_version
+    else:
+        values["node_executable_realpath"] = node_rt.realpath
+        values["node_version"] = node_rt.version
+    values["powershell_executable_realpath"] = _powershell_executable_realpath(environment=env)
+    values["powershell_version"] = _powershell_version(strict=False, environment=env)
+    return values, node_rt
 
 
-def _esbuild_vendor_cache_identity(repo_root: Path, environment: Mapping[str, str]) -> Dict[str, Any]:
+def _esbuild_vendor_cache_identity(
+    repo_root: Path, environment: Mapping[str, str], node_rt: Optional[SelectedNodeRuntime]
+) -> Dict[str, Any]:
     manifest_path = repo_root / "scripts/workbench/esbuild-manifest.json"
     if not manifest_path.is_file():
         return {"required": False}
     from scripts.workbench.vendor_react import (
-        current_esbuild_platform_key,
         load_esbuild_manifest,
         verify_esbuild_vendor,
     )
 
-    node_bin, _ = _resolve_node_executable(environment)
     try:
         manifest = load_esbuild_manifest(manifest_path)
-        host_platform = current_esbuild_platform_key(node_executable=node_bin)
+        host_platform = resolve_cached_esbuild_platform(node_rt, environment)
         verified = verify_esbuild_vendor(repo_root, manifest, host_platform=host_platform, target_platform=host_platform)
         files: Dict[str, List[int]] = {}
         for rel_path in (
@@ -526,10 +535,12 @@ def daily_gate_cache_key(
     remote_ref: str = "",
     scope_payload: Optional[Mapping[str, Any]] = None,
     ref_contexts: Optional[Sequence[Mapping[str, Any]]] = None,
+    env: Optional[Mapping[str, str]] = None,
 ) -> Dict[str, Any]:
     scope_extra = _daily_scope_cache_extra(scope_payload)
     contexts = _daily_ref_contexts_cache_extra(ref_contexts)
-    env = _hook_env()
+    effective_env = hook_env() if env is None else env
+    pytest_env, node_rt = _daily_pytest_environment(effective_env)
     # Target refs execute in their committed worktrees; manual runs use this checkout.
     source_extra = (
         {} if contexts else {"head_tree": head_tree_hash(repo_root), "git_status_short": git_status_lines(repo_root)}
@@ -545,9 +556,9 @@ def daily_gate_cache_key(
             "remote_name": str(remote_name or ""),
             "remote_ref": str(remote_ref or ""),
             "ref_contexts": contexts,
-            "pytest_env": _daily_pytest_environment(env),
-            "pytest_plugins": _pytest_plugin_versions(repo_root, executable, env),
-            "esbuild_vendor": _esbuild_vendor_cache_identity(repo_root, env),
+            "pytest_env": pytest_env,
+            "pytest_plugins": _pytest_plugin_versions(repo_root, executable, effective_env),
+            "esbuild_vendor": _esbuild_vendor_cache_identity(repo_root, effective_env, node_rt),
             **scope_extra,
         },
     )

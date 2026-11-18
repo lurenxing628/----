@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { spawnSync } = require('node:child_process');
+const { spawnNodeSync } = require('./_support/spawn_node.cjs');
 const { compile } = require('../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '..');
 const appDir = path.join(root, 'frontend/workbench/app');
@@ -132,8 +132,7 @@ if (process.argv[2] === '--timezone') {
   for (const digits of [-1, 21, 1.5, '2', null]) invalid(() => F.percent(0.5, digits));
   assert(Object.isFrozen(F));
   for (const timezone of ['Asia/Shanghai', 'UTC', 'America/New_York']) {
-    const result = spawnSync(process.execPath, [__filename, '--timezone'], { encoding: 'utf8', env: { ...process.env, TZ: timezone } });
-    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const result = spawnNodeSync([__filename, '--timezone'], { env: { ...process.env, TZ: timezone } }, `WorkbenchFormat (${timezone})`);
     process.stdout.write(result.stdout);
   }
   process.stdout.write('WorkbenchFormat contracts passed.\n');

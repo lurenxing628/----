@@ -5,11 +5,11 @@ import io
 import json
 import os
 import platform
-import shutil
 import subprocess
 import sys
 import tarfile
 from pathlib import Path
+from typing import Mapping, Optional
 from urllib.request import urlopen
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -18,6 +18,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.workbench.asset_sources import write_json  # noqa: E402
+from scripts.workbench.node_runtime import (  # noqa: E402
+    NodeRuntimeError,
+    SelectedNodeRuntime,
+    execute_selected_node,
+    select_node_runtime,
+)
 
 VERSION = "18.3.1"
 PACKAGES = ("react", "react-dom")
@@ -71,43 +77,53 @@ def checked_payload(name):
     }, files
 
 
-def current_esbuild_platform_key(node_executable=None):
-    raw_node = node_executable or os.environ.get("WORKBENCH_NODE")
-    node_bin = str(raw_node).strip() if raw_node is not None else ""
-    if not node_bin:
-        node_bin = shutil.which("node")
-    if node_bin:
-        try:
-            completed = subprocess.run(
-                [node_bin, "-p", "process.platform + '-' + process.arch"],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=5,
-                check=False,
-            )
-        except (OSError, subprocess.SubprocessError):
-            completed = None
-        if completed is not None and completed.returncode == 0:
-            detected = completed.stdout.strip()
-            if detected not in ESBUILD_PLATFORMS:
-                raise ValueError(f"Unsupported esbuild Node platform: {detected!r}")
-            return detected
+def _python_esbuild_platform_key():
     plat = sys.platform.lower()
     arch = platform.machine().lower()
-    if plat == "darwin":
-        if arch in ("arm64", "aarch64"):
-            return "darwin-arm64"
-        if arch in ("x86_64", "amd64"):
-            return "darwin-x64"
-    elif plat in ("win32", "cygwin", "msys"):
-        if arch in ("amd64", "x86_64"):
-            return "win32-x64"
-    elif plat.startswith("linux"):
-        if arch in ("x86_64", "amd64"):
-            return "linux-x64"
+    norm_arch = "arm64" if arch in ("arm64", "aarch64") else ("x64" if arch in ("x86_64", "amd64") else "")
+    norm_plat = (
+        "darwin"
+        if plat == "darwin"
+        else "win32"
+        if plat in ("win32", "cygwin", "msys")
+        else "linux"
+        if plat.startswith("linux")
+        else ""
+    )
+    candidate = f"{norm_plat}-{norm_arch}"
+    if candidate in ESBUILD_PLATFORMS:
+        return candidate
     raise ValueError(f"Unsupported esbuild host platform: {plat}/{arch}")
+
+
+def esbuild_platform_for_runtime(
+    runtime: Optional[SelectedNodeRuntime], env: Mapping[str, str]
+) -> str:
+    if runtime is None:
+        return _python_esbuild_platform_key()
+    try:
+        completed = execute_selected_node(
+            runtime,
+            ["-p", "process.platform + '-' + process.arch"],
+            env=env,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return _python_esbuild_platform_key()
+    if completed.returncode != 0:
+        return _python_esbuild_platform_key()
+    detected = completed.stdout.strip()
+    if detected not in ESBUILD_PLATFORMS:
+        raise ValueError(f"Unsupported esbuild Node platform: {detected!r}")
+    return detected
+
+
+def current_esbuild_platform_key() -> str:
+    try:
+        runtime: Optional[SelectedNodeRuntime] = select_node_runtime()
+    except NodeRuntimeError:
+        return _python_esbuild_platform_key()
+    return esbuild_platform_for_runtime(runtime, os.environ)
 
 
 def load_esbuild_manifest(manifest_path=ESBUILD_MANIFEST_PATH):

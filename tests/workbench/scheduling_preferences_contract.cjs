@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
-const { spawnSync } = require('node:child_process');
+const { spawnNodeSync } = require('../_support/spawn_node.cjs');
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const { memoryStorage } = require('../_support/memory_storage.cjs');
 
@@ -806,8 +806,7 @@ function currentSource() {
 if (process.argv[2] === '--timezone') timezoneContract();
 else contract(currentSource(), assert).then(result => {
   for (const timezone of Object.keys(TIMEZONE_DEFAULTS)) {
-    const child = spawnSync(process.execPath, [__filename, '--timezone'], { encoding: 'utf8', env: { ...process.env, TZ: timezone } });
-    assert.equal(child.status, 0, child.stdout + child.stderr);
+    const child = spawnNodeSync([__filename, '--timezone'], { env: { ...process.env, TZ: timezone } }, `Scheduling preferences (${timezone})`);
     process.stdout.write(child.stdout);
   }
   console.log(JSON.stringify({ mode: 'current-source', result }));

@@ -1,7 +1,6 @@
 """Exact remembered scheduling input, ordinary command receipts and shared input freshness."""
 
 import json
-import subprocess
 from datetime import date, datetime
 from pathlib import Path
 
@@ -17,7 +16,7 @@ from core.services.workbench.run.worker import WorkbenchRunWorker
 from core.services.workbench.trial.facts import saved_capture
 from data.repositories.system_config_repo import SystemConfigRepository
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
-from tests._support.node_runtime_support import node_runtime
+from tests._support.node_runtime_support import run_node
 from tests._support.production_facts_dump import production_facts
 from tests.workbench.preflight_support import payload, read_only_snapshot
 from tests.workbench.preflight_support import pf as pf_fixture  # noqa: F401
@@ -85,9 +84,7 @@ const RunJobAPI = context.__wbRuntime.getModule('RunJobAPI.js');
   assert.equal(found.run.state, run.state);
 })().catch(error => { console.error(error); process.exitCode = 1; });
 """
-    result = subprocess.run([node_runtime(), "-e", script], input=json.dumps(documents),
-        text=True, encoding="utf-8", capture_output=True, cwd=str(Path(__file__).resolve().parents[2]), timeout=30)
-    assert result.returncode == 0, result.stdout + result.stderr
+    run_node(["-e", script], input=json.dumps(documents), cwd=Path(__file__).resolve().parents[2])
 
 
 def test_default_save_reload_replay_and_unchanged_use_ordinary_command(pf):

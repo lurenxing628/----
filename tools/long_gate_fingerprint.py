@@ -10,6 +10,13 @@ import subprocess
 import sys
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, cast
 
+from scripts.workbench.node_runtime import (
+    NodeRuntimeError,
+    SelectedNodeRuntime,
+    anchor_node_env,
+    effective_path,
+    select_node_runtime,
+)
 from tools.long_gate_paths import is_within_repo, real_repo_root
 from tools.long_gate_records import (
     DecisionCause,
@@ -50,9 +57,8 @@ class LongGateFingerprintError(RuntimeError):
 
 def command_environment(env_overlay: Mapping[str, str]) -> Dict[str, str]:
     """一步子命令实际拿到的环境：本进程环境叠加已规范化的 env_overlay；执行、receipt、续跑与缓存指纹共用。"""
-    environment = dict(os.environ)
-    environment.update(env_overlay)
-    return environment
+    raw: Mapping[str, str] = {**os.environ, **env_overlay} if env_overlay else os.environ
+    return anchor_node_env(raw)
 
 
 def _run_git_paths(repo_root: str, args: Sequence[str], *, strict: bool) -> List[str]:
@@ -293,11 +299,17 @@ def _effective_environment(environment: Optional[Mapping[str, str]] = None) -> M
     return environment if environment is not None else os.environ
 
 
+def _effective_node_env(environment: Optional[Mapping[str, str]] = None) -> Mapping[str, str]:
+    env = _effective_environment(environment)
+    return env if "PATH" in env else {**env, "PATH": effective_path(env)}
+
+
 def _runtime_probe_cache_key(
     probe: str, exe_realpath: str, environment: Mapping[str, str]
 ) -> Tuple[str, str, Tuple[Tuple[str, str], ...]]:
     """Deduplicate successful probes with exact inputs only within this process."""
-    return (probe, exe_realpath, tuple(sorted((str(key), str(value)) for key, value in environment.items())))
+    env_items = tuple(sorted((key, value) for key, value in environment.items() if key != "PYTEST_CURRENT_TEST"))
+    return (probe, exe_realpath, env_items)
 
 
 def _git_executable_realpath(environment: Optional[Mapping[str, str]] = None) -> str:
@@ -341,83 +353,46 @@ def _git_version(*, strict: bool = False, environment: Optional[Mapping[str, str
     return value
 
 
-def _probe_node_version(resolved: str, env: Mapping[str, str]) -> Optional[str]:
-    cache_key = _runtime_probe_cache_key("node_version", resolved, env)
+def resolve_cached_node_runtime(
+    environment: Optional[Mapping[str, str]] = None,
+) -> SelectedNodeRuntime:
+    env = _effective_node_env(environment)
+    cache_key = _runtime_probe_cache_key("node_resolution", os.path.realpath(os.getcwd()), env)
     cached = _RUNTIME_FINGERPRINT_CACHE.get(cache_key)
     if cached is not None:
         return cached
-    probe_env = dict(env)
-    node_dir = os.path.dirname(resolved)
-    probe_env["PATH"] = f"{node_dir}{os.pathsep}{probe_env.get('PATH', '')}"
+    runtime = select_node_runtime(env)
+    _RUNTIME_FINGERPRINT_CACHE[cache_key] = runtime
+    return runtime
+
+
+def resolve_cached_esbuild_platform(
+    runtime: Optional[SelectedNodeRuntime], environment: Mapping[str, str]
+) -> str:
+    from scripts.workbench.vendor_react import esbuild_platform_for_runtime
+
+    if runtime is None:
+        return esbuild_platform_for_runtime(None, environment)
+    env = _effective_node_env(environment)
+    cache_key = _runtime_probe_cache_key("esbuild_platform", runtime.realpath, env)
+    cached = _RUNTIME_FINGERPRINT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    platform_key = esbuild_platform_for_runtime(runtime, env)
+    _RUNTIME_FINGERPRINT_CACHE[cache_key] = platform_key
+    return platform_key
+
+
+def _resolve_node_executable(
+    environment: Optional[Mapping[str, str]] = None,
+) -> Tuple[Optional[str], str]:
     try:
-        completed = subprocess.run(
-            [resolved, "--version"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=5,
-            env=probe_env,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    value = str(completed.stdout or "").strip()
-    if int(completed.returncode) == 0 and value.startswith("v"):
-        _RUNTIME_FINGERPRINT_CACHE[cache_key] = value
-        return value
-    return None
-
-
-def _resolve_node_executable(environment: Optional[Mapping[str, str]] = None) -> Tuple[Optional[str], str]:
-    env = _effective_environment(environment)
-    resolution_key = _runtime_probe_cache_key("node_resolution", "", env)
-    cached_resolution = _RUNTIME_FINGERPRINT_CACHE.get(resolution_key)
-    if cached_resolution is not None:
-        resolved_cached, version_cached = str(cached_resolution).split("\n", 1)
-        return resolved_cached, version_cached
-    path = env.get("PATH")
-    configured = (env.get("WORKBENCH_NODE") or "").strip()
-    if configured:
-        resolved_which = shutil.which(configured, path=path)
-        if resolved_which:
-            candidates = [resolved_which]
-        elif os.path.sep in configured or (os.path.altsep and os.path.altsep in configured) or configured.startswith("~"):
-            candidates = [os.path.expanduser(configured)]
-        else:
-            return None, "__missing_node__:" + configured
-        missing_marker = "__missing_node__:" + configured
-    else:
-        candidates = []
-        path_entries = [entry for entry in path.split(os.pathsep) if entry] if path is not None else [None]
-        for entry in path_entries:
-            resolved_which = shutil.which("node", path=entry)
-            if resolved_which:
-                candidates.append(resolved_which)
-        candidates.extend(
-            [
-                os.path.expanduser("~/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node"),
-                "/opt/homebrew/bin/node",
-                "/usr/local/bin/node",
-                os.path.expanduser("~/.nvm/current/bin/node"),
-            ]
-        )
-        candidates.extend(sorted(glob.glob(os.path.expanduser("~/.nvm/versions/node/*/bin/node")), reverse=True))
-        missing_marker = "__missing_node__"
-
-    seen: Set[str] = set()
-    for candidate in candidates:
-        resolved = os.path.realpath(os.path.expanduser(candidate))
-        if resolved in seen:
-            continue
-        seen.add(resolved)
-        if not (os.path.isfile(resolved) and os.access(resolved, os.X_OK)):
-            continue
-        version = _probe_node_version(resolved, env)
-        if version is not None:
-            _RUNTIME_FINGERPRINT_CACHE[resolution_key] = f"{resolved}\n{version}"
-            return resolved, version
-    return None, missing_marker
+        runtime = resolve_cached_node_runtime(environment)
+    except NodeRuntimeError as exc:
+        if exc.configured_node is not None:
+            return None, "__missing_node__:" + exc.configured_node
+        return None, "__missing_node__"
+    return runtime.realpath, runtime.version
 
 
 def _powershell_executable_realpath(environment: Optional[Mapping[str, str]] = None) -> str:

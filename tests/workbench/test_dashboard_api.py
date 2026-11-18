@@ -2,7 +2,6 @@
 
 import csv
 import json
-import subprocess
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
@@ -10,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from core.shared.local_datetime import datetime_to_us
-from tests._support.node_runtime_support import node_runtime
+from tests._support.node_runtime_support import run_node
 from tests.workbench.dashboard_external_handling_support import (
     external_handling_case as external_handling_fixture,  # noqa: F401
 )
@@ -191,12 +190,10 @@ def test_unavailable_plan_keeps_handling_readable_and_analysis_consistent(dashbo
     stale = client.get(ROOT + "/analysis", query_string={"plan_ref": plan_ref})
     assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "snapshot_stale"
 
-    result = subprocess.run(
-        [node_runtime(), str(Path(__file__).with_name("dashboard_list_probe.cjs"))],
+    run_node(
+        [Path(__file__).with_name("dashboard_list_probe.cjs")],
         input=json.dumps({"healthy": healthy, "unavailable": unavailable}),
-        text=True, encoding="utf-8", capture_output=True, timeout=30,
     )
-    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_standalone_analysis_over_budget_preserves_complete_list(dashboard_case):

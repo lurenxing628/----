@@ -353,10 +353,9 @@ def test_trial_task_due_uses_the_shared_stored_due_contract(trial_case, raw, exp
 
 def test_trial_detail_shows_due_from_exact_contract_without_guessing_from_empty(trial_case):
     import json
-    import subprocess
     from pathlib import Path
 
-    from tests._support.node_runtime_support import node_runtime
+    from tests._support.node_runtime_support import run_node
 
     case = trial_case
     base, drafts = official(case), {}
@@ -365,8 +364,6 @@ def test_trial_detail_shows_due_from_exact_contract_without_guessing_from_empty(
         case.conn.commit()
         drafts[str(raw)] = create(case, base, key=f"trial-due-create-{index:04d}")
     root = Path(__file__).resolve().parents[2]
-    result = subprocess.run([node_runtime(), "-e", _TRIAL_DUE_PROGRAM], input=json.dumps(drafts), text=True,
-                            capture_output=True, cwd=root, timeout=60)
-    assert result.returncode == 0, result.stdout + result.stderr
+    result = run_node(["-e", _TRIAL_DUE_PROGRAM], input=json.dumps(drafts), cwd=root, timeout=60)
     assert json.loads(result.stdout) == {"2026-09-20": "2026-09-20", "9999-12-31": "未指定交期",
                                          "None": "交期缺失", "bad due": "交期无效"}

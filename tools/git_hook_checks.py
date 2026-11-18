@@ -16,6 +16,7 @@ from typing import Any, Dict, Iterable, List, Mapping, NamedTuple, Optional, Seq
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from scripts.workbench.node_runtime import NodeRuntimeError
 from tools import git_hook_cache
 from tools.daily_gate_scope import (
     ZERO_SHA,
@@ -28,6 +29,7 @@ from tools.daily_gate_scope import (
     with_local_changes,
 )
 from tools.git_hook_blocked_paths import BLOCKED_PATH_RULES, GENERIC_COMMIT_SUBJECTS
+from tools.long_gate_fingerprint import resolve_cached_esbuild_platform, resolve_cached_node_runtime
 from tools.long_gate_paths import resolve_repo_root
 from tools.long_gate_schema import decode_nul_paths
 
@@ -138,12 +140,8 @@ def check_commit_msg(_repo_root: Path, args: argparse.Namespace) -> int:
     return 0
 
 
-def _quality_gate_env() -> dict:
-    env = os.environ.copy()
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
-    env["PYTHONUTF8"] = "1"
-    env["PYTHONIOENCODING"] = "utf-8"
-    env.pop("APS_SKIP_QUALITY_GATE", None)
+def _quality_gate_env() -> Dict[str, str]:
+    env = git_hook_cache.hook_env()
     # Git 会把当前仓库的 GIT_DIR/GIT_WORK_TREE 等变量传给 hooks。若继续传给
     # pytest，测试里创建的临时 Git 仓库会误操作外层真实仓库，linked worktree
     # 尤其容易把 core.bare/user.* 等配置写回主仓库。
@@ -261,16 +259,17 @@ def _provision_worktree_esbuild_vendor(
     if not manifest_path.is_file():
         return
     from scripts.workbench.vendor_react import (
-        current_esbuild_platform_key,
         load_esbuild_manifest,
         verify_esbuild_vendor,
     )
-    from tools.long_gate_fingerprint import _resolve_node_executable
 
-    node_bin, _ = _resolve_node_executable(environment)
+    try:
+        node_rt = resolve_cached_node_runtime(environment)
+    except NodeRuntimeError:
+        node_rt = None
     try:
         manifest = load_esbuild_manifest(manifest_path)
-        host_platform = current_esbuild_platform_key(node_executable=node_bin)
+        host_platform = resolve_cached_esbuild_platform(node_rt, environment)
         verified = verify_esbuild_vendor(
             source_root, manifest, host_platform=host_platform, target_platform=host_platform
         )
@@ -289,10 +288,16 @@ def _provision_worktree_esbuild_vendor(
         raise RuntimeError(f"预置 worktree esbuild vendor 复核失败：{exc}") from exc
 
 
-def _run_target_daily_gate(repo_root: Path, executable: str, refs: Sequence[PrePushRef], *, remote_name: str) -> int:
+def _run_target_daily_gate(
+    repo_root: Path,
+    executable: str,
+    refs: Sequence[PrePushRef],
+    *,
+    remote_name: str,
+    gate_env: Mapping[str, str],
+) -> int:
     local_sha = refs[0].local_sha
     targets = ", ".join(sorted(dict.fromkeys(ref.remote_ref or ref.local_ref for ref in refs)))
-    gate_env = _quality_gate_env()
     with tempfile.TemporaryDirectory(prefix="aps-pre-push-target-") as target_dir:
         worktree = Path(target_dir) / "worktree"
         scope_file = Path(target_dir) / "scope.json"
@@ -330,11 +335,12 @@ def run_quality_gate(repo_root: Path, args: argparse.Namespace) -> int:
     remote_ref = args.remote_ref or ",".join(sorted(dict.fromkeys(ref.remote_ref for ref in refs if ref.remote_ref)))
     scope_payload = _daily_scope_for_refs(repo_root, refs, remote_name=remote_name)
     ref_contexts = _pre_push_contexts_payload(refs)
+    gate_env = _quality_gate_env()
     daily_cache_key = None
     try:
         daily_cache_key = git_hook_cache.daily_gate_cache_key(
             repo_root, executable, remote_name=remote_name, remote_ref=remote_ref,
-            scope_payload=scope_payload, ref_contexts=ref_contexts,
+            scope_payload=scope_payload, ref_contexts=ref_contexts, env=gate_env,
         )
         if git_hook_cache.pre_push_daily_cache_hit(
             repo_root, executable, remote_name=remote_name, remote_ref=remote_ref,
@@ -356,7 +362,9 @@ def run_quality_gate(repo_root: Path, args: argparse.Namespace) -> int:
         returncode = 0
         try:
             for local_sha in sorted(refs_by_sha):
-                returncode = _run_target_daily_gate(repo_root, executable, refs_by_sha[local_sha], remote_name=remote_name)
+                returncode = _run_target_daily_gate(
+                    repo_root, executable, refs_by_sha[local_sha], remote_name=remote_name, gate_env=gate_env
+                )
                 if returncode:
                     return returncode
         except RuntimeError as exc:
@@ -364,7 +372,7 @@ def run_quality_gate(repo_root: Path, args: argparse.Namespace) -> int:
             return 1
     else:
         command = _daily_gate_command(executable)
-        returncode = subprocess.call(command, cwd=str(repo_root), env=_quality_gate_env())
+        returncode = subprocess.call(command, cwd=str(repo_root), env=gate_env)
     if int(returncode) == 0 and daily_cache_key is not None:
         try:
             git_hook_cache.write_pre_push_daily_cache(

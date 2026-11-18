@@ -1,7 +1,6 @@
 """Real file endpoints, isolated SQLite and the production Node contract."""
 
 import json
-import subprocess
 import uuid
 from io import BytesIO
 from pathlib import Path
@@ -9,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from core.services.workbench.process.file_codec import encode_process_file
-from tests._support.node_runtime_support import node_runtime
+from tests._support.node_runtime_support import run_node
 from tests.workbench.process_query_support import seed_process
 from tests.workbench.process_stage_api_support import BASE, PART, StageAPI, seed_history, success
 
@@ -98,20 +97,19 @@ class FileAPI(StageAPI):
 
 
 def node_contract(mode, raw, kind, *, body=None, preview=None, target=None, fmt="csv"):
-    node = node_runtime()
     script = r"""
 const fs = require('fs'), vm = require('vm'), path = require('path'), assert = require('assert/strict');
-const { compile } = require(path.join(process.cwd(), 'scripts/workbench/compile.cjs'));
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+const { compile } = require('./scripts/workbench/compile.cjs');
 const ctx = { console, window: null }; ctx.window = ctx; vm.createContext(ctx);
 const files = ['resource-contract.js', 'ResourceTableFilterModel.js', 'ResourceMaterialContract.js',
   'ProcessContract.js', 'ProcessActionContract.js', 'ProcessFileContract.js'];
-for (const out of compile({ sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(input.root, 'frontend/workbench/app', name), 'utf8') })) }).outputs)
+for (const out of compile({ sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join('frontend/workbench/app', name), 'utf8') })) }).outputs)
   vm.runInContext(out.code, ctx, { filename: out.path });
 const F = ctx.__wbRuntime.getModule('ProcessFileContract.js'), calls = [];
 ctx.__wbRuntime.setStub('resource-api.js', { forNamespace: () => Object.fromEntries(['query', 'execute', 'preview', 'download'].map(
   method => [method, (...args) => calls.push({ method, args })])) });
-for (const out of compile({ sources: [{ path: 'ProcessAPI.js', code: fs.readFileSync(path.join(input.root, 'frontend/workbench/app/ProcessAPI.js'), 'utf8') }] }).outputs)
+for (const out of compile({ sources: [{ path: 'ProcessAPI.js', code: fs.readFileSync('frontend/workbench/app/ProcessAPI.js', 'utf8') }] }).outputs)
   vm.runInContext(out.code, ctx, { filename: out.path });
 const api = ctx.__wbRuntime.getModule('ProcessAPI.js').APSProcessAPI, plain = value => JSON.parse(JSON.stringify(value));
 if (input.mode === 'export-body') {
@@ -136,8 +134,7 @@ if (input.mode === 'export-body') {
 }
 if (input.mode !== 'export-body') console.log('real-process-file-contract:' + input.mode + ':' + input.kind);
 """
-    value = {"root": str(ROOT), "mode": mode, "raw": raw, "kind": kind, "body": body,
+    value = {"mode": mode, "raw": raw, "kind": kind, "body": body,
              "preview": preview, "target": target, "fmt": fmt}
-    result = subprocess.run([node, "-e", script], input=json.dumps(value), text=True, capture_output=True, timeout=30)
-    assert result.returncode == 0, result.stdout + result.stderr
+    result = run_node(["-e", script], input=json.dumps(value), cwd=ROOT)
     return json.loads(result.stdout) if mode == "export-body" else result.stdout.strip()

@@ -1,7 +1,6 @@
 """Real process HTTP requests, complete SQLite oracles and browser contracts."""
 
 import json
-import subprocess
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -9,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
-from tests._support.node_runtime_support import node_runtime
+from tests._support.node_runtime_support import run_node
 from tests.workbench.process_query_support import seed_process
 from tests.workbench.process_stage_api_support import BASE, StageAPI, seed_history, success
 from tests.workbench.process_stage_api_support import rejected as rejected
@@ -83,7 +82,6 @@ def enforce_readonly(monkeypatch):
 
 
 def browser_contract(mode, raw, request=None, *, intent=None, refs=None):
-    node = node_runtime()
     script = """
 const fs = require('node:fs'), vm = require('node:vm');
 const { compile } = require('./scripts/workbench/compile.cjs');
@@ -99,10 +97,11 @@ try {
   else A.receipt(input.raw, input.intent, input.refs);
 } catch (error) { throw new Error(String(error.message) + ' ' + JSON.stringify(error)); }
 """
-    result = subprocess.run([node, "-e", script], input=json.dumps({"mode": mode, "raw": raw, "request": request,
-        "intent": intent, "refs": refs}), text=True, capture_output=True, timeout=30,
-        cwd=str(Path(__file__).resolve().parents[2]))
-    assert result.returncode == 0, result.stderr
+    run_node(
+        ["-e", script],
+        input=json.dumps({"mode": mode, "raw": raw, "request": request, "intent": intent, "refs": refs}),
+        cwd=Path(__file__).resolve().parents[2],
+    )
 
 
 def seed_table_rows(api, count, prefix="TABLE-"):

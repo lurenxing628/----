@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from scripts.workbench.node_runtime import anchor_node_env
 from tools.daily_gate_scope import (
     ChangedPathSet,
     DailyGateScope,
@@ -40,7 +41,7 @@ FOCUSED_PYTEST_NODEIDS: Tuple[str, ...] = (
 
 
 def _gate_env() -> Dict[str, str]:
-    env = os.environ.copy()
+    env = anchor_node_env(os.environ)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"

@@ -1,7 +1,6 @@
 """Old read consumers use common resource facts while preserving old aliases."""
 
 import json
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -9,7 +8,8 @@ import pytest
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.services.workbench.facts.decision_metrics import metric_definitions
 from core.services.workbench.run.candidate_comparison import read_candidate_comparison
-from tests._support.node_runtime_support import node_runtime
+from tests._support.gantt_current_js import run_current_js
+from tests._support.node_runtime_support import run_node
 from tests.workbench.dashboard_support import api
 from tests.workbench.dashboard_support import dashboard_case as dashboard_case  # noqa: F401
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
@@ -20,16 +20,8 @@ from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def shipped(data, program):
-    result = subprocess.run([node_runtime(), str(ROOT / "tests/_support/gantt_current_runtime.cjs")],
-                            input=json.dumps({"root": str(ROOT), "program": program, "data": data}),
-                            text=True, capture_output=True, timeout=30)
-    assert result.returncode == 0, result.stdout + result.stderr
-    return json.loads(result.stdout)["result"]
-
-
 def trial_contract_and_capacity_panel(data):
-    return shipped(data, r"""
+    run_current_js(r"""
 const w = h.runtime;
 const TrialViewState = h.module('TrialViewState.js'),
   TrialResults = h.module('TrialResults.jsx'), WorkbenchTerms = h.module('WorkbenchTerms.js'),
@@ -61,7 +53,7 @@ if (data.capacity.resources.length) {
   });
 }
 return {shipped_contract:true, capacity_panel:true};
-""")
+""", data)
 
 
 def test_old_candidate_comparison_fixed_cohort_and_archived_capacity(candidate_case, monkeypatch):
@@ -88,7 +80,7 @@ def test_old_candidate_comparison_fixed_cohort_and_archived_capacity(candidate_c
             if entry["source"] == "archived_resource_calendar":
                 assert entry["metric_version"] == common["metric_version"]
         assert data["summary"]["before"]["changeovers"]["reason"] == "比较对象缺少保存安排，工种切换次数未知。"
-        shipped(data, r"""
+        run_current_js(r"""
 const w = h.runtime, d = sourceData;
 const DashboardCandidateComparisonAPI = h.module('DashboardCandidateComparisonAPI.js'),
   DashboardCandidatePanels = h.module('DashboardCandidatePanels.jsx'),
@@ -129,7 +121,7 @@ return (async () => {
   assert.equal(request.searchParams.has('run_ref'), false);
   return {shipped_contract:true, fixed_cohort:true, single_comparison_request:true};
 })();
-""")
+""", data)
         rows.append(data)
     assert rows[0]["resource_common"]["cohort"] == rows[1]["resource_common"]["cohort"]
     case.conn.execute("UPDATE WorkbenchCalendarDefaults SET periods_json='[]'")
@@ -198,9 +190,7 @@ const planRef = payload.data.plan.plan_ref, query = {section: 'pressure'};
 context.__wbRuntime.getModule('DashboardAnalysisAPI.js').validate(payload, planRef, query);
 process.stdout.write('common-contract-ok');
 """
-    result = subprocess.run([node_runtime(), '-e', program], input=json.dumps(document), text=True,
-                            capture_output=True, cwd=ROOT, timeout=30)
-    assert result.returncode == 0, result.stdout + result.stderr
+    run_node(['-e', program], input=json.dumps(document), cwd=ROOT)
 
 
 @pytest.mark.parametrize("base", ["candidate", "official"])

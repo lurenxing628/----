@@ -2,13 +2,12 @@
 
 import base64
 import json
-import subprocess
 from copy import deepcopy
 from pathlib import Path
 
 from werkzeug.http import parse_options_header
 
-from tests._support.node_runtime_support import node_runtime
+from tests._support.node_runtime_support import run_node
 
 ROOT = Path(__file__).resolve().parents[2]
 FOLLOW_UP_PATHS = {"baseline": "/baseline", "tasks": "/tasks", "gantt_graph": "/gantt-graph", "capacity": "/capacity"}
@@ -31,11 +30,11 @@ def run_probe(tmp_path, fixtures, boundary=None):
     payload = {"fixtures": prepared}
     if boundary is not None:
         payload["boundary"] = boundary
-    result = subprocess.run(
-        [node_runtime(), str(Path(__file__).with_name("plan_transport_probe.cjs"))],
-        cwd=str(ROOT), input=json.dumps(payload), text=True, capture_output=True, timeout=30,
+    result = run_node(
+        [Path(__file__).with_name("plan_transport_probe.cjs")],
+        cwd=ROOT,
+        input=json.dumps(payload),
     )
-    assert result.returncode == 0, result.stdout + result.stderr
     report = json.loads(result.stdout)
     assert report["network"] == "mock-only" and report["production"] is False
     assert report["methods"] == ["GET"]

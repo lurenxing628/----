@@ -4,8 +4,6 @@ import argparse
 import json
 import os
 import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -16,6 +14,11 @@ if str(ROOT) not in sys.path:
 
 from scripts.workbench.asset_sources import css_references, local_path  # noqa: E402
 from scripts.workbench.entry_bundle import bundle_styles  # noqa: E402
+from scripts.workbench.node_runtime import (  # noqa: E402
+    execute_selected_node,
+    format_node_failure,
+    select_node_runtime,
+)
 
 FOUNDATION_ASSET = re.compile(r"foundation-[a-f0-9]{16}\.js\Z")
 INDEX_IMPORT_RE = re.compile(
@@ -35,16 +38,17 @@ def compile_production(node, root):
     app_dir = root / "frontend/workbench/app"
     if not (app_dir / "theme.js").is_file() or not (app_dir / "shell/main.jsx").is_file():
         raise ValueError("Live entrypoints theme.js and shell/main.jsx must exist")
-    result = subprocess.run(
-        [node, str(TOOLS / "compile.cjs")],
-        input=json.dumps({"mode": "production", "appDir": str(app_dir)}),
-        cwd=str(root),
-        text=True,
-        encoding="utf-8",
-        capture_output=True,
+    runtime = select_node_runtime(explicit_node=node)
+    result = execute_selected_node(
+        runtime,
+        [TOOLS / "compile.cjs"],
+        input_text=json.dumps({"mode": "production", "appDir": str(app_dir)}),
+        cwd=root,
     )
-    if result.returncode:
-        raise ValueError(result.stderr.strip() or "Node compiler failed")
+    if result.returncode != 0:
+        raise ValueError(
+            format_node_failure(result.returncode, result.stdout, result.stderr, "Node compiler")
+        )
     return json.loads(result.stdout)
 
 
@@ -153,7 +157,7 @@ def prune_empty_dirs(*roots):
                 directory.rmdir()
 
 
-def build(root, output, node):
+def build(root, output, node=None):
     app_dir = root / "frontend/workbench/app"
     live_styles, css_asset_paths = live_style_inputs(root)
     payload = app_asset_inputs(root, css_asset_paths)
@@ -218,14 +222,12 @@ def build(root, output, node):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--node", default=os.environ.get("WORKBENCH_NODE") or shutil.which("node"))
+    parser.add_argument("--node", default=None)
     parser.add_argument("--output-dir", type=Path, default=ROOT / "static/workbench")
     args = parser.parse_args()
     try:
-        if not args.node:
-            raise ValueError("Node is required on the build host; pass --node or WORKBENCH_NODE")
         print(json.dumps(build(ROOT, args.output_dir, args.node)))
-    except (ValueError, OSError, KeyError, subprocess.SubprocessError) as error:
+    except (ValueError, OSError, KeyError) as error:
         print("Workbench build failed: " + str(error), file=sys.stderr)
         return 1
     return 0

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
 const { compile } = require('../scripts/workbench/compile.cjs');
 const { routeFetch, browser, json, envelope, failure } = require('./workbench/route_fetch.cjs');
 const { createTreeHost, walk: nodes } = require('./_support/hook_host.cjs');
+const { spawnNodeSync } = require('./_support/spawn_node.cjs');
 const root = path.resolve(__dirname, '..'), app = path.join(root, 'frontend/workbench/app');
 
 const jsSources = [
@@ -540,11 +541,9 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
   assert.equal(countVisible(tree, serverDefaultMsg), 1);
   defaultsPage.unmount();
 
-  // 5. 校验已构建的正式静态包 static/workbench/app/main.js 同样具备相同的单点归属契约。
-  const { spawnSync } = require('node:child_process');
-  const bundleCheck = spawnSync(process.execPath, [path.join(__dirname, '_support/gantt_current_runtime.cjs')], {
+  // 5. 校验共享当前运行时宿主（静态 React + 实时编译 ESM/JSX）同样具备相同的单点归属契约。
+  spawnNodeSync([path.join(__dirname, '_support/gantt_current_runtime.cjs')], {
     cwd: root,
-    encoding: 'utf8',
     timeout: 15000,
     input: JSON.stringify({
       root,
@@ -597,8 +596,7 @@ assert.equal(countVisible(unpathedTree, overlapMessage), 1, '未传 path 时保�
         assert.strictEqual(selectsOf(pfTree)[0].props.disabled, true);
       `
     })
-  });
-  assert.equal(bundleCheck.status, 0, bundleCheck.stdout + bundleCheck.stderr);
+  }, 'Calendar current runtime contract');
 
   console.log('calendar zero-hour workday notes and single-owner period alerts verified across all 4 calendar surfaces');
 })().catch(error => { console.error(error); process.exit(1); });

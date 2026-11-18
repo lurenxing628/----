@@ -2,12 +2,11 @@
 
 import json
 import os
-import subprocess
 from pathlib import Path
 
 import pytest
 
-from tests._support.node_runtime_support import node_runtime
+from tests._support.node_runtime_support import run_node
 from web.routes.workbench.navigation_metadata import NAVIGATION_RULES
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -26,5 +25,4 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_shared_ui_node_contract(name):
     # 导航契约读后端唯一的受控导航声明，不在测试里另存一份。
     env = dict(os.environ, WORKBENCH_NAVIGATION_RULES=json.dumps(NAVIGATION_RULES))
-    result = subprocess.run([node_runtime(), str(ROOT / "tests" / name)], cwd=str(ROOT), env=env, capture_output=True, text=True, timeout=30)
-    assert result.returncode == 0, result.stdout + result.stderr
+    run_node([ROOT / "tests" / name], cwd=ROOT, env=env)

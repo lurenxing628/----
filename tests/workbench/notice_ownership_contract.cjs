@@ -1,5 +1,5 @@
 'use strict';
-const assert = require('node:assert/strict'), path = require('node:path'), { spawnSync } = require('node:child_process');
+const path = require('node:path'), { spawnNodeSync } = require('../_support/spawn_node.cjs');
 
 // Exercise the shipped components, including their real Button/ErrorBox children.
 async function contract(h, assert) {
@@ -817,9 +817,9 @@ async function contract(h, assert) {
   return { notice_checks: checked };
 }
 
-const result = spawnSync(process.execPath, [path.join(__dirname, '../_support/gantt_current_runtime.cjs')], {
-  cwd: path.join(__dirname, '../..'), encoding: 'utf8', timeout: 30000,
-  input: JSON.stringify({ root: path.join(__dirname, '../..'), program: `return (${contract.toString()})(h, assert);` })
-});
-assert.strictEqual(result.status, 0, result.stdout + result.stderr);
+const repoRoot = path.join(__dirname, '../..');
+const result = spawnNodeSync([path.join(__dirname, '../_support/gantt_current_runtime.cjs')], {
+  cwd: repoRoot, timeout: 30000,
+  input: JSON.stringify({ root: repoRoot, program: `return (${contract.toString()})(h, assert);` })
+}, 'Notice ownership contract');
 console.log(result.stdout);

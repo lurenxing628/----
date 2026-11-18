@@ -95,11 +95,8 @@ def test_piece_downstream_exact_identity_quantity_and_search(trial_case):
 
 
 def test_piece_downstream_frontend_model():
-    import subprocess
     from pathlib import Path
 
-    from tests._support.node_runtime_support import node_runtime
+    from tests._support.node_runtime_support import run_node
 
-    result = subprocess.run([node_runtime(), str(Path(__file__).with_name('piece_downstream_contract.cjs'))],
-        capture_output=True, text=True, timeout=30)
-    assert result.returncode == 0, result.stdout + result.stderr
+    run_node([Path(__file__).with_name('piece_downstream_contract.cjs')])

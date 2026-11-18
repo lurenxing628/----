@@ -670,44 +670,92 @@ class LongGateContentTests(unittest.TestCase):
             )
 
     def test_node_resolution_and_fingerprint_skip_broken_path_node_and_bind_working_fallback(self):
-        from tests._support.node_runtime_support import resolve_node_binary
+        import shlex
+        import shutil
+
+        from tests._support.node_runtime_support import run_node
 
         bad_dir = self.root / "bad_bin"
         good_dir = self.root / "good_bin"
+        fake_home = self.root / "fake_home"
+        fallback_dir = (
+            fake_home
+            / ".cache"
+            / "codex-runtimes"
+            / "codex-primary-runtime"
+            / "dependencies"
+            / "node"
+            / "bin"
+        )
         bad_dir.mkdir(parents=True, exist_ok=True)
         good_dir.mkdir(parents=True, exist_ok=True)
-        bad_log = self.root / "bad_node_calls.log"
-        bad_node = bad_dir / "node"
-        good_node = good_dir / "node"
-        bad_node.write_text(f"#!/bin/sh\necho x >> {bad_log}\nexit 1\n", encoding="utf-8")
-        good_node.write_text("#!/bin/sh\necho v20.11.1\n", encoding="utf-8")
-        bad_node.chmod(0o755)
-        good_node.chmod(0o755)
+        fallback_dir.mkdir(parents=True, exist_ok=True)
+        base_home_env = {"HOME": str(fake_home), "USERPROFILE": str(fake_home)}
 
-        env = {"PATH": f"{bad_dir}{os.pathsep}{good_dir}"}
-        resolved_test_node = resolve_node_binary(env)
+        if os.name == "nt":
+            real_rt = fingerprint.resolve_cached_node_runtime()
+            (bad_dir / "node.exe").write_bytes(b"corrupt-pe")
+            good_node = Path(shutil.copy2(real_rt.realpath, good_dir / "node.exe"))
+            fallback_node = Path(shutil.copy2(real_rt.realpath, fallback_dir / "node.exe"))
+            expected_good_ver = real_rt.version
+            expected_fallback_ver = real_rt.version
+            bad_log = None
+        else:
+            bad_log = self.root / "bad_node_calls.log"
+            bad_target = bad_dir / "node"
+            bad_target.write_text(
+                f"#!/bin/sh\nprintf 'x\\n' >> {shlex.quote(str(bad_log))}\nexit 1\n",
+                encoding="utf-8",
+            )
+            bad_target.chmod(0o755)
+
+            def write_posix_node(directory: Path, version: str) -> Path:
+                target = directory / "node"
+                target.write_text(
+                    '#!/bin/sh\nif [ "$1" = "--version" ]; then\n'
+                    f"  printf '%s\\n' {shlex.quote(version)}\n"
+                    "  exit 0\nfi\nexit 0\n",
+                    encoding="utf-8",
+                )
+                target.chmod(0o755)
+                return target
+
+            good_node = write_posix_node(good_dir, "v20.11.1")
+            fallback_node = write_posix_node(fallback_dir, "v22.12.0")
+            expected_good_ver = "v20.11.1"
+            expected_fallback_ver = "v22.12.0"
+
+        env = {**base_home_env, "PATH": f"{bad_dir}{os.pathsep}{good_dir}"}
+        good_run = run_node(["-e", "0"], env=env)
         env_fp = fingerprint.fingerprint_environment(
             ["node_executable_realpath", "node_version"], environment=env, repo_root=str(self.root)
         )
 
         expected_path = os.path.realpath(str(good_node))
-        self.assertEqual(os.path.realpath(resolved_test_node), expected_path)
+        self.assertEqual(os.path.realpath(good_run.args[0]), expected_path)
         self.assertEqual(
             env_fp["values"],
-            {"node_executable_realpath": expected_path, "node_version": "v20.11.1"},
+            {"node_executable_realpath": expected_path, "node_version": expected_good_ver},
         )
-        self.assertEqual(len(bad_log.read_text(encoding="utf-8").splitlines()), 1)
+        if bad_log is not None:
+            self.assertEqual(len(bad_log.read_text(encoding="utf-8").splitlines()), 1)
 
-        bad_only_env = {"PATH": str(bad_dir)}
-        fallback_test_node = resolve_node_binary(bad_only_env)
+        bad_only_env = {**base_home_env, "PATH": str(bad_dir)}
+        fallback_run = run_node(["-e", "0"], env=bad_only_env)
         fallback_fp = fingerprint.fingerprint_environment(
             ["node_executable_realpath", "node_version"],
             environment=bad_only_env,
             repo_root=str(self.root),
         )["values"]
-        self.assertNotEqual(os.path.realpath(fallback_test_node), os.path.realpath(str(bad_node)))
-        self.assertEqual(os.path.realpath(fallback_test_node), fallback_fp["node_executable_realpath"])
-        self.assertTrue(fallback_fp["node_version"].startswith("v"))
+        resolved_fallback = os.path.realpath(fallback_run.args[0])
+        expected_fallback = os.path.realpath(str(fallback_node))
+        self.assertEqual(resolved_fallback, expected_fallback)
+        self.assertEqual(
+            fallback_fp,
+            {"node_executable_realpath": expected_fallback, "node_version": expected_fallback_ver},
+        )
+        if bad_log is not None:
+            self.assertEqual(len(bad_log.read_text(encoding="utf-8").splitlines()), 2)
 
     def test_content_equal_preserves_type_signed_zero_and_nan_validation(self):
         self.assertFalse(content_equal(True, 1))

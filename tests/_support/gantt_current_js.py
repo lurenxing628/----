@@ -10,10 +10,9 @@ awaits answers; h.serve() replaces only the network answers. Programs may await.
 """
 
 import json
-import subprocess
 from pathlib import Path
 
-from tests._support.node_runtime_support import node_runtime
+from tests._support.node_runtime_support import run_node
 from tests._support.paths import REPO_ROOT
 
 HARNESS = Path(__file__).with_name("gantt_current_runtime.cjs")
@@ -21,11 +20,11 @@ HARNESS = Path(__file__).with_name("gantt_current_runtime.cjs")
 
 def run_current_js(program, data=None):
     """Execute one explicit assertion program against private shipped assets."""
-    completed = subprocess.run(
-        [node_runtime(), str(HARNESS)],
+    completed = run_node(
+        [HARNESS],
         input=json.dumps({"root": str(REPO_ROOT), "program": program, "data": data}),
-        text=True, capture_output=True, check=False, cwd=str(REPO_ROOT), timeout=40,
+        cwd=REPO_ROOT,
+        timeout=40,
+        label="Current Gantt Node contract",
     )
-    if completed.returncode:
-        raise AssertionError("Current Gantt Node contract failed:\n" + completed.stdout + completed.stderr)
     return json.loads(completed.stdout)

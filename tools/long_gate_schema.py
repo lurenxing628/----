@@ -28,6 +28,7 @@ LONG_GATE_TOOLING_VERSION_PATHS = (
     "tools/long_gate_records.py",
     "tools/long_gate_schema.py",
     "tools/long_gate_summary.py",
+    "scripts/workbench/node_runtime.py",
 )
 
 

@@ -850,6 +850,7 @@ def _native_hook_fixture(tmp_path):
         "tools/scan_private_imports.py", "tools/scan_dead_path_literals.py", "tools/scan_over_defense.py",
         "tools/scan_import_cycles.py", "tools/import_cycle_analysis.py", "tools/import_cycle_baseline.py",
         "tools/import_cycle_graph.py",
+        "scripts/workbench/node_runtime.py",
     ):
         destination = root / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -1403,6 +1404,14 @@ def test_cli_impact_paths_normalize_only_at_argument_boundary(capsys):
     assert affected([win_esbuild_rel]) == ["full_test_debt", "required_regressions"]
     win_esbuild_impact = _plan([win_esbuild_rel]).impact_plan
     assert win_esbuild_impact.selected_group_ids == ["workbench"]
+    entry_bundle_impact = runner.explain_long_gate_impact(
+        plan, ["scripts/workbench/entry_bundle.py"], repo_root=REPO_ROOT
+    )
+    assert entry_bundle_impact["global_runner_tooling_affected"] is False
+    node_runtime_impact = runner.explain_long_gate_impact(
+        plan, ["scripts/workbench/node_runtime.py"], repo_root=REPO_ROOT
+    )
+    assert node_runtime_impact["global_runner_tooling_affected"] is True
     with pytest.raises(SystemExit):
         runner._parse_args(["--long-gate-impact-explain", "--long-gate-impact-path", "./"])
     assert "not a repository-relative path" in capsys.readouterr().err
@@ -1932,7 +1941,7 @@ def test_daily_gate_cache_invalidates_when_host_esbuild_vendor_tampered_or_remov
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX Rosetta node shim regression")
-def test_esbuild_platform_key_and_worktree_provision_follow_rosetta_node_arch(tmp_path):
+def test_esbuild_platform_key_and_worktree_provision_follow_rosetta_node_arch(tmp_path, monkeypatch):
     from scripts.workbench import vendor_react
 
     source_root = Path(__file__).resolve().parents[2]
@@ -1946,6 +1955,7 @@ def test_esbuild_platform_key_and_worktree_provision_follow_rosetta_node_arch(tm
         '  exit 0\n'
         'fi\n'
         'if [ "$1" = "-p" ]; then\n'
+        '  printf "\\377" >&2\n'
         '  echo "darwin-x64"\n'
         '  exit 0\n'
         'fi\n'
@@ -1953,13 +1963,24 @@ def test_esbuild_platform_key_and_worktree_provision_follow_rosetta_node_arch(tm
         encoding="utf-8",
     )
     rosetta_node.chmod(0o755)
-    assert vendor_react.current_esbuild_platform_key(node_executable=rosetta_node) == "darwin-x64"
 
     unsupported_node = shim_dir / "unsupported_node"
-    unsupported_node.write_text('#!/bin/sh\necho "freebsd-x64"\n', encoding="utf-8")
+    unsupported_node.write_text(
+        '#!/bin/sh\n'
+        'if [ "$1" = "--version" ]; then\n'
+        '  echo "v20.11.1"\n'
+        '  exit 0\n'
+        'fi\n'
+        'echo "freebsd-x64"\n',
+        encoding="utf-8",
+    )
     unsupported_node.chmod(0o755)
-    with pytest.raises(ValueError, match="Unsupported esbuild Node platform"):
-        vendor_react.current_esbuild_platform_key(node_executable=unsupported_node)
+    with monkeypatch.context() as patch_ctx:
+        patch_ctx.setenv("WORKBENCH_NODE", str(rosetta_node))
+        assert vendor_react.current_esbuild_platform_key() == "darwin-x64"
+        patch_ctx.setenv("WORKBENCH_NODE", str(unsupported_node))
+        with pytest.raises(ValueError, match="Unsupported esbuild Node platform"):
+            vendor_react.current_esbuild_platform_key()
 
     fake_host = tmp_path / "rosetta_host"
     (fake_host / "vendor/node_modules").mkdir(parents=True)
@@ -1986,3 +2007,252 @@ def test_esbuild_platform_key_and_worktree_provision_follow_rosetta_node_arch(tm
 
     assert (worktree / "vendor/node_modules/@esbuild/darwin-x64/bin/esbuild").is_file()
     assert not (worktree / "vendor/node_modules/@esbuild/darwin-arm64").exists()
+
+
+def test_anchor_node_env_anchors_relative_workbench_node_and_path_across_cwd_changes(
+    tmp_path, monkeypatch
+):
+    import ntpath
+    import types
+
+    from scripts.workbench import node_runtime
+    from scripts.workbench.node_runtime import NodeNotFoundError, anchor_node_env, select_node_runtime
+
+    parent_dir = tmp_path / "parent"
+    child_repo = parent_dir / "repo"
+    child_repo.mkdir(parents=True)
+    bin_name = "node-local.exe" if os.name == "nt" else "node-local"
+    if os.name == "nt":
+        real_rt = lg_fp.resolve_cached_node_runtime()
+        child_node = Path(shutil.copy2(real_rt.realpath, child_repo / bin_name))
+    else:
+        child_node = child_repo / bin_name
+        child_node.write_text('#!/bin/sh\necho "v20.11.1"\n', encoding="utf-8")
+        child_node.chmod(0o755)
+
+    monkeypatch.chdir(parent_dir)
+    anchored_missing = anchor_node_env({"WORKBENCH_NODE": "./node-local", "PATH": ""})
+    assert anchored_missing["WORKBENCH_NODE"] == os.path.join(str(parent_dir), "./node-local")
+    monkeypatch.chdir(child_repo)
+    with pytest.raises(NodeNotFoundError):
+        select_node_runtime(anchored_missing)
+
+    if os.name == "nt":
+        parent_node = Path(shutil.copy2(child_node, parent_dir / bin_name))
+    else:
+        parent_node = parent_dir / bin_name
+        parent_node.write_text('#!/bin/sh\necho "v22.12.0"\n', encoding="utf-8")
+        parent_node.chmod(0o755)
+
+    monkeypatch.chdir(parent_dir)
+    anchored_present = anchor_node_env(
+        {"WORKBENCH_NODE": "./node-local", "PATH": f"rel_bin{os.pathsep}{tmp_path / 'abs_bin'}"}
+    )
+    assert anchored_present["PATH"] == f"{os.path.join(str(parent_dir), 'rel_bin')}{os.pathsep}{tmp_path / 'abs_bin'}"
+    monkeypatch.chdir(child_repo)
+    selected = select_node_runtime(anchored_present)
+    assert selected.realpath == os.path.realpath(str(parent_node))
+    if os.name != "nt":
+        assert selected.version == "v22.12.0"
+
+    child_tilde_bin = child_repo / "home" / "bin"
+    child_tilde_bin.mkdir(parents=True)
+    shutil.copy2(child_node, child_tilde_bin / ("node.exe" if os.name == "nt" else "node"))
+
+    monkeypatch.chdir(parent_dir)
+    unconfigured = anchor_node_env({"PATH": f"rel_only{os.pathsep}~/keep_tilde{os.pathsep}"})
+    assert "WORKBENCH_NODE" not in unconfigured
+    expected_trailing = "" if os.name == "nt" else str(parent_dir)
+    assert unconfigured["PATH"] == os.pathsep.join(
+        (os.path.join(str(parent_dir), "rel_only"), os.path.join(str(parent_dir), "~/keep_tilde"), expected_trailing)
+    )
+    assert anchor_node_env({"WORKBENCH_NODE": "custom-node"})["WORKBENCH_NODE"] == "custom-node"
+    tilde_anchored = anchor_node_env(
+        {"HOME": "home", "USERPROFILE": "home", "WORKBENCH_NODE": "~/bin/node", "PATH": ""}
+    )
+    assert tilde_anchored["WORKBENCH_NODE"] == os.path.join(str(parent_dir), "home", "bin/node")
+    monkeypatch.chdir(child_repo)
+    with pytest.raises(NodeNotFoundError):
+        select_node_runtime(tilde_anchored)
+
+    monkeypatch.chdir(parent_dir)
+    monkeypatch.setenv("WORKBENCH_NODE", "./missing-hook-node")
+    monkeypatch.setenv("PATH", f"hook_rel_bin{os.pathsep}{os.environ.get('PATH', '')}")
+    hook_env = checks._quality_gate_env()
+    assert hook_env["WORKBENCH_NODE"] == os.path.join(str(parent_dir), "./missing-hook-node")
+    assert hook_env["PATH"].split(os.pathsep)[0] == os.path.join(str(parent_dir), "hook_rel_bin")
+    assert daily._gate_env()["WORKBENCH_NODE"] == os.path.join(str(parent_dir), "./missing-hook-node")
+
+    fake_nt_os = types.SimpleNamespace(
+        name="nt",
+        path=ntpath,
+        pathsep=";",
+        curdir=".",
+        pardir="..",
+        sep="\\",
+        altsep="/",
+        getcwd=lambda: "D:\\repo",
+    )
+    with monkeypatch.context() as patch_ctx:
+        patch_ctx.setattr(node_runtime, "os", fake_nt_os)
+        win_anchored = anchor_node_env(
+            {"WORKBENCH_NODE": "\\Tools\\nodejs\\node.exe", "PATH": "\\Tools\\nodejs;C:\\Windows\\System32;;rel_bin"}
+        )
+        assert win_anchored == {
+            "WORKBENCH_NODE": "D:\\Tools\\nodejs\\node.exe",
+            "PATH": "D:\\Tools\\nodejs;C:\\Windows\\System32;;D:\\repo\\rel_bin",
+        }
+        assert not node_runtime._has_root_anchor("\\Tools\\nodejs")
+        assert node_runtime._has_root_anchor("D:\\Tools\\nodejs")
+        assert node_runtime._has_root_anchor("\\\\server\\share\\nodejs")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX empty PATH segment and runtime probe cache regression")
+def test_command_environment_empty_path_segment_and_hook_node_probe_dedup(tmp_path, monkeypatch):
+    from scripts.workbench import node_runtime, vendor_react
+    from scripts.workbench.node_runtime import NodeProbeError, select_node_runtime
+
+    def write_exe(path: Path, body: str) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+        path.chmod(0o755)
+        return path
+
+    # 1. POSIX empty PATH segment in command_environment matches between fingerprint and child execution.
+    parent_dir = tmp_path / "git_parent"
+    child_repo = parent_dir / "child_repo"
+    parent_git = write_exe(parent_dir / "git", '#!/bin/sh\necho "git version 1.1.0"\n')
+    write_exe(child_repo / "git", '#!/bin/sh\necho "git version 2.2.0"\n')
+    with monkeypatch.context() as patch_ctx:
+        patch_ctx.chdir(parent_dir)
+        patch_ctx.setenv("PATH", ":/usr/bin:/bin")
+        lg_fp._RUNTIME_FINGERPRINT_CACHE.clear()
+        cmd_env = lg_fp.command_environment({})
+        fp = lg_fp.fingerprint_environment(
+            ("git_executable_realpath", "git_version"), environment=cmd_env, repo_root=str(child_repo)
+        )
+        raw = runner._run_command(
+            GateContext(str(child_repo)), "git_probe", ["git", "--version"], capture_output=True, environment=cmd_env
+        )
+    assert fp["values"] == {
+        "git_executable_realpath": os.path.realpath(str(parent_git)),
+        "git_version": "git version 1.1.0",
+    }
+    assert raw["returncode"] == 0 and raw["stdout"].strip() == "git version 1.1.0"
+
+    # 2. Partial env omitting PATH incorporates live process PATH into resolve_cached_node_runtime cache key.
+    empty_home = tmp_path / "empty_home"
+    empty_home.mkdir()
+    node_a = write_exe(tmp_path / "bin_a/node", '#!/bin/sh\necho "v20.11.1"\n')
+    node_b = write_exe(tmp_path / "bin_b/node", '#!/bin/sh\necho "v22.12.0"\n')
+    partial_env = {"HOME": str(empty_home)}
+    lg_fp._RUNTIME_FINGERPRINT_CACHE.clear()
+    with monkeypatch.context() as patch_ctx:
+        patch_ctx.delenv("WORKBENCH_NODE", raising=False)
+        patch_ctx.setenv("PATH", str(node_a.parent))
+        rt_a = lg_fp.resolve_cached_node_runtime(partial_env)
+        patch_ctx.setenv("PATH", str(node_b.parent))
+        rt_b = lg_fp.resolve_cached_node_runtime(partial_env)
+    assert (rt_a.realpath, rt_a.version) == (os.path.realpath(str(node_a)), "v20.11.1")
+    assert (rt_b.realpath, rt_b.version) == (os.path.realpath(str(node_b)), "v22.12.0")
+
+    # 3. PermissionError reading ~/.nvm/versions/node preserves first PATH probe error and lets vendor_react fall back.
+    nvm_versions = empty_home / ".nvm/versions/node"
+    nvm_versions.mkdir(parents=True)
+    bad_path_node = write_exe(tmp_path / "bad_path/node", "#!/bin/sh\nprintf 'path-probe-err\\n' >&2\nexit 23\n")
+    real_listdir = os.listdir
+    listdir_hits = []
+
+    def guarded_listdir(target):
+        if os.path.realpath(str(target)) == os.path.realpath(str(nvm_versions)):
+            listdir_hits.append(str(target))
+            raise PermissionError("nvm versions unreadable")
+        return real_listdir(target)
+
+    perm_env = {
+        "PATH": str(bad_path_node.parent),
+        "HOME": str(empty_home),
+        "NODE_OPTIONS": "--definitely-invalid-node-option",
+    }
+    with monkeypatch.context() as patch_ctx:
+        patch_ctx.setattr(node_runtime.os, "listdir", guarded_listdir)
+        with pytest.raises(NodeProbeError, match=r"returncode 23[\s\S]*path-probe-err"):
+            select_node_runtime(perm_env)
+        assert len(listdir_hits) == 1
+        patch_ctx.delenv("WORKBENCH_NODE", raising=False)
+        patch_ctx.setenv("PATH", str(bad_path_node.parent))
+        patch_ctx.setenv("HOME", str(empty_home))
+        patch_ctx.setenv("NODE_OPTIONS", "--definitely-invalid-node-option")
+        assert vendor_react.current_esbuild_platform_key() == vendor_react._python_esbuild_platform_key()
+        assert len(listdir_hits) == 2
+
+    # 4. Broken Node in daily_gate_cache_key probes once; full pre-push hook run probes --version and -p once each.
+    source_root = Path(__file__).resolve().parents[2]
+    hook_repo = tmp_path / "dedup_hook_repo"
+    (hook_repo / "scripts/workbench").mkdir(parents=True)
+    shutil.copyfile(source_root / ".gitignore", hook_repo / ".gitignore")
+    shutil.copyfile(
+        source_root / "scripts/workbench/esbuild-manifest.json",
+        hook_repo / "scripts/workbench/esbuild-manifest.json",
+    )
+    write_exe(hook_repo / "scripts/run_daily_quality_gate.py", "#!/usr/bin/env python3\nraise SystemExit(0)\n")
+    base_gate_env = checks._quality_gate_env()
+    for git_args in (
+        ("init",),
+        ("config", "user.email", "dedup@example.invalid"),
+        ("config", "user.name", "Dedup Tester"),
+        ("add", ".gitignore", "scripts/workbench/esbuild-manifest.json", "scripts/run_daily_quality_gate.py"),
+        ("commit", "-m", "Setup dedup hook repo"),
+    ):
+        subprocess.run(["git", *git_args], cwd=hook_repo, env=base_gate_env, check=True, capture_output=True)
+    head_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=hook_repo, env=base_gate_env, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    checks._provision_worktree_esbuild_vendor(source_root, hook_repo, environment=base_gate_env)
+
+    broken_log = tmp_path / "broken_node.log"
+    broken_node = write_exe(
+        tmp_path / "broken_node",
+        f"#!/bin/sh\nprintf 'probe\\n' >> {shlex.quote(str(broken_log))}\nexit 1\n",
+    )
+    scope_payload = {"changed_paths": ["app.py"], "scope_known": True, "reason": "test"}
+    ref_contexts = [{"local_ref": "refs/heads/main", "local_sha": head_sha, "remote_ref": "refs/heads/main", "remote_sha": checks.ZERO_SHA}]
+    lg_fp._RUNTIME_FINGERPRINT_CACHE.clear()
+    broken_key = hooks.daily_gate_cache_key(
+        hook_repo,
+        sys.executable,
+        scope_payload=scope_payload,
+        ref_contexts=ref_contexts,
+        env={**base_gate_env, "WORKBENCH_NODE": str(broken_node)},
+    )
+    assert broken_key["extra"]["pytest_env"]["node_executable_realpath"] == f"__missing_node__:{broken_node}"
+    assert broken_log.read_text(encoding="utf-8").splitlines() == ["probe"]
+
+    ok_log = tmp_path / "ok_node.log"
+    host_plat = vendor_react._python_esbuild_platform_key()
+    ok_node = write_exe(
+        tmp_path / "ok_node",
+        '#!/bin/sh\n'
+        f'printf "%s\\n" "$1" >> {shlex.quote(str(ok_log))}\n'
+        'if [ "$1" = "--version" ]; then echo "v20.11.1"; exit 0; fi\n'
+        f'if [ "$1" = "-p" ]; then echo {shlex.quote(host_plat)}; exit 0; fi\n'
+        'exit 1\n',
+    )
+    with monkeypatch.context() as patch_ctx:
+        patch_ctx.setenv("WORKBENCH_NODE", str(ok_node))
+        patch_ctx.setattr(checks, "project_python_executable", lambda _root: sys.executable)
+        patch_ctx.setattr(
+            checks,
+            "_pre_push_input_for_hook",
+            lambda _stream=None: checks.PrePushInput(
+                [checks.PrePushRef("refs/heads/main", head_sha, "refs/heads/main", checks.ZERO_SHA)],
+                True,
+            ),
+        )
+        patch_ctx.setattr(checks, "_daily_scope_for_refs", lambda _root, _refs, *, remote_name: scope_payload)
+        lg_fp._RUNTIME_FINGERPRINT_CACHE.clear()
+        rc = checks.run_quality_gate(
+            hook_repo, checks.argparse.Namespace(remote_name="origin", remote_url="origin", remote_ref="")
+        )
+    assert rc == 0
+    assert ok_log.read_text(encoding="utf-8").splitlines() == ["--version", "-p"]

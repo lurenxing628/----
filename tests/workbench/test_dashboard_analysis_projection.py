@@ -1,20 +1,16 @@
 """Compact analysis keeps execution facts and reuses its complete task scope."""
 
 import copy
-import json
-import subprocess
-from pathlib import Path
 
 import pytest
 
 from core.models.workbench_dashboard import DashboardAnalysisQuery
 from core.services.workbench.dashboard.execution import actual
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
-from tests._support.node_runtime_support import node_runtime
+from tests._support.gantt_current_js import run_current_js
 from tests.workbench.dashboard_support import NOW, api
 from tests.workbench.dashboard_support import dashboard_case as dashboard_case  # noqa: F401
 
-ROOT = Path(__file__).resolve().parents[2]
 BASE = "/api/workbench/v1/dashboard"
 TASK_FIELDS = {"kind", "plan_ref", "operation_ref", "batch_id", "planned_start", "planned_end"}
 
@@ -153,8 +149,4 @@ function check(value) {
 check(data);
 return {navigation_clicks: calls.length, shipped_react: true};
 """
-    result = subprocess.run([node_runtime(), str(ROOT / "tests/_support/gantt_current_runtime.cjs")],
-        input=json.dumps({"root": str(ROOT), "program": program, "data": document}),
-        text=True, encoding="utf-8", capture_output=True, timeout=30)
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert json.loads(result.stdout)["result"]["navigation_clicks"] == 2
+    assert run_current_js(program, document)["result"]["navigation_clicks"] == 2

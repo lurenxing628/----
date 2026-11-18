@@ -2,10 +2,9 @@
 
 import json
 import os
-import subprocess
 from pathlib import Path
 
-from tests._support.node_runtime_support import node_runtime
+from tests._support.node_runtime_support import run_node
 from web.routes.workbench.navigation_metadata import NAVIGATION_RULES
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -13,15 +12,12 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def _run_node(script: str) -> dict:
     wrapped = f"'use strict';\n(async () => {{\n{script}\n}})().catch(err => {{ console.error(err); process.exit(1); }});"
-    result = subprocess.run(
-        [node_runtime(), "-e", wrapped],
-        cwd=str(ROOT),
+    result = run_node(
+        ["-"],
+        input=wrapped,
+        cwd=ROOT,
         env=dict(os.environ, WORKBENCH_NAVIGATION_RULES=json.dumps(NAVIGATION_RULES)),
-        capture_output=True,
-        text=True,
-        timeout=30,
     )
-    assert result.returncode == 0, result.stdout + result.stderr
     return json.loads(result.stdout.strip().splitlines()[-1])
 
 
@@ -2169,7 +2165,7 @@ def test_build_strict_module_style_asset_and_retired_cleanup_contracts(tmp_path,
         "scripts.workbench.build",
     ):
         monkeypatch.delitem(sys.modules, mod_name, raising=False)
-    build_mod, node = importlib.import_module("scripts.workbench.build"), node_runtime()
+    build_mod = importlib.import_module("scripts.workbench.build")
     project_root, output_dir = tmp_path / "repo", tmp_path / "static_workbench"
     app_dir = project_root / "frontend/workbench/app"
     shutil.copytree(ROOT / "frontend/workbench/vendor", project_root / "frontend/workbench/vendor")
@@ -2192,7 +2188,7 @@ def test_build_strict_module_style_asset_and_retired_cleanup_contracts(tmp_path,
         orphan = app_dir / orphan_rel
         orphan.write_text("export const unused = 1;\n", encoding="utf-8")
         with pytest.raises(ValueError, match=r"JS module graph out of sync; missing=; unlisted=" + orphan_rel):
-            build_mod.build(project_root, output_dir, node)
+            build_mod.build(project_root, output_dir)
         orphan.unlink()
     with pytest.raises(ValueError, match=r"JS module graph out of sync; missing=missing\.js; unlisted="):
         build_mod.verify_js_module_graph(app_dir, ["theme.js", "shared.js", "shell/main.jsx", "missing.js"])
@@ -2205,11 +2201,11 @@ def test_build_strict_module_style_asset_and_retired_cleanup_contracts(tmp_path,
         saved = target_file.read_bytes()
         target_file.unlink()
         with pytest.raises(ValueError, match=missing_pat):
-            build_mod.build(project_root, output_dir, node)
+            build_mod.build(project_root, output_dir)
         target_file.write_bytes(saved)
         extra_file.write_text("extra\n", encoding="utf-8")
         with pytest.raises(ValueError, match=extra_pat):
-            build_mod.build(project_root, output_dir, node)
+            build_mod.build(project_root, output_dir)
         extra_file.unlink()
 
     for stale_rel in (
@@ -2221,7 +2217,7 @@ def test_build_strict_module_style_asset_and_retired_cleanup_contracts(tmp_path,
         stale_file.parent.mkdir(parents=True, exist_ok=True)
         stale_file.write_bytes(b"stale")
 
-    built = build_mod.build(project_root, output_dir, node)
+    built = build_mod.build(project_root, output_dir)
     assert built["status"] == "built"
     for removed in ("prototype", "assets", "app/styles", "app/assets/stale", "app/retired.js"):
         assert not (output_dir / removed).exists()
@@ -2230,6 +2226,29 @@ def test_build_strict_module_style_asset_and_retired_cleanup_contracts(tmp_path,
     manifest = json.loads((output_dir / "asset-manifest.json").read_text(encoding="utf-8"))
     assert manifest["icon"] == "workbench/app/assets/logo-mark.svg"
     assert manifest["notices"][2] == "workbench/app/assets/lucide-LICENSE"
+
+    caller_dir = tmp_path / "caller_cwd"
+    caller_dir.mkdir()
+    probe_host_env = {k: v for k, v in os.environ.items() if k != "NODE_OPTIONS"}
+    real_exec = json.loads(
+        run_node(["-p", "JSON.stringify(process.execPath)"], env=probe_host_env).stdout
+    )
+    if os.name == "nt":
+        shutil.copy2(real_exec, caller_dir / "node.exe")
+        rel_node = os.path.join(".", "node")
+    else:
+        (caller_dir / "node").symlink_to(real_exec)
+        rel_node = "./node"
+    monkeypatch.chdir(caller_dir)
+    rel_compiled = build_mod.compile_production(rel_node, project_root)
+    assert sorted(rel_compiled["inputs"]) == ["shared.js", "shell/main.jsx", "theme.js"]
+
+    (app_dir / "theme.js").write_text("import('./forbidden.js');\n", encoding="utf-8")
+    with pytest.raises(
+        ValueError,
+        match=r"Node compiler failed with returncode 1:\nstderr:\nBuild failed",
+    ):
+        build_mod.compile_production(rel_node, project_root)
 
 
 def test_vendor_react_metadata_size_contracts_and_esbuild_already_installed_short_circuit(tmp_path, monkeypatch):

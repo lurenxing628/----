@@ -76,6 +76,7 @@
     "scripts/workbench/asset_sources.py",
     "scripts/workbench/entry_bundle.py",
     "scripts/workbench/vendor_react.py",
+    "scripts/workbench/node_runtime.py",
     "scripts/workbench/build.py",
     ".limcode/skills/aps-start-and-rerun-route/scripts/run_start_and_rerun_route.py"
   ],

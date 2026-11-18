@@ -19,7 +19,7 @@ from core.services.workbench.trial.preparation import (
 )
 from core.services.workbench.trial.projection import unplanned_operations
 from core.services.workbench.trial.service import WorkbenchTrialService
-from tests.workbench.test_legacy_resource_projection import shipped
+from tests._support.gantt_current_js import run_current_js
 from tests.workbench.trial_support import candidate, change, create, official, service
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 
@@ -62,7 +62,7 @@ def test_new_trial_slot_persists_the_same_requirement_used_for_calendar_math(tri
     assert adjusted["comparison"]["preparation_common"]["after"]["scheduled_setup_hours"]["value"] == 2
     assert adjusted["comparison"]["changeover_common"]["before"]["count"] is None
     assert adjusted["comparison"]["changeover_common"]["after"]["count"] == 0
-    shipped(adjusted, r"""
+    run_current_js(r"""
 const TrialResults = h.module('TrialResults.jsx').default,
   TrialGantt = h.module('TrialGantt.jsx').default, TrialExport = h.module('TrialExport.js').default;
 const data = sourceData;
@@ -82,7 +82,7 @@ assert(legacy.text.includes(',"可继续试调",'));
 const retired = TrialExport.csv({...data, validation: {...data.validation, constraints_status: 'retired_check'}}).text;
 assert(retired.includes('约束检查：其他状态') && !retired.includes('retired_check'));
 return {shipped_contract:true, preparation_panel:true, csv_exports:true};
-""")
+""", adjusted)
     stored = load_object(case.conn.execute("SELECT current_json FROM WorkbenchTrialRows WHERE task_ref=?", (task["task_ref"],)).fetchone()[0])
     assert stored["operation_effort"] == effort
     saved = service(case.conn).save(draft["draft_ref"], {"name": "Saved preparation"},
@@ -153,7 +153,7 @@ def test_trial_retained_requirement_keeps_original_target_separate_from_creation
     unplanned = unplanned_operations(contexts)
     assert unplanned == []
     apply_preparation(deepcopy(draft["tasks"]), unplanned, pairs)
-    shipped(draft, r"""
+    run_current_js(r"""
 const TrialResults = h.module('TrialResults.jsx').default,
   TrialGantt = h.module('TrialGantt.jsx').default, TrialExport = h.module('TrialExport.js').default;
 const data = sourceData;
@@ -171,7 +171,7 @@ assert.equal(current[head.indexOf('原需求目标量')], '10');
 assert.equal(current[head.indexOf('本次执行目标量')], '20');
 assert.equal(current[head.indexOf('所需标准工时（小时）')], '7');
 return {shipped_contract:true, retained_quantity:true, csv_quantity:true};
-""")
+""", draft)
     # The real AJ completion must determine the role even when this source row
     # has no completed_actuals anchor. The requirement itself remains 10/7h.
     case.plan(1, [case.op_id], end="2026-09-09T15:00:00")
